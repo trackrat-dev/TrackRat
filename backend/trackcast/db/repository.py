@@ -1333,8 +1333,10 @@ class TrainStopRepository(BaseRepository):
                 TrainStop.data_source == data_source
             ).delete(synchronize_session=False)
 
-            # Create new stops
+            # Create new stops, filtering out duplicates within the same dataset
             train_stops = []
+            seen_stations = set()
+            
             for stop_data in stops_data:
                 stop_data["train_id"] = train_id
                 stop_data["train_departure_time"] = train_departure_time
@@ -1347,6 +1349,14 @@ class TrainStopRepository(BaseRepository):
                         stop_data["station_code"] = derived_code
                         logger.debug(f"Derived station code '{derived_code}' for station name '{stop_data['station_name']}'")
                 
+                # Create unique key to check for duplicates within this batch
+                station_key = (train_id, train_departure_time, stop_data.get("station_name"), data_source)
+                
+                if station_key in seen_stations:
+                    logger.warning(f"Skipping duplicate station '{stop_data.get('station_name')}' for train {train_id}")
+                    continue
+                    
+                seen_stations.add(station_key)
                 train_stop = TrainStop(**stop_data)
                 self.session.add(train_stop)
                 train_stops.append(train_stop)
