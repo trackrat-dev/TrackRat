@@ -18,7 +18,7 @@ class TrainConsolidationService:
 
     def __init__(self):
         """Initialize the consolidation service."""
-        self.time_tolerance = timedelta(minutes=2)  # For matching stop times
+        self.time_tolerance = timedelta(minutes=5)  # For matching stop times
         
     def consolidate_trains(self, trains: List[Train]) -> List[Dict]:
         """
@@ -116,20 +116,44 @@ class TrainConsolidationService:
         if not train1.stops or not train2.stops:
             return False
             
-        # Find common stops between both trains
-        common_stops_found = 0
-        for stop1 in train1.stops:
-            for stop2 in train2.stops:
-                if stop1.station_code == stop2.station_code:
-                    # Check if scheduled times match (within tolerance for API differences)
-                    if stop1.scheduled_time and stop2.scheduled_time:
-                        time_diff = abs(stop1.scheduled_time - stop2.scheduled_time)
-                        if time_diff <= self.time_tolerance:
-                            common_stops_found += 1
-                            if common_stops_found >= 3:  # Need at least 3 common stops
-                                return True
+        # Build station-to-time mappings for both trains (only include stops with scheduled times)
+        train1_schedule = {}
+        train2_schedule = {}
         
-        return False
+        for stop in train1.stops:
+            if stop.station_code and stop.scheduled_time:
+                train1_schedule[stop.station_code] = stop.scheduled_time
+                
+        for stop in train2.stops:
+            if stop.station_code and stop.scheduled_time:
+                train2_schedule[stop.station_code] = stop.scheduled_time
+        
+        # Find common stations
+        common_stations = set(train1_schedule.keys()) & set(train2_schedule.keys())
+        
+        if len(common_stations) < 2:
+            logger.debug(f"Trains {train1.train_id} and {train2.train_id} have fewer than 2 common stations")
+            return False
+        
+        # Count stations with matching times (within tolerance)
+        matching_stations = 0
+        for station in common_stations:
+            time1 = train1_schedule[station]
+            time2 = train2_schedule[station]
+            time_diff = abs(time1 - time2)
+            
+            if time_diff <= self.time_tolerance:
+                matching_stations += 1
+                logger.debug(f"Station {station} matches: {time1} vs {time2} (diff: {time_diff})")
+            else:
+                logger.debug(f"Station {station} time mismatch: {time1} vs {time2} (diff: {time_diff})")
+        
+        # Require at least 2 matching stations AND at least 50% of common stations to match
+        min_required_matches = max(2, len(common_stations) // 2)
+        
+        logger.debug(f"Trains {train1.train_id} and {train2.train_id}: {matching_stations}/{len(common_stations)} stations match (need {min_required_matches})")
+        
+        return matching_stations >= min_required_matches
     
     def _same_route_pattern(self, train1: Train, train2: Train) -> bool:
         """
@@ -155,8 +179,8 @@ class TrainConsolidationService:
             if station in route2:
                 common_stations.append(station)
         
-        # Need at least 3 common stations
-        if len(common_stations) < 3:
+        # Need at least 2 common stations
+        if len(common_stations) < 2:
             return False
             
         # Check if common stations appear in the same order in both routes
