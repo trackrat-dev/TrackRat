@@ -271,7 +271,8 @@ class DataCollectorService:
                         self.stop_repo.upsert_train_stops(
                             train_record.get("train_id"),
                             departure_time,
-                            train_record["stops"]
+                            train_record["stops"],
+                            train_record.get("data_source", "njtransit")
                         )
                     except Exception as e:
                         logger.warning(f"Failed to process stops for train {train_record.get('train_id')}: {str(e)}")
@@ -467,7 +468,8 @@ class DataCollectorService:
                         self.stop_repo.upsert_train_stops(
                             train_record.get("train_id"),
                             departure_time,
-                            train_record["stops"]
+                            train_record["stops"],
+                            "amtrak"
                         )
                     except Exception as e:
                         logger.warning(f"Failed to process stops for Amtrak train {train_record.get('train_id')}: {str(e)}")

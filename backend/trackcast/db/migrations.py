@@ -381,6 +381,71 @@ def add_data_source_column(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def add_data_source_to_train_stops(session: Session) -> Dict[str, Any]:
+    """
+    Add the data_source column to the train_stops table and update the unique constraint.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if column already exists
+        check_query = text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' AND column_name = 'data_source'
+        """)
+        result = session.execute(check_query).fetchone()
+        
+        if result:
+            logger.info("Column data_source already exists in train_stops table")
+            return {"status": "skipped", "message": "Column already exists"}
+        
+        # Add the column
+        logger.info("Adding data_source column to train_stops table")
+        add_column_query = text("""
+            ALTER TABLE train_stops 
+            ADD COLUMN data_source VARCHAR(20) NOT NULL DEFAULT 'njtransit'
+        """)
+        session.execute(add_column_query)
+        
+        # Create index
+        logger.info("Creating index on data_source column")
+        create_index_query = text("""
+            CREATE INDEX ix_train_stops_data_source ON train_stops (data_source)
+        """)
+        session.execute(create_index_query)
+        
+        # Drop old unique constraint
+        logger.info("Dropping old unique constraint")
+        drop_constraint_query = text("""
+            DROP INDEX IF EXISTS uix_train_stop_unique
+        """)
+        session.execute(drop_constraint_query)
+        
+        # Create new unique constraint including data_source
+        logger.info("Creating new unique constraint with data_source")
+        create_constraint_query = text("""
+            CREATE UNIQUE INDEX uix_train_stop_unique 
+            ON train_stops (train_id, train_departure_time, station_name, data_source)
+        """)
+        session.execute(create_constraint_query)
+        
+        # Commit the changes
+        session.commit()
+        
+        logger.info("Successfully added data_source column to train_stops table")
+        return {"status": "success", "message": "Column added successfully"}
+    
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding data_source column to train_stops: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -401,6 +466,7 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
         ("add_stop_query_indexes", add_stop_query_indexes),
         ("add_origin_station_columns", add_origin_station_columns),
         ("add_data_source_column", add_data_source_column),
+        ("add_data_source_to_train_stops", add_data_source_to_train_stops),
     ]
     
     for name, migration_func in migrations:

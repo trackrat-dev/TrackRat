@@ -128,6 +128,9 @@ class TrainStop(Base, TimestampMixin):
     train_id = Column(String(20), nullable=False, index=True)
     train_departure_time = Column(DateTime, nullable=False, index=True)
 
+    # Data source
+    data_source = Column(String(20), nullable=False, index=True, default="njtransit")
+
     # Station information
     station_code = Column(String(10), nullable=True, index=True)
     station_name = Column(String(100), nullable=False)
@@ -144,10 +147,9 @@ class TrainStop(Base, TimestampMixin):
 
     # Note: Relationship to train handled via queries due to composite key complexity
 
-    # Unique constraint to prevent duplicate stop records
-    # Note: For stops with null station_code, we allow duplicates since we can't uniquely identify them
+    # Unique constraint to prevent duplicate stop records including data source
     __table_args__ = (
-        UniqueConstraint("train_id", "train_departure_time", "station_name", 
+        UniqueConstraint("train_id", "train_departure_time", "station_name", "data_source", 
                         name="uix_train_stop_unique"),
     )
 

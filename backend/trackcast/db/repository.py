@@ -1305,7 +1305,7 @@ class TrainStopRepository(BaseRepository):
             logger.error(f"Database error in create_train_stop: {str(e)}")
             raise
 
-    def upsert_train_stops(self, train_id: str, train_departure_time: datetime, stops_data: List[Dict[str, Any]]) -> List[TrainStop]:
+    def upsert_train_stops(self, train_id: str, train_departure_time: datetime, stops_data: List[Dict[str, Any]], data_source: str = "njtransit") -> List[TrainStop]:
         """
         Create or update train stops for a specific train.
 
@@ -1313,6 +1313,7 @@ class TrainStopRepository(BaseRepository):
             train_id: Train identifier
             train_departure_time: Train departure time
             stops_data: List of stop data dictionaries
+            data_source: Data source identifier (njtransit or amtrak)
 
         Returns:
             List of created/updated TrainStop objects
@@ -1325,10 +1326,11 @@ class TrainStopRepository(BaseRepository):
             from trackcast.services.station_mapping import StationMapper
             station_mapper = StationMapper()
             
-            # Delete existing stops for this train
+            # Delete existing stops for this train and data source
             self.session.query(TrainStop).filter(
                 TrainStop.train_id == train_id,
-                TrainStop.train_departure_time == train_departure_time
+                TrainStop.train_departure_time == train_departure_time,
+                TrainStop.data_source == data_source
             ).delete(synchronize_session=False)
 
             # Create new stops
@@ -1336,6 +1338,7 @@ class TrainStopRepository(BaseRepository):
             for stop_data in stops_data:
                 stop_data["train_id"] = train_id
                 stop_data["train_departure_time"] = train_departure_time
+                stop_data["data_source"] = data_source
                 
                 # If station_code is missing, try to derive it from station_name
                 if not stop_data.get("station_code") and stop_data.get("station_name"):
