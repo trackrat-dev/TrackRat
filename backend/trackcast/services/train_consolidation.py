@@ -138,13 +138,26 @@ class TrainConsolidationService:
                     train2_schedule[station_code] = stop.scheduled_time
             
             common_stations = set(train1_schedule.keys()) & set(train2_schedule.keys())
-            match_strength = len(common_stations) / max(len(train1_schedule), len(train2_schedule)) if train1_schedule and train2_schedule else 0
             
-            if match_strength >= 0.8:  # 80% or more stations match
-                logger.info(f"Route patterns don't match for {train1.train_id}, but journey match strength is {match_strength:.1%} - allowing consolidation")
+            # Use the same matching logic as _same_journey: count how many common stations have matching times
+            matching_stations = 0
+            for station in common_stations:
+                time1 = train1_schedule[station]
+                time2 = train2_schedule[station]
+                time_diff = abs(time1 - time2)
+                
+                if time_diff <= self.time_tolerance:
+                    matching_stations += 1
+                    
+            # Use the same threshold as _same_journey: at least 50% of common stations must match
+            min_required_matches = max(2, len(common_stations) // 2)
+            journey_match_strength = matching_stations / len(common_stations) if common_stations else 0
+            
+            if matching_stations >= min_required_matches and journey_match_strength >= 0.8:  # 80% or more common stations match
+                logger.info(f"Route patterns don't match for {train1.train_id}, but journey match strength is {journey_match_strength:.1%} ({matching_stations}/{len(common_stations)} common stations) - allowing consolidation")
                 return True
             else:
-                logger.info(f"Route patterns don't match for {train1.train_id}, journey match strength only {match_strength:.1%} - rejecting")
+                logger.info(f"Route patterns don't match for {train1.train_id}, journey match strength only {journey_match_strength:.1%} ({matching_stations}/{len(common_stations)} common stations) - rejecting")
                 return False
             
         logger.info(f"Route patterns match for {train1.train_id}")
