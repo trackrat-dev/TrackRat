@@ -255,8 +255,8 @@ class ConsolidatedTrainResponse(BaseModel):
     consolidation_metadata: ConsolidationMetadata
     
     # New enhanced fields (optional for backward compatibility)
-    status_v2: Optional[StatusV2] = None
-    progress: Optional[Progress] = None
+    status_v2: Optional["StatusV2"] = None
+    progress: Optional["Progress"] = None
 
 
 class ConsolidatedTrainListResponse(BaseModel):
