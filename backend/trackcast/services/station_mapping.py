@@ -480,13 +480,13 @@ class StationMapper:
         # Try code-based normalization first
         if station_code and station_code.upper() in self.AMTRAK_TO_NJT_NORMALIZATION:
             normalized = self.AMTRAK_TO_NJT_NORMALIZATION[station_code.upper()]
-            logger.info(f"Normalized Amtrak station code '{station_code}' -> '{normalized['code']}' ({normalized['name']})")
+            logger.debug(f"Normalized Amtrak station code '{station_code}' -> '{normalized['code']}' ({normalized['name']})")
             return {"code": normalized["code"], "name": normalized["name"]}
         
         # Try name-based normalization
         if station_name and station_name in self.AMTRAK_NAME_TO_NJT:
             normalized = self.AMTRAK_NAME_TO_NJT[station_name]
-            logger.info(f"Normalized Amtrak station name '{station_name}' -> '{normalized['code']}' ({normalized['name']})")
+            logger.debug(f"Normalized Amtrak station name '{station_name}' -> '{normalized['code']}' ({normalized['name']})")
             return {"code": normalized["code"], "name": normalized["name"]}
         
         # No normalization available, return originals
