@@ -198,9 +198,28 @@ class TrainConsolidationService:
         if not hasattr(train1, 'stops') or not hasattr(train2, 'stops'):
             return False
             
-        # Extract ordered station codes
-        route1 = [stop.station_code for stop in train1.stops if stop.station_code]
-        route2 = [stop.station_code for stop in train2.stops if stop.station_code]
+        # Apply station normalization for Amtrak codes (same as in _same_journey)
+        from trackcast.services.station_mapping import StationMapper
+        station_mapper = StationMapper()
+        
+        # Extract ordered station codes with normalization
+        route1 = []
+        for stop in train1.stops:
+            if stop.station_code:
+                normalized = station_mapper.normalize_amtrak_station(stop.station_code, stop.station_name)
+                station_code = normalized["code"] if normalized["code"] else stop.station_code
+                route1.append(station_code)
+        
+        route2 = []
+        for stop in train2.stops:
+            if stop.station_code:
+                normalized = station_mapper.normalize_amtrak_station(stop.station_code, stop.station_name)
+                station_code = normalized["code"] if normalized["code"] else stop.station_code
+                route2.append(station_code)
+        
+        logger.info(f"Route pattern comparison for {train1.train_id} vs {train2.train_id}:")
+        logger.info(f"  Route1 ({train1.origin_station_code}): {route1}")
+        logger.info(f"  Route2 ({train2.origin_station_code}): {route2}")
         
         # Find common stations and check order
         common_stations = []
@@ -208,8 +227,11 @@ class TrainConsolidationService:
             if station in route2:
                 common_stations.append(station)
         
+        logger.info(f"  Common stations: {common_stations} (need at least 2)")
+        
         # Need at least 2 common stations
         if len(common_stations) < 2:
+            logger.info(f"  Route pattern check failed: only {len(common_stations)} common stations")
             return False
             
         # Check if common stations appear in the same order in both routes
@@ -224,8 +246,10 @@ class TrainConsolidationService:
                 idx2 += 1
                 
             if idx1 >= len(route1) or idx2 >= len(route2):
+                logger.info(f"  Route pattern check failed: station {station} ordering issue")
                 return False
-                
+        
+        logger.info(f"  Route pattern check passed: {len(common_stations)} stations in same order")
         return True
     
     def _get_journey_id(self, trains: List[Train]) -> str:
