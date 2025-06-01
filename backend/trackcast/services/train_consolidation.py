@@ -382,6 +382,10 @@ class TrainConsolidationService:
         if prediction_data:
             consolidated["prediction_data"] = prediction_data
             
+        # Add new enhanced status and progress fields
+        consolidated["status_v2"] = self._compute_status_v2(trains, consolidated)
+        consolidated["progress"] = self._compute_progress(trains, consolidated)
+            
         return consolidated
     
     def _build_data_sources(self, trains: List[Train]) -> List[Dict]:
@@ -485,7 +489,8 @@ class TrainConsolidationService:
         current_status = latest_train.status
         if any(t.status == "DEPARTED" for t in trains):
             current_status = "In Transit"
-        elif any(t.status == "BOARDING" for t in trains):
+        elif any(t.status == "BOARDING" and t.track and t.track.strip() for t in trains):
+            # Only consider it "Boarding" if the train has both BOARDING status AND a track assignment
             current_status = "Boarding"
             
         return {
@@ -659,3 +664,199 @@ class TrainConsolidationService:
             score *= 0.8  # Larger penalty for inconsistent tracks
             
         return round(score, 2)
+    
+    def _compute_status_v2(self, trains: List[Train], consolidated: Dict) -> Dict:
+        """
+        Compute the enhanced unified status based on all data sources.
+        
+        Args:
+            trains: List of trains being consolidated
+            consolidated: The consolidated train data so far
+            
+        Returns:
+            StatusV2 dictionary with enhanced status information
+        """
+        # Determine the most reliable current status
+        status = "UNKNOWN"
+        location = "Unknown location"
+        source = "unknown"
+        
+        # Check for DEPARTED status first (highest priority)
+        departed_trains = [t for t in trains if t.status == "DEPARTED"]
+        if departed_trains:
+            # Find which station we departed from
+            latest_departed = max(departed_trains, key=lambda t: t.updated_at)
+            source = f"{latest_departed.origin_station_code}_{latest_departed.data_source}"
+            
+            # Use current_position to determine location
+            if consolidated.get("current_position"):
+                pos = consolidated["current_position"]
+                if pos.get("next_station"):
+                    status = "EN_ROUTE"
+                    location = f"between {pos.get('last_departed_station', {}).get('name', 'Unknown')} and {pos['next_station']['name']}"
+                else:
+                    # No next station means we're at the final destination
+                    status = "ARRIVED"
+                    location = f"at {consolidated['destination']}"
+            else:
+                status = "EN_ROUTE"
+                location = f"departed from {latest_departed.origin_station_name}"
+                
+        # Check for BOARDING status (only if not departed)
+        elif any(t.status == "BOARDING" and t.track for t in trains):
+            boarding_trains = [t for t in trains if t.status == "BOARDING" and t.track]
+            latest_boarding = max(boarding_trains, key=lambda t: t.updated_at)
+            status = "BOARDING"
+            location = f"at {latest_boarding.origin_station_name}"
+            source = f"{latest_boarding.origin_station_code}_{latest_boarding.data_source}"
+            
+        # Check for ALL ABOARD status
+        elif any(t.status == "ALL ABOARD" for t in trains):
+            all_aboard_trains = [t for t in trains if t.status == "ALL ABOARD"]
+            latest = max(all_aboard_trains, key=lambda t: t.updated_at)
+            status = "ALL ABOARD"
+            location = f"at {latest.origin_station_name}"
+            source = f"{latest.origin_station_code}_{latest.data_source}"
+            
+        # Check for DELAYED status
+        elif any(t.status == "DELAYED" for t in trains):
+            delayed_trains = [t for t in trains if t.status == "DELAYED"]
+            latest = max(delayed_trains, key=lambda t: t.updated_at)
+            status = "DELAYED"
+            location = f"at {latest.origin_station_name}"
+            source = f"{latest.origin_station_code}_{latest.data_source}"
+            
+        # Check for CANCELLED status
+        elif any(t.status == "CANCELLED" for t in trains):
+            cancelled_trains = [t for t in trains if t.status == "CANCELLED"]
+            latest = max(cancelled_trains, key=lambda t: t.updated_at)
+            status = "CANCELLED"
+            location = f"at {latest.origin_station_name}"
+            source = f"{latest.origin_station_code}_{latest.data_source}"
+            
+        # Default case - train is scheduled but not yet boarding
+        else:
+            # Use the train with the most recent update
+            latest_train = max(trains, key=lambda t: t.updated_at)
+            status = "SCHEDULED"
+            location = f"scheduled from {latest_train.origin_station_name}"
+            source = f"{latest_train.origin_station_code}_{latest_train.data_source}"
+            
+        # Calculate confidence based on data consistency
+        confidence = "high"
+        statuses = set(t.status for t in trains if t.status)
+        if len(statuses) > 1:
+            # If we have conflicting statuses, reduce confidence
+            if "DEPARTED" in statuses and "BOARDING" in statuses:
+                # Common case where NJ Transit says BOARDING but train has actually departed
+                confidence = "medium"
+            elif len(statuses) > 2:
+                confidence = "low"
+                
+        # Determine update time
+        updated_at = max(t.updated_at for t in trains).isoformat()
+        
+        return {
+            "current": status,
+            "location": location,
+            "updated_at": updated_at,
+            "confidence": confidence,
+            "source": source
+        }
+    
+    def _compute_progress(self, trains: List[Train], consolidated: Dict) -> Dict:
+        """
+        Compute journey progress tracking information.
+        
+        Args:
+            trains: List of trains being consolidated
+            consolidated: The consolidated train data so far
+            
+        Returns:
+            Progress dictionary with journey tracking information
+        """
+        progress = {
+            "last_departed": None,
+            "next_arrival": None,
+            "journey_percent": 0,
+            "stops_completed": 0,
+            "total_stops": 0
+        }
+        
+        # Get all stops from consolidated data
+        stops = consolidated.get("stops", [])
+        if not stops:
+            return progress
+            
+        progress["total_stops"] = len(stops)
+        
+        # Count completed stops and find last departed/next arrival
+        now = datetime.now()
+        last_departed_stop = None
+        next_arrival_stop = None
+        
+        for i, stop in enumerate(stops):
+            if stop.get("departed"):
+                progress["stops_completed"] += 1
+                last_departed_stop = (i, stop)
+            elif last_departed_stop and not next_arrival_stop:
+                next_arrival_stop = (i, stop)
+                
+        # Set last departed station info
+        if last_departed_stop:
+            idx, stop = last_departed_stop
+            # Find actual departure time and delay
+            departure_time = None
+            delay_minutes = 0
+            
+            if stop.get("departure_time"):
+                departure_time = stop["departure_time"]
+            elif stop.get("scheduled_time"):
+                departure_time = stop["scheduled_time"]
+                
+            # Calculate delay if we have both scheduled and actual times
+            if stop.get("departure_time") and stop.get("scheduled_time"):
+                scheduled = datetime.fromisoformat(stop["scheduled_time"])
+                actual = datetime.fromisoformat(stop["departure_time"])
+                delay_minutes = int((actual - scheduled).total_seconds() / 60)
+                
+            progress["last_departed"] = {
+                "station_code": stop["station_code"],
+                "departed_at": departure_time,
+                "delay_minutes": delay_minutes
+            }
+            
+        # Set next arrival info
+        if next_arrival_stop:
+            idx, stop = next_arrival_stop
+            scheduled_time = stop.get("scheduled_time")
+            
+            # Estimate arrival time based on delay pattern
+            estimated_time = scheduled_time
+            if scheduled_time and progress["last_departed"] and progress["last_departed"]["delay_minutes"] > 0:
+                # Apply the delay to the scheduled time
+                scheduled_dt = datetime.fromisoformat(scheduled_time)
+                estimated_dt = scheduled_dt + timedelta(minutes=progress["last_departed"]["delay_minutes"])
+                estimated_time = estimated_dt.isoformat()
+                
+            # Calculate minutes to arrival
+            minutes_away = 0
+            if estimated_time:
+                try:
+                    estimated_dt = datetime.fromisoformat(estimated_time)
+                    minutes_away = max(0, int((estimated_dt - now).total_seconds() / 60))
+                except:
+                    pass
+                    
+            progress["next_arrival"] = {
+                "station_code": stop["station_code"],
+                "scheduled_time": scheduled_time or "",
+                "estimated_time": estimated_time or scheduled_time or "",
+                "minutes_away": minutes_away
+            }
+            
+        # Calculate journey completion percentage
+        if progress["total_stops"] > 0:
+            progress["journey_percent"] = int((progress["stops_completed"] / progress["total_stops"]) * 100)
+            
+        return progress

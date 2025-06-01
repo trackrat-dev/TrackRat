@@ -253,6 +253,10 @@ class ConsolidatedTrainResponse(BaseModel):
     
     # Consolidation metadata
     consolidation_metadata: ConsolidationMetadata
+    
+    # New enhanced fields (optional for backward compatibility)
+    status_v2: Optional[StatusV2] = None
+    progress: Optional[Progress] = None
 
 
 class ConsolidatedTrainListResponse(BaseModel):
@@ -260,3 +264,42 @@ class ConsolidatedTrainListResponse(BaseModel):
     
     metadata: Metadata
     trains: List[ConsolidatedTrainResponse]
+
+
+# New enhanced status and progress models
+
+class StatusV2(BaseModel):
+    """Enhanced unified status model for clearer train state representation."""
+    
+    current: str = Field(..., description="Current status: BOARDING, EN_ROUTE, APPROACHING, ARRIVED, etc.")
+    location: str = Field(..., description="Human-readable location (e.g., 'at NY Penn Station', 'between NY and NP')")
+    updated_at: str = Field(..., description="ISO timestamp of status determination")
+    confidence: str = Field(..., description="Confidence level: high, medium, low")
+    source: str = Field(..., description="Which data source determined this status")
+
+
+class DepartedStation(BaseModel):
+    """Information about the last departed station."""
+    
+    station_code: str
+    departed_at: str = Field(..., description="ISO timestamp of actual departure")
+    delay_minutes: int = Field(..., description="Delay in minutes at departure")
+
+
+class NextArrival(BaseModel):
+    """Information about the next station arrival."""
+    
+    station_code: str
+    scheduled_time: str = Field(..., description="ISO timestamp of scheduled arrival")
+    estimated_time: str = Field(..., description="ISO timestamp of estimated arrival") 
+    minutes_away: int = Field(..., description="Minutes until arrival at next station")
+
+
+class Progress(BaseModel):
+    """Journey progress tracking information."""
+    
+    last_departed: Optional[DepartedStation] = None
+    next_arrival: Optional[NextArrival] = None
+    journey_percent: int = Field(..., ge=0, le=100, description="Overall journey completion percentage")
+    stops_completed: int = Field(..., ge=0, description="Number of stops completed")
+    total_stops: int = Field(..., ge=1, description="Total number of stops in journey")

@@ -372,21 +372,130 @@ curl "http://localhost:8000/api/trains/?consolidate=true&from_station_code=NY&to
 ```json
 {
   "train_id": "7871",
+  "consolidated_id": "7871_2025-06-01",
   "line": "Northeast Corridor",
   "destination": "Trenton",
-  "status": "DEPARTED",
-  "track": "13",
-  "track_confidence": 0.95,
-  "alternative_tracks": [
-    {"track": "4", "confidence": 0.05, "source": "NP"}
+  "origin_station": {
+    "code": "NY",
+    "name": "New York Penn Station",
+    "departure_time": "2025-06-01T20:03:00"
+  },
+  "data_sources": [
+    {
+      "origin": "NY",
+      "data_source": "njtransit", 
+      "last_update": "2025-06-01T20:05:00",
+      "status": "DEPARTED",
+      "track": "13",
+      "delay_minutes": 0,
+      "db_id": 1234
+    },
+    {
+      "origin": "NP",
+      "data_source": "njtransit",
+      "last_update": "2025-06-01T20:25:00", 
+      "status": "",
+      "track": "4",
+      "delay_minutes": null,
+      "db_id": 1235
+    }
   ],
-  "data_sources": ["NY", "NP", "MP", "PJ"],
+  "track_assignment": {
+    "track": "13",
+    "assigned_at": "2025-06-01T19:55:00",
+    "assigned_by": "NY",
+    "source": "njtransit"
+  },
+  "status_summary": {
+    "current_status": "In Transit",
+    "delay_minutes": 0,
+    "on_time_performance": "On Time"
+  },
+  "status_v2": {
+    "current": "EN_ROUTE",
+    "location": "between New York Penn Station and Newark Penn Station",
+    "updated_at": "2025-06-01T20:25:00",
+    "confidence": "high",
+    "source": "NY_njtransit"
+  },
+  "progress": {
+    "last_departed": {
+      "station_code": "NY",
+      "departed_at": "2025-06-01T20:03:00",
+      "delay_minutes": 0
+    },
+    "next_arrival": {
+      "station_code": "NP", 
+      "scheduled_time": "2025-06-01T20:21:00",
+      "estimated_time": "2025-06-01T20:21:00",
+      "minutes_away": 16
+    },
+    "journey_percent": 20,
+    "stops_completed": 1,
+    "total_stops": 5
+  },
   "stops": [
-    {"station_code": "NY", "departure_time": "20:03:00", "track": "13"},
-    {"station_code": "NP", "departure_time": "20:21:15", "track": "4"},
-    {"station_code": "MP", "departure_time": "20:42:00", "track": "4"},
-    {"station_code": "PJ", "departure_time": "21:11:30", "track": "4"},
-    {"station_code": "TR", "arrival_time": "21:30:00"}
-  ]
+    {
+      "station_code": "NY",
+      "station_name": "New York Penn Station",
+      "scheduled_time": "2025-06-01T20:03:00",
+      "departure_time": "2025-06-01T20:03:00",
+      "departed": true,
+      "departed_confirmed_by": ["NY"],
+      "stop_status": "DEPARTED",
+      "platform": "13"
+    },
+    {
+      "station_code": "NP",
+      "station_name": "Newark Penn Station", 
+      "scheduled_time": "2025-06-01T20:21:00",
+      "departure_time": "2025-06-01T20:21:15",
+      "departed": false,
+      "departed_confirmed_by": [],
+      "stop_status": "",
+      "platform": "4"
+    }
+  ],
+  "prediction_data": {
+    "track_probabilities": {"13": 0.95, "4": 0.05},
+    "prediction_factors": [],
+    "model_version": "1.0.0_NY",
+    "created_at": "2025-06-01T19:50:00"
+  },
+  "consolidation_metadata": {
+    "source_count": 2,
+    "last_update": "2025-06-01T20:25:00",
+    "confidence_score": 0.90
+  }
 }
 ```
+
+### New API Fields
+
+#### StatusV2 - Enhanced Status with Conflict Resolution
+The `status_v2` field provides an intelligent unified status that resolves conflicts between data sources:
+
+- **`current`**: The resolved status (BOARDING, EN_ROUTE, APPROACHING, ARRIVED, etc.)
+- **`location`**: Human-readable location description
+- **`updated_at`**: When this status was determined
+- **`confidence`**: high/medium/low based on data consistency
+- **`source`**: Which data source determined this status
+
+Key logic:
+- DEPARTED status always overrides BOARDING
+- Uses most recent update for current position
+- Handles the NJ Transit "stuck BOARDING" issue
+
+#### Progress - Real-time Journey Tracking
+The `progress` field provides detailed journey progress information:
+
+- **`last_departed`**: Station code, departure time, and delay of last departed stop
+- **`next_arrival`**: Next station with scheduled/estimated times and minutes away
+- **`journey_percent`**: Overall completion percentage (0-100)
+- **`stops_completed`**: Number of stops the train has departed
+- **`total_stops`**: Total stops in the journey
+
+This enables:
+- Accurate progress bars in UIs
+- Time-to-arrival calculations
+- Better user journey tracking
