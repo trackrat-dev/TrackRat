@@ -442,6 +442,8 @@ class TrainRepository(BaseRepository):
                         Train.departure_time == to_stop.train_departure_time,
                         to_stop.station_code == to_station_code,
                         # Ensure from_stop happens before to_stop
+                        from_stop.scheduled_time.isnot(None),
+                        to_stop.scheduled_time.isnot(None),
                         from_stop.scheduled_time < to_stop.scheduled_time
                     )
                 ).distinct()
@@ -455,9 +457,19 @@ class TrainRepository(BaseRepository):
                     query = query.filter(Train.destination == destination)
                 # When using from/to station filtering, filter departure times based on from_station
                 if departure_time_after:
-                    query = query.filter(from_stop.scheduled_time >= departure_time_after)
+                    query = query.filter(
+                        and_(
+                            from_stop.scheduled_time.isnot(None),
+                            from_stop.scheduled_time >= departure_time_after
+                        )
+                    )
                 if departure_time_before:
-                    query = query.filter(from_stop.scheduled_time <= departure_time_before)
+                    query = query.filter(
+                        and_(
+                            from_stop.scheduled_time.isnot(None),
+                            from_stop.scheduled_time <= departure_time_before
+                        )
+                    )
                 if track:
                     query = query.filter(Train.track == track)
                 if status:
