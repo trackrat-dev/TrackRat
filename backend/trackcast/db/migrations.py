@@ -422,7 +422,7 @@ def add_data_source_to_train_stops(session: Session) -> Dict[str, Any]:
         # Drop old unique constraint
         logger.info("Dropping old unique constraint")
         drop_constraint_query = text("""
-            DROP INDEX IF EXISTS uix_train_stop_unique
+            ALTER TABLE train_stops DROP CONSTRAINT IF EXISTS uix_train_stop_unique
         """)
         session.execute(drop_constraint_query)
         
