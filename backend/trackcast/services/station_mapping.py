@@ -281,6 +281,33 @@ class StationMapper:
     # Reverse mapping
     DB_TO_FRONTEND_CODE: Dict[str, str] = {v: k for k, v in FRONTEND_TO_DB_CODE.items()}
     
+    # Amtrak to NJ Transit normalization mapping for consolidation
+    # Maps Amtrak station codes/names to NJ Transit equivalents
+    AMTRAK_TO_NJT_NORMALIZATION: Dict[str, Dict[str, str]] = {
+        # Format: amtrak_code: {"code": njt_code, "name": njt_name}
+        "NY": {"code": "NY", "name": "New York Penn Station"},
+        "NP": {"code": "NP", "name": "Newark Penn Station"},
+        "PHL": {"code": "PH", "name": "Philadelphia"},
+        "WIL": {"code": "WI", "name": "Wilmington Station"},
+        "BAL": {"code": "BL", "name": "Baltimore Station"},
+        "BWI": {"code": "BA", "name": "BWI Thurgood Marshall Airport"},
+        "WAS": {"code": "WS", "name": "Washington Station"},
+        "TR": {"code": "TR", "name": "Trenton"},
+        # Amtrak uses some station names that need normalization
+        "EWR": {"code": "NP", "name": "Newark Penn Station"},  # Amtrak sometimes uses EWR for Newark Penn
+    }
+    
+    # Amtrak station name normalization
+    AMTRAK_NAME_TO_NJT: Dict[str, Dict[str, str]] = {
+        "Philadelphia 30th Street": {"code": "PH", "name": "Philadelphia"},
+        "Trenton Transit Center": {"code": "TR", "name": "Trenton"},
+        "Baltimore Penn": {"code": "BL", "name": "Baltimore Station"},
+        "Baltimore Penn Station": {"code": "BL", "name": "Baltimore Station"},
+        "Washington Union": {"code": "WS", "name": "Washington Station"},
+        "Wilmington": {"code": "WI", "name": "Wilmington Station"},
+        "BWI Airport": {"code": "BA", "name": "BWI Thurgood Marshall Airport"},
+    }
+    
     def __init__(self):
         """Initialize the station mapper with reverse lookups."""
         # Create reverse mapping from code to primary name
@@ -432,3 +459,66 @@ class StationMapper:
         
         # No translation needed, return as-is
         return db_code
+    
+    def normalize_amtrak_station(self, station_code: Optional[str], station_name: Optional[str]) -> Dict[str, Optional[str]]:
+        """
+        Normalize Amtrak station code and name to NJ Transit equivalents for consolidation.
+        
+        Args:
+            station_code: Amtrak station code
+            station_name: Amtrak station name
+            
+        Returns:
+            Dictionary with normalized 'code' and 'name' keys, or originals if no mapping exists
+        """
+        # Try code-based normalization first
+        if station_code and station_code.upper() in self.AMTRAK_TO_NJT_NORMALIZATION:
+            normalized = self.AMTRAK_TO_NJT_NORMALIZATION[station_code.upper()]
+            logger.debug(f"Normalized Amtrak station code '{station_code}' -> '{normalized['code']}' ({normalized['name']})")
+            return {"code": normalized["code"], "name": normalized["name"]}
+        
+        # Try name-based normalization
+        if station_name and station_name in self.AMTRAK_NAME_TO_NJT:
+            normalized = self.AMTRAK_NAME_TO_NJT[station_name]
+            logger.debug(f"Normalized Amtrak station name '{station_name}' -> '{normalized['code']}' ({normalized['name']})")
+            return {"code": normalized["code"], "name": normalized["name"]}
+        
+        # No normalization available, return originals
+        return {"code": station_code, "name": station_name}
+    
+    def normalize_time_to_nearest_minute(self, time_str: Optional[str]) -> Optional[str]:
+        """
+        Normalize time string to nearest minute for better consolidation matching.
+        
+        Args:
+            time_str: Time string in ISO format (e.g., "2025-06-01T09:04:30")
+            
+        Returns:
+            Normalized time string with seconds rounded to nearest minute
+        """
+        if not time_str:
+            return None
+        
+        try:
+            from datetime import datetime
+            # Parse the time
+            dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+            
+            # Round seconds to nearest minute
+            if dt.second >= 30:
+                # Round up
+                dt = dt.replace(second=0, microsecond=0)
+                dt = dt.replace(minute=dt.minute + 1)
+                # Handle minute overflow
+                if dt.minute >= 60:
+                    dt = dt.replace(minute=0, hour=dt.hour + 1)
+            else:
+                # Round down
+                dt = dt.replace(second=0, microsecond=0)
+            
+            # Return in same format
+            return dt.isoformat()
+            
+        except (ValueError, AttributeError) as e:
+            logger.warning(f"Failed to normalize time '{time_str}': {str(e)}")
+            return time_str

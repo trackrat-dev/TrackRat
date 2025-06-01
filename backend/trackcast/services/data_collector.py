@@ -185,6 +185,9 @@ class DataCollectorService:
             Tuple of (success status, statistics dictionary)
         """
         try:
+            from trackcast.services.station_mapping import StationMapper
+            station_mapper = StationMapper()
+            
             trains_new = 0
             trains_updated = 0
             trains_departed = 0
@@ -201,12 +204,16 @@ class DataCollectorService:
                 departure_time = train_record.get("departure_time")
                 if isinstance(departure_time, str):
                     try:
-                        # If it's already an ISO format string
-                        departure_time = datetime.fromisoformat(departure_time)
+                        # Normalize time to nearest minute for consistency
+                        normalized_time_str = station_mapper.normalize_time_to_nearest_minute(departure_time)
+                        departure_time = datetime.fromisoformat(normalized_time_str)
                     except ValueError:
-                        # Try parsing as a string
-                        logger.warning(f"Invalid departure time format: {departure_time}")
-                        departure_time = None
+                        # Try parsing as original string
+                        try:
+                            departure_time = datetime.fromisoformat(departure_time)
+                        except ValueError:
+                            logger.warning(f"Invalid departure time format: {departure_time}")
+                            departure_time = None
 
                 if not departure_time:
                     logger.warning(f"Skipping train with missing departure time: {train_record}")
@@ -268,10 +275,21 @@ class DataCollectorService:
                 # Process stops for both new and existing trains
                 if "stops" in train_record and train_record["stops"]:
                     try:
+                        # Normalize stop times for consistency
+                        normalized_stops = []
+                        for stop in train_record["stops"]:
+                            normalized_stop = stop.copy()
+                            for time_field in ["scheduled_time", "departure_time"]:
+                                if time_field in normalized_stop and normalized_stop[time_field]:
+                                    normalized_stop[time_field] = station_mapper.normalize_time_to_nearest_minute(
+                                        normalized_stop[time_field]
+                                    )
+                            normalized_stops.append(normalized_stop)
+                        
                         self.stop_repo.upsert_train_stops(
                             train_record.get("train_id"),
                             departure_time,
-                            train_record["stops"],
+                            normalized_stops,
                             train_record.get("data_source", "njtransit")
                         )
                     except Exception as e:
@@ -385,6 +403,9 @@ class DataCollectorService:
             Tuple of (success status, statistics dictionary)
         """
         try:
+            from trackcast.services.station_mapping import StationMapper
+            station_mapper = StationMapper()
+            
             trains_new = 0
             trains_updated = 0
             trains_departed = 0
@@ -398,8 +419,11 @@ class DataCollectorService:
 
             # Process each train record
             for train_record in train_data:
+                # Normalize Amtrak data for better consolidation
+                normalized_train = self._normalize_amtrak_train_data(train_record, station_mapper)
+                
                 # Convert string departure time to datetime if needed
-                departure_time = train_record.get("departure_time")
+                departure_time = normalized_train.get("departure_time")
                 if isinstance(departure_time, str):
                     try:
                         departure_time = datetime.fromisoformat(departure_time)
@@ -408,54 +432,54 @@ class DataCollectorService:
                         departure_time = None
 
                 if not departure_time:
-                    logger.warning(f"Skipping Amtrak train with missing departure time: {train_record}")
+                    logger.warning(f"Skipping Amtrak train with missing departure time: {normalized_train}")
                     continue
 
-                origin_station_code = train_record.get("origin_station_code")
+                origin_station_code = normalized_train.get("origin_station_code")
                 if not origin_station_code:
-                    logger.warning(f"Skipping Amtrak train with missing origin station: {train_record}")
+                    logger.warning(f"Skipping Amtrak train with missing origin station: {normalized_train}")
                     continue
 
                 # Check if train already exists (including data source)
                 existing_train = self.train_repo.get_train_by_id_time_and_station_source(
-                    train_record.get("train_id"), departure_time, origin_station_code, "amtrak"
+                    normalized_train.get("train_id"), departure_time, origin_station_code, "amtrak"
                 )
 
                 if existing_train:
                     # Update existing train
                     update_data = {
-                        "track": train_record.get("track"),
-                        "status": train_record.get("status"),
-                        "line": train_record.get("line"),
-                        "destination": train_record.get("destination"),
-                        "line_code": train_record.get("line_code"),
-                        "delay_minutes": train_record.get("delay_minutes"),
+                        "track": normalized_train.get("track"),
+                        "status": normalized_train.get("status"),
+                        "line": normalized_train.get("line"),
+                        "destination": normalized_train.get("destination"),
+                        "line_code": normalized_train.get("line_code"),
+                        "delay_minutes": normalized_train.get("delay_minutes"),
                     }
 
                     self.train_repo.update_train(existing_train, update_data, current_time)
                     trains_updated += 1
 
                     # Check if the train has departed
-                    if train_record.get("status") == "DEPARTED":
+                    if normalized_train.get("status") == "DEPARTED":
                         trains_departed += 1
                 else:
                     # Create new train record
                     new_train = {
-                        "train_id": train_record.get("train_id"),
+                        "train_id": normalized_train.get("train_id"),
                         "origin_station_code": origin_station_code,
-                        "origin_station_name": train_record.get("origin_station_name"),
-                        "line": train_record.get("line"),
-                        "line_code": train_record.get("line_code"),
-                        "destination": train_record.get("destination"),
+                        "origin_station_name": normalized_train.get("origin_station_name"),
+                        "line": normalized_train.get("line"),
+                        "line_code": normalized_train.get("line_code"),
+                        "destination": normalized_train.get("destination"),
                         "departure_time": departure_time,
-                        "track": train_record.get("track"),
-                        "status": train_record.get("status"),
+                        "track": normalized_train.get("track"),
+                        "status": normalized_train.get("status"),
                         "data_source": "amtrak",
-                        "delay_minutes": train_record.get("delay_minutes"),
+                        "delay_minutes": normalized_train.get("delay_minutes"),
                     }
 
                     # Set track_assigned_at if track is already known
-                    if train_record.get("track"):
+                    if normalized_train.get("track"):
                         new_train["track_assigned_at"] = current_time
 
                     # Create train in database
@@ -463,16 +487,16 @@ class DataCollectorService:
                     trains_new += 1
 
                 # Process stops for both new and existing trains
-                if "stops" in train_record and train_record["stops"]:
+                if "stops" in normalized_train and normalized_train["stops"]:
                     try:
                         self.stop_repo.upsert_train_stops(
-                            train_record.get("train_id"),
+                            normalized_train.get("train_id"),
                             departure_time,
-                            train_record["stops"],
+                            normalized_train["stops"],
                             "amtrak"
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to process stops for Amtrak train {train_record.get('train_id')}: {str(e)}")
+                        logger.warning(f"Failed to process stops for Amtrak train {normalized_train.get('train_id')}: {str(e)}")
 
             # Log results
             logger.info(
@@ -490,3 +514,88 @@ class DataCollectorService:
             logger.error(f"Error processing Amtrak train data: {str(e)}")
             self.session.rollback()
             return False, {}
+    
+    def _normalize_amtrak_train_data(self, train_record: Dict[str, Any], station_mapper) -> Dict[str, Any]:
+        """
+        Normalize Amtrak train data to match NJ Transit format for better consolidation.
+        
+        Args:
+            train_record: Original Amtrak train data
+            station_mapper: StationMapper instance
+            
+        Returns:
+            Normalized train record
+        """
+        normalized = train_record.copy()
+        
+        # Check if this train should be aligned with NJ Transit departure time
+        train_id = train_record.get("train_id")
+        departure_time = train_record.get("departure_time")
+        
+        if train_id and departure_time:
+            # Convert departure time to datetime for lookup if it's a string
+            lookup_time = departure_time
+            if isinstance(departure_time, str):
+                try:
+                    lookup_time = datetime.fromisoformat(departure_time)
+                except ValueError:
+                    lookup_time = None
+            
+            if lookup_time:
+                # Look for existing NJ Transit train with same ID (try multiple station codes)
+                njt_train = None
+                # Try the same origin station first
+                njt_train = self.train_repo.get_train_by_id_time_and_station_source(
+                    train_id, lookup_time, train_record.get("origin_station_code"), "njtransit"
+                )
+                
+                # If not found, try NY as it's the most common origin for cross-API trains
+                if not njt_train and train_record.get("origin_station_code") != "NY":
+                    njt_train = self.train_repo.get_train_by_id_time_and_station_source(
+                        train_id, lookup_time, "NY", "njtransit"
+                    )
+            
+            if njt_train:
+                # Use NJ Transit departure time as canonical
+                normalized["departure_time"] = njt_train.departure_time.isoformat()
+                logger.debug(f"Aligned Amtrak train {train_id} departure time to NJ Transit: {njt_train.departure_time}")
+            else:
+                # Normalize time to nearest minute
+                normalized["departure_time"] = station_mapper.normalize_time_to_nearest_minute(departure_time)
+        
+        # Normalize origin station
+        origin_code = train_record.get("origin_station_code")
+        origin_name = train_record.get("origin_station_name")
+        if origin_code or origin_name:
+            normalized_station = station_mapper.normalize_amtrak_station(origin_code, origin_name)
+            if normalized_station["code"] != origin_code or normalized_station["name"] != origin_name:
+                normalized["origin_station_code"] = normalized_station["code"]
+                normalized["origin_station_name"] = normalized_station["name"]
+                logger.debug(f"Normalized origin station: {origin_code}/{origin_name} -> {normalized_station['code']}/{normalized_station['name']}")
+        
+        # Normalize stops
+        if "stops" in normalized and normalized["stops"]:
+            normalized_stops = []
+            for stop in normalized["stops"]:
+                normalized_stop = stop.copy()
+                
+                # Normalize station code and name
+                stop_code = stop.get("station_code")
+                stop_name = stop.get("station_name")
+                if stop_code or stop_name:
+                    normalized_station = station_mapper.normalize_amtrak_station(stop_code, stop_name)
+                    normalized_stop["station_code"] = normalized_station["code"]
+                    normalized_stop["station_name"] = normalized_station["name"]
+                
+                # Normalize times
+                for time_field in ["scheduled_time", "departure_time"]:
+                    if time_field in normalized_stop and normalized_stop[time_field]:
+                        normalized_stop[time_field] = station_mapper.normalize_time_to_nearest_minute(
+                            normalized_stop[time_field]
+                        )
+                
+                normalized_stops.append(normalized_stop)
+            
+            normalized["stops"] = normalized_stops
+        
+        return normalized
