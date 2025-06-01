@@ -385,6 +385,10 @@ class TrainConsolidationService:
         # Build consolidated stop status
         stop_status = {}
         for stop in all_stops:
+            # Skip stops with missing station codes
+            if not stop.station_code:
+                continue
+                
             if stop.station_code not in stop_status:
                 stop_status[stop.station_code] = {
                     "station_name": stop.station_name,
@@ -396,6 +400,9 @@ class TrainConsolidationService:
                 stop_status[stop.station_code]["departed"] = True
                 
         # Find last departed and next station
+        if not stop_status:
+            return None
+            
         # Use a very early datetime for None values to sort them first
         min_datetime = datetime(1900, 1, 1)
         sorted_stops = sorted(stop_status.items(), key=lambda x: x[1]["scheduled_time"] or min_datetime)
@@ -448,6 +455,10 @@ class TrainConsolidationService:
                 continue
                 
             for stop in train.stops:
+                # Skip stops with missing station codes
+                if not stop.station_code:
+                    continue
+                    
                 key = stop.station_code
                 if key not in stop_map:
                     stop_map[key] = {

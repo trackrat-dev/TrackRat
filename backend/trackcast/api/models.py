@@ -185,7 +185,7 @@ class StatusSummary(BaseModel):
 class StationPosition(BaseModel):
     """Station position information."""
     
-    code: str
+    code: Optional[str] = None
     name: str
     scheduled_departure: Optional[str] = Field(None, description="ISO timestamp")
     scheduled_arrival: Optional[str] = Field(None, description="ISO timestamp")
@@ -207,7 +207,7 @@ class CurrentPosition(BaseModel):
 class ConsolidatedStop(BaseModel):
     """Stop information with merged departure status."""
     
-    station_code: str
+    station_code: Optional[str] = None
     station_name: str
     scheduled_time: Optional[str] = Field(None, description="ISO timestamp")
     departure_time: Optional[str] = Field(None, description="ISO timestamp")
