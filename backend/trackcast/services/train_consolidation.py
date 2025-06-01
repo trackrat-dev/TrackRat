@@ -117,16 +117,26 @@ class TrainConsolidationService:
             return False
             
         # Build station-to-time mappings for both trains (only include stops with scheduled times)
+        # Apply normalization to handle Amtrak station codes
+        from trackcast.services.station_mapping import StationMapper
+        station_mapper = StationMapper()
+        
         train1_schedule = {}
         train2_schedule = {}
         
         for stop in train1.stops:
             if stop.station_code and stop.scheduled_time:
-                train1_schedule[stop.station_code] = stop.scheduled_time
+                # Normalize station code in case it's from Amtrak
+                normalized = station_mapper.normalize_amtrak_station(stop.station_code, stop.station_name)
+                station_code = normalized["code"] if normalized["code"] else stop.station_code
+                train1_schedule[station_code] = stop.scheduled_time
                 
         for stop in train2.stops:
             if stop.station_code and stop.scheduled_time:
-                train2_schedule[stop.station_code] = stop.scheduled_time
+                # Normalize station code in case it's from Amtrak
+                normalized = station_mapper.normalize_amtrak_station(stop.station_code, stop.station_name)
+                station_code = normalized["code"] if normalized["code"] else stop.station_code
+                train2_schedule[station_code] = stop.scheduled_time
         
         # Find common stations
         common_stations = set(train1_schedule.keys()) & set(train2_schedule.keys())

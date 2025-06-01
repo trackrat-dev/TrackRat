@@ -293,6 +293,12 @@ class StationMapper:
         "BWI": {"code": "BA", "name": "BWI Thurgood Marshall Airport"},
         "WAS": {"code": "WS", "name": "Washington Station"},
         "TR": {"code": "TR", "name": "Trenton"},
+        "NCR": {"code": "NC", "name": "New Carrollton Station"},
+        "ALX": {"code": "AXA", "name": "Alexandria"},
+        "QAN": {"code": "QAN", "name": "Quantico"},
+        "FBG": {"code": "FRB", "name": "Fredericksburg"},
+        "ASD": {"code": "ASD", "name": "Ashland"},
+        "RVR": {"code": "RSM", "name": "Richmond"},
         # Amtrak uses some station names that need normalization
         "EWR": {"code": "NP", "name": "Newark Penn Station"},  # Amtrak sometimes uses EWR for Newark Penn
     }
