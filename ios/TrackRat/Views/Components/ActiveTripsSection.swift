@@ -256,7 +256,7 @@ struct ActiveTripsSection: View {
         return train
     }
     
-    /// Create StatusV2-like data from Live Activity content
+    /// Create StatusV2-like data from Live Activity content with human-friendly status
     private func createStatusV2FromActivity(_ contentState: TrainActivityAttributes.ContentState) -> StatusV2? {
         let currentStatus: String
         let location: String
@@ -266,7 +266,7 @@ struct ActiveTripsSection: View {
             currentStatus = "SCHEDULED"
             location = "at departure station"
         case .boarding(let station):
-            currentStatus = "BOARDING"
+            currentStatus = humanFriendlyStatus("BOARDING", track: contentState.track)
             location = "at \(station)"
         case .departed(let from, _):
             currentStatus = "EN_ROUTE"
@@ -278,7 +278,7 @@ struct ActiveTripsSection: View {
             currentStatus = "EN_ROUTE"
             location = "between \(from) and \(to)"
         case .atStation(let station):
-            currentStatus = "BOARDING"
+            currentStatus = humanFriendlyStatus("BOARDING", track: contentState.track)
             location = "at \(station)"
         case .arrived:
             currentStatus = "ARRIVED"
@@ -292,6 +292,36 @@ struct ActiveTripsSection: View {
             confidence: "medium", // We don't have confidence in Live Activity
             source: "live_activity"
         )
+    }
+    
+    /// Convert technical status to human-friendly display text
+    private func humanFriendlyStatus(_ status: String, track: String? = nil) -> String {
+        switch status.uppercased() {
+        case "EN_ROUTE":
+            return "En Route"
+        case "BOARDING":
+            if let track = track {
+                return "Boarding on Track \(track)"
+            } else {
+                return "Boarding"
+            }
+        case "SCHEDULED":
+            return "Scheduled"
+        case "ON_TIME":
+            return "On Time"
+        case "DELAYED":
+            return "Delayed"
+        case "DEPARTED":
+            return "Departed"
+        case "ARRIVED":
+            return "Arrived"
+        case "CANCELLED":
+            return "Cancelled"
+        case "ALL_ABOARD":
+            return "All Aboard"
+        default:
+            return status.capitalized
+        }
     }
     
     /// Create Progress-like data from Live Activity content

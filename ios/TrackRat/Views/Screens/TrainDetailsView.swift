@@ -123,6 +123,14 @@ struct CombinedDetailsCard: View {
         let formatter = DateFormatter()
         formatter.timeZone = TimeZone(identifier: "America/New_York")
         formatter.dateFormat = "EEEE, MMMM d 'at' h:mm a"
+        
+        // Use origin-specific departure time if we have a departure station code
+        if let departureStationCode = appState.departureStationCode {
+            let originDepartureTime = train.getDepartureTime(fromStationCode: departureStationCode)
+            return formatter.string(from: originDepartureTime)
+        }
+        
+        // Fall back to train's original departure time
         return formatter.string(from: train.departureTime)
     }
     
@@ -180,13 +188,13 @@ struct CombinedDetailsCard: View {
                             .font(.title2)
                             .symbolEffect(.pulse)
                         
-                        Text("BOARDING")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                        
-                        if let track = train.track {
-                            Text("Track \(track)")
+                        if let track = train.displayTrack {
+                            Text("Boarding on Track \(track)")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        } else {
+                            Text("BOARDING")
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
@@ -283,8 +291,8 @@ struct CombinedDetailsCard: View {
                             isDestination: selectedDestination != nil && 
                                          stop.stationName.lowercased() == selectedDestination!.lowercased(),
                             isDeparture: checkIfDepartureStop(stop.stationName),
-                            isBoarding: stop.stopStatus == "BOARDING",
-                            boardingTrack: stop.stopStatus == "BOARDING" ? train.displayTrack : nil
+                            isBoarding: stop.stopStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName),
+                            boardingTrack: stop.stopStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName) ? train.displayTrack : nil
                         )
                     }
                     
@@ -321,11 +329,20 @@ struct CombinedDetailsCard: View {
 // MARK: - Status Card
 struct StatusCard: View {
     let train: Train
+    @EnvironmentObject private var appState: AppState
     
     private var departureTime: String {
         let formatter = DateFormatter()
         formatter.timeZone = TimeZone(identifier: "America/New_York")
         formatter.dateFormat = "EEEE, MMMM d 'at' h:mm a"
+        
+        // Use origin-specific departure time if we have a departure station code
+        if let departureStationCode = appState.departureStationCode {
+            let originDepartureTime = train.getDepartureTime(fromStationCode: departureStationCode)
+            return formatter.string(from: originDepartureTime)
+        }
+        
+        // Fall back to train's original departure time
         return formatter.string(from: train.departureTime)
     }
     
@@ -353,13 +370,13 @@ struct StatusCard: View {
                                 .symbolEffect(.pulse)
                         }
                         
-                        Text(statusV2.current)
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                        
                         if statusV2.current == "BOARDING", let track = train.displayTrack {
-                            Text("Track \(track)")
+                            Text("Boarding on Track \(track)")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        } else {
+                            Text(statusV2.current)
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
@@ -383,13 +400,13 @@ struct StatusCard: View {
                         .font(.title2)
                         .symbolEffect(.pulse)
                     
-                    Text("BOARDING")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                    
                     if let track = train.displayTrack {
-                        Text("Track \(track)")
+                        Text("Boarding on Track \(track)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    } else {
+                        Text("BOARDING")
                             .font(.title2)
                             .fontWeight(.bold)
                             .foregroundColor(.white)
@@ -559,8 +576,8 @@ struct StopsCard: View {
                                      stop.stationName.lowercased() == selectedDestination!.lowercased(),
                         isDeparture: appState.selectedDeparture != nil && 
                                    stop.stationName.lowercased() == appState.selectedDeparture!.lowercased(),
-                        isBoarding: stop.stopStatus == "BOARDING",
-                        boardingTrack: stop.stopStatus == "BOARDING" ? train.track : nil
+                        isBoarding: stop.stopStatus == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
+                        boardingTrack: stop.stopStatus == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? train.track : nil
                     )
                 }
             } else {
@@ -1083,7 +1100,7 @@ struct JourneyStatusView: View {
                 }
             }
             
-            // Status and progress on one line
+            // Status display only
             HStack {
                 // Status with emoji
                 HStack(spacing: 4) {
@@ -1096,20 +1113,6 @@ struct JourneyStatusView: View {
                 }
                 
                 Spacer()
-                
-                // Progress summary
-                if hasProgressData {
-                    let progress = userJourneyProgress
-                    if progress.total > 0 {
-                        Text("Stop \(progress.completed)/\(progress.total) (\(progress.percentage)%)")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
-                    } else {
-                        Text("\(progress.percentage)% complete")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                }
             }
             
             // Next arrival info
@@ -1275,10 +1278,43 @@ struct JourneyStatusView: View {
     }
     
     private var displayStatus: String {
+        let rawStatus: String
         if let statusV2 = train.statusV2 {
-            return statusV2.current
+            rawStatus = statusV2.current
+        } else {
+            rawStatus = train.displayStatus.displayText.uppercased()
         }
-        return train.displayStatus.displayText.uppercased()
+        return humanFriendlyStatus(rawStatus)
+    }
+    
+    /// Convert technical status to human-friendly display text
+    private func humanFriendlyStatus(_ status: String) -> String {
+        switch status.uppercased() {
+        case "EN_ROUTE":
+            return "En Route"
+        case "BOARDING":
+            if let track = train.displayTrack {
+                return "Boarding on Track \(track)"
+            } else {
+                return "Boarding"
+            }
+        case "SCHEDULED":
+            return "Scheduled"
+        case "ON_TIME":
+            return "On Time"
+        case "DELAYED":
+            return "Delayed"
+        case "DEPARTED":
+            return "Departed"
+        case "ARRIVED":
+            return "Arrived"
+        case "CANCELLED":
+            return "Cancelled"
+        case "ALL_ABOARD":
+            return "All Aboard"
+        default:
+            return status.capitalized
+        }
     }
     
     private var statusEmoji: String {
