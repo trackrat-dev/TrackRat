@@ -396,7 +396,7 @@ class TrainConsolidationService:
                 stop_status[stop.station_code]["departed"] = True
                 
         # Find last departed and next station
-        sorted_stops = sorted(stop_status.items(), key=lambda x: x[1]["scheduled_time"])
+        sorted_stops = sorted(stop_status.items(), key=lambda x: x[1]["scheduled_time"] or datetime.min)
         last_departed = None
         next_station = None
         
@@ -470,7 +470,8 @@ class TrainConsolidationService:
                     stop_map[key]["departure_time"] = stop.departure_time.isoformat()
                     
         # Sort stops by scheduled time
-        sorted_stops = sorted(stop_map.values(), key=lambda s: s["scheduled_time"] if s["scheduled_time"] else "")
+        # Use datetime.min for None values to ensure proper sorting
+        sorted_stops = sorted(stop_map.values(), key=lambda s: datetime.fromisoformat(s["scheduled_time"]) if s["scheduled_time"] else datetime.min)
         return sorted_stops
     
     def _get_best_prediction(self, trains: List[Train]) -> Optional[Dict]:
