@@ -67,11 +67,6 @@ struct TrainDetailsView: View {
                                 ConsolidatedDataCard(train: train)
                             }
                             
-                            // Position tracking section
-                            if train.hasPositionTracking {
-                                PositionTrackingCard(train: train)
-                            }
-                            
                             // Show history button
                             Button {
                                 showingHistory = true
@@ -177,12 +172,14 @@ struct CombinedDetailsCard: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity)
+                    .background(Color.orange.opacity(0.9))
+                    .cornerRadius(12)
                 }
                 
                 // Departure time
                 Text(departureTime)
                     .font(.headline)
-                    .foregroundColor(train.displayStatus == .boarding ? .white : .black)
+                    .foregroundColor(.black)
                     .multilineTextAlignment(.center)
                 
                 // Track or prediction
@@ -275,7 +272,7 @@ struct CombinedDetailsCard: View {
             }
             .padding()
         }
-        .background(train.displayStatus == .boarding ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
+        .background(Color.white.opacity(0.9))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
     }
@@ -514,19 +511,19 @@ struct StopRow: View {
                     Text(stop.stationName)
                         .font((isDestination || isDeparture) ? .headline : .subheadline)
                         .fontWeight((isDestination || isDeparture) ? .semibold : .regular)
-                        .foregroundColor((isDestination || isDeparture) && isBoarding ? .black : textColor)
+                        .foregroundColor(textColor)
                     
                     if stop.stopStatus == "BOARDING" {
                         if let track = boardingTrack {
                             Text("BOARDING on Track \(track)")
                                 .font(.caption)
                                 .fontWeight(.bold)
-                                .foregroundColor((isDestination || isDeparture) ? .orange : .white)
+                                .foregroundColor(.orange)
                         } else {
                             Text("BOARDING")
                                 .font(.caption)
                                 .fontWeight(.bold)
-                                .foregroundColor((isDestination || isDeparture) ? .orange : .white)
+                                .foregroundColor(.orange)
                         }
                     } else if stop.departed {
                         // Check if recently departed (within 2 minutes)
@@ -578,13 +575,13 @@ struct StopRow: View {
                         Text(scheduledTime)
                             .font(.caption)
                             .strikethrough()
-                            .foregroundColor((isDestination || isDeparture) && isBoarding ? .gray.opacity(0.7) : .gray)
+                            .foregroundColor(.gray)
                     }
                     
                     if let actualTime = timeDisplay.actual {
                         Text(actualTime)
                             .font(.caption)
-                            .foregroundColor((isDestination || isDeparture) && isBoarding ? .black : timeColor)
+                            .foregroundColor(timeColor)
                     }
                 }
             }
@@ -636,12 +633,8 @@ struct StopRow: View {
     }
     
     private var backgroundColor: Color {
-        // Priority 1: White background for departure/destination stops when train is boarding
-        if (isDestination || isDeparture) && isBoarding { return .white }
-        // Priority 2: Special backgrounds for departure/destination when not boarding
         if isDestination { return .green.opacity(0.1) }
         if isDeparture { return .orange.opacity(0.1) }
-        // Priority 3: Boarding background for other stops
         if isBoarding { return .orange.opacity(0.1) }
         return .clear
     }

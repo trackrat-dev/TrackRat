@@ -218,11 +218,50 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - Medium confidence (50-79%): "🤔 Owl thinks it may be track X"
 - Low confidence (<50%): "🤷 Owl guesses tracks X, Y, Z"
 
+### Train Progress Tracking
+
+The app provides sophisticated real-time journey visualization through multiple UI components:
+
+#### **TrainProgressIndicator** (Main App)
+- **Animated Progress Bar**: Green-to-blue gradient track with orange train icon (🚋)
+- **Real-time Movement**: Train icon moves smoothly along progress bar with 0.5-second animation
+- **Pulsing Animation**: Continuous 1-second pulse effect on train icon for visual attention
+- **Smart Positioning**: Proper bounds checking ensures icon stays within track boundaries
+- **Progress Calculation**: Shows completion percentage for user's specific origin-destination segment
+
+#### **JourneyProgressBar** (Live Activities)
+- **Context-Colored Progress**: Orange (boarding), blue (en route), green (arrived), gray (default)
+- **Tram Icon Indicator**: `tram.fill` SF Symbol positioned at current progress point
+- **Percentage Display**: Numeric completion (0-100%) with journey status text
+- **Smooth Updates**: Real-time position updates every 30 seconds with interpolation
+
+#### **Progress Calculation Method**
+- **Origin-Destination Focus**: Only tracks user's journey segment, not entire train route
+- **Stop-Based Foundation**: Uses completed vs. total stops in journey segment
+- **Time-Based Interpolation**: When between stops, estimates position using:
+  - Last departed stop's actual departure time
+  - Next stop's scheduled arrival time
+  - Current time for real-time positioning
+- **Segment Progress**: Calculates 0.0-1.0 progress within current track segment
+
+#### **Location State Detection**
+- **`.notDeparted`**: Train hasn't left origin yet
+- **`.boarding`**: Currently boarding passengers (orange indicators)
+- **`.departed`**: Recently departed (within 2 minutes, shows "X min ago")
+- **`.approaching`**: Approaching next stop (within 3 minutes, shows countdown)
+- **`.enRoute`**: Traveling between stations
+- **`.arrived`**: Journey complete at destination
+
+#### **Multi-Platform Consistency**
+- **Lock Screen**: Simplified progress bar in Live Activities
+- **Dynamic Island**: Full journey progress in expanded view
+- **Main App**: Detailed animated progress with contextual information
+- **Home Screen**: Horizontal progress bars for all active trips
+
 ### New UI Components
-- **ActiveTripsSection**: Horizontal scroll of active Live Activities
+- **ActiveTripsSection**: Horizontal scroll of active Live Activities with progress indicators
 - **LiveActivityControls**: Start/stop buttons with status indicators
 - **LiveActivityDebugView**: Developer tools for testing states
-- **Journey Progress Bar**: Visual train position on route
 - **Glassmorphic Cards**: Consistent card styling with backdrop blur
 
 ### Extensions & Utilities

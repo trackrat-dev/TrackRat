@@ -67,13 +67,8 @@ struct LiveActivityControls: View {
                                 .font(.title2)
                         }
                         
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("📍 Watch This Train")
-                                .font(.subheadline.bold())
-                            Text("Track on Lock Screen & Dynamic Island")
-                                .font(.caption)
-                                .opacity(0.8)
-                        }
+                        Text("📍 Experimental: Watch This Train")
+                            .font(.subheadline.bold())
                         
                         Spacer()
                         

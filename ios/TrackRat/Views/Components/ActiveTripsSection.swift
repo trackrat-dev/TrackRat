@@ -8,155 +8,169 @@ struct ActiveTripsSection: View {
     @State private var refreshTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     
     var body: some View {
-        if liveActivityService.isActivityActive,
-           let activity = liveActivityService.currentActivity {
-            
-            VStack(alignment: .leading, spacing: 16) {
-                Text("ACTIVE TRIPS")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white.opacity(0.7))
-                    .padding(.horizontal)
-                
-                Button {
-                    navigateToTrainDetails(activity: activity)
-                } label: {
-                    VStack(spacing: 12) {
-                        // Header row with train and route
-                        HStack {
-                            HStack(spacing: 6) {
-                                Text("🚂")
-                                    .font(.title2)
-                                Text("Train \(activity.attributes.trainNumber)")
-                                    .font(.headline.bold())
-                                    .foregroundColor(.white)
-                            }
-                            
-                            Spacer()
-                            
-                            HStack(spacing: 4) {
-                                Text("\(Int(activity.content.state.journeyProgress * 100))%")
-                                    .font(.subheadline.bold())
-                                    .foregroundColor(.white.opacity(0.9))
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.6))
-                            }
-                        }
-                        
-                        // Route
-                        HStack {
-                            Text(activity.attributes.routeDescription)
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.8))
-                            Spacer()
-                        }
-                        
-                        // Status and Track row
-                        HStack {
-                            // Status
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(statusColor(activity.content.state.status))
-                                    .frame(width: 8, height: 8)
-                                Text(activity.content.state.status.displayText)
-                                    .font(.subheadline.bold())
-                                    .foregroundColor(statusColor(activity.content.state.status))
-                            }
-                            
-                            Spacer()
-                            
-                            // Track
-                            if let track = activity.content.state.track {
-                                HStack(spacing: 4) {
-                                    Text("Track")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                    Text(track)
-                                        .font(.subheadline.bold())
-                                        .foregroundColor(.orange)
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(.orange.opacity(0.2))
-                                )
-                            }
-                        }
-                        
-                        // Progress bar
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(.white.opacity(0.3))
-                                    .frame(height: 6)
-                                
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(.white.opacity(0.9))
-                                    .frame(width: geometry.size.width * activity.content.state.journeyProgress, height: 6)
-                            }
-                        }
-                        .frame(height: 6)
-                        
-                        // Next stop, destination ETA, and last updated
-                        HStack {
-                            if let nextStop = activity.content.state.nextStop {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Next Stop")
-                                        .font(.caption2)
-                                        .foregroundColor(.white.opacity(0.7))
-                                    Text(nextStop.stationName)
-                                        .font(.caption.bold())
-                                        .foregroundColor(.white)
-                                        .lineLimit(1)
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            // Destination ETA
-                            if let destinationETA = activity.content.state.destinationETA {
-                                VStack(alignment: .center, spacing: 2) {
-                                    Text("Arriving")
-                                        .font(.caption2)
-                                        .foregroundColor(.white.opacity(0.7))
-                                    Text(formatTime(destinationETA))
-                                        .font(.caption.bold())
-                                        .foregroundColor(.white)
-                                }
-                                
-                                Spacer()
-                            }
-                            
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("Updated")
-                                    .font(.caption2)
-                                    .foregroundColor(.white.opacity(0.7))
-                                Text(formatTimeAgo(activity.content.state.lastUpdated))
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.8))
-                            }
-                        }
-                    }
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.white.opacity(0.2))
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(.white.opacity(0.3), lineWidth: 1)
-                            )
-                    )
-                    .padding(.horizontal)
-                }
-                .buttonStyle(.plain)
+        Group {
+            if liveActivityService.isActivityActive && liveActivityService.currentActivity != nil {
+                activeTripsContent
             }
-            .onReceive(refreshTimer) { _ in
-                // Refresh the Live Activity data every 5 seconds
-                Task {
-                    await liveActivityService.refreshCurrentActivity()
+        }
+        .onReceive(refreshTimer) { _ in
+            // Refresh the Live Activity data every 5 seconds
+            Task {
+                await liveActivityService.refreshCurrentActivity()
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var activeTripsContent: some View {
+        if let activity = liveActivityService.currentActivity {
+            VStack(alignment: .leading, spacing: 16) {
+                sectionHeader
+                tripButton(for: activity)
+            }
+        }
+    }
+    
+    private var sectionHeader: some View {
+        Text("ACTIVE TRIPS")
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundColor(.white.opacity(0.7))
+            .padding(.horizontal)
+    }
+    
+    private func tripButton(for activity: Activity<TrainActivityAttributes>) -> some View {
+        Button {
+            navigateToTrainDetails(activity: activity)
+        } label: {
+            tripButtonContent(for: activity)
+        }
+        .buttonStyle(.plain)
+    }
+    
+    @ViewBuilder
+    private func tripButtonContent(for activity: Activity<TrainActivityAttributes>) -> some View {
+        VStack(spacing: 12) {
+            headerRow(for: activity)
+            routeRow(for: activity)
+            statusAndTrackRow(for: activity)
+            progressBar(for: activity)
+            bottomInfoRow(for: activity)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.white.opacity(0.2))
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(.white.opacity(0.3), lineWidth: 1)
+                )
+        )
+        .padding(.horizontal)
+    }
+    
+    private func headerRow(for activity: Activity<TrainActivityAttributes>) -> some View {
+        HStack {
+            HStack(spacing: 6) {
+                Text("🚂")
+                    .font(.title2)
+                Text("Train \(activity.attributes.trainNumber)")
+                    .font(.headline.bold())
+                    .foregroundColor(.white)
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+            }
+        }
+    }
+    
+    private func routeRow(for activity: Activity<TrainActivityAttributes>) -> some View {
+        HStack {
+            Text(activity.attributes.routeDescription)
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.8))
+            Spacer()
+        }
+    }
+    
+    private func statusAndTrackRow(for activity: Activity<TrainActivityAttributes>) -> some View {
+        HStack {
+            // Status
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(statusColor(activity.content.state.status))
+                    .frame(width: 8, height: 8)
+                Text(activity.content.state.status.displayText)
+                    .font(.subheadline.bold())
+                    .foregroundColor(statusColor(activity.content.state.status))
+            }
+            
+            Spacer()
+            
+            // Track
+            if let track = activity.content.state.track {
+                HStack(spacing: 4) {
+                    Text("Track")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                    Text(track)
+                        .font(.subheadline.bold())
+                        .foregroundColor(.orange)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.orange.opacity(0.2))
+                )
+            }
+        }
+    }
+    
+    private func progressBar(for activity: Activity<TrainActivityAttributes>) -> some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(.white.opacity(0.3))
+                    .frame(height: 6)
+                
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(.white.opacity(0.9))
+                    .frame(width: geometry.size.width * activity.content.state.journeyProgress, height: 6)
+            }
+        }
+        .frame(height: 6)
+    }
+    
+    private func bottomInfoRow(for activity: Activity<TrainActivityAttributes>) -> some View {
+        HStack {
+            if let nextStop = activity.content.state.nextStop {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Next Stop")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.7))
+                    Text(nextStop.stationName)
+                        .font(.caption.bold())
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+            }
+            
+            Spacer()
+            
+            
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Updated")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.7))
+                Text(formatTimeAgo(activity.content.state.lastUpdated))
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.8))
             }
         }
     }
@@ -183,10 +197,12 @@ struct ActiveTripsSection: View {
         let timeInterval = now.timeIntervalSince(date)
         
         if timeInterval < 60 {
-            return "just now"
+            return "in the past minute"
+        } else if timeInterval < 120 {
+            return "1 minute ago"
         } else if timeInterval < 3600 {
             let minutes = Int(timeInterval / 60)
-            return "\(minutes)m ago"
+            return "\(minutes) minutes ago"
         } else {
             let formatter = DateFormatter()
             formatter.timeStyle = .short
