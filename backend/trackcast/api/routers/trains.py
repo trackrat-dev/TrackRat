@@ -330,16 +330,16 @@ async def list_trains(
             consolidation_service = TrainConsolidationService()
             consolidated_trains = consolidation_service.consolidate_trains(enriched_trains)
             
-            return {
-                "metadata": {
+            return ConsolidatedTrainListResponse(
+                metadata={
                     "timestamp": datetime.now().isoformat(),
                     "model_version": settings.model.version,
                     "train_count": len(consolidated_trains),
                     "page": 1,  # Consolidation affects pagination
                     "total_pages": 1,
                 },
-                "trains": consolidated_trains,
-            }
+                trains=consolidated_trains,
+            )
         else:
             return {
                 "metadata": {
