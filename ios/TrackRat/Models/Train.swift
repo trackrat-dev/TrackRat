@@ -1,0 +1,494 @@
+import Foundation
+
+// MARK: - Train Model
+struct Train: Identifiable, Codable {
+    let id: Int  // For consolidated: derive from consolidatedId hash, for legacy: use actual id
+    let trainId: String
+    let line: String
+    let destination: String
+    let departureTime: Date
+    let track: String?
+    let status: TrainStatus
+    let delayMinutes: Int?
+    let stops: [Stop]?
+    let predictionData: PredictionData?
+    let originStationCode: String?
+    let dataSource: String?
+    
+    // Consolidated data from multiple sources
+    let consolidatedId: String?
+    let originStation: OriginStation?
+    let dataSources: [DataSource]?
+    let currentPosition: CurrentPosition?
+    let trackAssignment: TrackAssignment?
+    let statusSummary: StatusSummary?
+    let consolidationMetadata: ConsolidationMetadata?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case trainId = "train_id"
+        case line
+        case destination
+        case departureTime = "departure_time"
+        case track
+        case status
+        case delayMinutes = "delay_minutes"
+        case stops
+        case predictionData = "prediction_data"
+        case originStationCode = "origin_station_code"
+        case dataSource = "data_source"
+        case consolidatedId = "consolidated_id"
+        case originStation = "origin_station"
+        case dataSources = "data_sources"
+        case currentPosition = "current_position"
+        case trackAssignment = "track_assignment"
+        case statusSummary = "status_summary"
+        case consolidationMetadata = "consolidation_metadata"
+    }
+    
+    // Custom decoder to handle both legacy and consolidated formats
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Try to detect format by checking for consolidated_id
+        let isConsolidated = container.contains(.consolidatedId)
+        
+        if isConsolidated {
+            // Consolidated format
+            consolidatedId = try container.decodeIfPresent(String.self, forKey: .consolidatedId)
+            trainId = try container.decode(String.self, forKey: .trainId)
+            line = try container.decode(String.self, forKey: .line)
+            destination = try container.decode(String.self, forKey: .destination)
+            
+            // For consolidated, get departure time from origin_station
+            originStation = try container.decodeIfPresent(OriginStation.self, forKey: .originStation)
+            departureTime = originStation?.departureTime ?? Date()
+            
+            // Get track from track_assignment
+            trackAssignment = try container.decodeIfPresent(TrackAssignment.self, forKey: .trackAssignment)
+            track = trackAssignment?.track
+            
+            // Get status from status_summary
+            statusSummary = try container.decodeIfPresent(StatusSummary.self, forKey: .statusSummary)
+            if let statusSummary = statusSummary {
+                status = Self.mapConsolidatedStatusStatic(statusSummary.currentStatus)
+                delayMinutes = statusSummary.delayMinutes
+            } else {
+                status = .scheduled
+                delayMinutes = 0
+            }
+            
+            // Consolidated-specific fields
+            dataSources = try container.decodeIfPresent([DataSource].self, forKey: .dataSources)
+            currentPosition = try container.decodeIfPresent(CurrentPosition.self, forKey: .currentPosition)
+            consolidationMetadata = try container.decodeIfPresent(ConsolidationMetadata.self, forKey: .consolidationMetadata)
+            
+            // Generate a synthetic ID from consolidated_id hash
+            id = consolidatedId?.hashValue ?? trainId.hashValue
+            
+            // Origin station code from origin_station or first data source
+            originStationCode = originStation?.code ?? dataSources?.first?.origin
+            
+            // Data source from first source
+            dataSource = dataSources?.first?.dataSource
+            
+        } else {
+            // Legacy format
+            id = try container.decode(Int.self, forKey: .id)
+            trainId = try container.decode(String.self, forKey: .trainId)
+            line = try container.decode(String.self, forKey: .line)
+            destination = try container.decode(String.self, forKey: .destination)
+            departureTime = try container.decode(Date.self, forKey: .departureTime)
+            track = try container.decodeIfPresent(String.self, forKey: .track)
+            status = try container.decode(TrainStatus.self, forKey: .status)
+            delayMinutes = try container.decodeIfPresent(Int.self, forKey: .delayMinutes)
+            originStationCode = try container.decodeIfPresent(String.self, forKey: .originStationCode)
+            dataSource = try container.decodeIfPresent(String.self, forKey: .dataSource)
+            
+            // Legacy doesn't have consolidated fields
+            consolidatedId = nil
+            originStation = nil
+            dataSources = nil
+            currentPosition = nil
+            trackAssignment = nil
+            statusSummary = nil
+            consolidationMetadata = nil
+        }
+        
+        // Common fields
+        stops = try container.decodeIfPresent([Stop].self, forKey: .stops)
+        predictionData = try container.decodeIfPresent(PredictionData.self, forKey: .predictionData)
+    }
+    
+    // Programmatic initializer for creating Train objects directly
+    init(id: Int, trainId: String, line: String, destination: String, departureTime: Date, track: String?, status: TrainStatus, delayMinutes: Int?, stops: [Stop]?, predictionData: PredictionData?, originStationCode: String?, dataSource: String?, consolidatedId: String? = nil, originStation: OriginStation? = nil, dataSources: [DataSource]? = nil, currentPosition: CurrentPosition? = nil, trackAssignment: TrackAssignment? = nil, statusSummary: StatusSummary? = nil, consolidationMetadata: ConsolidationMetadata? = nil) {
+        self.id = id
+        self.trainId = trainId
+        self.line = line
+        self.destination = destination
+        self.departureTime = departureTime
+        self.track = track
+        self.status = status
+        self.delayMinutes = delayMinutes
+        self.stops = stops
+        self.predictionData = predictionData
+        self.originStationCode = originStationCode
+        self.dataSource = dataSource
+        self.consolidatedId = consolidatedId
+        self.originStation = originStation
+        self.dataSources = dataSources
+        self.currentPosition = currentPosition
+        self.trackAssignment = trackAssignment
+        self.statusSummary = statusSummary
+        self.consolidationMetadata = consolidationMetadata
+    }
+    
+    // Static helper to map consolidated status strings (for use in decoder)
+    private static func mapConsolidatedStatusStatic(_ statusString: String) -> TrainStatus {
+        switch statusString.lowercased() {
+        case "scheduled", "": return .scheduled
+        case "on time", "on_time": return .onTime
+        case "delayed": return .delayed
+        case "boarding", "all aboard": return .boarding
+        case "departed", "in transit": return .departed
+        default: return .unknown
+        }
+    }
+    
+    // Instance helper to map consolidated status strings
+    private func mapConsolidatedStatus(_ statusString: String) -> TrainStatus {
+        return Self.mapConsolidatedStatusStatic(statusString)
+    }
+}
+
+// MARK: - Train Status
+enum TrainStatus: String, Codable {
+    case scheduled = "SCHEDULED"
+    case onTime = "ON_TIME"
+    case delayed = "DELAYED"
+    case boarding = "BOARDING"
+    case departed = "DEPARTED"
+    case unknown = "UNKNOWN"
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let statusString = try container.decode(String.self)
+        
+        // Handle empty string as scheduled (no status)
+        if statusString.isEmpty {
+            self = .scheduled
+        } else {
+            self = TrainStatus(rawValue: statusString) ?? .unknown
+        }
+    }
+    
+    var displayText: String {
+        switch self {
+        case .scheduled: return "Scheduled"
+        case .onTime: return "On Time"
+        case .delayed: return "Delayed"
+        case .boarding: return "Boarding"
+        case .departed: return "Departed"
+        case .unknown: return "Unknown"
+        }
+    }
+    
+    var color: String {
+        switch self {
+        case .scheduled: return "gray"
+        case .onTime: return "green"
+        case .delayed: return "red"
+        case .boarding: return "orange"
+        case .departed: return "gray"
+        case .unknown: return "gray"
+        }
+    }
+}
+
+// MARK: - Stop Model
+struct Stop: Identifiable, Codable {
+    let id = UUID()
+    let stationCode: String?
+    let stationName: String
+    let scheduledTime: Date?
+    let departureTime: Date?
+    let pickupOnly: Bool?
+    let dropoffOnly: Bool?
+    let departed: Bool
+    let departedConfirmedBy: [String]?
+    let stopStatus: String?
+    let platform: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case stationCode = "station_code"
+        case stationName = "station_name"
+        case scheduledTime = "scheduled_time"
+        case departureTime = "departure_time"
+        case pickupOnly = "pickup_only"
+        case dropoffOnly = "dropoff_only"
+        case departed
+        case departedConfirmedBy = "departed_confirmed_by"
+        case stopStatus = "stop_status"
+        case platform
+    }
+}
+
+// MARK: - Prediction Data
+struct PredictionData: Codable {
+    let trackProbabilities: [String: Double]?
+    
+    enum CodingKeys: String, CodingKey {
+        case trackProbabilities = "track_probabilities"
+    }
+}
+
+// MARK: - Consolidated Data Structures
+struct OriginStation: Codable {
+    let code: String
+    let name: String
+    let departureTime: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case code
+        case name
+        case departureTime = "departure_time"
+    }
+}
+
+struct ConsolidationMetadata: Codable {
+    let sourceCount: Int
+    let lastUpdate: Date
+    let confidenceScore: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case sourceCount = "source_count"
+        case lastUpdate = "last_update"
+        case confidenceScore = "confidence_score"
+    }
+}
+
+struct DataSource: Codable {
+    let origin: String
+    let dataSource: String
+    let lastUpdate: Date
+    let status: String?
+    let track: String?
+    let delayMinutes: Int?
+    let dbId: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case origin
+        case dataSource = "data_source"
+        case lastUpdate = "last_update"
+        case status
+        case track
+        case delayMinutes = "delay_minutes"
+        case dbId = "db_id"
+    }
+}
+
+struct CurrentPosition: Codable {
+    let status: String?
+    let lastDepartedStation: StationStatus?
+    let nextStation: StationStatus?
+    let segmentProgress: Double?
+    let estimatedSpeedMph: Double?
+    
+    enum CodingKeys: String, CodingKey {
+        case status
+        case lastDepartedStation = "last_departed_station"
+        case nextStation = "next_station"
+        case segmentProgress = "segment_progress"
+        case estimatedSpeedMph = "estimated_speed_mph"
+    }
+}
+
+struct StationStatus: Codable {
+    let code: String
+    let name: String
+    let scheduledDeparture: Date?
+    let scheduledArrival: Date?
+    let actualDeparture: Date?
+    let estimatedArrival: Date?
+    let distanceMiles: Double?
+    
+    enum CodingKeys: String, CodingKey {
+        case code
+        case name
+        case scheduledDeparture = "scheduled_departure"
+        case scheduledArrival = "scheduled_arrival"
+        case actualDeparture = "actual_departure"
+        case estimatedArrival = "estimated_arrival"
+        case distanceMiles = "distance_miles"
+    }
+}
+
+struct TrackAssignment: Codable {
+    let track: String?
+    let assignedAt: Date?
+    let assignedBy: String?
+    let source: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case track
+        case assignedAt = "assigned_at"
+        case assignedBy = "assigned_by"
+        case source
+    }
+}
+
+struct StatusSummary: Codable {
+    let currentStatus: String
+    let delayMinutes: Int
+    let onTimePerformance: String
+    
+    enum CodingKeys: String, CodingKey {
+        case currentStatus = "current_status"
+        case delayMinutes = "delay_minutes"
+        case onTimePerformance = "on_time_performance"
+    }
+}
+
+// MARK: - Train Extensions
+extension Train {
+    /// Get the departure time from a specific origin station
+    func getDepartureTime(fromStationCode: String) -> Date {
+        // Find the stop that matches our departure station
+        if let stops = stops,
+           let originStop = stops.first(where: { stop in
+               Stations.getStationCode(stop.stationName) == fromStationCode
+           }),
+           let departureTime = originStop.departureTime {
+            return departureTime
+        }
+        
+        // Fall back to the train's overall departure time
+        return departureTime
+    }
+    
+    /// Get formatted departure time from a specific origin station
+    func getFormattedDepartureTime(fromStationCode: String) -> String {
+        let time = getDepartureTime(fromStationCode: fromStationCode)
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: time)
+    }
+    
+    // MARK: - Consolidated Data Helpers
+    
+    /// Check if this train has consolidated data from multiple sources
+    var isConsolidated: Bool {
+        return consolidatedId != nil && (dataSources?.count ?? 0) > 1
+    }
+    
+    /// Get the best available track assignment
+    var displayTrack: String? {
+        // Prefer track from consolidated assignment
+        if let consolidatedTrack = trackAssignment?.track {
+            return consolidatedTrack
+        }
+        
+        // Fall back to legacy track field
+        return track
+    }
+    
+    /// Get unified status from consolidated data or legacy status
+    var displayStatus: TrainStatus {
+        // If we have consolidated status, map it to TrainStatus enum
+        if let consolidated = statusSummary {
+            return mapConsolidatedStatus(consolidated.currentStatus)
+        }
+        
+        // Fall back to legacy status
+        return status
+    }
+    
+    
+    /// Get the best available delay information
+    var displayDelayMinutes: Int {
+        // Prefer consolidated delay information
+        if let consolidated = statusSummary {
+            return consolidated.delayMinutes
+        }
+        
+        // Fall back to legacy delay
+        return delayMinutes ?? 0
+    }
+    
+    /// Check if train has real-time position tracking
+    var hasPositionTracking: Bool {
+        return currentPosition != nil
+    }
+    
+    /// Get progress between stations (0.0 to 1.0)
+    var segmentProgress: Double {
+        return currentPosition?.segmentProgress ?? 0.0
+    }
+    
+    /// Get estimated speed if available
+    var estimatedSpeed: Double? {
+        return currentPosition?.estimatedSpeedMph
+    }
+}
+
+// MARK: - API Response
+struct Metadata: Codable {
+    let timestamp: String // Or Date, if you want to parse it
+    let modelVersion: String
+    let trainCount: Int
+    let page: Int
+    let totalPages: Int
+
+    enum CodingKeys: String, CodingKey {
+        case timestamp
+        case modelVersion = "model_version"
+        case trainCount = "train_count"
+        case page
+        case totalPages = "total_pages"
+    }
+}
+
+struct TrainListResponse: Codable {
+    let metadata: Metadata
+    let trains: [Train]
+}
+
+// MARK: - Historical Data
+struct HistoricalData {
+    let trainStats: DelayStats?
+    let lineStats: DelayStats?
+    let destinationStats: DelayStats?
+    let trainTrackStats: TrackStats?
+    let lineTrackStats: TrackStats?
+    let destinationTrackStats: TrackStats?
+}
+
+struct DelayStats {
+    let onTime: Int
+    let slight: Int
+    let significant: Int
+    let major: Int
+    let total: Int
+    let avgDelay: Int
+}
+
+struct TrackStats {
+    let tracks: [(track: String, percentage: Int, count: Int)]
+    let total: Int
+}
+
+// MARK: - Journey Progress Helper
+struct JourneyProgress {
+    let totalStops: Int
+    let completedStops: Int
+    let progress: Double
+    let currentStopIndex: Int?
+    
+    static let unknown = JourneyProgress(
+        totalStops: 0,
+        completedStops: 0,
+        progress: 0.0,
+        currentStopIndex: nil
+    )
+}

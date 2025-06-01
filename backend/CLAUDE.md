@@ -1,0 +1,392 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+TrackCast is a real-time track prediction system for trains departing from multiple stations. It collects data from both NJ Transit and Amtrak APIs, processes information into a structured database, and employs station-specific machine learning models to predict which track a train will depart from before the official announcement. The system currently supports NY Penn Station, Trenton Transit Center, Princeton Junction, Metropark, Newark Penn Station, and nationwide Amtrak routes.
+
+### Key Features
+- **Multi-Source Data Collection**: Integrates NJ Transit station-specific APIs and Amtrak's nationwide tracking API
+- **Train Consolidation**: Intelligently merges duplicate train records from multiple sources into unified journey representations
+- **Station-Specific Models**: Uses PyTorch neural networks trained on individual station data for accurate predictions
+- **Journey Planning**: Context-aware API filtering for seamless trip planning between any two stations
+- **Real-Time Updates**: Continuous polling and prediction generation for up-to-date track assignments
+
+### Recent Updates
+- **Train Consolidation Service**: Automatically consolidates duplicate train records from multiple data sources
+- **Stops API**: New endpoints for querying station information and station-specific train data
+- **Enhanced CLI**: Added station code backfilling and advanced data clearing options
+- **Model Training Improvements**: Comprehensive visualization outputs including calibration curves and confusion matrices
+
+## Development Commands
+
+### Setup and Installation
+
+```bash
+# Create a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install the package in development mode
+pip install -e .
+
+# Install required dependencies
+pip install -r requirements.txt
+```
+
+### Database Operations
+
+```bash
+# Initialize the database schema
+trackcast init-db
+
+# Update schema for multi-station support (if upgrading)
+trackcast update-schema
+```
+
+### Running Components
+
+```bash
+# Run a one-time data collection from both NJ Transit and Amtrak APIs (all configured sources)
+trackcast collect-data
+
+# Process collected train data to generate features
+trackcast process-features
+trackcast process-features --clear  # Clear existing features before processing
+trackcast process-features --clear --train-id 1234  # Clear features for specific train
+trackcast process-features --clear --before "2025-05-01"  # Clear features before date
+
+# Generate track predictions for upcoming trains (uses station-specific models)
+trackcast generate-predictions
+trackcast generate-predictions --clear  # Clear existing predictions before generating
+
+# Start the API service (default: http://127.0.0.1:8000)
+trackcast start-api --host 0.0.0.0 --port 8000
+
+# Start the scheduler for automatic periodic execution of all components
+trackcast start-scheduler
+
+# Train prediction models using historical data
+trackcast train-model --all-stations  # Train for all configured stations
+trackcast train-model --station NY    # Train for specific station
+trackcast train-model                 # Train combined model (legacy)
+
+# Import train data from CSV/JSON files into the database
+trackcast import-data --source data/processed/ --format csv --overwrite
+
+# Backfill missing station codes in the database
+trackcast backfill-station-codes
+```
+
+### Development and Testing
+
+```bash
+# Run test suite
+pytest
+
+# Run tests with coverage
+pytest --cov=trackcast
+
+# Run unit tests only (faster, uses SQLite)
+pytest tests/unit/
+
+# Run integration tests (requires PostgreSQL)
+pytest tests/integration/
+
+# Run specific test files
+pytest test_consolidation.py
+pytest test_track_assignment.py
+
+# Format code
+black trackcast/
+
+# Check code quality
+flake8 trackcast/
+
+# Type checking
+mypy trackcast/
+```
+
+### Deployment
+
+```bash
+# Production deployment with Gunicorn
+gunicorn trackcast.api.app:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+```
+
+## Project Architecture
+
+### Core Components
+
+1. **Data Collection Service**: Polls both NJ Transit and Amtrak APIs for multiple stations and stores raw train data with origin information and data source
+2. **Train Consolidation Service**: Intelligently merges duplicate train records from multiple sources into unified journey representations
+3. **Feature Engineering Service**: Processes raw train data into model features
+4. **Prediction Service**: Loads station-specific machine learning models and generates track predictions
+5. **API Service**: Provides RESTful endpoints for accessing predictions with station filtering, journey planning, and train consolidation
+6. **Scheduler Service**: Coordinates periodic execution of the other services
+7. **Data Import Service**: Imports historical train data from CSV/JSON files and maintains track assignment state
+
+### Data Flow
+
+1. The Data Collector fetches train data from both NJ Transit and Amtrak APIs:
+   - NJ Transit: Station-specific departures from configured stations (NY, TR, PJ, MP, NP)
+   - Amtrak: Nationwide train tracking data from the Amtraker API
+2. Raw data is processed and stored in the database (Train table) with origin station information and data source identifier
+3. The Train Consolidation service identifies and merges duplicate train records:
+   - Matches trains by ID and stop schedules
+   - Merges track assignments with confidence scoring
+   - Creates unified journey representations
+4. The Feature Engineering service extracts features from train data
+5. Features are stored in the ModelData table
+6. The Prediction service applies station-specific models to generate track predictions
+7. Predictions are stored in the PredictionData table
+8. The API exposes train records with their predictions, filterable by station, data source, and journey segments, with optional consolidation
+
+### Machine Learning Pipeline
+
+1. **Feature Engineering**: Time-based, categorical, and historical track usage features
+2. **Training**: Station-specific PyTorch neural network models with safeguards to prevent data leakage
+   - Supports both PyTorch and XGBoost models (configurable)
+   - Generates comprehensive visualization outputs (calibration curves, confusion matrices, learning curves)
+   - Implements proper temporal splitting to avoid data leakage
+3. **Prediction**: Generates probability distributions across possible tracks using the appropriate station model
+4. **Explanation**: Uses perturbation-based feature importance to explain prediction factors
+
+## Configuration
+
+TrackCast uses YAML configuration files in the `config/` directory:
+- `default.yaml`: Base configuration
+- `dev.yaml`: Development environment configuration
+- `prod.yaml`: Production environment configuration
+
+### Multi-Station Configuration
+
+Configure multiple stations in your YAML file:
+
+```yaml
+njtransit_api:
+  base_url: "https://raildata.njtransit.com/api/TrainData"
+  stations:
+    - code: "NY"
+      name: "New York Penn Station"
+      enabled: true
+    - code: "TR"
+      name: "Trenton Transit Center"
+      enabled: true
+    - code: "PJ"
+      name: "Princeton Junction"
+      enabled: true
+    - code: "MP"
+      name: "Metropark"
+      enabled: true
+    - code: "NP"
+      name: "Newark Penn Station"
+      enabled: true
+  polling_interval_seconds: 60
+  retry_attempts: 3
+  timeout_seconds: 10
+  username: ""  # Set via NJT_USERNAME env var
+  password: ""  # Set via NJT_PASSWORD env var
+
+amtrak_api:
+  base_url: "https://api-v3.amtraker.com/v3/trains"
+  enabled: true
+  polling_interval_seconds: 120
+  retry_attempts: 3
+  timeout_seconds: 15
+  debug_mode: false
+
+# Model Configuration
+model:
+  version: "1.0.0"
+  save_path: "models/"
+  type: "pytorch"  # or "xgboost"
+  hyperparameters:
+    learning_rate: 0.001
+    hidden_layers: [128, 64, 32]
+    dropout_rate: 0.3
+    batch_size: 64
+    num_epochs: 50
+
+# Timezone Configuration
+timezone:
+  display_timezone: "US/Eastern"
+  storage_timezone: "US/Eastern"
+  api_response_timezone: "US/Eastern"
+
+# Database Configuration
+database:
+  url: "postgresql://user@localhost:5432/trackcast"
+  pool_size: 10
+  max_overflow: 25
+
+# Scheduler Configuration
+scheduler:
+  collection_interval_minutes: 1
+  feature_engineering_interval_minutes: 1
+  prediction_interval_minutes: 2
+```
+
+Set configuration with environment variable:
+```bash
+export TRACKCAST_ENV=dev  # Use dev.yaml
+```
+
+Or with CLI:
+```bash
+trackcast --env dev init-db
+```
+
+## API Endpoints
+
+### Train Endpoints
+
+- `GET /api/trains/` - List all trains with filtering options
+  - `origin_station_code` - Filter by station code (e.g., 'NY', 'TR', 'PJ', 'MP', 'NP')
+  - `origin_station_name` - Filter by station name (partial match)
+  - `from_station_code` - Filter trains that stop at this station (boarding station)
+  - `to_station_code` - Filter trains that stop at this station after from_station_code (alighting station)
+  - `stops_at_station_code` - Filter trains that stop at this exact station code (only shows future stops)
+  - `stops_at_station_name` - Filter trains that stop at this station name (partial match, only future stops)
+  - `data_source` - Filter by data source ('njtransit' or 'amtrak')
+  - `departure_time_after` / `departure_time_before` - Context-aware time filtering (see Smart Time Filtering below)
+  - `consolidate` - Boolean flag to enable train consolidation (merges duplicates from multiple sources)
+  - Other filters: `train_id`, `line`, `destination`, `track`, `status`, `has_prediction`
+  - Pagination: `limit` (default: 20, max: 100), `offset`
+
+- `GET /api/trains/{train_id}` - Get a specific train by ID
+  - Returns detailed train information including predictions
+
+- `GET /api/trains/{train_id}/prediction` - Get prediction data for a specific train
+  - Returns track probabilities and prediction factors
+
+#### Smart Time Filtering
+
+The `departure_time_after` and `departure_time_before` parameters intelligently adapt based on query context:
+
+- **When using `from_station_code`**: Filters based on departure time from the boarding station
+- **When using `origin_station_code` only**: Filters based on train's original departure time  
+- **When using neither**: Filters based on train's original departure time
+
+This makes journey planning intuitive - searching for trains "from Washington after 3pm" finds trains that actually depart Washington after 3pm, regardless of where they originally started.
+
+**Important Notes:**
+- The `stops_at_station` filters only return trains with future stops at the specified station (stops that haven't occurred yet)
+- When using `from_station_code` with `to_station_code`, the API ensures proper stop ordering (the train stops at 'from' before 'to')
+
+Examples:
+```bash
+# Get trains from specific stations (originating)
+curl "http://localhost:8000/api/trains/?origin_station_code=TR"  # Trenton
+curl "http://localhost:8000/api/trains/?origin_station_code=PJ"  # Princeton Junction
+curl "http://localhost:8000/api/trains/?origin_station_code=MP"  # Metropark
+
+# Get trains from stations with "Penn" in the name (NY and NP)
+curl "http://localhost:8000/api/trains/?origin_station_name=Penn"
+
+# Get trains from Newark Penn Station specifically
+curl "http://localhost:8000/api/trains/?origin_station_code=NP"
+
+# Get trains traveling from Washington Union to New York Penn (through trains)
+curl "http://localhost:8000/api/trains/?from_station_code=WAS&to_station_code=NY"
+
+# Get trains traveling from New York Penn to Trenton
+curl "http://localhost:8000/api/trains/?from_station_code=NY&to_station_code=TR"
+
+# Get trains departing Washington after 3pm going to NY (uses Washington departure time)
+curl "http://localhost:8000/api/trains/?from_station_code=WAS&to_station_code=NY&departure_time_after=2025-05-26T15:00:00"
+
+# Get trains originating from NY after 3pm (uses origin departure time)
+curl "http://localhost:8000/api/trains/?origin_station_code=NY&departure_time_after=2025-05-26T15:00:00"
+
+# Get all Amtrak trains
+curl "http://localhost:8000/api/trains/?data_source=amtrak"
+
+# Get NJ Transit trains only
+curl "http://localhost:8000/api/trains/?data_source=njtransit"
+
+# Get trains that stop at Washington Union
+curl "http://localhost:8000/api/trains/?stops_at_station_code=WAS"
+
+# Get consolidated trains (merges duplicates from multiple sources)
+curl "http://localhost:8000/api/trains/?consolidate=true"
+```
+
+### Stops Endpoints
+
+- `GET /api/stops/` - List all stations in the system
+  - Returns station codes, names, and metadata
+
+- `GET /api/stops/{station_identifier}/trains` - Get trains for a specific station
+  - `station_identifier` can be either a station code (e.g., 'NY') or station name
+  - Supports all the same filtering parameters as `/api/trains/`
+
+Examples:
+```bash
+# Get all stations
+curl "http://localhost:8000/api/stops/"
+
+# Get trains at New York Penn Station
+curl "http://localhost:8000/api/stops/NY/trains"
+
+# Get trains at a station by name
+curl "http://localhost:8000/api/stops/Newark%20Penn%20Station/trains"
+```
+
+## Train Consolidation
+
+TrackCast automatically consolidates duplicate train records that arise when the same physical train is tracked from multiple sources (different NJ Transit station APIs and/or Amtrak API). This feature provides a unified view of each train's journey.
+
+### How It Works
+
+1. **Matching Algorithm**: The system identifies duplicate trains by:
+   - Matching train IDs
+   - Comparing stop schedules to verify it's the same journey
+   - Validating route patterns
+
+2. **Data Merging**: When duplicates are found, the system:
+   - Combines all stop information from all sources
+   - Merges track assignments with confidence scoring
+   - Preserves the most complete status information
+   - Maintains data source attribution
+
+3. **Track Assignment Confidence**: For consolidated trains with different track assignments:
+   - Calculates confidence scores based on data recency and source reliability
+   - Presents both the primary track assignment and alternatives with their confidence levels
+
+### API Usage
+
+Enable consolidation by adding `consolidate=true` to any trains endpoint:
+
+```bash
+# Get consolidated trains from all sources
+curl "http://localhost:8000/api/trains/?consolidate=true"
+
+# Combine with other filters
+curl "http://localhost:8000/api/trains/?consolidate=true&from_station_code=NY&to_station_code=TR"
+```
+
+### Example: Consolidated Train Response
+
+```json
+{
+  "train_id": "7871",
+  "line": "Northeast Corridor",
+  "destination": "Trenton",
+  "status": "DEPARTED",
+  "track": "13",
+  "track_confidence": 0.95,
+  "alternative_tracks": [
+    {"track": "4", "confidence": 0.05, "source": "NP"}
+  ],
+  "data_sources": ["NY", "NP", "MP", "PJ"],
+  "stops": [
+    {"station_code": "NY", "departure_time": "20:03:00", "track": "13"},
+    {"station_code": "NP", "departure_time": "20:21:15", "track": "4"},
+    {"station_code": "MP", "departure_time": "20:42:00", "track": "4"},
+    {"station_code": "PJ", "departure_time": "21:11:30", "track": "4"},
+    {"station_code": "TR", "arrival_time": "21:30:00"}
+  ]
+}
+```

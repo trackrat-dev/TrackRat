@@ -1,0 +1,117 @@
+import Foundation
+import ActivityKit
+
+// MARK: - Live Activity Attributes
+struct TrainActivityAttributes: ActivityAttributes {
+    public struct ContentState: Codable, Hashable {
+        // Core train info
+        let status: TrainStatus
+        let track: String?
+        let delayMinutes: Int?
+        
+        // Journey progress
+        let currentLocation: CurrentLocation
+        let nextStop: NextStopInfo?
+        let journeyProgress: Double
+        let destinationETA: Date?
+        
+        // Owl predictions
+        let owlPrediction: OwlPredictionInfo?
+        
+        // Metadata
+        let lastUpdated: Date
+        let hasStatusChanged: Bool
+    }
+    
+    // Static attributes that don't change during activity
+    let trainNumber: String
+    let trainId: String
+    let routeDescription: String
+    let origin: String
+    let destination: String
+    let originStationCode: String
+    let destinationStationCode: String
+}
+
+// MARK: - Supporting Data Models
+
+enum CurrentLocation: Codable, Hashable {
+    case notDeparted(departureTime: Date)
+    case boarding(station: String)
+    case departed(from: String, minutesAgo: Int)
+    case approaching(station: String, minutesAway: Int)
+    case enRoute(between: String, and: String)
+    case atStation(String)
+    case arrived
+    
+    var displayText: String {
+        switch self {
+        case .notDeparted:
+            return "Preparing to depart"
+        case .boarding(let station):
+            return "Boarding at \(station)"
+        case .departed(let from, let minutes):
+            if minutes == 0 {
+                return "Just departed \(from)"
+            } else {
+                return "Departed \(from) \(minutes) min ago"
+            }
+        case .approaching(let station, let minutes):
+            if minutes == 0 {
+                return "Arriving at \(station)"
+            } else {
+                return "Approaching \(station) (~\(minutes) min)"
+            }
+        case .enRoute(let from, let to):
+            return "Between \(from) and \(to)"
+        case .atStation(let station):
+            return "At \(station)"
+        case .arrived:
+            return "Arrived"
+        }
+    }
+}
+
+struct NextStopInfo: Codable, Hashable {
+    let stationName: String
+    let estimatedArrival: Date
+    let scheduledArrival: Date?
+    let isDelayed: Bool
+    let delayMinutes: Int
+    
+    var displayText: String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        
+        if isDelayed {
+            return "\(stationName) ~\(formatter.string(from: estimatedArrival))"
+        } else {
+            return "\(stationName) \(formatter.string(from: estimatedArrival))"
+        }
+    }
+}
+
+struct OwlPredictionInfo: Codable, Hashable {
+    let topTrack: String
+    let confidence: Double
+    let alternativeTracks: [String]
+    
+    var displayText: String {
+        // Ensure valid track number
+        guard !topTrack.isEmpty else {
+            return "🤷 Owl is thinking..."
+        }
+        
+        if confidence >= 0.8 {
+            return "🦉 Owl thinks it will be track \(topTrack)"
+        } else if confidence >= 0.5 {
+            return "🤔 Owl thinks it may be track \(topTrack)"
+        } else {
+            let validTracks = ([topTrack] + alternativeTracks.prefix(2)).filter { !$0.isEmpty }
+            let tracksText = validTracks.isEmpty ? "unknown" : validTracks.joined(separator: ", ")
+            return "🤷 Owl guesses tracks \(tracksText)"
+        }
+    }
+}
+

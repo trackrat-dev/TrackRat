@@ -1,0 +1,429 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1A1A1A1A1A1A1A1A1A1A1A1E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */; };
+		A10E97F02DE39EC1002F3214 /* TrackRatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97EF2DE39EC1002F3214 /* TrackRatApp.swift */; };
+		A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97EE2DE39EC1002F3214 /* ContentView.swift */; };
+		A10E97F42DE39EDD002F3214 /* Stations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F22DE39EDD002F3214 /* Stations.swift */; };
+		A10E97F52DE39EDD002F3214 /* Train.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F32DE39EDD002F3214 /* Train.swift */; };
+		A10E97F82DE39EF9002F3214 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F72DE39EF9002F3214 /* StorageService.swift */; };
+		A10E97F92DE39EF9002F3214 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F62DE39EF9002F3214 /* APIService.swift */; };
+		A10E97FB2DE39F0F002F3214 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FA2DE39F0F002F3214 /* Extensions.swift */; };
+		A10E98012DE39F23002F3214 /* TrainNumberSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E98002DE39F23002F3214 /* TrainNumberSearchView.swift */; };
+		A10E98022DE39F23002F3214 /* DestinationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */; };
+		A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */; };
+		A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FF2DE39F23002F3214 /* TrainListView.swift */; };
+		A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */; };
+		A10E98062DE39F23002F3214 /* DeparturePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E98072DE39F23002F3214 /* DeparturePickerView.swift */; };
+		A10E98DBA82DE39F23002F3214 /* TripSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */; };
+		A18E54342DEB88BE00AB2B74 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54332DEB88BE00AB2B74 /* LiveActivityModels.swift */; };
+		A18E54362DEB88C900AB2B74 /* Train+LiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54352DEB88C900AB2B74 /* Train+LiveActivity.swift */; };
+		A18E54382DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54372DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift */; };
+		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
+		A18E543C2DEB88F800AB2B74 /* LiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E543B2DEB88F800AB2B74 /* LiveActivityWidget.swift */; };
+		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
+		A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */; };
+		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrackRat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A10E97EE2DE39EC1002F3214 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentView.swift; path = App/ContentView.swift; sourceTree = "<group>"; };
+		A10E97EF2DE39EC1002F3214 /* TrackRatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatApp.swift; path = App/TrackRatApp.swift; sourceTree = "<group>"; };
+		A10E97F22DE39EDD002F3214 /* Stations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Stations.swift; path = Models/Stations.swift; sourceTree = "<group>"; };
+		A10E97F32DE39EDD002F3214 /* Train.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Train.swift; path = Models/Train.swift; sourceTree = "<group>"; };
+		A10E97F62DE39EF9002F3214 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = APIService.swift; path = TrackRat/Services/APIService.swift; sourceTree = "<group>"; };
+		A10E97F72DE39EF9002F3214 /* StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StorageService.swift; path = TrackRat/Services/StorageService.swift; sourceTree = "<group>"; };
+		A10E97FA2DE39F0F002F3214 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Extensions.swift; path = Utilities/Extensions.swift; sourceTree = "<group>"; };
+		A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DestinationPickerView.swift; path = Views/Screens/DestinationPickerView.swift; sourceTree = "<group>"; };
+		A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HistoricalDataView.swift; path = Views/Screens/HistoricalDataView.swift; sourceTree = "<group>"; };
+		A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDetailsView.swift; path = Views/Screens/TrainDetailsView.swift; sourceTree = "<group>"; };
+		A10E97FF2DE39F23002F3214 /* TrainListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainListView.swift; path = Views/Screens/TrainListView.swift; sourceTree = "<group>"; };
+		A10E98002DE39F23002F3214 /* TrainNumberSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainNumberSearchView.swift; path = Views/Screens/TrainNumberSearchView.swift; sourceTree = "<group>"; };
+		A10E98072DE39F23002F3214 /* DeparturePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeparturePickerView.swift; path = Views/Screens/DeparturePickerView.swift; sourceTree = "<group>"; };
+		A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripSelectionView.swift; path = Views/Screens/TripSelectionView.swift; sourceTree = "<group>"; };
+		A18E54332DEB88BE00AB2B74 /* LiveActivityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityModels.swift; path = Models/LiveActivityModels.swift; sourceTree = "<group>"; };
+		A18E54352DEB88C900AB2B74 /* Train+LiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Train+LiveActivity.swift"; path = "Models/Train+LiveActivity.swift"; sourceTree = "<group>"; };
+		A18E54372DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainLiveActivityBundle.swift; path = LiveActivity/TrainLiveActivityBundle.swift; sourceTree = "<group>"; };
+		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
+		A18E543B2DEB88F800AB2B74 /* LiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityWidget.swift; path = Views/LiveActivityWidget.swift; sourceTree = "<group>"; };
+		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
+		A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityDebugView.swift; path = Views/Components/LiveActivityDebugView.swift; sourceTree = "<group>"; };
+		A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveTripsSection.swift; path = Views/Components/ActiveTripsSection.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1A1A1A1A1A1A1A1A1A1A1A0D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1A1A1A1A1A1A1A1A1A1A1A07 = {
+			isa = PBXGroup;
+			children = (
+				1A1A1A1A1A1A1A1A1A1A1A12 /* TrackRat */,
+				1A1A1A1A1A1A1A1A1A1A1A11 /* Products */,
+				A10E97F62DE39EF9002F3214 /* APIService.swift */,
+				A10E97F72DE39EF9002F3214 /* StorageService.swift */,
+			);
+			sourceTree = "<group>";
+		};
+		1A1A1A1A1A1A1A1A1A1A1A11 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1A1A1A1A1A1A1A1A1A1A1A12 /* TrackRat */ = {
+			isa = PBXGroup;
+			children = (
+				A10E97F22DE39EDD002F3214 /* Stations.swift */,
+				A10E97F32DE39EDD002F3214 /* Train.swift */,
+				A10E97EE2DE39EC1002F3214 /* ContentView.swift */,
+				A10E97FA2DE39F0F002F3214 /* Extensions.swift */,
+				A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */,
+				A10E98072DE39F23002F3214 /* DeparturePickerView.swift */,
+				A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */,
+				A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */,
+				A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */,
+				A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */,
+				A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */,
+				A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */,
+				A18E54332DEB88BE00AB2B74 /* LiveActivityModels.swift */,
+				A18E54352DEB88C900AB2B74 /* Train+LiveActivity.swift */,
+				A18E54372DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift */,
+				A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */,
+				A18E543B2DEB88F800AB2B74 /* LiveActivityWidget.swift */,
+				A10E97FF2DE39F23002F3214 /* TrainListView.swift */,
+				A10E98002DE39F23002F3214 /* TrainNumberSearchView.swift */,
+				A10E97EF2DE39EC1002F3214 /* TrackRatApp.swift */,
+				1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */,
+			);
+			path = TrackRat;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1A1A1A1A1A1A1A1A1A1A1A0F /* TrackRat */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A1A1A1A1A1A1A1A1A1A1A24 /* Build configuration list for PBXNativeTarget "TrackRat" */;
+			buildPhases = (
+				1A1A1A1A1A1A1A1A1A1A1A0C /* Sources */,
+				1A1A1A1A1A1A1A1A1A1A1A0D /* Frameworks */,
+				1A1A1A1A1A1A1A1A1A1A1A0E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TrackRat;
+			productName = TrackRat;
+			productReference = 1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1A1A1A1A1A1A1A1A1A1A1A08 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1630;
+				TargetAttributes = {
+					1A1A1A1A1A1A1A1A1A1A1A0F = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = 1A1A1A1A1A1A1A1A1A1A1A0B /* Build configuration list for PBXProject "TrackRat" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1A1A1A1A1A1A1A1A1A1A1A07;
+			productRefGroup = 1A1A1A1A1A1A1A1A1A1A1A11 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1A1A1A1A1A1A1A1A1A1A1A0F /* TrackRat */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1A1A1A1A1A1A1A1A1A1A1A0E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A1A1A1A1A1A1A1A1A1A1A1E /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1A1A1A1A1A1A1A1A1A1A1A0C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */,
+				A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */,
+				A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */,
+				A10E97F42DE39EDD002F3214 /* Stations.swift in Sources */,
+				A18E54342DEB88BE00AB2B74 /* LiveActivityModels.swift in Sources */,
+				A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */,
+				A10E97F52DE39EDD002F3214 /* Train.swift in Sources */,
+				A10E97F02DE39EC1002F3214 /* TrackRatApp.swift in Sources */,
+				A10E97F82DE39EF9002F3214 /* StorageService.swift in Sources */,
+				A10E98012DE39F23002F3214 /* TrainNumberSearchView.swift in Sources */,
+				A10E98022DE39F23002F3214 /* DestinationPickerView.swift in Sources */,
+				A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */,
+				A18E543C2DEB88F800AB2B74 /* LiveActivityWidget.swift in Sources */,
+				A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */,
+				A18E54362DEB88C900AB2B74 /* Train+LiveActivity.swift in Sources */,
+				A18E54382DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift in Sources */,
+				A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */,
+				A10E97F92DE39EF9002F3214 /* APIService.swift in Sources */,
+				A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */,
+				A10E97FB2DE39F0F002F3214 /* Extensions.swift in Sources */,
+				A10E98062DE39F23002F3214 /* DeparturePickerView.swift in Sources */,
+				A10E98DBA82DE39F23002F3214 /* TripSelectionView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1A1A1A1A1A1A1A1A1A1A1A22 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		1A1A1A1A1A1A1A1A1A1A1A23 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		1A1A1A1A1A1A1A1A1A1A1A25 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = D5RZZ55J9R;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TrackRat/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = net.trackrat.TrackRat;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = TrackRat;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1A1A1A1A1A1A1A1A1A1A1A26 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = D5RZZ55J9R;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TrackRat/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = net.trackrat.TrackRat;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = TrackRat;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1A1A1A1A1A1A1A1A1A1A1A0B /* Build configuration list for PBXProject "TrackRat" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A1A1A1A1A1A1A1A1A1A1A22 /* Debug */,
+				1A1A1A1A1A1A1A1A1A1A1A23 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1A1A1A1A1A1A1A1A1A1A1A24 /* Build configuration list for PBXNativeTarget "TrackRat" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A1A1A1A1A1A1A1A1A1A1A25 /* Debug */,
+				1A1A1A1A1A1A1A1A1A1A1A26 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1A1A1A1A1A1A1A1A1A1A1A08 /* Project object */;
+}

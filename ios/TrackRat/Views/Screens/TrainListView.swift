@@ -1,0 +1,459 @@
+import SwiftUI
+import Combine
+
+struct TrainListView: View {
+    @EnvironmentObject private var appState: AppState
+    @StateObject private var viewModel: TrainListViewModel
+    
+    let destination: String
+    
+    init(destination: String) {
+        self.destination = destination
+        self._viewModel = StateObject(wrappedValue: TrainListViewModel())
+    }
+    
+    var body: some View {
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+            
+            ScrollView {
+                    VStack(spacing: 16) {
+                        if viewModel.isLoading && viewModel.trains.isEmpty {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(1.5)
+                                .frame(maxWidth: .infinity, minHeight: 200)
+                        } else if let error = viewModel.error {
+                            ErrorView(message: error) {
+                                Task {
+                                    await viewModel.loadTrains(
+                                        destination: destination,
+                                        fromStationCode: appState.departureStationCode ?? "NY"
+                                    )
+                                }
+                            }
+                        } else if viewModel.trains.isEmpty {
+                            EmptyStateView(message: "No trains found")
+                        } else {
+                            ForEach(viewModel.trains) { train in
+                                TrainCard(train: train, destination: destination) {
+                                    appState.currentTrainId = train.id
+                                    // Use flexible navigation with train number
+                                    appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                                        trainNumber: train.trainId,
+                                        fromStation: appState.departureStationCode
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                    .padding()
+                }
+                .refreshable {
+                    await viewModel.loadTrains(
+                        destination: destination,
+                        fromStationCode: appState.departureStationCode ?? "NY"
+                    )
+                }
+            }
+        .navigationTitle(destination)
+        .navigationBarTitleDisplayMode(.inline)
+        .glassmorphicNavigationBar()
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text(destination)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    if let departure = appState.selectedDeparture {
+                        Text("from \(departure)")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                }
+            }
+        }
+        .task {
+            await viewModel.loadTrains(
+                destination: destination,
+                fromStationCode: appState.departureStationCode ?? "NY"
+            )
+        }
+        .onReceive(viewModel.timer) { _ in
+            Task {
+                await viewModel.refreshTrains()
+            }
+        }
+        .onAppear {
+            // Save the current trip when viewing train list
+            appState.saveCurrentTrip()
+        }
+    }
+}
+
+// MARK: - Train Card
+struct TrainCard: View {
+    @EnvironmentObject private var appState: AppState
+    let train: Train
+    let destination: String
+    let onTap: () -> Void
+    
+    private var departureTime: String {
+        if let departureCode = appState.departureStationCode {
+            return train.getFormattedDepartureTime(fromStationCode: departureCode)
+        }
+        let formatter = DateFormatter.easternTime(time: .short)
+        return formatter.string(from: train.departureTime)
+    }
+    
+    private var arrivalTime: String {
+        // Find the stop that matches the destination the user searched for
+        if let destinationStop = train.stops?.first(where: { 
+            $0.stationName.lowercased().contains(destination.lowercased()) 
+        }) {
+            let formatter = DateFormatter.easternTime(time: .short)
+            if let scheduledTime = destinationStop.scheduledTime {
+                return formatter.string(from: scheduledTime)
+            } else if let departureTime = destinationStop.departureTime {
+                return formatter.string(from: departureTime)
+            }
+        }
+        return "—"
+    }
+    
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Train header
+                HStack {
+                    if train.status == .boarding {
+                        Image(systemName: "circle.fill")
+                            .foregroundColor(.white)
+                            .font(.caption)
+                    }
+                    
+                    Text("Train \(train.trainId)")
+                        .font(.headline)
+                        .foregroundColor(train.status == .boarding ? .white : .black)
+                    
+                    Spacer()
+                    
+                    Text("\(departureTime) → \(arrivalTime)")
+                        .font(.subheadline)
+                        .foregroundColor(train.status == .boarding ? .white.opacity(0.9) : .black.opacity(0.7))
+                }
+                
+                // Track and status
+                HStack(spacing: 16) {
+                    if train.status == .boarding, let track = train.track {
+                        Label("Boarding on Track \(track)", systemImage: "tram.fill")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                            .fontWeight(.medium)
+                    } else {
+                        if let track = train.track, !track.isEmpty {
+                            Label("Track \(track)", systemImage: "tram")
+                                .font(.subheadline)
+                                .foregroundColor(.black.opacity(0.6))
+                        }
+                        
+                        if train.status != .scheduled && train.status != .unknown {
+                            StatusBadge(status: train.status, delayMinutes: train.delayMinutes)
+                        }
+                    }
+                }
+            }
+            .padding()
+            .background(train.status == .boarding ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
+            .cornerRadius(16)
+            .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Status Badge
+struct StatusBadge: View {
+    let status: TrainStatus
+    let delayMinutes: Int?
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 6, height: 6)
+            
+            Text(statusText)
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(statusColor.opacity(0.2))
+        .cornerRadius(8)
+    }
+    
+    private var statusColor: Color {
+        switch status {
+        case .onTime: return .green
+        case .delayed: return .red
+        case .boarding: return .orange
+        case .departed: return .gray
+        case .scheduled: return .gray
+        case .unknown: return .gray
+        }
+    }
+    
+    private var statusText: String {
+        switch status {
+        case .onTime: return "On Time"
+        case .delayed:
+            if let minutes = delayMinutes {
+                return "Delayed \(minutes)min"
+            }
+            return "Delayed"
+        case .boarding: return "Boarding"
+        case .departed: return "Departed"
+        case .scheduled: return "Scheduled"
+        case .unknown: return "Unknown"
+        }
+    }
+}
+
+// MARK: - View Model
+@MainActor
+class TrainListViewModel: ObservableObject {
+    @Published var trains: [Train] = []
+    @Published var isLoading = false
+    @Published var error: String?
+    
+    private var currentDestination: String?
+    private var currentFromStationCode: String?
+    private let apiService = APIService.shared
+    
+    // Timer for auto-refresh
+    let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    
+    func loadTrains(destination: String, fromStationCode: String) async {
+        self.currentDestination = destination
+        self.currentFromStationCode = fromStationCode
+        
+        isLoading = true
+        error = nil
+        
+        do {
+            guard let toStationCode = Stations.getStationCode(destination) else {
+                throw APIError.invalidURL
+            }
+            let fetchedTrains = try await apiService.searchTrains(
+                fromStationCode: fromStationCode,
+                toStationCode: toStationCode
+            )
+            
+            // Deduplicate trains by train_id with priority system
+            var trainMap: [String: Train] = [:]
+            for train in fetchedTrains {
+                if let existing = trainMap[train.trainId] {
+                    // Calculate priority scores (higher is better)
+                    let getPriority: (Train) -> Double = { t in
+                        var score: Double = 0
+                        
+                        // Priority 1: Train originates from user's departure station
+                        if let originCode = t.originStationCode,
+                           originCode == fromStationCode {
+                            score += 1000
+                        }
+                        
+                        // Priority 2: NJ Transit data over Amtrak data
+                        if t.dataSource == "njtransit" {
+                            score += 100
+                        }
+                        
+                        // Priority 3: Use departure_time as tiebreaker
+                        let timestamp = t.departureTime.timeIntervalSince1970 / 1000000000
+                        score += timestamp
+                        
+                        return score
+                    }
+                    
+                    let existingPriority = getPriority(existing)
+                    let currentPriority = getPriority(train)
+                    
+                    if currentPriority > existingPriority {
+                        trainMap[train.trainId] = train
+                    }
+                } else {
+                    trainMap[train.trainId] = train
+                }
+            }
+            
+            // Filter out trains departing more than 6 hours from now
+            let now = Date()
+            let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
+            
+            let filteredTrains = trainMap.values.filter { train in
+                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
+                return departureTime <= sixHoursFromNow
+            }
+            
+            // Sort trains by origin station departure time
+            trains = filteredTrains.sorted { train1, train2 in
+                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
+                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
+                return time1 < time2
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+        
+        isLoading = false
+    }
+    
+    func refreshTrains() async {
+        // Silent refresh without showing loading state
+        guard let destination = currentDestination,
+              let fromStationCode = currentFromStationCode,
+              let toStationCode = Stations.getStationCode(destination) else {
+            return
+        }
+        
+        do {
+            let fetchedTrains = try await apiService.searchTrains(
+                fromStationCode: fromStationCode,
+                toStationCode: toStationCode
+            )
+            
+            // Deduplicate trains by train_id with priority system
+            var trainMap: [String: Train] = [:]
+            for train in fetchedTrains {
+                if let existing = trainMap[train.trainId] {
+                    // Calculate priority scores (higher is better)
+                    let getPriority: (Train) -> Double = { t in
+                        var score: Double = 0
+                        
+                        // Priority 1: Train originates from user's departure station
+                        if let originCode = t.originStationCode,
+                           originCode == fromStationCode {
+                            score += 1000
+                        }
+                        
+                        // Priority 2: NJ Transit data over Amtrak data
+                        if t.dataSource == "njtransit" {
+                            score += 100
+                        }
+                        
+                        // Priority 3: Use departure_time as tiebreaker
+                        let timestamp = t.departureTime.timeIntervalSince1970 / 1000000000
+                        score += timestamp
+                        
+                        return score
+                    }
+                    
+                    let existingPriority = getPriority(existing)
+                    let currentPriority = getPriority(train)
+                    
+                    if currentPriority > existingPriority {
+                        trainMap[train.trainId] = train
+                    }
+                } else {
+                    trainMap[train.trainId] = train
+                }
+            }
+            
+            // Filter out trains departing more than 6 hours from now
+            let now = Date()
+            let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
+            
+            let filteredTrains = trainMap.values.filter { train in
+                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
+                return departureTime <= sixHoursFromNow
+            }
+            
+            // Sort trains by origin station departure time
+            let newTrains = filteredTrains.sorted { train1, train2 in
+                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
+                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
+                return time1 < time2
+            }
+            
+            // Check for boarding status changes
+            for (index, train) in trains.enumerated() {
+                if let newTrain = newTrains.first(where: { $0.id == train.id }) {
+                    if train.status != .boarding && newTrain.status == .boarding {
+                        // Haptic feedback for boarding status
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    }
+                    trains[index] = newTrain
+                }
+            }
+            
+            // Add any new trains
+            for newTrain in newTrains {
+                if !trains.contains(where: { $0.id == newTrain.id }) {
+                    trains.append(newTrain)
+                }
+            }
+            
+            // Sort by departure time
+            trains.sort { $0.departureTime < $1.departureTime }
+            
+        } catch {
+            // Silent failure for background refresh
+        }
+    }
+}
+
+// MARK: - Helper Views
+struct ErrorView: View {
+    let message: String
+    let retry: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundColor(.red)
+            
+            Text(message)
+                .multilineTextAlignment(.center)
+                .foregroundColor(.white)
+            
+            Button("Retry") {
+                retry()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct EmptyStateView: View {
+    let message: String
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "tram")
+                .font(.largeTitle)
+                .foregroundColor(.white.opacity(0.5))
+            
+            Text(message)
+                .foregroundColor(.white.opacity(0.7))
+        }
+        .padding()
+        .frame(maxWidth: .infinity, minHeight: 200)
+    }
+}
+
+#Preview {
+    NavigationStack {
+        TrainListView(destination: "Newark Penn Station")
+            .environmentObject(AppState())
+    }
+}

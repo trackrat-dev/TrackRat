@@ -1,0 +1,281 @@
+import SwiftUI
+
+struct DeparturePickerView: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var searchText = ""
+    @State private var isSearching = false
+    @FocusState private var searchFieldFocused: Bool
+    
+    private var searchResults: [String] {
+        Stations.search(searchText)
+    }
+    
+    var body: some View {
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+            
+            
+            VStack(spacing: 32) {
+                // Title with spacing
+                VStack(spacing: 8) {
+                    Text("Where are you")
+                        .font(.largeTitle)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    
+                    Text("departing from?")
+                        .font(.largeTitle)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                }
+                .padding(.top, 100)
+                
+                VStack(spacing: 20) {
+                    // Recent departures
+                    if !appState.recentDepartures.isEmpty && !isSearching {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("RECENT DEPARTURES")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white.opacity(0.7))
+                                .padding(.horizontal)
+                            
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(appState.recentDepartures, id: \.code) { departure in
+                                        RecentDeparturePill(
+                                            departure: departure,
+                                            onTap: {
+                                                selectDeparture(name: departure.name, code: departure.code)
+                                            }
+                                        )
+                                    }
+                                }
+                                .padding(.horizontal)
+                            }
+                        }
+                    }
+                    
+                    // Popular stations
+                    if !isSearching {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("POPULAR STATIONS")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white.opacity(0.7))
+                                .padding(.horizontal)
+                            
+                            VStack(spacing: 12) {
+                                ForEach(Stations.departureStations, id: \.code) { station in
+                                    DepartureButton(
+                                        name: station.name,
+                                        code: station.code,
+                                        onTap: {
+                                            selectDeparture(name: station.name, code: station.code)
+                                        }
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, 24)
+                        }
+                    }
+                    
+                    // Search field
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.white.opacity(0.6))
+                        
+                        TextField("Search all stations", text: $searchText)
+                            .foregroundColor(.white)
+                            .focused($searchFieldFocused)
+                            .onChange(of: searchText) { _, newValue in
+                                isSearching = !newValue.isEmpty
+                            }
+                            .onSubmit {
+                                if let firstResult = searchResults.first,
+                                   let code = Stations.getStationCode(firstResult) {
+                                    selectDeparture(name: firstResult, code: code)
+                                }
+                            }
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.white.opacity(0.2))
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.white.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                    .padding(.horizontal, 24)
+                    
+                    // Search results
+                    if isSearching {
+                        ScrollView {
+                            VStack(spacing: 8) {
+                                ForEach(searchResults, id: \.self) { station in
+                                    Button {
+                                        if let code = Stations.getStationCode(station) {
+                                            selectDeparture(name: station, code: code)
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Text(station)
+                                                .font(.body)
+                                                .foregroundColor(.white)
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .font(.system(size: 14, weight: .semibold))
+                                                .foregroundColor(.white.opacity(0.6))
+                                        }
+                                        .padding()
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .fill(.white.opacity(0.15))
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                                                )
+                                        )
+                                    }
+                                    .padding(.horizontal, 24)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 300)
+                    }
+                }
+                
+                Spacer()
+                Spacer()
+            }
+        }
+        .navigationTitle("Select Departure")
+        .navigationBarTitleDisplayMode(.inline)
+        .glassmorphicNavigationBar()
+    }
+    
+    private func selectDeparture(name: String, code: String) {
+        appState.selectedDeparture = name
+        appState.departureStationCode = code
+        appState.saveDeparture() // Save to recent departures
+        appState.navigationPath.append(NavigationDestination.destinationPicker)
+        
+        // Reset search
+        searchText = ""
+        isSearching = false
+        searchFieldFocused = false
+        
+        // Haptic feedback
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+}
+
+// MARK: - Departure Button
+struct DepartureButton: View {
+    let name: String
+    let code: String
+    let onTap: () -> Void
+    
+    private var displayName: String {
+        // Simplify display names for better UI
+        switch name {
+        case "New York Penn Station":
+            return "New York Penn"
+        case "Newark Penn Station":
+            return "Newark Penn"
+        default:
+            return name
+        }
+    }
+    
+    var body: some View {
+        Button {
+            onTap()
+        } label: {
+            HStack {
+                Text(displayName)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.white.opacity(0.7))
+                    .font(.caption)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(.white.opacity(0.2))
+            .cornerRadius(12)
+        }
+    }
+}
+
+// MARK: - Recent Departure Pill
+struct RecentDeparturePill: View {
+    let departure: RecentDeparture
+    let onTap: () -> Void
+    @EnvironmentObject private var appState: AppState
+    
+    private var displayName: String {
+        // Simplify display names for better UI
+        switch departure.name {
+        case "New York Penn Station":
+            return "NY Penn"
+        case "Newark Penn Station":
+            return "Newark Penn"
+        default:
+            return departure.name
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                onTap()
+            } label: {
+                Text(displayName)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+            }
+            
+            Button {
+                withAnimation {
+                    removeDeparture()
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            Capsule()
+                .fill(.white.opacity(0.2))
+                .background(
+                    Capsule()
+                        .stroke(.white.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+    
+    private func removeDeparture() {
+        appState.removeDeparture(departure)
+    }
+}
+
+#Preview {
+    DeparturePickerView()
+        .environmentObject(AppState())
+}

@@ -1,0 +1,64 @@
+# API Configuration
+njtransit_api:
+  base_url: "https://raildata.njtransit.com/api/TrainData"
+  stations:
+    - code: "NY"
+      name: "New York Penn Station"
+      enabled: true
+    - code: "TR"
+      name: "Trenton Transit Center"
+      enabled: true
+    - code: "PJ"
+      name: "Princeton Junction"
+      enabled: true
+    - code: "MP"
+      name: "Metropark"
+      enabled: true
+    - code: "NP"
+      name: "Newark Penn Station"
+      enabled: true
+  polling_interval_seconds: 60
+  retry_attempts: 3
+  timeout_seconds: 10
+  username: ""  # Set via NJT_USERNAME env var
+  password: ""  # Set via NJT_PASSWORD env var
+  debug_mode: false
+
+amtrak_api:
+  base_url: "https://api-v3.amtraker.com/v3/trains"
+  enabled: true
+  polling_interval_seconds: 120  # Slightly longer interval than NJ Transit
+  retry_attempts: 3
+  timeout_seconds: 15
+  debug_mode: true
+
+# Database Configuration
+database:
+  url: "postgresql://andy@localhost:5432/trackcast_dev"
+  pool_size: 10
+  max_overflow: 25
+
+# Scheduler Configuration
+scheduler:
+  collection_interval_minutes: 1
+  feature_engineering_interval_minutes: 1
+  prediction_interval_minutes: 2
+
+# Model Configuration
+model:
+  version: "1.0.0"
+  save_path: "models/"
+  type: "pytorch"  # or "xgboost"
+  hyperparameters:
+    learning_rate: 0.001
+    hidden_layers: [128, 64, 32]
+    dropout_rate: 0.3
+    batch_size: 64
+    num_epochs: 50
+
+# Timezone Configuration
+timezone:
+  display_timezone: "US/Eastern"
+  storage_timezone: "US/Eastern"
+  api_response_timezone: "US/Eastern"
+

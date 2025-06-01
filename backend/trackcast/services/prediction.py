@@ -1,0 +1,464 @@
+"""
+Prediction service for TrackCast.
+
+This module provides the service that generates track predictions
+for upcoming trains using the trained machine learning model.
+"""
+
+import logging
+import time
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional, Tuple
+
+from sqlalchemy.orm import Session
+
+from trackcast.db.models import PredictionData, Train
+from trackcast.db.repository import PredictionDataRepository, TrainRepository
+from trackcast.models.pipeline import TrackPredictionPipeline
+
+logger = logging.getLogger(__name__)
+
+
+class PredictionService:
+    """Service that generates track predictions for upcoming trains."""
+
+    def __init__(self, db_session: Session):
+        """
+        Initialize the prediction service.
+
+        Args:
+            db_session: SQLAlchemy database session
+        """
+        self.session = db_session
+        self.train_repo = TrainRepository(db_session)
+        self.prediction_repo = PredictionDataRepository(db_session)
+        # Station-specific model cache
+        self.models = {}  # {station_code: model}
+        self.model_infos = {}  # {station_code: model_info}
+
+    def _load_model_for_station(self, station_code: str) -> bool:
+        """
+        Load the latest trained model for a specific station.
+
+        Args:
+            station_code: Station code to load model for
+
+        Returns:
+            True if model loaded successfully, False otherwise
+        """
+        try:
+            # Find the latest model files for this station
+            model_info = TrackPredictionPipeline.find_latest_model(station_code=station_code)
+            if not model_info:
+                logger.warning(f"No trained model found for station {station_code}. Train a model first using: trackcast train-model --station {station_code}")
+                return False
+
+            # If the model is already loaded for this station, check if it's the same version
+            if (
+                station_code in self.models
+                and station_code in self.model_infos
+                and self.model_infos[station_code]["version"] == model_info["version"]
+                and self.model_infos[station_code]["timestamp"] == model_info["timestamp"]
+            ):
+                logger.debug(f"Model already loaded for station {station_code} (version: {model_info['version']})")
+                return True
+
+            # Load the model
+            logger.info(
+                f"Loading model for station {station_code}, version {model_info['version']} from {model_info['model_path']}"
+            )
+            model = TrackPredictionPipeline()
+            model.load(
+                model_path=model_info["model_path"],
+                metadata_path=model_info["metadata_path"],
+                scaler_path=model_info["scaler_path"],
+            )
+            
+            # Store in cache
+            self.models[station_code] = model
+            self.model_infos[station_code] = model_info
+
+            logger.info(f"Model loaded successfully for station {station_code} (version: {model_info['version']})")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error loading model for station {station_code}: {str(e)}")
+            # Remove from cache if loading failed
+            self.models.pop(station_code, None)
+            self.model_infos.pop(station_code, None)
+            return False
+
+    def run_prediction(self) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Run a prediction cycle for all trains needing predictions.
+
+        Returns:
+            Tuple containing success status and statistics dictionary
+        """
+        start_time = time.time()
+        stats = {
+            "timestamp": datetime.now().isoformat(),
+            "model_version": None,
+            "trains_processed": 0,
+            "trains_predicted": 0,
+            "trains_skipped": 0,
+            "trains_failed": 0,
+            "duration_ms": 0,
+        }
+
+        try:
+            # Get trains that need predictions
+            logger.info("Retrieving trains that need predictions")
+            trains = self.train_repo.get_trains_needing_predictions()
+
+            if not trains:
+                logger.info("No trains found needing predictions")
+                stats["duration_ms"] = int((time.time() - start_time) * 1000)
+                return True, stats
+
+            logger.info(f"Generating predictions for {len(trains)} trains")
+            stats["trains_processed"] = len(trains)
+
+            # Group trains by station for efficient model loading
+            trains_by_station = {}
+            for train in trains:
+                station_code = train.origin_station_code
+                if station_code not in trains_by_station:
+                    trains_by_station[station_code] = []
+                trains_by_station[station_code].append(train)
+
+            # Process trains by station
+            station_models_loaded = []
+            for station_code, station_trains in trains_by_station.items():
+                logger.info(f"Processing {len(station_trains)} trains for station {station_code}")
+                
+                # Load model for this station if not already loaded
+                if not self._load_model_for_station(station_code):
+                    logger.warning(f"No model found for station {station_code}, skipping {len(station_trains)} trains. Train a model for this station first.")
+                    stats["trains_skipped"] += len(station_trains)
+                    continue
+                    
+                station_models_loaded.append(station_code)
+                
+                # Process each train for this station
+                for train in station_trains:
+                    try:
+                        # Skip trains without features
+                        if not train.model_data:
+                            logger.warning(f"Skipping train {train.train_id}: missing features")
+                            stats["trains_skipped"] += 1
+                            continue
+
+                        # Skip trains with existing predictions
+                        if train.prediction_data:
+                            logger.debug(f"Skipping train {train.train_id}: already has predictions")
+                            stats["trains_skipped"] += 1
+                            continue
+
+                        # Generate prediction using station-specific model
+                        prediction_result = self._predict_train(train)
+                        if prediction_result:
+                            stats["trains_predicted"] += 1
+                        else:
+                            stats["trains_failed"] += 1
+
+                    except Exception as e:
+                        logger.error(f"Error predicting train {train.train_id}: {str(e)}")
+                        stats["trains_failed"] += 1
+            
+            # Set model versions in stats (comma-separated list)
+            model_versions = []
+            for station_code in station_models_loaded:
+                if station_code in self.model_infos:
+                    model_versions.append(f"{station_code}:{self.model_infos[station_code]['version']}")
+            stats["model_versions"] = ", ".join(model_versions)
+
+            # Calculate duration
+            stats["duration_ms"] = int((time.time() - start_time) * 1000)
+
+            logger.info(
+                f"Prediction cycle completed: {stats['trains_predicted']} predicted, "
+                f"{stats['trains_skipped']} skipped, {stats['trains_failed']} failed "
+                f"in {stats['duration_ms']}ms"
+            )
+
+            return stats["trains_predicted"] > 0, stats
+
+        except Exception as e:
+            logger.error(f"Error in prediction cycle: {str(e)}")
+            stats["error"] = str(e)
+            stats["duration_ms"] = int((time.time() - start_time) * 1000)
+            return False, stats
+
+    def predict_train(self, train_id: str) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Generate a prediction for a specific train by ID.
+
+        Args:
+            train_id: Train ID to predict
+
+        Returns:
+            Tuple containing success status and result dictionary
+        """
+        start_time = time.time()
+        result = {
+            "timestamp": datetime.now().isoformat(),
+            "train_id": train_id,
+            "success": False,
+            "track_probabilities": None,
+            "prediction_factors": None,
+            "duration_ms": 0,
+        }
+
+        try:
+            # Get train
+            train = self.train_repo.get_train_by_id(train_id)
+
+            if not train:
+                logger.error(f"Train not found with ID {train_id}")
+                result["error"] = f"Train not found with ID {train_id}"
+                result["duration_ms"] = int((time.time() - start_time) * 1000)
+                return False, result
+
+            # Check if train already has a track assigned
+            if train.track:
+                logger.info(f"Train {train_id} already has track {train.track} assigned")
+                result["success"] = True
+                result["info"] = f"Train already has track {train.track} assigned"
+                result["track"] = train.track
+                result["duration_ms"] = int((time.time() - start_time) * 1000)
+                return True, result
+
+            # Check if train has features
+            if not train.model_data:
+                logger.error(f"Train {train_id} has no features. Process features first.")
+                result["error"] = "Train has no features. Process features first."
+                result["duration_ms"] = int((time.time() - start_time) * 1000)
+                return False, result
+                
+            # Load model for train's origin station
+            station_code = train.origin_station_code
+            if not self._load_model_for_station(station_code):
+                result["error"] = f"Failed to load model for station {station_code}"
+                result["duration_ms"] = int((time.time() - start_time) * 1000)
+                return False, result
+
+            # Generate prediction
+            prediction_result = self._predict_train(train)
+
+            if not prediction_result:
+                result["error"] = "Prediction failed"
+                result["duration_ms"] = int((time.time() - start_time) * 1000)
+                return False, result
+
+            # Get the actual prediction data
+            track_probs = prediction_result.track_probabilities
+            prediction_factors = prediction_result.prediction_factors
+
+            result["success"] = True
+            result["track_probabilities"] = track_probs
+            result["prediction_factors"] = prediction_factors
+
+            # Get the top predicted track
+            if track_probs:
+                top_track = max(track_probs.items(), key=lambda x: x[1])
+                result["top_track"] = top_track[0]
+                result["top_probability"] = float(top_track[1])
+
+            result["model_version"] = self.model_infos[station_code]["version"]
+            result["prediction_id"] = prediction_result.id
+            result["duration_ms"] = int((time.time() - start_time) * 1000)
+
+            return True, result
+
+        except Exception as e:
+            logger.error(f"Error predicting train {train_id}: {str(e)}")
+            result["error"] = str(e)
+            result["duration_ms"] = int((time.time() - start_time) * 1000)
+            return False, result
+
+    def _predict_train(self, train: Train) -> Optional[PredictionData]:
+        """
+        Generate a prediction for a train and save to database.
+
+        Args:
+            train: Train object to predict
+
+        Returns:
+            PredictionData object if successful, None otherwise
+        """
+        try:
+            # Get the model for this train's origin station
+            station_code = train.origin_station_code
+            if station_code not in self.models:
+                logger.error(f"No model loaded for station {station_code}")
+                return None
+                
+            model = self.models[station_code]
+            model_info = self.model_infos[station_code]
+            
+            # Generate prediction
+            predictions = model.predict([train.model_data])
+            if not predictions:
+                logger.error(f"Model returned no predictions for train {train.train_id}")
+                return None
+
+            # Get the prediction for this train
+            track_probabilities = predictions[0]
+            
+            # Check for empty predictions
+            if not track_probabilities:
+                logger.error(f"Model returned empty track probabilities for train {train.train_id}")
+                return None
+                
+            # Log top predictions
+            top_tracks = sorted(track_probabilities.items(), key=lambda x: x[1], reverse=True)[:3]
+            logger.info(f"Top 3 predicted tracks for train {train.train_id} from {station_code}: {top_tracks}")
+
+            # Generate explanation factors
+            try:
+                prediction_factors = model.get_prediction_factors(train.model_data)
+            except Exception as factor_error:
+                logger.error(f"Error generating prediction factors for train {train.train_id}: {str(factor_error)}")
+                prediction_factors = [{
+                    "feature": "error", 
+                    "importance": 0.0, 
+                    "direction": "neutral",
+                    "explanation": f"Failed to generate explanation: {str(factor_error)}"
+                }]
+
+            # Create prediction data
+            prediction_data = {
+                "model_data_id": train.model_data_id,
+                "track_probabilities": track_probabilities,
+                "prediction_factors": prediction_factors,
+                "model_version": model_info["version"],
+            }
+
+            # Save to database
+            prediction = self.prediction_repo.create_prediction(prediction_data)
+
+            # Associate with train
+            train.prediction_data_id = prediction.id
+            self.session.commit()
+
+            logger.info(f"Created prediction for train {train.train_id}")
+            return prediction
+
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Error generating prediction for train {train.train_id}: {str(e)}")
+            return None
+
+    def run_prediction_with_regeneration(self) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Run a prediction cycle for all trains needing predictions,
+        first clearing any existing predictions for future trains to ensure regeneration.
+
+        Returns:
+            Tuple containing success status and statistics dictionary
+        """
+        start_time = time.time()
+        now = datetime.now()
+        end_time = now + timedelta(hours=24)  # Regenerate predictions for next 24 hours
+
+        stats = {
+            "timestamp": datetime.now().isoformat(),
+            "model_versions": {},  # Changed to support multiple station models
+            "regeneration": True,
+            "predictions_cleared": 0,
+            "trains_processed": 0,
+            "trains_predicted": 0,
+            "trains_skipped": 0,
+            "trains_failed": 0,
+            "duration_ms": 0,
+        }
+
+        try:
+            # Clear predictions for future trains
+            logger.info(f"Clearing predictions for trains from {now} to {end_time} for regeneration")
+            clear_stats = self.train_repo.clear_predictions_for_time_range(now, end_time)
+            stats["predictions_cleared"] = clear_stats["predictions_deleted"]
+            stats["trains_cleared"] = clear_stats["trains_cleared"]
+
+            # Now run the normal prediction process which will include the trains we just cleared
+            logger.info("Running normal prediction process to regenerate predictions")
+            success, predict_stats = self.run_prediction()
+
+            # Update stats with prediction results
+            stats.update({
+                "trains_processed": predict_stats.get("trains_processed", 0),
+                "trains_predicted": predict_stats.get("trains_predicted", 0),
+                "trains_skipped": predict_stats.get("trains_skipped", 0),
+                "trains_failed": predict_stats.get("trains_failed", 0),
+                "model_versions": predict_stats.get("model_versions", {}),
+                "duration_ms": int((time.time() - start_time) * 1000)
+            })
+
+            if "error" in predict_stats:
+                stats["error"] = predict_stats["error"]
+
+            logger.info(
+                f"Prediction regeneration completed: cleared {stats['predictions_cleared']} predictions, "
+                f"regenerated {stats['trains_predicted']} in {stats['duration_ms']}ms"
+            )
+
+            return success, stats
+
+        except Exception as e:
+            logger.error(f"Error in prediction regeneration: {str(e)}")
+            stats["error"] = str(e)
+            stats["duration_ms"] = int((time.time() - start_time) * 1000)
+            return False, stats
+
+    def clear_all_predictions(self) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Clear all predictions from the database.
+
+        Returns:
+            Tuple containing success status and statistics dictionary
+        """
+        start_time = time.time()
+        stats = {
+            "timestamp": datetime.now().isoformat(),
+            "duration_ms": 0,
+        }
+
+        try:
+            logger.info("Clearing all predictions from the database")
+            clear_stats = self.train_repo.clear_all_predictions()
+
+            # Update stats with clearing results
+            stats.update(clear_stats)
+            stats["duration_ms"] = int((time.time() - start_time) * 1000)
+
+            logger.info(f"Prediction clearing completed: {clear_stats['predictions_deleted']} predictions deleted "
+                        f"from {clear_stats['trains_cleared']} trains in {stats['duration_ms']}ms")
+
+            return True, stats
+
+        except Exception as e:
+            logger.error(f"Error clearing predictions: {str(e)}")
+            stats["error"] = str(e)
+            stats["duration_ms"] = int((time.time() - start_time) * 1000)
+            return False, stats
+
+    def evaluate_performance(self, days: int = 7) -> Dict[str, Any]:
+        """
+        Evaluate prediction performance on recent data.
+
+        Args:
+            days: Number of days to look back
+
+        Returns:
+            Dictionary with evaluation metrics
+        """
+        from trackcast.models.training import evaluate_model_performance
+
+        try:
+            # Delegate to the training module's evaluation function
+            return evaluate_model_performance(self.session, days)
+
+        except Exception as e:
+            logger.error(f"Error evaluating prediction performance: {str(e)}")
+            return {"status": "error", "timestamp": datetime.now().isoformat(), "message": str(e)}

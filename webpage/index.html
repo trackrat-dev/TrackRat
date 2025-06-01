@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NYP Scout</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <div class="header">
+        </div>
+
+        <div class="screen" id="departure-screen">
+            <div class="question">
+                <h2>Where will you be departing from?</h2>
+            </div>
+            <div class="options">
+                <button class="option-btn" data-action="depart-ny">New York Penn Station</button>
+                <button class="option-btn" data-action="depart-newark">Newark Penn Station</button>
+                <button class="option-btn" data-action="depart-metropark">Metropark</button>
+                <button class="option-btn" data-action="depart-princeton">Princeton Junction</button>
+                <button class="option-btn" data-action="depart-trenton">Trenton</button>
+            </div>
+        </div>
+
+        <div class="screen hidden" id="main-screen">
+            <div class="question">
+                <h2>Where would you like to go?</h2>
+            </div>
+            <div class="destination-section">
+                <div class="destination-buttons">
+                    <div class="recent-destinations" id="recent-destinations" style="display: none;">
+                        <div class="recent-list" id="recent-list"></div>
+                    </div>
+                    <div class="new-destination-btn" id="new-destination-btn">
+                        + New Destination
+                    </div>
+                </div>
+                <div class="autocomplete-container" id="autocomplete-container" style="display: none;">
+                    <input type="text" id="destination-input" placeholder="Type a station name..." autocomplete="off">
+                    <div class="autocomplete-dropdown" id="autocomplete-dropdown"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="screen hidden" id="leaving-soon-screen">
+            <div class="train-details-content">
+                <div class="train-info">
+                    <div class="info-section">
+                        <div class="go-back-container">
+                            <a href="#" class="go-back-link" data-action="start-over">← Go back</a>
+                        </div>
+                        <div class="section-header">
+                            <h3 id="destination-title">Loading...</h3>
+                        </div>
+                        <div class="trains-list" id="trains-list">
+                            <div class="loading-message">Loading trains...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="screen hidden" id="train-input-screen">
+            <div class="go-back-container">
+                <button class="back-btn" data-back="main-screen">← Back</button>
+            </div>
+            <div class="question">
+                <h2>What's your train number?</h2>
+            </div>
+            <div class="input-section">
+                <input type="text" id="train-number" placeholder="e.g. NJ 3923" maxlength="10">
+                <button class="submit-btn" id="submit-train">Find my train</button>
+            </div>
+        </div>
+
+        <div class="screen hidden" id="train-details-screen">
+            <div class="train-details-content">
+                <div class="train-info">
+                    <div class="info-section">
+                        <div class="go-back-container">
+                            <a href="#" class="go-back-link" data-back="leaving-soon-screen">← Go back</a>
+                        </div>
+                        <div class="section-header">
+                            <h3 id="train-title">Loading train details...</h3>
+                        </div>
+                        <div class="info-grid" id="basic-info">
+                            <div class="loading">Loading...</div>
+                        </div>
+                        <div class="station-stops-content" id="station-stops-info">
+                        </div>
+                        <div class="historical-patterns-toggle" id="historical-patterns-toggle">
+                            details from past trains
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="screen hidden" id="historical-patterns-screen">
+            <div class="train-details-content">
+                <div class="train-info">
+                    <div class="info-section">
+                        <div class="go-back-container">
+                            <a href="#" class="go-back-link" data-back="train-details-screen">← Go back</a>
+                        </div>
+                        <div class="section-header">
+                            <h3 id="historical-train-title">Historical Data</h3>
+                        </div>
+                        <div id="historical-patterns-content">
+                        </div>
+                        <div id="track-usage-content">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="screen hidden" id="coming-soon-screen">
+            <div class="go-back-container">
+                <button class="back-btn" data-back="departure-screen">← Back to start</button>
+            </div>
+            <div class="question">
+                <h2>Coming Soon!</h2>
+                <p>This feature is under development.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

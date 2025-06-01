@@ -1,0 +1,59 @@
+database:
+  url: "sqlite:///:memory:"
+  echo: false
+
+api:
+  host: "127.0.0.1"
+  port: 8000
+
+njtransit_api:
+  base_url: "https://localhost"
+  stations:
+    - code: "NY"
+      name: "New York Penn Station"
+      enabled: true
+    - code: "TR"
+      name: "Trenton Transit Center"
+      enabled: true
+    - code: "PJ"
+      name: "Princeton Junction"
+      enabled: true
+    - code: "MP"
+      name: "Metropark"
+      enabled: true
+    - code: "NP"
+      name: "Newark Penn Station"
+      enabled: true
+  polling_interval_seconds: 60
+  retry_attempts: 1
+  timeout_seconds: 5
+  username: "test_user"
+  password: "test_pass"
+  debug_mode: true
+
+amtrak_api:
+  base_url: "https://localhost"
+  enabled: false  # Disabled in test environment
+  polling_interval_seconds: 120
+  retry_attempts: 1
+  timeout_seconds: 5
+  debug_mode: true
+
+features:
+  version: "test"
+
+model:
+  version: "test"
+  save_path: "/tmp/trackcast_test_models"
+  type: "pytorch"
+  hyperparameters:
+    hidden_layers: [128, 64, 32]
+    learning_rate: 0.001
+    batch_size: 32
+    num_epochs: 50
+    dropout_rate: 0.3
+
+timezone:
+  display_timezone: "US/Eastern"
+  storage_timezone: "US/Eastern"
+  api_response_timezone: "US/Eastern"
