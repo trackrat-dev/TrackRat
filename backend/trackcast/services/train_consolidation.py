@@ -396,7 +396,9 @@ class TrainConsolidationService:
                 stop_status[stop.station_code]["departed"] = True
                 
         # Find last departed and next station
-        sorted_stops = sorted(stop_status.items(), key=lambda x: x[1]["scheduled_time"] or datetime.min)
+        # Use a very early datetime for None values to sort them first
+        min_datetime = datetime(1900, 1, 1)
+        sorted_stops = sorted(stop_status.items(), key=lambda x: x[1]["scheduled_time"] or min_datetime)
         last_departed = None
         next_station = None
         
@@ -414,7 +416,7 @@ class TrainConsolidationService:
                 "next_station": {
                     "code": sorted_stops[0][0],
                     "name": sorted_stops[0][1]["station_name"],
-                    "scheduled_arrival": sorted_stops[0][1]["scheduled_time"].isoformat()
+                    "scheduled_arrival": sorted_stops[0][1]["scheduled_time"].isoformat() if sorted_stops[0][1]["scheduled_time"] else None
                 } if sorted_stops else None
             }
             
@@ -422,7 +424,7 @@ class TrainConsolidationService:
             "last_departed_station": {
                 "code": last_departed[0],
                 "name": last_departed[1]["station_name"],
-                "scheduled_departure": last_departed[1]["scheduled_time"].isoformat()
+                "scheduled_departure": last_departed[1]["scheduled_time"].isoformat() if last_departed[1]["scheduled_time"] else None
             }
         }
         
@@ -430,7 +432,7 @@ class TrainConsolidationService:
             position["next_station"] = {
                 "code": next_station[0],
                 "name": next_station[1]["station_name"],
-                "scheduled_arrival": next_station[1]["scheduled_time"].isoformat()
+                "scheduled_arrival": next_station[1]["scheduled_time"].isoformat() if next_station[1]["scheduled_time"] else None
             }
             # Could calculate segment progress here if we had real-time position data
             
