@@ -499,20 +499,30 @@ class StationMapper:
         if not time_str:
             return None
         
-        # Ensure we have a string
-        if not isinstance(time_str, str):
-            logger.warning(f"Expected string for time normalization, got {type(time_str)}: {time_str}")
+        from datetime import datetime, timedelta
+        
+        # Handle different input types
+        if isinstance(time_str, datetime):
+            # Already a datetime object, just normalize it
+            dt = time_str
+        elif isinstance(time_str, str):
+            # Parse string to datetime
+            try:
+                dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+            except ValueError:
+                logger.warning(f"Failed to parse time string: {time_str}")
+                return time_str
+        else:
+            # Unexpected type, log and return as string
+            logger.debug(f"Converting {type(time_str)} to string for time normalization: {time_str}")
             return str(time_str) if time_str is not None else None
         
         try:
-            from datetime import datetime
-            # Parse the time
-            dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+            # dt is already set above based on input type
             
             # Round seconds to nearest minute
             if dt.second >= 30:
                 # Round up - add one minute
-                from datetime import timedelta
                 dt = dt.replace(second=0, microsecond=0)
                 dt = dt + timedelta(minutes=1)
             else:
