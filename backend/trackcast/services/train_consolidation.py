@@ -110,9 +110,42 @@ class TrainConsolidationService:
         logger.info(f"Journeys match for {train1.train_id}")
         
         # Route validation: Check if they share the same route pattern
+        # For trains with very strong journey matching (≥80% stations match), 
+        # we can be more lenient about route ordering differences
         if not self._same_route_pattern(train1, train2):
-            logger.info(f"Route patterns don't match for {train1.train_id}")
-            return False
+            # Calculate journey match strength
+            if not hasattr(train1, 'stops') or not hasattr(train2, 'stops'):
+                logger.info(f"Route patterns don't match for {train1.train_id} (no stops data)")
+                return False
+                
+            # Get common stations count from journey matching
+            from trackcast.services.station_mapping import StationMapper
+            station_mapper = StationMapper()
+            
+            train1_schedule = {}
+            train2_schedule = {}
+            
+            for stop in train1.stops:
+                if stop.station_code and stop.scheduled_time:
+                    normalized = station_mapper.normalize_amtrak_station(stop.station_code, stop.station_name)
+                    station_code = normalized["code"] if normalized["code"] else stop.station_code
+                    train1_schedule[station_code] = stop.scheduled_time
+                    
+            for stop in train2.stops:
+                if stop.station_code and stop.scheduled_time:
+                    normalized = station_mapper.normalize_amtrak_station(stop.station_code, stop.station_name)
+                    station_code = normalized["code"] if normalized["code"] else stop.station_code
+                    train2_schedule[station_code] = stop.scheduled_time
+            
+            common_stations = set(train1_schedule.keys()) & set(train2_schedule.keys())
+            match_strength = len(common_stations) / max(len(train1_schedule), len(train2_schedule)) if train1_schedule and train2_schedule else 0
+            
+            if match_strength >= 0.8:  # 80% or more stations match
+                logger.info(f"Route patterns don't match for {train1.train_id}, but journey match strength is {match_strength:.1%} - allowing consolidation")
+                return True
+            else:
+                logger.info(f"Route patterns don't match for {train1.train_id}, journey match strength only {match_strength:.1%} - rejecting")
+                return False
             
         logger.info(f"Route patterns match for {train1.train_id}")
         return True
