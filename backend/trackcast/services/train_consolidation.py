@@ -51,6 +51,7 @@ class TrainConsolidationService:
         Returns:
             Dictionary mapping journey IDs to lists of related trains
         """
+        logger.info(f"Grouping {len(trains)} trains by journey")
         journey_groups = defaultdict(list)
         processed = set()
         
@@ -61,19 +62,25 @@ class TrainConsolidationService:
             # Start a new journey group with this train
             journey_trains = [train1]
             processed.add(i)
+            logger.info(f"Starting new journey group with train {train1.train_id} from {train1.origin_station_code}")
             
             # Find all other trains that match this journey
             for j, train2 in enumerate(trains):
                 if j <= i or j in processed:
                     continue
                     
+                logger.info(f"Testing if train {train1.train_id} ({train1.origin_station_code}) matches {train2.train_id} ({train2.origin_station_code})")
                 if self._trains_match(train1, train2):
+                    logger.info(f"✓ Trains match: {train1.train_id} ({train1.origin_station_code}) + {train2.train_id} ({train2.origin_station_code})")
                     journey_trains.append(train2)
                     processed.add(j)
+                else:
+                    logger.info(f"✗ Trains don't match: {train1.train_id} ({train1.origin_station_code}) vs {train2.train_id} ({train2.origin_station_code})")
             
             # Generate journey ID and store group
             journey_id = self._get_journey_id(journey_trains)
             journey_groups[journey_id] = journey_trains
+            logger.info(f"Created journey group '{journey_id}' with {len(journey_trains)} trains")
             
         return dict(journey_groups)
     
@@ -90,16 +97,24 @@ class TrainConsolidationService:
         """
         # Primary match: Same train ID
         if train1.train_id != train2.train_id:
+            logger.info(f"Train IDs don't match: {train1.train_id} vs {train2.train_id}")
             return False
             
+        logger.info(f"Train IDs match: {train1.train_id}")
+        
         # Check if trains share the same journey by comparing stop times
         if not self._same_journey(train1, train2):
+            logger.info(f"Journeys don't match for {train1.train_id}")
             return False
             
+        logger.info(f"Journeys match for {train1.train_id}")
+        
         # Route validation: Check if they share the same route pattern
         if not self._same_route_pattern(train1, train2):
+            logger.info(f"Route patterns don't match for {train1.train_id}")
             return False
             
+        logger.info(f"Route patterns match for {train1.train_id}")
         return True
     
     def _same_journey(self, train1: Train, train2: Train) -> bool:
@@ -129,6 +144,8 @@ class TrainConsolidationService:
                 # Normalize station code in case it's from Amtrak
                 normalized = station_mapper.normalize_amtrak_station(stop.station_code, stop.station_name)
                 station_code = normalized["code"] if normalized["code"] else stop.station_code
+                if stop.station_code != station_code:
+                    logger.info(f"Normalized station {stop.station_code} -> {station_code} for train1")
                 train1_schedule[station_code] = stop.scheduled_time
                 
         for stop in train2.stops:
@@ -136,13 +153,15 @@ class TrainConsolidationService:
                 # Normalize station code in case it's from Amtrak
                 normalized = station_mapper.normalize_amtrak_station(stop.station_code, stop.station_name)
                 station_code = normalized["code"] if normalized["code"] else stop.station_code
+                if stop.station_code != station_code:
+                    logger.info(f"Normalized station {stop.station_code} -> {station_code} for train2")
                 train2_schedule[station_code] = stop.scheduled_time
         
         # Find common stations
         common_stations = set(train1_schedule.keys()) & set(train2_schedule.keys())
         
         if len(common_stations) < 2:
-            logger.debug(f"Trains {train1.train_id} and {train2.train_id} have fewer than 2 common stations")
+            logger.info(f"Trains {train1.train_id} and {train2.train_id} have fewer than 2 common stations")
             return False
         
         # Count stations with matching times (within tolerance)
@@ -154,14 +173,14 @@ class TrainConsolidationService:
             
             if time_diff <= self.time_tolerance:
                 matching_stations += 1
-                logger.debug(f"Station {station} matches: {time1} vs {time2} (diff: {time_diff})")
+                logger.info(f"Station {station} matches: {time1} vs {time2} (diff: {time_diff})")
             else:
-                logger.debug(f"Station {station} time mismatch: {time1} vs {time2} (diff: {time_diff})")
+                logger.info(f"Station {station} time mismatch: {time1} vs {time2} (diff: {time_diff})")
         
         # Require at least 2 matching stations AND at least 50% of common stations to match
         min_required_matches = max(2, len(common_stations) // 2)
         
-        logger.debug(f"Trains {train1.train_id} and {train2.train_id}: {matching_stations}/{len(common_stations)} stations match (need {min_required_matches})")
+        logger.info(f"Journey comparison for {train1.train_id}: {matching_stations}/{len(common_stations)} stations match (need {min_required_matches})")
         
         return matching_stations >= min_required_matches
     

@@ -327,8 +327,16 @@ async def list_trains(
 
         # Apply consolidation if requested
         if consolidate:
+            logger.info(f"Starting consolidation for {len(enriched_trains)} trains")
+            for i, train in enumerate(enriched_trains):
+                logger.info(f"  Train {i+1}: {train.train_id} from {train.origin_station_code} ({train.data_source}) - {len(getattr(train, 'stops', []))} stops")
+            
             consolidation_service = TrainConsolidationService()
             consolidated_trains = consolidation_service.consolidate_trains(enriched_trains)
+            
+            logger.info(f"Consolidation complete: {len(consolidated_trains)} consolidated journeys")
+            for i, journey in enumerate(consolidated_trains):
+                logger.info(f"  Journey {i+1}: {journey['train_id']} with {len(journey['data_sources'])} sources")
             
             return ConsolidatedTrainListResponse(
                 metadata={
