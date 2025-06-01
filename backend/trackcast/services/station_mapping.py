@@ -506,12 +506,10 @@ class StationMapper:
             
             # Round seconds to nearest minute
             if dt.second >= 30:
-                # Round up
+                # Round up - add one minute
+                from datetime import timedelta
                 dt = dt.replace(second=0, microsecond=0)
-                dt = dt.replace(minute=dt.minute + 1)
-                # Handle minute overflow
-                if dt.minute >= 60:
-                    dt = dt.replace(minute=0, hour=dt.hour + 1)
+                dt = dt + timedelta(minutes=1)
             else:
                 # Round down
                 dt = dt.replace(second=0, microsecond=0)

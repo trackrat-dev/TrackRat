@@ -526,7 +526,11 @@ class DataCollectorService:
         Returns:
             Normalized train record
         """
-        normalized = train_record.copy()
+        try:
+            normalized = train_record.copy()
+        except Exception as e:
+            logger.error(f"Error copying train record for normalization: {str(e)}")
+            return train_record
         
         # Check if this train should be aligned with NJ Transit departure time
         train_id = train_record.get("train_id")
@@ -544,16 +548,20 @@ class DataCollectorService:
             if lookup_time:
                 # Look for existing NJ Transit train with same ID (try multiple station codes)
                 njt_train = None
-                # Try the same origin station first
-                njt_train = self.train_repo.get_train_by_id_time_and_station_source(
-                    train_id, lookup_time, train_record.get("origin_station_code"), "njtransit"
-                )
-                
-                # If not found, try NY as it's the most common origin for cross-API trains
-                if not njt_train and train_record.get("origin_station_code") != "NY":
+                try:
+                    # Try the same origin station first
                     njt_train = self.train_repo.get_train_by_id_time_and_station_source(
-                        train_id, lookup_time, "NY", "njtransit"
+                        train_id, lookup_time, train_record.get("origin_station_code"), "njtransit"
                     )
+                    
+                    # If not found, try NY as it's the most common origin for cross-API trains
+                    if not njt_train and train_record.get("origin_station_code") != "NY":
+                        njt_train = self.train_repo.get_train_by_id_time_and_station_source(
+                            train_id, lookup_time, "NY", "njtransit"
+                        )
+                except Exception as e:
+                    logger.warning(f"Error looking up NJ Transit train for alignment: {str(e)}")
+                    njt_train = None
             
             if njt_train:
                 # Use NJ Transit departure time as canonical
@@ -598,4 +606,9 @@ class DataCollectorService:
             
             normalized["stops"] = normalized_stops
         
-        return normalized
+            return normalized
+        
+        except Exception as e:
+            logger.error(f"Error normalizing Amtrak train data: {str(e)}")
+            # Return original data if normalization fails
+            return train_record
