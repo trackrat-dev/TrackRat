@@ -528,84 +528,81 @@ class DataCollectorService:
         """
         try:
             normalized = train_record.copy()
-        except Exception as e:
-            logger.error(f"Error copying train record for normalization: {str(e)}")
-            return train_record
-        
-        # Check if this train should be aligned with NJ Transit departure time
-        train_id = train_record.get("train_id")
-        departure_time = train_record.get("departure_time")
-        
-        if train_id and departure_time:
-            # Convert departure time to datetime for lookup if it's a string
-            lookup_time = departure_time
-            if isinstance(departure_time, str):
-                try:
-                    lookup_time = datetime.fromisoformat(departure_time)
-                except ValueError:
-                    lookup_time = None
             
-            if lookup_time:
-                # Look for existing NJ Transit train with same ID (try multiple station codes)
-                njt_train = None
-                try:
-                    # Try the same origin station first
-                    njt_train = self.train_repo.get_train_by_id_time_and_station_source(
-                        train_id, lookup_time, train_record.get("origin_station_code"), "njtransit"
-                    )
-                    
-                    # If not found, try NY as it's the most common origin for cross-API trains
-                    if not njt_train and train_record.get("origin_station_code") != "NY":
-                        njt_train = self.train_repo.get_train_by_id_time_and_station_source(
-                            train_id, lookup_time, "NY", "njtransit"
-                        )
-                except Exception as e:
-                    logger.warning(f"Error looking up NJ Transit train for alignment: {str(e)}")
+            # Check if this train should be aligned with NJ Transit departure time
+            train_id = train_record.get("train_id")
+            departure_time = train_record.get("departure_time")
+            
+            if train_id and departure_time:
+                # Convert departure time to datetime for lookup if it's a string
+                lookup_time = departure_time
+                if isinstance(departure_time, str):
+                    try:
+                        lookup_time = datetime.fromisoformat(departure_time)
+                    except ValueError:
+                        lookup_time = None
+                
+                if lookup_time:
+                    # Look for existing NJ Transit train with same ID (try multiple station codes)
                     njt_train = None
-            
-            if njt_train:
-                # Use NJ Transit departure time as canonical
-                normalized["departure_time"] = njt_train.departure_time.isoformat()
-                logger.debug(f"Aligned Amtrak train {train_id} departure time to NJ Transit: {njt_train.departure_time}")
-            else:
-                # Normalize time to nearest minute
-                normalized["departure_time"] = station_mapper.normalize_time_to_nearest_minute(departure_time)
-        
-        # Normalize origin station
-        origin_code = train_record.get("origin_station_code")
-        origin_name = train_record.get("origin_station_name")
-        if origin_code or origin_name:
-            normalized_station = station_mapper.normalize_amtrak_station(origin_code, origin_name)
-            if normalized_station["code"] != origin_code or normalized_station["name"] != origin_name:
-                normalized["origin_station_code"] = normalized_station["code"]
-                normalized["origin_station_name"] = normalized_station["name"]
-                logger.debug(f"Normalized origin station: {origin_code}/{origin_name} -> {normalized_station['code']}/{normalized_station['name']}")
-        
-        # Normalize stops
-        if "stops" in normalized and normalized["stops"]:
-            normalized_stops = []
-            for stop in normalized["stops"]:
-                normalized_stop = stop.copy()
-                
-                # Normalize station code and name
-                stop_code = stop.get("station_code")
-                stop_name = stop.get("station_name")
-                if stop_code or stop_name:
-                    normalized_station = station_mapper.normalize_amtrak_station(stop_code, stop_name)
-                    normalized_stop["station_code"] = normalized_station["code"]
-                    normalized_stop["station_name"] = normalized_station["name"]
-                
-                # Normalize times
-                for time_field in ["scheduled_time", "departure_time"]:
-                    if time_field in normalized_stop and normalized_stop[time_field]:
-                        normalized_stop[time_field] = station_mapper.normalize_time_to_nearest_minute(
-                            normalized_stop[time_field]
+                    try:
+                        # Try the same origin station first
+                        njt_train = self.train_repo.get_train_by_id_time_and_station_source(
+                            train_id, lookup_time, train_record.get("origin_station_code"), "njtransit"
                         )
+                        
+                        # If not found, try NY as it's the most common origin for cross-API trains
+                        if not njt_train and train_record.get("origin_station_code") != "NY":
+                            njt_train = self.train_repo.get_train_by_id_time_and_station_source(
+                                train_id, lookup_time, "NY", "njtransit"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Error looking up NJ Transit train for alignment: {str(e)}")
+                        njt_train = None
                 
-                normalized_stops.append(normalized_stop)
+                if njt_train:
+                    # Use NJ Transit departure time as canonical
+                    normalized["departure_time"] = njt_train.departure_time.isoformat()
+                    logger.debug(f"Aligned Amtrak train {train_id} departure time to NJ Transit: {njt_train.departure_time}")
+                else:
+                    # Normalize time to nearest minute
+                    normalized["departure_time"] = station_mapper.normalize_time_to_nearest_minute(departure_time)
             
-            normalized["stops"] = normalized_stops
-        
+            # Normalize origin station
+            origin_code = train_record.get("origin_station_code")
+            origin_name = train_record.get("origin_station_name")
+            if origin_code or origin_name:
+                normalized_station = station_mapper.normalize_amtrak_station(origin_code, origin_name)
+                if normalized_station["code"] != origin_code or normalized_station["name"] != origin_name:
+                    normalized["origin_station_code"] = normalized_station["code"]
+                    normalized["origin_station_name"] = normalized_station["name"]
+                    logger.debug(f"Normalized origin station: {origin_code}/{origin_name} -> {normalized_station['code']}/{normalized_station['name']}")
+            
+            # Normalize stops
+            if "stops" in normalized and normalized["stops"]:
+                normalized_stops = []
+                for stop in normalized["stops"]:
+                    normalized_stop = stop.copy()
+                    
+                    # Normalize station code and name
+                    stop_code = stop.get("station_code")
+                    stop_name = stop.get("station_name")
+                    if stop_code or stop_name:
+                        normalized_station = station_mapper.normalize_amtrak_station(stop_code, stop_name)
+                        normalized_stop["station_code"] = normalized_station["code"]
+                        normalized_stop["station_name"] = normalized_station["name"]
+                    
+                    # Normalize times
+                    for time_field in ["scheduled_time", "departure_time"]:
+                        if time_field in normalized_stop and normalized_stop[time_field]:
+                            normalized_stop[time_field] = station_mapper.normalize_time_to_nearest_minute(
+                                normalized_stop[time_field]
+                            )
+                    
+                    normalized_stops.append(normalized_stop)
+                
+                normalized["stops"] = normalized_stops
+            
             return normalized
         
         except Exception as e:
