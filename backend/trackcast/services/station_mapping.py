@@ -499,6 +499,11 @@ class StationMapper:
         if not time_str:
             return None
         
+        # Ensure we have a string
+        if not isinstance(time_str, str):
+            logger.warning(f"Expected string for time normalization, got {type(time_str)}: {time_str}")
+            return str(time_str) if time_str is not None else None
+        
         try:
             from datetime import datetime
             # Parse the time
