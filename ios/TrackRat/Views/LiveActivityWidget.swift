@@ -73,7 +73,7 @@ struct TrainLiveActivityView: View {
                         }
                     }
                     
-                    Text("\(context.attributes.origin) → \(context.attributes.destination)")
+                    Text("\(Stations.displayName(for: context.attributes.origin)) → \(Stations.displayName(for: context.attributes.destination))")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
@@ -114,7 +114,7 @@ struct TrainLiveActivityView: View {
                         Text("Next Stop")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text(nextStop.stationName)
+                        Text(Stations.displayName(for: nextStop.stationName))
                             .font(.caption.bold())
                             .lineLimit(1)
                         HStack(spacing: 4) {
@@ -265,7 +265,7 @@ struct NextStopView: View {
                 .foregroundColor(.secondary)
             
             if let nextStop = nextStop {
-                Text(nextStop.stationName)
+                Text(Stations.displayName(for: nextStop.stationName))
                     .font(.caption.bold())
                     .lineLimit(1)
                 

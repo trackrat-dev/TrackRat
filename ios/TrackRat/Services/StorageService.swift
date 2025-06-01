@@ -150,7 +150,7 @@ final class StorageService {
                 if let destCode = Stations.getStationCode(destination) {
                     saveTrip(
                         departureCode: "NY",
-                        departureName: "New York Penn Station",
+                        departureName: Stations.displayName(for: "New York Penn Station"),
                         destinationCode: destCode,
                         destinationName: destination
                     )

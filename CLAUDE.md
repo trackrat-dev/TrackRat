@@ -257,6 +257,25 @@ When adding new features that span both platforms:
 - [ ] Verify performance impact
 - [ ] Check error handling
 
+## Recent Enhancements
+
+### Enhanced Status Resolution (StatusV2)
+Both backend and iOS now support intelligent status conflict resolution:
+- **Backend**: New `status_v2` field with DEPARTED > BOARDING priority
+- **iOS**: Enhanced display using `statusV2` with fallback to legacy
+- **Benefits**: Solves the "stuck BOARDING" issue when trains depart
+
+### Real-time Progress Tracking
+New `progress` field provides detailed journey information:
+- **Backend**: Calculates stops completed, minutes to arrival, journey percentage
+- **iOS**: Enhanced Live Activities and progress bars using this data
+- **Benefits**: Accurate progress visualization and time-to-arrival
+
+### API Changes Summary
+- **New Fields**: `status_v2`, `progress` (both optional for backward compatibility)
+- **Enhanced Data**: `last_departed`, `next_arrival`, `journey_percent`
+- **No Breaking Changes**: All existing fields preserved
+
 ## Architecture Decisions
 
 ### Why These Choices?
@@ -266,6 +285,8 @@ When adding new features that span both platforms:
 3. **30-Second Refresh**: Balance between real-time and battery life
 4. **Eastern Time Zone**: Natural for Northeast Corridor users
 5. **No User Accounts**: Privacy-first approach
+6. **StatusV2 Design**: Resolves conflicts while maintaining compatibility
+7. **Progress Tracking**: Provides real-time journey visualization
 
 ### Future Considerations
 

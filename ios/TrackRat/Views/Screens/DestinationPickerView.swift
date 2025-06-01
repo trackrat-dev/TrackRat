@@ -103,7 +103,7 @@ struct DestinationPickerView: View {
                                             selectDestination(station)
                                         } label: {
                                             HStack {
-                                                Text(station)
+                                                Text(Stations.displayName(for: station))
                                                     .foregroundColor(.primary)
                                                 Spacer()
                                                 Image(systemName: "chevron.right")
@@ -145,7 +145,7 @@ struct DestinationPickerView: View {
                         Text("Select Destination")
                             .font(.headline)
                             .foregroundColor(.white)
-                        Text("from \(departure)")
+                        Text("from \(Stations.displayName(for: departure))")
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.8))
                     }
@@ -181,7 +181,7 @@ struct RecentDestinationPill: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            Text(destination)
+            Text(Stations.displayName(for: destination))
                 .font(.subheadline)
                 .foregroundColor(.white)
             

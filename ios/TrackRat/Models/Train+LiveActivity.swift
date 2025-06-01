@@ -175,9 +175,58 @@ extension Train {
     
     /// Create Live Activity content state from current train data
     func toLiveActivityContentState(from originCode: String, to destinationCode: String, lastKnownStatus: TrainStatus? = nil) -> TrainActivityAttributes.ContentState {
-        let currentLocation = getCurrentLocation(from: originCode)
-        let nextStop = getNextStopInfo()
-        let journeyProgress = calculateJourneyProgress(from: originCode, to: destinationCode)
+        // Use new enhanced location if available
+        var currentLocation = getCurrentLocation(from: originCode)
+        if let statusV2 = statusV2 {
+            // Override with enhanced status location
+            switch statusV2.current {
+            case "BOARDING":
+                currentLocation = .boarding(station: statusV2.location.replacingOccurrences(of: "at ", with: ""))
+            case "EN_ROUTE":
+                // Extract stations from "between X and Y" format
+                if statusV2.location.contains("between") && statusV2.location.contains("and") {
+                    let parts = statusV2.location.replacingOccurrences(of: "between ", with: "").components(separatedBy: " and ")
+                    if parts.count == 2 {
+                        currentLocation = .enRoute(between: parts[0], and: parts[1])
+                    }
+                }
+            case "DEPARTED":
+                if let lastDeparted = progress?.lastDeparted {
+                    let timeSinceDeparture = Date().timeIntervalSince(lastDeparted.departedAt)
+                    let stationName = Stations.stationCodes.first(where: { $0.value == lastDeparted.stationCode })?.key ?? lastDeparted.stationCode
+                    currentLocation = .departed(from: stationName, 
+                                              minutesAgo: Int(timeSinceDeparture / 60))
+                }
+            case "ARRIVED":
+                currentLocation = .arrived
+            default:
+                break
+            }
+        }
+        
+        // Use enhanced next stop info if available
+        var nextStop = getNextStopInfo()
+        if let progress = progress, let nextArrival = progress.nextArrival {
+            nextStop = NextStopInfo(
+                stationName: Stations.stationCodes.first(where: { $0.value == nextArrival.stationCode })?.key ?? nextArrival.stationCode,
+                estimatedArrival: nextArrival.estimatedTime,
+                scheduledArrival: nextArrival.scheduledTime,
+                isDelayed: nextArrival.estimatedTime > nextArrival.scheduledTime,
+                delayMinutes: Int((nextArrival.estimatedTime.timeIntervalSince(nextArrival.scheduledTime)) / 60)
+            )
+        }
+        
+        // Use enhanced journey progress if available
+        var journeyProgress = calculateJourneyProgress(from: originCode, to: destinationCode)
+        if let progress = progress {
+            journeyProgress = JourneyProgress(
+                totalStops: progress.totalStops,
+                completedStops: progress.stopsCompleted,
+                progress: Double(progress.journeyPercent) / 100.0,
+                currentStopIndex: nil
+            )
+        }
+        
         let destinationETA = getDestinationETA(to: destinationCode)
         let owlPrediction = getOwlPredictionInfo()
         
@@ -185,8 +234,8 @@ extension Train {
         
         return TrainActivityAttributes.ContentState(
             status: status,
-            track: track,
-            delayMinutes: delayMinutes,
+            track: displayTrack,  // Use displayTrack instead of track for consolidated data
+            delayMinutes: displayDelayMinutes,  // Use displayDelayMinutes for consolidated data
             currentLocation: currentLocation,
             nextStop: nextStop,
             journeyProgress: journeyProgress.progress,

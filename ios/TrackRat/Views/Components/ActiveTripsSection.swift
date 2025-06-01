@@ -53,9 +53,20 @@ struct ActiveTripsSection: View {
         VStack(spacing: 12) {
             headerRow(for: activity)
             routeRow(for: activity)
-            statusAndTrackRow(for: activity)
-            progressBar(for: activity)
-            bottomInfoRow(for: activity)
+            
+            // Use new journey status view if train data is available
+            if let trainData = getTrainDataFromActivity(activity) {
+                JourneyStatusView(
+                    train: trainData, 
+                    displayMode: JourneyDisplayMode.compact,
+                    showTrainHeader: false
+                )
+            } else {
+                // Fallback to legacy display
+                statusAndTrackRow(for: activity)
+                progressBar(for: activity)
+                bottomInfoRow(for: activity)
+            }
         }
         .padding(16)
         .background(
@@ -107,7 +118,7 @@ struct ActiveTripsSection: View {
                     .frame(width: 8, height: 8)
                 Text(activity.content.state.status.displayText)
                     .font(.subheadline.bold())
-                    .foregroundColor(statusColor(activity.content.state.status))
+                    .foregroundColor(.white)
             }
             
             Spacer()
@@ -120,13 +131,13 @@ struct ActiveTripsSection: View {
                         .foregroundColor(.white.opacity(0.7))
                     Text(track)
                         .font(.subheadline.bold())
-                        .foregroundColor(.orange)
+                        .foregroundColor(.white)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(.orange.opacity(0.2))
+                        .fill(.white.opacity(0.2))
                 )
             }
         }
@@ -155,6 +166,7 @@ struct ActiveTripsSection: View {
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.7))
                     Text(nextStop.stationName)
+                        // Using stationName directly to avoid ambiguity
                         .font(.caption.bold())
                         .foregroundColor(.white)
                         .lineLimit(1)
@@ -215,6 +227,107 @@ struct ActiveTripsSection: View {
         formatter.timeStyle = .short
         formatter.timeZone = TimeZone(identifier: "America/New_York")
         return formatter.string(from: date)
+    }
+    
+    /// Extract or create train data from Live Activity for the new journey status view
+    private func getTrainDataFromActivity(_ activity: Activity<TrainActivityAttributes>) -> Train? {
+        let attributes = activity.attributes
+        let contentState = activity.content.state
+        
+        // Create a minimal train object from Live Activity data
+        // This will be used for the new journey status display
+        let train = Train(
+            id: Int(attributes.trainId) ?? 0,
+            trainId: attributes.trainNumber,
+            line: "Live Activity", // We don't have line info in Live Activity
+            destination: attributes.destination,
+            departureTime: Date(), // We don't have departure time in Live Activity
+            track: contentState.track,
+            status: contentState.status,
+            delayMinutes: contentState.delayMinutes,
+            stops: nil, // Live Activity doesn't store full stops data
+            predictionData: nil,
+            originStationCode: attributes.originStationCode,
+            dataSource: nil,
+            statusV2: createStatusV2FromActivity(contentState),
+            progress: createProgressFromActivity(contentState, attributes)
+        )
+        
+        return train
+    }
+    
+    /// Create StatusV2-like data from Live Activity content
+    private func createStatusV2FromActivity(_ contentState: TrainActivityAttributes.ContentState) -> StatusV2? {
+        let currentStatus: String
+        let location: String
+        
+        switch contentState.currentLocation {
+        case .notDeparted:
+            currentStatus = "SCHEDULED"
+            location = "at departure station"
+        case .boarding(let station):
+            currentStatus = "BOARDING"
+            location = "at \(station)"
+        case .departed(let from, _):
+            currentStatus = "EN_ROUTE"
+            location = "departed from \(from)"
+        case .approaching(let station, _):
+            currentStatus = "EN_ROUTE" 
+            location = "approaching \(station)"
+        case .enRoute(let from, let to):
+            currentStatus = "EN_ROUTE"
+            location = "between \(from) and \(to)"
+        case .atStation(let station):
+            currentStatus = "BOARDING"
+            location = "at \(station)"
+        case .arrived:
+            currentStatus = "ARRIVED"
+            location = "at destination"
+        }
+        
+        return StatusV2(
+            current: currentStatus,
+            location: location,
+            updatedAt: contentState.lastUpdated,
+            confidence: "medium", // We don't have confidence in Live Activity
+            source: "live_activity"
+        )
+    }
+    
+    /// Create Progress-like data from Live Activity content
+    private func createProgressFromActivity(_ contentState: TrainActivityAttributes.ContentState, _ attributes: TrainActivityAttributes) -> Progress? {
+        // Extract basic progress information from Live Activity
+        let journeyPercent = Int(contentState.journeyProgress * 100)
+        
+        // Create next arrival if we have next stop info
+        var nextArrival: NextArrival? = nil
+        if let nextStop = contentState.nextStop {
+            let minutesAway = max(0, Int(nextStop.estimatedArrival.timeIntervalSince(Date()) / 60))
+            nextArrival = NextArrival(
+                stationCode: Stations.getStationCode(nextStop.stationName) ?? nextStop.stationName,
+                scheduledTime: nextStop.scheduledArrival ?? nextStop.estimatedArrival,
+                estimatedTime: nextStop.estimatedArrival,
+                minutesAway: minutesAway
+            )
+        }
+        
+        // Create last departed info if applicable
+        var lastDeparted: DepartedStation? = nil
+        if case .departed(let from, _) = contentState.currentLocation {
+            lastDeparted = DepartedStation(
+                stationCode: Stations.getStationCode(from) ?? from,
+                departedAt: Date(), // We don't have exact departure time
+                delayMinutes: contentState.delayMinutes ?? 0
+            )
+        }
+        
+        return Progress(
+            lastDeparted: lastDeparted,
+            nextArrival: nextArrival,
+            journeyPercent: journeyPercent,
+            stopsCompleted: 0, // We don't have this in Live Activity
+            totalStops: 0      // We don't have this in Live Activity
+        )
     }
     
 }

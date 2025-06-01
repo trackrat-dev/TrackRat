@@ -100,7 +100,7 @@ struct LiveActivityDebugView: View {
                                 Text("Next Stop")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
-                                Text(nextStop.stationName)
+                                Text(Stations.displayName(for: nextStop.stationName))
                                     .font(.caption.bold())
                                     .foregroundColor(.primary)
                                     .lineLimit(1)

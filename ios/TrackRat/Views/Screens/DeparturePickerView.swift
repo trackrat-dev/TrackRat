@@ -183,24 +183,13 @@ struct DepartureButton: View {
     let code: String
     let onTap: () -> Void
     
-    private var displayName: String {
-        // Simplify display names for better UI
-        switch name {
-        case "New York Penn Station":
-            return "New York Penn"
-        case "Newark Penn Station":
-            return "Newark Penn"
-        default:
-            return name
-        }
-    }
     
     var body: some View {
         Button {
             onTap()
         } label: {
             HStack {
-                Text(displayName)
+                Text(Stations.displayName(for: name))
                     .font(.headline)
                     .foregroundColor(.white)
                 
@@ -225,24 +214,13 @@ struct RecentDeparturePill: View {
     let onTap: () -> Void
     @EnvironmentObject private var appState: AppState
     
-    private var displayName: String {
-        // Simplify display names for better UI
-        switch departure.name {
-        case "New York Penn Station":
-            return "NY Penn"
-        case "Newark Penn Station":
-            return "Newark Penn"
-        default:
-            return departure.name
-        }
-    }
     
     var body: some View {
         HStack(spacing: 8) {
             Button {
                 onTap()
             } label: {
-                Text(displayName)
+                Text(Stations.displayName(for: departure.name))
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(.white)

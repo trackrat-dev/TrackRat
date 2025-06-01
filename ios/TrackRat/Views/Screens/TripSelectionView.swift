@@ -6,13 +6,13 @@ struct TripSelectionView: View {
     // Get unique trips (no duplicates)
     private var uniqueTrips: [TripPair] {
         var seen = Set<String>()
-        return appState.recentTrips.compactMap { trip in
+        return appState.recentTrips.filter { trip in
             let key = "\(trip.departureCode)-\(trip.destinationCode)"
             if seen.contains(key) {
-                return nil
+                return false
             } else {
                 seen.insert(key)
-                return trip
+                return true
             }
         }
     }
@@ -176,7 +176,7 @@ struct TripButton: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(formatDepartureName(trip.departureName)) to \(trip.destinationName)")
+                    Text("\(Stations.displayName(for: trip.departureName)) to \(trip.destinationName)")
                         .font(.callout)
                         .fontWeight(.medium)
                         .foregroundColor(.white)
@@ -213,17 +213,6 @@ struct TripButton: View {
         }
     }
     
-    private func formatDepartureName(_ name: String) -> String {
-        // Simplify display names for better UI
-        switch name {
-        case "New York Penn Station":
-            return "New York Penn"
-        case "Newark Penn Station":
-            return "Newark Penn"
-        default:
-            return name
-        }
-    }
 }
 
 #Preview {

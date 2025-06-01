@@ -24,6 +24,10 @@ struct Train: Identifiable, Codable {
     let statusSummary: StatusSummary?
     let consolidationMetadata: ConsolidationMetadata?
     
+    // New enhanced fields
+    let statusV2: StatusV2?
+    let progress: Progress?
+    
     enum CodingKeys: String, CodingKey {
         case id
         case trainId = "train_id"
@@ -44,6 +48,8 @@ struct Train: Identifiable, Codable {
         case trackAssignment = "track_assignment"
         case statusSummary = "status_summary"
         case consolidationMetadata = "consolidation_metadata"
+        case statusV2 = "status_v2"
+        case progress
     }
     
     // Custom decoder to handle both legacy and consolidated formats
@@ -92,6 +98,10 @@ struct Train: Identifiable, Codable {
             // Data source from first source
             dataSource = dataSources?.first?.dataSource
             
+            // New enhanced fields
+            statusV2 = try container.decodeIfPresent(StatusV2.self, forKey: .statusV2)
+            progress = try container.decodeIfPresent(Progress.self, forKey: .progress)
+            
         } else {
             // Legacy format
             id = try container.decode(Int.self, forKey: .id)
@@ -113,6 +123,8 @@ struct Train: Identifiable, Codable {
             trackAssignment = nil
             statusSummary = nil
             consolidationMetadata = nil
+            statusV2 = nil
+            progress = nil
         }
         
         // Common fields
@@ -121,7 +133,7 @@ struct Train: Identifiable, Codable {
     }
     
     // Programmatic initializer for creating Train objects directly
-    init(id: Int, trainId: String, line: String, destination: String, departureTime: Date, track: String?, status: TrainStatus, delayMinutes: Int?, stops: [Stop]?, predictionData: PredictionData?, originStationCode: String?, dataSource: String?, consolidatedId: String? = nil, originStation: OriginStation? = nil, dataSources: [DataSource]? = nil, currentPosition: CurrentPosition? = nil, trackAssignment: TrackAssignment? = nil, statusSummary: StatusSummary? = nil, consolidationMetadata: ConsolidationMetadata? = nil) {
+    init(id: Int, trainId: String, line: String, destination: String, departureTime: Date, track: String?, status: TrainStatus, delayMinutes: Int?, stops: [Stop]?, predictionData: PredictionData?, originStationCode: String?, dataSource: String?, consolidatedId: String? = nil, originStation: OriginStation? = nil, dataSources: [DataSource]? = nil, currentPosition: CurrentPosition? = nil, trackAssignment: TrackAssignment? = nil, statusSummary: StatusSummary? = nil, consolidationMetadata: ConsolidationMetadata? = nil, statusV2: StatusV2? = nil, progress: Progress? = nil) {
         self.id = id
         self.trainId = trainId
         self.line = line
@@ -141,6 +153,8 @@ struct Train: Identifiable, Codable {
         self.trackAssignment = trackAssignment
         self.statusSummary = statusSummary
         self.consolidationMetadata = consolidationMetadata
+        self.statusV2 = statusV2
+        self.progress = progress
     }
     
     // Static helper to map consolidated status strings (for use in decoder)
@@ -404,6 +418,27 @@ extension Train {
         return status
     }
     
+    /// Get enhanced status with better handling of conflicting data
+    var enhancedDisplayStatus: String {
+        // Use new status_v2 if available
+        if let statusV2 = statusV2 {
+            return statusV2.current
+        }
+        
+        // Fall back to display status
+        return displayStatus.displayText
+    }
+    
+    /// Get human-readable location description
+    var displayLocation: String? {
+        return statusV2?.location
+    }
+    
+    /// Get journey progress information
+    var journeyProgress: Progress? {
+        return progress
+    }
+    
     
     /// Get the best available delay information
     var displayDelayMinutes: Int {
@@ -491,4 +526,69 @@ struct JourneyProgress {
         progress: 0.0,
         currentStopIndex: nil
     )
+}
+
+// MARK: - Journey Status Display
+enum JourneyDisplayMode {
+    case full
+    case compact
+}
+
+// MARK: - New Enhanced Status and Progress Models
+struct StatusV2: Codable {
+    let current: String
+    let location: String
+    let updatedAt: Date
+    let confidence: String
+    let source: String
+    
+    enum CodingKeys: String, CodingKey {
+        case current
+        case location
+        case updatedAt = "updated_at"
+        case confidence
+        case source
+    }
+}
+
+struct DepartedStation: Codable {
+    let stationCode: String
+    let departedAt: Date
+    let delayMinutes: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case stationCode = "station_code"
+        case departedAt = "departed_at"
+        case delayMinutes = "delay_minutes"
+    }
+}
+
+struct NextArrival: Codable {
+    let stationCode: String
+    let scheduledTime: Date
+    let estimatedTime: Date
+    let minutesAway: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case stationCode = "station_code"
+        case scheduledTime = "scheduled_time"
+        case estimatedTime = "estimated_time"
+        case minutesAway = "minutes_away"
+    }
+}
+
+struct Progress: Codable {
+    let lastDeparted: DepartedStation?
+    let nextArrival: NextArrival?
+    let journeyPercent: Int
+    let stopsCompleted: Int
+    let totalStops: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case lastDeparted = "last_departed"
+        case nextArrival = "next_arrival"
+        case journeyPercent = "journey_percent"
+        case stopsCompleted = "stops_completed"
+        case totalStops = "total_stops"
+    }
 }

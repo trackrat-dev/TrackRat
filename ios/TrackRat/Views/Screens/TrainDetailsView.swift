@@ -126,19 +126,41 @@ struct CombinedDetailsCard: View {
         return formatter.string(from: train.departureTime)
     }
     
-    private func filterStopsToDestination(stops: [Stop], destination: String?) -> [Stop] {
-        guard let destination = destination else { return stops }
-        
-        // Find the index of the destination
-        if let destinationIndex = stops.firstIndex(where: { 
-            $0.stationName.lowercased() == destination.lowercased() 
-        }) {
-            // Return stops up to and including the destination
-            return Array(stops.prefix(destinationIndex + 1))
+    private func filterStopsForJourney(stops: [Stop], origin: String?, destination: String?) -> (stops: [Stop], hasPreviousStops: Bool, hasMoreStops: Bool) {
+        // First, filter out stops with no timing information
+        let stopsWithTimes = stops.filter { stop in
+            stop.scheduledTime != nil || stop.departureTime != nil
         }
         
-        // If destination not found, return all stops
-        return stops
+        var filteredStops = stopsWithTimes
+        var hasPreviousStops = false
+        var hasMoreStops = false
+        
+        // Filter by origin (remove stops before the user's origin)
+        if let origin = origin {
+            if let originIndex = stopsWithTimes.firstIndex(where: { 
+                $0.stationName.lowercased() == origin.lowercased() 
+            }) {
+                // Check if there are previous stops (before origin)
+                hasPreviousStops = originIndex > 0
+                // Remove stops before origin
+                filteredStops = Array(stopsWithTimes.suffix(from: originIndex))
+            }
+        }
+        
+        // Filter by destination (remove stops after the user's destination)
+        if let destination = destination {
+            if let destinationIndex = filteredStops.firstIndex(where: { 
+                $0.stationName.lowercased() == destination.lowercased() 
+            }) {
+                // Check if there are more stops after destination in the original filtered list
+                hasMoreStops = destinationIndex < filteredStops.count - 1
+                // Keep stops up to and including the destination
+                filteredStops = Array(filteredStops.prefix(destinationIndex + 1))
+            }
+        }
+        
+        return (stops: filteredStops, hasPreviousStops: hasPreviousStops, hasMoreStops: hasMoreStops)
     }
     
     private func checkIfDepartureStop(_ stationName: String) -> Bool {
@@ -219,37 +241,55 @@ struct CombinedDetailsCard: View {
             Divider()
                 .background(Color.gray.opacity(0.2))
             
-            // Journey Progress Indicator
-            if let stops = train.stops, !stops.isEmpty {
-                let journeyProgress = train.calculateJourneyProgress(
-                    from: appState.departureStationCode ?? "",
-                    to: Stations.getStationCode(selectedDestination ?? "") ?? ""
+            // Journey Status Information
+            if train.statusV2 != nil || train.progress != nil {
+                JourneyStatusView(
+                    train: train, 
+                    displayMode: JourneyDisplayMode.full,
+                    originStationCode: appState.departureStationCode,
+                    destinationStationCode: Stations.getStationCode(selectedDestination ?? "")
                 )
-                if journeyProgress.progress > 0 && journeyProgress.progress < 1 {
-                    TrainProgressIndicator(progress: journeyProgress.progress)
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
-                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
             
             // Stops section
             VStack(alignment: .leading, spacing: 12) {
                 if let stops = train.stops, !stops.isEmpty {
-                    let filteredStops = filterStopsToDestination(stops: stops, destination: selectedDestination)
-                    let hasMoreStops = filteredStops.count < stops.count
+                    let journeyData = filterStopsForJourney(
+                        stops: stops, 
+                        origin: appState.selectedDeparture, 
+                        destination: selectedDestination
+                    )
                     
-                    ForEach(filteredStops) { stop in
+                    // Show previous stops message if there are departed stations before origin
+                    if journeyData.hasPreviousStops {
+                        HStack {
+                            Image(systemName: "ellipsis")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                            Text("Train has made previous stops")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .italic()
+                        }
+                        .padding(.bottom, 4)
+                        .padding(.horizontal, 20)
+                    }
+                    
+                    ForEach(journeyData.stops) { stop in
                         StopRow(
                             stop: stop,
                             isDestination: selectedDestination != nil && 
                                          stop.stationName.lowercased() == selectedDestination!.lowercased(),
                             isDeparture: checkIfDepartureStop(stop.stationName),
-                            isBoarding: train.displayStatus == .boarding,
+                            isBoarding: stop.stopStatus == "BOARDING",
                             boardingTrack: stop.stopStatus == "BOARDING" ? train.displayTrack : nil
                         )
                     }
                     
-                    if hasMoreStops {
+                    // Show continuation message if there are stops after destination
+                    if journeyData.hasMoreStops {
                         HStack {
                             Image(systemName: "ellipsis")
                                 .font(.caption)
@@ -289,10 +329,54 @@ struct StatusCard: View {
         return formatter.string(from: train.departureTime)
     }
     
+    private var textColor: Color {
+        if train.displayStatus == .boarding {
+            return .white
+        } else if train.statusV2 != nil {
+            return .white
+        } else {
+            return .black
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 16) {
-            // Boarding status
-            if train.displayStatus == .boarding {
+            // Enhanced status display using new status_v2 if available
+            if let statusV2 = train.statusV2 {
+                // Use enhanced status with location info
+                VStack(spacing: 8) {
+                    HStack {
+                        if statusV2.current == "BOARDING" {
+                            Image(systemName: "circle.fill")
+                                .foregroundColor(.white)
+                                .font(.title2)
+                                .symbolEffect(.pulse)
+                        }
+                        
+                        Text(statusV2.current)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                        
+                        if statusV2.current == "BOARDING", let track = train.displayTrack {
+                            Text("Track \(track)")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    
+                    // Show location info
+                    Text(statusV2.location)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.9))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(statusV2.current == "BOARDING" ? Color.orange.opacity(0.9) : Color.blue.opacity(0.8))
+                .cornerRadius(12)
+            } else if train.displayStatus == .boarding {
+                // Fallback to legacy boarding status
                 HStack {
                     Image(systemName: "circle.fill")
                         .foregroundColor(.white)
@@ -304,7 +388,7 @@ struct StatusCard: View {
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                     
-                    if let track = train.track {
+                    if let track = train.displayTrack {
                         Text("Track \(track)")
                             .font(.title2)
                             .fontWeight(.bold)
@@ -320,8 +404,40 @@ struct StatusCard: View {
             // Departure time
             Text(departureTime)
                 .font(.headline)
-                .foregroundColor(train.displayStatus == .boarding ? .white : .black)
+                .foregroundColor(textColor)
                 .multilineTextAlignment(.center)
+            
+            // Show progress info if available
+            if let progress = train.progress {
+                VStack(spacing: 8) {
+                    if let nextArrival = progress.nextArrival {
+                        HStack {
+                            Image(systemName: "arrow.right.circle.fill")
+                                .foregroundColor(.orange)
+                            Text("Next: \(Stations.stationCodes.first(where: { $0.value == nextArrival.stationCode })?.key ?? nextArrival.stationCode)")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Spacer()
+                            Text("\(nextArrival.minutesAway) min")
+                                .font(.subheadline)
+                                .foregroundColor(.orange)
+                                .fontWeight(.bold)
+                        }
+                    }
+                    
+                    // Journey progress bar
+                    ProgressView(value: Double(progress.journeyPercent) / 100.0)
+                        .tint(.orange)
+                        .scaleEffect(y: 2)
+                    
+                    Text("\(progress.stopsCompleted) of \(progress.totalStops) stops")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(8)
+            }
             
             // Track or prediction
             if train.displayStatus != .boarding {
@@ -508,7 +624,7 @@ struct StopRow: View {
             
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text(stop.stationName)
+                    Text(Stations.displayName(for: stop.stationName))
                         .font((isDestination || isDeparture) ? .headline : .subheadline)
                         .fontWeight((isDestination || isDeparture) ? .semibold : .regular)
                         .foregroundColor(textColor)
@@ -796,7 +912,7 @@ struct ConsolidatedDataCard: View {
             HStack {
                 Image(systemName: "network")
                     .foregroundColor(.blue)
-                Text("Multi-Source Data")
+                Text("Experimental: Multi-Source Data")
                     .font(.headline)
                     .foregroundColor(.white)
                 Spacer()
@@ -806,45 +922,12 @@ struct ConsolidatedDataCard: View {
                 }
             }
             
-            // Summary
-            if let sources = train.dataSources {
-                Text("\(sources.count) data sources")
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.8))
-            }
-            
-            // Track assignment info
-            if let trackAssignment = train.trackAssignment {
-                HStack {
-                    Text("Authoritative Track:")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.7))
-                    Spacer()
-                    if let track = trackAssignment.track, !track.isEmpty {
-                        Text("Track \(track)")
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.orange)
-                        if let assignedBy = trackAssignment.assignedBy {
-                            Text("(\(assignedBy))")
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.6))
-                        }
-                    } else {
-                        Text("Not assigned yet")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.yellow)
-                    }
-                }
-            }
-            
             // Expanded details
             if isExpanded, let sources = train.dataSources {
                 Divider()
                     .background(Color.white.opacity(0.3))
                 
-                ForEach(sources, id: \.origin) { source in
+                ForEach(sources, id: \.dbId) { source in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(source.origin)
@@ -933,6 +1016,339 @@ struct PositionTrackingCard: View {
         .padding()
         .background(.ultraThinMaterial.opacity(0.9))
         .cornerRadius(12)
+    }
+}
+
+// MARK: - Journey Status View
+struct JourneyStatusView: View {
+    let train: Train
+    let displayMode: JourneyDisplayMode
+    let showTrainHeader: Bool
+    let originStationCode: String?
+    let destinationStationCode: String?
+    
+    init(train: Train, displayMode: JourneyDisplayMode = .full, showTrainHeader: Bool = false, originStationCode: String? = nil, destinationStationCode: String? = nil) {
+        self.train = train
+        self.displayMode = displayMode
+        self.showTrainHeader = showTrainHeader
+        self.originStationCode = originStationCode
+        self.destinationStationCode = destinationStationCode
+    }
+    
+    var body: some View {
+        switch displayMode {
+        case .full:
+            fullJourneyStatus
+        case .compact:
+            compactJourneyStatus
+        }
+    }
+    
+    // MARK: - Full Journey Status (for Train Details)
+    @ViewBuilder
+    private var fullJourneyStatus: some View {
+        VStack(spacing: 16) {
+            // Main status display
+            statusHeader
+            
+            // Progress information
+            if hasProgressData {
+                progressSection
+            }
+            
+            // Departure info
+            if hasDepartureInfo {
+                departureSection
+            }
+            
+            // Next arrival info
+            if hasNextArrivalInfo {
+                nextArrivalSection
+            }
+        }
+    }
+    
+    // MARK: - Compact Journey Status (for Active Trips)
+    @ViewBuilder
+    private var compactJourneyStatus: some View {
+        VStack(spacing: 8) {
+            // Train header if requested
+            if showTrainHeader {
+                HStack {
+                    Text("Train \(train.trainId) to \(train.destination)")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .fontWeight(.semibold)
+                    Spacer()
+                }
+            }
+            
+            // Status and progress on one line
+            HStack {
+                // Status with emoji
+                HStack(spacing: 4) {
+                    Text(statusEmoji)
+                        .font(.subheadline)
+                    Text(displayStatus)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                }
+                
+                Spacer()
+                
+                // Progress summary
+                if hasProgressData {
+                    let progress = userJourneyProgress
+                    if progress.total > 0 {
+                        Text("Stop \(progress.completed)/\(progress.total) (\(progress.percentage)%)")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.8))
+                    } else {
+                        Text("\(progress.percentage)% complete")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                }
+            }
+            
+            // Next arrival info
+            if let progress = train.progress, let nextArrival = progress.nextArrival {
+                HStack {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                    Text("\(Stations.displayNameForCode(nextArrival.stationCode)) in \(nextArrival.minutesAway) min")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                    Spacer()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Full Mode Components
+    
+    @ViewBuilder
+    private var statusHeader: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text(statusEmoji)
+                    .font(.title2)
+                Text(displayStatus)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.black)
+                Spacer()
+            }
+            
+            // Location info if available (but not for SCHEDULED status)
+            if let location = train.statusV2?.location, train.statusV2?.current != "SCHEDULED" {
+                HStack {
+                    Text(location)
+                        .font(.subheadline)
+                        .foregroundColor(.black.opacity(0.7))
+                    Spacer()
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var progressSection: some View {
+        if hasProgressData {
+            let progress = userJourneyProgress
+            HStack {
+                if progress.total > 0 {
+                    Text("Stop \(progress.completed) of \(progress.total) completed")
+                        .font(.subheadline)
+                        .foregroundColor(.black)
+                } else {
+                    Text("Journey in progress")
+                        .font(.subheadline)
+                        .foregroundColor(.black)
+                }
+                Spacer()
+                Text("(\(progress.percentage)%)")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.black.opacity(0.6))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.2))
+            .cornerRadius(8)
+        }
+    }
+    
+    @ViewBuilder
+    private var departureSection: some View {
+        if let progress = train.progress, let lastDeparted = progress.lastDeparted {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Left \(Stations.displayNameForCode(lastDeparted.stationCode))")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.black)
+                    
+                    Text(delayText(delayMinutes: lastDeparted.delayMinutes))
+                        .font(.caption)
+                        .foregroundColor(.black.opacity(0.6))
+                }
+                Spacer()
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var nextArrivalSection: some View {
+        if let progress = train.progress, let nextArrival = progress.nextArrival {
+            HStack {
+                Image(systemName: "arrow.right.circle.fill")
+                    .foregroundColor(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Next: \(Stations.displayNameForCode(nextArrival.stationCode))")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.black)
+                    
+                    Text("Arriving in \(nextArrival.minutesAway) minutes")
+                        .font(.caption)
+                        .foregroundColor(.black.opacity(0.6))
+                }
+                Spacer()
+                
+                // Live countdown
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(nextArrival.minutesAway) min")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.orange)
+                    
+                    Text("away")
+                        .font(.caption2)
+                        .foregroundColor(.black.opacity(0.5))
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Properties
+    
+    /// Calculate user-specific journey progress between their origin and destination
+    private var userJourneyProgress: (completed: Int, total: Int, percentage: Int) {
+        // Use API progress data if available and no user stations specified
+        if let progress = train.progress, originStationCode == nil || destinationStationCode == nil {
+            return (completed: progress.stopsCompleted, total: progress.totalStops, percentage: progress.journeyPercent)
+        }
+        
+        // Calculate from stops data for user's specific journey
+        guard let stops = train.stops,
+              let originCode = originStationCode,
+              let destinationCode = destinationStationCode,
+              let originIndex = stops.firstIndex(where: { Stations.getStationCode($0.stationName) == originCode }),
+              let destIndex = stops.firstIndex(where: { Stations.getStationCode($0.stationName) == destinationCode }),
+              originIndex < destIndex else {
+            // Fallback to API data or default
+            if let progress = train.progress {
+                return (completed: progress.stopsCompleted, total: progress.totalStops, percentage: progress.journeyPercent)
+            }
+            return (completed: 0, total: 0, percentage: 0)
+        }
+        
+        // Get the journey segment stops (including origin and destination)
+        let journeyStops = Array(stops[originIndex...destIndex])
+        
+        // Count departed stops in the journey, excluding the origin (user hasn't "completed" origin until they leave)
+        let departedStopsInJourney = journeyStops.dropFirst().filter { $0.departed }
+        let completedStops = departedStopsInJourney.count
+        
+        // Total stops in journey (excluding origin since it's the starting point)
+        let totalStops = journeyStops.count - 1
+        
+        // Calculate percentage
+        let percentage = totalStops > 0 ? Int((Double(completedStops) / Double(totalStops)) * 100) : 0
+        
+        return (completed: completedStops, total: totalStops, percentage: percentage)
+    }
+    
+    private var displayStatus: String {
+        if let statusV2 = train.statusV2 {
+            return statusV2.current
+        }
+        return train.displayStatus.displayText.uppercased()
+    }
+    
+    private var statusEmoji: String {
+        let status = train.statusV2?.current ?? train.displayStatus.displayText.uppercased()
+        switch status {
+        case "EN_ROUTE", "DEPARTED":
+            return "🚆"
+        case "BOARDING":
+            return "🚪"
+        case "DELAYED":
+            return "⏰"
+        case "SCHEDULED", "ON_TIME":
+            return "🕐"
+        case "ARRIVED":
+            return "🏁"
+        default:
+            return "🚂"
+        }
+    }
+    
+    private var statusColor: Color {
+        let status = train.statusV2?.current ?? train.displayStatus.displayText.uppercased()
+        switch status {
+        case "EN_ROUTE", "DEPARTED":
+            return .blue
+        case "BOARDING":
+            return .orange
+        case "DELAYED":
+            return .red
+        case "SCHEDULED", "ON_TIME":
+            return .green
+        case "ARRIVED":
+            return .green
+        default:
+            return .gray
+        }
+    }
+    
+    private var hasProgressData: Bool {
+        return train.progress != nil
+    }
+    
+    private var hasDepartureInfo: Bool {
+        return train.progress?.lastDeparted != nil
+    }
+    
+    private var hasNextArrivalInfo: Bool {
+        return train.progress?.nextArrival != nil
+    }
+    
+    private func delayText(delayMinutes: Int) -> String {
+        if delayMinutes == 0 {
+            return "Departed on time"
+        } else if delayMinutes > 0 {
+            return "Departed \(delayMinutes) min late"
+        } else {
+            return "Departed \(abs(delayMinutes)) min early"
+        }
+    }
+}
+
+// MARK: - Stations Helper Extension
+extension Stations {
+    static func displayNameForCode(_ stationCode: String) -> String {
+        // Try to find the station name by code
+        if let stationName = stationCodes.first(where: { $0.value == stationCode })?.key {
+            return displayName(for: stationName) // Use existing method for formatting
+        }
+        // Return the code if we can't find a display name
+        return stationCode
     }
 }
 

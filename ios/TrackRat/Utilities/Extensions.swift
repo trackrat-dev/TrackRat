@@ -65,3 +65,17 @@ extension View {
         self.modifier(GlassmorphicNavigationBar())
     }
 }
+
+// MARK: - Stations Extension
+extension Stations {
+    static func displayName(for stationName: String) -> String {
+        switch stationName {
+        case "New York Penn Station":
+            return "New York Penn"
+        case "Newark Penn Station":
+            return "Newark Penn"
+        default:
+            return stationName
+        }
+    }
+}

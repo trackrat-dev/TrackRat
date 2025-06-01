@@ -148,9 +148,10 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
   - Extensions for origin-based departure time calculation
   - Methods: `getDepartureTime(fromStationCode:)`, `getFormattedDepartureTime(fromStationCode:)`
   - Live Activity support: `toActivityAttributes()`, `toContentState()`
-  - New fields: `originStation`, `dataSource`, `currentPosition`, `trackAssignment`
+  - New fields: `originStation`, `dataSource`, `currentPosition`, `trackAssignment`, `statusV2`, `progress`
   - Status summary with delay information
   - Consolidation metadata for multi-source trains
+  - Enhanced properties: `enhancedDisplayStatus`, `displayLocation`, `journeyProgress`
 - **TrainStatus**: Enum with color mappings and display strings
 - **Stop**: Station with times, status, and departure confirmations
   - Enhanced with `departedConfirmedBy` array for multi-source validation
@@ -188,6 +189,10 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **TrackAssignment**: Track info with source attribution
 - **StatusSummary**: Consolidated status with delays
 - **ConsolidationMetadata**: Multi-source merge information
+- **StatusV2**: Enhanced status with conflict resolution and location info
+- **Progress**: Real-time journey tracking with completion percentage
+- **DepartedStation**: Last departed stop with delay information
+- **NextArrival**: Next station arrival with estimated time
 
 ### Historical Types
 - **DelayStats**: Performance percentages
@@ -409,6 +414,35 @@ xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
 - **ViewModels/**: Complex screen logic separated from views
 - **Utilities/**: Helper functions and extensions
 - **Resources/**: Assets, Info.plist, and other resources
+
+## Recent Enhancements
+
+### Enhanced Status Display (StatusV2)
+The app now intelligently resolves conflicting train statuses from multiple data sources:
+- **Automatic Conflict Resolution**: DEPARTED always overrides BOARDING status
+- **Human-Readable Locations**: Shows "between X and Y" for en route trains
+- **Confidence Levels**: Indicates data reliability (high/medium/low)
+- **Source Attribution**: Shows which station/source provided the status
+
+### Real-time Progress Tracking
+New progress tracking provides detailed journey information:
+- **Journey Percentage**: Overall trip completion (0-100%)
+- **Next Arrival Times**: Estimated arrival with delay calculations
+- **Minutes to Next Stop**: Real-time countdown
+- **Stop Completion**: X of Y stops completed display
+
+### Live Activity Enhancements
+Live Activities now use the enhanced data for better tracking:
+- **Smart Location Updates**: Uses StatusV2 for accurate positioning
+- **Enhanced Progress**: Shows journey percentage from Progress data
+- **Better Delay Info**: Consolidated delay information from all sources
+- **Improved Next Stop**: More accurate arrival predictions
+
+### UI Improvements
+- **Status Cards**: Show location info from StatusV2
+- **Progress Bars**: Display journey percentage visually
+- **Next Stop Info**: Minutes away with estimated arrival
+- **Fallback Logic**: Gracefully handles missing enhanced data
 
 ## Future Considerations
 

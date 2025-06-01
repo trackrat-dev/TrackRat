@@ -72,7 +72,7 @@ struct TrainListView: View {
                         .font(.headline)
                         .foregroundColor(.white)
                     if let departure = appState.selectedDeparture {
-                        Text("from \(departure)")
+                        Text("from \(Stations.displayName(for: departure))")
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.8))
                     }
@@ -104,6 +104,28 @@ struct TrainCard: View {
     let destination: String
     let onTap: () -> Void
     
+    /// Check if train is boarding specifically at the user's origin station
+    private var isBoardingAtOrigin: Bool {
+        guard train.status == .boarding,
+              let departureCode = appState.departureStationCode,
+              let stops = train.stops else {
+            return false
+        }
+        
+        // Find the stop that matches the user's departure station
+        let originStop = stops.first { stop in
+            // Match by station code if available
+            if let stationCode = stop.stationCode {
+                return stationCode == departureCode
+            }
+            // Fall back to matching by station name
+            return Stations.getStationCode(stop.stationName) == departureCode
+        }
+        
+        // Train is boarding at origin if it hasn't departed from that station yet
+        return originStop?.departed == false
+    }
+    
     private var departureTime: String {
         if let departureCode = appState.departureStationCode {
             return train.getFormattedDepartureTime(fromStationCode: departureCode)
@@ -132,7 +154,7 @@ struct TrainCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 // Train header
                 HStack {
-                    if train.status == .boarding {
+                    if isBoardingAtOrigin {
                         Image(systemName: "circle.fill")
                             .foregroundColor(.white)
                             .font(.caption)
@@ -140,18 +162,18 @@ struct TrainCard: View {
                     
                     Text("Train \(train.trainId)")
                         .font(.headline)
-                        .foregroundColor(train.status == .boarding ? .white : .black)
+                        .foregroundColor(isBoardingAtOrigin ? .white : .black)
                     
                     Spacer()
                     
                     Text("\(departureTime) → \(arrivalTime)")
                         .font(.subheadline)
-                        .foregroundColor(train.status == .boarding ? .white.opacity(0.9) : .black.opacity(0.7))
+                        .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7))
                 }
                 
                 // Track and status
                 HStack(spacing: 16) {
-                    if train.status == .boarding, let track = train.track {
+                    if isBoardingAtOrigin, let track = train.track {
                         Label("Boarding on Track \(track)", systemImage: "tram.fill")
                             .font(.subheadline)
                             .foregroundColor(.white)
@@ -170,7 +192,7 @@ struct TrainCard: View {
                 }
             }
             .padding()
-            .background(train.status == .boarding ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
+            .background(isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
             .cornerRadius(16)
             .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
         }

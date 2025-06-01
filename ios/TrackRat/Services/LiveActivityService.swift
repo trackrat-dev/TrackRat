@@ -335,7 +335,8 @@ class LiveActivityService: ObservableObject {
         // Check each upcoming stop in the journey
         for (index, stop) in stops.enumerated() {
             // Only check stops in our journey range that haven't departed yet
-            guard index >= originIndex && index <= destIndex && !stop.departed else { continue }
+            // Skip the origin stop (first stop) - we don't want arrival notifications for departure
+            guard index > originIndex && index <= destIndex && !stop.departed else { continue }
             
             // Calculate time to arrival
             if let arrivalTime = stop.scheduledTime {
