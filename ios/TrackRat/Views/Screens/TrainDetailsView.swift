@@ -90,6 +90,13 @@ struct TrainDetailsView: View {
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)
         .glassmorphicNavigationBar()
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Close") {
+                    appState.navigationPath.removeAll()
+                }
+            }
+        }
         .task {
             await viewModel.loadTrainDetails(fromStationCode: appState.departureStationCode)
         }
