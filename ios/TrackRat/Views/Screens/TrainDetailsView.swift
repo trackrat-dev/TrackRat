@@ -191,7 +191,8 @@ struct CombinedDetailsCard: View {
             // Top section with status info
             VStack(spacing: 16) {
                 // Boarding status
-                if train.displayStatus == .boarding {
+                // Only show boarding UI if track is assigned
+                if train.displayStatus == .boarding && train.displayTrack != nil {
                     HStack {
                         Image(systemName: "circle.fill")
                             .foregroundColor(.white)
@@ -341,6 +342,11 @@ struct StatusCard: View {
     let train: Train
     @EnvironmentObject private var appState: AppState
     
+    private var isActuallyBoarding: Bool {
+        (train.statusV2?.current == "BOARDING" && train.displayTrack != nil) ||
+        (train.statusV2 == nil && train.displayStatus == .boarding && train.displayTrack != nil)
+    }
+
     private var departureTime: String {
         let formatter = DateFormatter()
         formatter.timeZone = TimeZone(identifier: "America/New_York")
@@ -357,11 +363,15 @@ struct StatusCard: View {
     }
     
     private var textColor: Color {
-        if train.displayStatus == .boarding {
+        if isActuallyBoarding { // Orange card background
             return .white
-        } else if train.statusV2 != nil {
+        } else if let statusV2 = train.statusV2, !(statusV2.current == "BOARDING" && train.displayTrack == nil) {
+            // statusV2 is present and has its own blue background (unless it's the specific case we made "Scheduled" for statusV2 which also has blue bg)
             return .white
         } else {
+            // Covers:
+            // 1. Legacy "Scheduled" (boarding without track, white card bg)
+            // 2. Legacy non-boarding (white card bg)
             return .black
         }
     }
@@ -373,20 +383,27 @@ struct StatusCard: View {
                 // Use enhanced status with location info
                 VStack(spacing: 8) {
                     HStack {
-                        if statusV2.current == "BOARDING" {
+                        // Pulsing Icon: Show only if statusV2.current == "BOARDING" && train.displayTrack != nil
+                        if statusV2.current == "BOARDING" && train.displayTrack != nil {
                             Image(systemName: "circle.fill")
                                 .foregroundColor(.white)
                                 .font(.title2)
                                 .symbolEffect(.pulse)
                         }
                         
-                        if statusV2.current == "BOARDING", let track = train.displayTrack {
-                            Text("Boarding on Track \(track)")
+                        // Status Text Logic
+                        if statusV2.current == "BOARDING" && train.displayTrack != nil {
+                            Text("Boarding on Track \(train.displayTrack!)") // Safe to force unwrap due to condition
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
+                        } else if statusV2.current == "BOARDING" && train.displayTrack == nil {
+                            Text("Scheduled") // Display "Scheduled"
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white) // Style like other statusV2 text
                         } else {
-                            Text(statusV2.current)
+                            Text(statusV2.current) // Default status text
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
@@ -400,32 +417,37 @@ struct StatusCard: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
-                .background(statusV2.current == "BOARDING" ? Color.orange.opacity(0.9) : Color.blue.opacity(0.8))
+                // Background color for the VStack
+                .background(statusV2.current == "BOARDING" && train.displayTrack != nil ? Color.orange.opacity(0.9) : Color.blue.opacity(0.8))
                 .cornerRadius(12)
-            } else if train.displayStatus == .boarding {
-                // Fallback to legacy boarding status
-                HStack {
-                    Image(systemName: "circle.fill")
-                        .foregroundColor(.white)
-                        .font(.title2)
-                        .symbolEffect(.pulse)
-                    
-                    if let track = train.displayTrack {
-                        Text("Boarding on Track \(track)")
-                            .font(.title2)
-                            .fontWeight(.bold)
+            } else { // No statusV2, use displayStatus for logic
+                if train.displayStatus == .boarding && train.displayTrack != nil {
+                    // This is the "actual boarding" case for legacy
+                    HStack {
+                        Image(systemName: "circle.fill")
                             .foregroundColor(.white)
-                    } else {
-                        Text("BOARDING")
+                            .font(.title2)
+                            .symbolEffect(.pulse)
+
+                        Text("Boarding on Track \(train.displayTrack!)") // displayTrack is non-nil here
                             .font(.title2)
                             .fontWeight(.bold)
                             .foregroundColor(.white)
                     }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.orange.opacity(0.9)) // Orange background for this specific case
+                    .cornerRadius(12)
+                } else if train.displayStatus == .boarding && train.displayTrack == nil {
+                    // Boarding but no track, show "Scheduled"
+                    Text("Scheduled")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.black) // Explicit black text on white card background
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color.orange.opacity(0.9))
-                .cornerRadius(12)
+                // If not (train.displayStatus == .boarding), then nothing is shown from this block for status.
             }
             
             // Departure time
@@ -500,7 +522,7 @@ struct StatusCard: View {
         }
         .padding()
         .frame(maxWidth: .infinity)
-        .background(train.displayStatus == .boarding ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
+        .background(isActuallyBoarding ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
         
@@ -853,7 +875,11 @@ class TrainDetailsViewModel: ObservableObject {
             
             // Check for boarding status change using consolidated display properties
             if let currentTrain = train {
-                if currentTrain.displayStatus != .boarding && newTrain.displayStatus == .boarding {
+                // Modified condition for boarding haptic:
+                // Previous state was not boarding OR was boarding but no track
+                // New state is boarding AND has a track
+                if (currentTrain.displayStatus != .boarding || currentTrain.displayTrack == nil) &&
+                   (newTrain.displayStatus == .boarding && newTrain.displayTrack != nil) {
                     // Haptic feedback
                     UINotificationFeedbackGenerator().notificationOccurred(.warning)
                 }
@@ -1148,10 +1174,25 @@ struct JourneyStatusView: View {
             HStack {
                 Text(statusEmoji)
                     .font(.title2)
-                Text(displayStatus)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(.black)
+
+                // Updated Text display for statusHeader
+                let currentDisplayStatus = self.displayStatus // This will be "Scheduled" if boarding w/o track
+                if train.statusV2?.current == "BOARDING" && train.displayTrack != nil {
+                    Text("Boarding on Track \(train.displayTrack!)")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.black)
+                } else if train.statusV2 == nil && train.displayStatus == .boarding && train.displayTrack != nil {
+                    Text("Boarding on Track \(train.displayTrack!)")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.black)
+                } else {
+                    Text(currentDisplayStatus) // Shows "Scheduled" (if boarding w/o track) or other statuses
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.black)
+                }
                 Spacer()
             }
             
@@ -1303,10 +1344,10 @@ struct JourneyStatusView: View {
         case "EN_ROUTE":
             return "En Route"
         case "BOARDING":
-            if let track = train.displayTrack {
-                return "Boarding on Track \(track)"
+            if train.displayTrack != nil {
+                return "Boarding" // Caller will add track info if needed.
             } else {
-                return "Boarding"
+                return "Scheduled" // BOARDING without track is "Scheduled"
             }
         case "SCHEDULED":
             return "Scheduled"
@@ -1333,7 +1374,11 @@ struct JourneyStatusView: View {
         case "EN_ROUTE", "DEPARTED":
             return "🚆"
         case "BOARDING":
-            return "🚪"
+            if train.displayTrack != nil {
+                return "🚪" // Boarding with track
+            } else {
+                return "🕐" // Scheduled/OnTime emoji for boarding without track
+            }
         case "DELAYED":
             return "⏰"
         case "SCHEDULED", "ON_TIME":
