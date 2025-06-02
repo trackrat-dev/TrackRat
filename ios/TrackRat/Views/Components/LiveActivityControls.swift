@@ -67,7 +67,7 @@ struct LiveActivityControls: View {
                                 .font(.title2)
                         }
                         
-                        Text("📍 Experimental: Watch This Train")
+                        Text("📍 Watch This Train")
                             .font(.subheadline.bold())
                         
                         Spacer()

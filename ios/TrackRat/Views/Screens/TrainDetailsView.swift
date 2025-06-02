@@ -80,8 +80,10 @@ struct TrainDetailsView: View {
                             // }
                             // .padding(.top)
 
-                            // ADD THE NEW VIEW HERE
-                            ExperimentalFeaturesView(viewModel: viewModel, train: train)
+                            // Experimental features section
+                            if #available(iOS 16.0, *) {
+                                ExperimentalFeaturesView(viewModel: viewModel, train: train)
+                            }
                         }
                         .padding()
                     }
@@ -96,7 +98,7 @@ struct TrainDetailsView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Close") {
-                    appState.navigationPath.removeAll()
+                    appState.navigationPath.removeLast(appState.navigationPath.count)
                 }
             }
         }
@@ -957,7 +959,6 @@ struct TrainProgressIndicator: View {
 // MARK: - Consolidated Data Card
 struct ConsolidatedDataCard: View {
     let train: Train
-    @State private var isExpanded = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -965,18 +966,14 @@ struct ConsolidatedDataCard: View {
             HStack {
                 Image(systemName: "network")
                     .foregroundColor(.blue)
-                Text("Experimental: Multi-Source Data")
+                Text("Multi-Source Data")
                     .font(.headline)
                     .foregroundColor(.white)
                 Spacer()
-                Button(action: { isExpanded.toggle() }) {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundColor(.white.opacity(0.7))
-                }
             }
             
-            // Expanded details
-            if isExpanded, let sources = train.dataSources {
+            // Data sources details
+            if let sources = train.dataSources {
                 Divider()
                     .background(Color.white.opacity(0.3))
                 
@@ -1014,7 +1011,6 @@ struct ConsolidatedDataCard: View {
         .padding()
         .background(.ultraThinMaterial.opacity(0.9))
         .cornerRadius(12)
-        .animation(.easeInOut(duration: 0.3), value: isExpanded)
     }
 }
 

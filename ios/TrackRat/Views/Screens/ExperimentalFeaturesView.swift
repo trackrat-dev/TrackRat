@@ -13,7 +13,7 @@ struct ExperimentalFeaturesView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack {
-                Image(systemName: "beaker.fill") // Using a science-related icon for experimental features
+                Image(systemName: "flask.fill") // Using a science-related icon for experimental features
                     .foregroundColor(Color(hex: "667eea")) // Consistent with app's purple theme
                 Text("Experimental Features")
                     .font(.headline)

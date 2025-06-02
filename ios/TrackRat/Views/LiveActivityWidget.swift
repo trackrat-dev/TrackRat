@@ -70,9 +70,7 @@ struct TrainLiveActivity: Widget {
             return "figure.walk" // Or "door.left.hand.open"
         case .departed:
             return "tram.fill" // Or "arrow.right.circle.fill"
-        case .arrived:
-            return "flag.fill" // Or "mappin.circle.fill"
-        default:
+        case .scheduled, .unknown:
             return "questionmark.circle.fill" // A default icon for unknown statuses
         }
     }

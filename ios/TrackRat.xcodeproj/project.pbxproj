@@ -30,6 +30,7 @@
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
 		A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */; };
 		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
+		A1976F512DEDE6EC008FA904 /* ExperimentalFeaturesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1976F502DEDE6EC008FA904 /* ExperimentalFeaturesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -57,6 +58,7 @@
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
 		A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityDebugView.swift; path = Views/Components/LiveActivityDebugView.swift; sourceTree = "<group>"; };
 		A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveTripsSection.swift; path = Views/Components/ActiveTripsSection.swift; sourceTree = "<group>"; };
+		A1976F502DEDE6EC008FA904 /* ExperimentalFeaturesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExperimentalFeaturesView.swift; path = Views/Screens/ExperimentalFeaturesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -100,6 +102,7 @@
 				A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */,
 				A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */,
 				A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */,
+				A1976F502DEDE6EC008FA904 /* ExperimentalFeaturesView.swift */,
 				A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */,
 				A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */,
 				A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */,
@@ -187,6 +190,7 @@
 			files = (
 				A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */,
 				A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */,
+				A1976F512DEDE6EC008FA904 /* ExperimentalFeaturesView.swift in Sources */,
 				A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */,
 				A10E97F42DE39EDD002F3214 /* Stations.swift in Sources */,
 				A18E54342DEB88BE00AB2B74 /* LiveActivityModels.swift in Sources */,
