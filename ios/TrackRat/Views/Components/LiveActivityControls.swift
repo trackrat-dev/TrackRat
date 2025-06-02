@@ -39,7 +39,7 @@ struct LiveActivityControls: View {
                         }
                     }
                     .font(.caption.bold())
-                    .foregroundColor(.red)
+                    .foregroundColor(Color(hex: "667eea"))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(
@@ -50,7 +50,7 @@ struct LiveActivityControls: View {
                 .padding()
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(.green.opacity(0.8))
+                        .fill(Color.blue.opacity(0.7))
                 )
             } else {
                 // Start Live Activity button

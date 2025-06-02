@@ -4,7 +4,7 @@ import Combine
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
-    @State private var showingHistory = false
+    // @State private var showingHistory = false // REMOVE THIS LINE
     
     let trainId: Int  // Keep for backwards compatibility
     
@@ -48,37 +48,40 @@ struct TrainDetailsView: View {
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 20) {
-                            // Live Activity controls
-                            if #available(iOS 16.1, *) {
-                                LiveActivityControls(
-                                    train: train,
-                                    origin: appState.selectedDeparture ?? "",
-                                    destination: appState.selectedDestination ?? "",
-                                    originCode: appState.departureStationCode ?? "",
-                                    destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
-                                )
-                            }
+                            // Live Activity controls -- REMOVE THIS BLOCK
+                            // if #available(iOS 16.1, *) {
+                            //     LiveActivityControls(
+                            //         train: train,
+                            //         origin: appState.selectedDeparture ?? "",
+                            //         destination: appState.selectedDestination ?? "",
+                            //         originCode: appState.departureStationCode ?? "",
+                            //         destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                            //     )
+                            // }
                             
                             // Combined card with all details
                             CombinedDetailsCard(train: train, selectedDestination: appState.selectedDestination)
                             
-                            // Consolidated data section
-                            if train.isConsolidated {
-                                ConsolidatedDataCard(train: train)
-                            }
+                            // Consolidated data section -- REMOVE THIS BLOCK
+                            // if train.isConsolidated {
+                            //     ConsolidatedDataCard(train: train)
+                            // }
                             
-                            // Show history button
-                            Button {
-                                showingHistory = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "clock.arrow.circlepath")
-                                    Text("details from past trains")
-                                        .font(.subheadline)
-                                }
-                                .foregroundColor(.white.opacity(0.8))
-                            }
-                            .padding(.top)
+                            // Show history button -- REMOVE THIS BLOCK
+                            // Button {
+                            //     showingHistory = true
+                            // } label: {
+                            //     HStack {
+                            //         Image(systemName: "clock.arrow.circlepath")
+                            //         Text("details from past trains")
+                            //             .font(.subheadline)
+                            //     }
+                            //     .foregroundColor(.white.opacity(0.8))
+                            // }
+                            // .padding(.top)
+
+                            // ADD THE NEW VIEW HERE
+                            ExperimentalFeaturesView(viewModel: viewModel, train: train)
                         }
                         .padding()
                     }
@@ -112,11 +115,11 @@ struct TrainDetailsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingHistory) {
-            if let train = viewModel.train {
-                HistoricalDataView(train: train)
-            }
-        }
+        // .sheet(isPresented: $showingHistory) { // REMOVE THIS BLOCK
+        //     if let train = viewModel.train {
+        //         HistoricalDataView(train: train)
+        //     }
+        // }
     }
 }
 
