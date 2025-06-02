@@ -33,21 +33,47 @@ struct TrainLiveActivity: Widget {
                 }
             } compactLeading: {
                 // Compact leading (left side of Dynamic Island)
-                Text("TrackRat")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack {
+                    Image(systemName: "tram.fill") // Or a relevant icon
+                        .foregroundColor(.white)
+                    Text("\(context.attributes.trainNumber): \(context.state.status.displayText)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             } compactTrailing: {
                 // Compact trailing (right side of Dynamic Island)
                 DynamicIslandCompactTrailing(context: context)
             } minimal: {
                 // Minimal (when other Dynamic Islands are active)
-                Text("TR")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 16, height: 16)
+                HStack(spacing: 2) {
+                    Image(systemName: trainStatusIcon(status: context.state.status)) // Helper function needed
+                        .font(.system(size: 10)) // Slightly smaller icon
+                        .foregroundColor(.white)
+                    Text(context.attributes.trainNumber)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                }
             }
             .widgetURL(URL(string: "trackrat://train/\(context.attributes.trainId)"))
+        }
+    }
+
+    // Helper function to determine the icon based on train status
+    private func trainStatusIcon(status: TrainStatus) -> String {
+        switch status {
+        case .onTime:
+            return "tram.fill" // Or "checkmark.circle.fill"
+        case .delayed:
+            return "exclamationmark.triangle.fill"
+        case .boarding:
+            return "figure.walk" // Or "door.left.hand.open"
+        case .departed:
+            return "tram.fill" // Or "arrow.right.circle.fill"
+        case .arrived:
+            return "flag.fill" // Or "mappin.circle.fill"
+        default:
+            return "questionmark.circle.fill" // A default icon for unknown statuses
         }
     }
 }
