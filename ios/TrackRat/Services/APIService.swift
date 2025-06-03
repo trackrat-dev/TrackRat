@@ -166,17 +166,39 @@ final class APIService: ObservableObject {
         }
         
         do {
-            let (data, _) = try await session.data(from: url)
-            let response = try decoder.decode(TrainListResponse.self, from: data)
+            let (data, response) = try await session.data(from: url)
+            
+            // Log the HTTP response status
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 HTTP Response for train \(number): Status \(httpResponse.statusCode)")
+                if httpResponse.statusCode != 200 {
+                    print("🔴 Non-200 status code: \(httpResponse.statusCode)")
+                }
+            }
+            
+            // Log raw data size
+            print("📊 Response data size for train \(number): \(data.count) bytes")
+            
+            // Log the raw response for debugging
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📄 Raw response preview (first 500 chars): \(String(responseString.prefix(500)))")
+            }
+            
+            // Try to decode the response
+            let trainResponse = try decoder.decode(TrainListResponse.self, from: data)
+            
+            print("✅ Successfully decoded response with \(trainResponse.trains.count) trains")
             
             // Since we're expecting exactly one train with limit=1, get the first one
-            guard let train = response.trains.first else {
+            guard let train = trainResponse.trains.first else {
+                print("🔴 No trains in response for train \(number) - throwing APIError.noData")
                 throw APIError.noData
             }
             
             return train
         } catch {
-            print("🔴 DECODING ERROR (fetchTrainByNumber for number: \(number)): \(error)") // Detailed error print
+            print("🔴 ERROR (fetchTrainByNumber for number: \(number)): \(error)") // Detailed error print
+            print("🔴 ERROR TYPE: \(type(of: error))")
             print("🔴 RAW ERROR OBJECT (fetchTrainByNumber for number: \(number)): \(String(describing: error))")
             if let decodingError = error as? DecodingError {
                 print("🔴 DECODING ERROR DETAILS: \(decodingError.localizedDescription)")
@@ -202,8 +224,10 @@ final class APIService: ObservableObject {
     }
     
     // MARK: - Consolidated Train Query
-    func fetchTrainByTrainId(_ trainId: String, sinceHoursAgo: Int = 8, consolidate: Bool = true) async throws -> [Train] {
-        // Calculate time filter (8 hours ago by default)
+    func fetchTrainByTrainId(_ trainId: String, sinceHoursAgo: Int = 24, consolidate: Bool = true) async throws -> [Train] {
+        print("🔍 fetchTrainByTrainId called for: \(trainId)")
+        
+        // Calculate time filter (24 hours ago by default)
         let timeFilter = Date().addingTimeInterval(-Double(sinceHoursAgo) * 3600)
         let formatter = DateFormatter()
         formatter.timeZone = TimeZone(identifier: "America/New_York")
@@ -224,9 +248,19 @@ final class APIService: ObservableObject {
         }
         
         do {
-            let (data, _) = try await session.data(from: url)
-            let response = try decoder.decode(TrainListResponse.self, from: data)
-            return response.trains
+            let (data, response) = try await session.data(from: url)
+            
+            // Log the HTTP response
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📡 HTTP Response for trainId \(trainId): Status \(httpResponse.statusCode)")
+            }
+            
+            print("📊 Response data size for trainId \(trainId): \(data.count) bytes")
+            
+            let trainResponse = try decoder.decode(TrainListResponse.self, from: data)
+            print("✅ fetchTrainByTrainId decoded \(trainResponse.trains.count) trains for trainId: \(trainId)")
+            
+            return trainResponse.trains
         } catch {
             print("🔴 DECODING ERROR (fetchTrainByTrainId for trainId: \(trainId)): \(error)")
             print("🔴 RAW ERROR OBJECT (fetchTrainByTrainId for trainId: \(trainId)): \(String(describing: error))")
@@ -270,16 +304,20 @@ final class APIService: ObservableObject {
             throw APIError.invalidParameters
         }
         
+        print("🔍 fetchTrainDetailsFlexible: Using fetchTrainByTrainId for trainId: \(trainId)")
         let trains = try await fetchTrainByTrainId(trainId)
+        print("📊 fetchTrainDetailsFlexible: Got \(trains.count) trains for trainId: \(trainId)")
         
         // If we have a station code, filter for trains that stop there
         if let fromCode = fromStationCode {
+            print("🔍 fetchTrainDetailsFlexible: Filtering by station code: \(fromCode)")
             let filtered = trains.filter { train in
                 guard let stops = train.stops else { return false }
                 return stops.contains { stop in
                     Stations.getStationCode(stop.stationName) == fromCode
                 }
             }
+            print("📊 fetchTrainDetailsFlexible: \(filtered.count) trains stop at \(fromCode)")
             if let train = filtered.first {
                 return train
             }
@@ -287,6 +325,7 @@ final class APIService: ObservableObject {
         
         // Return most recent train (should typically be only one)
         guard let train = trains.first else {
+            print("🔴 fetchTrainDetailsFlexible: No trains found - throwing APIError.noData")
             throw APIError.noData
         }
         

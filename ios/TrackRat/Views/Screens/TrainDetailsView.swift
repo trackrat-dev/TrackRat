@@ -855,7 +855,17 @@ class TrainDetailsViewModel: ObservableObject {
                 fromStationCode: fromStationCode ?? preferredStationCode
             )
         } catch {
-            self.error = error.localizedDescription
+            // Handle APIError.noData specifically
+            if let apiError = error as? APIError {
+                switch apiError {
+                case .noData:
+                    self.error = "Train not found"
+                default:
+                    self.error = apiError.localizedDescription
+                }
+            } else {
+                self.error = error.localizedDescription
+            }
         }
         
         isLoading = false

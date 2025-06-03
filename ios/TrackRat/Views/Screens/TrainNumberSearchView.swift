@@ -33,7 +33,7 @@ struct TrainNumberSearchView: View {
                 VStack(spacing: 24) {
                     // Input field
                     VStack(alignment: .leading, spacing: 8) {
-                        TextField("e.g. 7829 or A54", text: $trainNumber)
+                        TextField("e.g. 3710 or A170", text: $trainNumber)
                             .textFieldStyle(.plain)
                             .font(.title2)
                             .focused($isInputFocused)
@@ -102,14 +102,73 @@ struct TrainNumberSearchView: View {
                     trainNumber,
                     fromStationCode: appState.departureStationCode
                 )
-                appState.currentTrainId = train.id
-                // Use flexible navigation with train number for direct access
-                appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
-                    trainNumber: trainNumber,
-                    fromStation: appState.departureStationCode
-                ))
+                
+                // Verify the train can be loaded in details view before navigating
+                // This prevents navigation to a view that will show an error
+                do {
+                    _ = try await APIService.shared.fetchTrainDetailsFlexible(
+                        id: nil,
+                        trainId: trainNumber,
+                        fromStationCode: appState.departureStationCode
+                    )
+                    
+                    // Train can be loaded, proceed with navigation
+                    appState.currentTrainId = train.id
+                    // Use flexible navigation with train number for direct access
+                    appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                        trainNumber: trainNumber,
+                        fromStation: appState.departureStationCode
+                    ))
+                } catch {
+                    // Train was found in search but can't be loaded in details
+                    // This happens when the train is outside the time window
+                    print("🔴 Train \(trainNumber) found in search but not available in details view")
+                    throw error
+                }
             } catch {
-                self.error = "Train not found"
+                // Log the error details for debugging
+                print("🔴 TrainNumberSearchView error for train \(trainNumber):")
+                print("  - Error type: \(type(of: error))")
+                print("  - Error description: \(error)")
+                print("  - Localized description: \(error.localizedDescription)")
+                
+                // Use the actual error description for consistency
+                if let apiError = error as? APIError {
+                    switch apiError {
+                    case .noData:
+                        self.error = "Train not found"
+                    default:
+                        self.error = apiError.localizedDescription
+                    }
+                } else if let urlError = error as? URLError {
+                    // Handle URLError specifically
+                    print("🔴 URLError code: \(urlError.code)")
+                    switch urlError.code {
+                    case .notConnectedToInternet:
+                        self.error = "No internet connection"
+                    case .timedOut:
+                        self.error = "Request timed out"
+                    case .cannotFindHost, .cannotConnectToHost:
+                        self.error = "Cannot connect to server"
+                    case .networkConnectionLost:
+                        self.error = "Network connection lost"
+                    default:
+                        // Check if the error description is "No data received" from URLError
+                        if urlError.localizedDescription == "No data received" {
+                            self.error = "Train not found"
+                        } else {
+                            self.error = urlError.localizedDescription
+                        }
+                    }
+                } else {
+                    // For any other error type, check if it says "No data received"
+                    if error.localizedDescription == "No data received" {
+                        print("🔴 Unexpected error with 'No data received' message")
+                        self.error = "Train not found"
+                    } else {
+                        self.error = error.localizedDescription
+                    }
+                }
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
             isLoading = false
