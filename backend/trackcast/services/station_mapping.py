@@ -35,18 +35,18 @@ class StationMapper:
         "Princeton Junction": "PJ",
         "Trenton": "TR",
         "Trenton Transit Center": "TR",
-        "Hamilton": "HA",
+        "Hamilton": "HL",
         "Morristown": "MOR",
         "Madison": "MAD",
-        "Summit": "SUM",
-        "Millburn": "MIL",
-        "Short Hills": "SHI",
-        "Newark Airport": "EWR",
-        "Elizabeth": "ELZ",
+        "Summit": "ST",
+        "Millburn": "MB",
+        "Short Hills": "RT",
+        "Newark Airport": "NA",
+        "Elizabeth": "EZ",
         "Linden": "LI",
-        "Rahway": "RAH",
-        "Metuchen": "MET",
-        "Edison": "EDI",
+        "Rahway": "RH",
+        "Metuchen": "MU",
+        "Edison": "ED",
         "Iselin": "ISE",
         "Perth Amboy": "PAM",
         "South Amboy": "SAM",
@@ -67,10 +67,10 @@ class StationMapper:
         "Montclair Heights": "MCH",
         "Upper Montclair": "UMC",
         "Mountain Avenue": "MVA",
-        "Orange": "ORA",
+        "Orange": "OG",
         "East Orange": "EOR",
-        "Brick Church": "BRC",
-        "Newark Broad Street": "NBS",
+        "Brick Church": "BU",
+        "Newark Broad Street": "ND",
         "Bloomfield": "BLO",
         "Watsessing": "WAT",
         "Walnut Street": "WNS",
@@ -127,7 +127,28 @@ class StationMapper:
         "Garwood": "GAR",
         "Cranford": "CRA",
         "Roselle Park": "ROP",
-        "Union": "UNI",
+        "Union": "US",
+        
+        # Additional missing NJ Transit stations from API
+        "Jersey Avenue": "JA",
+        "Avenel": "AV",
+        "Highland Avenue": "HI",
+        "Mountain Station": "MT",
+        "North Elizabeth": "NZ",
+        "Bay Street": "MC",
+        "Watchung Avenue": "WG",
+        "Watsessing Avenue": "WT",
+        
+        # Keystone Service stations (PA)
+        "Middletown": "MID",
+        "Elizabethtown": "ELT",
+        "Mount Joy": "MJY",
+        "Lancaster": "LNC",
+        "Parkesburg": "PAR",
+        "Coatesville": "COT",
+        "Downingtown": "DOW",
+        "Exton": "EXT",
+        "Paoli": "PAO",
 
         # Amtrak stations
         "Boston South": "BOS",
@@ -152,12 +173,13 @@ class StationMapper:
         "Buffalo-Depew": "BUF",
         "Buffalo Exchange Street": "BFX",
         "Niagara Falls": "NFL",
-        "Philadelphia": "PHL",
-        "Wilmington": "WIL",
+        "Philadelphia": "PH",
+        "Baltimore Station": "BL",
+        "Washington Station": "WS",
+        "BWI Thurgood Marshall Airport": "BA",
+        "Wilmington Station": "WI",
+        "New Carrollton Station": "NC",
         "Aberdeen": "ABE",
-        "BWI Airport": "BWI",
-        "Baltimore Penn Station": "BAL",
-        "New Carrollton": "NCR",
         "Washington Union": "WAS",
         "Alexandria": "AXA",
         "Fredericksburg": "FRB",
@@ -273,9 +295,9 @@ class StationMapper:
     }
     
     # Frontend to database code translations
-    # Some frontend codes don't match what's actually in the database
+    # iOS now uses actual API codes - no translation needed
     FRONTEND_TO_DB_CODE: Dict[str, str] = {
-        "HA": "HL",  # Hamilton: Frontend expects "HA" but database has "HL"
+        # No longer needed - iOS station codes now match API responses
     }
     
     # Reverse mapping
@@ -541,3 +563,100 @@ class StationMapper:
         except (ValueError, AttributeError) as e:
             logger.warning(f"Failed to normalize time '{time_str}': {str(e)}")
             return time_str
+    
+    def validate_sync_with_ios(self, ios_station_codes: Dict[str, str]) -> Dict[str, any]:
+        """
+        Validate that backend station codes are in sync with iOS app.
+        
+        Args:
+            ios_station_codes: Station codes dictionary from iOS app
+            
+        Returns:
+            Dictionary with validation results and any discrepancies
+        """
+        validation_result = {
+            "in_sync": True,
+            "backend_only": [],
+            "ios_only": [],
+            "code_mismatches": [],
+            "total_backend": len(self.STATION_CODES),
+            "total_ios": len(ios_station_codes)
+        }
+        
+        # Find stations only in backend
+        for name, code in self.STATION_CODES.items():
+            if name not in ios_station_codes:
+                validation_result["backend_only"].append({"name": name, "code": code})
+        
+        # Find stations only in iOS
+        for name, code in ios_station_codes.items():
+            if name not in self.STATION_CODES:
+                validation_result["ios_only"].append({"name": name, "code": code})
+        
+        # Find code mismatches
+        for name in set(self.STATION_CODES.keys()) & set(ios_station_codes.keys()):
+            backend_code = self.STATION_CODES[name]
+            ios_code = ios_station_codes[name]
+            if backend_code != ios_code:
+                validation_result["code_mismatches"].append({
+                    "name": name,
+                    "backend_code": backend_code,
+                    "ios_code": ios_code
+                })
+        
+        # Determine if in sync
+        if (validation_result["backend_only"] or 
+            validation_result["ios_only"] or 
+            validation_result["code_mismatches"]):
+            validation_result["in_sync"] = False
+        
+        return validation_result
+    
+    def log_validation_results(self, validation_result: Dict[str, any]) -> None:
+        """Log validation results in a readable format."""
+        if validation_result["in_sync"]:
+            logger.info("✅ Backend and iOS station codes are in sync!")
+            logger.info(f"Total stations: {validation_result['total_backend']}")
+        else:
+            logger.warning("❌ Backend and iOS station codes are NOT in sync!")
+            
+            if validation_result["backend_only"]:
+                logger.warning(f"Stations only in backend ({len(validation_result['backend_only'])}):")
+                for station in validation_result["backend_only"][:5]:  # Limit output
+                    logger.warning(f"  - {station['name']}: {station['code']}")
+                if len(validation_result["backend_only"]) > 5:
+                    logger.warning(f"  ... and {len(validation_result['backend_only']) - 5} more")
+            
+            if validation_result["ios_only"]:
+                logger.warning(f"Stations only in iOS ({len(validation_result['ios_only'])}):")
+                for station in validation_result["ios_only"][:5]:  # Limit output
+                    logger.warning(f"  - {station['name']}: {station['code']}")
+                if len(validation_result["ios_only"]) > 5:
+                    logger.warning(f"  ... and {len(validation_result['ios_only']) - 5} more")
+            
+            if validation_result["code_mismatches"]:
+                logger.warning(f"Code mismatches ({len(validation_result['code_mismatches'])}):")
+                for mismatch in validation_result["code_mismatches"]:
+                    logger.warning(f"  - {mismatch['name']}: backend='{mismatch['backend_code']}' vs ios='{mismatch['ios_code']}'")
+    
+    @classmethod
+    def create_sync_validation_cli_command(cls):
+        """
+        Create a CLI command function for validating sync with iOS.
+        This would be added to the CLI module.
+        """
+        def validate_station_sync():
+            """CLI command to validate station code sync between backend and iOS."""
+            # This would need to read the iOS Stations.swift file
+            # For now, we'll just show how to use the validation
+            mapper = cls()
+            
+            # Example of how this would work with actual iOS data
+            logger.info("To validate sync, you would:")
+            logger.info("1. Extract station codes from ios/TrackRat/Models/Stations.swift")
+            logger.info("2. Pass them to mapper.validate_sync_with_ios(ios_codes)")
+            logger.info("3. Call mapper.log_validation_results(result)")
+            
+            return True
+        
+        return validate_station_sync
