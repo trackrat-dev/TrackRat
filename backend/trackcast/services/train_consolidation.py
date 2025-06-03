@@ -363,18 +363,18 @@ class TrainConsolidationService:
             "track_assignment": self._merge_track_assignment(trains),
             "status_summary": self._merge_status(trains),
             
-            # Position tracking
-            "current_position": self._calculate_current_position(trains),
-            
-            # Merged stops with departure status from all sources
+            # Merged stops with departure status from all sources (must come first)
             "stops": self._merge_stops(trains),
-            
-            # Metadata
-            "consolidation_metadata": {
-                "source_count": len(trains),
-                "last_update": max(t.updated_at for t in trains).isoformat(),
-                "confidence_score": self._calculate_confidence_score(trains)
-            }
+        }
+        
+        # Add position tracking using the merged stops
+        consolidated["current_position"] = self._calculate_current_position_from_stops(consolidated["stops"])
+        
+        # Add metadata
+        consolidated["consolidation_metadata"] = {
+            "source_count": len(trains),
+            "last_update": max(t.updated_at for t in trains).isoformat(),
+            "confidence_score": self._calculate_confidence_score(trains)
         }
         
         # Add prediction data if available
@@ -573,9 +573,66 @@ class TrainConsolidationService:
             
         return position
     
+    def _calculate_current_position_from_stops(self, merged_stops: List[Dict]) -> Optional[Dict]:
+        """
+        Calculate the train's current position from already-merged stop data.
+        
+        Args:
+            merged_stops: List of stop dictionaries from _merge_stops()
+            
+        Returns:
+            Current position dictionary or None
+        """
+        if not merged_stops:
+            return None
+            
+        # Find last departed and next station from merged stops
+        last_departed = None
+        next_station = None
+        
+        for i, stop in enumerate(merged_stops):
+            if stop.get("departed"):
+                last_departed = stop
+            elif last_departed and not next_station:
+                next_station = stop
+                break
+                
+        if not last_departed:
+            # Train hasn't departed yet
+            return {
+                "status": "Not yet departed",
+                "next_station": {
+                    "code": merged_stops[0]["station_code"],
+                    "name": merged_stops[0]["station_name"],
+                    "scheduled_arrival": merged_stops[0]["scheduled_time"]
+                } if merged_stops else None
+            }
+            
+        position = {
+            "last_departed_station": {
+                "code": last_departed["station_code"],
+                "name": last_departed["station_name"],
+                "scheduled_departure": last_departed["scheduled_time"]
+            }
+        }
+        
+        if next_station:
+            position["next_station"] = {
+                "code": next_station["station_code"],
+                "name": next_station["station_name"],
+                "scheduled_arrival": next_station["scheduled_time"]
+            }
+            
+        return position
+    
     def _merge_stops(self, trains: List[Train]) -> List[Dict]:
-        """Merge stop information from all sources."""
-        # Collect all stops
+        """
+        Merge stop information from all sources using 'most recently updated train wins' logic.
+        
+        When trains have conflicting departure status for the same station, the train with 
+        the most recent updated_at timestamp takes precedence.
+        """
+        # Collect all stops with their source train metadata
         stop_map = {}
         
         for train in trains:
@@ -598,17 +655,48 @@ class TrainConsolidationService:
                         "dropoff_only": stop.dropoff_only,
                         "departed": stop.departed,
                         "departed_confirmed_by": [],
-                        "stop_status": stop.stop_status
+                        "stop_status": stop.stop_status,
+                        # Track which train/timestamp determined the departed status
+                        "_departed_source_train": train if stop.departed else None,
+                        "_departed_source_timestamp": train.updated_at if stop.departed else None
                     }
+                    # Add to confirmed_by if this source says departed
+                    if stop.departed:
+                        stop_map[key]["departed_confirmed_by"].append(train.origin_station_code)
+                else:
+                    # Station already exists - resolve conflicts using most recent train wins
+                    existing_departed = stop_map[key]["departed"]
+                    current_departed = stop.departed
                     
-                # Update departed status - if any source says departed, it's departed
-                if stop.departed:
-                    stop_map[key]["departed"] = True
-                    stop_map[key]["departed_confirmed_by"].append(train.origin_station_code)
+                    # Always add this source to confirmed_by if it says departed
+                    if current_departed:
+                        if train.origin_station_code not in stop_map[key]["departed_confirmed_by"]:
+                            stop_map[key]["departed_confirmed_by"].append(train.origin_station_code)
                     
-                # Update actual times if available
-                if stop.departure_time and not stop_map[key]["departure_time"]:
-                    stop_map[key]["departure_time"] = stop.departure_time.isoformat()
+                    # If there's a conflict about departure status, use most recent train
+                    if existing_departed != current_departed:
+                        existing_timestamp = stop_map[key]["_departed_source_timestamp"]
+                        current_timestamp = train.updated_at
+                        
+                        # If current train is more recent, use its departure status
+                        if existing_timestamp is None or current_timestamp > existing_timestamp:
+                            logger.debug(f"Station {key}: Using more recent departure status from {train.origin_station_code} "
+                                       f"({current_departed}) over previous status ({existing_departed})")
+                            stop_map[key]["departed"] = current_departed
+                            stop_map[key]["_departed_source_train"] = train
+                            stop_map[key]["_departed_source_timestamp"] = current_timestamp
+                        else:
+                            logger.debug(f"Station {key}: Keeping existing departure status ({existing_departed}) "
+                                       f"from more recent source over {train.origin_station_code} ({current_departed})")
+                    
+                    # Update actual times if available (take first non-None value)
+                    if stop.departure_time and not stop_map[key]["departure_time"]:
+                        stop_map[key]["departure_time"] = stop.departure_time.isoformat()
+                        
+        # Clean up internal tracking fields before returning
+        for stop_data in stop_map.values():
+            stop_data.pop("_departed_source_train", None)
+            stop_data.pop("_departed_source_timestamp", None)
                     
         # Sort stops by scheduled time
         # Use datetime.min for None values to ensure proper sorting

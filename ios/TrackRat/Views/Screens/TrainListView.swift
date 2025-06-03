@@ -278,48 +278,11 @@ class TrainListViewModel: ObservableObject {
                 toStationCode: toStationCode
             )
             
-            // Deduplicate trains by train_id with priority system
-            var trainMap: [String: Train] = [:]
-            for train in fetchedTrains {
-                if let existing = trainMap[train.trainId] {
-                    // Calculate priority scores (higher is better)
-                    let getPriority: (Train) -> Double = { t in
-                        var score: Double = 0
-                        
-                        // Priority 1: Train originates from user's departure station
-                        if let originCode = t.originStationCode,
-                           originCode == fromStationCode {
-                            score += 1000
-                        }
-                        
-                        // Priority 2: NJ Transit data over Amtrak data
-                        if t.dataSource == "njtransit" {
-                            score += 100
-                        }
-                        
-                        // Priority 3: Use departure_time as tiebreaker
-                        let timestamp = t.departureTime.timeIntervalSince1970 / 1000000000
-                        score += timestamp
-                        
-                        return score
-                    }
-                    
-                    let existingPriority = getPriority(existing)
-                    let currentPriority = getPriority(train)
-                    
-                    if currentPriority > existingPriority {
-                        trainMap[train.trainId] = train
-                    }
-                } else {
-                    trainMap[train.trainId] = train
-                }
-            }
-            
             // Filter out trains departing more than 6 hours from now
             let now = Date()
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
-            let filteredTrains = trainMap.values.filter { train in
+            let filteredTrains = fetchedTrains.filter { train in
                 let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
                 return departureTime <= sixHoursFromNow
             }
@@ -351,48 +314,11 @@ class TrainListViewModel: ObservableObject {
                 toStationCode: toStationCode
             )
             
-            // Deduplicate trains by train_id with priority system
-            var trainMap: [String: Train] = [:]
-            for train in fetchedTrains {
-                if let existing = trainMap[train.trainId] {
-                    // Calculate priority scores (higher is better)
-                    let getPriority: (Train) -> Double = { t in
-                        var score: Double = 0
-                        
-                        // Priority 1: Train originates from user's departure station
-                        if let originCode = t.originStationCode,
-                           originCode == fromStationCode {
-                            score += 1000
-                        }
-                        
-                        // Priority 2: NJ Transit data over Amtrak data
-                        if t.dataSource == "njtransit" {
-                            score += 100
-                        }
-                        
-                        // Priority 3: Use departure_time as tiebreaker
-                        let timestamp = t.departureTime.timeIntervalSince1970 / 1000000000
-                        score += timestamp
-                        
-                        return score
-                    }
-                    
-                    let existingPriority = getPriority(existing)
-                    let currentPriority = getPriority(train)
-                    
-                    if currentPriority > existingPriority {
-                        trainMap[train.trainId] = train
-                    }
-                } else {
-                    trainMap[train.trainId] = train
-                }
-            }
-            
             // Filter out trains departing more than 6 hours from now
             let now = Date()
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
-            let filteredTrains = trainMap.values.filter { train in
+            let filteredTrains = fetchedTrains.filter { train in
                 let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
                 return departureTime <= sixHoursFromNow
             }

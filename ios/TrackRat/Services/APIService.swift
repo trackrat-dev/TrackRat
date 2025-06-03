@@ -86,7 +86,8 @@ final class APIService: ObservableObject {
             URLQueryItem(name: "from_station_code", value: fromStationCode),
             URLQueryItem(name: "to_station_code", value: toStationCode),
             URLQueryItem(name: "departure_time_after", value: currentTime),
-            URLQueryItem(name: "limit", value: "100")
+            URLQueryItem(name: "limit", value: "100"),
+            URLQueryItem(name: "consolidate", value: "true")
         ]
         
         guard let url = components.url else {
@@ -156,7 +157,8 @@ final class APIService: ObservableObject {
             URLQueryItem(name: "train_id", value: number),
             URLQueryItem(name: "sort_by", value: "departure_time"),
             URLQueryItem(name: "sort_order", value: "desc"),
-            URLQueryItem(name: "limit", value: "1")
+            URLQueryItem(name: "limit", value: "1"),
+            URLQueryItem(name: "consolidate", value: "true")
         ]
         
         components.queryItems = queryItems
@@ -224,10 +226,10 @@ final class APIService: ObservableObject {
     }
     
     // MARK: - Consolidated Train Query
-    func fetchTrainByTrainId(_ trainId: String, sinceHoursAgo: Int = 24, consolidate: Bool = true) async throws -> [Train] {
+    func fetchTrainByTrainId(_ trainId: String, sinceHoursAgo: Int = 6, consolidate: Bool = true) async throws -> [Train] {
         print("🔍 fetchTrainByTrainId called for: \(trainId)")
         
-        // Calculate time filter (24 hours ago by default)
+        // Calculate time filter (6 hours ago by default)
         let timeFilter = Date().addingTimeInterval(-Double(sinceHoursAgo) * 3600)
         let formatter = DateFormatter()
         formatter.timeZone = TimeZone(identifier: "America/New_York")
