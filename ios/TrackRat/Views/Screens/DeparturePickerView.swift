@@ -31,56 +31,7 @@ struct DeparturePickerView: View {
                 .padding(.top, 100)
                 
                 VStack(spacing: 20) {
-                    // Recent departures
-                    if !appState.recentDepartures.isEmpty && !isSearching {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("RECENT DEPARTURES")
-                                .font(TrackRatTheme.Typography.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
-                                .padding(.horizontal)
-                            
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 12) {
-                                    ForEach(appState.recentDepartures, id: \.code) { departure in
-                                        RecentDeparturePill(
-                                            departure: departure,
-                                            onTap: {
-                                                selectDeparture(name: departure.name, code: departure.code)
-                                            }
-                                        )
-                                    }
-                                }
-                                .padding(.horizontal)
-                            }
-                        }
-                    }
-                    
-                    // Popular stations
-                    if !isSearching {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("POPULAR STATIONS")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white.opacity(0.7))
-                                .padding(.horizontal)
-                            
-                            VStack(spacing: 12) {
-                                ForEach(Stations.departureStations, id: \.code) { station in
-                                    DepartureButton(
-                                        name: station.name,
-                                        code: station.code,
-                                        onTap: {
-                                            selectDeparture(name: station.name, code: station.code)
-                                        }
-                                    )
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
-                    }
-                    
-                    // Search field
+                    // Search field - moved to top
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.white.opacity(0.6))
@@ -109,7 +60,7 @@ struct DeparturePickerView: View {
                     )
                     .padding(.horizontal, 24)
                     
-                    // Search results
+                    // Search results - take full page when searching
                     if isSearching {
                         ScrollView {
                             VStack(spacing: 8) {
@@ -141,8 +92,55 @@ struct DeparturePickerView: View {
                                     .padding(.horizontal, 24)
                                 }
                             }
+                            .padding(.bottom, 50) // Add bottom padding for better scrolling
                         }
-                        .frame(maxHeight: 300)
+                    } else {
+                        // Recent departures - only show when not searching
+                        if !appState.recentDepartures.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("RECENT DEPARTURES")
+                                    .font(TrackRatTheme.Typography.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
+                                    .padding(.horizontal)
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 12) {
+                                        ForEach(appState.recentDepartures, id: \.code) { departure in
+                                            RecentDeparturePill(
+                                                departure: departure,
+                                                onTap: {
+                                                    selectDeparture(name: departure.name, code: departure.code)
+                                                }
+                                            )
+                                        }
+                                    }
+                                    .padding(.horizontal)
+                                }
+                            }
+                        }
+                        
+                        // Popular stations - only show when not searching
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("POPULAR STATIONS")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white.opacity(0.7))
+                                .padding(.horizontal)
+                            
+                            VStack(spacing: 12) {
+                                ForEach(Stations.departureStations, id: \.code) { station in
+                                    DepartureButton(
+                                        name: station.name,
+                                        code: station.code,
+                                        onTap: {
+                                            selectDeparture(name: station.name, code: station.code)
+                                        }
+                                    )
+                                }
+                            }
+                            .padding(.horizontal, 24)
+                        }
                     }
                 }
                 

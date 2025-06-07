@@ -222,13 +222,6 @@ struct CombinedDetailsCard: View {
                 if train.displayStatus != .boarding {
                     if let prediction = train.predictionData {
                         TrackRatPredictionView(prediction: prediction)
-                    } else {
-                        // Debug: Show why no predictions
-                        VStack {
-                            Text("🔍 No Track Prediction")
-                                .font(.caption)
-                                .foregroundColor(.black.opacity(0.6))
-                        }
                     }
                 }
             }
@@ -533,7 +526,7 @@ struct TrackRatPredictionView: View {
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundColor(.black)
-                        .frame(width: 60, alignment: .leading)
+                        .frame(width: 80, alignment: .leading)
                     
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {

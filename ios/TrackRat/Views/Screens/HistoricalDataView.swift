@@ -373,7 +373,7 @@ class HistoricalDataViewModel: ObservableObject {
         // Validate destination station code
         guard let toCode = toStationCode else {
             print("❌ Error: Missing toStationCode in loadHistoricalData")
-            self.error = "Unable to load historical data: destination station not available"
+            self.error = "Historical data is not available for this route"
             isLoading = false
             return
         }

@@ -32,96 +32,105 @@ struct DestinationPickerView: View {
                     .padding(.top, 100)
                 
                 VStack(spacing: 20) {
-                    // Recent destinations
-                    if !filteredRecentDestinations.isEmpty && !isSearching {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 12) {
-                                    ForEach(filteredRecentDestinations.sorted(), id: \.self) { destination in
-                                        RecentDestinationPill(
-                                            destination: destination,
-                                            onTap: {
-                                                selectDestination(destination)
-                                            },
-                                            onRemove: {
-                                                withAnimation {
-                                                    appState.removeDestination(destination)
-                                                }
-                                            }
+                    // Search bar - moved to top
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.white.opacity(0.6))
+                        
+                        TextField("Type station name...", text: $searchText)
+                            .foregroundColor(.white)
+                            .focused($searchFieldFocused)
+                            .onTapGesture {
+                                isSearching = true
+                            }
+                            .onChange(of: searchText) { _, newValue in
+                                isSearching = !newValue.isEmpty
+                            }
+                        
+                        if isSearching {
+                            Button {
+                                searchText = ""
+                                isSearching = false
+                                searchFieldFocused = false
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                        }
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.white.opacity(0.2))
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.white.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                    .padding(.horizontal, 24)
+                    
+                    // Search results - take full page when searching
+                    if isSearching {
+                        ScrollView {
+                            VStack(spacing: 8) {
+                                ForEach(searchResults, id: \.self) { station in
+                                    Button {
+                                        selectDestination(station)
+                                    } label: {
+                                        HStack {
+                                            Text(Stations.displayName(for: station))
+                                                .font(.body)
+                                                .foregroundColor(.white)
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .font(.system(size: 14, weight: .semibold))
+                                                .foregroundColor(.white.opacity(0.6))
+                                        }
+                                        .padding()
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .fill(.white.opacity(0.15))
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                                                )
                                         )
                                     }
+                                    .padding(.horizontal, 24)
                                 }
-                                .padding(.horizontal)
                             }
+                            .padding(.bottom, 50) // Add bottom padding for better scrolling
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                    
-                    // Search bar
-                    VStack(spacing: 0) {
-                        HStack {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(.gray)
-                            
-                            TextField("Type station name...", text: $searchText)
-                                .textFieldStyle(.plain)
-                                .focused($searchFieldFocused)
-                                .onTapGesture {
-                                    isSearching = true
-                                }
-                                .onChange(of: searchText) { _, newValue in
-                                    isSearching = !newValue.isEmpty
-                                }
-                            
-                            if isSearching {
-                                Button {
-                                    searchText = ""
-                                    isSearching = false
-                                    searchFieldFocused = false
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.gray)
-                                }
-                            }
-                        }
-                        .padding()
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(12)
-                        .padding(.horizontal)
-                        
-                        // Search results
-                        if isSearching && !searchResults.isEmpty {
-                            ScrollView {
-                                VStack(spacing: 0) {
-                                    ForEach(searchResults, id: \.self) { station in
-                                        Button {
-                                            selectDestination(station)
-                                        } label: {
-                                            HStack {
-                                                Text(Stations.displayName(for: station))
-                                                    .foregroundColor(.primary)
-                                                Spacer()
-                                                Image(systemName: "chevron.right")
-                                                    .foregroundColor(.secondary)
-                                                    .font(.caption)
-                                            }
-                                            .padding()
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                        
-                                        if station != searchResults.last {
-                                            Divider()
-                                                .padding(.leading)
+                    } else {
+                        // Recent destinations - only show when not searching
+                        if !filteredRecentDestinations.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("RECENT DESTINATIONS")
+                                    .font(TrackRatTheme.Typography.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
+                                    .padding(.horizontal)
+                                
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 12) {
+                                        ForEach(filteredRecentDestinations.sorted(), id: \.self) { destination in
+                                            RecentDestinationPill(
+                                                destination: destination,
+                                                onTap: {
+                                                    selectDestination(destination)
+                                                },
+                                                onRemove: {
+                                                    withAnimation {
+                                                        appState.removeDestination(destination)
+                                                    }
+                                                }
+                                            )
                                         }
                                     }
+                                    .padding(.horizontal)
                                 }
-                                .background(.ultraThinMaterial)
-                                .cornerRadius(12)
-                                .padding(.horizontal)
-                                .padding(.top, 8)
                             }
-                            .frame(maxHeight: 300)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }

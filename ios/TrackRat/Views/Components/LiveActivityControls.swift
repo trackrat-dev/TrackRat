@@ -39,7 +39,7 @@ struct LiveActivityControls: View {
                         }
                     }
                     .font(.caption.bold())
-                    .foregroundColor(Color(hex: "667eea"))
+                    .foregroundColor(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(

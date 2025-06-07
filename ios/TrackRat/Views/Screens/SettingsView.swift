@@ -13,13 +13,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // Background gradient matching app design
-                LinearGradient(
-                    colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                // Black background matching app design
+                Color.black
+                    .ignoresSafeArea()
                 
                 ScrollView {
                     VStack(spacing: 24) {
@@ -37,15 +33,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(.white)
-                    .fontWeight(.semibold)
-                }
-            }
             .preferredColorScheme(.dark)
         }
         .onAppear {
@@ -84,7 +71,7 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(.white.opacity(0.1))
+                        .fill(.ultraThinMaterial)
                         .background(
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(.white.opacity(0.2), lineWidth: 1)
@@ -147,7 +134,7 @@ struct SettingsView: View {
                 .padding(20)
                 .background(
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(.white.opacity(0.15))
+                        .fill(.ultraThinMaterial)
                         .background(
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(.white.opacity(0.2), lineWidth: 1)
@@ -180,21 +167,15 @@ struct FavoriteRouteCard: View {
             HStack(spacing: 16) {
                 // Route info
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(Stations.displayName(for: trip.departureName))")
+                    Text("\(Stations.displayName(for: trip.departureName)) to")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.white.opacity(0.8))
                     
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 12))
-                            .foregroundColor(.orange)
-                        
-                        Text(trip.destinationName)
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                    }
+                    Text(trip.destinationName)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
                 }
                 
                 Spacer()
@@ -214,7 +195,7 @@ struct FavoriteRouteCard: View {
             .padding(20)
             .background(
                 RoundedRectangle(cornerRadius: 16)
-                    .fill(.white.opacity(0.1))
+                    .fill(.ultraThinMaterial)
                     .background(
                         RoundedRectangle(cornerRadius: 16)
                             .stroke(.white.opacity(0.2), lineWidth: 1)
