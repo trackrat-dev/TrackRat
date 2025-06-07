@@ -171,24 +171,12 @@ struct TrainCard: View {
                         .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7))
                 }
                 
-                // Track and status
-                HStack(spacing: 16) {
-                    if isBoardingAtOrigin, let track = train.track {
-                        Label("Boarding on Track \(track)", systemImage: "tram.fill")
-                            .font(.subheadline)
-                            .foregroundColor(.white)
-                            .fontWeight(.medium)
-                    } else {
-                        if let track = train.track, !track.isEmpty {
-                            Label("Track \(track)", systemImage: "tram")
-                                .font(.subheadline)
-                                .foregroundColor(.black.opacity(0.6))
-                        }
-                        
-                        if train.status != .scheduled && train.status != .unknown {
-                            StatusBadge(status: train.status, delayMinutes: train.delayMinutes)
-                        }
-                    }
+                // Track and status - only show for boarding trains at origin
+                if isBoardingAtOrigin, let track = train.track {
+                    Label("Boarding on Track \(track)", systemImage: "tram.fill")
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                        .fontWeight(.medium)
                 }
             }
             .padding()

@@ -142,7 +142,6 @@ struct CombinedDetailsCard: View {
             return formatter.string(from: originDepartureTime)
         }
         
-        // Fall back to train's original departure time
         return formatter.string(from: train.departureTime)
     }
     
@@ -227,20 +226,7 @@ struct CombinedDetailsCard: View {
                 
                 // Track or prediction
                 if train.displayStatus != .boarding {
-                    if let track = train.displayTrack, !track.isEmpty {
-                        Label("Track \(track)", systemImage: "tram.fill")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.black)
-                        
-                        // Show source attribution for consolidated data
-                        if let trackAssignment = train.trackAssignment,
-                           let assignedBy = trackAssignment.assignedBy {
-                            Text("Assigned by \(assignedBy)")
-                                .font(.caption2)
-                                .foregroundColor(.black.opacity(0.6))
-                        }
-                    } else if let prediction = train.predictionData {
+                    if let prediction = train.predictionData {
                         OwlPredictionView(prediction: prediction)
                     } else {
                         // Debug: Show why no predictions
@@ -692,48 +678,6 @@ struct StopRow: View {
                                 .fontWeight(.bold)
                                 .foregroundColor(.orange)
                         }
-                    } else if stop.departed {
-                        // Check if recently departed (within 2 minutes)
-                        if let departureTime = stop.departureTime ?? stop.scheduledTime {
-                            let timeSinceDeparture = Date().timeIntervalSince(departureTime)
-                            if timeSinceDeparture < 120 { // Within 2 minutes
-                                Text("JUST DEPARTED")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.green)
-                                    .scaleEffect(showPulse ? 1.1 : 1.0)
-                                    .onAppear {
-                                        withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
-                                            showPulse = true
-                                        }
-                                    }
-                            } else {
-                                Text("DEPARTED")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                        } else {
-                            Text("DEPARTED")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                        }
-                    } else if !stop.departed {
-                        // Check if approaching (within 3 minutes)
-                        if let arrivalTime = stop.scheduledTime {
-                            let timeToArrival = arrivalTime.timeIntervalSince(Date())
-                            if timeToArrival > 0 && timeToArrival < 180 { // Within 3 minutes
-                                Text("APPROACHING")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.blue)
-                                    .scaleEffect(showPulse ? 1.1 : 1.0)
-                                    .onAppear {
-                                        withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                                            showPulse = true
-                                        }
-                                    }
-                            }
-                        }
                     }
                 }
                 
@@ -765,23 +709,7 @@ struct StopRow: View {
         if isDestination { return .green }
         if isDeparture { return .orange }
         if isBoarding { return .orange }
-        if stop.departed {
-            // Check if recently departed
-            if let departureTime = stop.departureTime ?? stop.scheduledTime {
-                let timeSinceDeparture = Date().timeIntervalSince(departureTime)
-                if timeSinceDeparture < 120 { // Within 2 minutes
-                    return .green
-                }
-            }
-            return .gray
-        }
-        // Check if approaching
-        if let arrivalTime = stop.scheduledTime {
-            let timeToArrival = arrivalTime.timeIntervalSince(Date())
-            if timeToArrival > 0 && timeToArrival < 180 { // Within 3 minutes
-                return .blue
-            }
-        }
+        if stop.departed { return .gray }
         return .blue
     }
     
@@ -1107,9 +1035,6 @@ struct JourneyStatusView: View {
     @ViewBuilder
     private var fullJourneyStatus: some View {
         VStack(spacing: 16) {
-            // Main status display
-            statusHeader
-            
             // Progress information
             if hasProgressData {
                 progressSection
@@ -1174,70 +1099,12 @@ struct JourneyStatusView: View {
     
     // MARK: - Full Mode Components
     
-    @ViewBuilder
-    private var statusHeader: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(statusEmoji)
-                    .font(.title2)
-
-                // Updated Text display for statusHeader
-                let currentDisplayStatus = self.displayStatus // This will be "Scheduled" if boarding w/o track
-                if train.statusV2?.current == "BOARDING" && train.displayTrack != nil {
-                    Text("Boarding on Track \(train.displayTrack!)")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.black)
-                } else if train.statusV2 == nil && train.displayStatus == .boarding && train.displayTrack != nil {
-                    Text("Boarding on Track \(train.displayTrack!)")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.black)
-                } else {
-                    Text(currentDisplayStatus) // Shows "Scheduled" (if boarding w/o track) or other statuses
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.black)
-                }
-                Spacer()
-            }
-            
-            // Location info if available (but not for SCHEDULED status)
-            if let location = train.statusV2?.location, train.statusV2?.current != "SCHEDULED" {
-                HStack {
-                    Text(location)
-                        .font(.subheadline)
-                        .foregroundColor(.black.opacity(0.7))
-                    Spacer()
-                }
-            }
-        }
-    }
     
     @ViewBuilder
     private var progressSection: some View {
         if hasProgressData {
-            let progress = userJourneyProgress
-            HStack {
-                if progress.total > 0 {
-                    Text("Stop \(progress.completed) of \(progress.total) completed")
-                        .font(.subheadline)
-                        .foregroundColor(.black)
-                } else {
-                    Text("Journey in progress")
-                        .font(.subheadline)
-                        .foregroundColor(.black)
-                }
-                Spacer()
-                Text("(\(progress.percentage)%)")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.black.opacity(0.6))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.white.opacity(0.2))
-            .cornerRadius(8)
+            // This section is now empty since stop completion display was removed
+            EmptyView()
         }
     }
     

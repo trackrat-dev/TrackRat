@@ -10,22 +10,22 @@ struct ExperimentalFeaturesView: View {
     let train: Train
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
-                Image(systemName: "flask.fill") // Using a science-related icon for experimental features
-                    .foregroundColor(Color(hex: "667eea")) // Consistent with app's purple theme
+                Image(systemName: "flask.fill")
+                    .foregroundColor(.orange)
                 Text("Experimental Features")
                     .font(.headline)
-                    .foregroundColor(Color.primary) // Adapts to light/dark mode
+                    .foregroundColor(.white)
                 Spacer()
                 Button(action: { isExpanded.toggle() }) {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundColor(Color.secondary) // Standard secondary color
+                        .foregroundColor(.white)
                 }
             }
             .padding()
-            .background(Color(UIColor.systemGray6)) // A light gray background, common in iOS settings
+            .background(Color.black)
             .cornerRadius(12)
             .onTapGesture {
                 isExpanded.toggle()
@@ -33,41 +33,62 @@ struct ExperimentalFeaturesView: View {
 
             // Expanded details
             if isExpanded {
-                VStack(spacing: 20) {
+                VStack(spacing: 8) {
                     // Live Activity controls
                     if #available(iOS 16.1, *) {
-                        LiveActivityControls(
-                            train: train,
-                            origin: appState.selectedDeparture ?? "",
-                            destination: appState.selectedDestination ?? "",
-                            originCode: appState.departureStationCode ?? "",
-                            destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
-                        )
-                        .padding(.horizontal)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Live Activity")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                            
+                            LiveActivityControls(
+                                train: train,
+                                origin: appState.selectedDeparture ?? "",
+                                destination: appState.selectedDestination ?? "",
+                                originCode: appState.departureStationCode ?? "",
+                                destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                            )
+                        }
+                        .padding()
+                        .background(Color.black)
                     }
 
                     // Consolidated data section
                     if train.isConsolidated {
-                        ConsolidatedDataCard(train: train) // Assuming this card is already styled appropriately or will be
-                            .padding(.horizontal)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Multi-Source Data")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                            
+                            ConsolidatedDataCard(train: train)
+                        }
+                        .padding()
+                        .background(Color.black)
                     }
 
-                    // Show history button
+                    // Show history section
                     Button {
                         showingHistory = true
                     } label: {
                         HStack {
                             Image(systemName: "clock.arrow.circlepath")
-                            Text("Details from past trains")
+                            Text("View Historical Data")
                                 .font(.subheadline)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
                         }
-                        .foregroundColor(Color(hex: "667eea")) // Use accent color
+                        .foregroundColor(.orange)
+                        .padding()
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom) // Add some padding at the bottom of the expanded section
+                    .background(Color.black)
                 }
+                .background(Color.black)
+                .cornerRadius(12, corners: [.bottomLeft, .bottomRight])
                 .sheet(isPresented: $showingHistory) {
-                    HistoricalDataView(train: train) // Present HistoricalDataView as a sheet
+                    HistoricalDataView(train: train)
                 }
             }
         }
