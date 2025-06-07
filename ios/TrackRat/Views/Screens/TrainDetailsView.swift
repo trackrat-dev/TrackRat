@@ -234,11 +234,6 @@ struct CombinedDetailsCard: View {
                             Text("🔍 No Track Prediction")
                                 .font(.caption)
                                 .foregroundColor(.black.opacity(0.6))
-                            if train.isConsolidated {
-                                Text("Consolidated train with no prediction data")
-                                    .font(.caption2)
-                                    .foregroundColor(.black.opacity(0.5))
-                            }
                         }
                     }
                 }
@@ -499,11 +494,6 @@ struct StatusCard: View {
                         Text("🔍 No Track Prediction")
                             .font(.caption)
                             .foregroundColor(.black.opacity(0.6))
-                        if train.isConsolidated {
-                            Text("Consolidated train with no prediction data")
-                                .font(.caption2)
-                                .foregroundColor(.black.opacity(0.5))
-                        }
                     }
                 }
             }

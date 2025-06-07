@@ -62,7 +62,41 @@ struct ExperimentalFeaturesView: View {
                                 .fontWeight(.medium)
                                 .foregroundColor(.white)
                             
-                            ConsolidatedDataCard(train: train)
+                            // Data sources details directly here
+                            if let sources = train.dataSources {
+                                ForEach(sources, id: \.dbId) { source in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(source.origin)
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                                .foregroundColor(.white)
+                                            Text(source.dataSource)
+                                                .font(.caption2)
+                                                .foregroundColor(.white.opacity(0.6))
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        VStack(alignment: .trailing, spacing: 2) {
+                                            if let status = source.status {
+                                                Text(status)
+                                                    .font(.caption2)
+                                                    .foregroundColor(.white.opacity(0.8))
+                                            }
+                                            if let track = source.track {
+                                                Text("Track \(track)")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.orange.opacity(0.8))
+                                            }
+                                        }
+                                    }
+                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 12)
+                                    .background(.ultraThinMaterial.opacity(0.3))
+                                    .cornerRadius(8)
+                                }
+                            }
                         }
                         .padding()
                         .background(Color.black)
