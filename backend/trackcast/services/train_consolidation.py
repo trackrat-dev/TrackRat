@@ -491,19 +491,31 @@ class TrainConsolidationService:
         current_status = latest_train.status
         if any(t.status == "DEPARTED" for t in trains):
             current_status = "In Transit"
-        elif any(t.status == "BOARDING" and t.track and t.track.strip() for t in trains):
-            # Only consider it "Boarding" if the train has both BOARDING status AND a track assignment
+        elif any(t.status == "BOARDING" for t in trains):
             # If user specified a boarding station, only show "Boarding" if it's boarding at that station
             if from_station_code:
                 user_station_boarding = any(
-                    t.status == "BOARDING" and t.track and t.track.strip() 
-                    and t.origin_station_code == from_station_code 
+                    t.status == "BOARDING" and t.origin_station_code == from_station_code 
                     for t in trains
                 )
                 if user_station_boarding:
-                    current_status = "Boarding"
+                    # Only show "Boarding" if there's also a track assignment (for this station)
+                    user_station_has_track = any(
+                        t.status == "BOARDING" and t.origin_station_code == from_station_code
+                        and t.track and t.track.strip()
+                        for t in trains
+                    )
+                    if user_station_has_track:
+                        current_status = "Boarding"
+                    # If boarding at user's station but no track yet, keep latest status
+                else:
+                    # Train is boarding somewhere else, not at user's station
+                    # Don't show "BOARDING" status - use a more appropriate status
+                    current_status = "Scheduled"  # or "En Route" - train is not boarding for this user
             else:
-                current_status = "Boarding"
+                # No user context - show "Boarding" if any train is boarding with track assignment
+                if any(t.status == "BOARDING" and t.track and t.track.strip() for t in trains):
+                    current_status = "Boarding"
             
         return {
             "current_status": current_status,
