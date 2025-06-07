@@ -155,7 +155,7 @@ extension Train {
     }
     
     /// Convert prediction data to Live Activity format
-    func getOwlPredictionInfo() -> OwlPredictionInfo? {
+    func getTrackRatPredictionInfo() -> TrackRatPredictionInfo? {
         guard let predictionData = predictionData,
               let trackProbs = predictionData.trackProbabilities,
               !trackProbs.isEmpty else { return nil }
@@ -166,7 +166,7 @@ extension Train {
         
         let alternatives = sortedTracks.dropFirst().prefix(2).map { $0.key }
         
-        return OwlPredictionInfo(
+        return TrackRatPredictionInfo(
             topTrack: topTrack.key,
             confidence: topTrack.value,
             alternativeTracks: Array(alternatives)
@@ -228,7 +228,7 @@ extension Train {
         }
         
         let destinationETA = getDestinationETA(to: destinationCode)
-        let owlPrediction = getOwlPredictionInfo()
+        let trackRatPrediction = getTrackRatPredictionInfo()
         
         let hasStatusChanged = lastKnownStatus != nil && lastKnownStatus != status
         
@@ -240,7 +240,7 @@ extension Train {
             nextStop: nextStop,
             journeyProgress: journeyProgress.progress,
             destinationETA: destinationETA,
-            owlPrediction: owlPrediction,
+            trackRatPrediction: trackRatPrediction,
             lastUpdated: Date(),
             hasStatusChanged: hasStatusChanged
         )

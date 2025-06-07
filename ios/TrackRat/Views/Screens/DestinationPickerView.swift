@@ -19,21 +19,16 @@ struct DestinationPickerView: View {
     
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // Black gradient background
+            TrackRatTheme.Colors.primaryGradient
+                .ignoresSafeArea()
             
             
             VStack(spacing: 32) {
                 // Title with spacing
                 Text("Where to?")
-                    .font(.largeTitle)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .font(TrackRatTheme.Typography.title1)
+                    .foregroundColor(TrackRatTheme.Colors.onSurface)
                     .padding(.top, 100)
                 
                 VStack(spacing: 20) {

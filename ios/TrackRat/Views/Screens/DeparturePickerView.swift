@@ -12,27 +12,21 @@ struct DeparturePickerView: View {
     
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // Black gradient background
+            TrackRatTheme.Colors.primaryGradient
+                .ignoresSafeArea()
             
             
             VStack(spacing: 32) {
                 // Title with spacing
-                VStack(spacing: 8) {
+                VStack(spacing: TrackRatTheme.Spacing.sm) {
                     Text("Where are you")
-                        .font(.largeTitle)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                        .font(TrackRatTheme.Typography.title1)
+                        .foregroundColor(TrackRatTheme.Colors.onSurface)
                     
                     Text("departing from?")
-                        .font(.largeTitle)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                        .font(TrackRatTheme.Typography.title1)
+                        .foregroundColor(TrackRatTheme.Colors.onSurface)
                 }
                 .padding(.top, 100)
                 
@@ -41,9 +35,9 @@ struct DeparturePickerView: View {
                     if !appState.recentDepartures.isEmpty && !isSearching {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("RECENT DEPARTURES")
-                                .font(.caption)
+                                .font(TrackRatTheme.Typography.caption)
                                 .fontWeight(.semibold)
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
                                 .padding(.horizontal)
                             
                             ScrollView(.horizontal, showsIndicators: false) {

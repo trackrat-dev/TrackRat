@@ -13,13 +13,9 @@ struct TrainNumberSearchView: View {
     
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // Black gradient background
+            TrackRatTheme.Colors.primaryGradient
+                .ignoresSafeArea()
             
             VStack(spacing: 32) {
                     // Title

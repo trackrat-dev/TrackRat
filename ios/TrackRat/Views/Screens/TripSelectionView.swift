@@ -3,42 +3,27 @@ import SwiftUI
 struct TripSelectionView: View {
     @EnvironmentObject private var appState: AppState
     
-    // Get unique trips (no duplicates)
-    private var uniqueTrips: [TripPair] {
-        var seen = Set<String>()
-        return appState.recentTrips.filter { trip in
-            let key = "\(trip.departureCode)-\(trip.destinationCode)"
-            if seen.contains(key) {
-                return false
-            } else {
-                seen.insert(key)
-                return true
-            }
-        }
+    // Get favorite trips
+    private var favoriteTrips: [TripPair] {
+        return appState.getFavoriteTrips()
     }
     
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // Black gradient background
+            TrackRatTheme.Colors.primaryGradient
+                .ignoresSafeArea()
             
             VStack(spacing: 24) {
                 // Title
-                VStack(spacing: 8) {
+                VStack(spacing: TrackRatTheme.Spacing.sm) {
                     Text("Where would you")
-                        .font(.largeTitle)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                        .font(TrackRatTheme.Typography.title1)
+                        .foregroundColor(TrackRatTheme.Colors.onSurface)
                     
                     Text("like to go?")
-                        .font(.largeTitle)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                        .font(TrackRatTheme.Typography.title1)
+                        .foregroundColor(TrackRatTheme.Colors.onSurface)
                 }
                 .padding(.top, 60)
                 
@@ -49,16 +34,16 @@ struct TripSelectionView: View {
                             ActiveTripsSection()
                         }
                         
-                        // Recent trips
-                        if !uniqueTrips.isEmpty {
+                        // Favorite routes
+                        if !favoriteTrips.isEmpty {
                             VStack(alignment: .leading, spacing: 16) {
-                                Text("RECENT TRIPS")
-                                    .font(.subheadline)
+                                Text("FAVORITE ROUTES")
+                                    .font(TrackRatTheme.Typography.caption)
                                     .fontWeight(.semibold)
-                                    .foregroundColor(.white.opacity(0.7))
+                                    .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
                                     .padding(.horizontal)
                                 
-                                ForEach(uniqueTrips) { trip in
+                                ForEach(favoriteTrips) { trip in
                                     TripButton(trip: trip) {
                                         selectTrip(trip)
                                     }
@@ -71,9 +56,9 @@ struct TripSelectionView: View {
                         // Add a new trip section
                         VStack(alignment: .leading, spacing: 16) {
                             Text("ADD A NEW TRIP")
-                                .font(.subheadline)
+                                .font(TrackRatTheme.Typography.caption)
                                 .fontWeight(.semibold)
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
                                 .padding(.horizontal)
                             
                             // New trip button
@@ -90,14 +75,14 @@ struct TripSelectionView: View {
                                     Image(systemName: "chevron.right")
                                         .font(.system(size: 14, weight: .semibold))
                                 }
-                                .foregroundColor(.white)
+                                .foregroundColor(TrackRatTheme.Colors.onSurface)
                                 .padding()
                                 .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(.white.opacity(0.2))
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .stroke(.white.opacity(0.3), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                        .fill(TrackRatTheme.Colors.surfaceCard)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                                .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
                                         )
                                 )
                                 .padding(.horizontal)
@@ -117,18 +102,46 @@ struct TripSelectionView: View {
                                     Image(systemName: "chevron.right")
                                         .font(.system(size: 14, weight: .semibold))
                                 }
-                                .foregroundColor(.white)
+                                .foregroundColor(TrackRatTheme.Colors.onSurface)
                                 .padding()
                                 .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(.white.opacity(0.2))
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .stroke(.white.opacity(0.3), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                        .fill(TrackRatTheme.Colors.surfaceCard)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                                .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
                                         )
                                 )
                                 .padding(.horizontal)
                             }
+                        }
+                        .padding(.top, 20)
+                        
+                        // Settings button at the bottom
+                        Button {
+                            appState.navigationPath.append(NavigationDestination.settings)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack {
+                                Image(systemName: "gear")
+                                    .font(.system(size: 20))
+                                Text("Settings")
+                                    .font(.headline)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding()
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.white.opacity(0.15))
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(.white.opacity(0.2), lineWidth: 1)
+                                    )
+                            )
+                            .padding(.horizontal)
                         }
                         .padding(.top, 20)
                     }
@@ -139,13 +152,6 @@ struct TripSelectionView: View {
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
             appState.loadRecentTrips()
-            
-            // If no trips, go directly to departure selection
-            if uniqueTrips.isEmpty {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    appState.navigationPath.append(NavigationDestination.departureSelector)
-                }
-            }
         }
     }
     
@@ -154,9 +160,6 @@ struct TripSelectionView: View {
         appState.departureStationCode = trip.departureCode
         appState.selectedDestination = trip.destinationName
         appState.navigationPath.append(NavigationDestination.trainList(destination: trip.destinationName))
-        
-        // Update last used time
-        appState.saveCurrentTrip()
         
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -184,19 +187,19 @@ struct TripButton: View {
                 
                 Spacer()
                 
-                // Remove button
+                // Unfavorite button (heart icon)
                 Button {
                     withAnimation(.easeInOut(duration: 0.3)) {
-                        appState.removeTrip(trip)
+                        appState.toggleFavorite(trip)
                     }
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image(systemName: "heart.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(.orange)
                 }
                 .onTapGesture {
                     withAnimation(.easeInOut(duration: 0.3)) {
-                        appState.removeTrip(trip)
+                        appState.toggleFavorite(trip)
                     }
                 }
             }

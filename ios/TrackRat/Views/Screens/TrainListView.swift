@@ -7,6 +7,19 @@ struct TrainListView: View {
     
     let destination: String
     
+    private var isCurrentRouteFavorited: Bool {
+        guard let _ = appState.selectedDeparture,
+              let departureCode = appState.departureStationCode,
+              let destinationCode = Stations.getStationCode(destination) else {
+            return false
+        }
+        
+        return appState.getFavoriteTrips().contains { trip in
+            trip.departureCode == departureCode &&
+            trip.destinationCode == destinationCode
+        }
+    }
+    
     init(destination: String) {
         self.destination = destination
         self._viewModel = StateObject(wrappedValue: TrainListViewModel())
@@ -14,20 +27,14 @@ struct TrainListView: View {
     
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // Black gradient background
+            TrackRatTheme.Colors.primaryGradient
+                .ignoresSafeArea()
             
             ScrollView {
                     VStack(spacing: 16) {
                         if viewModel.isLoading && viewModel.trains.isEmpty {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(1.5)
+                            TrackRatLoadingView(message: "Finding your trains...")
                                 .frame(maxWidth: .infinity, minHeight: 200)
                         } else if let error = viewModel.error {
                             ErrorView(message: error) {
@@ -78,6 +85,16 @@ struct TrainListView: View {
                     }
                 }
             }
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    toggleCurrentRouteFavorite()
+                } label: {
+                    Image(systemName: isCurrentRouteFavorited ? "heart.fill" : "heart")
+                        .font(.system(size: 20))
+                        .foregroundColor(.orange)
+                }
+            }
         }
         .task {
             await viewModel.loadTrains(
@@ -91,9 +108,28 @@ struct TrainListView: View {
             }
         }
         .onAppear {
-            // Save the current trip when viewing train list
-            appState.saveCurrentTrip()
+            // No longer auto-save trips
         }
+    }
+    
+    private func toggleCurrentRouteFavorite() {
+        guard let departure = appState.selectedDeparture,
+              let departureCode = appState.departureStationCode,
+              let destinationCode = Stations.getStationCode(destination) else {
+            return
+        }
+        
+        let currentTrip = TripPair(
+            departureCode: departureCode,
+            departureName: departure,
+            destinationCode: destinationCode,
+            destinationName: destination,
+            lastUsed: Date(),
+            isFavorite: false // This will be toggled by the toggle function
+        )
+        
+        appState.toggleFavorite(currentTrip)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
 

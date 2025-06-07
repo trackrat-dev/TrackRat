@@ -155,10 +155,10 @@ struct TrainLiveActivityView: View {
                 }
             }
             
-            // Owl prediction (if available)
-            if let owlPrediction = context.state.owlPrediction {
+            // TrackRat prediction (if available)
+            if let trackRatPrediction = context.state.trackRatPrediction {
                 HStack {
-                    Text(owlPrediction.displayText)
+                    Text(trackRatPrediction.displayText)
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .lineLimit(1)

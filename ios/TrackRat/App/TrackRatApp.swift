@@ -1,18 +1,31 @@
 import SwiftUI
 import ActivityKit
 import WidgetKit
+import UserNotifications
 
 @main
 struct TrackRatApp: App {
     @StateObject private var appState = AppState()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @State private var showLaunchScreen = true
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(appState)
-                .preferredColorScheme(.dark)
-                .tint(.orange)
+            ZStack {
+                if showLaunchScreen {
+                    LaunchScreenView {
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            showLaunchScreen = false
+                        }
+                    }
+                } else {
+                    ContentView()
+                        .environmentObject(appState)
+                        .preferredColorScheme(.dark)
+                        .tint(TrackRatTheme.Colors.accent)
+                        .transition(.opacity)
+                }
+            }
         }
     }
     
@@ -120,6 +133,15 @@ final class AppState: ObservableObject {
     func removeTrip(_ trip: TripPair) {
         storageService.removeTrip(trip)
         loadRecentTrips()
+    }
+    
+    func toggleFavorite(_ trip: TripPair) {
+        storageService.toggleFavorite(for: trip)
+        loadRecentTrips()
+    }
+    
+    func getFavoriteTrips() -> [TripPair] {
+        return recentTrips.filter { $0.isFavorite }
     }
     
     // MARK: - Departure Management

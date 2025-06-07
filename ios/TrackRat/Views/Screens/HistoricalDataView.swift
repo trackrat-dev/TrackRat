@@ -15,19 +15,13 @@ struct HistoricalDataView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Background gradient
-                LinearGradient(
-                    colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                // Black gradient background
+                TrackRatTheme.Colors.primaryGradient
+                    .ignoresSafeArea()
                 
                 ScrollView {
                     if viewModel.isLoading {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(1.5)
+                        TrackRatLoadingView(message: "Loading historical data...")
                             .frame(maxWidth: .infinity, minHeight: 400)
                     } else if let data = viewModel.historicalData {
                         let hasPerformanceData = data.trainStats != nil || data.lineStats != nil || data.destinationStats != nil
@@ -72,11 +66,36 @@ struct HistoricalDataView: View {
                             .frame(maxWidth: .infinity, minHeight: 400)
                         }
                     } else if let error = viewModel.error {
-                        ErrorView(message: error) {
-                            Task {
-                                await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: appState.destinationStationCode)
+                        VStack(spacing: 16) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 60))
+                                .foregroundColor(.orange)
+                            
+                            Text("Something went wrong")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            
+                            Text(error)
+                                .font(.body)
+                                .foregroundColor(.white.opacity(0.8))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                            
+                            Button("Try Again") {
+                                Task {
+                                    await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: appState.destinationStationCode)
+                                }
                             }
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color.orange)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                            .font(.body.bold())
                         }
+                        .frame(maxWidth: .infinity, minHeight: 400)
+                        .padding()
                     }
                 }
             }

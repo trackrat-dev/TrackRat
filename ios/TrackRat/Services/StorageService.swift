@@ -8,6 +8,16 @@ struct TripPair: Codable, Identifiable {
     let destinationCode: String
     let destinationName: String
     let lastUsed: Date
+    let isFavorite: Bool
+    
+    init(departureCode: String, departureName: String, destinationCode: String, destinationName: String, lastUsed: Date = Date(), isFavorite: Bool = false) {
+        self.departureCode = departureCode
+        self.departureName = departureName
+        self.destinationCode = destinationCode
+        self.destinationName = destinationName
+        self.lastUsed = lastUsed
+        self.isFavorite = isFavorite
+    }
 }
 
 // MARK: - Departure Model
@@ -78,13 +88,14 @@ final class StorageService {
             $0.destinationCode == destinationCode
         }
         
-        // Add new trip
+        // Add new trip (not favorited by default)
         let newTrip = TripPair(
             departureCode: departureCode,
             departureName: departureName,
             destinationCode: destinationCode,
             destinationName: destinationName,
-            lastUsed: Date()
+            lastUsed: Date(),
+            isFavorite: false
         )
         
         trips.insert(newTrip, at: 0)
@@ -97,6 +108,41 @@ final class StorageService {
         if let data = try? JSONEncoder().encode(trips) {
             userDefaults.set(data, forKey: recentTripsKey)
         }
+    }
+    
+    func toggleFavorite(for trip: TripPair) {
+        var trips = loadRecentTrips()
+        
+        if let index = trips.firstIndex(where: { $0.id == trip.id }) {
+            let updatedTrip = TripPair(
+                departureCode: trip.departureCode,
+                departureName: trip.departureName,
+                destinationCode: trip.destinationCode,
+                destinationName: trip.destinationName,
+                lastUsed: Date(),
+                isFavorite: !trip.isFavorite
+            )
+            trips[index] = updatedTrip
+        } else {
+            // Trip doesn't exist, add it as a favorite
+            let newTrip = TripPair(
+                departureCode: trip.departureCode,
+                departureName: trip.departureName,
+                destinationCode: trip.destinationCode,
+                destinationName: trip.destinationName,
+                lastUsed: Date(),
+                isFavorite: true
+            )
+            trips.insert(newTrip, at: 0)
+        }
+        
+        if let data = try? JSONEncoder().encode(trips) {
+            userDefaults.set(data, forKey: recentTripsKey)
+        }
+    }
+    
+    func loadFavoriteTrips() -> [TripPair] {
+        return loadRecentTrips().filter { $0.isFavorite }
     }
     
     func removeTrip(_ trip: TripPair) {

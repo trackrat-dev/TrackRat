@@ -367,6 +367,7 @@ async def list_trains(
 @router.get("/{train_id}", response_model=TrainResponse)
 async def get_train(
     train_id: str,
+    from_station_code: Optional[str] = Query(None, description="Context station for journey-specific data (predictions, times)"),
     train_repo: TrainRepository = Depends(get_train_repository),
     stop_repo: TrainStopRepository = Depends(get_train_stop_repository),
 ):
@@ -375,8 +376,23 @@ async def get_train(
 
     If train_id is numeric, it's treated as a database ID (primary key).
     If train_id is not numeric, it's treated as an external train identifier.
+    
+    When from_station_code is provided:
+    - Track predictions use the boarding station model
+    - Departure times show boarding station context
     """
     try:
+        # Validate from_station_code if provided
+        if from_station_code:
+            from trackcast.services.station_mapping import StationMapper
+            station_mapper = StationMapper()
+            if not station_mapper.is_valid_code(from_station_code):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid from_station_code: '{from_station_code}'"
+                )
+            from_station_code = station_mapper.translate_frontend_to_db_code(from_station_code)
+        
         # Check if train_id is a numeric database ID
         if train_id.isdigit():
             db_id = int(train_id)
@@ -391,6 +407,11 @@ async def get_train(
 
         # Enrich train with stop data
         enriched_train = _enrich_train_with_stops(train, stop_repo)
+        
+        # Generate context-aware prediction if from_station_code provided
+        if from_station_code:
+            enriched_train = _enrich_with_context_prediction(enriched_train, from_station_code)
+        
         return enriched_train
     except HTTPException:
         raise
@@ -402,6 +423,7 @@ async def get_train(
 @router.get("/{train_id}/prediction", response_model=PredictionResponse)
 async def get_train_prediction(
     train_id: str,
+    from_station_code: Optional[str] = Query(None, description="Context station for journey-specific data (predictions, times)"),
     train_repo: TrainRepository = Depends(get_train_repository),
 ):
     """
@@ -409,8 +431,21 @@ async def get_train_prediction(
 
     If train_id is numeric, it's treated as a database ID (primary key).
     If train_id is not numeric, it's treated as an external train identifier.
+    
+    When from_station_code is provided, generates context-aware prediction using the boarding station model.
     """
     try:
+        # Validate from_station_code if provided
+        if from_station_code:
+            from trackcast.services.station_mapping import StationMapper
+            station_mapper = StationMapper()
+            if not station_mapper.is_valid_code(from_station_code):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid from_station_code: '{from_station_code}'"
+                )
+            from_station_code = station_mapper.translate_frontend_to_db_code(from_station_code)
+        
         # Check if train_id is a numeric database ID
         if train_id.isdigit():
             db_id = int(train_id)
@@ -423,6 +458,13 @@ async def get_train_prediction(
             if not train:
                 raise HTTPException(status_code=404, detail=f"Train with ID {train_id} not found")
 
+        # If context-aware prediction requested, generate it
+        if from_station_code:
+            context_prediction = _generate_context_prediction(train, from_station_code)
+            if context_prediction:
+                return context_prediction
+        
+        # Fallback to existing prediction
         if not train.prediction_data:
             raise HTTPException(
                 status_code=404, detail=f"No prediction data available for train ID {train.train_id} (DB ID: {train.id})"
@@ -435,3 +477,66 @@ async def get_train_prediction(
     except Exception as e:
         logger.error(f"Error fetching prediction for train {train_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+def _train_stops_at_station(train, station_code: str) -> bool:
+    """Check if train stops at the specified station."""
+    if not hasattr(train, 'stops') or not train.stops:
+        return False
+    return any(stop.station_code == station_code for stop in train.stops)
+
+
+def _enrich_with_context_prediction(train, boarding_station_code: str):
+    """Enrich train with context-aware prediction data."""
+    try:
+        # Verify train stops at boarding station
+        if not _train_stops_at_station(train, boarding_station_code):
+            logger.warning(f"Train {train.train_id} doesn't stop at {boarding_station_code}, using original prediction")
+            return train
+        
+        # Generate context prediction
+        context_prediction = _generate_context_prediction(train, boarding_station_code)
+        if context_prediction:
+            # Replace the prediction data with context-aware version
+            train.prediction_data = context_prediction
+        
+        return train
+    except Exception as e:
+        logger.error(f"Error generating context prediction for train {train.train_id}: {str(e)}")
+        return train
+
+
+def _generate_context_prediction(train, boarding_station_code: str):
+    """Generate a context-aware prediction using the boarding station's model."""
+    try:
+        # Verify train stops at boarding station
+        if not _train_stops_at_station(train, boarding_station_code):
+            logger.warning(f"Train {train.train_id} doesn't stop at {boarding_station_code}")
+            return None
+        
+        # Check if train has features
+        if not train.model_data:
+            logger.warning(f"Train {train.train_id} has no features for context prediction")
+            return None
+        
+        # Import prediction service
+        from trackcast.services.prediction import PredictionService
+        from trackcast.db.connection import get_db
+        
+        # Create prediction service with database session
+        db_session = next(get_db())
+        prediction_service = PredictionService(db_session)
+        
+        # Generate context-aware prediction
+        success, result = prediction_service.predict_train_with_context(train.train_id, boarding_station_code)
+        
+        if success and result.get("prediction_data"):
+            logger.info(f"Generated context prediction for train {train.train_id} from {boarding_station_code}")
+            return result["prediction_data"]
+        else:
+            logger.warning(f"Failed to generate context prediction for train {train.train_id}: {result.get('error', 'Unknown error')}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error generating context prediction for train {train.train_id}: {str(e)}")
+        return None

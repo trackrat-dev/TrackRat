@@ -15,8 +15,8 @@ struct TrainActivityAttributes: ActivityAttributes {
         let journeyProgress: Double
         let destinationETA: Date?
         
-        // Owl predictions
-        let owlPrediction: OwlPredictionInfo?
+        // TrackRat predictions
+        let trackRatPrediction: TrackRatPredictionInfo?
         
         // Metadata
         let lastUpdated: Date
@@ -92,7 +92,7 @@ struct NextStopInfo: Codable, Hashable {
     }
 }
 
-struct OwlPredictionInfo: Codable, Hashable {
+struct TrackRatPredictionInfo: Codable, Hashable {
     let topTrack: String
     let confidence: Double
     let alternativeTracks: [String]
@@ -100,17 +100,17 @@ struct OwlPredictionInfo: Codable, Hashable {
     var displayText: String {
         // Ensure valid track number
         guard !topTrack.isEmpty else {
-            return "🤷 Owl is thinking..."
+            return "🤷 TrackRat is thinking..."
         }
         
         if confidence >= 0.8 {
-            return "🦉 Owl thinks it will be track \(topTrack)"
+            return "🐀 TrackRat predicts track \(topTrack)"
         } else if confidence >= 0.5 {
-            return "🤔 Owl thinks it may be track \(topTrack)"
+            return "🤔 TrackRat thinks it may be track \(topTrack)"
         } else {
             let validTracks = ([topTrack] + alternativeTracks.prefix(2)).filter { !$0.isEmpty }
             let tracksText = validTracks.isEmpty ? "unknown" : validTracks.joined(separator: ", ")
-            return "🤷 Owl guesses tracks \(tracksText)"
+            return "🤷 TrackRat guesses tracks \(tracksText)"
         }
     }
 }

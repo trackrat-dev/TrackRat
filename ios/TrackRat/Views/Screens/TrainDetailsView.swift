@@ -26,19 +26,13 @@ struct TrainDetailsView: View {
     
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color(hex: "667eea"), Color(hex: "764ba2")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            // Black gradient background
+            TrackRatTheme.Colors.primaryGradient
+                .ignoresSafeArea()
             
             ScrollView {
                     if viewModel.isLoading && viewModel.train == nil {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(1.5)
+                        TrackRatLoadingView(message: "Loading train details...")
                             .frame(maxWidth: .infinity, minHeight: 400)
                     } else if let error = viewModel.error {
                         ErrorView(message: error) {
@@ -94,7 +88,7 @@ struct TrainDetailsView: View {
             }
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)
-        .glassmorphicNavigationBar()
+        .trackRatNavigationBarStyle()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Close") {
@@ -227,7 +221,7 @@ struct CombinedDetailsCard: View {
                 // Track or prediction
                 if train.displayStatus != .boarding {
                     if let prediction = train.predictionData {
-                        OwlPredictionView(prediction: prediction)
+                        TrackRatPredictionView(prediction: prediction)
                     } else {
                         // Debug: Show why no predictions
                         VStack {
@@ -487,7 +481,7 @@ struct StatusCard: View {
                             .foregroundColor(.black.opacity(0.6))
                     }
                 } else if let prediction = train.predictionData {
-                    OwlPredictionView(prediction: prediction)
+                    TrackRatPredictionView(prediction: prediction)
                 } else {
                     // Debug: Show why no predictions
                     VStack {
@@ -508,14 +502,14 @@ struct StatusCard: View {
         if train.displayStatus != .boarding,
            (train.displayTrack == nil || train.displayTrack!.isEmpty),
            let prediction = train.predictionData {
-            OwlPredictionView(prediction: prediction)
+            TrackRatPredictionView(prediction: prediction)
                 .padding(.top, -8)
         }
     }
 }
 
-// MARK: - Owl Prediction View
-struct OwlPredictionView: View {
+// MARK: - TrackRat Prediction View
+struct TrackRatPredictionView: View {
     let prediction: PredictionData
     
     private var topTracks: [(String, Double)] {
