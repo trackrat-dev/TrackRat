@@ -379,23 +379,56 @@ body::before {
 }
 
 .train-item.boarding {
-    background: rgba(245, 158, 11, 0.9);
-    border-color: rgba(245, 158, 11, 0.8);
+    background: rgba(245, 158, 11, 0.95);
+    border: 2px solid #f59e0b;
     color: #2d3748;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+    animation: boardingPulse 2s infinite;
+    position: relative;
 }
 
 .train-item.boarding:hover {
-    background: rgba(245, 158, 11, 0.95);
+    background: rgba(245, 158, 11, 1);
     color: #2d3748;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 25px rgba(245, 158, 11, 0.6);
+}
+
+.train-item.boarding::before {
+    content: "🚂 BOARDING NOW";
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: #dc2626;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+    z-index: 10;
 }
 
 .train-item.boarding .train-summary {
     color: #2d3748;
+    font-weight: 600;
 }
 
 .train-item.boarding .train-details {
-    color: rgba(45, 55, 72, 0.8);
+    color: rgba(45, 55, 72, 0.9);
     justify-content: center;
+    font-weight: 500;
+}
+
+@keyframes boardingPulse {
+    0%, 100% { 
+        box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+    }
+    50% { 
+        box-shadow: 0 0 30px rgba(245, 158, 11, 0.8);
+    }
 }
 
 .status {
@@ -526,6 +559,37 @@ body::before {
     color: #2d3748;
 }
 
+@media (min-width: 481px) and (max-width: 767px) {
+    .screen {
+        padding: 40px 24px;
+    }
+    
+    .question h2 {
+        font-size: 22px;
+    }
+    
+    .train-item {
+        padding: 14px 18px;
+    }
+    
+    .info-section {
+        padding: 18px;
+    }
+    
+    .progress-details {
+        flex-direction: row;
+        justify-content: space-between;
+    }
+    
+    .journey-progress {
+        padding: 14px;
+    }
+    
+    .section-header h3 {
+        font-size: 20px;
+    }
+}
+
 @media (min-width: 768px) {
     .app {
         margin-top: 40px;
@@ -540,7 +604,6 @@ body::before {
     .logo h1 {
         font-size: 28px;
     }
-    
     
     .screen {
         padding: 60px 40px;
@@ -559,6 +622,10 @@ body::before {
         max-width: 350px;
         margin: 0 auto 40px;
     }
+    
+    .train-item:hover {
+        transform: translateY(-2px);
+    }
 }
 
 @media (max-width: 480px) {
@@ -567,25 +634,116 @@ body::before {
     }
     
     .header {
-        padding: 16px;
+        padding: 12px;
     }
     
     .logo h1 {
-        font-size: 20px;
+        font-size: 18px;
     }
     
-    
     .screen {
-        padding: 30px 16px;
+        padding: 20px 12px;
+        min-height: calc(100vh - 60px);
     }
     
     .question h2 {
-        font-size: 20px;
+        font-size: 18px;
+        margin-bottom: 16px;
     }
     
     .option-btn {
-        padding: 16px 20px;
+        padding: 14px 16px;
+        font-size: 14px;
+    }
+    
+    .trains-list {
+        gap: 8px;
+    }
+    
+    .train-item {
+        padding: 12px 16px;
+    }
+    
+    .train-item .train-summary {
+        font-size: 13px;
+        line-height: 1.3;
+    }
+    
+    .train-item .train-details {
+        font-size: 11px;
+        gap: 12px;
+    }
+    
+    .info-section {
+        padding: 16px;
+        margin-bottom: 16px;
+    }
+    
+    .section-header h3 {
+        font-size: 18px;
+    }
+    
+    .stop-item {
+        padding: 6px 10px;
+        gap: 8px;
+    }
+    
+    .stop-name {
+        font-size: 13px;
+    }
+    
+    .stop-time {
+        font-size: 11px;
+    }
+    
+    .autocomplete-container input {
+        padding: 14px 16px;
         font-size: 15px;
+    }
+    
+    .go-back-container {
+        margin-bottom: 12px;
+    }
+    
+    .progress-details {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    
+    .journey-progress {
+        padding: 12px;
+    }
+    
+    .progress-header {
+        margin-bottom: 8px;
+    }
+    
+    .progress-bar-container {
+        margin-bottom: 8px;
+    }
+    
+    .train-details-content {
+        gap: 16px;
+    }
+    
+    .historical-section h4 {
+        font-size: 14px;
+    }
+    
+    .delay-bar, .track-usage-bar {
+        height: 16px;
+    }
+    
+    .delay-segment, .track-usage-segment {
+        font-size: 10px;
+    }
+    
+    .boarding-badge {
+        font-size: 9px;
+        padding: 3px 6px;
+        top: -6px;
+        right: -6px;
     }
 }
 
@@ -776,6 +934,90 @@ body::before {
 .info-item .value {
     color: white;
     font-weight: 600;
+}
+
+/* Progress specific styles */
+.progress-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.progress-content {
+    width: 100%;
+}
+
+.journey-progress {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.progress-label {
+    font-weight: 600;
+    color: white;
+    font-size: 14px;
+}
+
+.progress-percentage {
+    font-weight: 700;
+    color: #22c55e;
+    font-size: 16px;
+}
+
+.progress-bar-container {
+    margin-bottom: 12px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #22c55e, #16a34a);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.progress-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.stops-progress {
+    font-weight: 500;
+}
+
+.time-to-arrival {
+    font-weight: 600;
+    color: #22c55e;
+}
+
+.time-to-arrival.arrived {
+    color: #f59e0b;
+}
+
+.no-progress {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.6);
+    font-style: italic;
+    padding: 16px;
 }
 
 /* Stops specific styles */

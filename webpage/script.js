@@ -249,11 +249,7 @@ class NYPScout {
         // Use the stop's departure time if found, otherwise fall back to train's overall time
         const timeToUse = originStop?.departure_time || train.departure_time;
         
-        return new Date(timeToUse).toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-        });
+        return this.formatTimeInEastern(timeToUse);
     }
 
     getOriginDepartureTimeValue(train) {
@@ -266,6 +262,11 @@ class NYPScout {
         const timeToUse = originStop?.departure_time || train.departure_time;
         
         return new Date(timeToUse);
+    }
+
+    getEffectiveStatus(train) {
+        // Use status_v2 when available, fallback to status for backward compatibility
+        return train.status_v2 || train.status;
     }
 
     initializeEventListeners() {
@@ -633,7 +634,9 @@ class NYPScout {
         try {
             let url = `${this.apiBaseUrl}/trains/${this.currentTrainId}`;
             if (this.departureStationCode) {
-                url += `?from_station_code=${this.departureStationCode}`;
+                url += `?from_station_code=${this.departureStationCode}&consolidate=true`;
+            } else {
+                url += `?consolidate=true`;
             }
             const response = await fetch(url);
             if (!response.ok) return;
@@ -641,8 +644,8 @@ class NYPScout {
             const updatedTrain = await response.json();
             
             // Check if status changed to BOARDING or track was assigned
-            const wasBoarding = this.currentTrain && this.currentTrain.status === 'BOARDING';
-            const isNowBoarding = updatedTrain.status === 'BOARDING';
+            const wasBoarding = this.currentTrain && this.getEffectiveStatus(this.currentTrain) === 'BOARDING';
+            const isNowBoarding = this.getEffectiveStatus(updatedTrain) === 'BOARDING';
             const trackChanged = this.currentTrain && this.currentTrain.track !== updatedTrain.track;
             
             // Update the stored train data
@@ -661,16 +664,40 @@ class NYPScout {
         }
     }
 
-    getLocalISOString() {
+    getEasternTimeISOString() {
         const now = new Date();
-        const offset = now.getTimezoneOffset();
-        const localTime = new Date(now.getTime() - offset * 60000);
-        return localTime.toISOString().slice(0, -1);
+        // Convert to Eastern Time (UTC-5 in standard time, UTC-4 in daylight time)
+        const easternTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
+        return easternTime.toISOString().slice(0, -1);
+    }
+
+    formatTimeInEastern(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'America/New_York'
+        });
+    }
+
+    formatDateTimeInEastern(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'America/New_York'
+        });
     }
 
     async loadTrains(stationName) {
         try {
-            const currentTime = this.getLocalISOString();
+            const currentTime = this.getEasternTimeISOString();
             const fromStationCode = this.departureStationCode;
             const toStationCode = this.getStationCode(stationName);
             
@@ -682,7 +709,7 @@ class NYPScout {
                 throw new Error('Destination station code not available');
             }
             
-            const url = `${this.apiBaseUrl}/trains/?from_station_code=${fromStationCode}&to_station_code=${toStationCode}&departure_time_after=${currentTime}&limit=100`;
+            const url = `${this.apiBaseUrl}/trains/?from_station_code=${fromStationCode}&to_station_code=${toStationCode}&departure_time_after=${currentTime}&limit=100&consolidate=true`;
             
             const response = await fetch(url);
             if (!response.ok) throw new Error('API request failed');
@@ -765,16 +792,17 @@ class NYPScout {
         trainsList.innerHTML = sortedTrains.map(train => {
             const departureTime = this.getOriginDepartureTime(train);
             
-            const isBoarding = train.status === 'BOARDING';
-            const statusClass = train.status === 'ON_TIME' ? 'on-time' : 
-                               train.status === 'DELAYED' ? 'delayed' : 
-                               train.status === 'DEPARTED' ? 'departed' : 
-                               train.status === 'BOARDING' ? 'boarding' : 'scheduled';
+            const effectiveStatus = this.getEffectiveStatus(train);
+            const isBoarding = effectiveStatus === 'BOARDING';
+            const statusClass = effectiveStatus === 'ON_TIME' ? 'on-time' : 
+                               effectiveStatus === 'DELAYED' ? 'delayed' : 
+                               effectiveStatus === 'DEPARTED' ? 'departed' : 
+                               effectiveStatus === 'BOARDING' ? 'boarding' : 'scheduled';
             
-            const statusText = train.status === 'ON_TIME' ? 'On Time' :
-                              train.status === 'DELAYED' ? `Delayed ${train.delay_minutes || ''}min` :
-                              train.status === 'DEPARTED' ? 'Departed' :
-                              train.status === 'BOARDING' ? 'Boarding' :
+            const statusText = effectiveStatus === 'ON_TIME' ? 'On Time' :
+                              effectiveStatus === 'DELAYED' ? `Delayed ${train.delay_minutes || ''}min` :
+                              effectiveStatus === 'DEPARTED' ? 'Departed' :
+                              effectiveStatus === 'BOARDING' ? 'Boarding' :
                               '';
 
             // Build details array
@@ -824,7 +852,9 @@ class NYPScout {
             console.log('Loading train details for ID:', trainId);
             let url = `${this.apiBaseUrl}/trains/${trainId}`;
             if (this.departureStationCode) {
-                url += `?from_station_code=${this.departureStationCode}`;
+                url += `?from_station_code=${this.departureStationCode}&consolidate=true`;
+            } else {
+                url += `?consolidate=true`;
             }
             const response = await fetch(url);
             console.log('Response status:', response.status, response.statusText);
@@ -848,20 +878,13 @@ class NYPScout {
             document.getElementById('train-title').textContent = `Train ${train.train_id} to ${train.destination}`;
             
             const basicInfo = document.getElementById('basic-info');
-        const departureTime = new Date(train.departure_time).toLocaleString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-        });
+        const departureTime = this.formatDateTimeInEastern(train.departure_time);
         
-        const statusText = train.status === 'ON_TIME' ? 'On Time' :
-                          train.status === 'DELAYED' ? `Delayed ${train.delay_minutes || ''}min` :
-                          train.status === 'DEPARTED' ? 'Departed' :
-                          train.status || 'Scheduled';
+        const effectiveStatus = this.getEffectiveStatus(train);
+        const statusText = effectiveStatus === 'ON_TIME' ? 'On Time' :
+                          effectiveStatus === 'DELAYED' ? `Delayed ${train.delay_minutes || ''}min` :
+                          effectiveStatus === 'DEPARTED' ? 'Departed' :
+                          effectiveStatus || 'Scheduled';
 
         // Build the info items array
         const infoItems = [
@@ -871,7 +894,7 @@ class NYPScout {
         ];
 
         // Only show track field if not boarding
-        const isBoarding = train.status === 'BOARDING';
+        const isBoarding = effectiveStatus === 'BOARDING';
         const hasAssignedTrack = train.track && train.track !== 'TBD';
         
         if (!isBoarding) {
@@ -897,6 +920,14 @@ class NYPScout {
                     <span class="value owl-message">${trackContent}</span>
                 </div>`);
             }
+        }
+
+        // Add progress visualization if available
+        if (train.progress) {
+            const progressContent = this.generateProgressDisplay(train.progress);
+            infoItems.push(`<div class="info-item progress-item">
+                <div class="progress-content">${progressContent}</div>
+            </div>`);
         }
 
         // Add stops item
@@ -1085,9 +1116,9 @@ class NYPScout {
     async loadHistoricalReference(train) {
         
         try {
-            let trainUrl = `${this.apiBaseUrl}/trains/?train_id=${encodeURIComponent(train.train_id)}&no_pagination=true`;
-            let lineUrl = `${this.apiBaseUrl}/trains/?line=${encodeURIComponent(train.line)}&limit=1000`;
-            let destinationUrl = `${this.apiBaseUrl}/trains/?destination=${encodeURIComponent(train.destination)}&limit=1000`;
+            let trainUrl = `${this.apiBaseUrl}/trains/?train_id=${encodeURIComponent(train.train_id)}&no_pagination=true&consolidate=true`;
+            let lineUrl = `${this.apiBaseUrl}/trains/?line=${encodeURIComponent(train.line)}&limit=1000&consolidate=true`;
+            let destinationUrl = `${this.apiBaseUrl}/trains/?destination=${encodeURIComponent(train.destination)}&limit=1000&consolidate=true`;
             
             if (this.departureStationCode) {
                 trainUrl += `&from_station_code=${this.departureStationCode}`;
@@ -1189,6 +1220,43 @@ class NYPScout {
         return { tracks: sortedTracks, total };
     }
 
+    generateProgressDisplay(progress) {
+        if (!progress) return '<div class="no-progress">Progress information not available</div>';
+
+        const journeyPercent = Math.round(progress.journey_percent || 0);
+        const stopsCompleted = progress.stops_completed || 0;
+        const totalStops = progress.total_stops || 0;
+        const minutesToArrival = progress.minutes_to_arrival;
+
+        let progressHTML = `
+            <div class="journey-progress">
+                <div class="progress-header">
+                    <span class="progress-label">Journey Progress</span>
+                    <span class="progress-percentage">${journeyPercent}%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${journeyPercent}%"></div>
+                    </div>
+                </div>
+                <div class="progress-details">
+                    <span class="stops-progress">${stopsCompleted} of ${totalStops} stops completed</span>`;
+
+        if (minutesToArrival !== null && minutesToArrival !== undefined) {
+            if (minutesToArrival > 0) {
+                progressHTML += `<span class="time-to-arrival">${minutesToArrival} min to arrival</span>`;
+            } else {
+                progressHTML += `<span class="time-to-arrival arrived">Arrived</span>`;
+            }
+        }
+
+        progressHTML += `
+                </div>
+            </div>`;
+
+        return progressHTML;
+    }
+
     generateStopsDisplay(stops, train = null) {
         if (!stops || stops.length === 0) {
             return '<div class="no-stops">No stops information available</div>';
@@ -1214,18 +1282,10 @@ class NYPScout {
 
         return `<div class="stops-list">
             ${stopsToShow.map((stop, index) => {
-                const scheduledTime = new Date(stop.scheduled_time).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                });
+                const scheduledTime = this.formatTimeInEastern(stop.scheduled_time);
                 
                 const departureTime = stop.departure_time !== stop.scheduled_time ? 
-                    new Date(stop.departure_time).toLocaleTimeString('en-US', {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
-                    }) : null;
+                    this.formatTimeInEastern(stop.departure_time) : null;
 
                 const isDeparted = stop.departed === true;
                 const isCurrent = index === currentStopIndex && !isDeparted;
@@ -1316,11 +1376,7 @@ class NYPScout {
 
         try {
             // Format the time using the same pattern as other times in the app
-            return new Date(arrivalTime).toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            });
+            return this.formatTimeInEastern(arrivalTime);
         } catch (error) {
             return 'Not available';
         }
@@ -1474,7 +1530,9 @@ class NYPScout {
             try {
                 let url = `${this.apiBaseUrl}/trains/${encodeURIComponent(trainNumber)}`;
                 if (this.departureStationCode) {
-                    url += `?from_station_code=${this.departureStationCode}`;
+                    url += `?from_station_code=${this.departureStationCode}&consolidate=true`;
+                } else {
+                    url += `?consolidate=true`;
                 }
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('Train not found');
