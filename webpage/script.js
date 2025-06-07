@@ -53,25 +53,25 @@ class NYPScout {
             // NJ Transit stations
             'New York Penn Station': 'NY',
             'Newark Penn Station': 'NP',
-            'Secaucus': 'SEC',
+            'Secaucus': 'SE',
             'Woodbridge': 'WDB',
             'Metropark': 'MP',
             'New Brunswick': 'NB',
             'Princeton Junction': 'PJ',
             'Trenton': 'TR',
             'Trenton Transit Center': 'TR',
-            'Hamilton': 'HAM',
+            'Hamilton': 'HL',
             'Morristown': 'MOR',
             'Madison': 'MAD',
-            'Summit': 'SUM',
-            'Millburn': 'MIL',
-            'Short Hills': 'SHI',
-            'Newark Airport': 'EWR',
-            'Elizabeth': 'ELZ',
-            'Linden': 'LIN',
-            'Rahway': 'RAH',
-            'Metuchen': 'MET',
-            'Edison': 'EDI',
+            'Summit': 'ST',
+            'Millburn': 'MB',
+            'Short Hills': 'RT',
+            'Newark Airport': 'NA',
+            'Elizabeth': 'EZ',
+            'Linden': 'LI',
+            'Rahway': 'RH',
+            'Metuchen': 'MU',
+            'Edison': 'ED',
             'Iselin': 'ISE',
             'Perth Amboy': 'PAM',
             'South Amboy': 'SAM',
@@ -92,10 +92,10 @@ class NYPScout {
             'Montclair Heights': 'MCH',
             'Upper Montclair': 'UMC',
             'Mountain Avenue': 'MVA',
-            'Orange': 'ORA',
+            'Orange': 'OG',
             'East Orange': 'EOR',
-            'Brick Church': 'BRC',
-            'Newark Broad Street': 'NBS',
+            'Brick Church': 'BU',
+            'Newark Broad Street': 'ND',
             'Bloomfield': 'BLO',
             'Watsessing': 'WAT',
             'Walnut Street': 'WNS',
@@ -152,7 +152,7 @@ class NYPScout {
             'Garwood': 'GAR',
             'Cranford': 'CRA',
             'Roselle Park': 'ROP',
-            'Union': 'UNI',
+            'Union': 'US',
 
             // Amtrak stations
             'Boston South': 'BOS',
@@ -177,12 +177,12 @@ class NYPScout {
             'Buffalo-Depew': 'BUF',
             'Buffalo Exchange Street': 'BFX',
             'Niagara Falls': 'NFL',
-            'Philadelphia': 'PHL',
+            'Philadelphia': 'PH',
             'Wilmington': 'WIL',
             'Aberdeen': 'ABE',
-            'BWI Airport': 'BWI',
-            'Baltimore Penn Station': 'BAL',
-            'New Carrollton': 'NCR',
+            'BWI Airport': 'BA',
+            'Baltimore Penn Station': 'BL',
+            'New Carrollton': 'NC',
             'Washington Union': 'WAS',
             'Alexandria': 'AXA',
             'Fredericksburg': 'FRB',
@@ -226,8 +226,8 @@ class NYPScout {
             'Miami': 'MIA',
             'Hialeah Market': 'HIA',
             'Miami Airport': 'MIP',
-            'Toronto Union': 'TOR',
-            'Pittsburgh': 'PIT',
+            'Toronto Union': 'TRTO',
+            'Pittsburgh': 'PGH',
             'New Orleans': 'NOL',
             'Norfolk': 'NFK',
             'Roanoke': 'ROA'
@@ -279,18 +279,12 @@ class NYPScout {
                 this.handleStartOver();
             }
             
-            if (e.target.id === 'historical-patterns-toggle') {
-                this.navigateToHistoricalPatterns();
-            }
             
             if (e.target.classList.contains('back-btn') || e.target.classList.contains('back-link')) {
                 this.hideNewDestinationInput();
                 this.navigateToScreen(e.target.dataset.back);
             }
             
-            if (e.target.classList.contains('go-back-link') && e.target.dataset.back === 'train-details-screen') {
-                this.navigateToScreen('train-details-screen');
-            }
             
             if (e.target.id === 'submit-train') {
                 this.handleTrainSubmit();
@@ -421,17 +415,8 @@ class NYPScout {
                 }, 100);
             }
             
-            // Restore historical patterns toggle when returning to train details
-            if (screenId === 'train-details-screen') {
-                const historicalToggle = document.getElementById('historical-patterns-toggle');
-                if (historicalToggle) {
-                    historicalToggle.textContent = 'details from past trains';
-                    historicalToggle.style.pointerEvents = 'auto';
-                }
-            }
-            
             // Stop updates when leaving train details screen
-            if (screenId !== 'train-details-screen' && screenId !== 'historical-patterns-screen') {
+            if (screenId !== 'train-details-screen') {
                 this.stopTrainUpdates();
             }
         }
@@ -617,7 +602,7 @@ class NYPScout {
         
         // Check for updates every 30 seconds
         this.updateInterval = setInterval(async () => {
-            if (this.currentTrainId && (this.currentScreen === 'train-details-screen' || this.currentScreen === 'historical-patterns-screen')) {
+            if (this.currentTrainId && this.currentScreen === 'train-details-screen') {
                 await this.checkTrainUpdates();
             }
         }, 30000);
@@ -632,16 +617,15 @@ class NYPScout {
 
     async checkTrainUpdates() {
         try {
-            let url = `${this.apiBaseUrl}/trains/${this.currentTrainId}`;
-            if (this.departureStationCode) {
-                url += `?from_station_code=${this.departureStationCode}&consolidate=true`;
-            } else {
-                url += `?consolidate=true`;
-            }
+            const currentTime = this.getEasternTimeISOString();
+            let url = `${this.apiBaseUrl}/trains/?train_id=${encodeURIComponent(this.currentTrainId)}&departure_time_after=${currentTime}&consolidate=true&show_sources=true&include_predictions=true`;
             const response = await fetch(url);
             if (!response.ok) return;
             
-            const updatedTrain = await response.json();
+            const data = await response.json();
+            if (!data.trains || data.trains.length === 0) return;
+            
+            const updatedTrain = data.trains[0];
             
             // Check if status changed to BOARDING or track was assigned
             const wasBoarding = this.currentTrain && this.getEffectiveStatus(this.currentTrain) === 'BOARDING';
@@ -666,9 +650,23 @@ class NYPScout {
 
     getEasternTimeISOString() {
         const now = new Date();
-        // Convert to Eastern Time (UTC-5 in standard time, UTC-4 in daylight time)
-        const easternTime = new Date(now.toLocaleString("en-US", {timeZone: "America/New_York"}));
-        return easternTime.toISOString().slice(0, -1);
+        // Create a proper Eastern Time ISO string
+        // The API expects Eastern Time formatted as ISO string
+        const easternTimeString = now.toLocaleString("en-US", {
+            timeZone: "America/New_York",
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        
+        // Convert MM/DD/YYYY, HH:mm:ss format to YYYY-MM-DDTHH:mm:ss
+        const [datePart, timePart] = easternTimeString.split(', ');
+        const [month, day, year] = datePart.split('/');
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${timePart}`;
     }
 
     formatTimeInEastern(dateString) {
@@ -834,7 +832,7 @@ class NYPScout {
             const destinationText = this.selectedDestination ? '' : ` to ${train.destination}`;
             
             return `
-                <div class="train-item${boardingClass}" data-train-id="${train.id}">
+                <div class="train-item${boardingClass}" data-train-id="${train.train_id}">
                     <div class="train-summary${hasDetailsClass}">Train ${train.train_id}${destinationText} from ${departureTime} to ${arrivalTime}</div>
                     ${detailsHtml}
                 </div>
@@ -850,12 +848,8 @@ class NYPScout {
     async loadTrainDetailsById(trainId) {
         try {
             console.log('Loading train details for ID:', trainId);
-            let url = `${this.apiBaseUrl}/trains/${trainId}`;
-            if (this.departureStationCode) {
-                url += `?from_station_code=${this.departureStationCode}&consolidate=true`;
-            } else {
-                url += `?consolidate=true`;
-            }
+            const currentTime = this.getEasternTimeISOString();
+            let url = `${this.apiBaseUrl}/trains/?train_id=${encodeURIComponent(trainId)}&departure_time_after=${currentTime}&consolidate=true&show_sources=true&include_predictions=true`;
             const response = await fetch(url);
             console.log('Response status:', response.status, response.statusText);
             if (!response.ok) {
@@ -863,9 +857,15 @@ class NYPScout {
                 console.log('API error response:', errorText);
                 throw new Error(`API request failed: ${response.status} ${response.statusText}`);
             }
-            const train = await response.json();
-            console.log('Train data received:', train);
-            this.displayTrainDetailsPage(train);
+            const data = await response.json();
+            console.log('Train data received:', data);
+            
+            // Get the first train from the response (should be the matching train)
+            if (data.trains && data.trains.length > 0) {
+                this.displayTrainDetailsPage(data.trains[0]);
+            } else {
+                throw new Error('No train found with that ID');
+            }
         } catch (error) {
             console.error('Error loading train details:', error);
             this.displayTrainDetailsError('Unable to load train details');
@@ -878,7 +878,7 @@ class NYPScout {
             document.getElementById('train-title').textContent = `Train ${train.train_id} to ${train.destination}`;
             
             const basicInfo = document.getElementById('basic-info');
-        const departureTime = this.formatDateTimeInEastern(train.departure_time);
+        const departureTime = train.departure_time ? this.formatDateTimeInEastern(train.departure_time) : '';
         
         const effectiveStatus = this.getEffectiveStatus(train);
         const statusText = effectiveStatus === 'ON_TIME' ? 'On Time' :
@@ -887,11 +887,14 @@ class NYPScout {
                           effectiveStatus || 'Scheduled';
 
         // Build the info items array
-        const infoItems = [
-            `<div class="info-item">
+        const infoItems = [];
+        
+        // Only add departure time if it's valid
+        if (departureTime) {
+            infoItems.push(`<div class="info-item">
                 <span class="value">${departureTime}</span>
-            </div>`
-        ];
+            </div>`);
+        }
 
         // Only show track field if not boarding
         const isBoarding = effectiveStatus === 'BOARDING';
@@ -922,13 +925,6 @@ class NYPScout {
             }
         }
 
-        // Add progress visualization if available
-        if (train.progress) {
-            const progressContent = this.generateProgressDisplay(train.progress);
-            infoItems.push(`<div class="info-item progress-item">
-                <div class="progress-content">${progressContent}</div>
-            </div>`);
-        }
 
         // Add stops item
         const stopsContent = this.generateStopsDisplay(train.stops, train);
@@ -966,9 +962,6 @@ class NYPScout {
         
         // Show the main train info section initially (reuse existing infoSection variable)
         infoSection.classList.remove('hidden');
-        
-        // Initialize historical patterns visibility state
-        this.historicalPatternsVisible = false;
         } catch (error) {
             console.error('Error in displayTrainDetailsPage:', error);
             this.displayTrainDetailsError('Unable to display train details');
@@ -1007,255 +1000,8 @@ class NYPScout {
         // This function is kept for compatibility but does nothing
     }
     
-    async navigateToHistoricalPatterns() {
-        // Show loading state immediately on the current screen
-        const historicalToggle = document.getElementById('historical-patterns-toggle');
-        const originalText = historicalToggle.textContent;
-        historicalToggle.textContent = 'Loading historical data...';
-        historicalToggle.style.pointerEvents = 'none';
-        
-        try {
-            // Navigate to historical patterns as a new screen
-            this.navigateToScreen('historical-patterns-screen');
-            
-            // Update the train title for historical patterns view
-            const trainTitle = document.getElementById('historical-train-title');
-            trainTitle.textContent = `Historical Data for Train ${this.currentTrain.train_id}`;
-            
-            // Load data
-            const historicalInfo = document.getElementById('historical-patterns-content');
-            const trackUsageInfo = document.getElementById('track-usage-content');
-            
-            historicalInfo.innerHTML = '<div class="loading">Loading historical data...</div>';
-            
-            await this.loadHistoricalReference(this.currentTrain);
-            this.loadTrackUsageData(this.currentTrain);
-        } catch (error) {
-            // Restore original state if error occurs
-            historicalToggle.textContent = originalText;
-            historicalToggle.style.pointerEvents = 'auto';
-        }
-    }
 
-    getTrackColor(trackNumber) {
-        const track = parseInt(trackNumber);
-        if (track < 1 || track > 21) return '#6B7280'; // fallback gray for invalid tracks
-        
-        // Distribute 21 tracks evenly across 360° spectrum
-        const hue = ((track - 1) * 360 / 21) % 360;
-        
-        // Consistent saturation and lightness for clean look
-        const saturation = 75;  // Rich but not overwhelming
-        const lightness = 55;   // Good contrast on both light/dark backgrounds
-        
-        return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-    }
 
-    generateTrackUsageBar(stats, label) {
-        if (!stats) {
-            return `<div class="track-stat-item">
-                        <div class="track-label">${label}:</div>
-                        <div class="track-no-data">Not enough track data</div>
-                    </div>`;
-        }
-
-        const segments = stats.tracks.map((track) => {
-            const color = this.getTrackColor(track.track);
-            const showLabel = track.percentage > 5; // Show track number if >5%
-            return {
-                track: track.track,
-                percentage: track.percentage,
-                color: color,
-                showLabel: showLabel
-            };
-        });
-
-        const barSegments = segments.map(segment => {
-            return `<div class="track-usage-segment" 
-                         data-track="${segment.track}" 
-                         data-percentage="${segment.percentage}" 
-                         style="width: ${segment.percentage}%; background-color: ${segment.color};"
-                         title="Track ${segment.track}: ${segment.percentage}%">
-                        ${segment.showLabel ? `<span class="track-usage-label">${segment.track}</span>` : ''}
-                    </div>`;
-        }).join('');
-
-        const summaryText = `${stats.total} trips across ${stats.tracks.length} tracks`;
-
-        return `<div class="track-stat-item">
-                    <div class="track-label">${label}:</div>
-                    <div class="track-usage-bar">
-                        ${barSegments}
-                    </div>
-                    <div class="track-summary">${summaryText}</div>
-                </div>`;
-    }
-
-    async loadTrackUsageData(train) {
-        
-        // Use stored track stats if available, otherwise load them
-        const trackUsageContent = document.getElementById('track-usage-content');
-        if (trackUsageContent && this.currentTrackStats) {
-            const { trainTrackStats, lineTrackStats, destinationTrackStats } = this.currentTrackStats;
-            
-            trackUsageContent.innerHTML = `
-                <div class="historical-section">
-                    <h4>Track Usage</h4>
-                    <div class="track-usage-stats">
-                        ${this.generateTrackUsageBar(trainTrackStats, `Train ${train.train_id}`)}
-                        ${this.generateTrackUsageBar(lineTrackStats, `${train.line} Line`)}
-                        ${this.generateTrackUsageBar(destinationTrackStats, `Trains to ${train.destination}`)}
-                    </div>
-                </div>
-            `;
-        } else if (trackUsageContent) {
-            trackUsageContent.innerHTML = '<div class="no-data">Track usage data not available</div>';
-        }
-    }
-
-    async loadHistoricalReference(train) {
-        
-        try {
-            let trainUrl = `${this.apiBaseUrl}/trains/?train_id=${encodeURIComponent(train.train_id)}&no_pagination=true&consolidate=true`;
-            let lineUrl = `${this.apiBaseUrl}/trains/?line=${encodeURIComponent(train.line)}&limit=1000&consolidate=true`;
-            let destinationUrl = `${this.apiBaseUrl}/trains/?destination=${encodeURIComponent(train.destination)}&limit=1000&consolidate=true`;
-            
-            if (this.departureStationCode) {
-                trainUrl += `&from_station_code=${this.departureStationCode}`;
-                lineUrl += `&from_station_code=${this.departureStationCode}`;
-                destinationUrl += `&from_station_code=${this.departureStationCode}`;
-            }
-            
-            const [trainData, lineData, destinationData] = await Promise.allSettled([
-                fetch(trainUrl),
-                fetch(lineUrl),
-                fetch(destinationUrl)
-            ]);
-
-            const results = await Promise.allSettled([
-                trainData.status === 'fulfilled' ? trainData.value.json() : Promise.reject(),
-                lineData.status === 'fulfilled' ? lineData.value.json() : Promise.reject(),
-                destinationData.status === 'fulfilled' ? destinationData.value.json() : Promise.reject()
-            ]);
-
-            const trainHistory = results[0].status === 'fulfilled' ? results[0].value.trains : [];
-            const lineHistory = results[1].status === 'fulfilled' ? results[1].value.trains : [];
-            const destinationHistory = results[2].status === 'fulfilled' ? results[2].value.trains : [];
-
-            this.displayHistoricalReference(train, trainHistory, lineHistory, destinationHistory);
-        } catch (error) {
-            historicalInfo.innerHTML = '<div class="no-data">Unable to load historical data</div>';
-        }
-    }
-
-    calculateDelayDistribution(trains) {
-        if (!trains || trains.length === 0) return null;
-        
-        // Filter trains that are DEPARTED and have delay_minutes data (including 0)
-        const departedTrainsWithDelayData = trains.filter(train => 
-            train.status === 'DEPARTED' && 
-            train.delay_minutes !== null && train.delay_minutes !== undefined
-        );
-        
-        if (departedTrainsWithDelayData.length === 0) return null;
-        
-        const total = departedTrainsWithDelayData.length;
-        const delayCounts = {
-            'onTime': 0,        // 0-1 minutes
-            'slight': 0,        // 2-19 minutes
-            'significant': 0,   // 20-59 minutes
-            'major': 0          // 60+ minutes
-        };
-
-        let totalDelayMinutes = 0;
-
-        departedTrainsWithDelayData.forEach(train => {
-            const delayMinutes = train.delay_minutes;
-            totalDelayMinutes += delayMinutes;
-            
-            if (delayMinutes <= 1) {
-                delayCounts.onTime++;
-            } else if (delayMinutes <= 19) {
-                delayCounts.slight++;
-            } else if (delayMinutes <= 59) {
-                delayCounts.significant++;
-            } else {
-                delayCounts.major++;
-            }
-        });
-
-        const avgDelay = total > 0 ? Math.round(totalDelayMinutes / total) : 0;
-
-        return {
-            onTime: Math.round((delayCounts.onTime / total) * 100),
-            slight: Math.round((delayCounts.slight / total) * 100),
-            significant: Math.round((delayCounts.significant / total) * 100),
-            major: Math.round((delayCounts.major / total) * 100),
-            total,
-            avgDelay
-        };
-    }
-
-    calculateTrackDistribution(trains) {
-        if (!trains || trains.length === 0) return null;
-        
-        const trainsWithTracks = trains.filter(train => train.track && train.track.trim() !== '');
-        if (trainsWithTracks.length === 0) return null;
-
-        const trackCounts = {};
-        trainsWithTracks.forEach(train => {
-            const track = train.track;
-            trackCounts[track] = (trackCounts[track] || 0) + 1;
-        });
-
-        const total = trainsWithTracks.length;
-        const sortedTracks = Object.entries(trackCounts)
-            .map(([track, count]) => ({
-                track,
-                count,
-                percentage: Math.round((count / total) * 100)
-            }))
-            .sort((a, b) => b.count - a.count);
-
-        return { tracks: sortedTracks, total };
-    }
-
-    generateProgressDisplay(progress) {
-        if (!progress) return '<div class="no-progress">Progress information not available</div>';
-
-        const journeyPercent = Math.round(progress.journey_percent || 0);
-        const stopsCompleted = progress.stops_completed || 0;
-        const totalStops = progress.total_stops || 0;
-        const minutesToArrival = progress.minutes_to_arrival;
-
-        let progressHTML = `
-            <div class="journey-progress">
-                <div class="progress-header">
-                    <span class="progress-label">Journey Progress</span>
-                    <span class="progress-percentage">${journeyPercent}%</span>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${journeyPercent}%"></div>
-                    </div>
-                </div>
-                <div class="progress-details">
-                    <span class="stops-progress">${stopsCompleted} of ${totalStops} stops completed</span>`;
-
-        if (minutesToArrival !== null && minutesToArrival !== undefined) {
-            if (minutesToArrival > 0) {
-                progressHTML += `<span class="time-to-arrival">${minutesToArrival} min to arrival</span>`;
-            } else {
-                progressHTML += `<span class="time-to-arrival arrived">Arrived</span>`;
-            }
-        }
-
-        progressHTML += `
-                </div>
-            </div>`;
-
-        return progressHTML;
-    }
 
     generateStopsDisplay(stops, train = null) {
         if (!stops || stops.length === 0) {
@@ -1425,87 +1171,6 @@ class NYPScout {
         return message;
     }
 
-    generateDelayBar(stats, label) {
-        if (!stats) {
-            return `<div class="delay-stat-item">
-                        <div class="delay-label">${label}:</div>
-                        <div class="delay-no-data">Not enough delay data</div>
-                    </div>`;
-        }
-
-        const segments = [
-            { type: 'onTime', percentage: stats.onTime, color: '#4CAF50', label: 'On Time' },
-            { type: 'slight', percentage: stats.slight, color: '#FFC107', label: 'Slight Delay' },
-            { type: 'significant', percentage: stats.significant, color: '#FF9800', label: 'Significant Delay' },
-            { type: 'major', percentage: stats.major, color: '#F44336', label: 'Major Delay' }
-        ].filter(segment => segment.percentage > 0);
-
-        const barSegments = segments.map(segment => {
-            const showLabel = segment.percentage > 5;
-            return `<div class="delay-segment" 
-                         data-type="${segment.type}" 
-                         data-percentage="${segment.percentage}" 
-                         style="width: ${segment.percentage}%; background-color: ${segment.color};"
-                         title="${segment.label}: ${segment.percentage}%">
-                        ${showLabel ? `<span class="delay-segment-label">${segment.percentage}%</span>` : ''}
-                    </div>`;
-        }).join('');
-
-        const summaryText = `${stats.total} trips, avg ${stats.avgDelay}min delay`;
-
-        return `<div class="delay-stat-item">
-                    <div class="delay-label">${label}:</div>
-                    <div class="delay-bar">
-                        ${barSegments}
-                    </div>
-                    <div class="delay-summary">${summaryText}</div>
-                </div>`;
-    }
-
-    displayHistoricalReference(train, trainHistory, lineHistory, destinationHistory) {
-        const historicalInfo = document.getElementById('historical-info');
-        
-        const trainDelayStats = this.calculateDelayDistribution(trainHistory);
-        const lineDelayStats = this.calculateDelayDistribution(lineHistory);
-        const destinationDelayStats = this.calculateDelayDistribution(destinationHistory);
-
-        const trainTrackStats = this.calculateTrackDistribution(trainHistory);
-        const lineTrackStats = this.calculateTrackDistribution(lineHistory);
-        const destinationTrackStats = this.calculateTrackDistribution(destinationHistory);
-
-        const formatTrackStats = (stats, label) => {
-            if (!stats) return `${label}: Not enough track data`;
-            
-            const trackList = stats.tracks
-                .map(t => `Track ${t.track} (${t.percentage}%)`)
-                .join(', ');
-            
-            return `${label}: ${trackList}`;
-        };
-
-        const historicalContent = document.getElementById('historical-patterns-content');
-        if (historicalContent) {
-            historicalContent.innerHTML = `
-                <div class="historical-section">
-                    <h4>On-time Performance</h4>
-                    <div class="delay-stats">
-                        ${this.generateDelayBar(trainDelayStats, `Train ${train.train_id}`)}
-                        ${this.generateDelayBar(lineDelayStats, `${train.line} Line`)}
-                        ${this.generateDelayBar(destinationDelayStats, `Trains to ${train.destination}`)}
-                    </div>
-                </div>
-            `;
-        }
-
-        // Store track stats for track usage section
-        this.currentTrackStats = {
-            trainTrackStats,
-            lineTrackStats, 
-            destinationTrackStats,
-            formatTrackStats,
-            train
-        };
-    }
 
     displayTrainDetailsError(message) {
         const trainTitle = document.getElementById('train-title');
@@ -1513,13 +1178,6 @@ class NYPScout {
         
         if (trainTitle) trainTitle.textContent = 'Error Loading Train';
         if (basicInfo) basicInfo.innerHTML = `<div class="error-message">${message}</div>`;
-        
-        // These elements might not exist depending on which screen we're on
-        const predictionInfo = document.getElementById('prediction-info');
-        const historicalInfo = document.getElementById('historical-info');
-        
-        if (predictionInfo) predictionInfo.innerHTML = `<div class="error-message">${message}</div>`;
-        if (historicalInfo) historicalInfo.innerHTML = `<div class="error-message">${message}</div>`;
     }
 
     async handleTrainSubmit() {
@@ -1528,16 +1186,17 @@ class NYPScout {
         
         if (trainNumber.length >= 2) {
             try {
-                let url = `${this.apiBaseUrl}/trains/${encodeURIComponent(trainNumber)}`;
-                if (this.departureStationCode) {
-                    url += `?from_station_code=${this.departureStationCode}&consolidate=true`;
-                } else {
-                    url += `?consolidate=true`;
-                }
+                const currentTime = this.getEasternTimeISOString();
+                let url = `${this.apiBaseUrl}/trains/?train_id=${encodeURIComponent(trainNumber)}&departure_time_after=${currentTime}&consolidate=true&show_sources=true&include_predictions=true`;
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('Train not found');
-                const train = await response.json();
-                this.viewTrainDetails(train.id);
+                const data = await response.json();
+                
+                if (data.trains && data.trains.length > 0) {
+                    this.viewTrainDetails(data.trains[0].train_id);
+                } else {
+                    throw new Error('Train not found');
+                }
             } catch (error) {
                 alert('Train not found');
             }

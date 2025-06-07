@@ -20,12 +20,13 @@ class TrainConsolidationService:
         """Initialize the consolidation service."""
         self.time_tolerance = timedelta(minutes=5)  # For matching stop times
         
-    def consolidate_trains(self, trains: List[Train]) -> List[Dict]:
+    def consolidate_trains(self, trains: List[Train], from_station_code: str = None) -> List[Dict]:
         """
         Consolidate multiple train records into unified journey representations.
         
         Args:
             trains: List of Train objects to consolidate
+            from_station_code: Optional station code for user context
             
         Returns:
             List of consolidated train dictionaries
@@ -39,7 +40,7 @@ class TrainConsolidationService:
         # Consolidate each journey group
         consolidated_trains = []
         for journey_id, train_group in journey_groups.items():
-            consolidated = self._consolidate_journey_group(train_group)
+            consolidated = self._consolidate_journey_group(train_group, from_station_code)
             consolidated_trains.append(consolidated)
             
         return consolidated_trains
@@ -324,12 +325,13 @@ class TrainConsolidationService:
         journey_date = earliest_time.date()
         return f"{train_id}_{journey_date.isoformat()}"
     
-    def _consolidate_journey_group(self, trains: List[Train]) -> Dict:
+    def _consolidate_journey_group(self, trains: List[Train], from_station_code: str = None) -> Dict:
         """
         Consolidate a group of trains representing the same journey.
         
         Args:
             trains: List of trains on the same journey
+            from_station_code: Optional station code for user context
             
         Returns:
             Consolidated train dictionary
@@ -361,7 +363,7 @@ class TrainConsolidationService:
             
             # Merged fields using priority rules
             "track_assignment": self._merge_track_assignment(trains),
-            "status_summary": self._merge_status(trains),
+            "status_summary": self._merge_status(trains, from_station_code),
             
             # Merged stops with departure status from all sources (must come first)
             "stops": self._merge_stops(trains),
@@ -471,7 +473,7 @@ class TrainConsolidationService:
         
         return earliest_station
     
-    def _merge_status(self, trains: List[Train]) -> Dict:
+    def _merge_status(self, trains: List[Train], from_station_code: str = None) -> Dict:
         """
         Merge status information from all sources.
         Priority: Most recent update > Most progressed > Amtrak > NJ Transit
@@ -491,7 +493,17 @@ class TrainConsolidationService:
             current_status = "In Transit"
         elif any(t.status == "BOARDING" and t.track and t.track.strip() for t in trains):
             # Only consider it "Boarding" if the train has both BOARDING status AND a track assignment
-            current_status = "Boarding"
+            # If user specified a boarding station, only show "Boarding" if it's boarding at that station
+            if from_station_code:
+                user_station_boarding = any(
+                    t.status == "BOARDING" and t.track and t.track.strip() 
+                    and t.origin_station_code == from_station_code 
+                    for t in trains
+                )
+                if user_station_boarding:
+                    current_status = "Boarding"
+            else:
+                current_status = "Boarding"
             
         return {
             "current_status": current_status,

@@ -576,14 +576,7 @@ body::before {
         padding: 18px;
     }
     
-    .progress-details {
-        flex-direction: row;
-        justify-content: space-between;
-    }
     
-    .journey-progress {
-        padding: 14px;
-    }
     
     .section-header h3 {
         font-size: 20px;
@@ -705,23 +698,9 @@ body::before {
         margin-bottom: 12px;
     }
     
-    .progress-details {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
-    }
     
-    .journey-progress {
-        padding: 12px;
-    }
     
-    .progress-header {
-        margin-bottom: 8px;
-    }
     
-    .progress-bar-container {
-        margin-bottom: 8px;
-    }
     
     .train-details-content {
         gap: 16px;
@@ -936,89 +915,6 @@ body::before {
     font-weight: 600;
 }
 
-/* Progress specific styles */
-.progress-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-}
-
-.progress-content {
-    width: 100%;
-}
-
-.journey-progress {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.progress-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-}
-
-.progress-label {
-    font-weight: 600;
-    color: white;
-    font-size: 14px;
-}
-
-.progress-percentage {
-    font-weight: 700;
-    color: #22c55e;
-    font-size: 16px;
-}
-
-.progress-bar-container {
-    margin-bottom: 12px;
-}
-
-.progress-bar {
-    width: 100%;
-    height: 8px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #22c55e, #16a34a);
-    border-radius: 4px;
-    transition: width 0.5s ease;
-}
-
-.progress-details {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.8);
-}
-
-.stops-progress {
-    font-weight: 500;
-}
-
-.time-to-arrival {
-    font-weight: 600;
-    color: #22c55e;
-}
-
-.time-to-arrival.arrived {
-    color: #f59e0b;
-}
-
-.no-progress {
-    text-align: center;
-    color: rgba(255, 255, 255, 0.6);
-    font-style: italic;
-    padding: 16px;
-}
 
 /* Stops specific styles */
 .stops-item {

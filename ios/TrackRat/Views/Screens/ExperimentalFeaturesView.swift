@@ -26,7 +26,7 @@ struct ExperimentalFeaturesView: View {
             }
             .padding()
             .background(Color.black)
-            .cornerRadius(12)
+            .cornerRadius(12, corners: isExpanded ? [.topLeft, .topRight] : [.allCorners])
             .onTapGesture {
                 isExpanded.toggle()
             }
