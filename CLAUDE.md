@@ -150,9 +150,9 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
    GET /api/trains/?train_id=X&no_pagination=true&from_station_code=Y
    ```
 
-4. **Consolidated Trains** (if available):
+4. **Consolidated Trains** (via query parameter):
    ```
-   GET /api/consolidated_trains/{train_id}
+   GET /api/trains/?consolidate=true&train_id=X
    ```
 
 ### Data Synchronization

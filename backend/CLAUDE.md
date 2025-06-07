@@ -55,7 +55,7 @@ trackcast collect-data
 trackcast process-features
 trackcast process-features --clear  # Clear existing features before processing
 trackcast process-features --clear --train-id 1234  # Clear features for specific train
-trackcast process-features --clear --before "2025-05-01"  # Clear features before date
+trackcast process-features --clear --time-range "2025-05-01T00:00:00" "2025-05-31T23:59:59"  # Clear features in time range
 
 # Generate track predictions for upcoming trains (uses station-specific models)
 trackcast generate-predictions
@@ -252,6 +252,12 @@ trackcast --env dev init-db
   - `data_source` - Filter by data source ('njtransit' or 'amtrak')
   - `departure_time_after` / `departure_time_before` - Context-aware time filtering (see Smart Time Filtering below)
   - `consolidate` - Boolean flag to enable train consolidation (merges duplicates from multiple sources)
+  - `train_split` - Filter by data split (train, validation, test) for ML training
+  - `exclude_train_split` - Exclude trains with this data split
+  - `has_track` - Filter to only include trains with assigned tracks
+  - `sort_by` - Field to sort by (e.g., 'departure_time', 'train_id')
+  - `sort_order` - Sort order: 'asc' or 'desc'
+  - `no_pagination` - Set to true to disable pagination and get all results
   - Other filters: `train_id`, `line`, `destination`, `track`, `status`, `has_prediction`
   - Pagination: `limit` (default: 20, max: 100), `offset`
 
@@ -365,6 +371,10 @@ curl "http://localhost:8000/api/trains/?consolidate=true"
 
 # Combine with other filters
 curl "http://localhost:8000/api/trains/?consolidate=true&from_station_code=NY&to_station_code=TR"
+
+# Note: When consolidate=true is used, the response format changes from TrainListResponse
+# to ConsolidatedTrainListResponse with additional fields like data_sources, 
+# consolidation_metadata, status_v2, and progress
 ```
 
 ### Example: Consolidated Train Response
