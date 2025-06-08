@@ -20,8 +20,6 @@ struct ContentView: View {
                         TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation)
                     case .trainNumberSearch:
                         TrainNumberSearchView()
-                    case .settings:
-                        SettingsView()
                     }
                 }
         }
@@ -36,7 +34,6 @@ enum NavigationDestination: Hashable {
     case trainDetails(trainId: Int)  // Legacy database ID navigation
     case trainDetailsFlexible(trainNumber: String, fromStation: String?)  // New train number navigation
     case trainNumberSearch
-    case settings
 }
 
 #Preview {

@@ -316,7 +316,7 @@ final class APIService: ObservableObject {
             let filtered = trains.filter { train in
                 guard let stops = train.stops else { return false }
                 return stops.contains { stop in
-                    Stations.getStationCode(stop.stationName) == fromCode
+                    Stations.stationMatches(stop, stationCode: fromCode)
                 }
             }
             print("📊 fetchTrainDetailsFlexible: \(filtered.count) trains stop at \(fromCode)")

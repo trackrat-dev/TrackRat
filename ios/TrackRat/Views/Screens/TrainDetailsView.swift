@@ -1152,8 +1152,8 @@ struct JourneyStatusView: View {
         guard let stops = train.stops,
               let originCode = originStationCode,
               let destinationCode = destinationStationCode,
-              let originIndex = stops.firstIndex(where: { Stations.getStationCode($0.stationName) == originCode }),
-              let destIndex = stops.firstIndex(where: { Stations.getStationCode($0.stationName) == destinationCode }),
+              let originIndex = stops.firstIndex(where: { Stations.stationMatches($0, stationCode: originCode) }),
+              let destIndex = stops.firstIndex(where: { Stations.stationMatches($0, stationCode: destinationCode) }),
               originIndex < destIndex else {
             // Fallback to API data or default
             if let progress = train.progress {

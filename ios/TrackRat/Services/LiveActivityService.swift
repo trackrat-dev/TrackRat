@@ -222,9 +222,9 @@ class LiveActivityService: ObservableObject {
         guard let activity = currentActivity else { return }
         let attributes = activity.attributes
         
-        // Find stops between origin and destination
-        guard let originIndex = newStops.firstIndex(where: { Stations.getStationCode($0.stationName) == originCode }),
-              let destIndex = newStops.firstIndex(where: { Stations.getStationCode($0.stationName) == destinationCode }) else {
+        // Find stops between origin and destination using robust matching
+        guard let originIndex = newStops.firstIndex(where: { Stations.stationMatches($0, stationCode: originCode) }),
+              let destIndex = newStops.firstIndex(where: { Stations.stationMatches($0, stationCode: destinationCode) }) else {
             return
         }
         
@@ -266,9 +266,9 @@ class LiveActivityService: ObservableObject {
         
         if stop.stationName == attributes.origin {
             // Departure from origin
-            content.title = "🚂 Your train just left \(stop.stationName)"
+            content.title = "🚂 Your train just left \(Stations.displayName(for: stop.stationName))"
             if let next = nextStop {
-                content.body = "Next stop: \(next.stationName)"
+                content.body = "Next stop: \(Stations.displayName(for: next.stationName))"
                 if let arrivalTime = next.scheduledTime {
                     let formatter = DateFormatter()
                     formatter.timeStyle = .short
@@ -281,15 +281,15 @@ class LiveActivityService: ObservableObject {
             return
         } else {
             // Intermediate stop departure
-            content.title = "✅ Departed \(stop.stationName)"
+            content.title = "✅ Departed \(Stations.displayName(for: stop.stationName))"
             if stopsRemaining == 1 {
                 content.body = "Next stop is your destination!"
             } else if stopsRemaining > 1 {
-                content.body = "\(stopsRemaining) stops remaining to \(attributes.destination)"
+                content.body = "\(stopsRemaining) stops remaining to \(Stations.displayName(for: attributes.destination))"
             }
             
             if let next = nextStop {
-                content.body += "\nNext: \(next.stationName)"
+                content.body += "\nNext: \(Stations.displayName(for: next.stationName))"
             }
         }
         
@@ -326,9 +326,9 @@ class LiveActivityService: ObservableObject {
         guard let activity = currentActivity else { return }
         let attributes = activity.attributes
         
-        // Find stops between origin and destination
-        guard let originIndex = stops.firstIndex(where: { Stations.getStationCode($0.stationName) == originCode }),
-              let destIndex = stops.firstIndex(where: { Stations.getStationCode($0.stationName) == destinationCode }) else {
+        // Find stops between origin and destination using robust matching
+        guard let originIndex = stops.firstIndex(where: { Stations.stationMatches($0, stationCode: originCode) }),
+              let destIndex = stops.firstIndex(where: { Stations.stationMatches($0, stationCode: destinationCode) }) else {
             return
         }
         
@@ -379,13 +379,13 @@ class LiveActivityService: ObservableObject {
         if isDestination {
             content.title = "📍 Approaching Your Destination!"
             if minutesAway == 0 {
-                content.body = "Arriving at \(stop.stationName) now"
+                content.body = "Arriving at \(Stations.displayName(for: stop.stationName)) now"
             } else {
-                content.body = "Arriving at \(stop.stationName) in ~\(minutesAway) minute\(minutesAway == 1 ? "" : "s")"
+                content.body = "Arriving at \(Stations.displayName(for: stop.stationName)) in ~\(minutesAway) minute\(minutesAway == 1 ? "" : "s")"
             }
             content.sound = .default
         } else {
-            content.title = "📍 Approaching \(stop.stationName)"
+            content.title = "📍 Approaching \(Stations.displayName(for: stop.stationName))"
             if minutesAway == 0 {
                 content.body = "Arrival imminent"
             } else {

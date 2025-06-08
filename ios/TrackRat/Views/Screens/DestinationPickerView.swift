@@ -17,6 +17,16 @@ struct DestinationPickerView: View {
         appState.recentDestinations.filter { $0 != appState.selectedDeparture }
     }
     
+    // Computed property for dynamic spacing
+    private var topPadding: CGFloat {
+        (searchFieldFocused || isSearching) ? 20 : 100
+    }
+    
+    // Computed property to determine if title should be shown
+    private var shouldShowTitle: Bool {
+        !searchFieldFocused && !isSearching
+    }
+    
     var body: some View {
         ZStack {
             // Black gradient background
@@ -25,11 +35,16 @@ struct DestinationPickerView: View {
             
             
             VStack(spacing: 32) {
-                // Title with spacing
-                Text("Where to?")
-                    .font(TrackRatTheme.Typography.title1)
-                    .foregroundColor(TrackRatTheme.Colors.onSurface)
-                    .padding(.top, 100)
+                // Conditional title with spacing - only show when not searching
+                if shouldShowTitle {
+                    Text("Where to?")
+                        .font(TrackRatTheme.Typography.title1)
+                        .foregroundColor(TrackRatTheme.Colors.onSurface)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                
+                Spacer()
+                    .frame(height: shouldShowTitle ? 0 : topPadding)
                 
                 VStack(spacing: 20) {
                     // Search bar - moved to top
@@ -41,17 +56,28 @@ struct DestinationPickerView: View {
                             .foregroundColor(.white)
                             .focused($searchFieldFocused)
                             .onTapGesture {
-                                isSearching = true
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    isSearching = true
+                                }
                             }
                             .onChange(of: searchText) { _, newValue in
-                                isSearching = !newValue.isEmpty
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    isSearching = !newValue.isEmpty
+                                }
+                            }
+                            .onChange(of: searchFieldFocused) { _, newValue in
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    // Trigger UI update when focus changes
+                                }
                             }
                         
                         if isSearching {
                             Button {
-                                searchText = ""
-                                isSearching = false
-                                searchFieldFocused = false
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    searchText = ""
+                                    isSearching = false
+                                    searchFieldFocused = false
+                                }
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(.white.opacity(0.6))
@@ -142,6 +168,7 @@ struct DestinationPickerView: View {
         .navigationTitle("Select Destination")
         .navigationBarTitleDisplayMode(.inline)
         .glassmorphicNavigationBar()
+        .tint(.orange)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 if let departure = appState.selectedDeparture {
@@ -155,6 +182,14 @@ struct DestinationPickerView: View {
                     }
                 }
             }
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Close") {
+                    // Navigate back to the root (TripSelectionView)
+                    appState.navigationPath.removeLast(appState.navigationPath.count)
+                }
+                .foregroundColor(.orange)
+            }
         }
         .onAppear {
             appState.loadRecentDestinations()
@@ -167,10 +202,12 @@ struct DestinationPickerView: View {
         appState.saveDestination(destination)
         appState.navigationPath.append(NavigationDestination.trainList(destination: destination))
         
-        // Reset search
-        searchText = ""
-        isSearching = false
-        searchFieldFocused = false
+        // Reset search with animation
+        withAnimation(.easeInOut(duration: 0.3)) {
+            searchText = ""
+            isSearching = false
+            searchFieldFocused = false
+        }
         
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()

@@ -165,8 +165,7 @@ struct ActiveTripsSection: View {
                     Text("Next Stop")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.7))
-                    Text(nextStop.stationName)
-                        // Using stationName directly to avoid ambiguity
+                    Text(Stations.displayName(for: nextStop.stationName))
                         .font(.caption.bold())
                         .foregroundColor(.white)
                         .lineLimit(1)

@@ -7,9 +7,9 @@ extension Train {
     func calculateJourneyProgress(from originCode: String, to destinationCode: String) -> JourneyProgress {
         guard let stops = stops else { return .unknown }
         
-        // Find origin and destination indices
-        let originIndex = stops.firstIndex { Stations.getStationCode($0.stationName) == originCode }
-        let destinationIndex = stops.firstIndex { Stations.getStationCode($0.stationName) == destinationCode }
+        // Find origin and destination indices using robust matching
+        let originIndex = stops.firstIndex { Stations.stationMatches($0, stationCode: originCode) }
+        let destinationIndex = stops.firstIndex { Stations.stationMatches($0, stationCode: destinationCode) }
         
         guard let fromIdx = originIndex, let toIdx = destinationIndex, fromIdx < toIdx else {
             return .unknown
@@ -73,8 +73,8 @@ extension Train {
         
         // Check train-level status
         if status == .boarding {
-            // Find the origin station for boarding
-            if let originStop = stops.first(where: { Stations.getStationCode($0.stationName) == originCode }) {
+            // Find the origin station for boarding using robust matching
+            if let originStop = stops.first(where: { Stations.stationMatches($0, stationCode: originCode) }) {
                 return .boarding(station: originStop.stationName)
             }
         }
@@ -143,9 +143,9 @@ extension Train {
         guard let stops = stops, !stops.isEmpty else { return nil }
         guard !destinationCode.isEmpty else { return nil }
         
-        let destinationStop = stops.first { Stations.getStationCode($0.stationName) == destinationCode }
+        let destinationStop = stops.first { Stations.stationMatches($0, stationCode: destinationCode) }
         guard let destStop = destinationStop else { 
-            // Fallback: try to find by station name if code lookup fails
+            // Fallback: try to find by station name if robust matching fails
             return stops.first { $0.stationName.lowercased().contains(destinationCode.lowercased()) }?
                 .departureTime ?? stops.first { $0.stationName.lowercased().contains(destinationCode.lowercased()) }?
                 .scheduledTime

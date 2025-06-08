@@ -247,6 +247,14 @@ struct Stop: Identifiable, Codable {
     }
 }
 
+// MARK: - Stop Extensions
+extension Stop {
+    /// Returns the normalized display name for this stop's station
+    var normalizedStationName: String {
+        return StationNameNormalizer.normalizedName(for: stationName)
+    }
+}
+
 // MARK: - Prediction Data
 struct PredictionData: Codable {
     let trackProbabilities: [String: Double]?
@@ -367,10 +375,10 @@ struct StatusSummary: Codable {
 extension Train {
     /// Get the departure time from a specific origin station
     func getDepartureTime(fromStationCode: String) -> Date {
-        // Find the stop that matches our departure station
+        // Find the stop that matches our departure station using robust matching
         if let stops = stops,
            let originStop = stops.first(where: { stop in
-               Stations.getStationCode(stop.stationName) == fromStationCode
+               Stations.stationMatches(stop, stationCode: fromStationCode)
            }),
            let departureTime = originStop.departureTime {
             return departureTime
@@ -387,6 +395,13 @@ extension Train {
         formatter.timeStyle = .short
         formatter.timeZone = TimeZone(identifier: "America/New_York")
         return formatter.string(from: time)
+    }
+    
+    /// Returns an array of stops with normalized station names for display purposes
+    var normalizedStops: [Stop] {
+        return stops ?? []
+        // Note: We don't need to create new Stop instances since we can use 
+        // the normalizedStationName computed property on each Stop directly
     }
     
     // MARK: - Consolidated Data Helpers

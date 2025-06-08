@@ -148,14 +148,9 @@ struct TrainCard: View {
             return false
         }
         
-        // Find the stop that matches the user's departure station
+        // Find the stop that matches the user's departure station using robust matching
         let originStop = stops.first { stop in
-            // Match by station code if available
-            if let stationCode = stop.stationCode {
-                return stationCode == departureCode
-            }
-            // Fall back to matching by station name
-            return Stations.getStationCode(stop.stationName) == departureCode
+            return Stations.stationMatches(stop, stationCode: departureCode)
         }
         
         // Train is boarding at origin if it hasn't departed from that station yet

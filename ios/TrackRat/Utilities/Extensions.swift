@@ -84,16 +84,55 @@ struct RoundedCorners: Shape {
     }
 }
 
+// MARK: - Station Name Normalizer
+struct StationNameNormalizer {
+    /// Mapping from API station names to preferred display names
+    private static let displayNameMapping: [String: String] = [
+        // Washington DC stations - unify all variations to "Washington Union Station"
+        "Washington Station": "Washington Union Station",
+        "Washington Union": "Washington Union Station",
+        "WASHI": "Washington Union Station",
+        
+        // Future mappings can be added here for other station name inconsistencies
+        // Example: "Newark Airport": "Newark Liberty International Airport"
+    ]
+    
+    /// Returns the normalized display name for a given API station name.
+    /// If no mapping exists, returns the original station name unchanged.
+    static func normalizedName(for apiStationName: String) -> String {
+        return displayNameMapping[apiStationName] ?? apiStationName
+    }
+}
+
 // MARK: - Stations Extension
 extension Stations {
     static func displayName(for stationName: String) -> String {
-        switch stationName {
+        // First normalize the station name to handle API inconsistencies
+        let normalizedName = StationNameNormalizer.normalizedName(for: stationName)
+        
+        // Then apply short display names for UI
+        switch normalizedName {
         case "New York Penn Station":
             return "New York Penn"
         case "Newark Penn Station":
             return "Newark Penn"
+        case "Washington Union Station":
+            return "Washington Union"
         default:
-            return stationName
+            return normalizedName
         }
+    }
+    
+    /// Robust station matching that handles API inconsistencies
+    /// Uses station code first (most reliable), falls back to normalized name matching
+    static func stationMatches(_ stop: Stop, stationCode: String) -> Bool {
+        // Strategy 1: Direct station code match (most reliable)
+        if let stopCode = stop.stationCode, stopCode == stationCode {
+            return true
+        }
+        
+        // Strategy 2: Normalized name matching (fallback)
+        let normalizedStopName = StationNameNormalizer.normalizedName(for: stop.stationName)
+        return getStationCode(normalizedStopName) == stationCode
     }
 }

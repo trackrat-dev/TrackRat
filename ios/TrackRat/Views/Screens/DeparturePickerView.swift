@@ -10,6 +10,16 @@ struct DeparturePickerView: View {
         Stations.search(searchText)
     }
     
+    // Computed property for dynamic spacing
+    private var topPadding: CGFloat {
+        (searchFieldFocused || isSearching) ? 20 : 100
+    }
+    
+    // Computed property to determine if title should be shown
+    private var shouldShowTitle: Bool {
+        !searchFieldFocused && !isSearching
+    }
+    
     var body: some View {
         ZStack {
             // Black gradient background
@@ -18,17 +28,22 @@ struct DeparturePickerView: View {
             
             
             VStack(spacing: 32) {
-                // Title with spacing
-                VStack(spacing: TrackRatTheme.Spacing.sm) {
-                    Text("Where are you")
-                        .font(TrackRatTheme.Typography.title1)
-                        .foregroundColor(TrackRatTheme.Colors.onSurface)
-                    
-                    Text("departing from?")
-                        .font(TrackRatTheme.Typography.title1)
-                        .foregroundColor(TrackRatTheme.Colors.onSurface)
+                // Conditional title with spacing - only show when not searching
+                if shouldShowTitle {
+                    VStack(spacing: TrackRatTheme.Spacing.sm) {
+                        Text("Where are you")
+                            .font(TrackRatTheme.Typography.title1)
+                            .foregroundColor(TrackRatTheme.Colors.onSurface)
+                        
+                        Text("departing from?")
+                            .font(TrackRatTheme.Typography.title1)
+                            .foregroundColor(TrackRatTheme.Colors.onSurface)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                .padding(.top, 100)
+                
+                Spacer()
+                    .frame(height: shouldShowTitle ? 0 : topPadding)
                 
                 VStack(spacing: 20) {
                     // Search field - moved to top
@@ -40,7 +55,14 @@ struct DeparturePickerView: View {
                             .foregroundColor(.white)
                             .focused($searchFieldFocused)
                             .onChange(of: searchText) { _, newValue in
-                                isSearching = !newValue.isEmpty
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    isSearching = !newValue.isEmpty
+                                }
+                            }
+                            .onChange(of: searchFieldFocused) { _, newValue in
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    // Trigger UI update when focus changes
+                                }
                             }
                             .onSubmit {
                                 if let firstResult = searchResults.first,
@@ -151,6 +173,16 @@ struct DeparturePickerView: View {
         .navigationTitle("Select Departure")
         .navigationBarTitleDisplayMode(.inline)
         .glassmorphicNavigationBar()
+        .tint(.orange)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Close") {
+                    // Navigate back to the root (TripSelectionView)
+                    appState.navigationPath.removeLast(appState.navigationPath.count)
+                }
+                .foregroundColor(.orange)
+            }
+        }
     }
     
     private func selectDeparture(name: String, code: String) {
@@ -159,10 +191,12 @@ struct DeparturePickerView: View {
         appState.saveDeparture() // Save to recent departures
         appState.navigationPath.append(NavigationDestination.destinationPicker)
         
-        // Reset search
-        searchText = ""
-        isSearching = false
-        searchFieldFocused = false
+        // Reset search with animation
+        withAnimation(.easeInOut(duration: 0.3)) {
+            searchText = ""
+            isSearching = false
+            searchFieldFocused = false
+        }
         
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()

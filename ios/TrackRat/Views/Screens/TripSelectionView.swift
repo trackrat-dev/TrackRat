@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TripSelectionView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.openURL) private var openURL
     
     // Get favorite trips
     private var favoriteTrips: [TripPair] {
@@ -117,33 +118,40 @@ struct TripSelectionView: View {
                         }
                         .padding(.top, 20)
                         
-                        // Settings button at the bottom
+                        // WhatsApp Community button
                         Button {
-                            appState.navigationPath.append(NavigationDestination.settings)
+                            openWhatsAppCommunity()
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {
                             HStack {
-                                Image(systemName: "gear")
-                                    .font(.system(size: 20))
-                                Text("Settings")
-                                    .font(.headline)
+                                Image(systemName: "message.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.green)
+                                
+                                Text("Report bugs and missing stations")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.7))
+                                
                                 Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 14, weight: .semibold))
+                                
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.5))
                             }
-                            .foregroundColor(.white)
-                            .padding()
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
                             .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.white.opacity(0.15))
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(.white.opacity(0.08))
                                     .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(.white.opacity(0.2), lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(.white.opacity(0.15), lineWidth: 1)
                                     )
                             )
                             .padding(.horizontal)
                         }
-                        .padding(.top, 20)
+                        .padding(.top, 30)
+                        
                     }
                     .padding(.bottom, 40)
                 }
@@ -163,6 +171,13 @@ struct TripSelectionView: View {
         
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func openWhatsAppCommunity() {
+        let whatsappURL = "https://chat.whatsapp.com/LhYRVFBoWOt0fR1kDnvJbo"
+        if let url = URL(string: whatsappURL) {
+            openURL(url)
+        }
     }
     
 }
