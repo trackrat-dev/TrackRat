@@ -58,7 +58,7 @@ extension Date {
 final class APIService: ObservableObject {
     static let shared = APIService()
     
-    private let baseURL = "https://trackcast.andymartin.cc/api"
+    private let baseURL = "https://trackrat.net/api"
     private let session = URLSession.shared
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
