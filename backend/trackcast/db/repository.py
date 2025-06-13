@@ -1319,7 +1319,7 @@ class TrainStopRepository(BaseRepository):
 
     def upsert_train_stops(self, train_id: str, train_departure_time: datetime, stops_data: List[Dict[str, Any]], data_source: str = "njtransit") -> List[TrainStop]:
         """
-        Create or update train stops for a specific train.
+        Intelligently update train stops without deletion, maintaining full audit trail.
 
         Args:
             train_id: Train identifier
@@ -1334,48 +1334,162 @@ class TrainStopRepository(BaseRepository):
             SQLAlchemyError: Database error
         """
         try:
-            # Import StationMapper here to avoid circular imports
+            current_time = datetime.utcnow()
+            updated_stops = []
+            
+            # Import StationMapper for station code derivation
             from trackcast.services.station_mapping import StationMapper
             station_mapper = StationMapper()
             
-            # Delete existing stops for this train and data source
-            self.session.query(TrainStop).filter(
+            # Get existing stops
+            existing_stops = self.session.query(TrainStop).filter(
                 TrainStop.train_id == train_id,
                 TrainStop.train_departure_time == train_departure_time,
                 TrainStop.data_source == data_source
-            ).delete(synchronize_session=False)
-
-            # Create new stops, filtering out duplicates within the same dataset
-            train_stops = []
-            seen_stations = set()
+            ).all()
             
+            # Create lookup map
+            existing_map = {
+                (stop.station_name, stop.station_code): stop 
+                for stop in existing_stops
+            }
+            
+            # Track which stops we've seen in this update
+            seen_stops = set()
+            
+            # Process incoming stops
             for stop_data in stops_data:
-                stop_data["train_id"] = train_id
-                stop_data["train_departure_time"] = train_departure_time
-                stop_data["data_source"] = data_source
-                
-                # If station_code is missing, try to derive it from station_name
+                # Derive station code if missing
                 if not stop_data.get("station_code") and stop_data.get("station_name"):
                     derived_code = station_mapper.get_code_for_name(stop_data["station_name"])
                     if derived_code:
                         stop_data["station_code"] = derived_code
-                        logger.debug(f"Derived station code '{derived_code}' for station name '{stop_data['station_name']}'")
+                        logger.debug(f"Derived station code '{derived_code}' for '{stop_data['station_name']}'")
                 
-                # Create unique key to check for duplicates within this batch
-                station_key = (train_id, train_departure_time, stop_data.get("station_name"), data_source)
+                station_key = (stop_data.get("station_name"), stop_data.get("station_code"))
+                seen_stops.add(station_key)
                 
-                if station_key in seen_stations:
-                    logger.warning(f"Skipping duplicate station '{stop_data.get('station_name')}' for train {train_id}")
-                    continue
+                if station_key in existing_map:
+                    # Update existing stop
+                    stop = existing_map[station_key]
                     
-                seen_stations.add(station_key)
-                train_stop = TrainStop(**stop_data)
-                self.session.add(train_stop)
-                train_stops.append(train_stop)
-
+                    # Track what changed
+                    changes = {
+                        "timestamp": current_time.isoformat(),
+                        "action": "updated",
+                        "changes": {}
+                    }
+                    
+                    # Check and update each field that might change
+                    fields_to_check = [
+                        ("departure_time", "departure_time"),
+                        ("stop_status", "stop_status"),
+                        ("departed", "departed"),
+                        ("scheduled_time", "scheduled_time"),
+                        ("pickup_only", "pickup_only"),
+                        ("dropoff_only", "dropoff_only")
+                    ]
+                    
+                    for field_name, data_key in fields_to_check:
+                        old_value = getattr(stop, field_name)
+                        new_value = stop_data.get(data_key)
+                        
+                        # Handle boolean fields properly
+                        if data_key in ["departed", "pickup_only", "dropoff_only"]:
+                            new_value = stop_data.get(data_key, False)
+                        
+                        # Convert datetime objects for comparison
+                        if isinstance(old_value, datetime):
+                            old_value_str = old_value.isoformat() if old_value else None
+                            new_value_str = new_value.isoformat() if isinstance(new_value, datetime) else new_value
+                            if old_value_str != new_value_str:
+                                changes["changes"][field_name] = {
+                                    "old": old_value_str,
+                                    "new": new_value_str
+                                }
+                                setattr(stop, field_name, new_value)
+                        elif old_value != new_value:
+                            changes["changes"][field_name] = {
+                                "old": old_value,
+                                "new": new_value
+                            }
+                            setattr(stop, field_name, new_value)
+                    
+                    # Update lifecycle fields
+                    if not stop.is_active:
+                        changes["changes"]["is_active"] = {"old": False, "new": True}
+                        changes["note"] = "Stop reappeared in API"
+                    
+                    stop.last_seen_at = current_time
+                    stop.is_active = True
+                    stop.api_removed_at = None
+                    stop.data_version += 1
+                    
+                    # Append to audit trail if there were changes
+                    if changes["changes"]:
+                        if stop.audit_trail is None:
+                            stop.audit_trail = []
+                        stop.audit_trail = stop.audit_trail + [changes]  # Create new list for SQLAlchemy to detect change
+                    
+                    updated_stops.append(stop)
+                    
+                else:
+                    # Create new stop
+                    stop_data["train_id"] = train_id
+                    stop_data["train_departure_time"] = train_departure_time
+                    stop_data["data_source"] = data_source
+                    stop_data["last_seen_at"] = current_time
+                    stop_data["is_active"] = True
+                    
+                    # Preserve original scheduled time
+                    if "scheduled_time" in stop_data:
+                        stop_data["original_scheduled_time"] = stop_data["scheduled_time"]
+                    
+                    # Initialize audit trail with creation event
+                    stop_data["audit_trail"] = [{
+                        "timestamp": current_time.isoformat(),
+                        "action": "created",
+                        "initial_data": {
+                            "station_name": stop_data.get("station_name"),
+                            "station_code": stop_data.get("station_code"),
+                            "scheduled_time": stop_data.get("scheduled_time").isoformat() if stop_data.get("scheduled_time") else None,
+                            "departure_time": stop_data.get("departure_time").isoformat() if stop_data.get("departure_time") else None,
+                            "departed": stop_data.get("departed", False),
+                            "stop_status": stop_data.get("stop_status")
+                        }
+                    }]
+                    
+                    new_stop = TrainStop(**stop_data)
+                    self.session.add(new_stop)
+                    updated_stops.append(new_stop)
+            
+            # Mark missing stops as inactive (NOT deleted) with audit trail
+            for station_key, stop in existing_map.items():
+                if station_key not in seen_stops and stop.is_active:
+                    stop.is_active = False
+                    stop.api_removed_at = current_time
+                    
+                    # Add removal to audit trail
+                    removal_event = {
+                        "timestamp": current_time.isoformat(),
+                        "action": "removed_from_api",
+                        "note": "Stop no longer present in API response",
+                        "last_known_state": {
+                            "departed": stop.departed,
+                            "stop_status": stop.stop_status,
+                            "departure_time": stop.departure_time.isoformat() if stop.departure_time else None
+                        }
+                    }
+                    
+                    if stop.audit_trail is None:
+                        stop.audit_trail = []
+                    stop.audit_trail = stop.audit_trail + [removal_event]
+                    
+                    logger.info(f"Marked stop {stop.station_name} as inactive for train {train_id}")
+            
             self.session.commit()
-            logger.debug(f"Created {len(train_stops)} stops for train {train_id}")
-            return train_stops
+            logger.debug(f"Updated {len(updated_stops)} stops for train {train_id}")
+            return updated_stops
 
         except SQLAlchemyError as e:
             self.session.rollback()
@@ -1475,6 +1589,49 @@ class TrainStopRepository(BaseRepository):
             
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_all_stations: {str(e)}")
+            raise
+
+    def get_stop_audit_history(self, train_id: str, station_name: str = None) -> List[Dict[str, Any]]:
+        """
+        Get audit history for train stops, optionally filtered by station.
+        Useful for debugging stop lifecycle issues.
+        
+        Args:
+            train_id: Train identifier
+            station_name: Optional station name filter
+        
+        Returns:
+            List of stop audit histories
+        
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        try:
+            query = self.session.query(TrainStop).filter(
+                TrainStop.train_id == train_id
+            )
+            
+            if station_name:
+                query = query.filter(TrainStop.station_name == station_name)
+            
+            stops = query.all()
+            
+            history = []
+            for stop in stops:
+                history.append({
+                    "station_name": stop.station_name,
+                    "station_code": stop.station_code,
+                    "is_active": stop.is_active,
+                    "last_seen_at": stop.last_seen_at.isoformat() if stop.last_seen_at else None,
+                    "api_removed_at": stop.api_removed_at.isoformat() if stop.api_removed_at else None,
+                    "data_version": stop.data_version,
+                    "audit_trail": stop.audit_trail or []
+                })
+            
+            return history
+            
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_stop_audit_history: {str(e)}")
             raise
 
     def search_stations(self, query: str) -> List[Dict[str, str]]:
