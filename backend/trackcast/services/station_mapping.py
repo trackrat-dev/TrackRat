@@ -529,40 +529,63 @@ class StationMapper:
         
         from datetime import datetime, timedelta
         
+        # DEBUG: Log detailed input information
+        logger.debug(f"normalize_time_to_nearest_minute called with: {repr(time_str)} (type: {type(time_str)})")
+        
         # Handle different input types
         if isinstance(time_str, datetime):
             # Already a datetime object, just normalize it
             dt = time_str
+            logger.debug(f"Input is datetime object: {dt}")
         elif isinstance(time_str, str):
             # Parse string to datetime
             try:
                 dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-            except ValueError:
-                logger.warning(f"Failed to parse time string: {time_str}")
+                logger.debug(f"Parsed string to datetime: {dt}")
+            except ValueError as e:
+                logger.warning(f"Failed to parse time string: {time_str} - {str(e)}")
                 return time_str
         else:
             # Unexpected type, log and return as string
-            logger.debug(f"Converting {type(time_str)} to string for time normalization: {time_str}")
+            logger.warning(f"Unexpected type for time normalization: {type(time_str)} = {repr(time_str)}")
             return str(time_str) if time_str is not None else None
         
         try:
-            # dt is already set above based on input type
+            # DEBUG: Verify dt is datetime before proceeding
+            logger.debug(f"About to normalize dt: {repr(dt)} (type: {type(dt)})")
+            if not isinstance(dt, datetime):
+                logger.error(f"CRITICAL: dt is not datetime object before normalization! type={type(dt)}, value={repr(dt)}")
+                return str(time_str) if time_str is not None else None
             
             # Round seconds to nearest minute
             if dt.second >= 30:
                 # Round up - add one minute
                 dt = dt.replace(second=0, microsecond=0)
                 dt = dt + timedelta(minutes=1)
+                logger.debug(f"Rounded up to: {dt}")
             else:
                 # Round down
                 dt = dt.replace(second=0, microsecond=0)
+                logger.debug(f"Rounded down to: {dt}")
+            
+            # DEBUG: Final type check before isoformat
+            logger.debug(f"Final dt before isoformat: {repr(dt)} (type: {type(dt)})")
+            if not isinstance(dt, datetime):
+                logger.error(f"CRITICAL: dt became non-datetime during processing! type={type(dt)}, value={repr(dt)}")
+                return str(time_str) if time_str is not None else None
             
             # Return in same format
-            return dt.isoformat()
+            result = dt.isoformat()
+            logger.debug(f"Successfully normalized {repr(time_str)} -> {result}")
+            return result
             
-        except (ValueError, AttributeError) as e:
-            logger.warning(f"Failed to normalize time '{time_str}': {str(e)}")
-            return time_str
+        except (ValueError, AttributeError, TypeError) as e:
+            logger.error(f"Exception in normalize_time_to_nearest_minute: {str(e)}")
+            logger.error(f"  Input: {repr(time_str)} (type: {type(time_str)})")
+            logger.error(f"  dt variable: {repr(dt) if 'dt' in locals() else 'NOT SET'} (type: {type(dt) if 'dt' in locals() else 'N/A'})")
+            import traceback
+            logger.error(f"  Traceback: {traceback.format_exc()}")
+            return str(time_str) if time_str is not None else None
     
     def validate_sync_with_ios(self, ios_station_codes: Dict[str, str]) -> Dict[str, any]:
         """
