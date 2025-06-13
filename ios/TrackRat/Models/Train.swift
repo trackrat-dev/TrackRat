@@ -123,8 +123,10 @@ struct Train: Identifiable, Codable {
             trackAssignment = nil
             statusSummary = nil
             consolidationMetadata = nil
-            statusV2 = nil
-            progress = nil
+            
+            // Enhanced fields can appear in legacy format too
+            statusV2 = try container.decodeIfPresent(StatusV2.self, forKey: .statusV2)
+            progress = try container.decodeIfPresent(TrainProgress.self, forKey: .progress)
         }
         
         // Common fields
@@ -303,6 +305,31 @@ struct OriginStation: Codable {
         case name
         case departureTime = "departure_time"
     }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        code = try container.decode(String.self, forKey: .code)
+        name = try container.decode(String.self, forKey: .name)
+        
+        // Handle date decoding with custom parser
+        let dateString = try container.decode(String.self, forKey: .departureTime)
+        if let date = Date.fromISO8601(dateString) {
+            departureTime = date
+        } else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: container.codingPath + [CodingKeys.departureTime],
+                    debugDescription: "Invalid date format: \(dateString)"
+                )
+            )
+        }
+    }
+    
+    init(code: String, name: String, departureTime: Date) {
+        self.code = code
+        self.name = name
+        self.departureTime = departureTime
+    }
 }
 
 struct ConsolidationMetadata: Codable {
@@ -314,6 +341,31 @@ struct ConsolidationMetadata: Codable {
         case sourceCount = "source_count"
         case lastUpdate = "last_update"
         case confidenceScore = "confidence_score"
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceCount = try container.decode(Int.self, forKey: .sourceCount)
+        confidenceScore = try container.decode(Double.self, forKey: .confidenceScore)
+        
+        // Handle date decoding with custom parser
+        let dateString = try container.decode(String.self, forKey: .lastUpdate)
+        if let date = Date.fromISO8601(dateString) {
+            lastUpdate = date
+        } else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: container.codingPath + [CodingKeys.lastUpdate],
+                    debugDescription: "Invalid date format: \(dateString)"
+                )
+            )
+        }
+    }
+    
+    init(sourceCount: Int, lastUpdate: Date, confidenceScore: Double) {
+        self.sourceCount = sourceCount
+        self.lastUpdate = lastUpdate
+        self.confidenceScore = confidenceScore
     }
 }
 
@@ -334,6 +386,39 @@ struct DataSource: Codable {
         case track
         case delayMinutes = "delay_minutes"
         case dbId = "db_id"
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        origin = try container.decode(String.self, forKey: .origin)
+        dataSource = try container.decode(String.self, forKey: .dataSource)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        track = try container.decodeIfPresent(String.self, forKey: .track)
+        delayMinutes = try container.decodeIfPresent(Int.self, forKey: .delayMinutes)
+        dbId = try container.decode(Int.self, forKey: .dbId)
+        
+        // Handle date decoding with custom parser
+        let dateString = try container.decode(String.self, forKey: .lastUpdate)
+        if let date = Date.fromISO8601(dateString) {
+            lastUpdate = date
+        } else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: container.codingPath + [CodingKeys.lastUpdate],
+                    debugDescription: "Invalid date format: \(dateString)"
+                )
+            )
+        }
+    }
+    
+    init(origin: String, dataSource: String, lastUpdate: Date, status: String?, track: String?, delayMinutes: Int?, dbId: Int) {
+        self.origin = origin
+        self.dataSource = dataSource
+        self.lastUpdate = lastUpdate
+        self.status = status
+        self.track = track
+        self.delayMinutes = delayMinutes
+        self.dbId = dbId
     }
 }
 
@@ -384,6 +469,36 @@ struct TrackAssignment: Codable {
         case assignedAt = "assigned_at"
         case assignedBy = "assigned_by"
         case source
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        track = try container.decodeIfPresent(String.self, forKey: .track)
+        assignedBy = try container.decodeIfPresent(String.self, forKey: .assignedBy)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        
+        // Handle date decoding with custom parser
+        if let dateString = try container.decodeIfPresent(String.self, forKey: .assignedAt) {
+            if let date = Date.fromISO8601(dateString) {
+                assignedAt = date
+            } else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: container.codingPath + [CodingKeys.assignedAt],
+                        debugDescription: "Invalid date format: \(dateString)"
+                    )
+                )
+            }
+        } else {
+            assignedAt = nil
+        }
+    }
+    
+    init(track: String?, assignedAt: Date?, assignedBy: String?, source: String?) {
+        self.track = track
+        self.assignedAt = assignedAt
+        self.assignedBy = assignedBy
+        self.source = source
     }
 }
 
@@ -436,7 +551,7 @@ extension Train {
     
     /// Check if this train has consolidated data from multiple sources
     var isConsolidated: Bool {
-        return consolidatedId != nil && (dataSources?.count ?? 0) > 1
+        return consolidatedId != nil
     }
     
     /// Get the best available track assignment
