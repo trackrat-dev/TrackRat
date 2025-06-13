@@ -489,24 +489,14 @@ class DataCollectorService:
                 # Process stops for both new and existing trains
                 if "stops" in normalized_train and normalized_train["stops"]:
                     try:
-                        # DEBUG: Log stops data before processing
-                        train_id = normalized_train.get('train_id')
-                        logger.debug(f"Processing {len(normalized_train['stops'])} stops for Amtrak train {train_id}")
-                        for i, stop in enumerate(normalized_train["stops"]):
-                            logger.debug(f"  Stop {i}: scheduled_time={repr(stop.get('scheduled_time'))} (type: {type(stop.get('scheduled_time'))})")
-                            logger.debug(f"  Stop {i}: departure_time={repr(stop.get('departure_time'))} (type: {type(stop.get('departure_time'))})")
-                        
                         self.stop_repo.upsert_train_stops(
-                            train_id,
+                            normalized_train.get("train_id"),
                             departure_time,
                             normalized_train["stops"],
                             "amtrak"
                         )
                     except Exception as e:
-                        logger.error(f"Failed to process stops for Amtrak train {normalized_train.get('train_id')}: {str(e)}")
-                        logger.error(f"  Train data: {normalized_train}")
-                        import traceback
-                        logger.error(f"  Full traceback: {traceback.format_exc()}")
+                        logger.warning(f"Failed to process stops for Amtrak train {normalized_train.get('train_id')}: {str(e)}")
 
             # Log results
             logger.info(
@@ -574,16 +564,9 @@ class DataCollectorService:
                     # Normalize times
                     for time_field in ["scheduled_time", "departure_time"]:
                         if time_field in normalized_stop and normalized_stop[time_field]:
-                            logger.debug(f"Stop {i}: normalizing {time_field}={repr(normalized_stop[time_field])} (type: {type(normalized_stop[time_field])})")
-                            try:
-                                normalized_stop[time_field] = station_mapper.normalize_time_to_nearest_minute(
-                                    normalized_stop[time_field]
-                                )
-                                logger.debug(f"Stop {i}: normalized {time_field} -> {repr(normalized_stop[time_field])}")
-                            except Exception as e:
-                                logger.error(f"ERROR normalizing {time_field} for stop {i}: {str(e)}")
-                                logger.error(f"  Original value: {repr(normalized_stop[time_field])} (type: {type(normalized_stop[time_field])})")
-                                raise
+                            normalized_stop[time_field] = station_mapper.normalize_time_to_nearest_minute(
+                                normalized_stop[time_field]
+                            )
                     
                     normalized_stops.append(normalized_stop)
                 

@@ -1452,8 +1452,8 @@ class TrainStopRepository(BaseRepository):
                         "initial_data": {
                             "station_name": stop_data.get("station_name"),
                             "station_code": stop_data.get("station_code"),
-                            "scheduled_time": stop_data.get("scheduled_time").isoformat() if stop_data.get("scheduled_time") else None,
-                            "departure_time": stop_data.get("departure_time").isoformat() if stop_data.get("departure_time") else None,
+                            "scheduled_time": self._time_to_isoformat(stop_data.get("scheduled_time")),
+                            "departure_time": self._time_to_isoformat(stop_data.get("departure_time")),
                             "departed": stop_data.get("departed", False),
                             "stop_status": stop_data.get("stop_status")
                         }
@@ -1477,7 +1477,7 @@ class TrainStopRepository(BaseRepository):
                         "last_known_state": {
                             "departed": stop.departed,
                             "stop_status": stop.stop_status,
-                            "departure_time": stop.departure_time.isoformat() if stop.departure_time else None
+                            "departure_time": self._time_to_isoformat(stop.departure_time)
                         }
                     }
                     
@@ -1677,3 +1677,26 @@ class TrainStopRepository(BaseRepository):
         except SQLAlchemyError as e:
             logger.error(f"Database error in search_stations: {str(e)}")
             raise
+
+    def _time_to_isoformat(self, time_value) -> Optional[str]:
+        """
+        Convert time value to ISO format string, handling both datetime objects and strings.
+        
+        Args:
+            time_value: Either a datetime object, string, or None
+            
+        Returns:
+            ISO format string or None
+        """
+        if time_value is None:
+            return None
+        
+        from datetime import datetime
+        
+        if isinstance(time_value, datetime):
+            return time_value.isoformat()
+        elif isinstance(time_value, str):
+            return time_value  # Assume it's already in ISO format
+        else:
+            # Handle unexpected types by converting to string
+            return str(time_value)
