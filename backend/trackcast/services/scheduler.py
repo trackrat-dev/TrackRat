@@ -36,20 +36,23 @@ class SchedulerService:
     Each task runs on its own schedule, as defined in the configuration.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None, 
-                 data_collection_service: Optional[Any] = None,
-                 feature_engineering_service: Optional[Any] = None,
-                 prediction_service: Optional[Any] = None):
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        data_collection_service: Optional[Any] = None,
+        feature_engineering_service: Optional[Any] = None,
+        prediction_service: Optional[Any] = None,
+    ):
         """Initialize the scheduler service."""
         self.running = False
         self.thread = None
         self.config = config or {}
-        
+
         # For test injection of services
         self._data_collection_service = data_collection_service
         self._feature_engineering_service = feature_engineering_service
         self._prediction_service = prediction_service
-        
+
         self._setup_schedules()
 
     def _setup_schedules(self) -> None:
@@ -58,25 +61,22 @@ class SchedulerService:
         schedule.clear()
 
         # Data collection interval - use config override if provided, otherwise settings
-        collection_interval = (
-            self.config.get("data_collection_interval") or 
-            getattr(settings.scheduler, "collection_interval_minutes", 1)
+        collection_interval = self.config.get("data_collection_interval") or getattr(
+            settings.scheduler, "collection_interval_minutes", 1
         )
         schedule.every(collection_interval).minutes.do(self._run_data_collection)
         logger.info(f"Scheduled data collection every {collection_interval} minutes")
 
         # Feature engineering interval
-        feature_interval = (
-            self.config.get("feature_engineering_interval") or
-            getattr(settings.scheduler, "feature_engineering_interval_minutes", 5)
+        feature_interval = self.config.get("feature_engineering_interval") or getattr(
+            settings.scheduler, "feature_engineering_interval_minutes", 5
         )
         schedule.every(feature_interval).minutes.do(self._run_feature_engineering)
         logger.info(f"Scheduled feature engineering every {feature_interval} minutes")
 
         # Prediction interval
-        prediction_interval = (
-            self.config.get("prediction_interval") or
-            getattr(settings.scheduler, "prediction_interval_minutes", 2)
+        prediction_interval = self.config.get("prediction_interval") or getattr(
+            settings.scheduler, "prediction_interval_minutes", 2
         )
         schedule.every(prediction_interval).minutes.do(self._run_prediction)
         logger.info(f"Scheduled prediction every {prediction_interval} minutes")
@@ -92,7 +92,7 @@ class SchedulerService:
             return
 
         self.running = True
-        
+
         if blocking:
             self._run_scheduler()
         else:

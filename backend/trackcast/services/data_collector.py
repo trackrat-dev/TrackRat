@@ -38,9 +38,13 @@ class DataCollectorService:
 
         # Create collectors for each enabled station
         self.station_collectors = []
-        
+
         # Check if njtransit_api settings exist and have stations
-        if hasattr(settings, 'njtransit_api') and settings.njtransit_api and hasattr(settings.njtransit_api, 'stations'):
+        if (
+            hasattr(settings, "njtransit_api")
+            and settings.njtransit_api
+            and hasattr(settings.njtransit_api, "stations")
+        ):
             for station in settings.njtransit_api.stations:
                 if station.enabled:
                     collector = NJTransitCollector(
