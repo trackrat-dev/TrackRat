@@ -1348,11 +1348,13 @@ class TrainStopRepository(BaseRepository):
                 TrainStop.data_source == data_source
             ).all()
             
-            # Create lookup map
-            existing_map = {
-                (stop.station_name, stop.station_code): stop 
-                for stop in existing_stops
-            }
+            # Create lookup map using station name, code, and scheduled time to handle multiple stops at same station
+            existing_map = {}
+            for stop in existing_stops:
+                # Use scheduled_time to distinguish multiple stops at the same station
+                scheduled_time_key = stop.scheduled_time.isoformat() if stop.scheduled_time else None
+                key = (stop.station_name, stop.station_code, scheduled_time_key)
+                existing_map[key] = stop
             
             # Track which stops we've seen in this update
             seen_stops = set()
@@ -1366,7 +1368,9 @@ class TrainStopRepository(BaseRepository):
                         stop_data["station_code"] = derived_code
                         logger.debug(f"Derived station code '{derived_code}' for '{stop_data['station_name']}'")
                 
-                station_key = (stop_data.get("station_name"), stop_data.get("station_code"))
+                # Create consistent key using scheduled_time to distinguish multiple stops at same station
+                scheduled_time_key = self._time_to_isoformat(stop_data.get("scheduled_time"))
+                station_key = (stop_data.get("station_name"), stop_data.get("station_code"), scheduled_time_key)
                 seen_stops.add(station_key)
                 
                 if station_key in existing_map:

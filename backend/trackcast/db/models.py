@@ -159,10 +159,11 @@ class TrainStop(Base, TimestampMixin):
 
     # Note: Relationship to train handled via queries due to composite key complexity
 
-    # Unique constraint to prevent duplicate stop records including data source
+    # Unique constraint to prevent duplicate stop records including data source and scheduled time
+    # This allows multiple stops at the same station if they occur at different times
     __table_args__ = (
-        UniqueConstraint("train_id", "train_departure_time", "station_name", "data_source", 
-                        name="uix_train_stop_unique"),
+        UniqueConstraint("train_id", "train_departure_time", "station_name", "data_source", "scheduled_time", 
+                        name="uix_train_stop_unique_with_time"),
     )
 
     def __repr__(self) -> str:

@@ -552,6 +552,60 @@ def add_train_stops_lifecycle_fields(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
+    """
+    Update the unique constraint on train_stops to include scheduled_time,
+    allowing multiple stops at the same station if they occur at different times.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if the new constraint already exists
+        check_constraint_query = text("""
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'train_stops' 
+            AND indexname = 'uix_train_stop_unique_with_time'
+        """)
+        result = session.execute(check_constraint_query).fetchone()
+        
+        if result:
+            logger.info("Updated unique constraint already exists")
+            return {"status": "skipped", "message": "Updated constraint already exists"}
+        
+        logger.info("Updating train_stops unique constraint to include scheduled_time")
+        
+        # Drop the old unique constraint
+        logger.info("Dropping old unique constraint")
+        drop_constraint_query = text("""
+            DROP INDEX IF EXISTS uix_train_stop_unique
+        """)
+        session.execute(drop_constraint_query)
+        
+        # Create new unique constraint including scheduled_time
+        logger.info("Creating new unique constraint with scheduled_time")
+        create_constraint_query = text("""
+            CREATE UNIQUE INDEX uix_train_stop_unique_with_time 
+            ON train_stops (train_id, train_departure_time, station_name, data_source, scheduled_time)
+        """)
+        session.execute(create_constraint_query)
+        
+        # Commit the changes
+        session.commit()
+        
+        logger.info("Successfully updated train_stops unique constraint")
+        return {"status": "success", "message": "Unique constraint updated successfully"}
+    
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error updating unique constraint: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -574,6 +628,7 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
         ("add_data_source_column", add_data_source_column),
         ("add_data_source_to_train_stops", add_data_source_to_train_stops),
         ("add_train_stops_lifecycle_fields", add_train_stops_lifecycle_fields),
+        ("update_train_stop_unique_constraint", update_train_stop_unique_constraint),
     ]
     
     for name, migration_func in migrations:
