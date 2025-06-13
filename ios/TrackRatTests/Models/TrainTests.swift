@@ -145,26 +145,26 @@ class TrainTests: XCTestCase {
         }
         """
         
-        let data = json.data(using: .utf8)!
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        
-        let train = try decoder.decode(Train.self, from: data)
-        
-        XCTAssertEqual(train.consolidatedId, "amtrak_123_njtransit_456")
-        XCTAssertEqual(train.trainId, "123")
-        XCTAssertEqual(train.line, "Northeast Corridor")
-        XCTAssertEqual(train.destination, "New York Penn Station")
-        XCTAssertEqual(train.displayTrack, "2")
-        XCTAssertEqual(train.displayStatus, .onTime)
-        XCTAssertEqual(train.displayDelayMinutes, 0)
-        XCTAssertEqual(train.originStationCode, "NP")
-        XCTAssertEqual(train.dataSource, "NJTransit")
-        XCTAssertTrue(train.isConsolidated)
-        XCTAssertNotNil(train.originStation)
-        XCTAssertNotNil(train.trackAssignment)
-        XCTAssertNotNil(train.statusSummary)
-        XCTAssertEqual(train.dataSources?.count, 1)
+        do {
+            let train = try TestHelpers.decodeJSON(Train.self, from: json)
+            
+            XCTAssertEqual(train.consolidatedId, "amtrak_123_njtransit_456")
+            XCTAssertEqual(train.trainId, "123")
+            XCTAssertEqual(train.line, "Northeast Corridor")
+            XCTAssertEqual(train.destination, "New York Penn Station")
+            XCTAssertEqual(train.displayTrack, "2")
+            XCTAssertEqual(train.displayStatus, .onTime)
+            XCTAssertEqual(train.displayDelayMinutes, 0)
+            XCTAssertEqual(train.originStationCode, "NP")
+            XCTAssertEqual(train.dataSource, "NJTransit")
+            XCTAssertTrue(train.isConsolidated)
+            XCTAssertNotNil(train.originStation)
+            XCTAssertNotNil(train.trackAssignment)
+            XCTAssertNotNil(train.statusSummary)
+            XCTAssertEqual(train.dataSources?.count, 1)
+        } catch {
+            XCTFail("Should be able to decode consolidated train from JSON. Error: \(error)")
+        }
     }
     
     func testEnhancedFieldsDecoding() throws {
@@ -205,25 +205,25 @@ class TrainTests: XCTestCase {
         }
         """
         
-        let data = json.data(using: .utf8)!
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        
-        let train = try decoder.decode(Train.self, from: data)
-        
-        XCTAssertNotNil(train.statusV2)
-        XCTAssertEqual(train.statusV2?.current, "BOARDING")
-        XCTAssertEqual(train.statusV2?.location, "Platform 1")
-        XCTAssertEqual(train.statusV2?.confidence, "high")
-        XCTAssertEqual(train.enhancedDisplayStatus, "BOARDING")
-        XCTAssertEqual(train.displayLocation, "Platform 1")
-        
-        XCTAssertNotNil(train.progress)
-        XCTAssertEqual(train.progress?.journeyPercent, 25)
-        XCTAssertEqual(train.progress?.stopsCompleted, 1)
-        XCTAssertEqual(train.progress?.totalStops, 4)
-        XCTAssertNotNil(train.journeyProgress)
-        XCTAssertEqual(train.progress?.nextArrival?.minutesAway, 15)
+        do {
+            let train = try TestHelpers.decodeJSON(Train.self, from: json)
+            
+            XCTAssertNotNil(train.statusV2)
+            XCTAssertEqual(train.statusV2?.current, "BOARDING")
+            XCTAssertEqual(train.statusV2?.location, "Platform 1")
+            XCTAssertEqual(train.statusV2?.confidence, "high")
+            XCTAssertEqual(train.enhancedDisplayStatus, "BOARDING")
+            XCTAssertEqual(train.displayLocation, "Platform 1")
+            
+            XCTAssertNotNil(train.progress)
+            XCTAssertEqual(train.progress?.journeyPercent, 25)
+            XCTAssertEqual(train.progress?.stopsCompleted, 1)
+            XCTAssertEqual(train.progress?.totalStops, 4)
+            XCTAssertNotNil(train.journeyProgress)
+            XCTAssertEqual(train.progress?.nextArrival?.minutesAway, 15)
+        } catch {
+            XCTFail("Should be able to decode enhanced train from JSON. Error: \(error)")
+        }
     }
     
     func testMalformedJSONHandling() {

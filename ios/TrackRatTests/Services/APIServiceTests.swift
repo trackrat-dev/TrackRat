@@ -49,15 +49,15 @@ class APIServiceTests: XCTestCase {
         // Test that we can decode a train from JSON
         let jsonString = TrainTestData.sampleTrainJSON
         
-        let result = assertNoThrow(try TestHelpers.decodeJSON(Train.self, from: jsonString))
-        XCTAssertNotNil(result, "Should be able to decode Train from JSON")
-        
-        if let train = result {
+        do {
+            let train = try TestHelpers.decodeJSON(Train.self, from: jsonString)
             XCTAssertEqual(train.trainId, "123")
             XCTAssertEqual(train.line, "Northeast Corridor")
             XCTAssertEqual(train.destination, "New York Penn Station")
             XCTAssertEqual(train.track, "1")
             XCTAssertEqual(train.originStationCode, "NP")
+        } catch {
+            XCTFail("Should be able to decode Train from JSON. Error: \(error)")
         }
     }
 }
