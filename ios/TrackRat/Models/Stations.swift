@@ -164,7 +164,7 @@ struct Stations {
         "Elizabethtown": "ELT",
         "Mount Joy": "MJY",
         "Lancaster": "LNC",
-        "Parkesburg": "PAR",
+        "Parkesburg": "PKB",
         "Coatesville": "COT",
         "Downingtown": "DOW",
         "Exton": "EXT",

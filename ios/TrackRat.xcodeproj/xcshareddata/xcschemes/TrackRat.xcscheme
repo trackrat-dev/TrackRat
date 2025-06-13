@@ -35,7 +35,7 @@
             parallelizable = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A1BA60DA2DFC73650002FB39"
+               BlueprintIdentifier = "TrackRatTests"
                BuildableName = "TrackRatTests.xctest"
                BlueprintName = "TrackRatTests"
                ReferencedContainer = "container:TrackRat.xcodeproj">
