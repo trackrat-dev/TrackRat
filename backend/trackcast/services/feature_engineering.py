@@ -36,7 +36,9 @@ class FeatureEngineeringService:
             session=db_session, feature_version=settings.model.version
         )
 
-    def clear_features(self, train_id=None, start_time=None, end_time=None) -> Tuple[bool, Dict[str, Any]]:
+    def clear_features(
+        self, train_id=None, start_time=None, end_time=None
+    ) -> Tuple[bool, Dict[str, Any]]:
         """
         Clear features based on parameters.
 
@@ -84,7 +86,7 @@ class FeatureEngineeringService:
             stats = {
                 "timestamp": datetime.now().isoformat(),
                 "error": str(e),
-                "duration_ms": int((time.time() - start_process_time) * 1000)
+                "duration_ms": int((time.time() - start_process_time) * 1000),
             }
             return False, stats
 
@@ -234,7 +236,9 @@ class FeatureEngineeringService:
         end_time = now + timedelta(hours=hours_ahead)
         return self.process_train_range(now, end_time)
 
-    def process_future_trains_with_regeneration(self, hours_ahead: int = 24) -> Tuple[bool, Dict[str, Any]]:
+    def process_future_trains_with_regeneration(
+        self, hours_ahead: int = 24
+    ) -> Tuple[bool, Dict[str, Any]]:
         """
         Process all future trains departing within a specified time window,
         clearing any existing features first to ensure regeneration.
@@ -272,12 +276,14 @@ class FeatureEngineeringService:
             success, process_stats = self.process_pending_trains()
 
             # Update stats with processing results
-            stats.update({
-                "trains_processed": process_stats.get("trains_processed", 0),
-                "trains_succeeded": process_stats.get("trains_succeeded", 0),
-                "trains_failed": process_stats.get("trains_failed", 0),
-                "duration_ms": int((time.time() - start_time) * 1000)
-            })
+            stats.update(
+                {
+                    "trains_processed": process_stats.get("trains_processed", 0),
+                    "trains_succeeded": process_stats.get("trains_succeeded", 0),
+                    "trains_failed": process_stats.get("trains_failed", 0),
+                    "duration_ms": int((time.time() - start_time) * 1000),
+                }
+            )
 
             if "errors" in process_stats:
                 stats["errors"] = process_stats["errors"]

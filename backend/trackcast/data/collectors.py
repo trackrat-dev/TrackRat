@@ -119,7 +119,7 @@ class NJTransitCollector(BaseCollector):
             raise ValueError("Station code is required")
         if not self.station_name:
             raise ValueError("Station name is required")
-        
+
         self.retry_attempts = retry_attempts or settings.njtransit_api.retry_attempts or 3
         self.timeout = timeout or settings.njtransit_api.timeout_seconds or 10
         self.debug_mode = debug_mode or settings.njtransit_api.debug_mode or False
@@ -311,8 +311,8 @@ class NJTransitCollector(BaseCollector):
 
                 # If token may be expired, try to get a new one
                 if attempts == 1 and (
-                        (hasattr(e, "response") and e.response and e.response.status_code == 401)
-                        or "Unauthorized" in str(e)
+                    (hasattr(e, "response") and e.response and e.response.status_code == 401)
+                    or "Unauthorized" in str(e)
                 ):
                     logger.info("Token may be expired, attempting to refresh")
                     try:
@@ -372,42 +372,48 @@ class NJTransitCollector(BaseCollector):
                             # Parse stop times
                             stop_time = None
                             dep_time = None
-                            
+
                             stop_time_str = stop.get("TIME", "")
                             if stop_time_str:
                                 try:
-                                    stop_time = datetime.strptime(stop_time_str, "%d-%b-%Y %I:%M:%S %p").isoformat()
+                                    stop_time = datetime.strptime(
+                                        stop_time_str, "%d-%b-%Y %I:%M:%S %p"
+                                    ).isoformat()
                                 except ValueError:
                                     logger.warning(f"Invalid stop time format: {stop_time_str}")
-                            
+
                             dep_time_str = stop.get("DEP_TIME", "")
                             if dep_time_str:
                                 try:
-                                    dep_time = datetime.strptime(dep_time_str, "%d-%b-%Y %I:%M:%S %p").isoformat()
+                                    dep_time = datetime.strptime(
+                                        dep_time_str, "%d-%b-%Y %I:%M:%S %p"
+                                    ).isoformat()
                                 except ValueError:
                                     logger.warning(f"Invalid departure time format: {dep_time_str}")
-                            
+
                             # Safely handle potentially None values
                             pickup_val = stop.get("PICKUP", "") or ""
                             dropoff_val = stop.get("DROPOFF", "") or ""
                             departed_val = stop.get("DEPARTED", "") or ""
                             status_val = stop.get("STOP_STATUS", "") or ""
-                            
+
                             # Handle station code - can be None/null from API
                             station_code = stop.get("STATION_2CHAR")
                             if station_code == "":
                                 station_code = None
-                            
-                            stops.append({
-                                "station_code": station_code,
-                                "station_name": stop.get("STATIONNAME", ""),
-                                "scheduled_time": stop_time,
-                                "departure_time": dep_time,
-                                "pickup_only": pickup_val.strip() == "Pick Up Only",
-                                "dropoff_only": dropoff_val.strip() == "Drop Off Only",
-                                "departed": departed_val.strip() == "YES",
-                                "stop_status": status_val.strip(),
-                            })
+
+                            stops.append(
+                                {
+                                    "station_code": station_code,
+                                    "station_name": stop.get("STATIONNAME", ""),
+                                    "scheduled_time": stop_time,
+                                    "departure_time": dep_time,
+                                    "pickup_only": pickup_val.strip() == "Pick Up Only",
+                                    "dropoff_only": dropoff_val.strip() == "Drop Off Only",
+                                    "departed": departed_val.strip() == "YES",
+                                    "stop_status": status_val.strip(),
+                                }
+                            )
 
                 # Extract train record
                 processed_data.append(
@@ -618,7 +624,7 @@ class AmtrakCollector(BaseCollector):
             ValueError: If the data format is invalid or cannot be processed
         """
         processed_data = []
-        
+
         try:
             timestamp = raw_data["timestamp"]
             trains_data = raw_data["data"]
@@ -626,7 +632,7 @@ class AmtrakCollector(BaseCollector):
             # Debug: Log data structure
             logger.info(f"Raw data keys: {list(raw_data.keys())}")
             logger.info(f"Data type: {type(trains_data)}")
-            
+
             # Amtrak API returns {trainNumber: [trainData]} structure, not [trainData]
             all_trains = []
             if isinstance(trains_data, dict):
@@ -636,25 +642,29 @@ class AmtrakCollector(BaseCollector):
                         # Each train number has a list, usually with one train object
                         all_trains.extend(train_list)
                     else:
-                        logger.warning(f"Unexpected structure for train {train_num}: {type(train_list)}")
+                        logger.warning(
+                            f"Unexpected structure for train {train_num}: {type(train_list)}"
+                        )
             else:
                 logger.error(f"Expected dict structure but got {type(trains_data)}")
                 return []
 
             logger.info(f"Processing {len(all_trains)} Amtrak train records")
-            
+
             # Debug: Log the first train structure
             if all_trains and len(all_trains) > 0:
                 sample_train = all_trains[0]
-                logger.info(f"Sample train structure: trainNum={sample_train.get('trainNum')}, "
-                           f"stations_count={len(sample_train.get('stations', []))}")
+                logger.info(
+                    f"Sample train structure: trainNum={sample_train.get('trainNum')}, "
+                    f"stations_count={len(sample_train.get('stations', []))}"
+                )
 
             for train in all_trains:
                 # Skip if train is not a dictionary
                 if not isinstance(train, dict):
                     logger.warning(f"Skipping non-dict train record: {type(train)}")
                     continue
-                    
+
                 # Skip trains that don't have stations data
                 if not train.get("stations") or not isinstance(train["stations"], list):
                     continue
@@ -662,7 +672,7 @@ class AmtrakCollector(BaseCollector):
                 # Find the origin station from the stations array (first station)
                 origin_station = None
                 stations_with_platform = []
-                
+
                 for station in train["stations"]:
                     # Skip if station is not a dictionary
                     if not isinstance(station, dict):
@@ -670,17 +680,18 @@ class AmtrakCollector(BaseCollector):
                         continue
                     if origin_station is None:
                         origin_station = station
-                    
+
                     # Map station info to NJ Transit format
                     mapped_code, mapped_name = self._map_station_info(
                         station.get("code", ""), station.get("name", "")
                     )
-                    
+
                     # Extract timing for TrainStop records
                     stop_data = {
                         "station_code": mapped_code,
                         "station_name": mapped_name,
-                        "scheduled_time": self._parse_datetime(station.get("schArr")) or self._parse_datetime(station.get("schDep")),
+                        "scheduled_time": self._parse_datetime(station.get("schArr"))
+                        or self._parse_datetime(station.get("schDep")),
                         "departure_time": self._parse_datetime(station.get("dep")),
                         "pickup_only": False,  # Amtrak doesn't distinguish pickup/dropoff
                         "dropoff_only": False,
@@ -690,13 +701,17 @@ class AmtrakCollector(BaseCollector):
                     stations_with_platform.append(stop_data)
 
                 if not origin_station:
-                    logger.warning(f"Skipping train {train.get('trainNum')} - no origin station found")
+                    logger.warning(
+                        f"Skipping train {train.get('trainNum')} - no origin station found"
+                    )
                     continue
 
                 # Calculate departure time from origin station
                 departure_time = self._parse_datetime(origin_station.get("schDep"))
                 if not departure_time:
-                    logger.warning(f"Skipping train {train.get('trainNum')} - no valid departure time")
+                    logger.warning(
+                        f"Skipping train {train.get('trainNum')} - no valid departure time"
+                    )
                     continue
 
                 # Map train status from Amtrak to our format
@@ -710,7 +725,7 @@ class AmtrakCollector(BaseCollector):
                 origin_code, origin_name = self._map_station_info(
                     origin_station.get("code", ""), origin_station.get("name", "")
                 )
-                
+
                 # Map destination to NJ Transit format
                 dest_code, dest_name = self._map_station_info(
                     train.get("destCode", ""), train.get("destName", "")
@@ -725,25 +740,27 @@ class AmtrakCollector(BaseCollector):
                     delay_minutes = int(delay_seconds / 60) if delay_seconds > 0 else 0
 
                 # Extract train record
-                train_num = train.get('trainNum', '')
+                train_num = train.get("trainNum", "")
                 train_id = f"A{train_num}" if train_num else ""
                 logger.debug(f"Amtrak train {train_num} mapped to ID: {train_id}")
-                
-                processed_data.append({
-                    "timestamp": timestamp,
-                    "train_id": train_id,
-                    "origin_station_code": origin_code,
-                    "origin_station_name": origin_name,
-                    "destination": clean_destination(dest_name),
-                    "track": track,
-                    "departure_time": departure_time.isoformat() if departure_time else None,
-                    "status": status,
-                    "line": train.get("routeName", ""),
-                    "line_code": train.get("routeCode", ""),
-                    "data_source": "amtrak",
-                    "delay_minutes": delay_minutes,
-                    "stops": stations_with_platform,
-                })
+
+                processed_data.append(
+                    {
+                        "timestamp": timestamp,
+                        "train_id": train_id,
+                        "origin_station_code": origin_code,
+                        "origin_station_name": origin_name,
+                        "destination": clean_destination(dest_name),
+                        "track": track,
+                        "departure_time": departure_time.isoformat() if departure_time else None,
+                        "status": status,
+                        "line": train.get("routeName", ""),
+                        "line_code": train.get("routeCode", ""),
+                        "data_source": "amtrak",
+                        "delay_minutes": delay_minutes,
+                        "stops": stations_with_platform,
+                    }
+                )
 
             # Save processed data to CSV for easy inspection
             self._save_to_csv(processed_data, timestamp)
@@ -768,7 +785,7 @@ class AmtrakCollector(BaseCollector):
         """
         if not datetime_str:
             return None
-            
+
         # Use the new timezone-aware parsing utility
         return parse_iso_datetime_to_eastern(datetime_str)
 
@@ -784,7 +801,7 @@ class AmtrakCollector(BaseCollector):
         """
         status_mapping = {
             "Active": "EN ROUTE",
-            "Predeparture": "BOARDING", 
+            "Predeparture": "BOARDING",
             "Station": "BOARDING",
             "Terminated": "DEPARTED",
         }
@@ -811,7 +828,7 @@ class AmtrakCollector(BaseCollector):
             "NWK": "NP",
             "EWR": "EWR",  # Newark Airport - keep same
         }
-        
+
         # Station name mappings (partial matching for flexibility)
         name_mapping = {
             "New York Penn": "New York Penn Station",
@@ -823,17 +840,17 @@ class AmtrakCollector(BaseCollector):
             "Newark Penn": "Newark Penn Station",
             "Newark": "Newark Penn Station",
         }
-        
+
         # Map station code
         mapped_code = code_mapping.get(amtrak_code, amtrak_code)
-        
+
         # Map station name - check for partial matches
         mapped_name = amtrak_name
         for amtrak_pattern, nj_name in name_mapping.items():
             if amtrak_pattern.lower() in amtrak_name.lower():
                 mapped_name = nj_name
                 break
-        
+
         return mapped_code, mapped_name
 
     def _save_to_csv(self, data: List[Dict[str, Any]], timestamp: str) -> None:
@@ -850,7 +867,7 @@ class AmtrakCollector(BaseCollector):
 
         fieldnames = [
             "Timestamp",
-            "Train_ID", 
+            "Train_ID",
             "Origin_Station_Code",
             "Origin_Station_Name",
             "Destination",
@@ -868,19 +885,21 @@ class AmtrakCollector(BaseCollector):
             writer.writeheader()
 
             for item in data:
-                writer.writerow({
-                    "Timestamp": item["timestamp"],
-                    "Train_ID": item["train_id"],
-                    "Origin_Station_Code": item["origin_station_code"],
-                    "Origin_Station_Name": item["origin_station_name"],
-                    "Destination": item["destination"],
-                    "Track": item["track"],
-                    "Departure_Time": item["departure_time"],
-                    "Status": item["status"],
-                    "Line": item["line"],
-                    "Line_Code": item["line_code"],
-                    "Data_Source": item["data_source"],
-                    "Delay_Minutes": item["delay_minutes"],
-                })
+                writer.writerow(
+                    {
+                        "Timestamp": item["timestamp"],
+                        "Train_ID": item["train_id"],
+                        "Origin_Station_Code": item["origin_station_code"],
+                        "Origin_Station_Name": item["origin_station_name"],
+                        "Destination": item["destination"],
+                        "Track": item["track"],
+                        "Departure_Time": item["departure_time"],
+                        "Status": item["status"],
+                        "Line": item["line"],
+                        "Line_Code": item["line_code"],
+                        "Data_Source": item["data_source"],
+                        "Delay_Minutes": item["delay_minutes"],
+                    }
+                )
 
         logger.debug(f"Saved processed Amtrak data to {filename}")

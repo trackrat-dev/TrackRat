@@ -251,25 +251,25 @@ def utc_to_eastern(utc_dt: datetime) -> datetime:
     Returns:
         Naive datetime in Eastern timezone
     """
-    eastern = pytz.timezone('US/Eastern')
-    
+    eastern = pytz.timezone("US/Eastern")
+
     # If the datetime is naive, assume it's UTC
     if utc_dt.tzinfo is None:
         utc_dt = pytz.UTC.localize(utc_dt)
     elif utc_dt.tzinfo != pytz.UTC:
         # Convert to UTC first if it's in a different timezone
         utc_dt = utc_dt.astimezone(pytz.UTC)
-    
+
     # Convert to Eastern time
     eastern_dt = utc_dt.astimezone(eastern)
-    
+
     # Return as naive datetime (remove timezone info)
     return eastern_dt.replace(tzinfo=None)
 
 
 def ensure_eastern_timezone(dt: datetime) -> datetime:
     """Ensure datetime is in Eastern timezone.
-    
+
     If timezone-aware, converts to Eastern.
     If naive, assumes it's already Eastern.
 
@@ -282,8 +282,8 @@ def ensure_eastern_timezone(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         # Already assumed to be Eastern
         return dt
-    
-    eastern = pytz.timezone('US/Eastern')
+
+    eastern = pytz.timezone("US/Eastern")
     eastern_dt = dt.astimezone(eastern)
     return eastern_dt.replace(tzinfo=None)
 
@@ -299,18 +299,18 @@ def parse_iso_datetime_to_eastern(datetime_str: str) -> Optional[datetime]:
     """
     if not datetime_str:
         return None
-        
+
     try:
         # Handle 'Z' suffix (UTC indicator)
-        if datetime_str.endswith('Z'):
-            datetime_str = datetime_str[:-1] + '+00:00'
-        
+        if datetime_str.endswith("Z"):
+            datetime_str = datetime_str[:-1] + "+00:00"
+
         # Parse the datetime
         dt = datetime.fromisoformat(datetime_str)
-        
+
         # Convert to Eastern time
         return utc_to_eastern(dt)
-        
+
     except (ValueError, AttributeError) as e:
         logger.warning(f"Failed to parse datetime string '{datetime_str}': {str(e)}")
         return None

@@ -216,30 +216,36 @@ class XGBoostTrackPredictor(BaseTrackPredictor):
             self.scaler = StandardScaler()
             X = self.scaler.fit_transform(X)
         else:
-            logger.info(f"Using existing scaler expecting {self.scaler.n_features_in_} features, got {X.shape[1]}")
+            logger.info(
+                f"Using existing scaler expecting {self.scaler.n_features_in_} features, got {X.shape[1]}"
+            )
             if self.scaler.n_features_in_ != X.shape[1]:
                 # Log detailed feature mismatch information
-                logger.error(f"Feature dimension mismatch: X has {X.shape[1]} features, scaler expects {self.scaler.n_features_in_}")
+                logger.error(
+                    f"Feature dimension mismatch: X has {X.shape[1]} features, scaler expects {self.scaler.n_features_in_}"
+                )
 
                 # Save feature information for debugging
-                if not hasattr(self, 'feature_snapshots'):
+                if not hasattr(self, "feature_snapshots"):
                     self.feature_snapshots = []
 
                 # Add current snapshot
                 snapshot = {
-                    'timestamp': datetime.now().isoformat(),
-                    'feature_count': len(self.feature_columns),
-                    'features': self.feature_columns
+                    "timestamp": datetime.now().isoformat(),
+                    "feature_count": len(self.feature_columns),
+                    "features": self.feature_columns,
                 }
                 self.feature_snapshots.append(snapshot)
 
                 # Detailed comparison if we have previous snapshots
-                if hasattr(self, 'previous_feature_columns') and self.previous_feature_columns:
+                if hasattr(self, "previous_feature_columns") and self.previous_feature_columns:
                     prev_features = self.previous_feature_columns
                     curr_features = self.feature_columns
 
                     # Compare features by position
-                    logger.error(f"Detailed feature comparison between previous ({len(prev_features)}) and current ({len(curr_features)}):")
+                    logger.error(
+                        f"Detailed feature comparison between previous ({len(prev_features)}) and current ({len(curr_features)}):"
+                    )
 
                     # Print full detailed side-by-side comparison
                     max_len = max(len(prev_features), len(curr_features))
@@ -261,12 +267,14 @@ class XGBoostTrackPredictor(BaseTrackPredictor):
                         else:
                             status = "SAME"
 
-                        comparison_lines.append(f"{i:5d} | {prev_feat:30s} | {curr_feat:30s} | {status}")
+                        comparison_lines.append(
+                            f"{i:5d} | {prev_feat:30s} | {curr_feat:30s} | {status}"
+                        )
 
                     # Log the comparison 10 lines at a time to avoid log truncation
                     chunk_size = 10
                     for i in range(0, len(comparison_lines), chunk_size):
-                        chunk = comparison_lines[i:i+chunk_size]
+                        chunk = comparison_lines[i : i + chunk_size]
                         logger.error("\n".join(chunk))
 
                     # Set comparison (summarized)
@@ -357,7 +365,7 @@ class XGBoostTrackPredictor(BaseTrackPredictor):
 
         # Debug log for prediction data
         logger.info(f"Preparing prediction features for {len(model_data)} samples")
-        if model_data and hasattr(model_data[0], 'id'):
+        if model_data and hasattr(model_data[0], "id"):
             logger.info(f"Model data IDs for prediction: {[md.id for md in model_data[:5]]}...")
 
         # Prepare features

@@ -97,7 +97,9 @@ class PyTorchTrackPredictor:
         self.model_version = model_version
 
         # Log initialization parameters for debugging
-        logger.info(f"Initialized PyTorchTrackPredictor with: learning_rate={self.learning_rate}, batch_size={self.batch_size}, num_epochs={self.num_epochs}")
+        logger.info(
+            f"Initialized PyTorchTrackPredictor with: learning_rate={self.learning_rate}, batch_size={self.batch_size}, num_epochs={self.num_epochs}"
+        )
 
         # Feature processing
         self.scaler = None
@@ -261,7 +263,9 @@ class PyTorchTrackPredictor:
         # Check if feature count exceeds limit
         MAX_FEATURE_COUNT = 1000
         if feature_count > MAX_FEATURE_COUNT:
-            error_msg = f"Feature count ({feature_count}) exceeds maximum allowed ({MAX_FEATURE_COUNT})"
+            error_msg = (
+                f"Feature count ({feature_count}) exceeds maximum allowed ({MAX_FEATURE_COUNT})"
+            )
             logger.error(error_msg)
             raise ValueError(error_msg)
 
@@ -292,30 +296,36 @@ class PyTorchTrackPredictor:
             self.scaler = StandardScaler()
             X = self.scaler.fit_transform(X)
         else:
-            logger.info(f"Using existing scaler expecting {self.scaler.n_features_in_} features, got {X.shape[1]}")
+            logger.info(
+                f"Using existing scaler expecting {self.scaler.n_features_in_} features, got {X.shape[1]}"
+            )
             if self.scaler.n_features_in_ != X.shape[1]:
                 # Log detailed feature mismatch information
-                logger.error(f"Feature dimension mismatch: X has {X.shape[1]} features, scaler expects {self.scaler.n_features_in_}")
+                logger.error(
+                    f"Feature dimension mismatch: X has {X.shape[1]} features, scaler expects {self.scaler.n_features_in_}"
+                )
 
                 # Save feature information for debugging
-                if not hasattr(self, 'feature_snapshots'):
+                if not hasattr(self, "feature_snapshots"):
                     self.feature_snapshots = []
 
                 # Add current snapshot
                 snapshot = {
-                    'timestamp': datetime.now().isoformat(),
-                    'feature_count': len(self.feature_columns),
-                    'features': self.feature_columns
+                    "timestamp": datetime.now().isoformat(),
+                    "feature_count": len(self.feature_columns),
+                    "features": self.feature_columns,
                 }
                 self.feature_snapshots.append(snapshot)
 
                 # Detailed comparison if we have previous snapshots
-                if hasattr(self, 'previous_feature_columns') and self.previous_feature_columns:
+                if hasattr(self, "previous_feature_columns") and self.previous_feature_columns:
                     prev_features = self.previous_feature_columns
                     curr_features = self.feature_columns
 
                     # Compare features by position
-                    logger.error(f"Detailed feature comparison between previous ({len(prev_features)}) and current ({len(curr_features)}):")
+                    logger.error(
+                        f"Detailed feature comparison between previous ({len(prev_features)}) and current ({len(curr_features)}):"
+                    )
 
                     # Print full detailed side-by-side comparison
                     max_len = max(len(prev_features), len(curr_features))
@@ -337,12 +347,14 @@ class PyTorchTrackPredictor:
                         else:
                             status = "SAME"
 
-                        comparison_lines.append(f"{i:5d} | {prev_feat:30s} | {curr_feat:30s} | {status}")
+                        comparison_lines.append(
+                            f"{i:5d} | {prev_feat:30s} | {curr_feat:30s} | {status}"
+                        )
 
                     # Log the comparison 10 lines at a time to avoid log truncation
                     chunk_size = 10
                     for i in range(0, len(comparison_lines), chunk_size):
-                        chunk = comparison_lines[i:i+chunk_size]
+                        chunk = comparison_lines[i : i + chunk_size]
                         logger.error("\n".join(chunk))
 
                     # Access scaler features if available
@@ -350,15 +362,19 @@ class PyTorchTrackPredictor:
                     if hasattr(self.scaler, "feature_names_in_"):
                         scaler_feature_names = list(self.scaler.feature_names_in_)
                     else:
-                        logger.error("Scaler doesn't have feature_names_in_ attribute - using previous_feature_columns as fallback")
+                        logger.error(
+                            "Scaler doesn't have feature_names_in_ attribute - using previous_feature_columns as fallback"
+                        )
                         scaler_feature_names = prev_features
 
                     # Better comparison against what the scaler expects
                     scaler_set = set(scaler_feature_names)
                     curr_set = set(curr_features)
 
-                    true_missing = scaler_set - curr_set  # Features the scaler expects but aren't present
-                    extra = curr_set - scaler_set         # Features present that the scaler doesn't expect
+                    true_missing = (
+                        scaler_set - curr_set
+                    )  # Features the scaler expects but aren't present
+                    extra = curr_set - scaler_set  # Features present that the scaler doesn't expect
 
                     # Check for discrepancy between feature counts and array dimensions
                     expected_dimension = self.scaler.n_features_in_
@@ -372,8 +388,12 @@ class PyTorchTrackPredictor:
                     logger.error(f"  - Named features in current data: {len(curr_features)}")
 
                     if dimension_mismatch and len(true_missing) == 0 and len(extra) == 0:
-                        logger.error(f"CRITICAL: Dimension mismatch despite identical feature names!")
-                        logger.error(f"This suggests the model was trained with {expected_dimension} features, but current data has only {received_dimension} features.")
+                        logger.error(
+                            f"CRITICAL: Dimension mismatch despite identical feature names!"
+                        )
+                        logger.error(
+                            f"This suggests the model was trained with {expected_dimension} features, but current data has only {received_dimension} features."
+                        )
 
                         # Look for Matching_TrainID_Track_* features which may be missing
                         trainid_pattern = "Matching_TrainID_Track_"
@@ -381,7 +401,9 @@ class PyTorchTrackPredictor:
                         curr_trainid_features = [f for f in curr_features if trainid_pattern in f]
 
                         if len(trainid_features) != len(curr_trainid_features):
-                            logger.error(f"Detected {len(trainid_features)} {trainid_pattern}* features in scaler, but only {len(curr_trainid_features)} in current data")
+                            logger.error(
+                                f"Detected {len(trainid_features)} {trainid_pattern}* features in scaler, but only {len(curr_trainid_features)} in current data"
+                            )
                             missing_trainid = set(trainid_features) - set(curr_trainid_features)
                             if missing_trainid:
                                 logger.error(f"Missing TrainID features ({len(missing_trainid)}):")
@@ -390,11 +412,15 @@ class PyTorchTrackPredictor:
 
                     # Standard set comparison
                     if true_missing:
-                        logger.error(f"MISSING {len(true_missing)} FEATURES (expected by scaler but not found):")
+                        logger.error(
+                            f"MISSING {len(true_missing)} FEATURES (expected by scaler but not found):"
+                        )
                         for i, feature in enumerate(sorted(true_missing)):
                             logger.error(f"  Missing feature {i+1}: {feature}")
                     if extra:
-                        logger.error(f"EXTRA {len(extra)} FEATURES (found but not expected by scaler):")
+                        logger.error(
+                            f"EXTRA {len(extra)} FEATURES (found but not expected by scaler):"
+                        )
                         for i, feature in enumerate(sorted(extra)):
                             logger.error(f"  Extra feature {i+1}: {feature}")
 
@@ -404,19 +430,27 @@ class PyTorchTrackPredictor:
                     regression_new = curr_set - prev_set
 
                     if regression_missing:
-                        logger.error(f"REGRESSION: {len(regression_missing)} features present in previous data but missing now:")
+                        logger.error(
+                            f"REGRESSION: {len(regression_missing)} features present in previous data but missing now:"
+                        )
                         for i, feature in enumerate(sorted(regression_missing)):
                             logger.error(f"  Regression missing {i+1}: {feature}")
                     if regression_new:
-                        logger.error(f"NEW SINCE LAST RUN: {len(regression_new)} features new since last execution:")
+                        logger.error(
+                            f"NEW SINCE LAST RUN: {len(regression_new)} features new since last execution:"
+                        )
                         for i, feature in enumerate(sorted(regression_new)):
                             logger.error(f"  New feature {i+1}: {feature}")
 
                     # Print clear summary showing the dimension mismatch
-                    logger.error(f"FEATURE COUNT SUMMARY: Expected {expected_dimension} features, got {received_dimension} features")
+                    logger.error(
+                        f"FEATURE COUNT SUMMARY: Expected {expected_dimension} features, got {received_dimension} features"
+                    )
                     logger.error(f"  - Missing features count (by name): {len(true_missing)}")
                     logger.error(f"  - Extra features count (by name): {len(extra)}")
-                    logger.error(f"  - Dimension difference: {expected_dimension - received_dimension} features")
+                    logger.error(
+                        f"  - Dimension difference: {expected_dimension - received_dimension} features"
+                    )
 
                 # Store current feature columns for future comparison
                 self.previous_feature_columns = self.feature_columns.copy()
@@ -451,7 +485,12 @@ class PyTorchTrackPredictor:
 
         # Validation data if provided
         val_loader = None
-        if val_model_data is not None and val_tracks is not None and len(val_model_data) > 0 and len(val_tracks) > 0:
+        if (
+            val_model_data is not None
+            and val_tracks is not None
+            and len(val_model_data) > 0
+            and len(val_tracks) > 0
+        ):
             try:
                 logger.info(f"Preparing validation data: {len(val_model_data)} samples")
                 X_val, y_val = self._prepare_data(val_model_data, val_tracks)
@@ -579,7 +618,7 @@ class PyTorchTrackPredictor:
 
             # Debug log for prediction data
             logger.info(f"Preparing prediction features for {len(model_data)} samples")
-            if model_data and hasattr(model_data[0], 'id'):
+            if model_data and hasattr(model_data[0], "id"):
                 logger.info(f"Model data IDs for prediction: {[md.id for md in model_data[:5]]}...")
 
             # Prepare features
@@ -614,22 +653,32 @@ class PyTorchTrackPredictor:
 
                 # Detailed debug information
                 if mapped_indices == 0:
-                    logger.warning(f"Sample {i}: No valid track mappings found! Model predicted probabilities for indices: "
-                                 f"{[idx for idx, prob in enumerate(probs) if prob > 0.01]}")
+                    logger.warning(
+                        f"Sample {i}: No valid track mappings found! Model predicted probabilities for indices: "
+                        f"{[idx for idx, prob in enumerate(probs) if prob > 0.01]}"
+                    )
                     if unmapped_indices:
-                        logger.warning(f"Unmapped tracks with significant probabilities: {unmapped_indices}")
+                        logger.warning(
+                            f"Unmapped tracks with significant probabilities: {unmapped_indices}"
+                        )
                 elif len(track_probs) < sum(1 for p in probs if p > 0.01):
-                    logger.warning(f"Sample {i}: Some tracks couldn't be mapped. Mapped {mapped_indices} tracks, "
-                                 f"but model predicted {sum(1 for p in probs if p > 0.01)} tracks with p>0.01")
+                    logger.warning(
+                        f"Sample {i}: Some tracks couldn't be mapped. Mapped {mapped_indices} tracks, "
+                        f"but model predicted {sum(1 for p in probs if p > 0.01)} tracks with p>0.01"
+                    )
 
             # If all results are empty, provide a fallback
             if all(not r for r in results):
-                logger.error("ALL prediction results are empty due to track mapping issues. Using fallback track mapping.")
+                logger.error(
+                    "ALL prediction results are empty due to track mapping issues. Using fallback track mapping."
+                )
 
                 # Create a fallback mapping for the top predicted tracks
                 for i, probs in enumerate(probabilities):
                     # Find top 3 indices by probability
-                    top_indices = sorted(range(len(probs)), key=lambda i: probs[i], reverse=True)[:3]
+                    top_indices = sorted(range(len(probs)), key=lambda i: probs[i], reverse=True)[
+                        :3
+                    ]
                     track_probs = {}
 
                     # Map them to track numbers directly
@@ -685,27 +734,51 @@ class PyTorchTrackPredictor:
         # Handle empty or invalid predictions
         if not probs:
             logger.warning("No valid track predictions found, cannot generate prediction factors")
-            return [{"feature": "unknown", "importance": 0.0, "direction": "neutral",
-                     "explanation": "No valid predictions were generated"}]
+            return [
+                {
+                    "feature": "unknown",
+                    "importance": 0.0,
+                    "direction": "neutral",
+                    "explanation": "No valid predictions were generated",
+                }
+            ]
 
         try:
             # Find the track with the highest probability
             if not probs.items():
                 logger.warning("Empty track probability dictionary")
-                return [{"feature": "unknown", "importance": 0.0, "direction": "neutral",
-                         "explanation": "Empty track probabilities"}]
+                return [
+                    {
+                        "feature": "unknown",
+                        "importance": 0.0,
+                        "direction": "neutral",
+                        "explanation": "Empty track probabilities",
+                    }
+                ]
 
             predicted_track = max(probs.items(), key=lambda x: x[1])[0]
             predicted_idx = self.track_to_idx.get(predicted_track)
 
             if predicted_idx is None:
                 logger.warning(f"Track {predicted_track} not found in track_to_idx mapping")
-                return [{"feature": "unknown", "importance": 0.0, "direction": "neutral",
-                         "explanation": f"Track {predicted_track} not in model mapping"}]
+                return [
+                    {
+                        "feature": "unknown",
+                        "importance": 0.0,
+                        "direction": "neutral",
+                        "explanation": f"Track {predicted_track} not in model mapping",
+                    }
+                ]
         except Exception as e:
             logger.error(f"Error determining predicted track: {str(e)}")
-            return [{"feature": "error", "importance": 0.0, "direction": "neutral",
-                     "explanation": f"Error in prediction analysis: {str(e)}"}]
+            return [
+                {
+                    "feature": "error",
+                    "importance": 0.0,
+                    "direction": "neutral",
+                    "explanation": f"Error in prediction analysis: {str(e)}",
+                }
+            ]
 
         # Get SHAP values for the predicted class
         class_shap_values = shap_values[:, :, predicted_idx][0]
@@ -835,7 +908,9 @@ class PyTorchTrackPredictor:
 
             # Sanity check for number of tracks
             if len(self.track_to_idx) < 10 or len(self.idx_to_track) < 10:
-                logger.warning(f"Suspiciously low number of track mappings: {len(self.track_to_idx)}")
+                logger.warning(
+                    f"Suspiciously low number of track mappings: {len(self.track_to_idx)}"
+                )
 
         except Exception as e:
             logger.error(f"Error loading track mappings, using defaults: {str(e)}")

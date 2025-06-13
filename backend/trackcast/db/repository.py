@@ -235,7 +235,10 @@ class TrainRepository(BaseRepository):
             if "track" in update_data and update_data["track"] and not train.track_assigned_at:
                 if update_data["track"] != old_track:
                     train.track_assigned_at = timestamp
-                    logger.info(f"Track {update_data['track']} assigned to train {train.train_id} at %s" % timestamp)
+                    logger.info(
+                        f"Track {update_data['track']} assigned to train {train.train_id} at %s"
+                        % timestamp
+                    )
 
             # Calculate delay_minutes when track_released_at is set (train has departed)
             # Use "not train.delay_minutes and train.track_released_at" to identify trains needing delay calculation
@@ -250,7 +253,9 @@ class TrainRepository(BaseRepository):
                 # Only set delay_minutes if there's an actual delay (> 0 minutes)
                 if delay_in_minutes > 0:
                     train.delay_minutes = delay_in_minutes
-                    logger.info(f"Calculated delay of {delay_in_minutes} minutes for train {train.train_id}")
+                    logger.info(
+                        f"Calculated delay of {delay_in_minutes} minutes for train {train.train_id}"
+                    )
                 else:
                     # No delay or early departure
                     train.delay_minutes = 0
@@ -334,15 +339,24 @@ class TrainRepository(BaseRepository):
         """
         try:
             # Build base query - if filtering by stops, we need to join with train_stops
-            if (stops_at_station or stops_at_station_code or stops_at_station_name or 
-                from_station_code or to_station_code):
-                query = self.session.query(Train).join(
-                    TrainStop,
-                    and_(
-                        Train.train_id == TrainStop.train_id,
-                        Train.departure_time == TrainStop.train_departure_time
+            if (
+                stops_at_station
+                or stops_at_station_code
+                or stops_at_station_name
+                or from_station_code
+                or to_station_code
+            ):
+                query = (
+                    self.session.query(Train)
+                    .join(
+                        TrainStop,
+                        and_(
+                            Train.train_id == TrainStop.train_id,
+                            Train.departure_time == TrainStop.train_departure_time,
+                        ),
                     )
-                ).distinct()
+                    .distinct()
+                )
             else:
                 query = self.session.query(Train)
 
@@ -375,18 +389,20 @@ class TrainRepository(BaseRepository):
             if train_split:
                 query = query.filter(Train.train_split == train_split)
             if exclude_train_split:
-                query = query.filter(or_(Train.train_split != exclude_train_split, Train.train_split == None))
-            
+                query = query.filter(
+                    or_(Train.train_split != exclude_train_split, Train.train_split == None)
+                )
+
             # Apply origin station filters
             if origin_station_code:
                 query = query.filter(Train.origin_station_code == origin_station_code)
             if origin_station_name:
                 query = query.filter(Train.origin_station_name.ilike(f"%{origin_station_name}%"))
-            
+
             # Apply data source filter
             if data_source:
                 query = query.filter(Train.data_source == data_source)
-            
+
             # Apply stop-based filters (only include future stops where departed=False)
             if stops_at_station:
                 # Search both station code and station name, but only future stops
@@ -395,16 +411,15 @@ class TrainRepository(BaseRepository):
                         TrainStop.departed == False,
                         or_(
                             TrainStop.station_code == stops_at_station,
-                            TrainStop.station_name.ilike(f"%{stops_at_station}%")
-                        )
+                            TrainStop.station_name.ilike(f"%{stops_at_station}%"),
+                        ),
                     )
                 )
             elif stops_at_station_code:
                 # Exact station code match, but only future stops
                 query = query.filter(
                     and_(
-                        TrainStop.departed == False,
-                        TrainStop.station_code == stops_at_station_code
+                        TrainStop.departed == False, TrainStop.station_code == stops_at_station_code
                     )
                 )
             elif stops_at_station_name:
@@ -412,7 +427,7 @@ class TrainRepository(BaseRepository):
                 query = query.filter(
                     and_(
                         TrainStop.departed == False,
-                        TrainStop.station_name.ilike(f"%{stops_at_station_name}%")
+                        TrainStop.station_name.ilike(f"%{stops_at_station_name}%"),
                     )
                 )
 
@@ -421,33 +436,39 @@ class TrainRepository(BaseRepository):
                 if from_station_code == to_station_code:
                     # Same station for from and to doesn't make sense
                     return [], 0
-                
+
                 # Create aliases for the train_stops table to do self-join
                 from sqlalchemy.orm import aliased
+
                 from_stop = aliased(TrainStop)
                 to_stop = aliased(TrainStop)
-                
+
                 # Re-build query with explicit joins for from/to stations
-                query = self.session.query(Train).join(
-                    from_stop,
-                    and_(
-                        Train.train_id == from_stop.train_id,
-                        Train.departure_time == from_stop.train_departure_time,
-                        from_stop.station_code == from_station_code
+                query = (
+                    self.session.query(Train)
+                    .join(
+                        from_stop,
+                        and_(
+                            Train.train_id == from_stop.train_id,
+                            Train.departure_time == from_stop.train_departure_time,
+                            from_stop.station_code == from_station_code,
+                        ),
                     )
-                ).join(
-                    to_stop,
-                    and_(
-                        Train.train_id == to_stop.train_id,
-                        Train.departure_time == to_stop.train_departure_time,
-                        to_stop.station_code == to_station_code,
-                        # Ensure from_stop happens before to_stop
-                        from_stop.scheduled_time.isnot(None),
-                        to_stop.scheduled_time.isnot(None),
-                        from_stop.scheduled_time < to_stop.scheduled_time
+                    .join(
+                        to_stop,
+                        and_(
+                            Train.train_id == to_stop.train_id,
+                            Train.departure_time == to_stop.train_departure_time,
+                            to_stop.station_code == to_station_code,
+                            # Ensure from_stop happens before to_stop
+                            from_stop.scheduled_time.isnot(None),
+                            to_stop.scheduled_time.isnot(None),
+                            from_stop.scheduled_time < to_stop.scheduled_time,
+                        ),
                     )
-                ).distinct()
-                
+                    .distinct()
+                )
+
                 # Re-apply all the previous filters since we rebuilt the query
                 if train_id:
                     query = query.filter(Train.train_id == train_id)
@@ -460,14 +481,14 @@ class TrainRepository(BaseRepository):
                     query = query.filter(
                         and_(
                             from_stop.scheduled_time.isnot(None),
-                            from_stop.scheduled_time >= departure_time_after
+                            from_stop.scheduled_time >= departure_time_after,
                         )
                     )
                 if departure_time_before:
                     query = query.filter(
                         and_(
                             from_stop.scheduled_time.isnot(None),
-                            from_stop.scheduled_time <= departure_time_before
+                            from_stop.scheduled_time <= departure_time_before,
                         )
                     )
                 if track:
@@ -487,11 +508,15 @@ class TrainRepository(BaseRepository):
                 if train_split:
                     query = query.filter(Train.train_split == train_split)
                 if exclude_train_split:
-                    query = query.filter(or_(Train.train_split != exclude_train_split, Train.train_split == None))
+                    query = query.filter(
+                        or_(Train.train_split != exclude_train_split, Train.train_split == None)
+                    )
                 if origin_station_code:
                     query = query.filter(Train.origin_station_code == origin_station_code)
                 if origin_station_name:
-                    query = query.filter(Train.origin_station_name.ilike(f"%{origin_station_name}%"))
+                    query = query.filter(
+                        Train.origin_station_name.ilike(f"%{origin_station_name}%")
+                    )
                 if data_source:
                     query = query.filter(Train.data_source == data_source)
 
@@ -621,7 +646,7 @@ class TrainRepository(BaseRepository):
                             Train.departure_time <= now,
                             or_(
                                 or_(Train.track == None, Train.track == ""),  # No track assigned
-                                Train.status != "DEPARTED"  # Or not departed
+                                Train.status != "DEPARTED",  # Or not departed
                             ),
                         ),
                     )
@@ -673,8 +698,8 @@ class TrainRepository(BaseRepository):
                 .filter(
                     Train.model_data_id != None,
                     Train.prediction_data_id == None,
-                    #or_(Train.track == None, Train.track == ''),  # Only predict for trains without a track
-                    #Train.departure_time >= datetime.utcnow(),  # Only future trains
+                    # or_(Train.track == None, Train.track == ''),  # Only predict for trains without a track
+                    # Train.departure_time >= datetime.utcnow(),  # Only future trains
                 )
                 .order_by(Train.departure_time.asc())
                 .all()
@@ -719,20 +744,26 @@ class TrainRepository(BaseRepository):
             model_data_before = self.session.query(ModelData).count()
 
             # Get count of trains with features
-            trains_with_features = self.session.query(Train).filter(Train.model_data_id != None).count()
+            trains_with_features = (
+                self.session.query(Train).filter(Train.model_data_id != None).count()
+            )
 
             # Get all model_data_ids to delete directly
             model_data_ids = [id for (id,) in self.session.query(ModelData.id).all()]
 
             # Clear model_data_id from all trains
-            trains_updated = self.session.query(Train).filter(Train.model_data_id != None).update(
-                {"model_data_id": None}, synchronize_session=False
+            trains_updated = (
+                self.session.query(Train)
+                .filter(Train.model_data_id != None)
+                .update({"model_data_id": None}, synchronize_session=False)
             )
 
             # Delete all model_data records
             if model_data_ids:
-                deleted = self.session.query(ModelData).filter(ModelData.id.in_(model_data_ids)).delete(
-                    synchronize_session=False
+                deleted = (
+                    self.session.query(ModelData)
+                    .filter(ModelData.id.in_(model_data_ids))
+                    .delete(synchronize_session=False)
                 )
             else:
                 deleted = 0
@@ -749,8 +780,10 @@ class TrainRepository(BaseRepository):
                 "model_data_records_after": 0,
             }
 
-            logger.info(f"Cleared features for {stats['trains_cleared']} trains, "
-                       f"deleted {stats['features_deleted']} feature records")
+            logger.info(
+                f"Cleared features for {stats['trains_cleared']} trains, "
+                f"deleted {stats['features_deleted']} feature records"
+            )
 
             return stats
 
@@ -784,18 +817,23 @@ class TrainRepository(BaseRepository):
                 return {"trains_cleared": 0, "features_deleted": 0}
 
             # Collect model_data_ids to delete
-            model_data_ids = [train.model_data_id for train in trains if train.model_data_id is not None]
+            model_data_ids = [
+                train.model_data_id for train in trains if train.model_data_id is not None
+            ]
 
             # Clear model_data_id from matching trains
-            trains_updated = self.session.query(Train).filter(
-                Train.train_id == train_id,
-                Train.model_data_id != None
-            ).update({"model_data_id": None}, synchronize_session=False)
+            trains_updated = (
+                self.session.query(Train)
+                .filter(Train.train_id == train_id, Train.model_data_id != None)
+                .update({"model_data_id": None}, synchronize_session=False)
+            )
 
             # Delete model_data records directly
             if model_data_ids:
-                deleted = self.session.query(ModelData).filter(ModelData.id.in_(model_data_ids)).delete(
-                    synchronize_session=False
+                deleted = (
+                    self.session.query(ModelData)
+                    .filter(ModelData.id.in_(model_data_ids))
+                    .delete(synchronize_session=False)
                 )
             else:
                 deleted = 0
@@ -808,8 +846,10 @@ class TrainRepository(BaseRepository):
                 "features_deleted": deleted,
             }
 
-            logger.info(f"Cleared features for {stats['trains_cleared']} trains with ID {train_id}, "
-                       f"deleted {stats['features_deleted']} feature records")
+            logger.info(
+                f"Cleared features for {stats['trains_cleared']} trains with ID {train_id}, "
+                f"deleted {stats['features_deleted']} feature records"
+            )
 
             return stats
 
@@ -818,7 +858,9 @@ class TrainRepository(BaseRepository):
             logger.error(f"Database error in clear_features_for_train: {str(e)}")
             raise
 
-    def clear_features_for_time_range(self, start_time: datetime, end_time: datetime) -> Dict[str, int]:
+    def clear_features_for_time_range(
+        self, start_time: datetime, end_time: datetime
+    ) -> Dict[str, int]:
         """
         Clear model_data_id for trains in a time range and delete orphaned model_data records.
 
@@ -837,30 +879,42 @@ class TrainRepository(BaseRepository):
             self.session.begin_nested()
 
             # Find trains in the time range
-            trains = self.session.query(Train).filter(
-                Train.departure_time >= start_time,
-                Train.departure_time <= end_time,
-                Train.model_data_id != None
-            ).all()
+            trains = (
+                self.session.query(Train)
+                .filter(
+                    Train.departure_time >= start_time,
+                    Train.departure_time <= end_time,
+                    Train.model_data_id != None,
+                )
+                .all()
+            )
 
             if not trains:
                 logger.info(f"No trains found in time range with features")
                 return {"trains_cleared": 0, "features_deleted": 0}
 
             # Collect model_data_ids to delete
-            model_data_ids = [train.model_data_id for train in trains if train.model_data_id is not None]
+            model_data_ids = [
+                train.model_data_id for train in trains if train.model_data_id is not None
+            ]
 
             # Clear model_data_id from matching trains
-            trains_updated = self.session.query(Train).filter(
-                Train.departure_time >= start_time,
-                Train.departure_time <= end_time,
-                Train.model_data_id != None
-            ).update({"model_data_id": None}, synchronize_session=False)
+            trains_updated = (
+                self.session.query(Train)
+                .filter(
+                    Train.departure_time >= start_time,
+                    Train.departure_time <= end_time,
+                    Train.model_data_id != None,
+                )
+                .update({"model_data_id": None}, synchronize_session=False)
+            )
 
             # Delete model_data records directly
             if model_data_ids:
-                deleted = self.session.query(ModelData).filter(ModelData.id.in_(model_data_ids)).delete(
-                    synchronize_session=False
+                deleted = (
+                    self.session.query(ModelData)
+                    .filter(ModelData.id.in_(model_data_ids))
+                    .delete(synchronize_session=False)
                 )
             else:
                 deleted = 0
@@ -874,8 +928,10 @@ class TrainRepository(BaseRepository):
                 "time_range": f"{start_time} to {end_time}",
             }
 
-            logger.info(f"Cleared features for {stats['trains_cleared']} trains in range {start_time} to {end_time}, "
-                       f"deleted {stats['features_deleted']} feature records")
+            logger.info(
+                f"Cleared features for {stats['trains_cleared']} trains in range {start_time} to {end_time}, "
+                f"deleted {stats['features_deleted']} feature records"
+            )
 
             return stats
 
@@ -884,7 +940,9 @@ class TrainRepository(BaseRepository):
             logger.error(f"Database error in clear_features_for_time_range: {str(e)}")
             raise
 
-    def clear_predictions_for_time_range(self, start_time: datetime, end_time: datetime) -> Dict[str, int]:
+    def clear_predictions_for_time_range(
+        self, start_time: datetime, end_time: datetime
+    ) -> Dict[str, int]:
         """
         Clear prediction_data_id for trains in a time range and delete orphaned prediction_data records.
 
@@ -903,30 +961,42 @@ class TrainRepository(BaseRepository):
             self.session.begin_nested()
 
             # Find trains in the time range with predictions
-            trains = self.session.query(Train).filter(
-                Train.departure_time >= start_time,
-                Train.departure_time <= end_time,
-                Train.prediction_data_id != None
-            ).all()
+            trains = (
+                self.session.query(Train)
+                .filter(
+                    Train.departure_time >= start_time,
+                    Train.departure_time <= end_time,
+                    Train.prediction_data_id != None,
+                )
+                .all()
+            )
 
             if not trains:
                 logger.info(f"No trains found in time range with predictions")
                 return {"trains_cleared": 0, "predictions_deleted": 0}
 
             # Collect prediction_data_ids to delete
-            prediction_data_ids = [train.prediction_data_id for train in trains if train.prediction_data_id is not None]
+            prediction_data_ids = [
+                train.prediction_data_id for train in trains if train.prediction_data_id is not None
+            ]
 
             # Clear prediction_data_id from matching trains
-            trains_updated = self.session.query(Train).filter(
-                Train.departure_time >= start_time,
-                Train.departure_time <= end_time,
-                Train.prediction_data_id != None
-            ).update({"prediction_data_id": None}, synchronize_session=False)
+            trains_updated = (
+                self.session.query(Train)
+                .filter(
+                    Train.departure_time >= start_time,
+                    Train.departure_time <= end_time,
+                    Train.prediction_data_id != None,
+                )
+                .update({"prediction_data_id": None}, synchronize_session=False)
+            )
 
             # Delete prediction_data records directly
             if prediction_data_ids:
-                deleted = self.session.query(PredictionData).filter(PredictionData.id.in_(prediction_data_ids)).delete(
-                    synchronize_session=False
+                deleted = (
+                    self.session.query(PredictionData)
+                    .filter(PredictionData.id.in_(prediction_data_ids))
+                    .delete(synchronize_session=False)
                 )
             else:
                 deleted = 0
@@ -940,8 +1010,10 @@ class TrainRepository(BaseRepository):
                 "time_range": f"{start_time} to {end_time}",
             }
 
-            logger.info(f"Cleared predictions for {stats['trains_cleared']} trains in range {start_time} to {end_time}, "
-                       f"deleted {stats['predictions_deleted']} prediction records")
+            logger.info(
+                f"Cleared predictions for {stats['trains_cleared']} trains in range {start_time} to {end_time}, "
+                f"deleted {stats['predictions_deleted']} prediction records"
+            )
 
             return stats
 
@@ -968,20 +1040,26 @@ class TrainRepository(BaseRepository):
             prediction_data_before = self.session.query(PredictionData).count()
 
             # Get count of trains with predictions
-            trains_with_predictions = self.session.query(Train).filter(Train.prediction_data_id != None).count()
+            trains_with_predictions = (
+                self.session.query(Train).filter(Train.prediction_data_id != None).count()
+            )
 
             # Get all prediction_data_ids to delete directly
             prediction_data_ids = [id for (id,) in self.session.query(PredictionData.id).all()]
 
             # Clear prediction_data_id from all trains
-            trains_updated = self.session.query(Train).filter(Train.prediction_data_id != None).update(
-                {"prediction_data_id": None}, synchronize_session=False
+            trains_updated = (
+                self.session.query(Train)
+                .filter(Train.prediction_data_id != None)
+                .update({"prediction_data_id": None}, synchronize_session=False)
             )
 
             # Delete all prediction_data records
             if prediction_data_ids:
-                deleted = self.session.query(PredictionData).filter(PredictionData.id.in_(prediction_data_ids)).delete(
-                    synchronize_session=False
+                deleted = (
+                    self.session.query(PredictionData)
+                    .filter(PredictionData.id.in_(prediction_data_ids))
+                    .delete(synchronize_session=False)
                 )
             else:
                 deleted = 0
@@ -998,8 +1076,10 @@ class TrainRepository(BaseRepository):
                 "prediction_data_records_after": 0,
             }
 
-            logger.info(f"Cleared predictions for {stats['trains_cleared']} trains, "
-                       f"deleted {stats['predictions_deleted']} prediction records")
+            logger.info(
+                f"Cleared predictions for {stats['trains_cleared']} trains, "
+                f"deleted {stats['predictions_deleted']} prediction records"
+            )
 
             return stats
 
@@ -1028,7 +1108,9 @@ class TrainRepository(BaseRepository):
             prediction_data_count = self.session.query(PredictionData).count()
 
             # Delete all prediction data
-            prediction_deleted = self.session.query(PredictionData).delete(synchronize_session=False)
+            prediction_deleted = self.session.query(PredictionData).delete(
+                synchronize_session=False
+            )
 
             # Delete all model data
             model_deleted = self.session.query(ModelData).delete(synchronize_session=False)
@@ -1049,9 +1131,11 @@ class TrainRepository(BaseRepository):
                 "prediction_data_before": prediction_data_count,
             }
 
-            logger.info(f"Cleared {stats['trains_deleted']} trains, "
-                       f"{stats['model_data_deleted']} model records, "
-                       f"{stats['prediction_data_deleted']} prediction records")
+            logger.info(
+                f"Cleared {stats['trains_deleted']} trains, "
+                f"{stats['model_data_deleted']} model records, "
+                f"{stats['prediction_data_deleted']} prediction records"
+            )
 
             return stats
 
@@ -1310,14 +1394,22 @@ class TrainStopRepository(BaseRepository):
             train_stop = TrainStop(**stop_data)
             self.session.add(train_stop)
             self.session.commit()
-            logger.debug(f"Created train stop for train {train_stop.train_id} at {train_stop.station_name}")
+            logger.debug(
+                f"Created train stop for train {train_stop.train_id} at {train_stop.station_name}"
+            )
             return train_stop
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Database error in create_train_stop: {str(e)}")
             raise
 
-    def upsert_train_stops(self, train_id: str, train_departure_time: datetime, stops_data: List[Dict[str, Any]], data_source: str = "njtransit") -> List[TrainStop]:
+    def upsert_train_stops(
+        self,
+        train_id: str,
+        train_departure_time: datetime,
+        stops_data: List[Dict[str, Any]],
+        data_source: str = "njtransit",
+    ) -> List[TrainStop]:
         """
         Intelligently update train stops without deletion, maintaining full audit trail.
 
@@ -1336,29 +1428,36 @@ class TrainStopRepository(BaseRepository):
         try:
             current_time = datetime.utcnow()
             updated_stops = []
-            
+
             # Import StationMapper for station code derivation
             from trackcast.services.station_mapping import StationMapper
+
             station_mapper = StationMapper()
-            
+
             # Get existing stops
-            existing_stops = self.session.query(TrainStop).filter(
-                TrainStop.train_id == train_id,
-                TrainStop.train_departure_time == train_departure_time,
-                TrainStop.data_source == data_source
-            ).all()
-            
+            existing_stops = (
+                self.session.query(TrainStop)
+                .filter(
+                    TrainStop.train_id == train_id,
+                    TrainStop.train_departure_time == train_departure_time,
+                    TrainStop.data_source == data_source,
+                )
+                .all()
+            )
+
             # Create lookup map using station name, code, and scheduled time to handle multiple stops at same station
             existing_map = {}
             for stop in existing_stops:
                 # Use scheduled_time to distinguish multiple stops at the same station
-                scheduled_time_key = stop.scheduled_time.isoformat() if stop.scheduled_time else None
+                scheduled_time_key = (
+                    stop.scheduled_time.isoformat() if stop.scheduled_time else None
+                )
                 key = (stop.station_name, stop.station_code, scheduled_time_key)
                 existing_map[key] = stop
-            
+
             # Track which stops we've seen in this update
             seen_stops = set()
-            
+
             # Process incoming stops
             for stop_data in stops_data:
                 # Derive station code if missing
@@ -1366,24 +1465,30 @@ class TrainStopRepository(BaseRepository):
                     derived_code = station_mapper.get_code_for_name(stop_data["station_name"])
                     if derived_code:
                         stop_data["station_code"] = derived_code
-                        logger.debug(f"Derived station code '{derived_code}' for '{stop_data['station_name']}'")
-                
+                        logger.debug(
+                            f"Derived station code '{derived_code}' for '{stop_data['station_name']}'"
+                        )
+
                 # Create consistent key using scheduled_time to distinguish multiple stops at same station
                 scheduled_time_key = self._time_to_isoformat(stop_data.get("scheduled_time"))
-                station_key = (stop_data.get("station_name"), stop_data.get("station_code"), scheduled_time_key)
+                station_key = (
+                    stop_data.get("station_name"),
+                    stop_data.get("station_code"),
+                    scheduled_time_key,
+                )
                 seen_stops.add(station_key)
-                
+
                 if station_key in existing_map:
                     # Update existing stop
                     stop = existing_map[station_key]
-                    
+
                     # Track what changed
                     changes = {
                         "timestamp": current_time.isoformat(),
                         "action": "updated",
-                        "changes": {}
+                        "changes": {},
                     }
-                    
+
                     # Check and update each field that might change
                     fields_to_check = [
                         ("departure_time", "departure_time"),
@@ -1391,52 +1496,55 @@ class TrainStopRepository(BaseRepository):
                         ("departed", "departed"),
                         ("scheduled_time", "scheduled_time"),
                         ("pickup_only", "pickup_only"),
-                        ("dropoff_only", "dropoff_only")
+                        ("dropoff_only", "dropoff_only"),
                     ]
-                    
+
                     for field_name, data_key in fields_to_check:
                         old_value = getattr(stop, field_name)
                         new_value = stop_data.get(data_key)
-                        
+
                         # Handle boolean fields properly
                         if data_key in ["departed", "pickup_only", "dropoff_only"]:
                             new_value = stop_data.get(data_key, False)
-                        
+
                         # Convert datetime objects for comparison
                         if isinstance(old_value, datetime):
                             old_value_str = old_value.isoformat() if old_value else None
-                            new_value_str = new_value.isoformat() if isinstance(new_value, datetime) else new_value
+                            new_value_str = (
+                                new_value.isoformat()
+                                if isinstance(new_value, datetime)
+                                else new_value
+                            )
                             if old_value_str != new_value_str:
                                 changes["changes"][field_name] = {
                                     "old": old_value_str,
-                                    "new": new_value_str
+                                    "new": new_value_str,
                                 }
                                 setattr(stop, field_name, new_value)
                         elif old_value != new_value:
-                            changes["changes"][field_name] = {
-                                "old": old_value,
-                                "new": new_value
-                            }
+                            changes["changes"][field_name] = {"old": old_value, "new": new_value}
                             setattr(stop, field_name, new_value)
-                    
+
                     # Update lifecycle fields
                     if not stop.is_active:
                         changes["changes"]["is_active"] = {"old": False, "new": True}
                         changes["note"] = "Stop reappeared in API"
-                    
+
                     stop.last_seen_at = current_time
                     stop.is_active = True
                     stop.api_removed_at = None
                     stop.data_version += 1
-                    
+
                     # Append to audit trail if there were changes
                     if changes["changes"]:
                         if stop.audit_trail is None:
                             stop.audit_trail = []
-                        stop.audit_trail = stop.audit_trail + [changes]  # Create new list for SQLAlchemy to detect change
-                    
+                        stop.audit_trail = stop.audit_trail + [
+                            changes
+                        ]  # Create new list for SQLAlchemy to detect change
+
                     updated_stops.append(stop)
-                    
+
                 else:
                     # Create new stop
                     stop_data["train_id"] = train_id
@@ -1444,35 +1552,41 @@ class TrainStopRepository(BaseRepository):
                     stop_data["data_source"] = data_source
                     stop_data["last_seen_at"] = current_time
                     stop_data["is_active"] = True
-                    
+
                     # Preserve original scheduled time
                     if "scheduled_time" in stop_data:
                         stop_data["original_scheduled_time"] = stop_data["scheduled_time"]
-                    
+
                     # Initialize audit trail with creation event
-                    stop_data["audit_trail"] = [{
-                        "timestamp": current_time.isoformat(),
-                        "action": "created",
-                        "initial_data": {
-                            "station_name": stop_data.get("station_name"),
-                            "station_code": stop_data.get("station_code"),
-                            "scheduled_time": self._time_to_isoformat(stop_data.get("scheduled_time")),
-                            "departure_time": self._time_to_isoformat(stop_data.get("departure_time")),
-                            "departed": stop_data.get("departed", False),
-                            "stop_status": stop_data.get("stop_status")
+                    stop_data["audit_trail"] = [
+                        {
+                            "timestamp": current_time.isoformat(),
+                            "action": "created",
+                            "initial_data": {
+                                "station_name": stop_data.get("station_name"),
+                                "station_code": stop_data.get("station_code"),
+                                "scheduled_time": self._time_to_isoformat(
+                                    stop_data.get("scheduled_time")
+                                ),
+                                "departure_time": self._time_to_isoformat(
+                                    stop_data.get("departure_time")
+                                ),
+                                "departed": stop_data.get("departed", False),
+                                "stop_status": stop_data.get("stop_status"),
+                            },
                         }
-                    }]
-                    
+                    ]
+
                     new_stop = TrainStop(**stop_data)
                     self.session.add(new_stop)
                     updated_stops.append(new_stop)
-            
+
             # Mark missing stops as inactive (NOT deleted) with audit trail
             for station_key, stop in existing_map.items():
                 if station_key not in seen_stops and stop.is_active:
                     stop.is_active = False
                     stop.api_removed_at = current_time
-                    
+
                     # Add removal to audit trail
                     removal_event = {
                         "timestamp": current_time.isoformat(),
@@ -1481,16 +1595,16 @@ class TrainStopRepository(BaseRepository):
                         "last_known_state": {
                             "departed": stop.departed,
                             "stop_status": stop.stop_status,
-                            "departure_time": self._time_to_isoformat(stop.departure_time)
-                        }
+                            "departure_time": self._time_to_isoformat(stop.departure_time),
+                        },
                     }
-                    
+
                     if stop.audit_trail is None:
                         stop.audit_trail = []
                     stop.audit_trail = stop.audit_trail + [removal_event]
-                    
+
                     logger.info(f"Marked stop {stop.station_name} as inactive for train {train_id}")
-            
+
             self.session.commit()
             logger.debug(f"Updated {len(updated_stops)} stops for train {train_id}")
             return updated_stops
@@ -1519,7 +1633,7 @@ class TrainStopRepository(BaseRepository):
                 self.session.query(TrainStop)
                 .filter(
                     TrainStop.train_id == train_id,
-                    TrainStop.train_departure_time == train_departure_time
+                    TrainStop.train_departure_time == train_departure_time,
                 )
                 .order_by(TrainStop.scheduled_time.asc())
                 .all()
@@ -1547,8 +1661,7 @@ class TrainStopRepository(BaseRepository):
             return (
                 self.session.query(TrainStop)
                 .filter(
-                    TrainStop.station_code == station_code,
-                    TrainStop.scheduled_time >= cutoff_time
+                    TrainStop.station_code == station_code, TrainStop.scheduled_time >= cutoff_time
                 )
                 .order_by(TrainStop.scheduled_time.asc())
                 .all()
@@ -1569,71 +1682,73 @@ class TrainStopRepository(BaseRepository):
         """
         try:
             # Get distinct stations, preferring entries with station codes
-            results = self.session.query(
-                TrainStop.station_code,
-                TrainStop.station_name
-            ).distinct().order_by(
-                TrainStop.station_code.nulls_last(),
-                TrainStop.station_name
-            ).all()
+            results = (
+                self.session.query(TrainStop.station_code, TrainStop.station_name)
+                .distinct()
+                .order_by(TrainStop.station_code.nulls_last(), TrainStop.station_name)
+                .all()
+            )
 
             stations = []
             seen_names = set()
-            
+
             for station_code, station_name in results:
                 # Avoid duplicates by station name (some might have codes, some might not)
                 if station_name not in seen_names:
-                    stations.append({
-                        "station_code": station_code,
-                        "station_name": station_name
-                    })
+                    stations.append({"station_code": station_code, "station_name": station_name})
                     seen_names.add(station_name)
-            
+
             return stations
-            
+
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_all_stations: {str(e)}")
             raise
 
-    def get_stop_audit_history(self, train_id: str, station_name: str = None) -> List[Dict[str, Any]]:
+    def get_stop_audit_history(
+        self, train_id: str, station_name: str = None
+    ) -> List[Dict[str, Any]]:
         """
         Get audit history for train stops, optionally filtered by station.
         Useful for debugging stop lifecycle issues.
-        
+
         Args:
             train_id: Train identifier
             station_name: Optional station name filter
-        
+
         Returns:
             List of stop audit histories
-        
+
         Raises:
             SQLAlchemyError: Database error
         """
         try:
-            query = self.session.query(TrainStop).filter(
-                TrainStop.train_id == train_id
-            )
-            
+            query = self.session.query(TrainStop).filter(TrainStop.train_id == train_id)
+
             if station_name:
                 query = query.filter(TrainStop.station_name == station_name)
-            
+
             stops = query.all()
-            
+
             history = []
             for stop in stops:
-                history.append({
-                    "station_name": stop.station_name,
-                    "station_code": stop.station_code,
-                    "is_active": stop.is_active,
-                    "last_seen_at": stop.last_seen_at.isoformat() if stop.last_seen_at else None,
-                    "api_removed_at": stop.api_removed_at.isoformat() if stop.api_removed_at else None,
-                    "data_version": stop.data_version,
-                    "audit_trail": stop.audit_trail or []
-                })
-            
+                history.append(
+                    {
+                        "station_name": stop.station_name,
+                        "station_code": stop.station_code,
+                        "is_active": stop.is_active,
+                        "last_seen_at": (
+                            stop.last_seen_at.isoformat() if stop.last_seen_at else None
+                        ),
+                        "api_removed_at": (
+                            stop.api_removed_at.isoformat() if stop.api_removed_at else None
+                        ),
+                        "data_version": stop.data_version,
+                        "audit_trail": stop.audit_trail or [],
+                    }
+                )
+
             return history
-            
+
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_stop_audit_history: {str(e)}")
             raise
@@ -1652,32 +1767,30 @@ class TrainStopRepository(BaseRepository):
             SQLAlchemyError: Database error
         """
         try:
-            results = self.session.query(
-                TrainStop.station_code,
-                TrainStop.station_name
-            ).filter(
-                or_(
-                    TrainStop.station_code.ilike(f"%{query}%"),
-                    TrainStop.station_name.ilike(f"%{query}%")
+            results = (
+                self.session.query(TrainStop.station_code, TrainStop.station_name)
+                .filter(
+                    or_(
+                        TrainStop.station_code.ilike(f"%{query}%"),
+                        TrainStop.station_name.ilike(f"%{query}%"),
+                    )
                 )
-            ).distinct().order_by(
-                TrainStop.station_code.nulls_last(),
-                TrainStop.station_name
-            ).limit(20).all()
+                .distinct()
+                .order_by(TrainStop.station_code.nulls_last(), TrainStop.station_name)
+                .limit(20)
+                .all()
+            )
 
             stations = []
             seen_names = set()
-            
+
             for station_code, station_name in results:
                 if station_name not in seen_names:
-                    stations.append({
-                        "station_code": station_code,
-                        "station_name": station_name
-                    })
+                    stations.append({"station_code": station_code, "station_name": station_name})
                     seen_names.add(station_name)
-            
+
             return stations
-            
+
         except SQLAlchemyError as e:
             logger.error(f"Database error in search_stations: {str(e)}")
             raise
@@ -1685,18 +1798,18 @@ class TrainStopRepository(BaseRepository):
     def _time_to_isoformat(self, time_value) -> Optional[str]:
         """
         Convert time value to ISO format string, handling both datetime objects and strings.
-        
+
         Args:
             time_value: Either a datetime object, string, or None
-            
+
         Returns:
             ISO format string or None
         """
         if time_value is None:
             return None
-        
+
         from datetime import datetime
-        
+
         if isinstance(time_value, datetime):
             return time_value.isoformat()
         elif isinstance(time_value, str):

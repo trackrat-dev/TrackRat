@@ -50,7 +50,9 @@ class PredictionService:
             # Find the latest model files for this station
             model_info = TrackPredictionPipeline.find_latest_model(station_code=station_code)
             if not model_info:
-                logger.warning(f"No trained model found for station {station_code}. Train a model first using: trackcast train-model --station {station_code}")
+                logger.warning(
+                    f"No trained model found for station {station_code}. Train a model first using: trackcast train-model --station {station_code}"
+                )
                 return False
 
             # If the model is already loaded for this station, check if it's the same version
@@ -60,7 +62,9 @@ class PredictionService:
                 and self.model_infos[station_code]["version"] == model_info["version"]
                 and self.model_infos[station_code]["timestamp"] == model_info["timestamp"]
             ):
-                logger.debug(f"Model already loaded for station {station_code} (version: {model_info['version']})")
+                logger.debug(
+                    f"Model already loaded for station {station_code} (version: {model_info['version']})"
+                )
                 return True
 
             # Load the model
@@ -73,12 +77,14 @@ class PredictionService:
                 metadata_path=model_info["metadata_path"],
                 scaler_path=model_info["scaler_path"],
             )
-            
+
             # Store in cache
             self.models[station_code] = model
             self.model_infos[station_code] = model_info
 
-            logger.info(f"Model loaded successfully for station {station_code} (version: {model_info['version']})")
+            logger.info(
+                f"Model loaded successfully for station {station_code} (version: {model_info['version']})"
+            )
             return True
 
         except Exception as e:
@@ -131,15 +137,17 @@ class PredictionService:
             station_models_loaded = []
             for station_code, station_trains in trains_by_station.items():
                 logger.info(f"Processing {len(station_trains)} trains for station {station_code}")
-                
+
                 # Load model for this station if not already loaded
                 if not self._load_model_for_station(station_code):
-                    logger.warning(f"No model found for station {station_code}, skipping {len(station_trains)} trains. Train a model for this station first.")
+                    logger.warning(
+                        f"No model found for station {station_code}, skipping {len(station_trains)} trains. Train a model for this station first."
+                    )
                     stats["trains_skipped"] += len(station_trains)
                     continue
-                    
+
                 station_models_loaded.append(station_code)
-                
+
                 # Process each train for this station
                 for train in station_trains:
                     try:
@@ -151,7 +159,9 @@ class PredictionService:
 
                         # Skip trains with existing predictions
                         if train.prediction_data:
-                            logger.debug(f"Skipping train {train.train_id}: already has predictions")
+                            logger.debug(
+                                f"Skipping train {train.train_id}: already has predictions"
+                            )
                             stats["trains_skipped"] += 1
                             continue
 
@@ -165,12 +175,14 @@ class PredictionService:
                     except Exception as e:
                         logger.error(f"Error predicting train {train.train_id}: {str(e)}")
                         stats["trains_failed"] += 1
-            
+
             # Set model versions in stats (comma-separated list)
             model_versions = []
             for station_code in station_models_loaded:
                 if station_code in self.model_infos:
-                    model_versions.append(f"{station_code}:{self.model_infos[station_code]['version']}")
+                    model_versions.append(
+                        f"{station_code}:{self.model_infos[station_code]['version']}"
+                    )
             stats["model_versions"] = ", ".join(model_versions)
 
             # Calculate duration
@@ -190,7 +202,9 @@ class PredictionService:
             stats["duration_ms"] = int((time.time() - start_time) * 1000)
             return False, stats
 
-    def predict_train_with_context(self, train_id: str, boarding_station_code: str) -> Tuple[bool, Dict[str, Any]]:
+    def predict_train_with_context(
+        self, train_id: str, boarding_station_code: str
+    ) -> Tuple[bool, Dict[str, Any]]:
         """
         Generate a prediction for a specific train using the boarding station's model.
 
@@ -237,7 +251,7 @@ class PredictionService:
                 result["error"] = "Train has no features. Process features first."
                 result["duration_ms"] = int((time.time() - start_time) * 1000)
                 return False, result
-                
+
             # Load model for boarding station instead of origin station
             station_code = boarding_station_code
             if not self._load_model_for_station(station_code):
@@ -275,7 +289,9 @@ class PredictionService:
             return True, result
 
         except Exception as e:
-            logger.error(f"Error predicting train {train_id} with context {boarding_station_code}: {str(e)}")
+            logger.error(
+                f"Error predicting train {train_id} with context {boarding_station_code}: {str(e)}"
+            )
             result["error"] = str(e)
             result["duration_ms"] = int((time.time() - start_time) * 1000)
             return False, result
@@ -325,7 +341,7 @@ class PredictionService:
                 result["error"] = "Train has no features. Process features first."
                 result["duration_ms"] = int((time.time() - start_time) * 1000)
                 return False, result
-                
+
             # Load model for train's origin station
             station_code = train.origin_station_code
             if not self._load_model_for_station(station_code):
@@ -383,10 +399,10 @@ class PredictionService:
             if station_code not in self.models:
                 logger.error(f"No model loaded for station {station_code}")
                 return None
-                
+
             model = self.models[station_code]
             model_info = self.model_infos[station_code]
-            
+
             # Generate prediction
             predictions = model.predict([train.model_data])
             if not predictions:
@@ -395,27 +411,33 @@ class PredictionService:
 
             # Get the prediction for this train
             track_probabilities = predictions[0]
-            
+
             # Check for empty predictions
             if not track_probabilities:
                 logger.error(f"Model returned empty track probabilities for train {train.train_id}")
                 return None
-                
+
             # Log top predictions
             top_tracks = sorted(track_probabilities.items(), key=lambda x: x[1], reverse=True)[:3]
-            logger.info(f"Top 3 predicted tracks for train {train.train_id} from {station_code}: {top_tracks}")
+            logger.info(
+                f"Top 3 predicted tracks for train {train.train_id} from {station_code}: {top_tracks}"
+            )
 
             # Generate explanation factors
             try:
                 prediction_factors = model.get_prediction_factors(train.model_data)
             except Exception as factor_error:
-                logger.error(f"Error generating prediction factors for train {train.train_id}: {str(factor_error)}")
-                prediction_factors = [{
-                    "feature": "error", 
-                    "importance": 0.0, 
-                    "direction": "neutral",
-                    "explanation": f"Failed to generate explanation: {str(factor_error)}"
-                }]
+                logger.error(
+                    f"Error generating prediction factors for train {train.train_id}: {str(factor_error)}"
+                )
+                prediction_factors = [
+                    {
+                        "feature": "error",
+                        "importance": 0.0,
+                        "direction": "neutral",
+                        "explanation": f"Failed to generate explanation: {str(factor_error)}",
+                    }
+                ]
 
             # Create prediction data
             prediction_data = {
@@ -440,7 +462,9 @@ class PredictionService:
             logger.error(f"Error generating prediction for train {train.train_id}: {str(e)}")
             return None
 
-    def _predict_train_with_station(self, train: Train, station_code: str) -> Optional[PredictionData]:
+    def _predict_train_with_station(
+        self, train: Train, station_code: str
+    ) -> Optional[PredictionData]:
         """
         Generate a prediction for a train using a specific station's model.
 
@@ -456,10 +480,10 @@ class PredictionService:
             if station_code not in self.models:
                 logger.error(f"No model loaded for station {station_code}")
                 return None
-                
+
             model = self.models[station_code]
             model_info = self.model_infos[station_code]
-            
+
             # Generate prediction
             predictions = model.predict([train.model_data])
             if not predictions:
@@ -468,27 +492,33 @@ class PredictionService:
 
             # Get the prediction for this train
             track_probabilities = predictions[0]
-            
+
             # Check for empty predictions
             if not track_probabilities:
                 logger.error(f"Model returned empty track probabilities for train {train.train_id}")
                 return None
-                
+
             # Log top predictions
             top_tracks = sorted(track_probabilities.items(), key=lambda x: x[1], reverse=True)[:3]
-            logger.info(f"Top 3 predicted tracks for train {train.train_id} using {station_code} model: {top_tracks}")
+            logger.info(
+                f"Top 3 predicted tracks for train {train.train_id} using {station_code} model: {top_tracks}"
+            )
 
             # Generate explanation factors
             try:
                 prediction_factors = model.get_prediction_factors(train.model_data)
             except Exception as factor_error:
-                logger.error(f"Error generating prediction factors for train {train.train_id}: {str(factor_error)}")
-                prediction_factors = [{
-                    "feature": "error", 
-                    "importance": 0.0, 
-                    "direction": "neutral",
-                    "explanation": f"Failed to generate explanation: {str(factor_error)}"
-                }]
+                logger.error(
+                    f"Error generating prediction factors for train {train.train_id}: {str(factor_error)}"
+                )
+                prediction_factors = [
+                    {
+                        "feature": "error",
+                        "importance": 0.0,
+                        "direction": "neutral",
+                        "explanation": f"Failed to generate explanation: {str(factor_error)}",
+                    }
+                ]
 
             # Create prediction data (don't save to database for context predictions)
             prediction_data = PredictionData(
@@ -496,14 +526,18 @@ class PredictionService:
                 track_probabilities=track_probabilities,
                 prediction_factors=prediction_factors,
                 model_version=f"{model_info['version']}_{station_code}",
-                created_at=datetime.now()
+                created_at=datetime.now(),
             )
 
-            logger.info(f"Generated context prediction for train {train.train_id} using {station_code} model")
+            logger.info(
+                f"Generated context prediction for train {train.train_id} using {station_code} model"
+            )
             return prediction_data
 
         except Exception as e:
-            logger.error(f"Error generating context prediction for train {train.train_id} with station {station_code}: {str(e)}")
+            logger.error(
+                f"Error generating context prediction for train {train.train_id} with station {station_code}: {str(e)}"
+            )
             return None
 
     def run_prediction_with_regeneration(self) -> Tuple[bool, Dict[str, Any]]:
@@ -532,7 +566,9 @@ class PredictionService:
 
         try:
             # Clear predictions for future trains
-            logger.info(f"Clearing predictions for trains from {now} to {end_time} for regeneration")
+            logger.info(
+                f"Clearing predictions for trains from {now} to {end_time} for regeneration"
+            )
             clear_stats = self.train_repo.clear_predictions_for_time_range(now, end_time)
             stats["predictions_cleared"] = clear_stats["predictions_deleted"]
             stats["trains_cleared"] = clear_stats["trains_cleared"]
@@ -542,14 +578,16 @@ class PredictionService:
             success, predict_stats = self.run_prediction()
 
             # Update stats with prediction results
-            stats.update({
-                "trains_processed": predict_stats.get("trains_processed", 0),
-                "trains_predicted": predict_stats.get("trains_predicted", 0),
-                "trains_skipped": predict_stats.get("trains_skipped", 0),
-                "trains_failed": predict_stats.get("trains_failed", 0),
-                "model_versions": predict_stats.get("model_versions", {}),
-                "duration_ms": int((time.time() - start_time) * 1000)
-            })
+            stats.update(
+                {
+                    "trains_processed": predict_stats.get("trains_processed", 0),
+                    "trains_predicted": predict_stats.get("trains_predicted", 0),
+                    "trains_skipped": predict_stats.get("trains_skipped", 0),
+                    "trains_failed": predict_stats.get("trains_failed", 0),
+                    "model_versions": predict_stats.get("model_versions", {}),
+                    "duration_ms": int((time.time() - start_time) * 1000),
+                }
+            )
 
             if "error" in predict_stats:
                 stats["error"] = predict_stats["error"]
@@ -588,8 +626,10 @@ class PredictionService:
             stats.update(clear_stats)
             stats["duration_ms"] = int((time.time() - start_time) * 1000)
 
-            logger.info(f"Prediction clearing completed: {clear_stats['predictions_deleted']} predictions deleted "
-                        f"from {clear_stats['trains_cleared']} trains in {stats['duration_ms']}ms")
+            logger.info(
+                f"Prediction clearing completed: {clear_stats['predictions_deleted']} predictions deleted "
+                f"from {clear_stats['trains_cleared']} trains in {stats['duration_ms']}ms"
+            )
 
             return True, stats
 

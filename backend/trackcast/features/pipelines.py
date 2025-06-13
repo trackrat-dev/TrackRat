@@ -64,12 +64,20 @@ class FeaturePipeline:
                 lines_and_destinations = self.train_repo.get_all_lines_and_destinations()
                 all_lines = lines_and_destinations.get("lines", [])
                 all_destinations = lines_and_destinations.get("destinations", [])
-                logger.info(f"Retrieved {len(all_lines)} lines and {len(all_destinations)} destinations for categorical features")
-                self.extractors.append(CategoricalFeatureExtractor(all_lines=all_lines, all_destinations=all_destinations))
+                logger.info(
+                    f"Retrieved {len(all_lines)} lines and {len(all_destinations)} destinations for categorical features"
+                )
+                self.extractors.append(
+                    CategoricalFeatureExtractor(
+                        all_lines=all_lines, all_destinations=all_destinations
+                    )
+                )
             except Exception as e:
                 logger.error(f"Error retrieving lines and destinations: {str(e)}")
                 # Fall back to empty lists if there's an error
-                self.extractors.append(CategoricalFeatureExtractor(all_lines=[], all_destinations=[]))
+                self.extractors.append(
+                    CategoricalFeatureExtractor(all_lines=[], all_destinations=[])
+                )
 
         if include_all or "track_usage" in include_extractors:
             self.extractors.append(TrackUsageFeatureExtractor(session))
@@ -200,11 +208,13 @@ class FeaturePipeline:
 
         # Precompute data for each extractor that supports it
         for extractor in self.extractors:
-            if hasattr(extractor, 'precompute_historical_data'):
+            if hasattr(extractor, "precompute_historical_data"):
                 try:
                     extractor.precompute_historical_data(reference_time)
                 except Exception as e:
-                    logger.error(f"Error precomputing data for {extractor.__class__.__name__}: {str(e)}")
+                    logger.error(
+                        f"Error precomputing data for {extractor.__class__.__name__}: {str(e)}"
+                    )
 
         logger.info("Completed precomputation of historical data")
 
@@ -232,7 +242,7 @@ class FeaturePipeline:
         # Don't precompute with a global reference time to avoid self-conflicts
         # Each train will precompute its own timeline based on its departure time
         # Note: We skip global precomputation to ensure each train sees only trains that departed before it
-        
+
         # Set default reference time if not provided (only used for logging/metadata)
         if reference_time is None:
             reference_time = datetime.utcnow()

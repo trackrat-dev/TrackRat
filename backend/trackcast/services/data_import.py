@@ -62,7 +62,9 @@ class DataImportService:
             time_elapsed = (datetime.now() - start_time).total_seconds()
             stats["duration_seconds"] = time_elapsed
 
-            logger.info(f"Database cleared: {stats['trains_deleted']} trains removed in {time_elapsed:.2f}s")
+            logger.info(
+                f"Database cleared: {stats['trains_deleted']} trains removed in {time_elapsed:.2f}s"
+            )
             return True, stats
 
         except Exception as e:
@@ -122,7 +124,9 @@ class DataImportService:
                     file_paths = sorted(list(source_path.glob("*.json")))
                 else:
                     # Try both formats if not specified
-                    file_paths = sorted(list(source_path.glob("*.csv")) + list(source_path.glob("*.json")))
+                    file_paths = sorted(
+                        list(source_path.glob("*.csv")) + list(source_path.glob("*.json"))
+                    )
 
             if not file_paths:
                 error_msg = f"No matching files found in {source_dir}"
@@ -140,7 +144,7 @@ class DataImportService:
             for file_path in file_paths:
                 try:
                     file_format_detected = file_format or self._detect_file_format(file_path)
-                    
+
                     if file_format_detected == "csv":
                         success, file_stats = self._import_csv_file(file_path)
                     elif file_format_detected == "json":
@@ -154,10 +158,10 @@ class DataImportService:
                     stats["records_processed"] += file_stats.get("records_processed", 0)
                     stats["trains_new"] += file_stats.get("trains_new", 0)
                     stats["trains_updated"] += file_stats.get("trains_updated", 0)
-                    
+
                     if not success:
                         stats["errors"].extend(file_stats.get("errors", []))
-                
+
                 except Exception as e:
                     error_msg = f"Error processing file {file_path}: {str(e)}"
                     logger.error(error_msg)
@@ -196,12 +200,12 @@ class DataImportService:
             String indicating the file format ('csv', 'json', or 'unknown')
         """
         extension = file_path.suffix.lower()
-        
+
         if extension == ".csv":
             return "csv"
         elif extension == ".json":
             return "json"
-        
+
         # Try to detect format by reading the first few bytes
         try:
             with open(file_path, "r") as f:
@@ -212,7 +216,7 @@ class DataImportService:
                     return "csv"
         except Exception:
             pass
-            
+
         return "unknown"
 
     def _sort_files_by_name(self, file_paths: List[Path]) -> List[Path]:
@@ -248,7 +252,7 @@ class DataImportService:
             filename = file_path.name
 
             # Match dates in format YYYYMMDD_HHMMSS
-            match = re.search(r'(\d{8})_(\d{6})', filename)
+            match = re.search(r"(\d{8})_(\d{6})", filename)
             if match:
                 date_str = match.group(1)  # YYYYMMDD
                 time_str = match.group(2)  # HHMMSS
@@ -270,7 +274,9 @@ class DataImportService:
             logger.warning(f"Could not extract timestamp from filename {file_path.name}: {str(e)}")
             return None
 
-    def _check_departed_trains(self, current_train_ids: Set[Tuple[str, datetime]], max_import_time: datetime) -> int:
+    def _check_departed_trains(
+        self, current_train_ids: Set[Tuple[str, datetime]], max_import_time: datetime
+    ) -> int:
         """
         Check for trains that have departed but are no longer in the imported data.
 
@@ -293,13 +299,13 @@ class DataImportService:
             )
 
             # Log the SQL query being executed
-            query_sql = str(query.statement.compile(
-                compile_kwargs={"literal_binds": True}
-            ))
+            query_sql = str(query.statement.compile(compile_kwargs={"literal_binds": True}))
             logger.info(f"Executing SQL query: {query_sql}")
 
             potential_departed = query.all()
-            logger.info(f"Found {len(potential_departed)} boarding trains with departure times in the past")
+            logger.info(
+                f"Found {len(potential_departed)} boarding trains with departure times in the past"
+            )
 
             departed_count = 0
 
@@ -381,7 +387,9 @@ class DataImportService:
 
                         # Skip if required fields are missing
                         if not train_data.get("train_id") or not train_data.get("departure_time"):
-                            logger.warning(f"Skipping record due to missing train_id or departure_time: {row}")
+                            logger.warning(
+                                f"Skipping record due to missing train_id or departure_time: {row}"
+                            )
                             continue
 
                         # Import the train record
@@ -411,7 +419,9 @@ class DataImportService:
 
                 # Check for departed trains
                 if current_train_ids:
-                    departed_count = self._check_departed_trains(current_train_ids, max_departure_time)
+                    departed_count = self._check_departed_trains(
+                        current_train_ids, max_departure_time
+                    )
                     stats["trains_departed"] = departed_count
 
                 return len(stats["errors"]) == 0, stats
@@ -471,7 +481,9 @@ class DataImportService:
                     departure_time_str = item.get("SCHED_DEP_DATE", "")
                     try:
                         departure_time = (
-                            datetime.strptime(departure_time_str, "%d-%b-%Y %I:%M:%S %p").isoformat()
+                            datetime.strptime(
+                                departure_time_str, "%d-%b-%Y %I:%M:%S %p"
+                            ).isoformat()
                             if departure_time_str
                             else None
                         )
@@ -507,14 +519,14 @@ class DataImportService:
                     timestamp = file_timestamp.isoformat()
                 else:
                     # Try older approach for backward compatibility
-                    if hasattr(file_path, 'name'):
+                    if hasattr(file_path, "name"):
                         # Try to extract timestamp from filename (format: getTrainSchedule19Rec_NY_YYYYMMDD_HHMMSS.json)
                         try:
                             filename = file_path.name
-                            date_parts = filename.split('_')
+                            date_parts = filename.split("_")
                             if len(date_parts) >= 4:
                                 date_str = date_parts[2]  # YYYYMMDD
-                                time_str = date_parts[3].split('.')[0]  # HHMMSS
+                                time_str = date_parts[3].split(".")[0]  # HHMMSS
                                 if len(date_str) == 8 and len(time_str) == 6:
                                     year = date_str[0:4]
                                     month = date_str[4:6]
@@ -536,7 +548,9 @@ class DataImportService:
                     departure_time_str = item.get("SCHED_DEP_DATE", "")
                     try:
                         departure_time = (
-                            datetime.strptime(departure_time_str, "%d-%b-%Y %I:%M:%S %p").isoformat()
+                            datetime.strptime(
+                                departure_time_str, "%d-%b-%Y %I:%M:%S %p"
+                            ).isoformat()
                             if departure_time_str
                             else None
                         )
@@ -578,12 +592,15 @@ class DataImportService:
 
                     # Skip if required fields are missing
                     if not train_data.get("train_id") or not train_data.get("departure_time"):
-                        logger.warning(f"Skipping record due to missing train_id or departure_time: {train_record}")
+                        logger.warning(
+                            f"Skipping record due to missing train_id or departure_time: {train_record}"
+                        )
                         continue
 
                     # Import the train record
-                    new_train, updated = self._import_train_record(train_data,
-                                                                 train_data.get("timestamp", current_time))
+                    new_train, updated = self._import_train_record(
+                        train_data, train_data.get("timestamp", current_time)
+                    )
 
                     # Track train ID and departure time for departed train detection
                     train_id = train_data.get("train_id")
@@ -635,32 +652,25 @@ class DataImportService:
             "Train_ID": "train_id",
             "TRAIN_ID": "train_id",
             "train_id": "train_id",
-
             "Destination": "destination",
             "DESTINATION": "destination",
             "destination": "destination",
-
             "Track": "track",
             "TRACK": "track",
             "track": "track",
-
             "Departure_Time": "departure_time",
             "DEPARTURE_TIME": "departure_time",
             "departure_time": "departure_time",
-
             "Status": "status",
             "STATUS": "status",
             "status": "status",
-
             "Line": "line",
             "LINE": "line",
             "line": "line",
-
             "Line_Code": "line_code",
             "LINE_CODE": "line_code",
             "LINECODE": "line_code",
             "line_code": "line_code",
-
             "Timestamp": "timestamp",
             "TIMESTAMP": "timestamp",
             "timestamp": "timestamp",
@@ -685,7 +695,9 @@ class DataImportService:
             if isinstance(train_data["departure_time"], str):
                 try:
                     # Try ISO format first
-                    train_data["departure_time"] = datetime.fromisoformat(train_data["departure_time"])
+                    train_data["departure_time"] = datetime.fromisoformat(
+                        train_data["departure_time"]
+                    )
                 except ValueError:
                     try:
                         # Try other common formats
@@ -698,7 +710,9 @@ class DataImportService:
                             except ValueError:
                                 continue
                     except Exception:
-                        logger.warning(f"Could not parse departure time: {train_data['departure_time']}")
+                        logger.warning(
+                            f"Could not parse departure time: {train_data['departure_time']}"
+                        )
 
         return train_data
 
@@ -734,7 +748,9 @@ class DataImportService:
                         # Try other common formats
                         for fmt in ["%Y-%m-%d %H:%M:%S", "%d-%b-%Y %I:%M:%S %p"]:
                             try:
-                                train_data["departure_time"] = datetime.strptime(departure_time, fmt)
+                                train_data["departure_time"] = datetime.strptime(
+                                    departure_time, fmt
+                                )
                                 break
                             except ValueError:
                                 continue
@@ -745,9 +761,7 @@ class DataImportService:
 
         return train_data
 
-    def _import_train_record(
-        self, train_data: Dict[str, Any], timestamp
-    ) -> Tuple[bool, bool]:
+    def _import_train_record(self, train_data: Dict[str, Any], timestamp) -> Tuple[bool, bool]:
         """
         Import a single train record into the database.
 
@@ -773,13 +787,13 @@ class DataImportService:
                     "destination": train_data.get("destination"),
                     "line_code": train_data.get("line_code"),
                 }
-                
+
                 # Update train in database - using the repository will properly handle
                 # track_assigned_at and track_released_at fields
                 self.train_repo.update_train(existing_train, update_data, timestamp)
                 logger.debug(f"Updated train {existing_train.train_id}")
                 return False, True
-            
+
             else:
                 # Create new train record
                 new_train = {
@@ -791,16 +805,16 @@ class DataImportService:
                     "track": train_data.get("track", ""),
                     "status": train_data.get("status", ""),
                 }
-                
+
                 # Set track_assigned_at if track is already known
                 if train_data.get("track"):
                     new_train["track_assigned_at"] = timestamp
-                
+
                 # Create train in database
                 self.train_repo.create_train(new_train, timestamp)
                 logger.debug(f"Created new train {new_train['train_id']}")
                 return True, False
-                
+
         except Exception as e:
             logger.error(f"Error importing train record: {str(e)}")
             raise

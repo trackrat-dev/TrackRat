@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from trackcast.api.routers import trains, stops
+from trackcast.api.routers import stops, trains
 from trackcast.db.connection import get_db
 
 # Configure logging
