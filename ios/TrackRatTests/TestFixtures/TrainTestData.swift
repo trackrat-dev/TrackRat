@@ -367,8 +367,8 @@ struct TrainTestData {
         )
     }
     
-    static func sampleProgress() -> TrackRat.Progress {
-        return Progress(
+    static func sampleProgress() -> TrackRat.TrainProgress {
+        return TrainProgress(
             lastDeparted: DepartedStation(
                 stationCode: "NP",
                 departedAt: Date().addingTimeInterval(-420),
@@ -386,8 +386,8 @@ struct TrainTestData {
         )
     }
     
-    static func enhancedProgress() -> TrackRat.Progress {
-        return Progress(
+    static func enhancedProgress() -> TrackRat.TrainProgress {
+        return TrainProgress(
             lastDeparted: DepartedStation(
                 stationCode: "NY",
                 departedAt: Date().addingTimeInterval(-1800),

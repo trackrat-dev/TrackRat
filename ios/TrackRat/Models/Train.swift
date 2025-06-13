@@ -26,7 +26,7 @@ struct Train: Identifiable, Codable {
     
     // New enhanced fields
     let statusV2: StatusV2?
-    let progress: Progress?
+    let progress: TrainProgress?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -100,7 +100,7 @@ struct Train: Identifiable, Codable {
             
             // New enhanced fields
             statusV2 = try container.decodeIfPresent(StatusV2.self, forKey: .statusV2)
-            progress = try container.decodeIfPresent(Progress.self, forKey: .progress)
+            progress = try container.decodeIfPresent(TrainProgress.self, forKey: .progress)
             
         } else {
             // Legacy format
@@ -133,7 +133,7 @@ struct Train: Identifiable, Codable {
     }
     
     // Programmatic initializer for creating Train objects directly
-    init(id: Int, trainId: String, line: String, destination: String, departureTime: Date, track: String?, status: TrainStatus, delayMinutes: Int?, stops: [Stop]?, predictionData: PredictionData?, originStationCode: String?, dataSource: String?, consolidatedId: String? = nil, originStation: OriginStation? = nil, dataSources: [DataSource]? = nil, currentPosition: CurrentPosition? = nil, trackAssignment: TrackAssignment? = nil, statusSummary: StatusSummary? = nil, consolidationMetadata: ConsolidationMetadata? = nil, statusV2: StatusV2? = nil, progress: Progress? = nil) {
+    init(id: Int, trainId: String, line: String, destination: String, departureTime: Date, track: String?, status: TrainStatus, delayMinutes: Int?, stops: [Stop]?, predictionData: PredictionData?, originStationCode: String?, dataSource: String?, consolidatedId: String? = nil, originStation: OriginStation? = nil, dataSources: [DataSource]? = nil, currentPosition: CurrentPosition? = nil, trackAssignment: TrackAssignment? = nil, statusSummary: StatusSummary? = nil, consolidationMetadata: ConsolidationMetadata? = nil, statusV2: StatusV2? = nil, progress: TrainProgress? = nil) {
         self.id = id
         self.trainId = trainId
         self.line = line
@@ -478,7 +478,7 @@ extension Train {
     }
     
     /// Get journey progress information
-    var journeyProgress: Progress? {
+    var journeyProgress: TrainProgress? {
         return progress
     }
     
@@ -620,7 +620,7 @@ struct NextArrival: Codable {
     }
 }
 
-struct Progress: Codable {
+struct TrainProgress: Codable {
     let lastDeparted: DepartedStation?
     let nextArrival: NextArrival?
     let journeyPercent: Int
