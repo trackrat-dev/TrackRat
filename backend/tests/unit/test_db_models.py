@@ -49,6 +49,7 @@ class TestTrainModel:
     
     def test_train_track_assignment(self, db_session):
         """Test updating a train with track assignment."""
+        from datetime import datetime
         # Use a unique test train ID
         test_train_id = "TEST-67890"
         test_departure_time = datetime.fromisoformat("2025-05-09T11:45:00")
@@ -81,7 +82,7 @@ class TestTrainModel:
             "track": "5",
             "status": "BOARDING"
         }
-        repo.update_train(train, update_data)
+        repo.update_train(train, update_data, datetime.now())
         
         # Fetch from DB to confirm
         updated_train = db_session.query(Train).filter_by(id=train.id).first()
