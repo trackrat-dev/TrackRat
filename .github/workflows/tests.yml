@@ -1,0 +1,28 @@
+name: Tests
+on: [push, pull_request]
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:13
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Run backend tests
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          ./tests/run_all_tests.sh
+
+  ios-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run iOS tests
+        run: |
+          cd ios
+          xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 15'
