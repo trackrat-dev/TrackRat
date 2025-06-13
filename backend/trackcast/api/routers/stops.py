@@ -6,9 +6,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from trackcast.db.connection import get_db
-from trackcast.db.repository import TrainStopRepository, TrainRepository
 from trackcast.api.models import TrainListResponse, TrainResponse
+from trackcast.db.connection import get_db
+from trackcast.db.repository import TrainRepository, TrainStopRepository
 
 
 def get_train_stop_repository():
@@ -29,12 +29,14 @@ logger = logging.getLogger(__name__)
 
 class Station(BaseModel):
     """A train station."""
+
     station_code: Optional[str] = None
     station_name: str
 
 
 class StationListResponse(BaseModel):
     """Response model for listing stations."""
+
     stations: List[Station]
     total_count: int
 
@@ -46,7 +48,7 @@ async def list_stations(
 ):
     """
     Get a list of all train stations.
-    
+
     Parameters:
     - search: Optional search query to filter stations by name or code
     """
@@ -55,13 +57,10 @@ async def list_stations(
             stations_data = stop_repo.search_stations(search)
         else:
             stations_data = stop_repo.get_all_stations()
-        
+
         stations = [Station(**station) for station in stations_data]
-        
-        return {
-            "stations": stations,
-            "total_count": len(stations)
-        }
+
+        return {"stations": stations, "total_count": len(stations)}
     except Exception as e:
         logger.error(f"Error fetching stations: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -77,7 +76,7 @@ async def get_trains_for_station(
 ):
     """
     Get all trains that stop at a specific station.
-    
+
     Parameters:
     - station_identifier: Station code (e.g., "PH") or station name (e.g., "Philadelphia")
     - limit: Maximum number of trains to return
@@ -92,7 +91,7 @@ async def get_trains_for_station(
                 limit=limit,
                 offset=offset,
                 sort_by="departure_time",
-                sort_order="asc"
+                sort_order="asc",
             )
         else:
             # Likely a station name
@@ -100,17 +99,18 @@ async def get_trains_for_station(
                 stops_at_station_name=station_identifier,
                 limit=limit,
                 offset=offset,
-                sort_by="departure_time", 
-                sort_order="asc"
+                sort_by="departure_time",
+                sort_order="asc",
             )
-        
+
         # Enrich trains with stop data
         from trackcast.api.routers.trains import _enrich_train_with_stops
+
         enriched_trains = []
         for train in trains:
             enriched_train = _enrich_train_with_stops(train, stop_repo)
             enriched_trains.append(enriched_train)
-        
+
         return {
             "metadata": {
                 "timestamp": "2024-01-01T00:00:00",  # Will be set by actual timestamp

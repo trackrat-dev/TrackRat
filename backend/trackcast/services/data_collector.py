@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Tuple
 from sqlalchemy.orm import Session
 
 from trackcast.config import settings
-from trackcast.data.collectors import NJTransitCollector, AmtrakCollector
+from trackcast.data.collectors import AmtrakCollector, NJTransitCollector
 from trackcast.db.models import Train
 from trackcast.db.repository import TrainRepository, TrainStopRepository
 from trackcast.exceptions import APIError
@@ -35,28 +35,39 @@ class DataCollectorService:
         self.session = db_session
         self.train_repo = TrainRepository(db_session)
         self.stop_repo = TrainStopRepository(db_session)
-        
+
         # Create collectors for each enabled station
         self.station_collectors = []
-        for station in settings.njtransit_api.stations:
-            if station.enabled:
-                collector = NJTransitCollector(
-                    base_url=settings.njtransit_api.base_url,
-                    station_code=station.code,
-                    station_name=station.name,
-                    retry_attempts=settings.njtransit_api.retry_attempts,
-                    timeout=settings.njtransit_api.timeout_seconds,
-                )
-                self.station_collectors.append({
-                    "station_code": station.code,
-                    "station_name": station.name,
-                    "collector": collector,
-                    "collector_type": "njtransit"
-                })
-                logger.info(f"Initialized NJ Transit collector for station: {station.name} ({station.code})")
+
+        # Check if njtransit_api settings exist and have stations
+        if (
+            hasattr(settings, "njtransit_api")
+            and settings.njtransit_api
+            and hasattr(settings.njtransit_api, "stations")
+        ):
+            for station in settings.njtransit_api.stations:
+                if station.enabled:
+                    collector = NJTransitCollector(
+                        base_url=settings.njtransit_api.base_url,
+                        station_code=station.code,
+                        station_name=station.name,
+                        retry_attempts=settings.njtransit_api.retry_attempts,
+                        timeout=settings.njtransit_api.timeout_seconds,
+                    )
+                    self.station_collectors.append(
+                        {
+                            "station_code": station.code,
+                            "station_name": station.name,
+                            "collector": collector,
+                            "collector_type": "njtransit",
+                        }
+                    )
+                    logger.info(
+                        f"Initialized NJ Transit collector for station: {station.name} ({station.code})"
+                    )
 
         # Create Amtrak collector if enabled
-        if getattr(settings, 'amtrak_api', None) and getattr(settings.amtrak_api, 'enabled', False):
+        if getattr(settings, "amtrak_api", None) and getattr(settings.amtrak_api, "enabled", False):
             try:
                 amtrak_collector = AmtrakCollector(
                     base_url=settings.amtrak_api.base_url,
@@ -64,12 +75,14 @@ class DataCollectorService:
                     timeout=settings.amtrak_api.timeout_seconds,
                     debug_mode=settings.amtrak_api.debug_mode,
                 )
-                self.station_collectors.append({
-                    "station_code": "AMTRAK",
-                    "station_name": "Amtrak Network",
-                    "collector": amtrak_collector,
-                    "collector_type": "amtrak"
-                })
+                self.station_collectors.append(
+                    {
+                        "station_code": "AMTRAK",
+                        "station_name": "Amtrak Network",
+                        "collector": amtrak_collector,
+                        "collector_type": "amtrak",
+                    }
+                )
                 logger.info("Initialized Amtrak collector for all Amtrak routes")
             except Exception as e:
                 logger.error(f"Failed to initialize Amtrak collector: {str(e)}")
@@ -91,7 +104,7 @@ class DataCollectorService:
             "trains_updated": 0,
             "trains_departed": 0,
             "duration_ms": 0,
-            "station_details": {}
+            "station_details": {},
         }
 
         all_success = True
@@ -102,17 +115,19 @@ class DataCollectorService:
             station_name = station_info["station_name"]
             collector = station_info["collector"]
             collector_type = station_info["collector_type"]
-            
+
             station_stats = {
                 "trains_total": 0,
                 "trains_new": 0,
                 "trains_updated": 0,
                 "success": False,
-                "error": None
+                "error": None,
             }
-            
+
             try:
-                logger.info(f"Starting data collection for station: {station_name} ({station_code})")
+                logger.info(
+                    f"Starting data collection for station: {station_name} ({station_code})"
+                )
                 data, collector_stats = collector.run()
 
                 # Process collected data differently based on collector type
@@ -122,19 +137,19 @@ class DataCollectorService:
                     station_success, processing_stats = self._process_train_data_for_station(
                         data, station_code, station_name
                     )
-                
+
                 if station_success:
                     station_stats["success"] = True
                     station_stats["trains_total"] = len(data)
                     station_stats["trains_new"] = processing_stats.get("trains_new", 0)
                     station_stats["trains_updated"] = processing_stats.get("trains_updated", 0)
-                    
+
                     # Update overall stats
                     stats["stations_processed"] += 1
                     stats["trains_total"] += station_stats["trains_total"]
                     stats["trains_new"] += station_stats["trains_new"]
                     stats["trains_updated"] += station_stats["trains_updated"]
-                    
+
                     logger.info(
                         f"Processed {station_stats['trains_total']} trains for {station_name}: "
                         f"{station_stats['trains_new']} new, {station_stats['trains_updated']} updated"
@@ -156,18 +171,18 @@ class DataCollectorService:
                 stats["stations_failed"] += 1
                 all_success = False
                 logger.error(f"Error collecting data for station {station_name}: {str(e)}")
-            
+
             # Add station details to stats
             stats["station_details"][station_code] = station_stats
 
         # Final statistics
         stats["duration_ms"] = int((time.time() - start_time) * 1000)
-        
+
         logger.info(
             f"Data collection completed: {stats['stations_processed']} stations processed, "
             f"{stats['stations_failed']} failed, {stats['trains_total']} total trains in {stats['duration_ms']}ms"
         )
-        
+
         return all_success, stats
 
     def _process_train_data_for_station(
@@ -186,8 +201,9 @@ class DataCollectorService:
         """
         try:
             from trackcast.services.station_mapping import StationMapper
+
             station_mapper = StationMapper()
-            
+
             trains_new = 0
             trains_updated = 0
             trains_departed = 0
@@ -205,7 +221,9 @@ class DataCollectorService:
                 if isinstance(departure_time, str):
                     try:
                         # Normalize time to nearest minute for consistency
-                        normalized_time_str = station_mapper.normalize_time_to_nearest_minute(departure_time)
+                        normalized_time_str = station_mapper.normalize_time_to_nearest_minute(
+                            departure_time
+                        )
                         departure_time = datetime.fromisoformat(normalized_time_str)
                     except ValueError:
                         # Try parsing as original string
@@ -229,10 +247,12 @@ class DataCollectorService:
                     update_data = {
                         "track": train_record.get("track"),
                         "line": train_record.get("line"),
-                        "destination": train_record.get("destination"),  # Already cleaned in collector
+                        "destination": train_record.get(
+                            "destination"
+                        ),  # Already cleaned in collector
                         "line_code": train_record.get("line_code"),
                     }
-                    
+
                     # Only update status if it's not BOARDING for Amtrak trains
                     # (BOARDING status is misleading as trains show this even when at different locations)
                     new_status = train_record.get("status")
@@ -240,7 +260,9 @@ class DataCollectorService:
                     if not (data_source == "amtrak" and new_status == "BOARDING"):
                         update_data["status"] = new_status
                     else:
-                        logger.debug(f"Skipping BOARDING status update for Amtrak train {train_record.get('train_id')}")
+                        logger.debug(
+                            f"Skipping BOARDING status update for Amtrak train {train_record.get('train_id')}"
+                        )
 
                     self.train_repo.update_train(existing_train, update_data, current_time)
                     trains_updated += 1
@@ -256,7 +278,9 @@ class DataCollectorService:
                         "origin_station_name": station_name,
                         "line": train_record.get("line"),
                         "line_code": train_record.get("line_code"),
-                        "destination": train_record.get("destination"),  # Already cleaned in collector
+                        "destination": train_record.get(
+                            "destination"
+                        ),  # Already cleaned in collector
                         "departure_time": departure_time,
                         "track": train_record.get("track"),
                         "status": train_record.get("status"),
@@ -281,19 +305,23 @@ class DataCollectorService:
                             normalized_stop = stop.copy()
                             for time_field in ["scheduled_time", "departure_time"]:
                                 if time_field in normalized_stop and normalized_stop[time_field]:
-                                    normalized_stop[time_field] = station_mapper.normalize_time_to_nearest_minute(
-                                        normalized_stop[time_field]
+                                    normalized_stop[time_field] = (
+                                        station_mapper.normalize_time_to_nearest_minute(
+                                            normalized_stop[time_field]
+                                        )
                                     )
                             normalized_stops.append(normalized_stop)
-                        
+
                         self.stop_repo.upsert_train_stops(
                             train_record.get("train_id"),
                             departure_time,
                             normalized_stops,
-                            train_record.get("data_source", "njtransit")
+                            train_record.get("data_source", "njtransit"),
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to process stops for train {train_record.get('train_id')}: {str(e)}")
+                        logger.warning(
+                            f"Failed to process stops for train {train_record.get('train_id')}: {str(e)}"
+                        )
 
             # Check for trains that have departed but aren't in the API response
             departed_count = self._check_departed_trains(current_train_ids, station_code)
@@ -304,11 +332,11 @@ class DataCollectorService:
                 f"Processed {len(train_data)} trains for {station_name}: "
                 f"{trains_new} new, {trains_updated} updated, {trains_departed} departed"
             )
-            
+
             return True, {
                 "trains_new": trains_new,
                 "trains_updated": trains_updated,
-                "trains_departed": trains_departed
+                "trains_departed": trains_departed,
             }
 
         except Exception as e:
@@ -323,7 +351,7 @@ class DataCollectorService:
         Args:
             current_train_ids: Set of (train_id, departure_time) tuples from current API response
             station_code: Station code to filter trains
-            
+
         Returns:
             Number of trains marked as departed
         """
@@ -342,13 +370,13 @@ class DataCollectorService:
             )
 
             # Log the SQL query being executed
-            query_sql = str(query.statement.compile(
-                compile_kwargs={"literal_binds": True}
-            ))
+            query_sql = str(query.statement.compile(compile_kwargs={"literal_binds": True}))
             logger.info(f"Executing SQL query: {query_sql}")
 
             potential_departed = query.all()
-            logger.info(f"Found {len(potential_departed)} boarding trains with departure times in the past")
+            logger.info(
+                f"Found {len(potential_departed)} boarding trains with departure times in the past"
+            )
 
             departed_count = 0
 
@@ -384,7 +412,7 @@ class DataCollectorService:
                 )
             else:
                 logger.info("No trains needed to be marked as departed in this collection cycle")
-                
+
             return departed_count
 
         except Exception as e:
@@ -404,8 +432,9 @@ class DataCollectorService:
         """
         try:
             from trackcast.services.station_mapping import StationMapper
+
             station_mapper = StationMapper()
-            
+
             trains_new = 0
             trains_updated = 0
             trains_departed = 0
@@ -413,7 +442,11 @@ class DataCollectorService:
 
             # Get a set of train IDs in this batch for later comparison
             current_train_ids = {
-                (train.get("train_id"), train.get("departure_time"), train.get("origin_station_code"))
+                (
+                    train.get("train_id"),
+                    train.get("departure_time"),
+                    train.get("origin_station_code"),
+                )
                 for train in train_data
             }
 
@@ -421,7 +454,7 @@ class DataCollectorService:
             for train_record in train_data:
                 # Normalize Amtrak data for better consolidation
                 normalized_train = self._normalize_amtrak_train_data(train_record, station_mapper)
-                
+
                 # Convert string departure time to datetime if needed
                 departure_time = normalized_train.get("departure_time")
                 if isinstance(departure_time, str):
@@ -432,12 +465,16 @@ class DataCollectorService:
                         departure_time = None
 
                 if not departure_time:
-                    logger.warning(f"Skipping Amtrak train with missing departure time: {normalized_train}")
+                    logger.warning(
+                        f"Skipping Amtrak train with missing departure time: {normalized_train}"
+                    )
                     continue
 
                 origin_station_code = normalized_train.get("origin_station_code")
                 if not origin_station_code:
-                    logger.warning(f"Skipping Amtrak train with missing origin station: {normalized_train}")
+                    logger.warning(
+                        f"Skipping Amtrak train with missing origin station: {normalized_train}"
+                    )
                     continue
 
                 # Check if train already exists (including data source)
@@ -493,87 +530,104 @@ class DataCollectorService:
                             normalized_train.get("train_id"),
                             departure_time,
                             normalized_train["stops"],
-                            "amtrak"
+                            "amtrak",
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to process stops for Amtrak train {normalized_train.get('train_id')}: {str(e)}")
+                        logger.warning(
+                            f"Failed to process stops for Amtrak train {normalized_train.get('train_id')}: {str(e)}"
+                        )
 
             # Log results
             logger.info(
                 f"Processed {len(train_data)} Amtrak trains: "
                 f"{trains_new} new, {trains_updated} updated, {trains_departed} departed"
             )
-            
+
             return True, {
                 "trains_new": trains_new,
                 "trains_updated": trains_updated,
-                "trains_departed": trains_departed
+                "trains_departed": trains_departed,
             }
 
         except Exception as e:
             logger.error(f"Error processing Amtrak train data: {str(e)}")
             self.session.rollback()
             return False, {}
-    
-    def _normalize_amtrak_train_data(self, train_record: Dict[str, Any], station_mapper) -> Dict[str, Any]:
+
+    def _normalize_amtrak_train_data(
+        self, train_record: Dict[str, Any], station_mapper
+    ) -> Dict[str, Any]:
         """
         Normalize Amtrak train data to match NJ Transit format for better consolidation.
-        
+
         Args:
             train_record: Original Amtrak train data
             station_mapper: StationMapper instance
-            
+
         Returns:
             Normalized train record
         """
         try:
             normalized = train_record.copy()
-            
+
             # Check if this train should be aligned with NJ Transit departure time
             train_id = train_record.get("train_id")
             departure_time = train_record.get("departure_time")
-            
+
             if departure_time:
                 # For now, just normalize time to nearest minute (skip NJ Transit alignment to avoid errors)
-                normalized["departure_time"] = station_mapper.normalize_time_to_nearest_minute(departure_time)
-            
+                normalized["departure_time"] = station_mapper.normalize_time_to_nearest_minute(
+                    departure_time
+                )
+
             # Normalize origin station
             origin_code = train_record.get("origin_station_code")
             origin_name = train_record.get("origin_station_name")
             if origin_code or origin_name:
-                normalized_station = station_mapper.normalize_amtrak_station(origin_code, origin_name)
-                if normalized_station["code"] != origin_code or normalized_station["name"] != origin_name:
+                normalized_station = station_mapper.normalize_amtrak_station(
+                    origin_code, origin_name
+                )
+                if (
+                    normalized_station["code"] != origin_code
+                    or normalized_station["name"] != origin_name
+                ):
                     normalized["origin_station_code"] = normalized_station["code"]
                     normalized["origin_station_name"] = normalized_station["name"]
-                    logger.debug(f"Normalized origin station: {origin_code}/{origin_name} -> {normalized_station['code']}/{normalized_station['name']}")
-            
+                    logger.debug(
+                        f"Normalized origin station: {origin_code}/{origin_name} -> {normalized_station['code']}/{normalized_station['name']}"
+                    )
+
             # Normalize stops
             if "stops" in normalized and normalized["stops"]:
                 normalized_stops = []
                 for i, stop in enumerate(normalized["stops"]):
                     normalized_stop = stop.copy()
-                    
+
                     # Normalize station code and name
                     stop_code = stop.get("station_code")
                     stop_name = stop.get("station_name")
                     if stop_code or stop_name:
-                        normalized_station = station_mapper.normalize_amtrak_station(stop_code, stop_name)
+                        normalized_station = station_mapper.normalize_amtrak_station(
+                            stop_code, stop_name
+                        )
                         normalized_stop["station_code"] = normalized_station["code"]
                         normalized_stop["station_name"] = normalized_station["name"]
-                    
+
                     # Normalize times
                     for time_field in ["scheduled_time", "departure_time"]:
                         if time_field in normalized_stop and normalized_stop[time_field]:
-                            normalized_stop[time_field] = station_mapper.normalize_time_to_nearest_minute(
-                                normalized_stop[time_field]
+                            normalized_stop[time_field] = (
+                                station_mapper.normalize_time_to_nearest_minute(
+                                    normalized_stop[time_field]
+                                )
                             )
-                    
+
                     normalized_stops.append(normalized_stop)
-                
+
                 normalized["stops"] = normalized_stops
-            
+
             return normalized
-        
+
         except Exception as e:
             logger.error(f"Error normalizing Amtrak train data: {str(e)}")
             # Return original data if normalization fails

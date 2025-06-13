@@ -87,7 +87,7 @@ class TestCompletePipeline:
             }
             
             # Mock the model loading
-            with patch.object(PredictionService, "_load_model", return_value=True):
+            with patch.object(PredictionService, "_load_model_for_station", return_value=True):
                 # Mock the prediction method
                 with patch.object(PredictionService, "_predict_train", return_value=mock_inference):
                     prediction_service = PredictionService(db_session)
@@ -95,7 +95,11 @@ class TestCompletePipeline:
             # Execute pipeline stages
             
             # Stage 1: Collect and store data
-            success, stats = data_service.run_collection()
+            # Since we have no real collectors configured in test env, directly process test data
+            processed_trains, _ = collector.run()
+            success, processing_stats = data_service._process_train_data_for_station(
+                processed_trains, "NY", "New York Penn Station"
+            )
             assert success == True
             
             # Check trains were saved to db

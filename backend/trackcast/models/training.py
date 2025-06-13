@@ -8,18 +8,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
-from sqlalchemy.orm import Session
+import seaborn as sns
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
+from sqlalchemy.orm import Session
 
 from trackcast.config import settings
 from trackcast.db.models import ModelData, Train
 from trackcast.models.pipeline import TrackPredictionPipeline
+from trackcast.visualization.calibration import plot_all_calibration_curves, plot_calibration_curve
+from trackcast.visualization.confusion import plot_all_confusion_matrices, plot_confusion_matrix
+from trackcast.visualization.feature_importance import (
+    plot_feature_importance,
+    plot_track_specific_feature_importance,
+)
 from trackcast.visualization.training import plot_learning_curves
-from trackcast.visualization.calibration import plot_calibration_curve, plot_all_calibration_curves
-from trackcast.visualization.confusion import plot_confusion_matrix, plot_all_confusion_matrices
-from trackcast.visualization.feature_importance import plot_feature_importance, plot_track_specific_feature_importance
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +44,7 @@ def train_models_for_all_stations(db_session: Session) -> Tuple[bool, Dict[str, 
         "total_success": 0,
         "total_failed": 0,
     }
-    
+
     try:
         # Get unique station codes from the database
         station_codes = (
@@ -51,24 +54,24 @@ def train_models_for_all_stations(db_session: Session) -> Tuple[bool, Dict[str, 
             .all()
         )
         station_codes = [code[0] for code in station_codes]
-        
+
         logger.info(f"Found {len(station_codes)} unique station codes: {station_codes}")
-        
+
         for station_code in station_codes:
             logger.info(f"Training model for station: {station_code}")
             success, stats = train_model_for_station(db_session, station_code)
-            
+
             overall_stats["stations"][station_code] = stats
-            
+
             if success:
                 overall_stats["total_success"] += 1
             else:
                 overall_stats["total_failed"] += 1
-        
+
         overall_stats["end_time"] = datetime.now().isoformat()
-        
+
         return overall_stats["total_failed"] == 0, overall_stats
-    
+
     except Exception as e:
         logger.error(f"Error in multi-station training: {str(e)}")
         overall_stats["error"] = str(e)
@@ -161,9 +164,7 @@ def train_model_for_station(db_session: Session, station_code: str) -> Tuple[boo
         stats["test_size"] = len(test_data)
 
         # Initialize model with station-specific version
-        model = TrackPredictionPipeline(
-            model_version=f"{settings.model.version}_{station_code}"
-        )
+        model = TrackPredictionPipeline(model_version=f"{settings.model.version}_{station_code}")
 
         # Train the model
         if len(val_data) == 0:
@@ -176,29 +177,35 @@ def train_model_for_station(db_session: Session, station_code: str) -> Tuple[boo
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         model_filename = f"track_pred_model_{settings.model.version}_{station_code}_{timestamp}.pt"
         model_path = models_dir / model_filename
-        
+
         model.save(str(model_path))
         logger.info(f"Saved model for station {station_code} to {model_path}")
 
         # Evaluate on test set
         if test_data and test_tracks:
             test_predictions = model.predict(test_data)
-            predicted_tracks = [max(pred.items(), key=lambda x: x[1])[0] if pred else None for pred in test_predictions]
-            
+            predicted_tracks = [
+                max(pred.items(), key=lambda x: x[1])[0] if pred else None
+                for pred in test_predictions
+            ]
+
             stats["accuracy"] = accuracy_score(test_tracks, predicted_tracks)
             stats["f1_score"] = f1_score(test_tracks, predicted_tracks, average="weighted")
-            
-            logger.info(f"Station {station_code} - Test accuracy: {stats['accuracy']:.3f}, F1 score: {stats['f1_score']:.3f}")
+
+            logger.info(
+                f"Station {station_code} - Test accuracy: {stats['accuracy']:.3f}, F1 score: {stats['f1_score']:.3f}"
+            )
 
         stats["model_path"] = str(model_path)
         stats["end_time"] = datetime.now().isoformat()
-        
+
         return True, stats
 
     except Exception as e:
         logger.error(f"Error training model for station {station_code}: {str(e)}")
         stats["error_message"] = str(e)
         import traceback
+
         logger.error(f"Stack trace: {traceback.format_exc()}")
         return False, stats
 
@@ -240,20 +247,21 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
         logger.info(f"Total trains in database: {all_trains_count}")
 
         # Count trains with model data
-        trains_with_model_data = db_session.query(Train).filter(Train.model_data_id.isnot(None)).count()
+        trains_with_model_data = (
+            db_session.query(Train).filter(Train.model_data_id.isnot(None)).count()
+        )
         logger.info(f"Trains with model data: {trains_with_model_data}")
 
         # Count trains with tracks
-        trains_with_tracks = db_session.query(Train).filter(
-            Train.track != "",
-            Train.track.isnot(None)
-        ).count()
+        trains_with_tracks = (
+            db_session.query(Train).filter(Train.track != "", Train.track.isnot(None)).count()
+        )
         logger.info(f"Trains with track assignments: {trains_with_tracks}")
 
         # Count trains with track assignment times
-        trains_with_track_times = db_session.query(Train).filter(
-            Train.track_assigned_at.isnot(None)
-        ).count()
+        trains_with_track_times = (
+            db_session.query(Train).filter(Train.track_assigned_at.isnot(None)).count()
+        )
         logger.info(f"Trains with track assignment times: {trains_with_track_times}")
 
         query = (
@@ -340,9 +348,7 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
         logger.info("Updated train_split column for all train records")
 
         # Initialize model
-        model = TrackPredictionPipeline(
-            model_version=settings.model.version
-        )
+        model = TrackPredictionPipeline(model_version=settings.model.version)
 
         # Check for valid validation data
         if len(val_data) == 0 or len(val_tracks) == 0:
@@ -357,7 +363,9 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
             test_tracks = []
 
         # Log data shapes for debugging
-        logger.info(f"Final data shapes - Train: {len(train_data)}/{len(train_tracks)}, Val: {len(val_data) if val_data else 0}/{len(val_tracks) if val_tracks else 0}, Test: {len(test_data)}/{len(test_tracks)}")
+        logger.info(
+            f"Final data shapes - Train: {len(train_data)}/{len(train_tracks)}, Val: {len(val_data) if val_data else 0}/{len(val_tracks) if val_tracks else 0}, Test: {len(test_data)}/{len(test_tracks)}"
+        )
 
         try:
             training_stats = model.train(train_data, train_tracks, val_data, val_tracks)
@@ -366,6 +374,7 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
             stats["error_message"] = f"Error in model training: {str(e)}"
             # Provide more detailed error information
             import traceback
+
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return False, stats
 
@@ -375,7 +384,10 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
 
             # Make predictions
             test_predictions = model.predict(test_data)
-            predicted_tracks = [max(pred.items(), key=lambda x: x[1])[0] if pred else None for pred in test_predictions]
+            predicted_tracks = [
+                max(pred.items(), key=lambda x: x[1])[0] if pred else None
+                for pred in test_predictions
+            ]
 
             # Calculate metrics
             accuracy = accuracy_score(test_tracks, predicted_tracks)
@@ -393,7 +405,7 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
             test_timestamps = []
             test_lines = []
             test_destinations = []
-            for i, (train, _) in enumerate(results[train_size + val_size:]):
+            for i, (train, _) in enumerate(results[train_size + val_size :]):
                 test_timestamps.append(train.departure_time)
                 test_lines.append(train.line)
                 test_destinations.append(train.destination)
@@ -404,12 +416,12 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
             # 1. Generate learning curve plots
             logger.info("Generating learning curve plots")
             plot_learning_curves(
-                training_stats.get('train_losses', []),
-                training_stats.get('val_losses', []),
-                training_stats.get('val_accuracies', []),
+                training_stats.get("train_losses", []),
+                training_stats.get("val_losses", []),
+                training_stats.get("val_accuracies", []),
                 artifacts_dir,
                 settings.model.version,
-                model_timestamp
+                model_timestamp,
             )
 
             # 2. Generate calibration curves (overall, per-line, per-destination)
@@ -421,7 +433,7 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
                 test_destinations,
                 artifacts_dir,
                 settings.model.version,
-                model_timestamp
+                model_timestamp,
             )
 
             # 3. Generate confusion matrices (overall, per-line, per-destination)
@@ -433,20 +445,19 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
                 test_destinations,
                 artifacts_dir,
                 settings.model.version,
-                model_timestamp
+                model_timestamp,
             )
-
 
             # 6. Try to generate feature importance visualization if model supports it
             try:
                 logger.info("Attempting to generate feature importance visualizations")
 
                 # Extract feature names from model
-                if hasattr(model, 'feature_columns') and model.feature_columns:
+                if hasattr(model, "feature_columns") and model.feature_columns:
                     # Get importance scores - this is model-specific
                     # For permutation importance, we'd need the model and test data
                     # For now, we'll extract feature importance from model if available
-                    if hasattr(model.model, 'feature_importances_'):
+                    if hasattr(model.model, "feature_importances_"):
                         # For tree-based models that have feature importances
                         importances = model.model.feature_importances_
                         plot_feature_importance(
@@ -454,12 +465,13 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
                             importances,
                             artifacts_dir,
                             settings.model.version,
-                            model_timestamp
+                            model_timestamp,
                         )
 
                     # If SHAP is available, try to use it
                     try:
                         import shap
+
                         logger.info("Generating SHAP-based feature importance")
                         # This would depend on model type and require more code
                         # We'll leave as a placeholder for future implementation
@@ -572,7 +584,9 @@ def evaluate_model_performance(db_session: Session, days: int = 7) -> Dict[str, 
 
         # Generate predictions
         predictions = model.predict(model_data_list)
-        predicted_tracks = [max(pred.items(), key=lambda x: x[1])[0] if pred else None for pred in predictions]
+        predicted_tracks = [
+            max(pred.items(), key=lambda x: x[1])[0] if pred else None for pred in predictions
+        ]
 
         # Calculate metrics
         accuracy = accuracy_score(tracks, predicted_tracks)
@@ -597,7 +611,7 @@ def evaluate_model_performance(db_session: Session, days: int = 7) -> Dict[str, 
             destinations,
             eval_dir,
             settings.model.version,
-            eval_timestamp
+            eval_timestamp,
         )
 
         # 2. Generate calibration curves (overall, per-line, per-destination)
@@ -609,20 +623,15 @@ def evaluate_model_performance(db_session: Session, days: int = 7) -> Dict[str, 
             destinations,
             eval_dir,
             settings.model.version,
-            eval_timestamp
+            eval_timestamp,
         )
-
 
         # For backward compatibility, still generate the basic confusion matrix and report
         eval_file = artifacts_dir / f"eval_cm_{days}days.png"
 
         # Generate a standard confusion matrix for the main output directory
         plot_confusion_matrix(
-            tracks,
-            predicted_tracks,
-            artifacts_dir,
-            settings.model.version,
-            eval_timestamp
+            tracks, predicted_tracks, artifacts_dir, settings.model.version, eval_timestamp
         )
 
         # Generate classification report

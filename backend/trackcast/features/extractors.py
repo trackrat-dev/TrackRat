@@ -95,9 +95,7 @@ class CategoricalFeatureExtractor(FeatureExtractor):
         destination_features = {}
         for d in self.all_destinations:
             safe_name = str(d).replace(" ", "_")
-            destination_features[f"Destination_{safe_name}"] = (
-                1 if str(d) == destination else 0
-            )
+            destination_features[f"Destination_{safe_name}"] = 1 if str(d) == destination else 0
 
         return {"line_features": line_features, "destination_features": destination_features}
 
@@ -115,8 +113,9 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
     def precompute_historical_data(self, reference_time=None):
         """Precompute historical track usage data for all tracks"""
         import logging
-        from trackcast.db.models import Train
         from collections import defaultdict
+
+        from trackcast.db.models import Train
 
         logger = logging.getLogger(__name__)
 
@@ -131,7 +130,9 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
             # Order by departure time for efficiency in later calculations
             historical_trains = query.order_by(Train.departure_time).all()
 
-            logger.info(f"Retrieved {len(historical_trains)} historical trains with track assignments")
+            logger.info(
+                f"Retrieved {len(historical_trains)} historical trains with track assignments"
+            )
 
             # Convert to dictionaries for easier processing
             self.historical_data = [
@@ -142,7 +143,7 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
                     "line": train.line,
                     "destination": train.destination,
                     "origin_station_code": train.origin_station_code,
-                    "internal_id": train.id  # Include database primary key
+                    "internal_id": train.id,  # Include database primary key
                 }
                 for train in historical_trains
             ]
@@ -159,7 +160,7 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
                         "origin": train.get("origin_station_code", "NY"),
                         "internal_id": train.get("internal_id"),
                         "line": train.get("line"),
-                        "destination": train.get("destination")
+                        "destination": train.get("destination"),
                     }
                     self.track_usage_timeline[track].append(train_entry)
 
@@ -186,16 +187,16 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
         Uses multiple identifiers to ensure robust matching and prevent self-conflicts.
         """
         return (
-            timeline_entry["train_id"] == target_train.train_id and
-            timeline_entry["time"] == target_train.departure_time and
-            timeline_entry["origin"] == target_train.origin_station_code and
-            timeline_entry["internal_id"] == target_train.id
+            timeline_entry["train_id"] == target_train.train_id
+            and timeline_entry["time"] == target_train.departure_time
+            and timeline_entry["origin"] == target_train.origin_station_code
+            and timeline_entry["internal_id"] == target_train.id
         )
 
     def extract(self, train, reference_time=None) -> Dict[str, Any]:
         """Extract track usage features for a train"""
-        import logging
         import bisect
+        import logging
 
         logger = logging.getLogger(__name__)
 
@@ -205,10 +206,14 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
             logger.debug(f"Using reference_time: {train_time}")
         elif hasattr(train, "departure_time"):
             train_time = train.departure_time
-            logger.debug(f"Using train.departure_time: {train_time} for train {getattr(train, 'id', 'unknown')}")
+            logger.debug(
+                f"Using train.departure_time: {train_time} for train {getattr(train, 'id', 'unknown')}"
+            )
         else:
             train_time = train.get("departure_time")
-            logger.debug(f"Using train dict departure_time: {train_time} for train {train.get('id', 'unknown')}")
+            logger.debug(
+                f"Using train dict departure_time: {train_time} for train {train.get('id', 'unknown')}"
+            )
 
         # Initialize result dictionary
         result = {}
@@ -216,7 +221,9 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
         # If we don't have precomputed data, try to populate it
         # This is a fallback in case extract() is called without precomputation
         if self.historical_data is None:
-            logger.warning("No precomputed data available in TrackUsageFeatureExtractor. Precomputing now...")
+            logger.warning(
+                "No precomputed data available in TrackUsageFeatureExtractor. Precomputing now..."
+            )
             self.precompute_historical_data(reference_time=train_time)
 
         # For each track, calculate:
@@ -226,7 +233,7 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
         for track in self.all_tracks:
             # Get track usage timeline (now contains train metadata, not just times)
             track_timeline = self.track_usage_timeline.get(track, [])
-            
+
             # Extract times for binary search operations
             track_times = [entry["time"] for entry in track_timeline]
 
@@ -250,11 +257,11 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
             # to catch trains that are boarding or about to board
             active_window_before = pd.Timedelta(minutes=2)
             active_window_after = pd.Timedelta(minutes=2)
-            
+
             # Find trains that would be actively using the track
             active_start_time = train_time - active_window_before
             active_end_time = train_time + active_window_after
-            
+
             # Check each train in the timeline to see if it's in the active window
             # and exclude the target train using robust identification
             active_trains = []
@@ -265,21 +272,25 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
                     # Use robust train identification to exclude the target train
                     if not self._is_same_train(train_entry, train):
                         active_trains.append(train_entry)
-            
+
             is_occupied = 1 if active_trains else 0
-            
+
             # Defensive validation: Check for self-conflicts (should never happen now)
-            target_train_in_window = any(self._is_same_train(entry, train) for entry in active_trains)
+            target_train_in_window = any(
+                self._is_same_train(entry, train) for entry in active_trains
+            )
             if target_train_in_window:
                 logger.warning(
                     f"Self-conflict detected for train {train.train_id} on track {track} - "
                     f"this should not happen with the new exclusion logic!"
                 )
-            
+
             # Debug logging for the first few tracks to verify exclusion is working
             if track in ["1", "2", "3", "4"] and active_trains:
                 train_id = getattr(train, "train_id", "unknown")
-                conflicting_trains = [f"{entry['train_id']}@{entry['time']}" for entry in active_trains]
+                conflicting_trains = [
+                    f"{entry['train_id']}@{entry['time']}" for entry in active_trains
+                ]
                 logger.debug(
                     f"Train {train_id} Track_{track}: {len(active_trains)} conflicting trains: "
                     f"{', '.join(conflicting_trains)}"
@@ -301,7 +312,9 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
                     times_t = [entry["time"] for entry in track_timeline_t]
                     t_day_ago_index = bisect.bisect_left(times_t, day_ago)
                     t_now_index = bisect.bisect_left(times_t, train_time)
-                    total_day_count += (t_now_index - t_day_ago_index) if t_day_ago_index <= t_now_index else 0
+                    total_day_count += (
+                        (t_now_index - t_day_ago_index) if t_day_ago_index <= t_now_index else 0
+                    )
 
             # Calculate utilization percentage
             utilization_24h = track_day_count / total_day_count if total_day_count > 0 else 0.0
@@ -314,7 +327,9 @@ class TrackUsageFeatureExtractor(FeatureExtractor):
             # Add debug log for first three tracks to verify they differ between trains
             if track in ["1", "2", "3"]:
                 train_id = getattr(train, "train_id", getattr(train, "id", "unknown"))
-                logger.debug(f"Train {train_id} Track_{track}_Last_Used = {minutes_since_last_use:.2f} min at time {train_time}")
+                logger.debug(
+                    f"Train {train_id} Track_{track}_Last_Used = {minutes_since_last_use:.2f} min at time {train_time}"
+                )
 
         # Return with top-level key to match the expected field name in the model
         return {"track_usage_features": result}
@@ -334,8 +349,9 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
     def precompute_historical_data(self, reference_time=None):
         """Precompute historical track usage patterns for quick lookup"""
         import logging
-        from trackcast.db.models import Train
         from collections import defaultdict
+
+        from trackcast.db.models import Train
 
         logger = logging.getLogger(__name__)
 
@@ -349,7 +365,9 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
 
             historical_trains = query.all()
 
-            logger.info(f"Retrieved {len(historical_trains)} historical trains with track assignments for pattern analysis")
+            logger.info(
+                f"Retrieved {len(historical_trains)} historical trains with track assignments for pattern analysis"
+            )
 
             # Convert to dictionaries for easier processing
             self.historical_data = [
@@ -357,7 +375,7 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
                     "train_id": train.train_id,
                     "track": train.track,
                     "line": train.line,
-                    "destination": train.destination
+                    "destination": train.destination,
                 }
                 for train in historical_trains
             ]
@@ -412,7 +430,7 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
                 self.train_id_stats[train_id] = {
                     "count": count,
                     "track_counts": dict(track_counts),
-                    "track_percentages": track_percentages
+                    "track_percentages": track_percentages,
                 }
 
             # Build line statistics with precomputed percentages
@@ -430,7 +448,7 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
                 self.line_stats[line] = {
                     "count": count,
                     "track_counts": dict(track_counts),
-                    "track_percentages": track_percentages
+                    "track_percentages": track_percentages,
                 }
 
             # Build destination statistics with precomputed percentages
@@ -448,10 +466,12 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
                 self.destination_stats[dest] = {
                     "count": count,
                     "track_counts": dict(track_counts),
-                    "track_percentages": track_percentages
+                    "track_percentages": track_percentages,
                 }
 
-            logger.info(f"Precomputed stats for {len(self.train_id_stats)} train IDs, {len(self.line_stats)} lines, and {len(self.destination_stats)} destinations")
+            logger.info(
+                f"Precomputed stats for {len(self.train_id_stats)} train IDs, {len(self.line_stats)} lines, and {len(self.destination_stats)} destinations"
+            )
 
         except Exception as e:
             logger.error(f"Error precomputing historical track patterns: {str(e)}")
@@ -470,8 +490,11 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
         # This is a fallback in case extract() is called without precomputation
         if self.historical_data is None:
             import logging
+
             logger = logging.getLogger(__name__)
-            logger.warning("No precomputed data available in HistoricalTrackFeatureExtractor. Precomputing now...")
+            logger.warning(
+                "No precomputed data available in HistoricalTrackFeatureExtractor. Precomputing now..."
+            )
             self.precompute_historical_data(reference_time)
 
         # Extract train attributes
@@ -495,7 +518,9 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
         for track in self.all_tracks:
             # Default to 0.0 if no data or track not present
             if train_id_info and "track_percentages" in train_id_info:
-                result[f"Matching_TrainID_Track_{track}_Pct"] = train_id_info["track_percentages"].get(track, 0.0)
+                result[f"Matching_TrainID_Track_{track}_Pct"] = train_id_info[
+                    "track_percentages"
+                ].get(track, 0.0)
             else:
                 result[f"Matching_TrainID_Track_{track}_Pct"] = 0.0
 
@@ -505,7 +530,9 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
             result["Matching_Line_Count"] = line_info["count"]
             # Add percentages for each track
             for track in self.all_tracks:
-                result[f"Matching_Line_Track_{track}_Pct"] = line_info["track_percentages"].get(track, 0.0)
+                result[f"Matching_Line_Track_{track}_Pct"] = line_info["track_percentages"].get(
+                    track, 0.0
+                )
 
         # Get destination stats from precomputed data
         dest_info = self.destination_stats.get(destination, {})
@@ -513,7 +540,9 @@ class HistoricalTrackFeatureExtractor(FeatureExtractor):
             result["Matching_Dest_Count"] = dest_info["count"]
             # Add percentages for each track
             for track in self.all_tracks:
-                result[f"Matching_Dest_Track_{track}_Pct"] = dest_info["track_percentages"].get(track, 0.0)
+                result[f"Matching_Dest_Track_{track}_Pct"] = dest_info["track_percentages"].get(
+                    track, 0.0
+                )
 
         # Return with top-level key to match the expected field name in the model
         return {"historical_features": result}

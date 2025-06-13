@@ -9,7 +9,7 @@ import logging
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import schedule
 from sqlalchemy import text
@@ -36,10 +36,23 @@ class SchedulerService:
     Each task runs on its own schedule, as defined in the configuration.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        data_collection_service: Optional[Any] = None,
+        feature_engineering_service: Optional[Any] = None,
+        prediction_service: Optional[Any] = None,
+    ):
         """Initialize the scheduler service."""
         self.running = False
         self.thread = None
+        self.config = config or {}
+
+        # For test injection of services
+        self._data_collection_service = data_collection_service
+        self._feature_engineering_service = feature_engineering_service
+        self._prediction_service = prediction_service
+
         self._setup_schedules()
 
     def _setup_schedules(self) -> None:
@@ -47,18 +60,24 @@ class SchedulerService:
         # Clear any existing schedules
         schedule.clear()
 
-        # Data collection interval
-        collection_interval = getattr(settings.scheduler, "collection_interval_minutes", 1)
+        # Data collection interval - use config override if provided, otherwise settings
+        collection_interval = self.config.get("data_collection_interval") or getattr(
+            settings.scheduler, "collection_interval_minutes", 1
+        )
         schedule.every(collection_interval).minutes.do(self._run_data_collection)
         logger.info(f"Scheduled data collection every {collection_interval} minutes")
 
         # Feature engineering interval
-        feature_interval = getattr(settings.scheduler, "feature_engineering_interval_minutes", 5)
+        feature_interval = self.config.get("feature_engineering_interval") or getattr(
+            settings.scheduler, "feature_engineering_interval_minutes", 5
+        )
         schedule.every(feature_interval).minutes.do(self._run_feature_engineering)
         logger.info(f"Scheduled feature engineering every {feature_interval} minutes")
 
         # Prediction interval
-        prediction_interval = getattr(settings.scheduler, "prediction_interval_minutes", 2)
+        prediction_interval = self.config.get("prediction_interval") or getattr(
+            settings.scheduler, "prediction_interval_minutes", 2
+        )
         schedule.every(prediction_interval).minutes.do(self._run_prediction)
         logger.info(f"Scheduled prediction every {prediction_interval} minutes")
 
@@ -66,16 +85,20 @@ class SchedulerService:
         schedule.every(15).minutes.do(self._health_check)
         logger.info("Scheduled health check every 15 minutes")
 
-    def start(self) -> None:
+    def start(self, blocking: bool = True) -> None:
         """Start the scheduler in a separate thread."""
         if self.running:
             logger.warning("Scheduler is already running")
             return
 
         self.running = True
-        self.thread = threading.Thread(target=self._run_scheduler)
-        self.thread.daemon = True
-        self.thread.start()
+
+        if blocking:
+            self._run_scheduler()
+        else:
+            self.thread = threading.Thread(target=self._run_scheduler)
+            self.thread.daemon = True
+            self.thread.start()
 
         logger.info("Scheduler started")
 
@@ -141,6 +164,15 @@ class SchedulerService:
         """
         logger.info("Running scheduled data collection")
 
+        # Use injected service for testing, otherwise create real service
+        if self._data_collection_service:
+            try:
+                self._data_collection_service.collect_and_store_data()
+                return True, {"message": "Data collection completed"}
+            except Exception as e:
+                logger.error(f"Error in data collection task: {str(e)}")
+                return False, {"error": str(e)}
+
         def task(session: Session) -> Tuple[bool, Dict[str, Any]]:
             service = DataCollectorService(session)
             return service.run_collection()
@@ -155,6 +187,15 @@ class SchedulerService:
             Tuple of (success, stats)
         """
         logger.info("Running scheduled feature engineering with regeneration")
+
+        # Use injected service for testing, otherwise create real service
+        if self._feature_engineering_service:
+            try:
+                self._feature_engineering_service.process_features()
+                return True, {"message": "Feature engineering completed"}
+            except Exception as e:
+                logger.error(f"Error in feature engineering task: {str(e)}")
+                return False, {"error": str(e)}
 
         def task(session: Session) -> Tuple[bool, Dict[str, Any]]:
             service = FeatureEngineeringService(session)
@@ -171,6 +212,15 @@ class SchedulerService:
             Tuple of (success, stats)
         """
         logger.info("Running scheduled prediction with regeneration")
+
+        # Use injected service for testing, otherwise create real service
+        if self._prediction_service:
+            try:
+                self._prediction_service.generate_predictions()
+                return True, {"message": "Prediction completed"}
+            except Exception as e:
+                logger.error(f"Error in prediction task: {str(e)}")
+                return False, {"error": str(e)}
 
         def task(session: Session) -> Tuple[bool, Dict[str, Any]]:
             service = PredictionService(session)
