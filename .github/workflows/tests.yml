@@ -22,7 +22,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          xcode-version: '16.0'  # or latest available
       - name: Run iOS tests
         run: |
           cd ios
-          xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 15'
+          xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'
