@@ -38,26 +38,29 @@ class DataCollectorService:
 
         # Create collectors for each enabled station
         self.station_collectors = []
-        for station in settings.njtransit_api.stations:
-            if station.enabled:
-                collector = NJTransitCollector(
-                    base_url=settings.njtransit_api.base_url,
-                    station_code=station.code,
-                    station_name=station.name,
-                    retry_attempts=settings.njtransit_api.retry_attempts,
-                    timeout=settings.njtransit_api.timeout_seconds,
-                )
-                self.station_collectors.append(
-                    {
-                        "station_code": station.code,
-                        "station_name": station.name,
-                        "collector": collector,
-                        "collector_type": "njtransit",
-                    }
-                )
-                logger.info(
-                    f"Initialized NJ Transit collector for station: {station.name} ({station.code})"
-                )
+        
+        # Check if njtransit_api settings exist and have stations
+        if hasattr(settings, 'njtransit_api') and settings.njtransit_api and hasattr(settings.njtransit_api, 'stations'):
+            for station in settings.njtransit_api.stations:
+                if station.enabled:
+                    collector = NJTransitCollector(
+                        base_url=settings.njtransit_api.base_url,
+                        station_code=station.code,
+                        station_name=station.name,
+                        retry_attempts=settings.njtransit_api.retry_attempts,
+                        timeout=settings.njtransit_api.timeout_seconds,
+                    )
+                    self.station_collectors.append(
+                        {
+                            "station_code": station.code,
+                            "station_name": station.name,
+                            "collector": collector,
+                            "collector_type": "njtransit",
+                        }
+                    )
+                    logger.info(
+                        f"Initialized NJ Transit collector for station: {station.name} ({station.code})"
+                    )
 
         # Create Amtrak collector if enabled
         if getattr(settings, "amtrak_api", None) and getattr(settings.amtrak_api, "enabled", False):

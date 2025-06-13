@@ -80,7 +80,7 @@ class NJTransitCollector(BaseCollector):
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
+        base_url_or_config: Optional[Union[str, Dict[str, Any]]] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
         station_code: Optional[str] = None,
@@ -95,7 +95,7 @@ class NJTransitCollector(BaseCollector):
         Initialize NJ Transit API collector.
 
         Args:
-            base_url: Base API URL (defaults to config value)
+            base_url_or_config: Base API URL (defaults to config value) or config dict
             username: NJ Transit API username (from config or env var)
             password: NJ Transit API password (from config or env var)
             station_code: Station code to fetch data for
@@ -106,12 +106,28 @@ class NJTransitCollector(BaseCollector):
             token_file: Path to token cache file (if None, uses data_dir/token.json)
             debug_mode: Whether to save all raw API responses for debugging
         """
-        self.base_url = base_url or settings.njtransit_api.base_url
+        # Handle config dict case (for tests)
+        if isinstance(base_url_or_config, dict):
+            # Extract values from config dict, but still allow parameter overrides
+            config = base_url_or_config
+            base_url = config.get('njtransit', {}).get('api_url')
+            if username is None:
+                username = config.get('njtransit', {}).get('username')
+            if password is None:
+                password = config.get('njtransit', {}).get('password')
+            if station_code is None:
+                station_code = config.get('njtransit', {}).get('station_code', 'NY')
+            if station_name is None:
+                station_name = config.get('njtransit', {}).get('station_name', 'New York Penn')
+        else:
+            base_url = base_url_or_config
+
+        self.base_url = base_url or (settings.njtransit_api and settings.njtransit_api.base_url)
         self.username = (
-            username or settings.njtransit_api.username or os.environ.get("NJT_USERNAME")
+            username or (settings.njtransit_api and settings.njtransit_api.username) or os.environ.get("NJT_USERNAME")
         )
         self.password = (
-            password or settings.njtransit_api.password or os.environ.get("NJT_PASSWORD")
+            password or (settings.njtransit_api and settings.njtransit_api.password) or os.environ.get("NJT_PASSWORD")
         )
         self.station_code = station_code  # Must be provided explicitly
         self.station_name = station_name  # Must be provided explicitly
@@ -120,9 +136,9 @@ class NJTransitCollector(BaseCollector):
         if not self.station_name:
             raise ValueError("Station name is required")
 
-        self.retry_attempts = retry_attempts or settings.njtransit_api.retry_attempts or 3
-        self.timeout = timeout or settings.njtransit_api.timeout_seconds or 10
-        self.debug_mode = debug_mode or settings.njtransit_api.debug_mode or False
+        self.retry_attempts = retry_attempts or (settings.njtransit_api and settings.njtransit_api.retry_attempts) or 3
+        self.timeout = timeout or (settings.njtransit_api and settings.njtransit_api.timeout_seconds) or 10
+        self.debug_mode = debug_mode or (settings.njtransit_api and settings.njtransit_api.debug_mode) or False
 
         # Set up data directories
         self.data_dir = Path(data_dir or "data")

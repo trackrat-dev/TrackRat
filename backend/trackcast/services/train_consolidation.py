@@ -1051,7 +1051,7 @@ class TrainConsolidationService:
                 try:
                     estimated_dt = datetime.fromisoformat(estimated_time)
                     minutes_away = max(0, int((estimated_dt - now).total_seconds() / 60))
-                except:
+                except (ValueError, TypeError):
                     pass
 
             progress["next_arrival"] = {

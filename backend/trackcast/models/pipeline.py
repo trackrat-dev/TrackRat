@@ -740,7 +740,7 @@ class TrackPredictionPipeline:
             # Import necessary modules for training
             import torch.optim as optim
             from sklearn.model_selection import train_test_split
-            from sklearn.preprocessing import LabelEncoder, StandardScaler
+            from sklearn.preprocessing import LabelEncoder
             from torch.utils.data import DataLoader, Dataset
 
             if csv_mode:
