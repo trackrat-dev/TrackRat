@@ -446,6 +446,112 @@ def add_data_source_to_train_stops(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def add_train_stops_lifecycle_fields(session: Session) -> Dict[str, Any]:
+    """
+    Add lifecycle tracking fields to the train_stops table for non-destructive updates.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if columns already exist
+        check_query = text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' 
+            AND column_name IN ('last_seen_at', 'is_active', 'api_removed_at', 
+                               'data_version', 'original_scheduled_time', 'audit_trail')
+        """)
+        result = session.execute(check_query).fetchall()
+        
+        if len(result) == 6:
+            logger.info("Lifecycle tracking columns already exist in train_stops table")
+            return {"status": "skipped", "message": "Columns already exist"}
+        
+        logger.info("Adding lifecycle tracking columns to train_stops table")
+        
+        # Add last_seen_at column
+        add_last_seen_query = text("""
+            ALTER TABLE train_stops 
+            ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        """)
+        session.execute(add_last_seen_query)
+        
+        # Add is_active column
+        add_is_active_query = text("""
+            ALTER TABLE train_stops 
+            ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE
+        """)
+        session.execute(add_is_active_query)
+        
+        # Add api_removed_at column
+        add_api_removed_query = text("""
+            ALTER TABLE train_stops 
+            ADD COLUMN IF NOT EXISTS api_removed_at TIMESTAMP
+        """)
+        session.execute(add_api_removed_query)
+        
+        # Add data_version column
+        add_data_version_query = text("""
+            ALTER TABLE train_stops 
+            ADD COLUMN IF NOT EXISTS data_version INTEGER NOT NULL DEFAULT 1
+        """)
+        session.execute(add_data_version_query)
+        
+        # Add original_scheduled_time column
+        add_original_scheduled_query = text("""
+            ALTER TABLE train_stops 
+            ADD COLUMN IF NOT EXISTS original_scheduled_time TIMESTAMP
+        """)
+        session.execute(add_original_scheduled_query)
+        
+        # Add audit_trail column
+        add_audit_trail_query = text("""
+            ALTER TABLE train_stops 
+            ADD COLUMN IF NOT EXISTS audit_trail JSONB NOT NULL DEFAULT '[]'::jsonb
+        """)
+        session.execute(add_audit_trail_query)
+        
+        # Create indexes
+        logger.info("Creating indexes on lifecycle tracking columns")
+        create_indexes_query = text("""
+            CREATE INDEX IF NOT EXISTS ix_train_stops_last_seen_at ON train_stops (last_seen_at);
+            CREATE INDEX IF NOT EXISTS ix_train_stops_is_active ON train_stops (is_active);
+        """)
+        session.execute(create_indexes_query)
+        
+        # Update existing records
+        logger.info("Updating existing train_stops records with initial values")
+        update_existing_query = text("""
+            UPDATE train_stops 
+            SET last_seen_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP),
+                original_scheduled_time = scheduled_time,
+                audit_trail = jsonb_build_array(
+                    jsonb_build_object(
+                        'timestamp', COALESCE(created_at, CURRENT_TIMESTAMP)::text,
+                        'action', 'migrated',
+                        'note', 'Existing stop migrated to new schema'
+                    )
+                )
+            WHERE audit_trail = '[]'::jsonb
+        """)
+        session.execute(update_existing_query)
+        
+        # Commit the changes
+        session.commit()
+        
+        logger.info("Successfully added lifecycle tracking columns to train_stops table")
+        return {"status": "success", "message": "Lifecycle tracking columns added successfully"}
+    
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding lifecycle tracking columns: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -467,6 +573,7 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
         ("add_origin_station_columns", add_origin_station_columns),
         ("add_data_source_column", add_data_source_column),
         ("add_data_source_to_train_stops", add_data_source_to_train_stops),
+        ("add_train_stops_lifecycle_fields", add_train_stops_lifecycle_fields),
     ]
     
     for name, migration_func in migrations:

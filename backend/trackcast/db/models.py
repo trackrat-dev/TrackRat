@@ -145,6 +145,18 @@ class TrainStop(Base, TimestampMixin):
     departed = Column(Boolean, default=False, nullable=False)
     stop_status = Column(String(20), nullable=True)
 
+    # Lifecycle tracking
+    last_seen_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    api_removed_at = Column(DateTime, nullable=True)
+
+    # Data versioning
+    data_version = Column(Integer, default=1, nullable=False)
+    original_scheduled_time = Column(DateTime, nullable=True)  # Preserve original schedule
+
+    # Audit trail - JSON array of all changes
+    audit_trail = Column(JSON, nullable=False, default=list)
+
     # Note: Relationship to train handled via queries due to composite key complexity
 
     # Unique constraint to prevent duplicate stop records including data source
