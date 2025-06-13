@@ -686,21 +686,21 @@ struct StopRow: View {
         if isDestination { return .green }
         if isDeparture { return .orange }
         if isBoarding { return .orange }
-        if stop.departed { return .gray }
+        if stop.departed ?? false { return .gray }
         return .blue
     }
     
     private var textColor: Color {
         if isDestination { return .green }
         if isDeparture { return .orange }
-        if stop.departed { return .gray }
+        if stop.departed ?? false { return .gray }
         return .black
     }
     
     private var timeColor: Color {
         if isDestination { return .green }
         if isDeparture { return .orange }
-        if stop.departed { return .gray }
+        if stop.departed ?? false { return .gray }
         return .black.opacity(0.6)
     }
     
@@ -1166,7 +1166,7 @@ struct JourneyStatusView: View {
         let journeyStops = Array(stops[originIndex...destIndex])
         
         // Count departed stops in the journey, excluding the origin (user hasn't "completed" origin until they leave)
-        let departedStopsInJourney = journeyStops.dropFirst().filter { $0.departed }
+        let departedStopsInJourney = journeyStops.dropFirst().filter { $0.departed ?? false }
         let completedStops = departedStopsInJourney.count
         
         // Total stops in journey (excluding origin since it's the starting point)

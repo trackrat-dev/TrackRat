@@ -228,7 +228,7 @@ struct Stop: Identifiable, Codable {
     let departureTime: Date?
     let pickupOnly: Bool?
     let dropoffOnly: Bool?
-    let departed: Bool
+    let departed: Bool?
     let departedConfirmedBy: [String]?
     let stopStatus: String?
     let platform: String?
@@ -244,6 +244,34 @@ struct Stop: Identifiable, Codable {
         case departedConfirmedBy = "departed_confirmed_by"
         case stopStatus = "stop_status"
         case platform
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        stationCode = try container.decodeIfPresent(String.self, forKey: .stationCode)
+        stationName = try container.decode(String.self, forKey: .stationName)
+        scheduledTime = try container.decodeIfPresent(Date.self, forKey: .scheduledTime)
+        departureTime = try container.decodeIfPresent(Date.self, forKey: .departureTime)
+        pickupOnly = try container.decodeIfPresent(Bool.self, forKey: .pickupOnly)
+        dropoffOnly = try container.decodeIfPresent(Bool.self, forKey: .dropoffOnly)
+        departed = try container.decodeIfPresent(Bool.self, forKey: .departed) ?? false
+        departedConfirmedBy = try container.decodeIfPresent([String].self, forKey: .departedConfirmedBy)
+        stopStatus = try container.decodeIfPresent(String.self, forKey: .stopStatus)
+        platform = try container.decodeIfPresent(String.self, forKey: .platform)
+    }
+    
+    init(stationCode: String?, stationName: String, scheduledTime: Date?, departureTime: Date?, pickupOnly: Bool?, dropoffOnly: Bool?, departed: Bool?, departedConfirmedBy: [String]?, stopStatus: String?, platform: String?) {
+        self.stationCode = stationCode
+        self.stationName = stationName
+        self.scheduledTime = scheduledTime
+        self.departureTime = departureTime
+        self.pickupOnly = pickupOnly
+        self.dropoffOnly = dropoffOnly
+        self.departed = departed ?? false
+        self.departedConfirmedBy = departedConfirmedBy
+        self.stopStatus = stopStatus
+        self.platform = platform
     }
 }
 

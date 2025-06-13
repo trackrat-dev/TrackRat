@@ -16,17 +16,17 @@ extension Train {
         }
         
         let journeyStops = Array(stops[fromIdx...toIdx])
-        let completedStops = journeyStops.filter { $0.departed }.count
+        let completedStops = journeyStops.filter { $0.departed ?? false }.count
         
         // Find current stop index in journey
-        let currentStopIndex = journeyStops.firstIndex { !$0.departed }
+        let currentStopIndex = journeyStops.firstIndex { !($0.departed ?? false) }
         
         // Calculate interpolated progress if between stops
         var interpolatedProgress = Double(completedStops) / Double(journeyStops.count)
         
         if completedStops > 0 && completedStops < journeyStops.count {
             // Find the last departed stop and next stop
-            let departedInJourney = journeyStops.filter { $0.departed }
+            let departedInJourney = journeyStops.filter { $0.departed ?? false }
             if let lastDeparted = departedInJourney.last,
                let lastDepartedIndex = journeyStops.firstIndex(where: { $0.stationName == lastDeparted.stationName }),
                lastDepartedIndex + 1 < journeyStops.count {
@@ -80,8 +80,8 @@ extension Train {
         }
         
         // Find last departed stop
-        let departedStops = stops.filter { $0.departed }
-        let nextStop = stops.first { !$0.departed }
+        let departedStops = stops.filter { $0.departed ?? false }
+        let nextStop = stops.first { !($0.departed ?? false) }
         
         if departedStops.isEmpty {
             // Haven't departed yet
@@ -118,7 +118,7 @@ extension Train {
     func getNextStopInfo() -> NextStopInfo? {
         guard let stops = stops else { return nil }
         
-        let nextStop = stops.first { !$0.departed }
+        let nextStop = stops.first { !($0.departed ?? false) }
         guard let next = nextStop else { return nil }
         
         let estimatedTime = next.departureTime ?? next.scheduledTime

@@ -123,6 +123,7 @@ class TrainTests: XCTestCase {
             "track_assignment": {
                 "track": "2",
                 "assigned_at": "2024-01-01T09:45:00-05:00",
+                "assigned_by": "Dispatcher",
                 "source": "NJTransit"
             },
             "status_summary": {
@@ -176,6 +177,8 @@ class TrainTests: XCTestCase {
             "departure_time": "2024-01-01T10:00:00-05:00",
             "track": "1",
             "status": "BOARDING",
+            "origin_station_code": "NP",
+            "data_source": "NJTransit",
             "status_v2": {
                 "current": "BOARDING",
                 "location": "Platform 1",

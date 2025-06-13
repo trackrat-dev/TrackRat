@@ -236,7 +236,7 @@ class LiveActivityService: ObservableObject {
             // Find corresponding old stop
             if let oldStop = lastKnownStops.first(where: { $0.stationName == stop.stationName }) {
                 // Check if this stop just departed
-                if !oldStop.departed && stop.departed {
+                if !(oldStop.departed ?? false) && (stop.departed ?? false) {
                     // Send departure notification
                     await sendStopDepartureNotification(
                         stop: stop,
@@ -336,7 +336,7 @@ class LiveActivityService: ObservableObject {
         for (index, stop) in stops.enumerated() {
             // Only check stops in our journey range that haven't departed yet
             // Skip the origin stop (first stop) - we don't want arrival notifications for departure
-            guard index > originIndex && index <= destIndex && !stop.departed else { continue }
+            guard index > originIndex && index <= destIndex && !(stop.departed ?? false) else { continue }
             
             // Calculate time to arrival
             if let arrivalTime = stop.scheduledTime {
