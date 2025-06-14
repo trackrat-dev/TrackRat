@@ -112,9 +112,8 @@ module "trackrat_scheduler_prod" {
   # min_instances = 1 # Consider for prod if cold starts are an issue, module default is 0.
   # For a scheduler that runs periodically, 0 might be fine to save costs.
 
-  scheduler_job_name  = "invoke-trackrat-scheduler-prod"
-  scheduler_schedule  = "0 4 * * *" # Example: Every day at 4 AM (prod)
-  scheduler_http_path = "/run-tasks"
+  scheduler_job_name = "invoke-trackrat-scheduler-prod"
+  scheduler_schedule = "0 4 * * *" # Example: Every day at 4 AM (prod)
 
   # vpc_connector_id = var.vpc_connector_id_prod # If needed
 

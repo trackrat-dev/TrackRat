@@ -114,11 +114,6 @@ variable "custom_domain_name" {
   default     = ""
 }
 
-variable "graceful_shutdown_timeout_seconds" {
-  description = "Timeout in seconds for graceful shutdown. Cloud Run default is 600s (10 minutes). This is for the SIGTERM signal."
-  type        = number
-  default     = 600
-}
 
 variable "labels" {
   description = "A map of labels to apply to the service."

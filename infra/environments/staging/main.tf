@@ -111,9 +111,8 @@ module "trackrat_scheduler_staging" {
 
   min_instances = 0 # For staging
 
-  scheduler_job_name  = "invoke-trackrat-scheduler-staging"
-  scheduler_schedule  = "0 3 * * *" # Example: Every day at 3 AM (staging)
-  scheduler_http_path = "/run-tasks"
+  scheduler_job_name = "invoke-trackrat-scheduler-staging"
+  scheduler_schedule = "0 3 * * *" # Example: Every day at 3 AM (staging)
 
   # vpc_connector_id = var.vpc_connector_id_staging # If needed
 

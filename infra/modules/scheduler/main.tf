@@ -50,21 +50,20 @@ resource "google_cloud_run_v2_service" "scheduler_service" {
         container_port = var.container_port
       }
       dynamic "env" {
-        for_each = var.environment_variables
+        for_each = concat(
+          [for k, v in var.environment_variables : { name = k, value = v }],
+          local.secret_env_vars
+        )
         content {
-          name  = env.key
-          value = env.value
-        }
-      }
-
-      dynamic "env" {
-        for_each = local.secret_env_vars
-        content {
-          name = env.value.name
-          value_source {
-            secret_key_ref {
-              secret  = env.value.value_source.secret_key_ref.secret
-              version = env.value.value_source.secret_key_ref.version
+          name  = env.value.name
+          value = try(env.value.value, null)
+          dynamic "value_source" {
+            for_each = try(env.value.value_source, null) != null ? [env.value.value_source] : []
+            content {
+              secret_key_ref {
+                secret  = value_source.value.secret_key_ref.secret
+                version = value_source.value.secret_key_ref.version
+              }
             }
           }
         }

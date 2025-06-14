@@ -43,7 +43,6 @@ No modules.
 | <a name="input_min_instances"></a> [min\_instances](#input\_min\_instances) | Minimum number of instances | `number` | `0` | no |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The GCP project ID | `string` | n/a | yes |
 | <a name="input_request_timeout_seconds"></a> [request\_timeout\_seconds](#input\_request\_timeout\_seconds) | Request timeout in seconds (up to 3600 for Cloud Run v2, issue asks for 60 mins) | `number` | `3600` | no |
-| <a name="input_scheduler_http_path"></a> [scheduler\_http\_path](#input\_scheduler\_http\_path) | Path to invoke on the scheduler service (e.g., /run-schedule) | `string` | `"/"` | no |
 | <a name="input_scheduler_job_description"></a> [scheduler\_job\_description](#input\_scheduler\_job\_description) | Description for the Cloud Scheduler job | `string` | `"Triggers the TrackRat Scheduler service"` | no |
 | <a name="input_scheduler_job_name"></a> [scheduler\_job\_name](#input\_scheduler\_job\_name) | Name for the Cloud Scheduler job | `string` | `"invoke-trackrat-scheduler"` | no |
 | <a name="input_scheduler_job_service_account_email"></a> [scheduler\_job\_service\_account\_email](#input\_scheduler\_job\_service\_account\_email) | Service account email for the Cloud Scheduler job to invoke the Cloud Run service. If null, one is created. | `string` | `null` | no |

@@ -40,7 +40,6 @@ No modules.
 | <a name="input_custom_domain_name"></a> [custom\_domain\_name](#input\_custom\_domain\_name) | The custom domain name (e.g., api.example.com) | `string` | `""` | no |
 | <a name="input_enable_custom_domain"></a> [enable\_custom\_domain](#input\_enable\_custom\_domain) | Set to true to enable custom domain mapping | `bool` | `false` | no |
 | <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | A map of environment variables for the container | `map(string)` | `{}` | no |
-| <a name="input_graceful_shutdown_timeout_seconds"></a> [graceful\_shutdown\_timeout\_seconds](#input\_graceful\_shutdown\_timeout\_seconds) | Timeout in seconds for graceful shutdown. Cloud Run default is 600s (10 minutes). This is for the SIGTERM signal. | `number` | `600` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | A map of labels to apply to the service. | `map(string)` | `{}` | no |
 | <a name="input_liveness_probe_path"></a> [liveness\_probe\_path](#input\_liveness\_probe\_path) | Path for the liveness probe. Disabled if null. | `string` | `"/health"` | no |
 | <a name="input_liveness_probe_period_seconds"></a> [liveness\_probe\_period\_seconds](#input\_liveness\_probe\_period\_seconds) | Periodicity of liveness probe in seconds. | `number` | `30` | no |

@@ -122,9 +122,8 @@ module "trackrat_scheduler_dev" {
 
   # request_timeout_seconds is 3600 (1 hour) by default in module
 
-  scheduler_job_name  = "invoke-trackrat-scheduler-dev"
-  scheduler_schedule  = "0 2 * * *"  # Example: Every day at 2 AM
-  scheduler_http_path = "/run-tasks" # Example endpoint
+  scheduler_job_name = "invoke-trackrat-scheduler-dev"
+  scheduler_schedule = "0 2 * * *" # Example: Every day at 2 AM
 
   # vpc_connector_id = var.vpc_connector_id # If scheduler needs to access VPC resources
 
