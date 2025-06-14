@@ -72,7 +72,7 @@ resource "google_monitoring_alert_policy" "db_low_memory" {
   conditions {
     display_name = "Database Available Memory < ${var.memory_alert_threshold_gb}GB"
     condition_threshold {
-      filter          = "metric.type=\"cloudsql.googleapis.com/database/memory/available_memory\" resource.type=\"cloudsql_database\" resource.labels.database_id=\"${var.project_id}:${var.instance_name}\""
+      filter          = "metric.type=\"cloudsql.googleapis.com/database/memory/quota\" resource.type=\"cloudsql_database\" resource.labels.database_id=\"${var.project_id}:${var.instance_name}\""
       duration        = "600s" # 10 minutes
       comparison      = "COMPARISON_LT"
       threshold_value = var.memory_alert_threshold_gb * 1024 * 1024 * 1024 # Bytes

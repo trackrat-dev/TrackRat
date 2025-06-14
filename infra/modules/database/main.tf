@@ -15,7 +15,7 @@ resource "google_sql_database_instance" "default" {
   name             = var.instance_name
   settings {
     tier    = var.instance_tier
-    edition = "STANDARD"
+    edition = "ENTERPRISE"
 
     ip_configuration {
       ipv4_enabled    = false # Disable public IP

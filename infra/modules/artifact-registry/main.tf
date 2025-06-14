@@ -37,4 +37,13 @@ resource "google_artifact_registry_repository" "docker_repo" {
       older_than = "2592000s" # 30 days
     }
   }
+
+  lifecycle {
+    ignore_changes = [
+      # Ignore changes if repository exists
+      location,
+      repository_id,
+      format
+    ]
+  }
 }
