@@ -84,11 +84,6 @@ variable "scheduler_timezone" {
   default     = "Etc/UTC"
 }
 
-variable "scheduler_http_path" {
-  description = "Path to invoke on the scheduler service (e.g., /run-schedule)"
-  type        = string
-  default     = "/"
-}
 
 variable "scheduler_job_service_account_email" {
   description = "Service account email for the Cloud Scheduler job to invoke the Cloud Run service. If null, one is created."

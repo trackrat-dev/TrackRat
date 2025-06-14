@@ -11,7 +11,7 @@ terraform {
 locals {
   secret_env_vars = [
     for k, v in var.secret_environment_variables : {
-      name  = k
+      name = k
       value_source = {
         secret_key_ref = {
           secret  = split(":", v)[0]
@@ -20,9 +20,6 @@ locals {
       }
     }
   ]
-  // These should align with what's in iam.tf
-  cloud_run_sa_email = var.scheduler_service_account_email == null ? google_service_account.cloud_run_sa[0].email : var.scheduler_service_account_email
-  scheduler_job_sa_email = var.scheduler_job_service_account_email == null ? google_service_account.scheduler_job_sa[0].email : var.scheduler_job_service_account_email
 }
 
 resource "google_cloud_run_v2_service" "scheduler_service" {
@@ -42,9 +39,9 @@ resource "google_cloud_run_v2_service" "scheduler_service" {
       egress    = var.vpc_connector_id != null ? "ALL_TRAFFIC" : "PRIVATE_RANGES_ONLY"
     }
 
-    timeout                      = "${var.request_timeout_seconds}s"
-    service_account              = local.cloud_run_sa_email # Defined in iam.tf
-    execution_environment        = "EXECUTION_ENVIRONMENT_GEN2"
+    timeout                          = "${var.request_timeout_seconds}s"
+    service_account                  = local.cloud_run_sa_email # Defined in iam.tf
+    execution_environment            = "EXECUTION_ENVIRONMENT_GEN2"
     max_instance_request_concurrency = 1 # Ensure only one request at a time for scheduler
 
     containers {
@@ -52,10 +49,25 @@ resource "google_cloud_run_v2_service" "scheduler_service" {
       ports {
         container_port = var.container_port
       }
-      env = concat(
-        [for k, v in var.environment_variables : { name = k, value = v }],
-        local.secret_env_vars
-      )
+      dynamic "env" {
+        for_each = concat(
+          [for k, v in var.environment_variables : { name = k, value = v }],
+          local.secret_env_vars
+        )
+        content {
+          name  = env.value.name
+          value = try(env.value.value, null)
+          dynamic "value_source" {
+            for_each = try(env.value.value_source, null) != null ? [env.value.value_source] : []
+            content {
+              secret_key_ref {
+                secret  = value_source.value.secret_key_ref.secret
+                version = value_source.value.secret_key_ref.version
+              }
+            }
+          }
+        }
+      }
       resources {
         limits = {
           cpu    = var.cpu_limit
@@ -77,18 +89,18 @@ resource "google_cloud_run_v2_service" "scheduler_service" {
 }
 
 resource "google_cloud_scheduler_job" "scheduler_job" {
-  project      = var.project_id
-  region       = var.location # Scheduler jobs are regional
-  name         = var.scheduler_job_name
-  description  = var.scheduler_job_description
-  schedule     = var.scheduler_schedule
-  time_zone    = var.scheduler_timezone
+  project          = var.project_id
+  region           = var.location # Scheduler jobs are regional
+  name             = var.scheduler_job_name
+  description      = var.scheduler_job_description
+  schedule         = var.scheduler_schedule
+  time_zone        = var.scheduler_timezone
   attempt_deadline = "320s" # How long to wait for the job to complete, should be less than timeout
 
   http_target {
-    uri = google_cloud_run_v2_service.scheduler_service.uri # Target the deployed Cloud Run service
-    http_method = "POST" # Or GET, depending on the scheduler endpoint
-    body        = base64encode("{"data":"scheduled_run"}") # Example body, if needed
+    uri         = google_cloud_run_v2_service.scheduler_service.uri # Target the deployed Cloud Run service
+    http_method = "POST"                                            # Or GET, depending on the scheduler endpoint
+    body        = base64encode("{\"data\":\"scheduled_run\"}")      # Example body, if needed
 
     oidc_token {
       service_account_email = local.scheduler_job_sa_email # SA for invoking Cloud Run, defined in iam.tf

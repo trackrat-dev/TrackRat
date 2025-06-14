@@ -37,28 +37,28 @@ module "infrastructure" {
 module "trackrat_api_service_staging" { # Changed module name to avoid conflict if environments are ever merged/referenced
   source = "../../modules/cloud-run"
 
-  project_id                = var.project_id
-  location                  = var.region # Assuming 'region' is defined in staging/variables.tf
-  service_name              = "trackrat-api-staging"
-  container_image           = var.api_image_url_staging # Use a staging-specific image var
-  container_port            = 8000
+  project_id      = var.project_id
+  location        = var.region # Assuming 'region' is defined in staging/variables.tf
+  service_name    = "trackrat-api-staging"
+  container_image = var.api_image_url_staging # Use a staging-specific image var
+  container_port  = 8000
 
-  cpu_limit                 = "1"
-  memory_limit              = "1Gi" # Slightly more memory for staging if needed
-  concurrency               = 100
-  min_instances             = 0 # For dev/staging
-  max_instances             = 2
-  request_timeout_seconds   = 60
+  cpu_limit               = "1"
+  memory_limit            = "1Gi" # Slightly more memory for staging if needed
+  concurrency             = 100
+  min_instances           = 0 # For dev/staging
+  max_instances           = 2
+  request_timeout_seconds = 60
 
-  startup_probe_path        = "/health"
-  liveness_probe_path       = "/health"
+  startup_probe_path            = "/health"
+  liveness_probe_path           = "/health"
   liveness_probe_period_seconds = 30
 
-  vpc_connector_id          = var.vpc_connector_id_staging # Staging specific connector
+  vpc_connector_id = var.vpc_connector_id_staging # Staging specific connector
 
   environment_variables = {
-    APP_ENV                  = "staging"
-    GIN_MODE                 = "release"
+    APP_ENV  = "staging"
+    GIN_MODE = "release"
     # Add other non-sensitive configs for staging
   }
 
@@ -86,11 +86,10 @@ module "trackrat_scheduler_staging" {
   service_name    = "trackrat-scheduler-staging"
   container_image = var.scheduler_image_url_staging # Staging specific image var
 
-  min_instances   = 0 # For staging
+  min_instances = 0 # For staging
 
-  scheduler_job_name   = "invoke-trackrat-scheduler-staging"
-  scheduler_schedule   = "0 3 * * *" # Example: Every day at 3 AM (staging)
-  scheduler_http_path  = "/run-tasks"
+  scheduler_job_name = "invoke-trackrat-scheduler-staging"
+  scheduler_schedule = "0 3 * * *" # Example: Every day at 3 AM (staging)
 
   # vpc_connector_id = var.vpc_connector_id_staging # If needed
 

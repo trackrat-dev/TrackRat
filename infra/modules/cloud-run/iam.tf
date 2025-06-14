@@ -31,7 +31,7 @@ resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
 
 # If using secrets, the service account needs access to Secret Manager
 resource "google_project_iam_member" "secret_accessor" {
-  count = length(var.secret_environment_variables) > 0 ? 1 : 0 # Only if secrets are used
+  count   = length(var.secret_environment_variables) > 0 ? 1 : 0 # Only if secrets are used
   project = var.project_id
   role    = "roles/secretmanager.secretAccessor"
   member  = "serviceAccount:${local.effective_service_account_email}"

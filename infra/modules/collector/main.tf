@@ -11,7 +11,7 @@ terraform {
 locals {
   secret_env_vars = [
     for k, v in var.secret_environment_variables : {
-      name  = k
+      name = k
       value_source = {
         secret_key_ref = {
           secret  = split(":", v)[0]
@@ -22,9 +22,6 @@ locals {
   ]
   actual_subscription_name = var.pubsub_subscription_name == "" ? "sub-${var.service_name}-${var.pubsub_topic_name}" : var.pubsub_subscription_name
 
-  // These should align with what's in iam.tf
-  cloud_run_sa_email   = var.collector_service_account_email == null ? google_service_account.cloud_run_sa[0].email : var.collector_service_account_email
-  pubsub_push_sa_email = google_service_account.pubsub_push_sa.email // This was defined in iam.tf
 }
 
 resource "google_cloud_run_v2_service" "collector_service" {
@@ -44,9 +41,9 @@ resource "google_cloud_run_v2_service" "collector_service" {
       egress    = var.vpc_connector_id != null ? "ALL_TRAFFIC" : "PRIVATE_RANGES_ONLY"
     }
 
-    timeout                         = "${var.request_timeout_seconds}s"
-    service_account                 = local.cloud_run_sa_email # Defined in iam.tf
-    execution_environment           = "EXECUTION_ENVIRONMENT_GEN2"
+    timeout                          = "${var.request_timeout_seconds}s"
+    service_account                  = local.cloud_run_sa_email # Defined in iam.tf
+    execution_environment            = "EXECUTION_ENVIRONMENT_GEN2"
     max_instance_request_concurrency = var.concurrency_per_instance
 
     containers {
@@ -54,10 +51,25 @@ resource "google_cloud_run_v2_service" "collector_service" {
       ports {
         container_port = var.container_port // Pub/Sub push sends POST to this port
       }
-      env = concat(
-        [for k, v in var.environment_variables : { name = k, value = v }],
-        local.secret_env_vars
-      )
+      dynamic "env" {
+        for_each = concat(
+          [for k, v in var.environment_variables : { name = k, value = v }],
+          local.secret_env_vars
+        )
+        content {
+          name  = env.value.name
+          value = try(env.value.value, null)
+          dynamic "value_source" {
+            for_each = try(env.value.value_source, null) != null ? [env.value.value_source] : []
+            content {
+              secret_key_ref {
+                secret  = value_source.value.secret_key_ref.secret
+                version = value_source.value.secret_key_ref.version
+              }
+            }
+          }
+        }
+      }
       resources {
         limits = {
           cpu    = var.cpu_limit

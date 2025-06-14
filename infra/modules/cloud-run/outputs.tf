@@ -10,7 +10,7 @@ output "service_name" {
 
 output "service_revision" {
   description = "Current revision of the Cloud Run service"
-  value       = google_cloud_run_v2_service.default.latest_ready_revision_id
+  value       = google_cloud_run_v2_service.default.latest_created_revision
 }
 
 output "service_account_email" {

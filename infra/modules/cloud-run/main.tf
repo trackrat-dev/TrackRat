@@ -11,7 +11,7 @@ terraform {
 locals {
   secret_env_vars = [
     for k, v in var.secret_environment_variables : {
-      name  = k
+      name = k
       value_source = {
         secret_key_ref = {
           secret  = split(":", v)[0]
@@ -23,10 +23,10 @@ locals {
 }
 
 resource "google_cloud_run_v2_service" "default" {
-  project  = var.project_id
-  location = var.location
-  name     = var.service_name
-  labels   = var.labels
+  project     = var.project_id
+  location    = var.location
+  name        = var.service_name
+  labels      = var.labels
   annotations = var.annotations
 
   template {
@@ -47,19 +47,34 @@ resource "google_cloud_run_v2_service" "default" {
       egress    = "ALL_TRAFFIC" # Necessary for private IP for Cloud SQL
     }
 
-    timeout                      = "${var.request_timeout_seconds}s"
-    service_account              = local.effective_service_account_email
-    execution_environment        = "EXECUTION_ENVIRONMENT_GEN2"
+    timeout                          = "${var.request_timeout_seconds}s"
+    service_account                  = local.effective_service_account_email
+    execution_environment            = "EXECUTION_ENVIRONMENT_GEN2"
     max_instance_request_concurrency = var.concurrency
     containers {
       image = var.container_image
       ports {
         container_port = var.container_port
       }
-      env = concat(
-        [for k, v in var.environment_variables : { name = k, value = v }],
-        local.secret_env_vars
-      )
+      dynamic "env" {
+        for_each = concat(
+          [for k, v in var.environment_variables : { name = k, value = v }],
+          local.secret_env_vars
+        )
+        content {
+          name  = env.value.name
+          value = try(env.value.value, null)
+          dynamic "value_source" {
+            for_each = try(env.value.value_source, null) != null ? [env.value.value_source] : []
+            content {
+              secret_key_ref {
+                secret  = value_source.value.secret_key_ref.secret
+                version = value_source.value.secret_key_ref.version
+              }
+            }
+          }
+        }
+      }
 
       resources {
         limits = {

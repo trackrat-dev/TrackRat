@@ -37,30 +37,30 @@ module "infrastructure" {
 module "trackrat_api_service" {
   source = "../../modules/cloud-run"
 
-  project_id                = var.project_id
-  location                  = var.region # Assuming 'region' is defined in dev/variables.tf
-  service_name              = "trackrat-api-dev" # Append env for clarity
-  container_image           = var.api_image_url # To be defined in variables.tf
-  container_port            = 8000 # Assuming the API runs on port 8000
+  project_id      = var.project_id
+  location        = var.region         # Assuming 'region' is defined in dev/variables.tf
+  service_name    = "trackrat-api-dev" # Append env for clarity
+  container_image = var.api_image_url  # To be defined in variables.tf
+  container_port  = 8000               # Assuming the API runs on port 8000
 
-  cpu_limit                 = "1" # As per issue: 1-2 vCPUs
-  memory_limit              = "512Mi" # As per issue: 512MB-2GB
-  concurrency               = 100
-  min_instances             = 0 # For dev/staging
-  max_instances             = 2 # As per issue
-  request_timeout_seconds   = 60
+  cpu_limit               = "1"     # As per issue: 1-2 vCPUs
+  memory_limit            = "512Mi" # As per issue: 512MB-2GB
+  concurrency             = 100
+  min_instances           = 0 # For dev/staging
+  max_instances           = 2 # As per issue
+  request_timeout_seconds = 60
 
   # Assuming /health is the correct endpoint for trackrat-api
-  startup_probe_path        = "/health"
-  liveness_probe_path       = "/health"
+  startup_probe_path            = "/health"
+  liveness_probe_path           = "/health"
   liveness_probe_period_seconds = 30
 
-  vpc_connector_id          = var.vpc_connector_id # To be defined in variables.tf for Cloud SQL private IP
+  vpc_connector_id = var.vpc_connector_id # To be defined in variables.tf for Cloud SQL private IP
 
   # Example environment variables
   environment_variables = {
-    APP_ENV                  = "development"
-    GIN_MODE                 = "debug"
+    APP_ENV  = "development"
+    GIN_MODE = "debug"
     # Add other non-sensitive configs
   }
 
@@ -100,13 +100,12 @@ module "trackrat_scheduler_dev" {
   # container_port = 8080
 
   # max_instances is 1 by default in the module
-  min_instances   = 0 # For dev
+  min_instances = 0 # For dev
 
   # request_timeout_seconds is 3600 (1 hour) by default in module
 
-  scheduler_job_name   = "invoke-trackrat-scheduler-dev"
-  scheduler_schedule   = "0 2 * * *" # Example: Every day at 2 AM
-  scheduler_http_path  = "/run-tasks" # Example endpoint
+  scheduler_job_name = "invoke-trackrat-scheduler-dev"
+  scheduler_schedule = "0 2 * * *" # Example: Every day at 2 AM
 
   # vpc_connector_id = var.vpc_connector_id # If scheduler needs to access VPC resources
 

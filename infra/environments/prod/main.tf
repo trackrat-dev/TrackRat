@@ -37,28 +37,28 @@ module "infrastructure" {
 module "trackrat_api_service_prod" { # Changed module name
   source = "../../modules/cloud-run"
 
-  project_id                = var.project_id
-  location                  = var.region # Assuming 'region' is defined in prod/variables.tf
-  service_name              = "trackrat-api-prod" # Prod service name
-  container_image           = var.api_image_url_prod # Prod image var
-  container_port            = 8000
+  project_id      = var.project_id
+  location        = var.region             # Assuming 'region' is defined in prod/variables.tf
+  service_name    = "trackrat-api-prod"    # Prod service name
+  container_image = var.api_image_url_prod # Prod image var
+  container_port  = 8000
 
-  cpu_limit                 = "2" # Prod: 1-2 vCPUs, using 2 for higher capacity
-  memory_limit              = "2Gi" # Prod: 512MB-2GB, using 2GB for higher capacity
-  concurrency               = 100
-  min_instances             = 1 # For Prod
-  max_instances             = 2 # Max 2 as per issue, can be increased based on load
-  request_timeout_seconds   = 60
+  cpu_limit               = "2"   # Prod: 1-2 vCPUs, using 2 for higher capacity
+  memory_limit            = "2Gi" # Prod: 512MB-2GB, using 2GB for higher capacity
+  concurrency             = 100
+  min_instances           = 1 # For Prod
+  max_instances           = 2 # Max 2 as per issue, can be increased based on load
+  request_timeout_seconds = 60
 
-  startup_probe_path        = "/health"
-  liveness_probe_path       = "/health"
+  startup_probe_path            = "/health"
+  liveness_probe_path           = "/health"
   liveness_probe_period_seconds = 30
 
-  vpc_connector_id          = var.vpc_connector_id_prod # Prod specific connector
+  vpc_connector_id = var.vpc_connector_id_prod # Prod specific connector
 
   environment_variables = {
-    APP_ENV                  = "production"
-    GIN_MODE                 = "release"
+    APP_ENV  = "production"
+    GIN_MODE = "release"
     # Add other non-sensitive configs for production
   }
 
@@ -67,8 +67,8 @@ module "trackrat_api_service_prod" { # Changed module name
   #   API_KEY      = "prod-api-key-secret:1"
   # }
 
-  enable_custom_domain   = true # Typically true for prod
-  custom_domain_name     = "api.example.com" # Replace with actual prod domain
+  enable_custom_domain = true              # Typically true for prod
+  custom_domain_name   = "api.example.com" # Replace with actual prod domain
 
   labels = {
     service = "trackrat-api"
@@ -87,11 +87,10 @@ module "trackrat_scheduler_prod" {
   container_image = var.scheduler_image_url_prod # Prod specific image var
 
   # min_instances = 1 # Consider for prod if cold starts are an issue, module default is 0.
-                      # For a scheduler that runs periodically, 0 might be fine to save costs.
+  # For a scheduler that runs periodically, 0 might be fine to save costs.
 
-  scheduler_job_name   = "invoke-trackrat-scheduler-prod"
-  scheduler_schedule   = "0 4 * * *" # Example: Every day at 4 AM (prod)
-  scheduler_http_path  = "/run-tasks"
+  scheduler_job_name = "invoke-trackrat-scheduler-prod"
+  scheduler_schedule = "0 4 * * *" # Example: Every day at 4 AM (prod)
 
   # vpc_connector_id = var.vpc_connector_id_prod # If needed
 
