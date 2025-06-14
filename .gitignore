@@ -13,3 +13,4 @@ infra/environments/dev/.terraform.lock.hcl
 # Xcode user data
 ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/
 ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/**
+ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/andy.xcuserdatad/UserInterfaceState.xcuserstate
