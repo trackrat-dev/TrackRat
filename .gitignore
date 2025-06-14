@@ -1,1 +1,15 @@
 backend/data
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+infra/environments/prod/.terraform/
+infra/environments/prod/.terraform.lock.hcl
+infra/environments/staging/.terraform/
+infra/environments/staging/.terraform.lock.hcl
+infra/environments/dev/.terraform/
+infra/environments/dev/.terraform.lock.hcl
+
+# Xcode user data
+ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/
+ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/**
