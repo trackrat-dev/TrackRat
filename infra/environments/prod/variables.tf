@@ -34,3 +34,18 @@ variable "db_password" {
   sensitive   = true
   # No default
 }
+
+variable "api_image_url_prod" {
+  description = "Docker image URL for the trackrat-api service in Production"
+  type        = string
+}
+
+variable "vpc_connector_id_prod" {
+  description = "Self-link of the VPC Access Connector for Cloud Run in Production"
+  type        = string
+}
+
+variable "scheduler_image_url_prod" {
+  description = "Docker image URL for the trackrat-scheduler service in Production"
+  type        = string
+}

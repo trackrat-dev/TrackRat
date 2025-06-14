@@ -56,3 +56,82 @@ module "database" {
   # log_connections = false # Typically too verbose for prod unless debugging
   # log_disconnections = false # Typically too verbose for prod unless debugging
 }
+
+module "trackrat_api_service_prod" { # Changed module name
+  source = "../../modules/cloud-run"
+
+  project_id      = var.project_id
+  location        = var.region             # Assuming 'region' is defined in prod/variables.tf
+  service_name    = "trackrat-api-prod"    # Prod service name
+  container_image = var.api_image_url_prod # Prod image var
+  container_port  = 8000
+
+  cpu_limit               = "2"   # Prod: 1-2 vCPUs, using 2 for higher capacity
+  memory_limit            = "2Gi" # Prod: 512MB-2GB, using 2GB for higher capacity
+  concurrency             = 100
+  min_instances           = 1 # For Prod
+  max_instances           = 2 # Max 2 as per issue, can be increased based on load
+  request_timeout_seconds = 60
+
+  startup_probe_path            = "/health"
+  liveness_probe_path           = "/health"
+  liveness_probe_period_seconds = 30
+
+  vpc_connector_id = var.vpc_connector_id_prod # Prod specific connector
+
+  environment_variables = {
+    APP_ENV  = "production"
+    GIN_MODE = "release"
+    # Add other non-sensitive configs for production
+  }
+
+  # secret_environment_variables = {
+  #   DATABASE_URL = "prod-db-secret:latest"
+  #   API_KEY      = "prod-api-key-secret:1"
+  # }
+
+  enable_custom_domain = true              # Typically true for prod
+  custom_domain_name   = "api.example.com" # Replace with actual prod domain
+
+  labels = {
+    service = "trackrat-api"
+    env     = "prod"
+  }
+
+  depends_on = []
+}
+
+module "trackrat_scheduler_prod" {
+  source = "../../modules/scheduler"
+
+  project_id      = var.project_id
+  location        = var.region
+  service_name    = "trackrat-scheduler-prod"
+  container_image = var.scheduler_image_url_prod # Prod specific image var
+
+  # min_instances = 1 # Consider for prod if cold starts are an issue, module default is 0.
+  # For a scheduler that runs periodically, 0 might be fine to save costs.
+
+  scheduler_job_name  = "invoke-trackrat-scheduler-prod"
+  scheduler_schedule  = "0 4 * * *" # Example: Every day at 4 AM (prod)
+  scheduler_http_path = "/run-tasks"
+
+  # vpc_connector_id = var.vpc_connector_id_prod # If needed
+
+  environment_variables = {
+    APP_ENV = "production"
+  }
+
+  # secret_environment_variables = {
+  #   SOME_SCHEDULER_SECRET = "scheduler-secret-prod:latest"
+  # }
+
+  labels = {
+    service = "trackrat-scheduler"
+    env     = "prod"
+  }
+
+  depends_on = [
+    module.trackrat_api_service_prod
+  ]
+}
