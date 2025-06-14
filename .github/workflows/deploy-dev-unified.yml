@@ -86,7 +86,6 @@ jobs:
         project_id = "${{ env.PROJECT_ID }}"
         region = "${{ env.REGION }}"
         zone = "${{ env.REGION }}-b"
-        db_password = "${{ secrets.DB_PASSWORD }}"
         api_image_url = "${{ env.IMAGE_TAG }}"
         scheduler_image_url = "${{ env.IMAGE_TAG }}"
         EOF

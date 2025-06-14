@@ -5,6 +5,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.4"
+    }
   }
 }
 
@@ -39,11 +43,16 @@ resource "google_secret_manager_secret_version" "app_secrets_version" {
   }
 }
 
-resource "google_secret_manager_secret" "db_password" {
-  # Check if db_password_plaintext is provided before creating
-  count = var.db_password_plaintext != null && var.db_password_plaintext != "" ? 1 : 0
+# Generate a random password for the database if none provided
+resource "random_password" "db_password" {
+  count   = var.db_password_plaintext == null || var.db_password_plaintext == "" ? 1 : 0
+  length  = 32
+  special = true
+}
 
-  secret_id = "trackrat-db-password" # As specified in the issue
+# Always create the database password secret
+resource "google_secret_manager_secret" "db_password" {
+  secret_id = "trackrat-db-password"
   labels = {
     app         = var.app_name
     environment = var.environment
@@ -54,10 +63,8 @@ resource "google_secret_manager_secret" "db_password" {
   }
 }
 
+# Use provided password or generated one
 resource "google_secret_manager_secret_version" "db_password_version" {
-  # Check if db_password_plaintext is provided before creating
-  count = var.db_password_plaintext != null && var.db_password_plaintext != "" ? 1 : 0
-
-  secret      = google_secret_manager_secret.db_password[0].id
-  secret_data = var.db_password_plaintext
+  secret      = google_secret_manager_secret.db_password.id
+  secret_data = var.db_password_plaintext != null && var.db_password_plaintext != "" ? var.db_password_plaintext : random_password.db_password[0].result
 }
