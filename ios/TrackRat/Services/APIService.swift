@@ -511,3 +511,5 @@ enum APIError: LocalizedError {
         }
     }
 }
+
+extension APIService: APIServiceProtocol {}

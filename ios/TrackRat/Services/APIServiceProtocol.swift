@@ -7,5 +7,3 @@ protocol APIServiceProtocol {
     func fetchTrainByTrainId(_ trainId: String, sinceHoursAgo: Int, consolidate: Bool) async throws -> [Train]
     func fetchHistoricalData(for train: Train, fromStationCode: String, toStationCode: String) async throws -> HistoricalData
 }
-
-extension APIService: APIServiceProtocol {}
