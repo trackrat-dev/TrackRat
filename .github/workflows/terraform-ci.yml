@@ -90,7 +90,7 @@ jobs:
       working-directory: ./infra
       run: |
         # Run tflint on root module
-        tflint .
+        tflint
         
         # Run tflint on each module
         for module_dir in modules/*/; do
