@@ -59,7 +59,7 @@ resource "google_sql_database_instance" "default" {
     # Add other flags as needed, e.g. for connection limits:
     database_flags {
       name  = "max_connections"
-      value = var.max_connections_limit
+      value = tostring(var.max_connections_limit)
     }
   }
 
