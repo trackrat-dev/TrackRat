@@ -10,12 +10,17 @@ TrackRat is a full-stack train tracking system that combines a sophisticated Pyt
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Data Sources  │     │     Backend     │     │   Frontend      │
+│   Data Sources  │     │   Cloud Run     │     │   Frontends     │
 ├─────────────────┤     ├─────────────────┤     ├─────────────────┤
-│ • NJ Transit    │────▶│ • TrackCast API │────▶│ • iOS App       │
-│ • Amtrak        │     │ • ML Models     │     │ • Live Activity │
-│                 │     │ • PostgreSQL    │     │ • Web App       │
+│ • NJ Transit    │────▶│ • API Service   │────▶│ • iOS App       │
+│ • Amtrak APIs   │     │ • Scheduler     │     │ • Live Activity │
+│                 │     │ • ML Models     │     │ • Web App       │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
+                                │
+                        ┌───────▼────────┐
+                        │  Cloud SQL     │
+                        │  (PostgreSQL)  │
+                        └────────────────┘
 ```
 
 ### Key Features Across Platforms
@@ -63,23 +68,41 @@ All platforms recognize: `ALL ABOARD`, `BOARDING`, `DEPARTED`, `CANCELLED`, `DEL
 
 ## Development Workflow
 
+### Automated Deployment
+
+The system uses GitHub Actions for fully automated CI/CD:
+
+1. **On Push to Main**:
+   - Docker images built and pushed to Artifact Registry
+   - Infrastructure deployed via Terraform
+   - Cloud Run services updated with new images
+   - Database migrations run automatically
+   - Health checks verify deployment success
+
+2. **Manual Operations** (if needed):
+   - Populate secrets in Secret Manager
+   - Train new ML models
+   - Trigger data collection manually
+
 ### When Making Backend Changes
 
 1. **API Changes**:
    - Update OpenAPI spec if modifying endpoints
    - Consider iOS app and web app compatibility
    - Maintain backward compatibility when possible
-   - Document new query parameters in backend/CLAUDE.md
+   - Changes deploy automatically on push to main
 
 2. **Model Changes**:
    - Update database schema with migrations
+   - Database migrations run automatically during deployment
    - Ensure API serialization matches frontend expectations
    - Test with both consolidated and non-consolidated responses
 
 3. **New Features**:
    - Add corresponding CLI commands
-   - Update scheduler if periodic execution needed
+   - Update scheduler configuration if needed
    - Consider iOS and web UI implications
+   - Test in development environment first
 
 ### When Making iOS Changes
 
@@ -207,11 +230,12 @@ cd webpage && python proxy.py
 
 ## Deployment Considerations
 
-### Backend Deployment
-- Use environment-specific configs (dev.yaml, prod.yaml)
-- Set environment variables for API credentials
-- Run with Gunicorn in production
-- Ensure PostgreSQL is properly configured
+### Backend Deployment (Cloud Run)
+- **Automatic**: GitHub Actions handles build, deploy, and migrations
+- **Configuration**: Via Terraform and Secret Manager
+- **Scaling**: Auto-scales from 0 to configured max instances
+- **Health Checks**: Built-in startup and liveness probes
+- **Database**: Cloud SQL PostgreSQL with VPC connectivity
 
 ### iOS Deployment
 - Update bundle version and build number
@@ -224,6 +248,20 @@ cd webpage && python proxy.py
 - Proxy server (proxy.py) for local development only
 - Production deployment should proxy API directly
 - Test responsive design on multiple devices
+
+### Operational Requirements
+
+**Automated Operations:**
+- ✅ Data collection every 1-2 minutes via Cloud Scheduler
+- ✅ Auto-scaling based on traffic
+- ✅ Database backups and maintenance
+- ✅ Health monitoring and restart on failure
+
+**Manual Operations:**
+- Populate API credentials in Secret Manager
+- Train and update ML models periodically
+- Monitor system health and performance
+- Rotate secrets quarterly
 
 ## Performance Optimization
 
@@ -414,9 +452,19 @@ webpage/CLAUDE.md                    # Web app specific guidance
 ## Contact for Questions
 
 When working on this project, refer to:
-- Backend details: `backend/CLAUDE.md`
-- iOS details: `ios/CLAUDE.md`
-- Web app details: `webpage/CLAUDE.md`
-- This file for cross-platform guidance
+- **Operations**: `/OPERATORS_GUIDE.md` - Comprehensive operational procedures for deployed system
+- **Backend details**: `backend/CLAUDE.md` - Development and deployment guidance
+- **iOS details**: `ios/CLAUDE.md` - iOS app development
+- **Web app details**: `webpage/CLAUDE.md` - Web application development
+- **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP infrastructure
+- **Cross-platform guidance**: This file for integration between components
 
-Remember: The goal is seamless integration between a powerful prediction backend and intuitive frontend experiences across iOS (with Live Activities) and web platforms.
+### Quick Reference
+
+**For Operators**: Start with `/OPERATORS_GUIDE.md` for comprehensive operational procedures, monitoring, and troubleshooting.
+
+**For Developers**: Each component has detailed CLAUDE.md files with development workflows and deployment procedures.
+
+**For Infrastructure**: Use `infra/CLAUDE.md` for Terraform operations and `backend/DEPLOYMENT.md` for Cloud Run deployment details.
+
+Remember: The goal is seamless integration between a powerful prediction backend and intuitive frontend experiences across iOS (with Live Activities) and web platforms, all running on a fully automated Cloud Run infrastructure.

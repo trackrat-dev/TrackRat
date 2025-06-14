@@ -26,11 +26,12 @@ resource "google_secret_manager_secret" "app_secrets" {
 resource "google_secret_manager_secret_version" "app_secrets_version" {
   secret = google_secret_manager_secret.app_secrets.id
 
-  # Initial placeholder - replace with actual secrets
+  # Populate with actual secrets if provided, otherwise use placeholders
   secret_data = jsonencode({
-    "database_url"       = "postgresql://placeholder"
-    "nj_transit_api_key" = "placeholder"
-    "amtrak_api_key"     = "placeholder"
+    "database_url"        = "postgresql://placeholder"
+    "nj_transit_username" = var.nj_transit_username != "" ? var.nj_transit_username : "placeholder"
+    "nj_transit_password" = var.nj_transit_password != "" ? var.nj_transit_password : "placeholder"
+    "amtrak_api_key"      = var.amtrak_api_key != "" ? var.amtrak_api_key : "placeholder"
   })
 
   lifecycle {

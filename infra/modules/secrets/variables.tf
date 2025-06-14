@@ -14,3 +14,24 @@ variable "db_password_plaintext" {
   sensitive   = true
   default     = null # Ensure it's provided if resources are created
 }
+
+variable "nj_transit_username" {
+  description = "NJ Transit API username"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "nj_transit_password" {
+  description = "NJ Transit API password"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "amtrak_api_key" {
+  description = "Amtrak API key (optional)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
