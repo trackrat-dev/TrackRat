@@ -1,0 +1,152 @@
+variable "project_id" {
+  description = "The ID of the Google Cloud project."
+  type        = string
+}
+
+variable "region" {
+  description = "The region for the Cloud SQL instance."
+  type        = string
+}
+
+variable "instance_name" {
+  description = "The name of the Cloud SQL instance."
+  type        = string
+  default     = "trackrat-db-instance"
+}
+
+variable "database_version" {
+  description = "The version of PostgreSQL to use (e.g., POSTGRES_15)."
+  type        = string
+  default     = "POSTGRES_15"
+}
+
+variable "instance_tier" {
+  description = "The machine type for the Cloud SQL instance (e.g., db-custom-2-7680)."
+  type        = string
+  default     = "db-f1-micro" # Choose a default, consider environment-specific overrides
+}
+
+variable "network_self_link" {
+  description = "The self-link of the VPC network to attach the Cloud SQL instance to."
+  type        = string
+}
+
+variable "maintenance_window_day" {
+  description = "The day of the week for the maintenance window (1-7, Monday-Sunday)."
+  type        = number
+  default     = 7 # Sunday
+}
+
+variable "maintenance_window_hour" {
+  description = "The hour of the day (UTC) for the maintenance window (0-23)."
+  type        = number
+  default     = 6 # 6 AM UTC
+}
+
+variable "database_name" {
+  description = "The name of the database to create."
+  type        = string
+  default     = "trackratdb"
+}
+
+variable "database_user_name" {
+  description = "The name of the database user."
+  type        = string
+  default     = "trackratuser"
+}
+
+variable "database_user_password" {
+  description = "The password for the database user. This should be sourced from a secure location like Secret Manager."
+  type        = string
+  sensitive   = true
+}
+
+variable "deletion_protection" {
+  description = "Whether or not to enable deletion protection for the instance."
+  type        = bool
+  default     = false # Recommended to be true for production
+}
+
+# Variables from backup.tf (conceptual, as actual var is here)
+variable "backup_window_start_time" {
+  description = "The start time of the daily backup window, in HH:MM format (UTC). Example: '03:00'. If null, GCP chooses a default."
+  type        = string
+  default     = "03:00" # Example default
+}
+
+# Variables for monitoring flags (from monitoring.tf)
+variable "enable_cloud_sql_insights" {
+  description = "Enable Cloud SQL Insights (Query Insights)."
+  type        = bool
+  default     = true
+}
+
+variable "slow_query_log_min_duration" {
+  description = "Minimum query duration in ms to be logged as a slow query. Use 0 to disable. For PostgreSQL, this is 'log_min_duration_statement'."
+  type        = number
+  default     = 500 # ms
+}
+
+variable "log_connections" {
+  description = "Log connections to the database (flag: log_connections)."
+  type        = bool
+  default     = false # Can be verbose, enable with caution
+}
+
+variable "log_disconnections" {
+  description = "Log disconnections from the database (flag: log_disconnections)."
+  type        = bool
+  default     = false # Can be verbose, enable with caution
+}
+
+variable "max_connections_limit" {
+  description = "The maximum number of concurrent connections for the database (flag: max_connections). Default depends on instance size."
+  type        = number
+  default     = 100 # Set a sensible default, actual max depends on tier.
+}
+
+
+# Variables for monitoring alerts (from monitoring.tf)
+variable "cpu_alert_threshold_percent" {
+  description = "CPU utilization percentage threshold for alerting."
+  type        = number
+  default     = 80
+}
+
+variable "memory_alert_threshold_gb" {
+  description = "Available memory threshold in GB for alerting."
+  type        = number
+  default     = 1 # Alert if less than 1GB available, adjust based on instance size
+}
+
+variable "enable_read_replica" {
+  description = "Flag to indicate if read replicas are configured. Used to enable replica lag alerts."
+  type        = bool
+  default     = false # Assuming no read replica by default for this module
+}
+
+variable "replica_lag_alert_threshold_seconds" {
+  description = "Maximum replica lag in seconds before an alert is triggered."
+  type        = number
+  default     = 300 # 5 minutes
+}
+
+# This variable would be used if alerting on connection percentage
+# variable "max_connections_alert_threshold_percent" {
+#   description = "Threshold for active connections as a percentage of max_connections before an alert."
+#   type        = number
+#   default     = 80
+# }
+
+variable "active_connections_alert_threshold" {
+  description = "Threshold for the absolute number of active connections before an alert."
+  type        = number
+  default     = 80 # If using the example num_backends alert, assumes max_connections is around 100
+}
+
+# TODO: Add variables for notification channel IDs for alerts
+# variable "notification_channel_email" {
+#   description = "Monitoring notification channel ID for email."
+#   type        = string
+#   default     = "" # Needs to be configured in the root/env level
+# }

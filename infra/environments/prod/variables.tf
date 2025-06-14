@@ -15,3 +15,10 @@ variable "zone" {
   type        = string
   default     = "us-east1-b"
 }
+
+variable "db_password" {
+  description = "Database user password for production. Supplied via secure method."
+  type        = string
+  sensitive   = true
+  # No default
+}

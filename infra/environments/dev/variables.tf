@@ -15,3 +15,10 @@ variable "zone" {
   type        = string
   default     = "us-east1-b"
 }
+
+variable "db_password" {
+  description = "Database user password. This should be supplied via a secure method (e.g., .tfvars file not committed, or environment variable)."
+  type        = string
+  sensitive   = true
+  # No default, should be provided per environment
+}

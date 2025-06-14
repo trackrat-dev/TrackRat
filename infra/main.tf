@@ -49,6 +49,7 @@ module "secrets" {
   source      = "./modules/secrets"
   app_name    = var.app_name
   environment = var.environment
+  db_password_plaintext = var.db_password # Pass the password to the secrets module
 
   depends_on = [module.apis]
 }

@@ -37,3 +37,26 @@ resource "google_secret_manager_secret_version" "app_secrets_version" {
     ignore_changes = [secret_data]
   }
 }
+
+resource "google_secret_manager_secret" "db_password" {
+  # Check if db_password_plaintext is provided before creating
+  count = var.db_password_plaintext != null ? 1 : 0
+
+  secret_id = "trackrat-db-password" # As specified in the issue
+  labels = {
+    app         = var.app_name
+    environment = var.environment
+    type        = "database-credentials"
+  }
+  replication {
+    automatic = true
+  }
+}
+
+resource "google_secret_manager_secret_version" "db_password_version" {
+  # Check if db_password_plaintext is provided before creating
+  count = var.db_password_plaintext != null ? 1 : 0
+
+  secret      = google_secret_manager_secret.db_password[0].id
+  secret_data = var.db_password_plaintext
+}
