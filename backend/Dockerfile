@@ -56,12 +56,10 @@ WORKDIR /app
 COPY --chown=trackcast:trackcast trackcast/ ./trackcast/
 COPY --chown=trackcast:trackcast pyproject.toml ./
 COPY --chown=trackcast:trackcast config/ ./config/
+COPY --chown=trackcast:trackcast models/ ./models/
 
 # Install the package in development mode for CLI access
 RUN pip install -e .
-
-# Create directory for model files (to be mounted from external source)
-RUN mkdir -p /app/models && chown trackcast:trackcast /app/models
 
 # Switch to non-root user
 USER trackcast
