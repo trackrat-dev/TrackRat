@@ -21,7 +21,7 @@ struct LiveActivityDebugView: View {
                         HStack(spacing: 6) {
                             Text("🚂")
                                 .font(.title2)
-                            Text("Train \(activity.attributes.trainNumber)")
+                            Text("Train \(activity.trainAttributes?.trainNumber ?? "Unknown")")
                                 .font(.headline.bold())
                                 .foregroundColor(.primary)
                         }
@@ -40,7 +40,7 @@ struct LiveActivityDebugView: View {
                     
                     // Route
                     HStack {
-                        Text(activity.attributes.routeDescription)
+                        Text(activity.trainAttributes?.routeDescription ?? "Unknown Route")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         Spacer()
@@ -138,10 +138,11 @@ struct LiveActivityDebugView: View {
         }
     }
     
-    private func navigateToTrainDetails(activity: Activity<TrainActivityAttributes>) {
+    private func navigateToTrainDetails(activity: any TRActivityProtocol) {
         // Use the train number and origin station code for navigation
-        let trainNumber = activity.attributes.trainNumber
-        let fromStation = activity.attributes.originStationCode
+        guard let attributes = activity.trainAttributes else { return }
+        let trainNumber = attributes.trainNumber
+        let fromStation = attributes.originStationCode
         appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(trainNumber: trainNumber, fromStation: fromStation))
     }
     
