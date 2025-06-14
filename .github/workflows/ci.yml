@@ -17,6 +17,10 @@ on:
       - '.github/workflows/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 env:
   TF_VERSION: '1.7.0'
   TFLINT_VERSION: 'v0.50.0'
