@@ -154,7 +154,7 @@ struct TrainCard: View {
         }
         
         // Train is boarding at origin if it hasn't departed from that station yet
-        return originStop?.departed == false
+        return !(originStop?.departed ?? true)
     }
     
     private var departureTime: String {

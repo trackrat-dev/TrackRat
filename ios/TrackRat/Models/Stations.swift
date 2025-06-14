@@ -160,11 +160,11 @@ struct Stations {
         "Watsessing Avenue": "WT",
         
         // Missing Keystone Service stations (PA)
-        "Middletown": "MID",
+        "Middletown": "MIDPA",
         "Elizabethtown": "ELT",
         "Mount Joy": "MJY",
         "Lancaster": "LNC",
-        "Parkesburg": "PAR",
+        "Parkesburg": "PKB",
         "Coatesville": "COT",
         "Downingtown": "DOW",
         "Exton": "EXT",

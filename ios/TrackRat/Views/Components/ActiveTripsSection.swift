@@ -324,7 +324,7 @@ struct ActiveTripsSection: View {
     }
     
     /// Create Progress-like data from Live Activity content
-    private func createProgressFromActivity(_ contentState: TrainActivityAttributes.ContentState, _ attributes: TrainActivityAttributes) -> Progress? {
+    private func createProgressFromActivity(_ contentState: TrainActivityAttributes.ContentState, _ attributes: TrainActivityAttributes) -> TrainProgress? {
         // Extract basic progress information from Live Activity
         let journeyPercent = Int(contentState.journeyProgress * 100)
         
@@ -350,7 +350,7 @@ struct ActiveTripsSection: View {
             )
         }
         
-        return Progress(
+        return TrainProgress(
             lastDeparted: lastDeparted,
             nextArrival: nextArrival,
             journeyPercent: journeyPercent,

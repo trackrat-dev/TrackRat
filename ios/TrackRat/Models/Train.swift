@@ -26,7 +26,7 @@ struct Train: Identifiable, Codable {
     
     // New enhanced fields
     let statusV2: StatusV2?
-    let progress: Progress?
+    let progress: TrainProgress?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -100,7 +100,7 @@ struct Train: Identifiable, Codable {
             
             // New enhanced fields
             statusV2 = try container.decodeIfPresent(StatusV2.self, forKey: .statusV2)
-            progress = try container.decodeIfPresent(Progress.self, forKey: .progress)
+            progress = try container.decodeIfPresent(TrainProgress.self, forKey: .progress)
             
         } else {
             // Legacy format
@@ -123,8 +123,10 @@ struct Train: Identifiable, Codable {
             trackAssignment = nil
             statusSummary = nil
             consolidationMetadata = nil
-            statusV2 = nil
-            progress = nil
+            
+            // Enhanced fields can appear in legacy format too
+            statusV2 = try container.decodeIfPresent(StatusV2.self, forKey: .statusV2)
+            progress = try container.decodeIfPresent(TrainProgress.self, forKey: .progress)
         }
         
         // Common fields
@@ -133,7 +135,7 @@ struct Train: Identifiable, Codable {
     }
     
     // Programmatic initializer for creating Train objects directly
-    init(id: Int, trainId: String, line: String, destination: String, departureTime: Date, track: String?, status: TrainStatus, delayMinutes: Int?, stops: [Stop]?, predictionData: PredictionData?, originStationCode: String?, dataSource: String?, consolidatedId: String? = nil, originStation: OriginStation? = nil, dataSources: [DataSource]? = nil, currentPosition: CurrentPosition? = nil, trackAssignment: TrackAssignment? = nil, statusSummary: StatusSummary? = nil, consolidationMetadata: ConsolidationMetadata? = nil, statusV2: StatusV2? = nil, progress: Progress? = nil) {
+    init(id: Int, trainId: String, line: String, destination: String, departureTime: Date, track: String?, status: TrainStatus, delayMinutes: Int?, stops: [Stop]?, predictionData: PredictionData?, originStationCode: String?, dataSource: String?, consolidatedId: String? = nil, originStation: OriginStation? = nil, dataSources: [DataSource]? = nil, currentPosition: CurrentPosition? = nil, trackAssignment: TrackAssignment? = nil, statusSummary: StatusSummary? = nil, consolidationMetadata: ConsolidationMetadata? = nil, statusV2: StatusV2? = nil, progress: TrainProgress? = nil) {
         self.id = id
         self.trainId = trainId
         self.line = line
@@ -228,7 +230,7 @@ struct Stop: Identifiable, Codable {
     let departureTime: Date?
     let pickupOnly: Bool?
     let dropoffOnly: Bool?
-    let departed: Bool
+    let departed: Bool?
     let departedConfirmedBy: [String]?
     let stopStatus: String?
     let platform: String?
@@ -244,6 +246,34 @@ struct Stop: Identifiable, Codable {
         case departedConfirmedBy = "departed_confirmed_by"
         case stopStatus = "stop_status"
         case platform
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        stationCode = try container.decodeIfPresent(String.self, forKey: .stationCode)
+        stationName = try container.decode(String.self, forKey: .stationName)
+        scheduledTime = try container.decodeIfPresent(Date.self, forKey: .scheduledTime)
+        departureTime = try container.decodeIfPresent(Date.self, forKey: .departureTime)
+        pickupOnly = try container.decodeIfPresent(Bool.self, forKey: .pickupOnly)
+        dropoffOnly = try container.decodeIfPresent(Bool.self, forKey: .dropoffOnly)
+        departed = try container.decodeIfPresent(Bool.self, forKey: .departed) ?? false
+        departedConfirmedBy = try container.decodeIfPresent([String].self, forKey: .departedConfirmedBy)
+        stopStatus = try container.decodeIfPresent(String.self, forKey: .stopStatus)
+        platform = try container.decodeIfPresent(String.self, forKey: .platform)
+    }
+    
+    init(stationCode: String?, stationName: String, scheduledTime: Date?, departureTime: Date?, pickupOnly: Bool?, dropoffOnly: Bool?, departed: Bool?, departedConfirmedBy: [String]?, stopStatus: String?, platform: String?) {
+        self.stationCode = stationCode
+        self.stationName = stationName
+        self.scheduledTime = scheduledTime
+        self.departureTime = departureTime
+        self.pickupOnly = pickupOnly
+        self.dropoffOnly = dropoffOnly
+        self.departed = departed ?? false
+        self.departedConfirmedBy = departedConfirmedBy
+        self.stopStatus = stopStatus
+        self.platform = platform
     }
 }
 
@@ -275,6 +305,31 @@ struct OriginStation: Codable {
         case name
         case departureTime = "departure_time"
     }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        code = try container.decode(String.self, forKey: .code)
+        name = try container.decode(String.self, forKey: .name)
+        
+        // Handle date decoding with custom parser
+        let dateString = try container.decode(String.self, forKey: .departureTime)
+        if let date = Date.fromISO8601(dateString) {
+            departureTime = date
+        } else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: container.codingPath + [CodingKeys.departureTime],
+                    debugDescription: "Invalid date format: \(dateString)"
+                )
+            )
+        }
+    }
+    
+    init(code: String, name: String, departureTime: Date) {
+        self.code = code
+        self.name = name
+        self.departureTime = departureTime
+    }
 }
 
 struct ConsolidationMetadata: Codable {
@@ -286,6 +341,31 @@ struct ConsolidationMetadata: Codable {
         case sourceCount = "source_count"
         case lastUpdate = "last_update"
         case confidenceScore = "confidence_score"
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceCount = try container.decode(Int.self, forKey: .sourceCount)
+        confidenceScore = try container.decode(Double.self, forKey: .confidenceScore)
+        
+        // Handle date decoding with custom parser
+        let dateString = try container.decode(String.self, forKey: .lastUpdate)
+        if let date = Date.fromISO8601(dateString) {
+            lastUpdate = date
+        } else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: container.codingPath + [CodingKeys.lastUpdate],
+                    debugDescription: "Invalid date format: \(dateString)"
+                )
+            )
+        }
+    }
+    
+    init(sourceCount: Int, lastUpdate: Date, confidenceScore: Double) {
+        self.sourceCount = sourceCount
+        self.lastUpdate = lastUpdate
+        self.confidenceScore = confidenceScore
     }
 }
 
@@ -306,6 +386,39 @@ struct DataSource: Codable {
         case track
         case delayMinutes = "delay_minutes"
         case dbId = "db_id"
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        origin = try container.decode(String.self, forKey: .origin)
+        dataSource = try container.decode(String.self, forKey: .dataSource)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        track = try container.decodeIfPresent(String.self, forKey: .track)
+        delayMinutes = try container.decodeIfPresent(Int.self, forKey: .delayMinutes)
+        dbId = try container.decode(Int.self, forKey: .dbId)
+        
+        // Handle date decoding with custom parser
+        let dateString = try container.decode(String.self, forKey: .lastUpdate)
+        if let date = Date.fromISO8601(dateString) {
+            lastUpdate = date
+        } else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: container.codingPath + [CodingKeys.lastUpdate],
+                    debugDescription: "Invalid date format: \(dateString)"
+                )
+            )
+        }
+    }
+    
+    init(origin: String, dataSource: String, lastUpdate: Date, status: String?, track: String?, delayMinutes: Int?, dbId: Int) {
+        self.origin = origin
+        self.dataSource = dataSource
+        self.lastUpdate = lastUpdate
+        self.status = status
+        self.track = track
+        self.delayMinutes = delayMinutes
+        self.dbId = dbId
     }
 }
 
@@ -356,6 +469,36 @@ struct TrackAssignment: Codable {
         case assignedAt = "assigned_at"
         case assignedBy = "assigned_by"
         case source
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        track = try container.decodeIfPresent(String.self, forKey: .track)
+        assignedBy = try container.decodeIfPresent(String.self, forKey: .assignedBy)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        
+        // Handle date decoding with custom parser
+        if let dateString = try container.decodeIfPresent(String.self, forKey: .assignedAt) {
+            if let date = Date.fromISO8601(dateString) {
+                assignedAt = date
+            } else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: container.codingPath + [CodingKeys.assignedAt],
+                        debugDescription: "Invalid date format: \(dateString)"
+                    )
+                )
+            }
+        } else {
+            assignedAt = nil
+        }
+    }
+    
+    init(track: String?, assignedAt: Date?, assignedBy: String?, source: String?) {
+        self.track = track
+        self.assignedAt = assignedAt
+        self.assignedBy = assignedBy
+        self.source = source
     }
 }
 
@@ -408,7 +551,7 @@ extension Train {
     
     /// Check if this train has consolidated data from multiple sources
     var isConsolidated: Bool {
-        return consolidatedId != nil && (dataSources?.count ?? 0) > 1
+        return consolidatedId != nil
     }
     
     /// Get the best available track assignment
@@ -450,7 +593,7 @@ extension Train {
     }
     
     /// Get journey progress information
-    var journeyProgress: Progress? {
+    var journeyProgress: TrainProgress? {
         return progress
     }
     
@@ -592,7 +735,7 @@ struct NextArrival: Codable {
     }
 }
 
-struct Progress: Codable {
+struct TrainProgress: Codable {
     let lastDeparted: DepartedStation?
     let nextArrival: NextArrival?
     let journeyPercent: Int

@@ -10,6 +10,14 @@ extension Formatter {
         formatter.timeZone = TimeZone(identifier: "America/New_York") // Assume Eastern Time
         return formatter
     }()
+    
+    static let iso8601withFractionalSecondsAndTimezone: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+    
     // Changed to standard DateFormatter for more control over format without fractional seconds
     static let customISO8601withoutFractionalSeconds: DateFormatter = {
         let formatter = DateFormatter()
@@ -18,27 +26,43 @@ extension Formatter {
         formatter.timeZone = TimeZone(identifier: "America/New_York")    // Assume Eastern Time if no offset provided
         return formatter
     }()
+    
+    static let customISO8601withTimezone: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssXXXXX"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
 }
 
 extension Date {
     static func fromISO8601(_ string: String) -> Date? {
-        // Always treat dates as Eastern Time, regardless of format
-        // This ensures consistency since the API always returns Eastern Time
+        // Try different date formats in order of likelihood
         
-        // Remove 'Z' suffix if present to treat as Eastern Time
+        // 1. With timezone offset and fractional seconds
+        if let date = Formatter.iso8601withFractionalSecondsAndTimezone.date(from: string) {
+            return date
+        }
+        
+        // 2. With timezone offset but no fractional seconds
+        if let date = Formatter.customISO8601withTimezone.date(from: string) {
+            return date
+        }
+        
+        // 3. Remove 'Z' suffix if present to treat as Eastern Time
         let cleanedString = string.hasSuffix("Z") ? String(string.dropLast()) : string
         
-        // Try with fractional seconds first
+        // 4. Try with fractional seconds (no timezone)
         if let date = Formatter.iso8601withFractionalSeconds.date(from: cleanedString) {
             return date
         }
-        // Try without fractional seconds
+        
+        // 5. Try without fractional seconds (no timezone)
         if let date = Formatter.customISO8601withoutFractionalSeconds.date(from: cleanedString) {
             return date
         }
         
-        // Fallback: if the original string had 'Z', try standard ISO8601 parsing
-        // but this should rarely be needed
+        // 6. Fallback: if the original string had 'Z', try standard ISO8601 parsing
         if string.hasSuffix("Z") {
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
