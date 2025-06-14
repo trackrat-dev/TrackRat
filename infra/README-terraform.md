@@ -29,6 +29,7 @@ No resources.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_app_name"></a> [app\_name](#input\_app\_name) | Application name | `string` | `"trackrat"` | no |
+| <a name="input_db_password"></a> [db\_password](#input\_db\_password) | Database user password, to be passed to the secrets module. Should be supplied via environment-specific .tfvars. | `string` | n/a | yes |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment name (dev, staging, prod) | `string` | n/a | yes |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The GCP project ID | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | The GCP region | `string` | `"us-east1"` | no |
@@ -41,6 +42,7 @@ No resources.
 | Name | Description |
 |------|-------------|
 | <a name="output_artifact_registry_repository"></a> [artifact\_registry\_repository](#output\_artifact\_registry\_repository) | Artifact Registry repository for Docker images |
+| <a name="output_network_self_link"></a> [network\_self\_link](#output\_network\_self\_link) | The self-link of the VPC network. |
 | <a name="output_project_id"></a> [project\_id](#output\_project\_id) | GCP project ID |
 | <a name="output_region"></a> [region](#output\_region) | GCP region |
 | <a name="output_secret_manager_secret_name"></a> [secret\_manager\_secret\_name](#output\_secret\_manager\_secret\_name) | Name of the Secret Manager secret |

@@ -22,3 +22,8 @@ output "router_name" {
   description = "Name of the Cloud Router"
   value       = google_compute_router.router.name
 }
+
+output "network_self_link" {
+  description = "The self-link of the VPC network, for use in Cloud SQL private IP configuration."
+  value       = google_compute_network.vpc.self_link
+}

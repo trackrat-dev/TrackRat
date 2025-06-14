@@ -27,3 +27,8 @@ output "secret_manager_secret_name" {
   description = "Name of the Secret Manager secret"
   value       = module.secrets.secret_name
 }
+
+output "network_self_link" {
+  description = "The self-link of the VPC network."
+  value       = module.vpc.network_self_link
+}

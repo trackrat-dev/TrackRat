@@ -37,3 +37,10 @@ variable "subnet_cidr" {
   type        = string
   default     = "10.0.1.0/24"
 }
+
+variable "db_password" {
+  description = "Database user password, to be passed to the secrets module. Should be supplied via environment-specific .tfvars."
+  type        = string
+  sensitive   = true
+  # No default, must be provided by the environment configuration (e.g., dev.tfvars)
+}

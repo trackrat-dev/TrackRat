@@ -91,3 +91,19 @@ resource "google_compute_firewall" "allow_internal" {
 
   description = "Allow internal communication within VPC for ${var.app_name} ${var.environment}"
 }
+
+# Private Service Connection for services like Cloud SQL
+resource "google_compute_global_address" "private_service_connection_range" {
+  name          = "${var.app_name}-${var.environment}-psc-range"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = tonumber(split("/", var.private_service_connection_ip_range)[1]) # Extracts prefix length
+  address       = split("/", var.private_service_connection_ip_range)[0]           # Extracts address part
+  network       = google_compute_network.vpc.id
+}
+
+resource "google_service_networking_connection" "default" {
+  network                 = google_compute_network.vpc.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_service_connection_range.name]
+}
