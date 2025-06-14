@@ -3,7 +3,6 @@
 
 # Large data directories (models will be mounted externally)
 data/
-models/
 training_artifacts/
 
 # Python cache and build artifacts
