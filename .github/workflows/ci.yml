@@ -356,7 +356,7 @@ jobs:
 
       - name: Upload Docker image artifact
         if: matrix.test-type == 'docker' && github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: docker-image-${{ github.sha }}
           path: /tmp/docker-save/
@@ -387,7 +387,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ios-test-results
           path: ios/TestResults.xcresult
