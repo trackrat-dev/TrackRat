@@ -50,7 +50,32 @@ jobs:
       with:
         terraform_version: ${{ env.TF_VERSION }}
 
-    # Step 1: Build and push Docker image first
+    # Step 1: Ensure Artifact Registry repository exists
+    - name: Setup Artifact Registry Repository
+      working-directory: ./infra/environments/dev
+      run: |
+        echo "🏗️ Setting up Artifact Registry repository..."
+        
+        # Initialize Terraform
+        terraform init
+        
+        # Create minimal terraform.tfvars for repository setup
+        cat > terraform.tfvars << EOF
+        project_id = "${{ env.PROJECT_ID }}"
+        region = "${{ env.REGION }}"
+        zone = "${{ env.REGION }}-b"
+        api_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
+        scheduler_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
+        db_password = ""
+        EOF
+        
+        # Target only the artifact registry repository
+        terraform plan -target=module.infrastructure.module.artifact_registry -var-file=terraform.tfvars -out=registry-plan
+        terraform apply -auto-approve registry-plan
+        
+        echo "✅ Artifact Registry repository ready"
+
+    # Step 2: Build and push Docker image
     - name: Configure Docker and Build Image
       run: |
         echo "🐳 Building and pushing Docker image..."
@@ -72,7 +97,7 @@ jobs:
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
         echo "✅ Image pushed: $IMAGE_TAG"
 
-    # Step 2: Deploy all infrastructure including Cloud Run services
+    # Step 3: Deploy all infrastructure including Cloud Run services
     - name: Deploy Infrastructure and Services
       working-directory: ./infra/environments/dev
       run: |
