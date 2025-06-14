@@ -1,3 +1,13 @@
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+  }
+}
+
 resource "google_sql_database_instance" "default" {
   project          = var.project_id
   region           = var.region
@@ -10,12 +20,12 @@ resource "google_sql_database_instance" "default" {
     ip_configuration {
       ipv4_enabled    = false # Disable public IP
       private_network = var.network_self_link
-      require_ssl     = true
+      ssl_mode        = "ENCRYPTED_ONLY"
     }
 
     backup_configuration {
-      enabled                        = true
-      binary_log_enabled             = true # Required for PITR
+      enabled            = true
+      binary_log_enabled = true # Required for PITR
       backup_retention_settings {
         retained_backups = 7
         retention_unit   = "COUNT"
@@ -25,9 +35,9 @@ resource "google_sql_database_instance" "default" {
     }
 
     maintenance_window {
-      day          = var.maintenance_window_day # 1-7 (Monday-Sunday)
+      day          = var.maintenance_window_day  # 1-7 (Monday-Sunday)
       hour         = var.maintenance_window_hour # 0-23
-      update_track = "stable"                   # Or "canary"
+      update_track = "stable"                    # Or "canary"
     }
 
     database_flags {
@@ -35,34 +45,34 @@ resource "google_sql_database_instance" "default" {
       value = var.enable_cloud_sql_insights ? "on" : "off"
     }
     database_flags {
-      name  = "log_min_duration_statement" # For PostgreSQL
+      name  = "log_min_duration_statement"    # For PostgreSQL
       value = var.slow_query_log_min_duration # In milliseconds, 0 to disable
     }
     database_flags {
-      name = "log_connections"
+      name  = "log_connections"
       value = var.log_connections ? "on" : "off"
     }
     database_flags {
-      name = "log_disconnections"
+      name  = "log_disconnections"
       value = var.log_disconnections ? "on" : "off"
     }
     # Add other flags as needed, e.g. for connection limits:
-    # database_flags {
-    #   name = "max_connections"
-    #   value = var.max_connections_limit
-    # }
+    database_flags {
+      name  = "max_connections"
+      value = var.max_connections_limit
+    }
   }
 
   # Deletion protection can be enabled in production
-  # deletion_protection = var.deletion_protection
+  deletion_protection = var.deletion_protection
 }
 
 # Create a database within the instance
 resource "google_sql_database" "default" {
-  project  = var.project_id
-  instance = google_sql_database_instance.default.name
-  name     = var.database_name
-  charset  = "UTF8"
+  project   = var.project_id
+  instance  = google_sql_database_instance.default.name
+  name      = var.database_name
+  charset   = "UTF8"
   collation = "en_US.UTF8"
 }
 

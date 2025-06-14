@@ -34,14 +34,14 @@
 # Alert for high CPU utilization
 resource "google_monitoring_alert_policy" "db_high_cpu" {
   project      = var.project_id
-  display_name = "\${var.instance_name} - High CPU Utilization"
+  display_name = "${var.instance_name} - High CPU Utilization"
   combiner     = "OR"
   conditions {
-    display_name = "Database CPU Utilization > \${var.cpu_alert_threshold_percent}%"
+    display_name = "Database CPU Utilization > ${var.cpu_alert_threshold_percent}%"
     condition_threshold {
-      filter     = "metric.type=\"cloudsql.googleapis.com/database/cpu/utilization\" resource.type=\"cloudsql_database\" resource.labels.database_id=\"\${var.project_id}:\${var.instance_name}\""
-      duration   = "600s" # 10 minutes
-      comparison = "COMPARISON_GT"
+      filter          = "metric.type=\"cloudsql.googleapis.com/database/cpu/utilization\" resource.type=\"cloudsql_database\" resource.labels.database_id=\"${var.project_id}:${var.instance_name}\""
+      duration        = "600s" # 10 minutes
+      comparison      = "COMPARISON_GT"
       threshold_value = var.cpu_alert_threshold_percent / 100 # Threshold is 0-1
       aggregations {
         alignment_period   = "60s"
@@ -55,7 +55,7 @@ resource "google_monitoring_alert_policy" "db_high_cpu" {
   # TODO: Configure notification channels (e.g., email, PagerDuty)
   # notification_channels = [google_monitoring_notification_channel.email.id]
   documentation {
-    content = "The Cloud SQL instance \${var.instance_name} is experiencing high CPU utilization."
+    content   = "The Cloud SQL instance ${var.instance_name} is experiencing high CPU utilization."
     mime_type = "text/markdown"
   }
   user_labels = {
@@ -67,14 +67,14 @@ resource "google_monitoring_alert_policy" "db_high_cpu" {
 # Alert for low available memory
 resource "google_monitoring_alert_policy" "db_low_memory" {
   project      = var.project_id
-  display_name = "\${var.instance_name} - Low Available Memory"
+  display_name = "${var.instance_name} - Low Available Memory"
   combiner     = "OR"
   conditions {
-    display_name = "Database Available Memory < \${var.memory_alert_threshold_gb}GB"
+    display_name = "Database Available Memory < ${var.memory_alert_threshold_gb}GB"
     condition_threshold {
-      filter     = "metric.type=\"cloudsql.googleapis.com/database/memory/available_memory\" resource.type=\"cloudsql_database\" resource.labels.database_id=\"\${var.project_id}:\${var.instance_name}\""
-      duration   = "600s" # 10 minutes
-      comparison = "COMPARISON_LT"
+      filter          = "metric.type=\"cloudsql.googleapis.com/database/memory/available_memory\" resource.type=\"cloudsql_database\" resource.labels.database_id=\"${var.project_id}:${var.instance_name}\""
+      duration        = "600s" # 10 minutes
+      comparison      = "COMPARISON_LT"
       threshold_value = var.memory_alert_threshold_gb * 1024 * 1024 * 1024 # Bytes
       aggregations {
         alignment_period   = "60s"
@@ -87,7 +87,7 @@ resource "google_monitoring_alert_policy" "db_low_memory" {
   }
   # TODO: Configure notification channels
   documentation {
-    content = "The Cloud SQL instance \${var.instance_name} is running low on available memory."
+    content   = "The Cloud SQL instance ${var.instance_name} is running low on available memory."
     mime_type = "text/markdown"
   }
   user_labels = {

@@ -16,6 +16,18 @@ variable "zone" {
   default     = "us-east1-b"
 }
 
+variable "app_name" {
+  description = "Application name"
+  type        = string
+  default     = "trackrat"
+}
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "dev"
+}
+
 variable "db_password" {
   description = "Database user password. This should be supplied via a secure method (e.g., .tfvars file not committed, or environment variable)."
   type        = string

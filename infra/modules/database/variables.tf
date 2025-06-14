@@ -119,30 +119,8 @@ variable "memory_alert_threshold_gb" {
   default     = 1 # Alert if less than 1GB available, adjust based on instance size
 }
 
-variable "enable_read_replica" {
-  description = "Flag to indicate if read replicas are configured. Used to enable replica lag alerts."
-  type        = bool
-  default     = false # Assuming no read replica by default for this module
-}
-
-variable "replica_lag_alert_threshold_seconds" {
-  description = "Maximum replica lag in seconds before an alert is triggered."
-  type        = number
-  default     = 300 # 5 minutes
-}
-
-# This variable would be used if alerting on connection percentage
-# variable "max_connections_alert_threshold_percent" {
-#   description = "Threshold for active connections as a percentage of max_connections before an alert."
-#   type        = number
-#   default     = 80
-# }
-
-variable "active_connections_alert_threshold" {
-  description = "Threshold for the absolute number of active connections before an alert."
-  type        = number
-  default     = 80 # If using the example num_backends alert, assumes max_connections is around 100
-}
+# Removed unused variables: enable_read_replica, replica_lag_alert_threshold_seconds, active_connections_alert_threshold
+# These variables are for future replica and connection monitoring features
 
 # TODO: Add variables for notification channel IDs for alerts
 # variable "notification_channel_email" {

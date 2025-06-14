@@ -38,18 +38,18 @@ module "infrastructure" {
 module "database" {
   source = "../../modules/database"
 
-  project_id         = var.project_id
-  region             = var.region
-  instance_name      = "\${var.app_name}-\${var.environment}-sql"
-  network_self_link  = module.infrastructure.network_self_link
+  project_id        = var.project_id
+  region            = var.region
+  instance_name     = "${var.app_name}-${var.environment}-sql"
+  network_self_link = module.infrastructure.network_self_link
 
   database_user_password = var.db_password
 
   # Staging specific settings (can be adjusted)
   instance_tier           = "db-g1-small" # Example: slightly larger than dev
-  maintenance_window_day  = 6 # Saturday
-  maintenance_window_hour = 4 # 4 AM UTC
-  deletion_protection    = true # Enable for staging
+  maintenance_window_day  = 6             # Saturday
+  maintenance_window_hour = 4             # 4 AM UTC
+  deletion_protection     = true          # Enable for staging
   # backup_window_start_time = "04:00" # Specific backup time for staging if needed
   # enable_cloud_sql_insights = true
   # slow_query_log_min_duration = 250

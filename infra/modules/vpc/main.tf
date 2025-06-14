@@ -94,7 +94,7 @@ resource "google_compute_firewall" "allow_internal" {
 
 # Private Service Connection for services like Cloud SQL
 resource "google_compute_global_address" "private_service_connection_range" {
-  name          = "\${var.app_name}-\${var.environment}-psc-range"
+  name          = "${var.app_name}-${var.environment}-psc-range"
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
   prefix_length = tonumber(split("/", var.private_service_connection_ip_range)[1]) # Extracts prefix length

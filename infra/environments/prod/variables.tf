@@ -16,6 +16,18 @@ variable "zone" {
   default     = "us-east1-b"
 }
 
+variable "app_name" {
+  description = "Application name"
+  type        = string
+  default     = "trackrat"
+}
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "prod"
+}
+
 variable "db_password" {
   description = "Database user password for production. Supplied via secure method."
   type        = string
