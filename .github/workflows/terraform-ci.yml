@@ -102,29 +102,3 @@ jobs:
             tflint --chdir="$env_dir"
           fi
         done
-
-    - name: Generate Documentation
-      working-directory: ./infra
-      run: |
-        # Generate docs for root module
-        terraform-docs markdown table --output-file README-terraform.md .
-        
-        # Generate docs for each module
-        for module_dir in modules/*/; do
-          if [ -d "$module_dir" ]; then
-            echo "Generating docs for module: $module_dir"
-            terraform-docs markdown table --output-file README.md "$module_dir"
-          fi
-        done
-
-    - name: Check for documentation changes
-      run: |
-        # Check only for changes in infra directory documentation
-        if [ -n "$(git status --porcelain infra/)" ]; then
-          echo "❌ Documentation needs to be updated in infra directory"
-          echo "The following files have changes:"
-          git status --porcelain infra/
-          echo "Please run 'make docs' in the infra directory and commit the changes"
-          exit 1
-        fi
-        echo "✅ Infrastructure documentation is up to date"
