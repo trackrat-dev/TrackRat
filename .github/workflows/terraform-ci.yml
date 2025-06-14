@@ -96,7 +96,7 @@ jobs:
         for module_dir in modules/*/; do
           if [ -d "$module_dir" ]; then
             echo "Running tflint on module: $module_dir"
-            tflint "$module_dir"
+            tflint --chdir="$module_dir"
           fi
         done
         
@@ -104,7 +104,7 @@ jobs:
         for env_dir in environments/*/; do
           if [ -d "$env_dir" ]; then
             echo "Running tflint on environment: $env_dir"
-            tflint "$env_dir"
+            tflint --chdir="$env_dir"
           fi
         done
 
