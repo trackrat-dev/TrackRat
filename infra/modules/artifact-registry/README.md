@@ -29,6 +29,7 @@ No modules.
 | <a name="input_app_name"></a> [app\_name](#input\_app\_name) | Application name | `string` | n/a | yes |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment name (dev, staging, prod) | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | The GCP region | `string` | n/a | yes |
+| <a name="input_repository_name"></a> [repository\_name](#input\_repository\_name) | Custom repository name (optional). If not provided, defaults to {app\_name}-{environment} | `string` | `""` | no |
 
 ## Outputs
 

@@ -29,6 +29,7 @@ No resources.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_app_name"></a> [app\_name](#input\_app\_name) | Application name | `string` | `"trackrat"` | no |
+| <a name="input_artifact_registry_repository_name"></a> [artifact\_registry\_repository\_name](#input\_artifact\_registry\_repository\_name) | Custom Artifact Registry repository name (optional). If not provided, defaults to {app\_name}-{environment} | `string` | `""` | no |
 | <a name="input_db_password"></a> [db\_password](#input\_db\_password) | Database user password, to be passed to the secrets module. Should be supplied via environment-specific .tfvars. | `string` | n/a | yes |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment name (dev, staging, prod) | `string` | n/a | yes |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The GCP project ID | `string` | n/a | yes |

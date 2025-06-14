@@ -44,3 +44,9 @@ variable "db_password" {
   sensitive   = true
   # No default, must be provided by the environment configuration (e.g., dev.tfvars)
 }
+
+variable "artifact_registry_repository_name" {
+  description = "Custom Artifact Registry repository name (optional). If not provided, defaults to {app_name}-{environment}"
+  type        = string
+  default     = ""
+}

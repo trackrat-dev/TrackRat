@@ -25,14 +25,15 @@ provider "google" {
 module "infrastructure" {
   source = "../../"
 
-  project_id  = var.project_id
-  region      = var.region
-  zone        = var.zone
-  environment = "dev"
-  app_name    = "trackrat"
-  vpc_cidr    = "10.1.0.0/16"
-  subnet_cidr = "10.1.1.0/24"
-  db_password = var.db_password # Pass the environment's db_password to the main infrastructure module
+  project_id                        = var.project_id
+  region                            = var.region
+  zone                              = var.zone
+  environment                       = "dev"
+  app_name                          = "trackrat"
+  vpc_cidr                          = "10.1.0.0/16"
+  subnet_cidr                       = "10.1.1.0/24"
+  db_password                       = var.db_password # Pass the environment's db_password to the main infrastructure module
+  artifact_registry_repository_name = "trackcast-inference-dev"
 }
 
 module "database" {

@@ -56,10 +56,11 @@ module "secrets" {
 
 # Create Artifact Registry
 module "artifact_registry" {
-  source      = "./modules/artifact-registry"
-  app_name    = var.app_name
-  environment = var.environment
-  region      = var.region
+  source          = "./modules/artifact-registry"
+  app_name        = var.app_name
+  environment     = var.environment
+  region          = var.region
+  repository_name = var.artifact_registry_repository_name
 
   depends_on = [module.apis]
 }
