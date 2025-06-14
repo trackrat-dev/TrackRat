@@ -69,7 +69,7 @@ jobs:
         for module_dir in modules/*/; do
           if [ -d "$module_dir" ]; then
             echo "Validating module: $module_dir"
-            (cd "$module_dir" && terraform validate)
+            (cd "$module_dir" && terraform init -backend=false && terraform validate)
           fi
         done
         
