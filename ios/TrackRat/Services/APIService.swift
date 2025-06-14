@@ -80,10 +80,10 @@ extension Date {
 // MARK: - API Service
 @MainActor
 final class APIService: ObservableObject {
-    static let shared = APIService()
+    static let shared = APIService(session: URLSession.shared) // Updated shared instance
     
     private let baseURL = "https://trackrat.net/api"
-    private let session = URLSession.shared
+    private let session: URLSessionProtocol // Changed to protocol
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder throws -> Date in
@@ -96,6 +96,11 @@ final class APIService: ObservableObject {
         }
         return decoder
     }()
+
+    // Initializer for dependency injection
+    init(session: URLSessionProtocol = URLSession.shared) {
+        self.session = session
+    }
     
     // MARK: - Train Search
     func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [Train] {
@@ -118,7 +123,7 @@ final class APIService: ObservableObject {
             throw APIError.invalidURL
         }
         
-        let (data, _) = try await session.data(from: url)
+        let (data, _) = try await session.data(from: url, delegate: nil) // Added delegate parameter
         
         do {
             let response = try decoder.decode(TrainListResponse.self, from: data)
@@ -145,7 +150,7 @@ final class APIService: ObservableObject {
         }
         let url = URL(string: urlString)!
         do {
-            let (data, _) = try await session.data(from: url)
+            let (data, _) = try await session.data(from: url, delegate: nil) // Added delegate parameter
             // print(String(data: data, encoding: .utf8) ?? "Could not print data") // Optional: for debugging
             return try decoder.decode(Train.self, from: data)
         } catch {
@@ -192,7 +197,7 @@ final class APIService: ObservableObject {
         }
         
         do {
-            let (data, response) = try await session.data(from: url)
+            let (data, response) = try await session.data(from: url, delegate: nil) // Added delegate parameter
             
             // Log the HTTP response status
             if let httpResponse = response as? HTTPURLResponse {
@@ -274,7 +279,7 @@ final class APIService: ObservableObject {
         }
         
         do {
-            let (data, response) = try await session.data(from: url)
+            let (data, response) = try await session.data(from: url, delegate: nil) // Added delegate parameter
             
             // Log the HTTP response
             if let httpResponse = response as? HTTPURLResponse {
@@ -388,7 +393,7 @@ final class APIService: ObservableObject {
         
         guard let url = components.url else { throw APIError.invalidURL }
         do {
-            let (data, _) = try await session.data(from: url)
+            let (data, _) = try await session.data(from: url, delegate: nil) // Added delegate parameter
             let response = try decoder.decode(TrainListResponse.self, from: data)
             return response.trains
         } catch {
@@ -410,7 +415,7 @@ final class APIService: ObservableObject {
         
         guard let url = components.url else { throw APIError.invalidURL }
         do {
-            let (data, _) = try await session.data(from: url)
+            let (data, _) = try await session.data(from: url, delegate: nil) // Added delegate parameter
             let response = try decoder.decode(TrainListResponse.self, from: data)
             return response.trains
         } catch {
@@ -432,7 +437,7 @@ final class APIService: ObservableObject {
         
         guard let url = components.url else { throw APIError.invalidURL }
         do {
-            let (data, _) = try await session.data(from: url)
+            let (data, _) = try await session.data(from: url, delegate: nil) // Added delegate parameter
             let response = try decoder.decode(TrainListResponse.self, from: data)
             return response.trains
         } catch {

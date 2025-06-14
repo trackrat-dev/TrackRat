@@ -35,7 +35,12 @@ final class StorageService {
     private let maxRecentTrips = 10
     private let maxRecentDepartures = 5
     
-    private let userDefaults = UserDefaults.standard
+    private let userDefaults: UserDefaults // Changed to let and type only
+
+    // Initializer for UserDefaults injection
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+    }
     
     // MARK: - Recent Destinations
     func loadRecentDestinations() -> [String] {

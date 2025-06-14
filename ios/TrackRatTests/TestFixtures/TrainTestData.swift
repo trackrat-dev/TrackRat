@@ -686,7 +686,7 @@ struct TrainTestData {
     }
     """
     
-    // Malformed JSON for error testing
+    // Malformed JSON for error testing (single train object)
     static let malformedTrainJSON = """
     {
         "id": "not_a_number",
@@ -698,6 +698,45 @@ struct TrainTestData {
         "stops": "not_an_array"
     }
     """
+
+    // Empty TrainListResponse
+    static let emptyTrainListResponseJSON = """
+    {
+        "metadata": {
+            "timestamp": "2024-01-01T10:00:00-05:00",
+            "model_version": "2.1.0",
+            "train_count": 0,
+            "page": 1,
+            "total_pages": 1
+        },
+        "trains": []
+    }
+    """
+
+    // Malformed TrainListResponse (e.g., trains is not an array)
+    static let malformedTrainListResponseJSON = """
+    {
+        "metadata": {
+            "timestamp": "2024-01-01T10:00:00-05:00",
+            "model_version": "2.1.0",
+            "train_count": 1,
+            "page": 1,
+            "total_pages": 1
+        },
+        "trains": "this should be an array, not a string"
+    }
+    """
+
+    // Specific JSON for Line History (can be a copy or specialized)
+    static let lineHistoryResponseJSON = trainListResponseJSON
+    // Use trainListResponseJSON as a stand-in for now
+    // To properly test stats, this would need its own data.
+
+    // Specific JSON for Destination History (can be a copy or specialized)
+    static let destinationHistoryResponseJSON = emptyTrainListResponseJSON
+    // Use emptyTrainListResponseJSON to make initial stat calculation simpler
+    // To properly test stats, this would need its own data.
+
     
     // MARK: - Legacy Properties for Compatibility
     

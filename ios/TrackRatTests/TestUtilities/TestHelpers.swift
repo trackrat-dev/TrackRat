@@ -51,6 +51,11 @@ class TestHelpers {
         let result = XCTWaiter.wait(for: [expectation], timeout: timeout)
         XCTAssertEqual(result, .completed, "Expectation should complete within timeout")
     }
+
+    static func httpResponse(urlString: String = "https://example.com", statusCode: Int) -> HTTPURLResponse {
+        let url = URL(string: urlString)!
+        return HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: "HTTP/1.1", headerFields: nil)!
+    }
 }
 
 enum TestError: Error {
