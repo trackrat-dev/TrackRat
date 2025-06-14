@@ -119,11 +119,12 @@ jobs:
 
     - name: Check for documentation changes
       run: |
-        if [ -n "$(git status --porcelain)" ]; then
-          echo "❌ Documentation needs to be updated"
+        # Check only for changes in infra directory documentation
+        if [ -n "$(git status --porcelain infra/)" ]; then
+          echo "❌ Documentation needs to be updated in infra directory"
           echo "The following files have changes:"
-          git status --porcelain
-          echo "Please run 'make docs' and commit the changes"
+          git status --porcelain infra/
+          echo "Please run 'make docs' in the infra directory and commit the changes"
           exit 1
         fi
-        echo "✅ Documentation is up to date"
+        echo "✅ Infrastructure documentation is up to date"
