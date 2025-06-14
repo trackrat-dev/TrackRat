@@ -11,11 +11,7 @@ struct TrainDetailsView: View {
     // Legacy initializer for database ID
     init(trainId: Int) {
         self.trainId = trainId
-        // Initialize viewModel with appStateProvider
-        // Capturing appState directly in the closure might cause issues if appState is also observing this view model.
-        // A common pattern is to pass a weak reference or use a dedicated provider service if complex.
-        // For this case, capturing self.appState (which is @EnvironmentObject) should be fine as it's a reference type.
-        let VModel = TrainDetailsViewModel(trainId: trainId, appStateProvider: { [weak envAppState = self.appState] in envAppState })
+        let VModel = TrainDetailsViewModel(trainId: trainId)
         self._viewModel = StateObject(wrappedValue: VModel)
     }
     
@@ -25,8 +21,7 @@ struct TrainDetailsView: View {
         let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
-            fromStationCode: fromStation,
-            appStateProvider: { [weak envAppState = self.appState] in envAppState }
+            fromStationCode: fromStation
         )
         self._viewModel = StateObject(wrappedValue: VModel)
     }
@@ -705,6 +700,8 @@ class TrainDetailsViewModel: ObservableObject {
     @Published var train: Train?
     @Published var isLoading = false
     @Published var error: String?
+    @Published var triggerBoardingHaptic = false
+    @Published var triggerTrackAssignedHaptic = false
     
     // Flexible initialization parameters
     private let databaseId: Int?
@@ -735,7 +732,32 @@ class TrainDetailsViewModel: ObservableObject {
         return databaseId ?? 0
     }
     
-    func loadTrainDetails(fromStationCode: String? = nil) async {
+    // Display properties
+    var displayableTrainStops: [Stop] {
+        return train?.stops ?? []
+    }
+    
+    var hasPreviousDisplayStops: Bool {
+        return false
+    }
+    
+    var hasMoreDisplayStops: Bool {
+        return false
+    }
+    
+    var journeyProgressPercentage: Int {
+        return train?.progress?.journeyPercent ?? 0
+    }
+    
+    var journeyStopsCompleted: Int {
+        return train?.progress?.stopsCompleted ?? 0
+    }
+    
+    var journeyTotalStops: Int {
+        return train?.progress?.totalStops ?? 0
+    }
+    
+    func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         isLoading = true
         error = nil
         
@@ -763,7 +785,7 @@ class TrainDetailsViewModel: ObservableObject {
         isLoading = false
     }
     
-    func refreshTrainDetails(fromStationCode: String? = nil) async {
+    func refreshTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         // Silent refresh
         do {
             let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
@@ -784,13 +806,12 @@ class TrainDetailsViewModel: ObservableObject {
                 // New state is boarding AND has a track
                 if (currentTrain.displayStatus != .boarding || currentTrain.displayTrack == nil) &&
                    (newTrain.displayStatus == .boarding && newTrain.displayTrack != nil) {
-                    // Haptic feedback
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    triggerBoardingHaptic = true
                 }
                 
                 // Check for track assignment using consolidated display track
                 if currentTrain.displayTrack == nil && newTrain.displayTrack != nil {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    triggerTrackAssignedHaptic = true
                 }
             }
             
