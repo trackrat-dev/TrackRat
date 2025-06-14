@@ -3,7 +3,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = ">= 5.0"
     }
     random = {
       source  = "hashicorp/random"
@@ -88,7 +88,7 @@ resource "random_password" "database_user_password" {
 resource "google_secret_manager_secret" "database_password" {
   project   = var.project_id
   secret_id = "${var.instance_name}-db-password"
-  
+
   replication {
     auto {}
   }

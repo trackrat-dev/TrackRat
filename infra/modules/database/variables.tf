@@ -71,11 +71,6 @@ variable "backup_window_start_time" {
 }
 
 # Variables for monitoring flags (from monitoring.tf)
-variable "enable_cloud_sql_insights" {
-  description = "Enable Cloud SQL Insights (Query Insights)."
-  type        = bool
-  default     = true
-}
 
 variable "slow_query_log_min_duration" {
   description = "Minimum query duration in ms to be logged as a slow query. Use 0 to disable. For PostgreSQL, this is 'log_min_duration_statement'."

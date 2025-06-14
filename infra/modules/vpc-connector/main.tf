@@ -1,3 +1,13 @@
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = ">= 4.0"
+    }
+  }
+}
+
 resource "google_vpc_access_connector" "default" {
   name          = var.name
   region        = var.region
@@ -8,7 +18,4 @@ resource "google_vpc_access_connector" "default" {
   machine_type  = "e2-micro"
   min_instances = 2
   max_instances = 3
-  # Throughput settings (min must be less than max)
-  min_throughput = 200
-  max_throughput = 300
 }

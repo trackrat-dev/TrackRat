@@ -25,13 +25,13 @@ provider "google" {
 module "infrastructure" {
   source = "../../"
 
-  project_id                        = var.project_id
-  region                            = var.region
-  zone                              = var.zone
-  environment                       = "dev"
-  app_name                          = "trackrat"
-  vpc_cidr                          = "10.1.0.0/16"
-  subnet_cidr                       = "10.1.1.0/24"
+  project_id  = var.project_id
+  region      = var.region
+  zone        = var.zone
+  environment = "dev"
+  app_name    = "trackrat"
+  vpc_cidr    = "10.1.0.0/16"
+  subnet_cidr = "10.1.1.0/24"
   # db_password is now auto-generated in the database module
   artifact_registry_repository_name = "trackcast-inference-dev"
 }
