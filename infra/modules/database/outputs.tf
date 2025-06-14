@@ -33,17 +33,15 @@ output "database_user_name" {
   value       = google_sql_user.default.name
 }
 
-# Sensitive output, ensure it's handled appropriately by consuming configurations.
-# Typically, the password itself is not output directly from a module for security.
-# Instead, the secret version ID is output if the module also creates the Secret Manager secret.
-# Since this module *receives* the password as a variable, we don't output it.
-# If the module were creating the random password and storing it in Secret Manager,
-# it might output the secret's resource ID or version ID.
+output "db_password_secret_id" {
+  description = "The ID of the Secret Manager secret holding the DB password."
+  value       = google_secret_manager_secret.database_password.secret_id
+}
 
-# output "db_password_secret_version_id" {
-#   description = "The ID of the Secret Manager secret version holding the DB password, if managed by this module."
-#   value       = # Reference to a google_secret_manager_secret_version resource if created here
-# }
+output "db_password_secret_version_id" {
+  description = "The ID of the Secret Manager secret version holding the DB password."
+  value       = google_secret_manager_secret_version.database_password_version.id
+}
 
 output "instance_service_account_email" {
   description = "The email address of the service account associated with this Cloud SQL instance."

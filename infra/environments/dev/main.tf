@@ -32,7 +32,7 @@ module "infrastructure" {
   app_name                          = "trackrat"
   vpc_cidr                          = "10.1.0.0/16"
   subnet_cidr                       = "10.1.1.0/24"
-  db_password                       = var.db_password # Pass the environment's db_password to the main infrastructure module
+  # db_password is now auto-generated in the database module
   artifact_registry_repository_name = "trackcast-inference-dev"
 }
 
@@ -45,12 +45,21 @@ module "database" {
   # instance_tier      = "db-f1-micro" # Or use module default / specify per env
   network_self_link = module.infrastructure.network_self_link # From VPC module output
 
-  database_user_password = var.db_password # This variable needs to be defined in dev/variables.tf and sourced securely
+  # database_user_password is now auto-generated in the database module
 
   # Adjust other variables as needed for the dev environment
   maintenance_window_day  = 7     # Sunday
   maintenance_window_hour = 2     # 2 AM UTC for dev
   deletion_protection     = false # Dev can have deletion protection off
+}
+
+module "vpc_connector" {
+  source = "../../modules/vpc-connector"
+
+  name          = "${var.app_name}-${var.environment}-connector"
+  region        = var.region
+  network_name  = module.infrastructure.vpc_network_name
+  ip_cidr_range = "10.1.2.0/28" # Dedicated /28 range outside the subnet to avoid conflict
 }
 
 module "trackrat_api_service" {
@@ -74,7 +83,8 @@ module "trackrat_api_service" {
   liveness_probe_path           = "/health"
   liveness_probe_period_seconds = 30
 
-  vpc_connector_id = var.vpc_connector_id # To be defined in variables.tf for Cloud SQL private IP
+  vpc_connector_id       = module.vpc_connector.id # Reference the VPC connector we created
+  enable_cloudsql_access = true                    # Enable Cloud SQL access permissions
 
   # Example environment variables
   environment_variables = {

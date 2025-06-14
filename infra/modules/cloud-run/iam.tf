@@ -40,7 +40,7 @@ resource "google_project_iam_member" "secret_accessor" {
 # If connecting to Cloud SQL via private IP using the Cloud SQL Auth Proxy,
 # the service account needs roles/cloudsql.client
 resource "google_project_iam_member" "cloudsql_client" {
-  count   = var.vpc_connector_id != null ? 1 : 0 # Assuming if VPC connector is used, Cloud SQL is a target
+  count   = var.enable_cloudsql_access ? 1 : 0
   project = var.project_id
   role    = "roles/cloudsql.client"
   member  = "serviceAccount:${local.effective_service_account_email}"
