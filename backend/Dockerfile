@@ -32,7 +32,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     MODEL_PATH="/app/models" \
-    TRACKCAST_ENV="prod"
+    TRACKCAST_ENV="dev"
 
 # Install runtime system dependencies
 RUN apt-get update && apt-get install -y \
