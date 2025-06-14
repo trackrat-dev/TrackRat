@@ -46,7 +46,7 @@ resource "google_sql_database_instance" "default" {
     }
     database_flags {
       name  = "log_min_duration_statement"    # For PostgreSQL
-      value = var.slow_query_log_min_duration # In milliseconds, 0 to disable
+      value = tostring(var.slow_query_log_min_duration) # In milliseconds, 0 to disable
     }
     database_flags {
       name  = "log_connections"
