@@ -5,12 +5,14 @@
 |------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.0 |
 | <a name="requirement_google"></a> [google](#requirement\_google) | ~> 5.0 |
+| <a name="requirement_random"></a> [random](#requirement\_random) | ~> 3.1 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_google"></a> [google](#provider\_google) | 6.39.0 |
+| <a name="provider_google"></a> [google](#provider\_google) | 5.45.2 |
+| <a name="provider_random"></a> [random](#provider\_random) | ~> 3.1 |
 
 ## Modules
 
@@ -22,9 +24,12 @@ No modules.
 |------|------|
 | [google_monitoring_alert_policy.db_high_cpu](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_alert_policy) | resource |
 | [google_monitoring_alert_policy.db_low_memory](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_alert_policy) | resource |
+| [google_secret_manager_secret.database_password](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
+| [google_secret_manager_secret_version.database_password_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
 | [google_sql_database.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database) | resource |
 | [google_sql_database_instance.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database_instance) | resource |
 | [google_sql_user.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_user) | resource |
+| [random_password.database_user_password](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/password) | resource |
 
 ## Inputs
 
@@ -34,7 +39,6 @@ No modules.
 | <a name="input_cpu_alert_threshold_percent"></a> [cpu\_alert\_threshold\_percent](#input\_cpu\_alert\_threshold\_percent) | CPU utilization percentage threshold for alerting. | `number` | `80` | no |
 | <a name="input_database_name"></a> [database\_name](#input\_database\_name) | The name of the database to create. | `string` | `"trackratdb"` | no |
 | <a name="input_database_user_name"></a> [database\_user\_name](#input\_database\_user\_name) | The name of the database user. | `string` | `"trackratuser"` | no |
-| <a name="input_database_user_password"></a> [database\_user\_password](#input\_database\_user\_password) | The password for the database user. This should be sourced from a secure location like Secret Manager. | `string` | n/a | yes |
 | <a name="input_database_version"></a> [database\_version](#input\_database\_version) | The version of PostgreSQL to use (e.g., POSTGRES\_15). | `string` | `"POSTGRES_15"` | no |
 | <a name="input_deletion_protection"></a> [deletion\_protection](#input\_deletion\_protection) | Whether or not to enable deletion protection for the instance. | `bool` | `false` | no |
 | <a name="input_enable_cloud_sql_insights"></a> [enable\_cloud\_sql\_insights](#input\_enable\_cloud\_sql\_insights) | Enable Cloud SQL Insights (Query Insights). | `bool` | `true` | no |
@@ -57,6 +61,8 @@ No modules.
 |------|-------------|
 | <a name="output_database_name"></a> [database\_name](#output\_database\_name) | The name of the database created. |
 | <a name="output_database_user_name"></a> [database\_user\_name](#output\_database\_user\_name) | The name of the default database user created. |
+| <a name="output_db_password_secret_id"></a> [db\_password\_secret\_id](#output\_db\_password\_secret\_id) | The ID of the Secret Manager secret holding the DB password. |
+| <a name="output_db_password_secret_version_id"></a> [db\_password\_secret\_version\_id](#output\_db\_password\_secret\_version\_id) | The ID of the Secret Manager secret version holding the DB password. |
 | <a name="output_instance_connection_name"></a> [instance\_connection\_name](#output\_instance\_connection\_name) | The connection name of the Cloud SQL instance, used by Cloud SQL Proxy and connectors. |
 | <a name="output_instance_name"></a> [instance\_name](#output\_instance\_name) | The name of the Cloud SQL instance. |
 | <a name="output_instance_self_link"></a> [instance\_self\_link](#output\_instance\_self\_link) | The self-link of the Cloud SQL instance. |

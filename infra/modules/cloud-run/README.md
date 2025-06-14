@@ -38,6 +38,7 @@ No modules.
 | <a name="input_container_port"></a> [container\_port](#input\_container\_port) | Port the container listens on | `number` | `8080` | no |
 | <a name="input_cpu_limit"></a> [cpu\_limit](#input\_cpu\_limit) | CPU limit for the container (e.g., '1', '2') | `string` | `"1"` | no |
 | <a name="input_custom_domain_name"></a> [custom\_domain\_name](#input\_custom\_domain\_name) | The custom domain name (e.g., api.example.com) | `string` | `""` | no |
+| <a name="input_enable_cloudsql_access"></a> [enable\_cloudsql\_access](#input\_enable\_cloudsql\_access) | Whether to grant Cloud SQL client permissions to the service account | `bool` | `false` | no |
 | <a name="input_enable_custom_domain"></a> [enable\_custom\_domain](#input\_enable\_custom\_domain) | Set to true to enable custom domain mapping | `bool` | `false` | no |
 | <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | A map of environment variables for the container | `map(string)` | `{}` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | A map of labels to apply to the service. | `map(string)` | `{}` | no |
