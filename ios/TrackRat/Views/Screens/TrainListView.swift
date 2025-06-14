@@ -276,10 +276,15 @@ class TrainListViewModel: ObservableObject {
     
     private var currentDestination: String?
     private var currentFromStationCode: String?
-    private let apiService = APIService.shared
+    private let apiService: APIService // Changed: Declare type
     
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
+    // Added: Initializer for dependency injection
+    init(apiService: APIService = APIService.shared) {
+        self.apiService = apiService
+    }
     
     func loadTrains(destination: String, fromStationCode: String) async {
         self.currentDestination = destination

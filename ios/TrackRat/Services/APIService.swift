@@ -80,7 +80,7 @@ extension Date {
 // MARK: - API Service
 @MainActor
 final class APIService: ObservableObject {
-    static var shared: APIService = APIService() // Now mutable for testing
+    static let shared = APIService()
     
     private let baseURL = "https://trackrat.net/api"
     private let session = URLSession.shared

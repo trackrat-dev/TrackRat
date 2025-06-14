@@ -47,21 +47,14 @@ class TrainListViewModelTests: XCTestCase {
     var mockAPIService: MockAPIService!
     private var cancellables: Set<AnyCancellable>!
 
-    // Store the original shared instance
-    static var originalSharedAPIService: APIService?
+    // Removed static var originalSharedAPIService
 
     override func setUp() {
         super.setUp()
 
-        // Save the original shared instance if not already saved
-        if TrainListViewModelTests.originalSharedAPIService == nil {
-            TrainListViewModelTests.originalSharedAPIService = APIService.shared
-        }
-
         mockAPIService = MockAPIService()
-        APIService.shared = mockAPIService // Replace shared instance with mock
-
-        viewModel = TrainListViewModel() // Now uses the mocked APIService.shared
+        // viewModel is now initialized with the mockAPIService directly
+        viewModel = TrainListViewModel(apiService: mockAPIService)
         cancellables = []
 
         // Mock Stations.getStationCode - this is also tricky without modifying Stations.
@@ -70,15 +63,7 @@ class TrainListViewModelTests: XCTestCase {
     }
 
     override func tearDown() {
-        // Restore the original shared instance
-        if let original = TrainListViewModelTests.originalSharedAPIService {
-            APIService.shared = original
-        }
-        // Don't nullify originalSharedAPIService here if tests run in parallel or if
-        // the test runner reuses the class instance for multiple test methods.
-        // Standard XCTest behavior is new class instance per test method, so nullifying after class is fine.
-        // For safety during multiple test classes, it's better to handle this in a suite-level setup/teardown if possible,
-        // or ensure each class saves/restores independently. The static var approach is per-class.
+        // Removed APIService.shared restoration logic
 
         viewModel = nil
         mockAPIService = nil
