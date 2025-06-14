@@ -1,5 +1,9 @@
 name: iOS Tests
-on: [push]
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
 jobs:
   ios-tests:
     runs-on: macos-latest
