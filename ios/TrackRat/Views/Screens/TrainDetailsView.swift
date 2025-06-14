@@ -11,17 +11,19 @@ struct TrainDetailsView: View {
     // Legacy initializer for database ID
     init(trainId: Int) {
         self.trainId = trainId
-        self._viewModel = StateObject(wrappedValue: TrainDetailsViewModel(trainId: trainId))
+        let VModel = TrainDetailsViewModel(trainId: trainId)
+        self._viewModel = StateObject(wrappedValue: VModel)
     }
     
     // New initializer for train number
     init(trainNumber: String, fromStation: String? = nil) {
         self.trainId = 0  // Not used for train number based initialization
-        self._viewModel = StateObject(wrappedValue: TrainDetailsViewModel(
+        let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
             fromStationCode: fromStation
-        ))
+        )
+        self._viewModel = StateObject(wrappedValue: VModel)
     }
     
     var body: some View {
@@ -37,43 +39,25 @@ struct TrainDetailsView: View {
                     } else if let error = viewModel.error {
                         ErrorView(message: error) {
                             Task {
-                                await viewModel.loadTrainDetails(fromStationCode: appState.departureStationCode)
+                                await viewModel.loadTrainDetails(
+                                    fromStationCode: appState.departureStationCode,
+                                    selectedDestinationName: appState.selectedDestination
+                                )
                             }
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 20) {
-                            // Live Activity controls -- REMOVE THIS BLOCK
-                            // if #available(iOS 16.1, *) {
-                            //     LiveActivityControls(
-                            //         train: train,
-                            //         origin: appState.selectedDeparture ?? "",
-                            //         destination: appState.selectedDestination ?? "",
-                            //         originCode: appState.departureStationCode ?? "",
-                            //         destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
-                            //     )
-                            // }
+                            CombinedDetailsCard(
+                                train: train,
+                                selectedDestination: appState.selectedDestination,
+                                displayableTrainStops: viewModel.displayableTrainStops,
+                                hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
+                                hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
+                                journeyProgressPercentage: viewModel.journeyProgressPercentage,
+                                journeyStopsCompleted: viewModel.journeyStopsCompleted,
+                                journeyTotalStops: viewModel.journeyTotalStops
+                            )
                             
-                            // Combined card with all details
-                            CombinedDetailsCard(train: train, selectedDestination: appState.selectedDestination)
-                            
-                            // Consolidated data section -- REMOVE THIS BLOCK
-                            // if train.isConsolidated {
-                            //     ConsolidatedDataCard(train: train)
-                            // }
-                            
-                            // Show history button -- REMOVE THIS BLOCK
-                            // Button {
-                            //     showingHistory = true
-                            // } label: {
-                            //     HStack {
-                            //         Image(systemName: "clock.arrow.circlepath")
-                            //         Text("details from past trains")
-                            //             .font(.subheadline)
-                            //     }
-                            //     .foregroundColor(.white.opacity(0.8))
-                            // }
-                            // .padding(.top)
-
                             // Experimental features section
                             if #available(iOS 16.0, *) {
                                 ExperimentalFeaturesView(viewModel: viewModel, train: train)
@@ -83,7 +67,10 @@ struct TrainDetailsView: View {
                     }
                 }
                 .refreshable {
-                    await viewModel.loadTrainDetails(fromStationCode: appState.departureStationCode)
+                    await viewModel.loadTrainDetails(
+                        fromStationCode: appState.departureStationCode,
+                        selectedDestinationName: appState.selectedDestination
+                    )
                 }
             }
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
@@ -97,17 +84,44 @@ struct TrainDetailsView: View {
             }
         }
         .task {
-            await viewModel.loadTrainDetails(fromStationCode: appState.departureStationCode)
+            await viewModel.loadTrainDetails(
+                fromStationCode: appState.departureStationCode,
+                selectedDestinationName: appState.selectedDestination
+            )
         }
         .onReceive(viewModel.timer) { _ in
             // Only refresh if there's no active Live Activity to avoid dual timers
             if #available(iOS 16.1, *), !LiveActivityService.shared.isActivityActive {
                 Task {
-                    await viewModel.refreshTrainDetails(fromStationCode: appState.departureStationCode)
+                    await viewModel.refreshTrainDetails(
+                        fromStationCode: appState.departureStationCode,
+                        selectedDestinationName: appState.selectedDestination
+                    )
                 }
             } else if #unavailable(iOS 16.1) {
                 Task {
-                    await viewModel.refreshTrainDetails(fromStationCode: appState.departureStationCode)
+                    await viewModel.refreshTrainDetails(
+                        fromStationCode: appState.departureStationCode,
+                        selectedDestinationName: appState.selectedDestination
+                    )
+                }
+            }
+        }
+        .onChange(of: viewModel.triggerBoardingHaptic) { oldValue, newValue in
+            if newValue {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                // Consider a brief delay before resetting if needed, or ensure ViewModel handles reset appropriately.
+                // For now, direct reset.
+                DispatchQueue.main.async {
+                    viewModel.triggerBoardingHaptic = false
+                }
+            }
+        }
+        .onChange(of: viewModel.triggerTrackAssignedHaptic) { oldValue, newValue in
+            if newValue {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                DispatchQueue.main.async {
+                    viewModel.triggerTrackAssignedHaptic = false
                 }
             }
         }
@@ -125,6 +139,14 @@ struct CombinedDetailsCard: View {
     let selectedDestination: String?
     @EnvironmentObject private var appState: AppState
     
+    // ViewModel provided properties
+    let displayableTrainStops: [Stop]
+    let hasPreviousDisplayStops: Bool
+    let hasMoreDisplayStops: Bool
+    let journeyProgressPercentage: Int
+    let journeyStopsCompleted: Int
+    let journeyTotalStops: Int
+
     private var departureTime: String {
         let formatter = DateFormatter()
         formatter.timeZone = TimeZone(identifier: "America/New_York")
@@ -138,45 +160,8 @@ struct CombinedDetailsCard: View {
         
         return formatter.string(from: train.departureTime)
     }
-    
-    private func filterStopsForJourney(stops: [Stop], origin: String?, destination: String?) -> (stops: [Stop], hasPreviousStops: Bool, hasMoreStops: Bool) {
-        // First, filter out stops with no timing information
-        let stopsWithTimes = stops.filter { stop in
-            stop.scheduledTime != nil || stop.departureTime != nil
-        }
         
-        var filteredStops = stopsWithTimes
-        var hasPreviousStops = false
-        var hasMoreStops = false
-        
-        // Filter by origin (remove stops before the user's origin)
-        if let origin = origin {
-            if let originIndex = stopsWithTimes.firstIndex(where: { 
-                $0.stationName.lowercased() == origin.lowercased() 
-            }) {
-                // Check if there are previous stops (before origin)
-                hasPreviousStops = originIndex > 0
-                // Remove stops before origin
-                filteredStops = Array(stopsWithTimes.suffix(from: originIndex))
-            }
-        }
-        
-        // Filter by destination (remove stops after the user's destination)
-        if let destination = destination {
-            if let destinationIndex = filteredStops.firstIndex(where: { 
-                $0.stationName.lowercased() == destination.lowercased() 
-            }) {
-                // Check if there are more stops after destination in the original filtered list
-                hasMoreStops = destinationIndex < filteredStops.count - 1
-                // Keep stops up to and including the destination
-                filteredStops = Array(filteredStops.prefix(destinationIndex + 1))
-            }
-        }
-        
-        return (stops: filteredStops, hasPreviousStops: hasPreviousStops, hasMoreStops: hasMoreStops)
-    }
-    
-    private func checkIfDepartureStop(_ stationName: String) -> Bool {
+    private func checkIfDepartureStop(_ stationName: String) -> Bool { // This could also be moved or simplified
         guard let selectedDeparture = appState.selectedDeparture else { return false }
         return stationName.lowercased() == selectedDeparture.lowercased()
     }
@@ -231,12 +216,17 @@ struct CombinedDetailsCard: View {
                 .background(Color.gray.opacity(0.2))
             
             // Journey Status Information
-            if train.statusV2 != nil || train.progress != nil {
+            // Use journeyTotalStops from ViewModel as a condition as well
+            if train.statusV2 != nil || train.progress != nil || journeyTotalStops > 0 {
                 JourneyStatusView(
-                    train: train, 
+                    train: train, // Keep train for other status info like V2, statusEmoji etc.
                     displayMode: JourneyDisplayMode.full,
                     originStationCode: appState.departureStationCode,
-                    destinationStationCode: Stations.getStationCode(selectedDestination ?? "")
+                    destinationStationCode: Stations.getStationCode(selectedDestination ?? ""),
+                    // Pass ViewModel calculated progress
+                    journeyProgressPercentage: journeyProgressPercentage,
+                    journeyStopsCompleted: journeyStopsCompleted,
+                    journeyTotalStops: journeyTotalStops
                 )
                 .padding(.horizontal)
                 .padding(.vertical, 8)
@@ -244,15 +234,8 @@ struct CombinedDetailsCard: View {
             
             // Stops section
             VStack(alignment: .leading, spacing: 12) {
-                if let stops = train.stops, !stops.isEmpty {
-                    let journeyData = filterStopsForJourney(
-                        stops: stops, 
-                        origin: appState.selectedDeparture, 
-                        destination: selectedDestination
-                    )
-                    
-                    // Show previous stops message if there are departed stations before origin
-                    if journeyData.hasPreviousStops {
+                if !displayableTrainStops.isEmpty {
+                    if hasPreviousDisplayStops {
                         HStack {
                             Image(systemName: "ellipsis")
                                 .font(.caption)
@@ -266,7 +249,7 @@ struct CombinedDetailsCard: View {
                         .padding(.horizontal, 20)
                     }
                     
-                    ForEach(journeyData.stops) { stop in
+                    ForEach(displayableTrainStops) { stop in
                         StopRow(
                             stop: stop,
                             isDestination: selectedDestination != nil && 
@@ -277,8 +260,7 @@ struct CombinedDetailsCard: View {
                         )
                     }
                     
-                    // Show continuation message if there are stops after destination
-                    if journeyData.hasMoreStops {
+                    if hasMoreDisplayStops {
                         HStack {
                             Image(systemName: "ellipsis")
                                 .font(.caption)
@@ -292,7 +274,7 @@ struct CombinedDetailsCard: View {
                         .padding(.horizontal, 20)
                     }
                 } else {
-                    Text("No stops information available")
+                    Text("No stops information available for this journey segment.")
                         .foregroundColor(.black.opacity(0.6))
                         .italic()
                         .frame(maxWidth: .infinity)
@@ -718,6 +700,8 @@ class TrainDetailsViewModel: ObservableObject {
     @Published var train: Train?
     @Published var isLoading = false
     @Published var error: String?
+    @Published var triggerBoardingHaptic = false
+    @Published var triggerTrackAssignedHaptic = false
     
     // Flexible initialization parameters
     private let databaseId: Int?
@@ -748,7 +732,32 @@ class TrainDetailsViewModel: ObservableObject {
         return databaseId ?? 0
     }
     
-    func loadTrainDetails(fromStationCode: String? = nil) async {
+    // Display properties
+    var displayableTrainStops: [Stop] {
+        return train?.stops ?? []
+    }
+    
+    var hasPreviousDisplayStops: Bool {
+        return false
+    }
+    
+    var hasMoreDisplayStops: Bool {
+        return false
+    }
+    
+    var journeyProgressPercentage: Int {
+        return train?.progress?.journeyPercent ?? 0
+    }
+    
+    var journeyStopsCompleted: Int {
+        return train?.progress?.stopsCompleted ?? 0
+    }
+    
+    var journeyTotalStops: Int {
+        return train?.progress?.totalStops ?? 0
+    }
+    
+    func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         isLoading = true
         error = nil
         
@@ -776,7 +785,7 @@ class TrainDetailsViewModel: ObservableObject {
         isLoading = false
     }
     
-    func refreshTrainDetails(fromStationCode: String? = nil) async {
+    func refreshTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         // Silent refresh
         do {
             let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
@@ -797,13 +806,12 @@ class TrainDetailsViewModel: ObservableObject {
                 // New state is boarding AND has a track
                 if (currentTrain.displayStatus != .boarding || currentTrain.displayTrack == nil) &&
                    (newTrain.displayStatus == .boarding && newTrain.displayTrack != nil) {
-                    // Haptic feedback
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    triggerBoardingHaptic = true
                 }
                 
                 // Check for track assignment using consolidated display track
                 if currentTrain.displayTrack == nil && newTrain.displayTrack != nil {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    triggerTrackAssignedHaptic = true
                 }
             }
             
@@ -990,13 +998,21 @@ struct JourneyStatusView: View {
     let showTrainHeader: Bool
     let originStationCode: String?
     let destinationStationCode: String?
+
+    // ViewModel provided properties for progress
+    let journeyProgressPercentage: Int
+    let journeyStopsCompleted: Int
+    let journeyTotalStops: Int
     
-    init(train: Train, displayMode: JourneyDisplayMode = .full, showTrainHeader: Bool = false, originStationCode: String? = nil, destinationStationCode: String? = nil) {
+    init(train: Train, displayMode: JourneyDisplayMode = .full, showTrainHeader: Bool = false, originStationCode: String? = nil, destinationStationCode: String? = nil, journeyProgressPercentage: Int = 0, journeyStopsCompleted: Int = 0, journeyTotalStops: Int = 0) {
         self.train = train
         self.displayMode = displayMode
         self.showTrainHeader = showTrainHeader
         self.originStationCode = originStationCode
         self.destinationStationCode = destinationStationCode
+        self.journeyProgressPercentage = journeyProgressPercentage
+        self.journeyStopsCompleted = journeyStopsCompleted
+        self.journeyTotalStops = journeyTotalStops
     }
     
     var body: some View {
@@ -1079,9 +1095,27 @@ struct JourneyStatusView: View {
     
     @ViewBuilder
     private var progressSection: some View {
-        if hasProgressData {
-            // This section is now empty since stop completion display was removed
-            EmptyView()
+        // Use ViewModel's journey properties
+        if journeyTotalStops > 0 { // Display if there's a calculated journey by ViewModel
+            VStack(spacing: 8) {
+                ProgressView(value: Double(journeyProgressPercentage) / 100.0)
+                    .tint(statusColor) // Use statusColor or a dedicated progress bar color
+                    .scaleEffect(y: 2.5)
+
+                Text("\(journeyStopsCompleted) of \(journeyTotalStops) stops completed on your journey")
+                    .font(.caption)
+                    .foregroundColor(.black.opacity(0.7))
+            }
+        } else if let progress = train.progress { // Fallback to API progress if no user journey was processed by VM
+             VStack(spacing: 8) {
+                ProgressView(value: Double(progress.journeyPercent) / 100.0)
+                    .tint(statusColor)
+                    .scaleEffect(y: 2.5)
+
+                Text("\(progress.stopsCompleted) of \(progress.totalStops) stops completed (overall)")
+                    .font(.caption)
+                    .foregroundColor(.black.opacity(0.7))
+            }
         }
     }
     
@@ -1141,42 +1175,8 @@ struct JourneyStatusView: View {
     
     // MARK: - Helper Properties
     
-    /// Calculate user-specific journey progress between their origin and destination
-    private var userJourneyProgress: (completed: Int, total: Int, percentage: Int) {
-        // Use API progress data if available and no user stations specified
-        if let progress = train.progress, originStationCode == nil || destinationStationCode == nil {
-            return (completed: progress.stopsCompleted, total: progress.totalStops, percentage: progress.journeyPercent)
-        }
-        
-        // Calculate from stops data for user's specific journey
-        guard let stops = train.stops,
-              let originCode = originStationCode,
-              let destinationCode = destinationStationCode,
-              let originIndex = stops.firstIndex(where: { Stations.stationMatches($0, stationCode: originCode) }),
-              let destIndex = stops.firstIndex(where: { Stations.stationMatches($0, stationCode: destinationCode) }),
-              originIndex < destIndex else {
-            // Fallback to API data or default
-            if let progress = train.progress {
-                return (completed: progress.stopsCompleted, total: progress.totalStops, percentage: progress.journeyPercent)
-            }
-            return (completed: 0, total: 0, percentage: 0)
-        }
-        
-        // Get the journey segment stops (including origin and destination)
-        let journeyStops = Array(stops[originIndex...destIndex])
-        
-        // Count departed stops in the journey, excluding the origin (user hasn't "completed" origin until they leave)
-        let departedStopsInJourney = journeyStops.dropFirst().filter { $0.departed ?? false }
-        let completedStops = departedStopsInJourney.count
-        
-        // Total stops in journey (excluding origin since it's the starting point)
-        let totalStops = journeyStops.count - 1
-        
-        // Calculate percentage
-        let percentage = totalStops > 0 ? Int((Double(completedStops) / Double(totalStops)) * 100) : 0
-        
-        return (completed: completedStops, total: totalStops, percentage: percentage)
-    }
+    // userJourneyProgress computed property is removed as this logic is now in the ViewModel.
+    // The view now receives journeyProgressPercentage, journeyStopsCompleted, journeyTotalStops as parameters.
     
     private var displayStatus: String {
         let rawStatus: String
@@ -1259,7 +1259,8 @@ struct JourneyStatusView: View {
     }
     
     private var hasProgressData: Bool {
-        return train.progress != nil
+        // Now considers ViewModel's calculated journey or fallback to API progress
+        return journeyTotalStops > 0 || train.progress != nil
     }
     
     private var hasDepartureInfo: Bool {

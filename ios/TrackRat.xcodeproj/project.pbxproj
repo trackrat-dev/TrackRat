@@ -42,7 +42,7 @@
 		A1BA60F02DFC73650002FB39 /* StorageServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60E82DFC73650002FB39 /* StorageServiceTests.swift */; };
 		A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60E92DFC73650002FB39 /* TrainTestData.swift */; };
 		A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60EA2DFC73650002FB39 /* TestHelpers.swift */; };
-		A1BA60F32DFC73650002FB39 /* XCTestCaseExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60EB2DFC73650002FB39 /* XCTestCaseExtensions.swift */; };
+		A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60EB2DFC73650002FB39 /* XCTestCase+Extensions.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -93,9 +93,8 @@
 		A1BA60E82DFC73650002FB39 /* StorageServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageServiceTests.swift; sourceTree = "<group>"; };
 		A1BA60E92DFC73650002FB39 /* TrainTestData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainTestData.swift; sourceTree = "<group>"; };
 		A1BA60EA2DFC73650002FB39 /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
-		A1BA60EB2DFC73650002FB39 /* XCTestCaseExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "XCTestCase+Extensions.swift"; sourceTree = "<group>"; };
+		A1BA60EB2DFC73650002FB39 /* XCTestCase+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "XCTestCase+Extensions.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
 
 /* Begin PBXFrameworksBuildPhase section */
 		1A1A1A1A1A1A1A1A1A1A1A0D /* Frameworks */ = {
@@ -210,7 +209,7 @@
 			isa = PBXGroup;
 			children = (
 				A1BA60EA2DFC73650002FB39 /* TestHelpers.swift */,
-				A1BA60EB2DFC73650002FB39 /* XCTestCaseExtensions.swift */,
+				A1BA60EB2DFC73650002FB39 /* XCTestCase+Extensions.swift */,
 			);
 			path = TestUtilities;
 			sourceTree = "<group>";
@@ -357,7 +356,7 @@
 				A1BA60F02DFC73650002FB39 /* StorageServiceTests.swift in Sources */,
 				A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */,
 				A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */,
-				A1BA60F32DFC73650002FB39 /* XCTestCaseExtensions.swift in Sources */,
+				A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

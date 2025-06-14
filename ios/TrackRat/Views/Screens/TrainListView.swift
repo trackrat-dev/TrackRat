@@ -276,15 +276,10 @@ class TrainListViewModel: ObservableObject {
     
     private var currentDestination: String?
     private var currentFromStationCode: String?
-    private let apiService: APIService // Changed: Declare type
+    private let apiService: APIService
     
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-
-    // Added: Initializer for dependency injection
-    init(apiService: APIService = APIService.shared) {
-        self.apiService = apiService
-    }
     
     private func sortTrainsByDepartureTime(_ trains: [Train], fromStationCode: String) -> [Train] {
         return trains.sorted { train1, train2 in
@@ -294,6 +289,11 @@ class TrainListViewModel: ObservableObject {
         }
     }
     
+    // Initializer for dependency injection
+    init(apiService: APIService = APIService.shared) {
+        self.apiService = apiService
+    }
+
     func loadTrains(destination: String, fromStationCode: String) async {
         self.currentDestination = destination
         self.currentFromStationCode = fromStationCode
@@ -303,9 +303,12 @@ class TrainListViewModel: ObservableObject {
         
         do {
             guard let toStationCode = Stations.getStationCode(destination) else {
-                throw APIError.invalidURL
+                self.error = "Invalid destination station code for: \(destination)"
+                self.isLoading = false
+                return
             }
-            let fetchedTrains = try await apiService.searchTrains(
+            // Use injected apiService
+            let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode
             )
@@ -324,25 +327,23 @@ class TrainListViewModel: ObservableObject {
         } catch {
             self.error = error.localizedDescription
         }
-        
         isLoading = false
     }
     
     func refreshTrains() async {
-        // Silent refresh without showing loading state
         guard let destination = currentDestination,
               let fromStationCode = currentFromStationCode,
               let toStationCode = Stations.getStationCode(destination) else {
-            return
+            return // Or set an error if appropriate for silent refresh
         }
         
         do {
-            let fetchedTrains = try await apiService.searchTrains(
+            // Use injected apiService
+            let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode
             )
             
-            // Filter out trains departing more than 6 hours from now
             let now = Date()
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
@@ -355,28 +356,21 @@ class TrainListViewModel: ObservableObject {
             let newTrains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
             
             // Check for boarding status changes
-            for (index, train) in trains.enumerated() {
+            for train in trains {
                 if let newTrain = newTrains.first(where: { $0.id == train.id }) {
                     if train.status != .boarding && newTrain.status == .boarding {
                         // Haptic feedback for boarding status
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     }
-                    trains[index] = newTrain
                 }
             }
             
-            // Add any new trains
-            for newTrain in newTrains {
-                if !trains.contains(where: { $0.id == newTrain.id }) {
-                    trains.append(newTrain)
-                }
-            }
-            
-            // Sort by departure time
-            trains = sortTrainsByDepartureTime(trains, fromStationCode: fromStationCode)
+            // Update trains list with new data
+            trains = newTrains
             
         } catch {
             // Silent failure for background refresh
+            print("TrainListViewModel: Silent refresh failed: \(error.localizedDescription)")
         }
     }
 }

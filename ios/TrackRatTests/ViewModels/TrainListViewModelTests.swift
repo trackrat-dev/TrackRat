@@ -1,17 +1,16 @@
-```swift
 import XCTest
 import Combine
-@testable import TrackRat // Assuming your app module is named TrackRat
+@testable import TrackRat
 
 // Mock APIService
 class MockAPIService: APIService {
-    var searchTrainsResult: Result<[TrackRat.Train], Error>?
-    var trainsToReturn: [TrackRat.Train] = []
+    var searchTrainsResult: Result<[Train], Error>?
+    var trainsToReturn: [Train] = []
     var searchTrainsCallCount = 0
     var lastFromStationCode: String?
     var lastToStationCode: String?
 
-    override func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [TrackRat.Train] {
+    override func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [Train] {
         searchTrainsCallCount += 1
         lastFromStationCode = fromStationCode
         lastToStationCode = toStationCode
@@ -41,78 +40,50 @@ let TEST_STATION_A = "STA"
 let TEST_STATION_B = "STB"
 let TEST_STATION_C = "STC"
 
-
+@MainActor
 class TrainListViewModelTests: XCTestCase {
     var viewModel: TrainListViewModel!
     var mockAPIService: MockAPIService!
     private var cancellables: Set<AnyCancellable>!
 
-    // Removed static var originalSharedAPIService
-
     override func setUp() {
         super.setUp()
-
         mockAPIService = MockAPIService()
-        // viewModel is now initialized with the mockAPIService directly
         viewModel = TrainListViewModel(apiService: mockAPIService)
         cancellables = []
-
-        // Mock Stations.getStationCode - this is also tricky without modifying Stations.
-        // We'll assume "DEST_CODE" is returned for "Destination"
-        // Ideally, `Stations` would also be injectable or have a test mode.
     }
 
     override func tearDown() {
-        // Removed APIService.shared restoration logic
-
         viewModel = nil
         mockAPIService = nil
         cancellables = nil
         super.tearDown()
     }
 
-    // Helper to create test Train instances
-    // Ensure `departureTime` is the generic one, and `stops` contains specific departure time for `fromStationCode`
-    func createTestTrain(id: Int, trainId: String, genericDepartureTime: Date, stationSpecificStops: [TrackRat.Stop]) -> TrackRat.Train {
-        return TrackRat.Train(
+    // Helper to create test Train instances using existing mock system
+    func createTestTrain(id: Int, trainId: String, genericDepartureTime: Date, stationSpecificStops: [Stop]) -> Train {
+        return Train.mock(
             id: id,
             trainId: trainId,
-            line: "TestLine",
             destination: "TestDestination",
-            departureTime: genericDepartureTime, // Generic departure time
-            track: "1",
+            origin: "TestOrigin", 
+            line: "TestLine",
             status: .scheduled,
-            delayMinutes: 0,
-            stops: stationSpecificStops, // Specific stops for getDepartureTime
-            predictionData: nil,
-            originStationCode: stationSpecificStops.first?.stationCode, // Assume first stop is origin
-            dataSource: "test",
-            consolidatedId: "cons-\(id)",
-            originStation: TrackRat.OriginStation(code: stationSpecificStops.first?.stationCode ?? "", name: stationSpecificStops.first?.stationName ?? "", departureTime: stationSpecificStops.first?.departureTime ?? genericDepartureTime),
-            dataSources: nil,
-            currentPosition: nil,
-            trackAssignment: nil,
-            statusSummary: TrackRat.StatusSummary(currentStatus: "Scheduled", delayMinutes: 0, onTimePerformance: "100%"),
-            consolidationMetadata: TrackRat.ConsolidationMetadata(sourceCount: 1, lastUpdate: Date(), confidenceScore: 1.0)
+            departureTime: genericDepartureTime,
+            track: "1",
+            stops: stationSpecificStops
         )
     }
 
-    // Helper to create a Stop for testing purposes
-    func createTestStop(stationCode: String, stationName: String, departureTime: Date) -> TrackRat.Stop {
-        return TrackRat.Stop(
-            stationCode: stationCode,
+    // Helper to create a Stop for testing purposes using existing mock system
+    func createTestStop(stationCode: String, stationName: String, departureTime: Date) -> Stop {
+        return Stop.mock(
             stationName: stationName,
-            scheduledTime: departureTime, // Using departureTime for scheduledTime for simplicity
-            departureTime: departureTime,
-            pickupOnly: false,
-            dropoffOnly: false,
-            departed: false,
-            departedConfirmedBy: nil,
-            stopStatus: "On Time",
-            platform: "A"
+            stationCode: stationCode,
+            scheduledTime: departureTime,
+            departureTime: departureTime
         )
     }
-
 
     func testLoadTrains_SortsCorrectlyByStationSpecificDepartureTime() async {
         // Arrange
@@ -133,9 +104,6 @@ class TrainListViewModelTests: XCTestCase {
         mockAPIService.trainsToReturn = [train1, train2] // API returns them in this order initially
 
         // Act
-        // Need to mock Stations.getStationCode("Destination") to return something for the API call to proceed
-        // This is a limitation. For now, we assume it works or the API call doesn't strictly need it for this test path if mocked.
-        // The current APIService.searchTrains doesn't use the destination code internally if mocked.
         await viewModel.loadTrains(destination: "Destination", fromStationCode: fromStation)
 
         // Assert
@@ -243,4 +211,3 @@ class TrainListViewModelTests: XCTestCase {
         }
     }
 }
-```
