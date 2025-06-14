@@ -7,7 +7,7 @@ on:
       - 'backend/**'
       - '.github/workflows/deploy-dev.yml'
   workflow_run:
-    workflows: ["Backend Tests", "Docker Build Test"]
+    workflows: ["CI Pipeline"]
     types: [completed]
     branches: [main]
 
