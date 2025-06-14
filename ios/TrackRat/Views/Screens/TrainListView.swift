@@ -368,7 +368,11 @@ class TrainListViewModel: ObservableObject {
             }
             
             // Sort by departure time
-            trains.sort { $0.departureTime < $1.departureTime }
+            trains.sort { train1, train2 in
+                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
+                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
+                return time1 < time2
+            }
             
         } catch {
             // Silent failure for background refresh
