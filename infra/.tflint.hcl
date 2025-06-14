@@ -61,20 +61,6 @@ rule "terraform_standard_module_structure" {
   enabled = true
 }
 
-# Google Cloud specific rules
-rule "google_compute_instance_avoid_public_ip" {
-  enabled = true
-}
-
-rule "google_storage_bucket_encryption" {
-  enabled = true
-}
-
-rule "google_sql_database_instance_backup_enabled" {
-  enabled = true
-}
-
-# Note: google_project_service_disable_on_destroy rule removed as it doesn't exist in current plugin version
 
 # Disable rules that might be too strict for our use case
 rule "terraform_unused_required_providers" {
