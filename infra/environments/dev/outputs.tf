@@ -27,3 +27,24 @@ output "secret_manager_secret_name" {
   description = "Name of the Secret Manager secret"
   value       = module.infrastructure.secret_manager_secret_name
 }
+
+output "trackrat_api_service_url" {
+  description = "URL of the trackrat-api service in dev"
+  value       = module.trackrat_api_service.service_url
+}
+
+output "trackrat_api_custom_domain_name" {
+  description = "Custom domain name for the trackrat-api service in dev"
+  value       = module.trackrat_api_service.custom_domain_name
+  sensitive   = true # Contains potentially sensitive domain info
+}
+
+output "trackrat_scheduler_service_url_dev" {
+  description = "URL of the trackrat-scheduler service in dev"
+  value       = module.trackrat_scheduler_dev.scheduler_cloud_run_service_url
+}
+
+output "trackrat_scheduler_job_name_dev" {
+  description = "Name of the Cloud Scheduler job for the dev environment"
+  value       = module.trackrat_scheduler_dev.scheduler_job_name
+}
