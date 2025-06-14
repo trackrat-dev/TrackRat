@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Check for changes
         uses: dorny/paths-filter@v2
         id: changes
@@ -47,13 +47,44 @@ jobs:
             infra:
               - 'infra/**'
               - '.github/workflows/ci.yml'
+            workflows:
+              - '.github/workflows/**'
+
+  # Workflow validation
+  workflow-validation:
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    name: Workflow Validation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Validate workflow YAML syntax
+        run: |
+          echo "🔍 Validating GitHub workflow YAML files..."
+
+          # Check for critical syntax errors only (ignore cosmetic issues)
+          yamllint -c - .github/workflows/ << 'EOF'
+          extends: default
+          rules:
+            line-length: disable
+            document-start: disable
+            truthy: disable
+          EOF
+
+          echo "✅ All workflow files have valid YAML syntax"
 
   # Backend testing with matrix strategy
   backend-tests:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    
+
     strategy:
       fail-fast: false
       matrix:
@@ -71,9 +102,9 @@ jobs:
             python-version: '3.11'
             postgres: false
             description: "Docker Container Tests"
-    
+
     name: Backend ${{ matrix.description }}
-    
+
     services:
       postgres:
         image: postgres:13
@@ -137,15 +168,15 @@ jobs:
           # Test that inference requirements can be installed
           pip install -r requirements-inference.txt --dry-run
           echo "✓ Inference requirements are valid"
-          
+
           # Test that we can install them for real
           pip install -r requirements-inference.txt
           echo "✓ Inference requirements installed successfully"
-          
+
           # Verify key packages are available
           python -c "
           import fastapi
-          import uvicorn  
+          import uvicorn
           import torch
           import sqlalchemy
           import pandas
@@ -207,18 +238,18 @@ jobs:
         if: matrix.test-type == 'docker'
         run: |
           echo "🔍 Verifying built container..."
-          
+
           # Check that the image was created
           docker images trackcast-inference:ci-test
-          
+
           # Check image size (should be reasonable for inference-only)
           SIZE=$(docker images trackcast-inference:ci-test --format "table {{.Size}}" | tail -n 1)
           echo "📦 Image size: $SIZE"
-          
+
           # Verify container structure and key files
           echo "🔍 Checking container filesystem..."
           docker run --rm trackcast-inference:ci-test ls -la /app/
-          
+
           # Verify Python packages are installed
           echo "🐍 Checking Python environment..."
           docker run --rm trackcast-inference:ci-test python --version
@@ -228,7 +259,7 @@ jobs:
         if: matrix.test-type == 'docker'
         run: |
           echo "🚀 Testing container can start and import modules..."
-          
+
           # Test basic imports without external dependencies
           docker run --rm \
             -e MODEL_PATH="/app/models" \
@@ -242,23 +273,23 @@ jobs:
           try:
               import fastapi
               print('✅ FastAPI imported')
-              
+
               import uvicorn
               print('✅ Uvicorn imported')
-              
+
               import torch
               print('✅ PyTorch imported')
-              
+
               import sqlalchemy
               print('✅ SQLAlchemy imported')
-              
+
               import pandas
               print('✅ Pandas imported')
-              
+
               # Test app can be imported
               from trackcast.api.app import app
               print('✅ TrackCast app imported')
-              
+
               # Check that key routes exist
               routes = [route.path for route in app.routes if hasattr(route, 'path')]
               expected_routes = ['/', '/health']
@@ -268,9 +299,9 @@ jobs:
                   else:
                       print(f'❌ Route {route} missing')
                       sys.exit(1)
-              
+
               print('🎉 All validations passed!')
-              
+
           except ImportError as e:
               print(f'❌ Import error: {e}')
               sys.exit(1)
@@ -283,10 +314,10 @@ jobs:
         if: matrix.test-type == 'docker'
         run: |
           echo "🔧 Testing CLI tool access..."
-          
+
           # Test that trackcast CLI is available
           docker run --rm trackcast-inference:ci-test which trackcast
-          
+
           # Test CLI help (should work without database)
           docker run --rm trackcast-inference:ci-test trackcast --help
 
@@ -294,7 +325,7 @@ jobs:
         if: matrix.test-type == 'docker'
         run: |
           echo "🔒 Checking container security..."
-          
+
           # Verify running as non-root user
           USER_CHECK=$(docker run --rm trackcast-inference:ci-test whoami)
           if [ "$USER_CHECK" = "trackcast" ]; then
@@ -303,7 +334,7 @@ jobs:
             echo "❌ Container should run as 'trackcast' user, but runs as: $USER_CHECK"
             exit 1
           fi
-          
+
           # Check key directories exist with correct permissions
           docker run --rm trackcast-inference:ci-test ls -la /app/models/
           echo "✅ Models directory exists"
@@ -335,14 +366,14 @@ jobs:
     if: needs.changes.outputs.ios == 'true'
     runs-on: macos-latest
     name: iOS Tests
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Select Xcode version
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-      
+
       - name: Run iOS tests
         working-directory: ./ios
         run: |
@@ -365,7 +396,7 @@ jobs:
     if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     name: Infrastructure Tests
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -405,7 +436,7 @@ jobs:
           # Initialize and validate root module
           terraform init -backend=false
           terraform validate
-          
+
           # Validate each module
           for module_dir in modules/*/; do
             if [ -d "$module_dir" ]; then
@@ -413,7 +444,7 @@ jobs:
               (cd "$module_dir" && terraform init -backend=false && terraform validate)
             fi
           done
-          
+
           # Validate each environment
           for env_dir in environments/*/; do
             if [ -d "$env_dir" ]; then
@@ -431,7 +462,7 @@ jobs:
         run: |
           # Run tflint on root module
           tflint
-          
+
           # Run tflint on each module
           for module_dir in modules/*/; do
             if [ -d "$module_dir" ]; then
@@ -439,7 +470,7 @@ jobs:
               tflint --chdir="$module_dir"
             fi
           done
-          
+
           # Run tflint on each environment
           for env_dir in environments/*/; do
             if [ -d "$env_dir" ]; then
@@ -451,24 +482,36 @@ jobs:
   # Summary job that depends on all tests
   ci-summary:
     runs-on: ubuntu-latest
-    needs: [changes, backend-tests, ios-tests, infra-tests]
+    needs: [changes, workflow-validation, backend-tests, ios-tests, infra-tests]
     if: always()
     name: CI Summary
-    
+
     steps:
       - name: Generate CI summary
         run: |
           echo "## 🚀 CI Pipeline Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           # Check what was tested
           backend_changed="${{ needs.changes.outputs.backend }}"
           ios_changed="${{ needs.changes.outputs.ios }}"
           infra_changed="${{ needs.changes.outputs.infra }}"
-          
+          workflows_changed="${{ needs.changes.outputs.workflows }}"
+
           echo "### 📋 Components Tested" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
+          if [[ "$workflows_changed" == "true" ]]; then
+            workflows_result="${{ needs.workflow-validation.result }}"
+            if [[ "$workflows_result" == "success" ]]; then
+              echo "✅ **Workflows**: YAML validation passed" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ **Workflows**: YAML validation failed" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⏭️ **Workflows**: No changes detected" >> $GITHUB_STEP_SUMMARY
+          fi
+
           if [[ "$backend_changed" == "true" ]]; then
             backend_result="${{ needs.backend-tests.result }}"
             if [[ "$backend_result" == "success" ]]; then
@@ -479,7 +522,7 @@ jobs:
           else
             echo "⏭️ **Backend**: No changes detected" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           if [[ "$ios_changed" == "true" ]]; then
             ios_result="${{ needs.ios-tests.result }}"
             if [[ "$ios_result" == "success" ]]; then
@@ -490,7 +533,7 @@ jobs:
           else
             echo "⏭️ **iOS**: No changes detected" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           if [[ "$infra_changed" == "true" ]]; then
             infra_result="${{ needs.infra-tests.result }}"
             if [[ "$infra_result" == "success" ]]; then
@@ -501,6 +544,10 @@ jobs:
           else
             echo "⏭️ **Infrastructure**: No changes detected" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Run Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/gh-workflow-fixes
