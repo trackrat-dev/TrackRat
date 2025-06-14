@@ -122,8 +122,20 @@ validate_terraform() {
     
     local validation_errors=0
     
-    # Validate root module
+    # Initialize root module if needed
     cd "$SCRIPT_DIR"
+    if [ ! -d ".terraform" ] || [ ! -d ".terraform/providers" ]; then
+        print_status "Initializing root module..."
+        if terraform init -backend=false; then
+            print_status "Root module initialized"
+        else
+            print_error "Root module initialization failed"
+            validation_errors=$((validation_errors + 1))
+            return
+        fi
+    fi
+    
+    # Validate root module
     print_status "Validating root module..."
     if terraform validate; then
         print_status "Root module validation passed"
@@ -139,6 +151,20 @@ validate_terraform() {
             print_status "Validating module: $module_name"
             
             cd "$SCRIPT_DIR/$module_dir"
+            
+            # Initialize module if needed
+            if [ ! -d ".terraform" ] || [ ! -d ".terraform/providers" ]; then
+                print_status "Initializing module $module_name..."
+                if terraform init -backend=false; then
+                    print_status "Module $module_name initialized"
+                else
+                    print_error "Module $module_name initialization failed"
+                    validation_errors=$((validation_errors + 1))
+                    cd "$SCRIPT_DIR"
+                    continue
+                fi
+            fi
+            
             if terraform validate; then
                 print_status "Module $module_name validation passed"
             else
@@ -158,8 +184,16 @@ validate_terraform() {
             cd "$SCRIPT_DIR/$env_dir"
             
             # Initialize if needed (but don't connect to remote backend)
-            if [ ! -d ".terraform" ]; then
-                terraform init -backend=false
+            if [ ! -d ".terraform" ] || [ ! -d ".terraform/providers" ]; then
+                print_status "Initializing environment $env_name..."
+                if terraform init -backend=false; then
+                    print_status "Environment $env_name initialized"
+                else
+                    print_error "Environment $env_name initialization failed"
+                    validation_errors=$((validation_errors + 1))
+                    cd "$SCRIPT_DIR"
+                    continue
+                fi
             fi
             
             if terraform validate; then

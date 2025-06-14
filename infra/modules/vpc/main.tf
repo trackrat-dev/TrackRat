@@ -1,4 +1,5 @@
 terraform {
+  required_version = ">= 1.0"
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -12,7 +13,7 @@ resource "google_compute_network" "vpc" {
   name                    = "${var.app_name}-${var.environment}-vpc"
   auto_create_subnetworks = false
   routing_mode            = "REGIONAL"
-  description             = "VPC network for ${var.app_name} ${var.environment} environment"
+  description             = "VPC network for ${var.app_name} ${var.environment} environment (CIDR: ${var.vpc_cidr})"
 }
 
 # Subnet

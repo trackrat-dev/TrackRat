@@ -38,6 +38,7 @@ module "vpc" {
   app_name    = var.app_name
   environment = var.environment
   region      = var.region
+  vpc_cidr    = var.vpc_cidr
   subnet_cidr = var.subnet_cidr
 
   depends_on = [module.apis]
