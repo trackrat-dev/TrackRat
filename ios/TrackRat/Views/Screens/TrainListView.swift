@@ -276,11 +276,16 @@ class TrainListViewModel: ObservableObject {
     
     private var currentDestination: String?
     private var currentFromStationCode: String?
-    private let apiService = APIService.shared
+    private let apiService: APIServiceProtocol // MODIFIED
     
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
     
+    // MODIFIED: Inject APIServiceProtocol, default to APIService.shared
+    init(apiService: APIServiceProtocol = APIService.shared) {
+        self.apiService = apiService
+    }
+
     func loadTrains(destination: String, fromStationCode: String) async {
         self.currentDestination = destination
         self.currentFromStationCode = fromStationCode
@@ -290,9 +295,12 @@ class TrainListViewModel: ObservableObject {
         
         do {
             guard let toStationCode = Stations.getStationCode(destination) else {
-                throw APIError.invalidURL
+                self.error = "Invalid destination station code for: \(destination)"
+                self.isLoading = false
+                return
             }
-            let fetchedTrains = try await apiService.searchTrains(
+            // Use injected apiService
+            let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode
             )
@@ -306,72 +314,75 @@ class TrainListViewModel: ObservableObject {
                 return departureTime <= sixHoursFromNow
             }
             
-            // Sort trains by origin station departure time
-            trains = filteredTrains.sorted { train1, train2 in
-                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
-                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
+            // Sort trains based on their departure time from 'fromStationCode'
+            trains = filteredTrains.sorted { t1, t2 in
+                let time1 = t1.getDepartureTime(fromStationCode: fromStationCode)
+                let time2 = t2.getDepartureTime(fromStationCode: fromStationCode)
                 return time1 < time2
             }
         } catch {
             self.error = error.localizedDescription
         }
-        
         isLoading = false
     }
     
     func refreshTrains() async {
-        // Silent refresh without showing loading state
         guard let destination = currentDestination,
               let fromStationCode = currentFromStationCode,
               let toStationCode = Stations.getStationCode(destination) else {
-            return
+            return // Or set an error if appropriate for silent refresh
         }
         
         do {
-            let fetchedTrains = try await apiService.searchTrains(
+            // Use injected apiService
+            let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode
             )
             
-            // Filter out trains departing more than 6 hours from now
             let now = Date()
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
-            let filteredTrains = fetchedTrains.filter { train in
-                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
-                return departureTime <= sixHoursFromNow
-            }
-            
-            // Sort trains by origin station departure time
-            let newTrains = filteredTrains.sorted { train1, train2 in
-                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
-                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
-                return time1 < time2
-            }
-            
-            // Check for boarding status changes
-            for (index, train) in trains.enumerated() {
-                if let newTrain = newTrains.first(where: { $0.id == train.id }) {
-                    if train.status != .boarding && newTrain.status == .boarding {
-                        // Haptic feedback for boarding status
+            // Filter and sort logic from API response (based on getDepartureTime from fromStationCode)
+            let apiFilteredAndSortedTrains = fetchedTrains
+                .filter { train in
+                    train.getDepartureTime(fromStationCode: fromStationCode) <= sixHoursFromNow
+                }
+                .sorted { t1, t2 in
+                    t1.getDepartureTime(fromStationCode: fromStationCode) < t2.getDepartureTime(fromStationCode: fromStationCode)
+                }
+
+            // Logic to update existing trains and add new ones
+            var updatedTrainList: [Train] = []
+            var existingTrainIDs = Set(self.trains.map { $0.id })
+
+            for apiTrain in apiFilteredAndSortedTrains {
+                if let index = self.trains.firstIndex(where: { $0.id == apiTrain.id }) {
+                    // Update existing train, check for haptic
+                    let oldTrain = self.trains[index]
+                    if oldTrain.status != .boarding && apiTrain.status == .boarding {
+                        // Consider moving haptic to View via a published property change
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     }
-                    trains[index] = newTrain
+                    updatedTrainList.append(apiTrain) // Replace with new data
+                } else {
+                    updatedTrainList.append(apiTrain) // Add new train
                 }
+                existingTrainIDs.remove(apiTrain.id) // Remove processed IDs
             }
             
-            // Add any new trains
-            for newTrain in newTrains {
-                if !trains.contains(where: { $0.id == newTrain.id }) {
-                    trains.append(newTrain)
-                }
-            }
-            
-            // Sort by departure time
-            trains.sort { $0.departureTime < $1.departureTime }
+            // Add back any existing trains that were not in the API response but should persist (if any specific logic dictates this)
+            // For now, assuming the API is the source of truth for the current list.
+            // If trains should be removed if not in API response, updatedTrainList is correct.
+            // If they should persist and only be updated, logic would be different.
+            // Current view model code replaces the list, so this is fine.
+
+            // Final sort of the combined list using the main `departureTime` property of the `Train` struct.
+            self.trains = updatedTrainList.sorted { $0.departureTime < $1.departureTime }
             
         } catch {
             // Silent failure for background refresh
+            print("TrainListViewModel: Silent refresh failed: \(error.localizedDescription)")
         }
     }
 }
