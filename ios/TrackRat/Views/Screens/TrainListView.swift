@@ -286,6 +286,14 @@ class TrainListViewModel: ObservableObject {
         self.apiService = apiService
     }
     
+    private func sortTrainsByDepartureTime(_ trains: [Train], fromStationCode: String) -> [Train] {
+        return trains.sorted { train1, train2 in
+            let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
+            let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
+            return time1 < time2
+        }
+    }
+    
     func loadTrains(destination: String, fromStationCode: String) async {
         self.currentDestination = destination
         self.currentFromStationCode = fromStationCode
@@ -312,11 +320,7 @@ class TrainListViewModel: ObservableObject {
             }
             
             // Sort trains by origin station departure time
-            trains = filteredTrains.sorted { train1, train2 in
-                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
-                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
-                return time1 < time2
-            }
+            trains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
         } catch {
             self.error = error.localizedDescription
         }
@@ -348,11 +352,7 @@ class TrainListViewModel: ObservableObject {
             }
             
             // Sort trains by origin station departure time
-            let newTrains = filteredTrains.sorted { train1, train2 in
-                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
-                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
-                return time1 < time2
-            }
+            let newTrains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
             
             // Check for boarding status changes
             for (index, train) in trains.enumerated() {
@@ -373,11 +373,7 @@ class TrainListViewModel: ObservableObject {
             }
             
             // Sort by departure time
-            trains.sort { train1, train2 in
-                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
-                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
-                return time1 < time2
-            }
+            trains = sortTrainsByDepartureTime(trains, fromStationCode: fromStationCode)
             
         } catch {
             // Silent failure for background refresh
