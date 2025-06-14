@@ -1,0 +1,184 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-ci.yml'
+
+env:
+  TF_VERSION: '1.7.0'
+  TFLINT_VERSION: 'v0.50.0'
+  CHECKOV_VERSION: '3.2.0'
+
+jobs:
+  terraform-lint-and-test:
+    name: Terraform Lint and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Setup TFLint
+      uses: terraform-linters/setup-tflint@v4
+      with:
+        tflint_version: ${{ env.TFLINT_VERSION }}
+
+    - name: Setup Python for Checkov
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Checkov
+      run: |
+        pip install checkov==${{ env.CHECKOV_VERSION }}
+
+    - name: Install terraform-docs
+      run: |
+        curl -sSLo ./terraform-docs.tar.gz https://terraform-docs.io/dl/v0.17.0/terraform-docs-v0.17.0-$(uname)-amd64.tar.gz
+        tar -xzf terraform-docs.tar.gz
+        chmod +x terraform-docs
+        sudo mv terraform-docs /usr/local/bin/
+
+    - name: Cache Terraform plugins
+      uses: actions/cache@v3
+      with:
+        path: ~/.terraform.d/plugin-cache
+        key: ${{ runner.os }}-terraform-${{ hashFiles('infra/**/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-terraform-
+
+    - name: Terraform Format Check
+      working-directory: ./infra
+      run: |
+        terraform fmt -check -recursive
+        if [ $? -ne 0 ]; then
+          echo "❌ Terraform files are not properly formatted"
+          echo "Run 'terraform fmt -recursive' to fix formatting"
+          exit 1
+        fi
+        echo "✅ All Terraform files are properly formatted"
+
+    - name: Terraform Validate
+      working-directory: ./infra
+      run: |
+        # Validate root module
+        terraform validate
+        
+        # Validate each module
+        for module_dir in modules/*/; do
+          if [ -d "$module_dir" ]; then
+            echo "Validating module: $module_dir"
+            (cd "$module_dir" && terraform validate)
+          fi
+        done
+        
+        # Validate each environment
+        for env_dir in environments/*/; do
+          if [ -d "$env_dir" ]; then
+            echo "Validating environment: $env_dir"
+            (cd "$env_dir" && terraform init -backend=false && terraform validate)
+          fi
+        done
+
+    - name: Initialize TFLint
+      working-directory: ./infra
+      run: tflint --init
+
+    - name: Run TFLint
+      working-directory: ./infra
+      run: |
+        # Run tflint on root module
+        tflint .
+        
+        # Run tflint on each module
+        for module_dir in modules/*/; do
+          if [ -d "$module_dir" ]; then
+            echo "Running tflint on module: $module_dir"
+            tflint "$module_dir"
+          fi
+        done
+        
+        # Run tflint on each environment
+        for env_dir in environments/*/; do
+          if [ -d "$env_dir" ]; then
+            echo "Running tflint on environment: $env_dir"
+            tflint "$env_dir"
+          fi
+        done
+
+    - name: Run Checkov Security Scan
+      working-directory: ./infra
+      run: |
+        checkov -d . --framework terraform --quiet --compact
+      continue-on-error: true  # Don't fail the build on security issues, just report them
+
+    - name: Generate Documentation
+      working-directory: ./infra
+      run: |
+        # Generate docs for root module
+        terraform-docs markdown table --output-file README-terraform.md .
+        
+        # Generate docs for each module
+        for module_dir in modules/*/; do
+          if [ -d "$module_dir" ]; then
+            echo "Generating docs for module: $module_dir"
+            terraform-docs markdown table --output-file README.md "$module_dir"
+          fi
+        done
+
+    - name: Check for documentation changes
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "❌ Documentation needs to be updated"
+          echo "The following files have changes:"
+          git status --porcelain
+          echo "Please run 'make docs' and commit the changes"
+          exit 1
+        fi
+        echo "✅ Documentation is up to date"
+
+    - name: Run comprehensive lint and test
+      working-directory: ./infra
+      run: ./lint-and-test.sh
+
+  terraform-validate-environments:
+    name: Validate Environment Configurations
+    runs-on: ubuntu-latest
+    needs: terraform-lint-and-test
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Validate Environment Configurations
+      working-directory: ./infra
+      run: |
+        # Validate each environment configuration without backend
+        for env_dir in environments/*/; do
+          if [ -d "$env_dir" ]; then
+            env_name=$(basename "$env_dir")
+            echo "Validating environment: $env_name"
+            (cd "$env_dir" && terraform init -backend=false && terraform validate)
+          fi
+        done
+
+# NOTE: Automatic terraform apply jobs removed intentionally
+# Continuous deployment will be implemented in a future effort with proper safeguards
