@@ -547,7 +547,3 @@ jobs:
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Run Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-<<<<<<< HEAD
-=======
-
->>>>>>> origin/gh-workflow-fixes
