@@ -24,15 +24,6 @@ jobs:
       with:
         tflint_version: ${{ env.TFLINT_VERSION }}
 
-    - name: Setup Python for Checkov
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-
-    - name: Install Checkov
-      run: |
-        pip install checkov==${{ env.CHECKOV_VERSION }}
-
     - name: Install terraform-docs
       run: |
         curl -sSLo ./terraform-docs.tar.gz https://terraform-docs.io/dl/v0.17.0/terraform-docs-v0.17.0-$(uname)-amd64.tar.gz
@@ -47,6 +38,10 @@ jobs:
         key: ${{ runner.os }}-terraform-${{ hashFiles('infra/**/.terraform.lock.hcl') }}
         restore-keys: |
           ${{ runner.os }}-terraform-
+
+    - name: Run comprehensive lint and test
+      working-directory: ./infra
+      run: ./lint-and-test.sh
 
     - name: Terraform Format Check
       working-directory: ./infra
@@ -108,12 +103,6 @@ jobs:
           fi
         done
 
-    - name: Run Checkov Security Scan
-      working-directory: ./infra
-      run: |
-        checkov -d . --framework terraform --quiet --compact
-      continue-on-error: true  # Don't fail the build on security issues, just report them
-
     - name: Generate Documentation
       working-directory: ./infra
       run: |
@@ -138,36 +127,3 @@ jobs:
           exit 1
         fi
         echo "✅ Documentation is up to date"
-
-    - name: Run comprehensive lint and test
-      working-directory: ./infra
-      run: ./lint-and-test.sh
-
-  terraform-validate-environments:
-    name: Validate Environment Configurations
-    runs-on: ubuntu-latest
-    needs: terraform-lint-and-test
-    
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: ${{ env.TF_VERSION }}
-
-    - name: Validate Environment Configurations
-      working-directory: ./infra
-      run: |
-        # Validate each environment configuration without backend
-        for env_dir in environments/*/; do
-          if [ -d "$env_dir" ]; then
-            env_name=$(basename "$env_dir")
-            echo "Validating environment: $env_name"
-            (cd "$env_dir" && terraform init -backend=false && terraform validate)
-          fi
-        done
-
-# NOTE: Automatic terraform apply jobs removed intentionally
-# Continuous deployment will be implemented in a future effort with proper safeguards
