@@ -1,0 +1,106 @@
+name: Deploy Infrastructure to Dev
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-cd-dev.yml'
+  workflow_run:
+    workflows: ["Terraform CI/CD"]
+    types: [completed]
+    branches: [main]
+
+env:
+  TF_VERSION: '1.7.0'
+  GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+
+jobs:
+  deploy-infrastructure-dev:
+    name: Deploy Infrastructure to Development
+    runs-on: ubuntu-latest
+    
+    # Only run if Terraform CI passed or if this is a direct push
+    if: |
+      github.event_name == 'push' || 
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    
+    environment: 
+      name: development
+      url: https://console.cloud.google.com/run?project=trackrat-dev
+    
+    defaults:
+      run:
+        working-directory: ./infra/environments/dev
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Cache Terraform plugins
+      uses: actions/cache@v3
+      with:
+        path: ~/.terraform.d/plugin-cache
+        key: ${{ runner.os }}-terraform-dev-${{ hashFiles('infra/**/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-terraform-dev-
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Plan
+      id: plan
+      run: |
+        terraform plan -detailed-exitcode -out=tfplan
+        echo "exitcode=$?" >> $GITHUB_OUTPUT
+      continue-on-error: true
+
+    - name: Check Plan Results
+      run: |
+        if [[ ${{ steps.plan.outputs.exitcode }} == 1 ]]; then
+          echo "❌ Terraform plan failed"
+          exit 1
+        elif [[ ${{ steps.plan.outputs.exitcode }} == 2 ]]; then
+          echo "✅ Terraform plan has changes to apply"
+        else
+          echo "✅ Terraform plan shows no changes"
+        fi
+
+    - name: Terraform Apply
+      if: steps.plan.outputs.exitcode == 2
+      run: |
+        echo "🚀 Applying Terraform changes to development environment..."
+        terraform apply -auto-approve tfplan
+        echo "✅ Infrastructure deployment completed successfully"
+
+    - name: Terraform Outputs
+      if: steps.plan.outputs.exitcode == 2
+      run: |
+        echo "📋 Development environment outputs:"
+        terraform output
+
+    - name: Deployment Summary
+      run: |
+        echo "## 🚀 Development Infrastructure Deployment" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [[ ${{ steps.plan.outputs.exitcode }} == 2 ]]; then
+          echo "✅ **Infrastructure updated successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Environment**: [trackrat-dev](https://console.cloud.google.com/run?project=trackrat-dev)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "ℹ️ **No infrastructure changes required**" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY

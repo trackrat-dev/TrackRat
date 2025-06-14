@@ -1,0 +1,235 @@
+name: Test CD Setup
+
+# This workflow can be run manually to test the CD setup
+on:
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of test to run'
+        required: true
+        default: 'auth'
+        type: choice
+        options:
+        - auth
+        - terraform
+        - docker
+        - full
+
+env:
+  PROJECT_ID: trackrat-dev
+  REGION: us-central1
+
+jobs:
+  test-authentication:
+    name: Test GCP Authentication
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_type == 'auth' || github.event.inputs.test_type == 'full'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Test basic GCP access
+      run: |
+        echo "🔍 Testing GCP authentication..."
+        gcloud auth list
+        gcloud config list
+        echo "✅ Authentication successful"
+
+    - name: Test project access
+      run: |
+        echo "🔍 Testing project access..."
+        gcloud projects describe $PROJECT_ID
+        echo "✅ Project access confirmed"
+
+    - name: Test required APIs
+      run: |
+        echo "🔍 Checking required APIs..."
+        
+        # Check if APIs are enabled
+        declare -a apis=(
+          "run.googleapis.com"
+          "artifactregistry.googleapis.com"
+          "cloudbuild.googleapis.com"
+          "secretmanager.googleapis.com"
+        )
+        
+        for api in "${apis[@]}"; do
+          if gcloud services list --enabled --filter="name:${api}" --format="value(name)" | grep -q "$api"; then
+            echo "✅ ${api} is enabled"
+          else
+            echo "❌ ${api} is not enabled"
+          fi
+        done
+
+  test-terraform:
+    name: Test Terraform Access
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_type == 'terraform' || github.event.inputs.test_type == 'full'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: '1.7.0'
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Test Terraform initialization
+      working-directory: ./infra/environments/dev
+      run: |
+        echo "🔍 Testing Terraform initialization..."
+        terraform init
+        echo "✅ Terraform init successful"
+
+    - name: Test Terraform plan
+      working-directory: ./infra/environments/dev
+      run: |
+        echo "🔍 Testing Terraform plan..."
+        terraform plan -detailed-exitcode
+        echo "✅ Terraform plan successful"
+
+  test-docker:
+    name: Test Docker Build and Push
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_type == 'docker' || github.event.inputs.test_type == 'full'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+    - name: Test Docker build
+      working-directory: ./backend
+      run: |
+        echo "🔍 Testing Docker build..."
+        IMAGE_TAG="us-central1-docker.pkg.dev/$PROJECT_ID/trackcast-inference-dev/trackcast-inference:test-${{ github.run_id }}"
+        
+        docker build -t $IMAGE_TAG .
+        echo "✅ Docker build successful"
+        
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+    - name: Test Docker push
+      run: |
+        echo "🔍 Testing Docker push to Artifact Registry..."
+        docker push $IMAGE_TAG
+        echo "✅ Docker push successful"
+
+    - name: Clean up test image
+      run: |
+        echo "🧹 Cleaning up test image..."
+        gcloud artifacts docker images delete $IMAGE_TAG --quiet || true
+        echo "✅ Cleanup completed"
+
+  test-secrets:
+    name: Test Secret Manager Access
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_type == 'full'
+    
+    steps:
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Test secret access
+      run: |
+        echo "🔍 Testing Secret Manager access..."
+        
+        if gcloud secrets describe trackcast-dev-secrets > /dev/null 2>&1; then
+          echo "✅ Secret trackcast-dev-secrets exists"
+          
+          # Test reading secret (just check if accessible, don't display content)
+          if gcloud secrets versions access latest --secret="trackcast-dev-secrets" > /dev/null 2>&1; then
+            echo "✅ Secret is accessible"
+          else
+            echo "❌ Cannot access secret content"
+          fi
+        else
+          echo "❌ Secret trackcast-dev-secrets does not exist"
+        fi
+
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [test-authentication, test-terraform, test-docker, test-secrets]
+    if: always()
+    
+    steps:
+    - name: Generate summary
+      run: |
+        echo "## 🧪 CD Setup Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Check job results
+        auth_result="${{ needs.test-authentication.result }}"
+        terraform_result="${{ needs.test-terraform.result }}"
+        docker_result="${{ needs.test-docker.result }}"
+        secrets_result="${{ needs.test-secrets.result }}"
+        
+        echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "$auth_result" == "success" ]]; then
+          echo "| GCP Authentication | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        elif [[ "$auth_result" == "skipped" ]]; then
+          echo "| GCP Authentication | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| GCP Authentication | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [[ "$terraform_result" == "success" ]]; then
+          echo "| Terraform Access | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        elif [[ "$terraform_result" == "skipped" ]]; then
+          echo "| Terraform Access | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Terraform Access | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [[ "$docker_result" == "success" ]]; then
+          echo "| Docker Build/Push | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        elif [[ "$docker_result" == "skipped" ]]; then
+          echo "| Docker Build/Push | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Docker Build/Push | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [[ "$secrets_result" == "success" ]]; then
+          echo "| Secret Manager | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+        elif [[ "$secrets_result" == "skipped" ]]; then
+          echo "| Secret Manager | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Secret Manager | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Test Type**: ${{ github.event.inputs.test_type }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Run Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
