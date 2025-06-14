@@ -1,6 +1,14 @@
 import Foundation
 import Combine
 
+// MARK: - URLSession Protocol
+
+protocol URLSessionProtocol {
+    func data(from url: URL, delegate: URLSessionTaskDelegate?) async throws -> (Data, URLResponse)
+}
+
+extension URLSession: URLSessionProtocol {}
+
 // Helper to handle multiple ISO8601 date formats
 extension Formatter {
     static let iso8601withFractionalSeconds: DateFormatter = {

@@ -21,7 +21,7 @@ class MockActivityKitModule: TRActivityKitModuleProtocol {
         attributes: Attributes,
         content: ActivityContent<Attributes.ContentState>,
         pushType: PushType?
-    ) async throws -> any TRActivityProtocol where Attributes.ContentState : Decodable, Attributes.ContentState : Encodable, Attributes.ContentState : Sendable {
+    ) async throws -> (any TRActivityProtocol)? where Attributes.ContentState : Decodable, Attributes.ContentState : Encodable, Attributes.ContentState : Sendable {
 
         lastRequestedAttributes = attributes
         lastRequestedContent = content // Storing ActivityContent

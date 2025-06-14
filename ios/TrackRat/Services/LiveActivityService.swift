@@ -3,6 +3,108 @@ import ActivityKit
 import UserNotifications
 import UIKit
 
+// MARK: - ActivityKit Protocols
+
+@available(iOS 16.1, *)
+protocol TRActivityProtocol {
+    var id: String { get }
+    var activityState: ActivityState { get }
+    var pushToken: Data? { get }
+    
+    // Type-erased properties and methods
+    var trainAttributes: TrainActivityAttributes? { get }
+    var trainContentState: TrainActivityAttributes.ContentState? { get }
+    
+    func updateTrain(state: TrainActivityAttributes.ContentState, staleDate: Date?, alertConfiguration: AlertConfiguration?) async
+    func endTrain(state: TrainActivityAttributes.ContentState?, dismissalPolicy: ActivityUIDismissalPolicy) async
+}
+
+@available(iOS 16.1, *)
+protocol TRActivityKitModuleProtocol {
+    func request<Attributes: ActivityAttributes>(
+        attributes: Attributes,
+        content: ActivityContent<Attributes.ContentState>,
+        pushType: PushType?
+    ) async throws -> (any TRActivityProtocol)? where Attributes.ContentState: Codable & Sendable
+
+    var activities: [any TRActivityProtocol] { get }
+    func authorizationInfo() -> ActivityAuthorizationInfo
+}
+
+// MARK: - Concrete Implementations
+
+@available(iOS 16.1, *)
+class ConcreteActivity<A: ActivityAttributes>: TRActivityProtocol {
+    private let activity: Activity<A>
+
+    init(activity: Activity<A>) {
+        self.activity = activity
+    }
+
+    var id: String {
+        activity.id
+    }
+
+    var activityState: ActivityState {
+        activity.activityState
+    }
+
+    var pushToken: Data? {
+        activity.pushToken
+    }
+    
+    var trainAttributes: TrainActivityAttributes? {
+        activity.attributes as? TrainActivityAttributes
+    }
+    
+    var trainContentState: TrainActivityAttributes.ContentState? {
+        activity.content.state as? TrainActivityAttributes.ContentState
+    }
+
+    func updateTrain(state: TrainActivityAttributes.ContentState, staleDate: Date?, alertConfiguration: AlertConfiguration?) async {
+        guard let trainState = state as? A.ContentState else { return }
+        let activityContent = ActivityContent(state: trainState, staleDate: staleDate ?? Date(), relevanceScore: 0.0)
+        await activity.update(activityContent, alertConfiguration: alertConfiguration)
+    }
+
+    func endTrain(state: TrainActivityAttributes.ContentState?, dismissalPolicy: ActivityUIDismissalPolicy) async {
+        let finalContent: ActivityContent<A.ContentState>?
+        if let finalState = state, let trainState = finalState as? A.ContentState {
+            finalContent = ActivityContent(state: trainState, staleDate: Date(), relevanceScore: 0.0)
+        } else {
+            finalContent = nil
+        }
+        await activity.end(finalContent, dismissalPolicy: dismissalPolicy)
+    }
+}
+
+@available(iOS 16.1, *)
+class ConcreteActivityKitModule: TRActivityKitModuleProtocol {
+
+    func request<A: ActivityAttributes>(
+        attributes: A,
+        content: ActivityContent<A.ContentState>,
+        pushType: PushType?
+    ) async throws -> (any TRActivityProtocol)? where A.ContentState : Decodable, A.ContentState : Encodable, A.ContentState : Sendable {
+        let realActivity = try await Activity<A>.request(
+            attributes: attributes,
+            content: content,
+            pushType: pushType
+        )
+        return ConcreteActivity(activity: realActivity)
+    }
+
+    var activities: [any TRActivityProtocol] {
+        return Activity<TrainActivityAttributes>.activities.map { ConcreteActivity(activity: $0) }
+    }
+
+    func authorizationInfo() -> ActivityAuthorizationInfo {
+        return ActivityAuthorizationInfo()
+    }
+}
+
+// MARK: - Live Activity Service
+
 @available(iOS 16.1, *)
 class LiveActivityService: ObservableObject {
     // Make shared instance use the new initializer with default UNUserNotificationCenter and ConcreteActivityKitModule
@@ -90,7 +192,7 @@ class LiveActivityService: ObservableObject {
             // Start background updates - ensure attributes are accessible from the protocol
             // We might need to cast currentActivity.attributes if TRActivityProtocol's associatedtype isn't constrained
             // For now, assuming currentActivity holds TrainActivityAttributes compatible attributes
-            if let trainAttributes = activity.attributes as? TrainActivityAttributes {
+            if let trainAttributes = activity.trainAttributes {
                  startBackgroundUpdates(trainId: train.id, attributes: trainAttributes)
             } else {
                 // Handle case where attributes are not the expected type, though this shouldn't happen
@@ -120,7 +222,7 @@ class LiveActivityService: ObservableObject {
         guard let activity = currentActivity else { return }
         
         // We need to cast attributes to TrainActivityAttributes to access its specific properties
-        guard let attributes = activity.attributes as? TrainActivityAttributes else {
+        guard let attributes = activity.trainAttributes else {
             print("Error: Could not cast activity attributes to TrainActivityAttributes for update.")
             return
         }
@@ -159,7 +261,7 @@ class LiveActivityService: ObservableObject {
         }
         
         // Use the simpler state update on the protocol
-        await activity.update(state: newState, staleDate: nil, alertConfiguration: nil)
+        await activity.updateTrain(state: newState, staleDate: nil, alertConfiguration: nil)
         
         await MainActor.run {
             self.lastKnownStatus = train.status
@@ -178,7 +280,7 @@ class LiveActivityService: ObservableObject {
         guard let activity = currentActivity else { return }
         
         // Cast attributes to TrainActivityAttributes
-        guard let attributes = activity.attributes as? TrainActivityAttributes else {
+        guard let attributes = activity.trainAttributes else {
             print("Error: Could not cast activity attributes to TrainActivityAttributes for refresh.")
             return
         }
@@ -194,8 +296,8 @@ class LiveActivityService: ObservableObject {
         stopBackgroundUpdates()
         
         // Use the simpler end method from the protocol
-        let finalState = activity.content.state as? TrainActivityAttributes.ContentState // Cast if needed
-        await activity.end(state: finalState, dismissalPolicy: .immediate)
+        let finalState = activity.trainContentState
+        await activity.endTrain(state: finalState, dismissalPolicy: .immediate)
         
         await MainActor.run {
             self.currentActivity = nil
@@ -258,7 +360,7 @@ class LiveActivityService: ObservableObject {
         destinationCode: String
     ) async {
         guard let activity = currentActivity,
-              let attributes = activity.attributes as? TrainActivityAttributes else { return }
+              let attributes = activity.trainAttributes else { return }
         // attributes is now TrainActivityAttributes
         
         // Find stops between origin and destination using robust matching
@@ -364,7 +466,7 @@ class LiveActivityService: ObservableObject {
         destinationCode: String
     ) async {
         guard let activity = currentActivity,
-              let attributes = activity.attributes as? TrainActivityAttributes else { return }
+              let attributes = activity.trainAttributes else { return }
         // attributes is now TrainActivityAttributes
         
         // Find stops between origin and destination using robust matching
@@ -493,7 +595,7 @@ class LiveActivityService: ObservableObject {
     
     private func sendStatusChangeNotification(from oldStatus: TrainStatus, to newStatus: TrainStatus) async {
         guard let activity = currentActivity,
-              let attributes = activity.attributes as? TrainActivityAttributes else { return }
+              let attributes = activity.trainAttributes else { return }
         // attributes is now TrainActivityAttributes
         
         let content = UNMutableNotificationContent()
@@ -587,14 +689,14 @@ class LiveActivityService: ObservableObject {
     
     private func checkCurrentActivity() {
         // Use the activityKitModule to get current activities
-        if let existingActivityProtocol = activityKitModule.activities.first(where: { ($0.attributes as? TrainActivityAttributes) != nil }) {
+        if let existingActivityProtocol = activityKitModule.activities.first(where: { $0.trainAttributes != nil }) {
             // Assuming we only care about resuming activities with TrainActivityAttributes
             // And that `activities` returns `any TRActivityProtocol`
             self.currentActivity = existingActivityProtocol // Assigning the protocol type
             self.isActivityActive = true
             
             // Resume background updates if needed
-            if let attributes = existingActivityProtocol.attributes as? TrainActivityAttributes,
+            if let attributes = existingActivityProtocol.trainAttributes,
                let trainId = Int(attributes.trainId) {
                 startBackgroundUpdates(trainId: trainId, attributes: attributes)
                 print("📱 Resumed existing Live Activity for train \(attributes.trainNumber)")
@@ -617,26 +719,9 @@ class LiveActivityService: ObservableObject {
     /// Get current activity status for UI
     var activityStatus: String {
         guard let activity = currentActivity,
-              let attributes = activity.attributes as? TrainActivityAttributes else {
+              let attributes = activity.trainAttributes else {
             return "No active tracking"
         }
-    }
-    
-    /// Check if Live Activities are supported and available
-    var isSupported: Bool {
-        if #available(iOS 16.1, *) {
-            return ActivityAuthorizationInfo().areActivitiesEnabled
-        }
-        return false
-    }
-    
-    /// Get current activity status for UI
-    var activityStatus: String {
-        guard let activity = currentActivity else {
-            return "No active tracking"
-        }
-        
-        let attributes = activity.attributes
         return "Tracking Train \(attributes.trainNumber)"
     }
 }

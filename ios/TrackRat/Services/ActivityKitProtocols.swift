@@ -39,7 +39,7 @@ protocol TRActivityKitModuleProtocol {
         attributes: Attributes,
         content: ActivityContent<Attributes.ContentState>, // Using ActivityContent directly
         pushType: PushType?
-    ) async throws -> any TRActivityProtocol where Attributes.ContentState: Codable & Sendable
+    ) async throws -> (any TRActivityProtocol)? where Attributes.ContentState: Codable & Sendable
 
     // Mirroring Activity.activities
     // Array of our protocol type.

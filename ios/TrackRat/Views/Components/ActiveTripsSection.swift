@@ -39,7 +39,7 @@ struct ActiveTripsSection: View {
             .padding(.horizontal)
     }
     
-    private func tripButton(for activity: Activity<TrainActivityAttributes>) -> some View {
+    private func tripButton(for activity: any TRActivityProtocol) -> some View {
         Button {
             navigateToTrainDetails(activity: activity)
         } label: {
@@ -49,7 +49,7 @@ struct ActiveTripsSection: View {
     }
     
     @ViewBuilder
-    private func tripButtonContent(for activity: Activity<TrainActivityAttributes>) -> some View {
+    private func tripButtonContent(for activity: any TRActivityProtocol) -> some View {
         VStack(spacing: 12) {
             headerRow(for: activity)
             routeRow(for: activity)
@@ -80,12 +80,12 @@ struct ActiveTripsSection: View {
         .padding(.horizontal)
     }
     
-    private func headerRow(for activity: Activity<TrainActivityAttributes>) -> some View {
+    private func headerRow(for activity: any TRActivityProtocol) -> some View {
         HStack {
             HStack(spacing: 6) {
                 Text("🚂")
                     .font(.title2)
-                Text("Train \(activity.attributes.trainNumber)")
+                Text("Train \(activity.trainAttributes?.trainNumber ?? "Unknown")")
                     .font(.headline.bold())
                     .foregroundColor(.white)
             }
@@ -100,23 +100,23 @@ struct ActiveTripsSection: View {
         }
     }
     
-    private func routeRow(for activity: Activity<TrainActivityAttributes>) -> some View {
+    private func routeRow(for activity: any TRActivityProtocol) -> some View {
         HStack {
-            Text(activity.attributes.routeDescription)
+            Text(activity.trainAttributes?.routeDescription ?? "Unknown Route")
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.8))
             Spacer()
         }
     }
     
-    private func statusAndTrackRow(for activity: Activity<TrainActivityAttributes>) -> some View {
+    private func statusAndTrackRow(for activity: any TRActivityProtocol) -> some View {
         HStack {
             // Status
             HStack(spacing: 4) {
                 Circle()
-                    .fill(statusColor(activity.content.state.status))
+                    .fill(statusColor(activity.trainContentState?.status ?? .unknown))
                     .frame(width: 8, height: 8)
-                Text(activity.content.state.status.displayText)
+                Text(activity.trainContentState?.status.displayText ?? "Unknown")
                     .font(.subheadline.bold())
                     .foregroundColor(.white)
             }
@@ -124,7 +124,7 @@ struct ActiveTripsSection: View {
             Spacer()
             
             // Track
-            if let track = activity.content.state.track {
+            if let track = activity.trainContentState?.track {
                 HStack(spacing: 4) {
                     Text("Track")
                         .font(.caption)
@@ -143,7 +143,7 @@ struct ActiveTripsSection: View {
         }
     }
     
-    private func progressBar(for activity: Activity<TrainActivityAttributes>) -> some View {
+    private func progressBar(for activity: any TRActivityProtocol) -> some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3)
@@ -152,15 +152,15 @@ struct ActiveTripsSection: View {
                 
                 RoundedRectangle(cornerRadius: 3)
                     .fill(.white.opacity(0.9))
-                    .frame(width: geometry.size.width * activity.content.state.journeyProgress, height: 6)
+                    .frame(width: geometry.size.width * (activity.trainContentState?.journeyProgress ?? 0.0), height: 6)
             }
         }
         .frame(height: 6)
     }
     
-    private func bottomInfoRow(for activity: Activity<TrainActivityAttributes>) -> some View {
+    private func bottomInfoRow(for activity: any TRActivityProtocol) -> some View {
         HStack {
-            if let nextStop = activity.content.state.nextStop {
+            if let nextStop = activity.trainContentState?.nextStop {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Next Stop")
                         .font(.caption2)
@@ -179,17 +179,18 @@ struct ActiveTripsSection: View {
                 Text("Updated")
                     .font(.caption2)
                     .foregroundColor(.white.opacity(0.7))
-                Text(formatTimeAgo(activity.content.state.lastUpdated))
+                Text(formatTimeAgo(activity.trainContentState?.lastUpdated ?? Date()))
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.8))
             }
         }
     }
     
-    private func navigateToTrainDetails(activity: Activity<TrainActivityAttributes>) {
+    private func navigateToTrainDetails(activity: any TRActivityProtocol) {
         // Use the train number and origin station code for navigation
-        let trainNumber = activity.attributes.trainNumber
-        let fromStation = activity.attributes.originStationCode
+        guard let attributes = activity.trainAttributes else { return }
+        let trainNumber = attributes.trainNumber
+        let fromStation = attributes.originStationCode
         appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(trainNumber: trainNumber, fromStation: fromStation))
     }
     
@@ -229,9 +230,9 @@ struct ActiveTripsSection: View {
     }
     
     /// Extract or create train data from Live Activity for the new journey status view
-    private func getTrainDataFromActivity(_ activity: Activity<TrainActivityAttributes>) -> Train? {
-        let attributes = activity.attributes
-        let contentState = activity.content.state
+    private func getTrainDataFromActivity(_ activity: any TRActivityProtocol) -> Train? {
+        guard let attributes = activity.trainAttributes else { return nil }
+        guard let contentState = activity.trainContentState else { return nil }
         
         // Create a minimal train object from Live Activity data
         // This will be used for the new journey status display

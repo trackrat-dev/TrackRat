@@ -66,7 +66,7 @@ class ConcreteActivityKitModule: TRActivityKitModuleProtocol {
         attributes: A,
         content: ActivityContent<A.ContentState>,
         pushType: PushType?
-    ) async throws -> any TRActivityProtocol where A.ContentState : Decodable, A.ContentState : Encodable, A.ContentState : Sendable {
+    ) async throws -> (any TRActivityProtocol)? where A.ContentState : Decodable, A.ContentState : Encodable, A.ContentState : Sendable {
         let realActivity = try await Activity<A>.request(
             attributes: attributes,
             content: content,

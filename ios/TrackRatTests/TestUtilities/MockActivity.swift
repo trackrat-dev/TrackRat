@@ -1,7 +1,7 @@
 import Foundation
 import ActivityKit
-
 import UserNotifications // For AlertConfiguration
+@testable import TrackRat
 
 // Mock implementation of TRActivityProtocol for testing.
 @available(iOS 16.1, *)
