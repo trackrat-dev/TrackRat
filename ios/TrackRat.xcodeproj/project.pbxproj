@@ -23,7 +23,6 @@
 		A10E98062DE39F23002F3214 /* DeparturePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E98072DE39F23002F3214 /* DeparturePickerView.swift */; };
 		A10E98DBA82DE39F23002F3214 /* TripSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */; };
 		A17BA8B42DFDB85F0012D755 /* APIServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17BA8B32DFDB85F0012D755 /* APIServiceProtocol.swift */; };
-		A17BA8B52DFDB85F0012D755 /* APIServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17BA8B32DFDB85F0012D755 /* APIServiceProtocol.swift */; };
 		A18E54342DEB88BE00AB2B74 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54332DEB88BE00AB2B74 /* LiveActivityModels.swift */; };
 		A18E54362DEB88C900AB2B74 /* Train+LiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54352DEB88C900AB2B74 /* Train+LiveActivity.swift */; };
 		A18E54382DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54372DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift */; };
