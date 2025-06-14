@@ -1,0 +1,13 @@
+name: iOS Tests
+on: [push]
+jobs:
+  ios-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          xcode-version: '16.0'  # or latest available
+      - name: Run iOS tests
+        run: |
+          cd ios
+          xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'

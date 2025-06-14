@@ -1,22 +1,10 @@
-name: Terraform CI/CD
-
-on:
-  push:
-    branches: [ main, develop ]
-    paths:
-      - 'infra/**'
-      - '.github/workflows/terraform-ci.yml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'infra/**'
-      - '.github/workflows/terraform-ci.yml'
-
 env:
   TF_VERSION: '1.7.0'
   TFLINT_VERSION: 'v0.50.0'
   CHECKOV_VERSION: '3.2.0'
 
+name: Terraform CI/CD
+on: [push]
 jobs:
   terraform-lint-and-test:
     name: Terraform Lint and Test
