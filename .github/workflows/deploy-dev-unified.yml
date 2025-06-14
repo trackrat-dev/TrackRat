@@ -88,6 +88,7 @@ jobs:
         zone = "${{ env.REGION }}-b"
         api_image_url = "${{ env.IMAGE_TAG }}"
         scheduler_image_url = "${{ env.IMAGE_TAG }}"
+        db_password = ""
         EOF
         
         # Plan and apply everything
