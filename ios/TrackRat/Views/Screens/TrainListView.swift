@@ -276,7 +276,7 @@ class TrainListViewModel: ObservableObject {
     
     private var currentDestination: String?
     private var currentFromStationCode: String?
-    private let apiService: APIServiceProtocol
+    private let apiService: APIService
     
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -290,7 +290,7 @@ class TrainListViewModel: ObservableObject {
     }
     
     // Initializer for dependency injection
-    init(apiService: APIServiceProtocol = APIService.shared) {
+    init(apiService: APIService = APIService.shared) {
         self.apiService = apiService
     }
 

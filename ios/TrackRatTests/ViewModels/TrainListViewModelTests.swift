@@ -3,14 +3,14 @@ import Combine
 @testable import TrackRat
 
 // Mock APIService
-class MockAPIService: APIServiceProtocol {
-    var searchTrainsResult: Result<[TrackRat.Train], Error>?
-    var trainsToReturn: [TrackRat.Train] = []
+class MockAPIService: APIService {
+    var searchTrainsResult: Result<[Train], Error>?
+    var trainsToReturn: [Train] = []
     var searchTrainsCallCount = 0
     var lastFromStationCode: String?
     var lastToStationCode: String?
 
-    func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [TrackRat.Train] {
+    override func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [Train] {
         searchTrainsCallCount += 1
         lastFromStationCode = fromStationCode
         lastToStationCode = toStationCode
@@ -24,23 +24,6 @@ class MockAPIService: APIServiceProtocol {
             }
         }
         return trainsToReturn // Return pre-set trains if no result is set
-    }
-    
-    // Implement other required protocol methods
-    func fetchTrainDetailsFlexible(id: String?, trainId: String?, fromStationCode: String?) async throws -> TrackRat.Train {
-        fatalError("Not implemented in mock")
-    }
-    
-    func fetchTrainDetails(id: String, fromStationCode: String?) async throws -> TrackRat.Train {
-        fatalError("Not implemented in mock")
-    }
-    
-    func fetchTrainByTrainId(_ trainId: String, sinceHoursAgo: Int, consolidate: Bool) async throws -> [TrackRat.Train] {
-        fatalError("Not implemented in mock")
-    }
-    
-    func fetchHistoricalData(for train: TrackRat.Train, fromStationCode: String, toStationCode: String) async throws -> HistoricalData {
-        fatalError("Not implemented in mock")
     }
 }
 
@@ -77,45 +60,28 @@ class TrainListViewModelTests: XCTestCase {
         super.tearDown()
     }
 
-    // Helper to create test Train instances
-    // Ensure `departureTime` is the generic one, and `stops` contains specific departure time for `fromStationCode`
-    func createTestTrain(id: Int, trainId: String, genericDepartureTime: Date, stationSpecificStops: [TrackRat.Stop]) -> TrackRat.Train {
-        return TrackRat.Train(
+    // Helper to create test Train instances using existing mock system
+    func createTestTrain(id: Int, trainId: String, genericDepartureTime: Date, stationSpecificStops: [Stop]) -> Train {
+        return Train.mock(
             id: id,
             trainId: trainId,
-            line: "TestLine",
             destination: "TestDestination",
-            departureTime: genericDepartureTime, // Generic departure time
-            track: "1",
+            origin: "TestOrigin", 
+            line: "TestLine",
             status: .scheduled,
-            delayMinutes: 0,
-            stops: stationSpecificStops, // Specific stops for getDepartureTime
-            predictionData: nil,
-            originStationCode: stationSpecificStops.first?.stationCode, // Assume first stop is origin
-            dataSource: "test",
-            consolidatedId: "cons-\(id)",
-            originStation: TrackRat.OriginStation(code: stationSpecificStops.first?.stationCode ?? "", name: stationSpecificStops.first?.stationName ?? "", departureTime: stationSpecificStops.first?.departureTime ?? genericDepartureTime),
-            dataSources: nil,
-            currentPosition: nil,
-            trackAssignment: nil,
-            statusSummary: TrackRat.StatusSummary(currentStatus: "Scheduled", delayMinutes: 0, onTimePerformance: "100%"),
-            consolidationMetadata: TrackRat.ConsolidationMetadata(sourceCount: 1, lastUpdate: Date(), confidenceScore: 1.0)
+            departureTime: genericDepartureTime,
+            track: "1",
+            stops: stationSpecificStops
         )
     }
 
-    // Helper to create a Stop for testing purposes
-    func createTestStop(stationCode: String, stationName: String, departureTime: Date) -> TrackRat.Stop {
-        return TrackRat.Stop(
-            stationCode: stationCode,
+    // Helper to create a Stop for testing purposes using existing mock system
+    func createTestStop(stationCode: String, stationName: String, departureTime: Date) -> Stop {
+        return Stop.mock(
             stationName: stationName,
-            scheduledTime: departureTime, // Using departureTime for scheduledTime for simplicity
-            departureTime: departureTime,
-            pickupOnly: false,
-            dropoffOnly: false,
-            departed: false,
-            departedConfirmedBy: nil,
-            stopStatus: "On Time",
-            platform: "A"
+            stationCode: stationCode,
+            scheduledTime: departureTime,
+            departureTime: departureTime
         )
     }
 
