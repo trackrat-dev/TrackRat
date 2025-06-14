@@ -74,9 +74,7 @@ rule "google_sql_database_instance_backup_enabled" {
   enabled = true
 }
 
-rule "google_project_service_disable_on_destroy" {
-  enabled = false  # We explicitly set this to false in our modules
-}
+# Note: google_project_service_disable_on_destroy rule removed as it doesn't exist in current plugin version
 
 # Disable rules that might be too strict for our use case
 rule "terraform_unused_required_providers" {
