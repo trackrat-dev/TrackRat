@@ -38,17 +38,17 @@ variable "db_password" {
 variable "api_image_url" {
   description = "Docker image URL for the trackrat-api service"
   type        = string
-  # default   = "us-central1-docker.pkg.dev/your-project-id/trackrat-repo/trackrat-api:latest" # Example, replace
+  default     = "us-central1-docker.pkg.dev/trackrat-dev/trackcast-inference-dev/trackcast-inference:latest"
 }
 
 variable "vpc_connector_id" {
   description = "Self-link of the VPC Access Connector for Cloud Run"
   type        = string
-  # default   = "projects/your-project-id/locations/us-central1/connectors/your-connector-name" # Example, replace
+  default     = null
 }
 
 variable "scheduler_image_url" {
   description = "Docker image URL for the trackrat-scheduler service in Dev"
   type        = string
-  # default   = "us-central1-docker.pkg.dev/your-project-id/trackrat-repo/trackrat-scheduler:latest" # Example
+  default     = "us-central1-docker.pkg.dev/trackrat-dev/trackcast-inference-dev/trackcast-inference:latest"
 }
