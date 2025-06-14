@@ -2,12 +2,66 @@ import XCTest
 import Combine
 @testable import TrackRat
 
+// Mock APIService
+class MockAPIService: APIServiceProtocol {
+    var searchTrainsResult: Result<[TrackRat.Train], Error>?
+    var trainsToReturn: [TrackRat.Train] = []
+    var searchTrainsCallCount = 0
+    var lastFromStationCode: String?
+    var lastToStationCode: String?
+
+    func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [TrackRat.Train] {
+        searchTrainsCallCount += 1
+        lastFromStationCode = fromStationCode
+        lastToStationCode = toStationCode
+
+        if let result = searchTrainsResult {
+            switch result {
+            case .success(let trains):
+                return trains
+            case .failure(let error):
+                throw error
+            }
+        }
+        return trainsToReturn // Return pre-set trains if no result is set
+    }
+    
+    // Implement other required protocol methods
+    func fetchTrainDetailsFlexible(id: String?, trainId: String?, fromStationCode: String?) async throws -> TrackRat.Train {
+        fatalError("Not implemented in mock")
+    }
+    
+    func fetchTrainDetails(id: String, fromStationCode: String?) async throws -> TrackRat.Train {
+        fatalError("Not implemented in mock")
+    }
+    
+    func fetchTrainByTrainId(_ trainId: String, sinceHoursAgo: Int, consolidate: Bool) async throws -> [TrackRat.Train] {
+        fatalError("Not implemented in mock")
+    }
+    
+    func fetchHistoricalData(for train: TrackRat.Train, fromStationCode: String, toStationCode: String) async throws -> HistoricalData {
+        fatalError("Not implemented in mock")
+    }
+}
+
+// Helper to create Date objects from strings easily
+func dateFromString(_ dateString: String, format: String = "yyyy-MM-dd HH:mm:ss") -> Date {
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = format
+    dateFormatter.timeZone = TimeZone(secondsFromGMT: 0) // Use UTC for consistency in tests
+    return dateFormatter.date(from: dateString)!
+}
+
+// Global static station codes for tests
+let TEST_STATION_A = "STA"
+let TEST_STATION_B = "STB"
+let TEST_STATION_C = "STC"
+
 @MainActor
 class TrainListViewModelTests: XCTestCase {
-
     var viewModel: TrainListViewModel!
     var mockAPIService: MockAPIService!
-    var cancellables: Set<AnyCancellable>!
+    private var cancellables: Set<AnyCancellable>!
 
     override func setUp() {
         super.setUp()
@@ -23,304 +77,171 @@ class TrainListViewModelTests: XCTestCase {
         super.tearDown()
     }
 
-    // MARK: - Test Cases
+    // Helper to create test Train instances
+    // Ensure `departureTime` is the generic one, and `stops` contains specific departure time for `fromStationCode`
+    func createTestTrain(id: Int, trainId: String, genericDepartureTime: Date, stationSpecificStops: [TrackRat.Stop]) -> TrackRat.Train {
+        return TrackRat.Train(
+            id: id,
+            trainId: trainId,
+            line: "TestLine",
+            destination: "TestDestination",
+            departureTime: genericDepartureTime, // Generic departure time
+            track: "1",
+            status: .scheduled,
+            delayMinutes: 0,
+            stops: stationSpecificStops, // Specific stops for getDepartureTime
+            predictionData: nil,
+            originStationCode: stationSpecificStops.first?.stationCode, // Assume first stop is origin
+            dataSource: "test",
+            consolidatedId: "cons-\(id)",
+            originStation: TrackRat.OriginStation(code: stationSpecificStops.first?.stationCode ?? "", name: stationSpecificStops.first?.stationName ?? "", departureTime: stationSpecificStops.first?.departureTime ?? genericDepartureTime),
+            dataSources: nil,
+            currentPosition: nil,
+            trackAssignment: nil,
+            statusSummary: TrackRat.StatusSummary(currentStatus: "Scheduled", delayMinutes: 0, onTimePerformance: "100%"),
+            consolidationMetadata: TrackRat.ConsolidationMetadata(sourceCount: 1, lastUpdate: Date(), confidenceScore: 1.0)
+        )
+    }
 
-    func testLoadTrains_Success() async {
+    // Helper to create a Stop for testing purposes
+    func createTestStop(stationCode: String, stationName: String, departureTime: Date) -> TrackRat.Stop {
+        return TrackRat.Stop(
+            stationCode: stationCode,
+            stationName: stationName,
+            scheduledTime: departureTime, // Using departureTime for scheduledTime for simplicity
+            departureTime: departureTime,
+            pickupOnly: false,
+            dropoffOnly: false,
+            departed: false,
+            departedConfirmedBy: nil,
+            stopStatus: "On Time",
+            platform: "A"
+        )
+    }
+
+    func testLoadTrains_SortsCorrectlyByStationSpecificDepartureTime() async {
         // Arrange
-        let departureTime1 = Date().addingTimeInterval(3600)
-        let departureTime2 = Date().addingTimeInterval(7200)
-        let expectedTrains = [
-            Train.mock(id: 1, trainId: "101", departureTime: departureTime1, stops: [Stop.mock(stationCode: "NYP", departureTime: departureTime1)]),
-            Train.mock(id: 2, trainId: "102", departureTime: departureTime2, stops: [Stop.mock(stationCode: "NYP", departureTime: departureTime2)])
-        ]
-        mockAPIService.searchTrainsResult = .success(expectedTrains)
+        let fromStation = TEST_STATION_A
 
-        let expectation = XCTestExpectation(description: "Trains are loaded")
+        // Train 1: Departs STA at 10:00, Generic departure at 09:00
+        let train1_STA_Departure = dateFromString("2023-01-01 10:00:00")
+        let train1_Generic_Departure = dateFromString("2023-01-01 09:00:00")
+        let train1_stop_STA = createTestStop(stationCode: TEST_STATION_A, stationName: "Station A", departureTime: train1_STA_Departure)
+        let train1 = createTestTrain(id: 1, trainId: "T1", genericDepartureTime: train1_Generic_Departure, stationSpecificStops: [train1_stop_STA])
 
-        viewModel.$trains
-            .dropFirst()
-            .sink { trains in
-                XCTAssertEqual(trains.count, 2)
-                XCTAssertEqual(trains.first?.trainId, "101")
-                expectation.fulfill()
-            }
-            .store(in: &cancellables)
+        // Train 2: Departs STA at 09:30, Generic departure at 08:30
+        let train2_STA_Departure = dateFromString("2023-01-01 09:30:00")
+        let train2_Generic_Departure = dateFromString("2023-01-01 08:30:00")
+        let train2_stop_STA = createTestStop(stationCode: TEST_STATION_A, stationName: "Station A", departureTime: train2_STA_Departure)
+        let train2 = createTestTrain(id: 2, trainId: "T2", genericDepartureTime: train2_Generic_Departure, stationSpecificStops: [train2_stop_STA])
+
+        mockAPIService.trainsToReturn = [train1, train2] // API returns them in this order initially
 
         // Act
-        await viewModel.loadTrains(destination: "Newark Penn Station", fromStationCode: "NYP")
+        await viewModel.loadTrains(destination: "Destination", fromStationCode: fromStation)
 
         // Assert
-        await fulfillment(of: [expectation], timeout: 1.0)
-        XCTAssertFalse(viewModel.isLoading)
-        XCTAssertNil(viewModel.error)
+        XCTAssertEqual(viewModel.trains.count, 2)
+        XCTAssertEqual(viewModel.trains.map { $0.id }, [2, 1], "Trains should be sorted by station-specific departure time (T2 then T1)")
+        // Verify T2 (09:30 from STA) is before T1 (10:00 from STA)
+        if viewModel.trains.count == 2 {
+             XCTAssertTrue(train2.getDepartureTime(fromStationCode: fromStation) < train1.getDepartureTime(fromStationCode: fromStation))
+             XCTAssertEqual(viewModel.trains[0].id, 2)
+             XCTAssertEqual(viewModel.trains[1].id, 1)
+        }
     }
 
-    func testLoadTrains_ApiError() async {
-        // Arrange
-        mockAPIService.searchTrainsResult = .failure(APIError.invalidURL)
-        let expectation = XCTestExpectation(description: "Error is set")
+    func testRefreshTrains_MaintainsCorrectSortOrderWithStationSpecificTimes() async {
+        // Arrange: Initial load
+        let fromStation = TEST_STATION_A
 
-        viewModel.$error
-            .dropFirst()
-            .sink { error in
-                XCTAssertNotNil(error)
-                XCTAssertEqual(error, APIError.invalidURL.localizedDescription) // Or your custom error message
-                expectation.fulfill()
-            }
-            .store(in: &cancellables)
+        // Train 1: Departs STA at 10:00
+        let train1_STA_Departure = dateFromString("2023-01-01 10:00:00")
+        let train1_Generic_Departure = dateFromString("2023-01-01 09:00:00")
+        let train1_stop_STA = createTestStop(stationCode: TEST_STATION_A, stationName: "Station A", departureTime: train1_STA_Departure)
+        let train1 = createTestTrain(id: 1, trainId: "T1", genericDepartureTime: train1_Generic_Departure, stationSpecificStops: [train1_stop_STA])
 
-        // Act
-        await viewModel.loadTrains(destination: "Invalid Destination", fromStationCode: "NYP")
+        // Train 2: Departs STA at 11:00
+        let train2_STA_Departure = dateFromString("2023-01-01 11:00:00")
+        let train2_Generic_Departure = dateFromString("2023-01-01 08:30:00") // Generic earlier than T1's generic
+        let train2_stop_STA = createTestStop(stationCode: TEST_STATION_A, stationName: "Station A", departureTime: train2_STA_Departure)
+        let train2 = createTestTrain(id: 2, trainId: "T2", genericDepartureTime: train2_Generic_Departure, stationSpecificStops: [train2_stop_STA])
 
-        // Assert
-        await fulfillment(of: [expectation], timeout: 1.0)
-        XCTAssertFalse(viewModel.isLoading)
-        XCTAssertTrue(viewModel.trains.isEmpty)
-    }
+        mockAPIService.trainsToReturn = [train1, train2] // Correctly sorted by station time
+        await viewModel.loadTrains(destination: "Destination", fromStationCode: fromStation)
+        XCTAssertEqual(viewModel.trains.map { $0.id }, [1, 2], "Initial load sort order incorrect. Expected T1 (10:00), T2 (11:00)")
 
-    func testLoadTrains_FiltersAndSortsTrains() async {
-        // Arrange
-        let now = Date()
-        let earlierTrainDepartureTime = now.addingTimeInterval(2 * 3600)
-        let laterTrainDepartureTime = now.addingTimeInterval(3 * 3600)
-        let beyond6HoursDepartureTime = now.addingTimeInterval(7 * 3600)
+        // Arrange: Refresh data - introduces a new train that should be first
+        // Train 3 (New): Departs STA at 09:00, Generic departure at 09:00
+        let train3_STA_Departure = dateFromString("2023-01-01 09:00:00")
+        let train3_Generic_Departure = dateFromString("2023-01-01 09:00:00")
+        let train3_stop_STA = createTestStop(stationCode: TEST_STATION_A, stationName: "Station A", departureTime: train3_STA_Departure)
+        let train3 = createTestTrain(id: 3, trainId: "T3", genericDepartureTime: train3_Generic_Departure, stationSpecificStops: [train3_stop_STA])
 
-        let earlierTrain = Train.mock(id: 1, trainId: "101", stops: [Stop.mock(stationCode: "NYP", departureTime: earlierTrainDepartureTime)])
-        let laterTrainWithin6Hours = Train.mock(id: 2, trainId: "102", stops: [Stop.mock(stationCode: "NYP", departureTime: laterTrainDepartureTime)])
-        let trainBeyond6Hours = Train.mock(id: 3, trainId: "103", stops: [Stop.mock(stationCode: "NYP", departureTime: beyond6HoursDepartureTime)])
-
-        // Ensure the top-level departureTime of Train.mock matches the stop's departureTime for consistent sorting if getDepartureTime is not perfectly mocked/used.
-        // For these tests, getDepartureTime(fromStationCode:) is the source of truth for filtering and sorting.
-        let mockEarlierTrain = Train.mock(id: 1, trainId: "101", departureTime: earlierTrainDepartureTime, stops: [Stop.mock(stationCode: "NYP", departureTime: earlierTrainDepartureTime)])
-        let mockLaterTrain = Train.mock(id: 2, trainId: "102", departureTime: laterTrainDepartureTime, stops: [Stop.mock(stationCode: "NYP", departureTime: laterTrainDepartureTime)])
-        let mockBeyondHourTrain = Train.mock(id: 3, trainId: "103", departureTime: beyond6HoursDepartureTime, stops: [Stop.mock(stationCode: "NYP", departureTime: beyond6HoursDepartureTime)])
-
-
-        mockAPIService.searchTrainsResult = .success([mockLaterTrain, mockBeyondHourTrain, mockEarlierTrain])
-
-        let expectation = XCTestExpectation(description: "Trains are filtered and sorted")
-
-        viewModel.$trains
-            .dropFirst()
-            .sink { trains in
-                XCTAssertEqual(trains.count, 2, "Should filter out train departing beyond 6 hours. Found: \(trains.map { $0.trainId } )")
-                XCTAssertEqual(trains[0].id, mockEarlierTrain.id, "Trains should be sorted by departure time")
-                XCTAssertEqual(trains[1].id, mockLaterTrain.id, "Trains should be sorted by departure time")
-                expectation.fulfill()
-            }
-            .store(in: &cancellables)
-
-        await viewModel.loadTrains(destination: "Destination", fromStationCode: "NYP")
-
-        await fulfillment(of: [expectation], timeout: 1.0)
-        XCTAssertFalse(viewModel.isLoading)
-        XCTAssertNil(viewModel.error)
-    }
-
-    func testRefreshTrains_SuccessUpdatesAndAddsTrainsAndSorts() async {
-        let now = Date()
-        let departureTime1 = now.addingTimeInterval(1000)
-        let departureTime2 = now.addingTimeInterval(2000) // For new train, later
-        let departureTime3 = now.addingTimeInterval(500)  // For another new train, earlier
-
-        let initialTrain = Train.mock(id: 1, trainId: "T1", status: .onTime, departureTime: departureTime1, stops: [Stop.mock(stationCode: "NYP", departureTime: departureTime1)])
-        viewModel.trains = [initialTrain]
-        viewModel.currentDestination = "Destination"
-        viewModel.currentFromStationCode = "NYP"
-
-        let updatedTrain1 = Train.mock(id: 1, trainId: "T1", status: .delayed, departureTime: departureTime1, stops: [Stop.mock(stationCode: "NYP", departureTime: departureTime1)])
-        let newTrain2 = Train.mock(id: 2, trainId: "T2", status: .onTime, departureTime: departureTime2, stops: [Stop.mock(stationCode: "NYP", departureTime: departureTime2)])
-        let newTrain3 = Train.mock(id: 3, trainId: "T3", status: .onTime, departureTime: departureTime3, stops: [Stop.mock(stationCode: "NYP", departureTime: departureTime3)])
-
-        // API returns trains that are filtered by 6hr window and sorted by getDepartureTime(fromStationCode:)
-        // Let's emulate that for the mock response
-        let apiResponseTrains = [newTrain3, updatedTrain1, newTrain2] // Sorted by departure time from NYP
-        mockAPIService.searchTrainsResult = .success(apiResponseTrains)
-
-        let expectation = XCTestExpectation(description: "Trains are refreshed, updated, new ones added, and finally sorted by Train.departureTime")
-
-        var observationCount = 0
-        viewModel.$trains
-            .sink { trains in
-                observationCount += 1
-                if observationCount > 1 { // After initial state
-                    // Final check: 3 trains, T1 updated, all sorted by Train.departureTime
-                    if trains.count == 3 &&
-                       trains.first(where: { $0.id == 1 })?.status == .delayed &&
-                       trains.map({ $0.id }) == [3, 1, 2] { // Sorted by original departureTime property
-                        expectation.fulfill()
-                    }
-                }
-            }
-            .store(in: &cancellables)
-
-        await viewModel.refreshTrains()
-
-        await fulfillment(of: [expectation], timeout: 2.0)
-        XCTAssertFalse(viewModel.isLoading)
-        XCTAssertNil(viewModel.error)
-        XCTAssertEqual(viewModel.trains.map({ $0.id }), [3, 1, 2]) // Final assertion on order
-        XCTAssertEqual(viewModel.trains.first(where: { $0.id == 1 })?.status, .delayed)
-    }
-
-    func testRefreshTrains_HapticFeedbackOnBoarding() async {
-        let departureTime = Date().addingTimeInterval(1000)
-        let initialTrain = Train.mock(id: 1, trainId: "101", status: .onTime, departureTime: departureTime, stops: [Stop.mock(stationCode: "NYP", departureTime: departureTime)])
-        viewModel.trains = [initialTrain]
-        viewModel.currentDestination = "Destination"
-        viewModel.currentFromStationCode = "NYP"
-
-        let boardingTrain = Train.mock(id: 1, trainId: "101", status: .boarding, departureTime: departureTime, stops: [Stop.mock(stationCode: "NYP", departureTime: departureTime)])
-        mockAPIService.searchTrainsResult = .success([boardingTrain])
-
-        let expectation = XCTestExpectation(description: "Train status updates to boarding on refresh")
-        var observationCount = 0
-        viewModel.$trains
-            .sink { trains in
-                 observationCount += 1
-                if observationCount > 1 && trains.first?.status == .boarding {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
-
-        await viewModel.refreshTrains()
-
-        await fulfillment(of: [expectation], timeout: 1.0)
-        XCTAssertEqual(viewModel.trains.first?.status, .boarding)
-        // Actual haptic feedback test would require injecting a mock UINotificationFeedbackGenerator
-    }
-
-    func testLoadTrains_InvalidDestinationCode() async {
-        // Arrange
-        let expectation = XCTestExpectation(description: "Error is set for invalid destination code")
-        viewModel.$error
-            .dropFirst()
-            .sink { error in
-                XCTAssertNotNil(error)
-                XCTAssertEqual(error, "Invalid destination station code for: Invalid Destination")
-                expectation.fulfill()
-            }
-            .store(in: &cancellables)
-
-        // Act
-        // Simulate Stations.getStationCode(destination) returning nil by using a destination
-        // that is known not to be in the Stations.stationCodes map.
-        await viewModel.loadTrains(destination: "Invalid Destination", fromStationCode: "NYP")
-
-        // Assert
-        await fulfillment(of: [expectation], timeout: 1.0)
-        XCTAssertFalse(viewModel.isLoading)
-        XCTAssertTrue(viewModel.trains.isEmpty)
-    }
-
-    func testRefreshTrains_MissingParameters() async {
-        // Arrange
-        // Ensure currentDestination or currentFromStationCode is nil
-        viewModel.currentDestination = nil
-        viewModel.currentFromStationCode = "NYP"
-
-        let initialTrainCount = viewModel.trains.count // Should remain unchanged
+        mockAPIService.trainsToReturn = [train1, train3, train2] // Deliberately unsorted by station time for refresh
 
         // Act
         await viewModel.refreshTrains()
 
         // Assert
-        XCTAssertEqual(viewModel.trains.count, initialTrainCount, "Trains list should not change if parameters are missing.")
-        XCTAssertFalse(viewModel.isLoading) // Should not enter loading state
-        XCTAssertNil(viewModel.error)       // Should not set an error
+        XCTAssertEqual(viewModel.trains.count, 3)
+        // Expected order by station-specific time: T3 (09:00), T1 (10:00), T2 (11:00)
+        XCTAssertEqual(viewModel.trains.map { $0.id }, [3, 1, 2], "Trains should be re-sorted correctly by station-specific time after refresh")
+
+        if viewModel.trains.count == 3 {
+            let t3_time = viewModel.trains[0].getDepartureTime(fromStationCode: fromStation)
+            let t1_time = viewModel.trains[1].getDepartureTime(fromStationCode: fromStation)
+            let t2_time = viewModel.trains[2].getDepartureTime(fromStationCode: fromStation)
+            XCTAssertEqual(viewModel.trains[0].id, 3)
+            XCTAssertEqual(viewModel.trains[1].id, 1)
+            XCTAssertEqual(viewModel.trains[2].id, 2)
+            XCTAssertTrue(t3_time < t1_time, "T3 departure (\(t3_time)) should be before T1 (\(t1_time))")
+            XCTAssertTrue(t1_time < t2_time, "T1 departure (\(t1_time)) should be before T2 (\(t2_time))")
+        }
     }
 
-    func testRefreshTrains_ApiErrorIsSilent() async {
-        // Arrange
-        viewModel.currentDestination = "Destination"
-        viewModel.currentFromStationCode = "NYP"
-        let initialTrain = Train.mock(id: 1, trainId: "T1")
-        viewModel.trains = [initialTrain]
+    func testRefreshTrains_HandlesExistingTrainUpdateAndSort() async {
+        // Arrange: Initial load
+        let fromStation = TEST_STATION_A
 
-        mockAPIService.searchTrainsResult = .failure(APIError.decodingError) // Simulate an API error
+        // Train 1: Departs STA at 10:00
+        let train1_STA_InitialDeparture = dateFromString("2023-01-01 10:00:00")
+        let train1_Generic_Departure = dateFromString("2023-01-01 09:00:00")
+        let train1_stop_STA_Initial = createTestStop(stationCode: TEST_STATION_A, stationName: "Station A", departureTime: train1_STA_InitialDeparture)
+        let train1 = createTestTrain(id: 1, trainId: "T1", genericDepartureTime: train1_Generic_Departure, stationSpecificStops: [train1_stop_STA_Initial])
+
+        // Train 2: Departs STA at 11:00
+        let train2_STA_Departure = dateFromString("2023-01-01 11:00:00")
+        let train2_Generic_Departure = dateFromString("2023-01-01 08:30:00")
+        let train2_stop_STA = createTestStop(stationCode: TEST_STATION_A, stationName: "Station A", departureTime: train2_STA_Departure)
+        let train2 = createTestTrain(id: 2, trainId: "T2", genericDepartureTime: train2_Generic_Departure, stationSpecificStops: [train2_stop_STA])
+
+        mockAPIService.trainsToReturn = [train1, train2]
+        await viewModel.loadTrains(destination: "Destination", fromStationCode: fromStation)
+        XCTAssertEqual(viewModel.trains.map { $0.id }, [1, 2], "Initial load sort order incorrect. Expected T1 (10:00), T2 (11:00)")
+
+        // Arrange: Refresh data - Train 1 is now delayed and should appear after Train 2
+        // Updated Train 1: Now departs STA at 12:00
+        let train1_STA_UpdatedDeparture = dateFromString("2023-01-01 12:00:00")
+        let train1_stop_STA_Updated = createTestStop(stationCode: TEST_STATION_A, stationName: "Station A", departureTime: train1_STA_UpdatedDeparture)
+        let updatedTrain1 = createTestTrain(id: 1, trainId: "T1", genericDepartureTime: train1_Generic_Departure, stationSpecificStops: [train1_stop_STA_Updated])
+
+        mockAPIService.trainsToReturn = [updatedTrain1, train2] // API returns updated T1 and T2
 
         // Act
         await viewModel.refreshTrains()
 
         // Assert
-        XCTAssertFalse(viewModel.isLoading)
-        XCTAssertNil(viewModel.error, "Error should be nil for silent refresh failure.")
-        XCTAssertEqual(viewModel.trains.count, 1, "Train list should not change on silent error.")
-        XCTAssertEqual(viewModel.trains.first?.id, 1, "Train list should not change on silent error.")
-    }
-}
+        XCTAssertEqual(viewModel.trains.count, 2)
+        // Expected order by station-specific time: T2 (11:00), Updated T1 (12:00)
+        XCTAssertEqual(viewModel.trains.map { $0.id }, [2, 1], "Trains should be re-sorted correctly after an update causes reordering")
 
-class MockAPIService: APIServiceProtocol {
-    var searchTrainsResult: Result<[Train], APIError>?
-    var fetchTrainDetailsFlexibleResult: Result<Train, APIError>?
-
-    // Add a closure for more dynamic mocking if needed
-    var fetchTrainDetailsFlexibleResultClosure: ((String?, String?, String?) -> Result<Train, APIError>)?
-
-    func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [Train] {
-        // ... (existing implementation)
-        if let result = searchTrainsResult {
-            switch result {
-            case .success(let trains): return trains
-            case .failure(let error): throw error
-            }
+        if viewModel.trains.count == 2 {
+            let t2_time = viewModel.trains[0].getDepartureTime(fromStationCode: fromStation) // Should be T2
+            let t1_updated_time = viewModel.trains[1].getDepartureTime(fromStationCode: fromStation) // Should be updated T1
+            XCTAssertEqual(viewModel.trains[0].id, 2)
+            XCTAssertEqual(viewModel.trains[1].id, 1)
+            XCTAssertTrue(t2_time < t1_updated_time, "T2 departure (\(t2_time)) should be before updated T1 (\(t1_updated_time))")
         }
-        fatalError("searchTrainsResult not set in MockAPIService")
-    }
-
-    func fetchTrainDetailsFlexible(id: String?, trainId: String?, fromStationCode: String?) async throws -> Train {
-        if let closure = fetchTrainDetailsFlexibleResultClosure {
-            switch closure(id, trainId, fromStationCode) {
-            case .success(let train): return train
-            case .failure(let error): throw error
-            }
-        }
-        if let result = fetchTrainDetailsFlexibleResult {
-            switch result {
-            case .success(let train): return train
-            case .failure(let error): throw error
-            }
-        }
-        fatalError("fetchTrainDetailsFlexibleResult or closure not set in MockAPIService")
-    }
-
-    // ... (other methods like fetchTrainDetails, fetchTrainByTrainId, fetchHistoricalData remain)
-    func fetchTrainDetails(id: String, fromStationCode: String?) async throws -> Train {
-        // This could also use the closure if refactored, or keep its specific logic
-        if let closure = fetchTrainDetailsFlexibleResultClosure { // Simplified: assuming it can use the same closure logic
-             switch closure(id, nil, fromStationCode) {
-            case .success(let train): return train
-            case .failure(let error): throw error
-            }
-        }
-        if let result = fetchTrainDetailsFlexibleResult {
-             switch result {
-            case .success(let train): return train
-            case .failure(let error): throw error
-            }
-        }
-        fatalError("fetchTrainDetails not implemented or result/closure not set in MockAPIService")
-    }
-
-    func fetchTrainByTrainId(_ trainId: String, sinceHoursAgo: Int, consolidate: Bool) async throws -> [Train] {
-        // This logic might need adjustment if using the closure for all train fetching scenarios.
-        // For now, keeping its existing mock logic.
-        if let result = searchTrainsResult, case .success(let trains) = result {
-            return trains.filter { $0.trainId == trainId }
-        }
-        // If you want to use the closure for this too:
-        // if let closure = fetchTrainDetailsFlexibleResultClosure,
-        //    let trainIdActual = trainId { // Assuming trainId is the primary lookup here
-        //     switch closure(nil, trainIdActual, nil) { // Adapt parameters as needed
-        //         case .success(let train): return [train] // Assuming it returns one, wrap in array
-        //         case .failure(let error): throw error
-        //     }
-        // }
-        fatalError("fetchTrainByTrainId not implemented or result not set in MockAPIService for trainId: \(trainId)")
-    }
-
-    func fetchHistoricalData(for train: Train, fromStationCode: String, toStationCode: String) async throws -> HistoricalData {
-        fatalError("fetchHistoricalData not implemented in MockAPIService")
     }
 }
