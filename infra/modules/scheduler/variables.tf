@@ -74,14 +74,53 @@ variable "scheduler_job_description" {
 }
 
 variable "scheduler_schedule" {
-  description = "Cron schedule for the job (e.g., '0 * * * *' for hourly)"
+  description = "Cron schedule for the legacy daily job (deprecated - use scheduler_jobs instead)"
   type        = string
+  default     = null
 }
 
 variable "scheduler_timezone" {
-  description = "Timezone for the scheduler job"
+  description = "Timezone for scheduler jobs"
   type        = string
-  default     = "Etc/UTC"
+  default     = "America/New_York"
+}
+
+variable "scheduler_jobs" {
+  description = "Map of scheduler jobs to create with their configurations"
+  type = map(object({
+    schedule    = string
+    endpoint    = string
+    description = string
+  }))
+  default = {
+    data_collection = {
+      schedule    = "0 * * * *"
+      endpoint    = "/api/ops/collect-data"
+      description = "Collect train data from NJ Transit and Amtrak APIs"
+    }
+    feature_processing = {
+      schedule    = "10 * * * *"
+      endpoint    = "/api/ops/process-features"
+      description = "Process features for collected train data"
+    }
+    prediction_generation = {
+      schedule    = "20 * * * *"
+      endpoint    = "/api/ops/generate-predictions"
+      description = "Generate track predictions for upcoming trains"
+    }
+  }
+}
+
+variable "api_service_uri" {
+  description = "URI of the API service to target (instead of scheduler service)"
+  type        = string
+  default     = null
+}
+
+variable "legacy_scheduler_enabled" {
+  description = "Whether to create the legacy daily scheduler job"
+  type        = bool
+  default     = true
 }
 
 

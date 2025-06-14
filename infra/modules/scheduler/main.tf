@@ -88,7 +88,10 @@ resource "google_cloud_run_v2_service" "scheduler_service" {
   ]
 }
 
+# Legacy scheduler job (backward compatibility)
 resource "google_cloud_scheduler_job" "scheduler_job" {
+  count = var.legacy_scheduler_enabled && var.scheduler_schedule != null ? 1 : 0
+
   project          = var.project_id
   region           = var.location # Scheduler jobs are regional
   name             = var.scheduler_job_name
@@ -110,6 +113,45 @@ resource "google_cloud_scheduler_job" "scheduler_job" {
 
   depends_on = [
     google_cloud_run_v2_service.scheduler_service,
-    google_service_account.scheduler_job_sa // Defined in iam.tf
+    google_service_account.scheduler_job_sa
+  ]
+}
+
+# New high-frequency scheduler jobs
+resource "google_cloud_scheduler_job" "operations_jobs" {
+  for_each = var.scheduler_jobs
+
+  project          = var.project_id
+  region           = var.location
+  name             = "${var.scheduler_job_name}-${each.key}"
+  description      = each.value.description
+  schedule         = each.value.schedule
+  time_zone        = var.scheduler_timezone
+  attempt_deadline = "300s" # Shorter timeout for individual operations
+
+  http_target {
+    # Target API service instead of scheduler service for operations
+    uri         = var.api_service_uri != null ? "${var.api_service_uri}${each.value.endpoint}" : "${google_cloud_run_v2_service.scheduler_service.uri}${each.value.endpoint}"
+    http_method = "POST"
+
+    headers = {
+      "Content-Type" = "application/json"
+    }
+
+    body = base64encode(jsonencode({
+      "operation": each.key,
+      "triggered_by": "cloud_scheduler",
+      "timestamp": timestamp()
+    }))
+
+    oidc_token {
+      service_account_email = local.scheduler_job_sa_email
+      # Use appropriate audience based on target service
+      audience = var.api_service_uri != null ? var.api_service_uri : google_cloud_run_v2_service.scheduler_service.uri
+    }
+  }
+
+  depends_on = [
+    google_service_account.scheduler_job_sa
   ]
 }

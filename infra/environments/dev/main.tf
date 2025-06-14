@@ -124,13 +124,40 @@ module "trackrat_scheduler_dev" {
   # request_timeout_seconds is 3600 (1 hour) by default in module
 
   scheduler_job_name = "invoke-trackrat-scheduler-dev"
-  scheduler_schedule = "0 2 * * *" # Example: Every day at 2 AM
+  
+  # Phase 2: Parallel operation - keep legacy scheduler alongside new jobs
+  legacy_scheduler_enabled = true
+  scheduler_schedule       = "0 2 * * *" # Keep existing daily job for now
+  
+  # Phase 1: New high-frequency scheduler jobs targeting API service
+  api_service_uri = module.trackrat_api_service.service_url
+  
+  # Hourly scheduling as requested (Phase 1 implementation)
+  scheduler_jobs = {
+    data_collection = {
+      schedule    = "0 * * * *"   # Every hour at :00
+      endpoint    = "/api/ops/collect-data"
+      description = "Hourly data collection from NJ Transit and Amtrak APIs"
+    }
+    feature_processing = {
+      schedule    = "10 * * * *"  # Every hour at :10
+      endpoint    = "/api/ops/process-features"
+      description = "Hourly feature processing for collected train data"
+    }
+    prediction_generation = {
+      schedule    = "20 * * * *"  # Every hour at :20
+      endpoint    = "/api/ops/generate-predictions"
+      description = "Hourly track prediction generation for upcoming trains"
+    }
+  }
 
   # vpc_connector_id = var.vpc_connector_id # If scheduler needs to access VPC resources
 
   environment_variables = {
     APP_ENV = "development"
-    # Add other scheduler-specific non-sensitive environment variables
+    # Phase 3: Enable cloud-native mode to disable internal scheduler
+    # TRACKCAST_SCHEDULER_MODE = "cloud_native"
+    # For now, keep internal scheduler running alongside new jobs (Phase 2)
   }
 
   # secret_environment_variables = {
@@ -143,6 +170,6 @@ module "trackrat_scheduler_dev" {
   }
 
   depends_on = [
-    module.trackrat_api_service # Example: if scheduler depends on API being up (e.g. for service discovery)
+    module.trackrat_api_service # API service must be deployed before scheduler jobs can target it
   ]
 }
