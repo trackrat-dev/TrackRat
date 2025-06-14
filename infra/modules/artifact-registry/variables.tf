@@ -12,3 +12,9 @@ variable "region" {
   description = "The GCP region"
   type        = string
 }
+
+variable "repository_name" {
+  description = "Custom repository name (optional). If not provided, defaults to {app_name}-{environment}"
+  type        = string
+  default     = ""
+}
