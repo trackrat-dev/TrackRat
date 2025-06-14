@@ -8,6 +8,7 @@ for upcoming trains using the trained machine learning model.
 import logging
 import time
 from datetime import datetime, timedelta
+from prometheus_client import Counter, Gauge, Histogram
 from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -17,6 +18,27 @@ from trackcast.db.repository import PredictionDataRepository, TrainRepository
 from trackcast.models.pipeline import TrackPredictionPipeline
 
 logger = logging.getLogger(__name__)
+
+
+# Define Prometheus metrics
+MODEL_PREDICTION_ACCURACY = Gauge(
+    "model_prediction_accuracy",
+    "Prediction accuracy of the model by station",
+    ["station"],
+)
+MODEL_INFERENCE_TIME = Histogram(
+    "model_inference_time_seconds",
+    "Inference time for model predictions by station",
+    ["station"],
+)
+TRAINS_PROCESSED_TOTAL = Counter(
+    "trains_processed_total", "Total number of trains processed"
+)
+TRACK_PREDICTION_CONFIDENCE = Histogram(
+    "track_prediction_confidence_ratio",
+    "Distribution of track prediction confidence scores",
+    ["station"],
+)
 
 
 class PredictionService:
@@ -124,6 +146,7 @@ class PredictionService:
 
             logger.info(f"Generating predictions for {len(trains)} trains")
             stats["trains_processed"] = len(trains)
+            TRAINS_PROCESSED_TOTAL.inc(len(trains))
 
             # Group trains by station for efficient model loading
             trains_by_station = {}
@@ -404,7 +427,15 @@ class PredictionService:
             model_info = self.model_infos[station_code]
 
             # Generate prediction
+            inference_start_time = time.time()
             predictions = model.predict([train.model_data])
+            inference_duration_seconds = time.time() - inference_start_time
+            MODEL_INFERENCE_TIME.labels(station=station_code).observe(
+                inference_duration_seconds
+            )
+            # TODO: Implement accuracy metric - requires comparing with actual track after departure
+            # MODEL_PREDICTION_ACCURACY.labels(station=station_code).set(accuracy_value)
+
             if not predictions:
                 logger.error(f"Model returned no predictions for train {train.train_id}")
                 return None
@@ -419,6 +450,10 @@ class PredictionService:
 
             # Log top predictions
             top_tracks = sorted(track_probabilities.items(), key=lambda x: x[1], reverse=True)[:3]
+            if top_tracks:
+                TRACK_PREDICTION_CONFIDENCE.labels(station=station_code).observe(
+                    top_tracks[0][1]  # Observe confidence of the top predicted track
+                )
             logger.info(
                 f"Top 3 predicted tracks for train {train.train_id} from {station_code}: {top_tracks}"
             )
@@ -485,7 +520,15 @@ class PredictionService:
             model_info = self.model_infos[station_code]
 
             # Generate prediction
+            inference_start_time = time.time()
             predictions = model.predict([train.model_data])
+            inference_duration_seconds = time.time() - inference_start_time
+            MODEL_INFERENCE_TIME.labels(station=station_code).observe(
+                inference_duration_seconds
+            )
+            # TODO: Implement accuracy metric - requires comparing with actual track after departure
+            # MODEL_PREDICTION_ACCURACY.labels(station=station_code).set(accuracy_value)
+
             if not predictions:
                 logger.error(f"Model returned no predictions for train {train.train_id}")
                 return None
@@ -500,6 +543,10 @@ class PredictionService:
 
             # Log top predictions
             top_tracks = sorted(track_probabilities.items(), key=lambda x: x[1], reverse=True)[:3]
+            if top_tracks:
+                TRACK_PREDICTION_CONFIDENCE.labels(station=station_code).observe(
+                    top_tracks[0][1]  # Observe confidence of the top predicted track
+                )
             logger.info(
                 f"Top 3 predicted tracks for train {train.train_id} using {station_code} model: {top_tracks}"
             )

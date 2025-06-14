@@ -9,11 +9,13 @@ from typing import Callable
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+import httpx # Added for external API checks
 
 from trackcast.api.routers import stops, trains
-from trackcast.db.connection import get_db
+from trackcast.db.connection import get_db, get_pool_status_metrics
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -24,6 +26,8 @@ app = FastAPI(
     description="API for accessing train track predictions",
     version="0.1.0",
 )
+
+Instrumentator().instrument(app).expose(app)
 
 # Add CORS middleware
 app.add_middleware(
@@ -43,6 +47,12 @@ async def log_requests(request: Request, call_next: Callable):
 
     # Process the request
     response = await call_next(request)
+
+    # Update DB pool metrics
+    try:
+        get_pool_status_metrics()
+    except Exception as e:
+        logger.error(f"Error updating DB pool metrics: {str(e)}")
 
     # Log request details
     process_time = time.time() - start_time
@@ -76,11 +86,14 @@ async def root():
 async def health(db=Depends(get_db)):
     """
     Comprehensive health check endpoint for containerized inference service.
-    Verifies database connection, model availability, and service readiness.
+    Verifies database connection, model availability, service readiness, and external API connectivity.
     """
     health_status = {"status": "healthy", "timestamp": time.time(), "checks": {}}
-
     overall_healthy = True
+
+    # Placeholder URLs for external API health checks - replace with actual status endpoints
+    NJ_TRANSIT_STATUS_URL = os.getenv("NJ_TRANSIT_STATUS_URL", "https://api.njtransit.com/v2/status_placeholder")
+    AMTRAK_STATUS_URL = os.getenv("AMTRAK_STATUS_URL", "https://api.amtrak.com/v2/status_placeholder")
 
     # Check database connection
     try:
@@ -151,6 +164,52 @@ async def health(db=Depends(get_db)):
             "status": "healthy",
             "message": "All required environment variables configured",
         }
+
+    # Check NJ Transit API
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(NJ_TRANSIT_STATUS_URL)
+            if response.status_code == 200:
+                health_status["checks"]["nj_transit_api"] = {
+                    "status": "healthy",
+                    "message": "NJ Transit API reachable",
+                }
+            else:
+                health_status["checks"]["nj_transit_api"] = {
+                    "status": "unhealthy",
+                    "message": f"NJ Transit API error: HTTP {response.status_code}",
+                }
+                overall_healthy = False
+    except Exception as e:
+        logger.error(f"NJ Transit API health check failed: {str(e)}")
+        health_status["checks"]["nj_transit_api"] = {
+            "status": "unhealthy",
+            "message": f"NJ Transit API connection failed: {str(e)}",
+        }
+        overall_healthy = False
+
+    # Check Amtrak API
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(AMTRAK_STATUS_URL)
+            if response.status_code == 200:
+                health_status["checks"]["amtrak_api"] = {
+                    "status": "healthy",
+                    "message": "Amtrak API reachable",
+                }
+            else:
+                health_status["checks"]["amtrak_api"] = {
+                    "status": "unhealthy",
+                    "message": f"Amtrak API error: HTTP {response.status_code}",
+                }
+                overall_healthy = False
+    except Exception as e:
+        logger.error(f"Amtrak API health check failed: {str(e)}")
+        health_status["checks"]["amtrak_api"] = {
+            "status": "unhealthy",
+            "message": f"Amtrak API connection failed: {str(e)}",
+        }
+        overall_healthy = False
 
     # Set overall status
     if not overall_healthy:
