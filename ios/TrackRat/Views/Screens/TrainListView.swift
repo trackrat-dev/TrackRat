@@ -276,10 +276,23 @@ class TrainListViewModel: ObservableObject {
     
     private var currentDestination: String?
     private var currentFromStationCode: String?
-    private let apiService = APIService.shared
+    private let apiService: APIService // Changed: Declare type
     
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
+    // Added: Initializer for dependency injection
+    init(apiService: APIService = APIService.shared) {
+        self.apiService = apiService
+    }
+    
+    private func sortTrainsByDepartureTime(_ trains: [Train], fromStationCode: String) -> [Train] {
+        return trains.sorted { train1, train2 in
+            let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
+            let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
+            return time1 < time2
+        }
+    }
     
     func loadTrains(destination: String, fromStationCode: String) async {
         self.currentDestination = destination
@@ -307,11 +320,7 @@ class TrainListViewModel: ObservableObject {
             }
             
             // Sort trains by origin station departure time
-            trains = filteredTrains.sorted { train1, train2 in
-                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
-                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
-                return time1 < time2
-            }
+            trains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
         } catch {
             self.error = error.localizedDescription
         }
@@ -343,11 +352,7 @@ class TrainListViewModel: ObservableObject {
             }
             
             // Sort trains by origin station departure time
-            let newTrains = filteredTrains.sorted { train1, train2 in
-                let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
-                let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
-                return time1 < time2
-            }
+            let newTrains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
             
             // Check for boarding status changes
             for (index, train) in trains.enumerated() {
@@ -368,7 +373,7 @@ class TrainListViewModel: ObservableObject {
             }
             
             // Sort by departure time
-            trains.sort { $0.departureTime < $1.departureTime }
+            trains = sortTrainsByDepartureTime(trains, fromStationCode: fromStationCode)
             
         } catch {
             // Silent failure for background refresh

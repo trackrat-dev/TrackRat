@@ -5,6 +5,7 @@ class APIServiceTests: XCTestCase {
     
     var apiService: APIService!
     
+    @MainActor
     override func setUp() {
         super.setUp()
         apiService = APIService.shared
@@ -15,6 +16,7 @@ class APIServiceTests: XCTestCase {
         super.tearDown()
     }
     
+    @MainActor
     func testAPIServiceSingleton() {
         let firstInstance = APIService.shared
         let secondInstance = APIService.shared

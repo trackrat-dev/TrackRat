@@ -48,6 +48,7 @@ class BuildTests: XCTestCase {
         XCTAssertTrue(Stations.departureStations.count > 0, "Should have departure stations")
     }
     
+    @MainActor
     func testAPIServiceExists() {
         // Test that APIService can be instantiated
         let apiService = APIService.shared
