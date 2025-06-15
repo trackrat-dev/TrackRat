@@ -77,8 +77,8 @@ module "trackrat_api_service" {
   container_image = var.api_image_url  # To be defined in variables.tf
   container_port  = 8000               # Assuming the API runs on port 8000
 
-  cpu_limit               = "1"     # As per issue: 1-2 vCPUs
-  memory_limit            = "512Mi" # As per issue: 512MB-2GB
+  cpu_limit               = "1"   # As per issue: 1-2 vCPUs
+  memory_limit            = "2Gi" # Ensure 2GB of RAM
   concurrency             = 100
   min_instances           = 0 # For dev/staging
   max_instances           = 2 # As per issue
@@ -137,7 +137,8 @@ module "trackrat_scheduler_dev" {
   # container_port = 8080
 
   # max_instances is 1 by default in the module
-  min_instances = 0 # For dev
+  min_instances = 0     # For dev
+  memory_limit  = "2Gi" # Ensure 2GB of RAM
 
   # request_timeout_seconds is 3600 (1 hour) by default in module
 

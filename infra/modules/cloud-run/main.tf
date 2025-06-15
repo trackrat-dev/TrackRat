@@ -89,7 +89,7 @@ resource "google_cloud_run_v2_service" "default" {
         initial_delay_seconds = 0
         timeout_seconds       = 5
         period_seconds        = 10
-        failure_threshold     = 3
+        failure_threshold     = 6
         http_get {
           path = var.startup_probe_path
           port = var.container_port
