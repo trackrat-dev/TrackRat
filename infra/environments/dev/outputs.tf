@@ -56,7 +56,7 @@ output "trackrat_api_custom_domain_name" {
 
 output "scheduler_job_names" {
   description = "Names of the Cloud Scheduler jobs in dev"
-  value       = [for job in google_cloud_scheduler_job.operations_jobs : job.name]
+  value       = [for job in google_cloud_scheduler_job.operations : job.name]
 }
 
 output "scheduler_service_account_email" {

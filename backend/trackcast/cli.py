@@ -204,9 +204,13 @@ def start_api(host: str, port: int) -> None:
 
 @main.command()
 def start_scheduler() -> None:
-    """Start the scheduler for automatic periodic execution"""
+    """Start the scheduler for automatic periodic execution (DEPRECATED: Use Cloud Run Jobs instead)"""
     try:
-        logger.info("Starting scheduler")
+        logger.warning(
+            "DEPRECATED: The internal scheduler is deprecated. Use Cloud Run Jobs for scheduled operations."
+        )
+        logger.warning("This command is kept for backward compatibility only.")
+        logger.info("Starting internal scheduler")
         scheduler = SchedulerService()
         scheduler.start()
 

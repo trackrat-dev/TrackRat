@@ -77,12 +77,12 @@ module "trackrat_api_service" {
   container_image = var.api_image_url  # To be defined in variables.tf
   container_port  = 8000               # Assuming the API runs on port 8000
 
-  cpu_limit               = "2"   # Increased for scheduler operations
-  memory_limit            = "4Gi" # Increased for scheduler operations
+  cpu_limit               = "1"   # Reduced since no longer handling scheduler operations
+  memory_limit            = "2Gi" # Reduced since no longer handling scheduler operations  
   concurrency             = 100
-  min_instances           = 1   # Ensure availability for scheduler jobs
-  max_instances           = 3   # Increased for scheduler operations
-  request_timeout_seconds = 300 # Increased for scheduler operations
+  min_instances           = 0  # Scale to 0 since using Cloud Run Jobs for operations
+  max_instances           = 5  # Increased for user traffic handling
+  request_timeout_seconds = 60 # Reduced to normal API timeout
 
   # Assuming /health is the correct endpoint for trackrat-api
   startup_probe_path            = "/health"
@@ -126,39 +126,109 @@ module "trackrat_api_service" {
   ]
 }
 
-# Service account for Cloud Scheduler jobs to invoke API service
+# Service account for Cloud Scheduler jobs to invoke Cloud Run Jobs
 resource "google_service_account" "scheduler_sa" {
   project      = var.project_id
   account_id   = "trackrat-scheduler-dev"
   display_name = "TrackRat Scheduler Service Account (Dev)"
-  description  = "Service account for Cloud Scheduler jobs to invoke API service"
+  description  = "Service account for Cloud Scheduler jobs to invoke Cloud Run Jobs"
 }
 
-# Grant the scheduler service account permission to invoke the API service
-resource "google_cloud_run_service_iam_member" "scheduler_invoker" {
-  project  = var.project_id
-  location = var.region
-  service  = module.trackrat_api_service.service_name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.scheduler_sa.email}"
+# Cloud Run Jobs for scheduled operations
+module "scheduled_operations" {
+  source = "../../modules/cloud-run-jobs"
+
+  project_id            = var.project_id
+  location              = var.region
+  job_name_prefix       = "trackrat-ops-dev"
+  container_image       = var.api_image_url
+  service_account_email = google_service_account.scheduler_sa.email
+  vpc_connector_id      = module.vpc_connector.id
+
+  # Global environment variables for all jobs
+  environment_variables = {
+    APP_ENV                  = "development"
+    TRACKCAST_ENV            = "dev"
+    MODEL_PATH               = "/app/models"
+    TRACKCAST_SCHEDULER_MODE = "cloud_native"
+  }
+
+  # Secret environment variables from Secret Manager
+  secret_environment_variables = {
+    DATABASE_URL = "${module.infrastructure.database_url_secret_name}:latest"
+    NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
+    NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
+  }
+
+  # Job configurations
+  jobs = {
+    data-collection = {
+      command      = ["trackcast", "collect-data"]
+      cpu_limit    = "1"
+      memory_limit = "2Gi"
+      max_retries  = 3
+      task_timeout = "300s"
+      environment_variables = {
+        JOB_TYPE = "data_collection"
+      }
+    }
+
+    feature-processing = {
+      command      = ["trackcast", "process-features"]
+      cpu_limit    = "2"
+      memory_limit = "4Gi"
+      max_retries  = 2
+      task_timeout = "600s"
+      environment_variables = {
+        JOB_TYPE = "feature_processing"
+      }
+    }
+
+    prediction-generation = {
+      command      = ["trackcast", "generate-predictions"]
+      cpu_limit    = "2"
+      memory_limit = "4Gi"
+      max_retries  = 2
+      task_timeout = "600s"
+      environment_variables = {
+        JOB_TYPE = "prediction_generation"
+      }
+    }
+  }
+
+  labels = {
+    environment = "dev"
+    component   = "scheduler"
+  }
+
+  depends_on = [
+    module.database,
+    module.vpc_connector,
+    module.infrastructure
+  ]
 }
 
-# Direct Cloud Scheduler jobs targeting API service (Phase 3: Cloud-native scheduler)
-resource "google_cloud_scheduler_job" "operations_jobs" {
+# Grant the scheduler service account permission to run Cloud Run Jobs
+resource "google_project_iam_member" "scheduler_job_runner" {
+  project = var.project_id
+  role    = "roles/run.developer"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
+
+# Cloud Scheduler jobs targeting Cloud Run Jobs
+resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    data_collection = {
+    data-collection = {
       schedule    = "0 * * * *" # Every hour at :00
-      endpoint    = "/api/ops/collect-data"
       description = "Hourly data collection from NJ Transit and Amtrak APIs"
     }
-    feature_processing = {
+    feature-processing = {
       schedule    = "10 * * * *" # Every hour at :10
-      endpoint    = "/api/ops/process-features"
       description = "Hourly feature processing for collected train data"
     }
-    prediction_generation = {
+    prediction-generation = {
       schedule    = "20 * * * *" # Every hour at :20
-      endpoint    = "/api/ops/generate-predictions"
       description = "Hourly track prediction generation for upcoming trains"
     }
   }
@@ -172,7 +242,7 @@ resource "google_cloud_scheduler_job" "operations_jobs" {
   attempt_deadline = "300s"
 
   http_target {
-    uri         = "${module.trackrat_api_service.service_url}${each.value.endpoint}"
+    uri         = module.scheduled_operations.job_uris[each.key]
     http_method = "POST"
 
     headers = {
@@ -187,12 +257,13 @@ resource "google_cloud_scheduler_job" "operations_jobs" {
 
     oidc_token {
       service_account_email = google_service_account.scheduler_sa.email
-      audience              = module.trackrat_api_service.service_url
+      audience              = module.scheduled_operations.job_uris[each.key]
     }
   }
 
   depends_on = [
-    module.trackrat_api_service,
-    google_service_account.scheduler_sa
+    module.scheduled_operations,
+    google_service_account.scheduler_sa,
+    google_project_iam_member.scheduler_job_runner
   ]
 }
