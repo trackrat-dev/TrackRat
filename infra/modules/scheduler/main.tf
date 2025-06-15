@@ -139,9 +139,9 @@ resource "google_cloud_scheduler_job" "operations_jobs" {
     }
 
     body = base64encode(jsonencode({
-      "operation": each.key,
-      "triggered_by": "cloud_scheduler",
-      "timestamp": timestamp()
+      "operation" : each.key,
+      "triggered_by" : "cloud_scheduler",
+      "timestamp" : timestamp()
     }))
 
     oidc_token {

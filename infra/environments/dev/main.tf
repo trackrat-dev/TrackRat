@@ -134,28 +134,28 @@ module "trackrat_scheduler_dev" {
   # request_timeout_seconds is 3600 (1 hour) by default in module
 
   scheduler_job_name = "invoke-trackrat-scheduler-dev"
-  
+
   # Phase 2: Parallel operation - keep legacy scheduler alongside new jobs
   legacy_scheduler_enabled = true
   scheduler_schedule       = "0 2 * * *" # Keep existing daily job for now
-  
+
   # Phase 1: New high-frequency scheduler jobs targeting API service
   api_service_uri = module.trackrat_api_service.service_url
-  
+
   # Hourly scheduling as requested (Phase 1 implementation)
   scheduler_jobs = {
     data_collection = {
-      schedule    = "0 * * * *"   # Every hour at :00
+      schedule    = "0 * * * *" # Every hour at :00
       endpoint    = "/api/ops/collect-data"
       description = "Hourly data collection from NJ Transit and Amtrak APIs"
     }
     feature_processing = {
-      schedule    = "10 * * * *"  # Every hour at :10
+      schedule    = "10 * * * *" # Every hour at :10
       endpoint    = "/api/ops/process-features"
       description = "Hourly feature processing for collected train data"
     }
     prediction_generation = {
-      schedule    = "20 * * * *"  # Every hour at :20
+      schedule    = "20 * * * *" # Every hour at :20
       endpoint    = "/api/ops/generate-predictions"
       description = "Hourly track prediction generation for upcoming trains"
     }
