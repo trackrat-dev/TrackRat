@@ -644,18 +644,7 @@ jobs:
 
           echo "✅ Infrastructure and services deployed"
 
-      # Step 4: Update database secrets with connection URL
-      - name: Update Database Secrets
-        working-directory: ./infra
-        run: |
-          echo "🔐 Updating database secrets with connection URL..."
-
-          # Run the database secrets update script
-          ./scripts/update-database-secrets.sh dev ${{ env.PROJECT_ID }}
-
-          echo "✅ Database secrets updated"
-
-      # Step 5: Run database migrations
+      # Step 4: Run database migrations (database secrets are now populated by Terraform)
       - name: Run Database Migrations
         run: |
           echo "🗄️ Running database migrations..."
@@ -686,7 +675,7 @@ jobs:
 
           echo "✅ Database migrations completed"
 
-      # Step 6: Get final service URL if not set
+      # Step 5: Get final service URL if not set
       - name: Get Service URL
         run: |
           if [[ -z "${{ env.SERVICE_URL }}" ]]; then
@@ -697,7 +686,7 @@ jobs:
           fi
           echo "🔗 Service URL: ${{ env.SERVICE_URL }}"
 
-      # Step 7: Health checks
+      # Step 6: Health checks
       - name: Health Check
         run: |
           echo "🏥 Performing health check..."
@@ -730,7 +719,7 @@ jobs:
             fi
           done
 
-      # Step 8: Test API endpoints
+      # Step 7: Test API endpoints
       - name: Test API Endpoints
         run: |
           echo "🧪 Testing API endpoints..."
@@ -760,7 +749,7 @@ jobs:
             echo "⚠️ Stops API endpoint check failed (may be expected if no data)"
           fi
 
-      # Step 9: Deployment summary
+      # Step 8: Deployment summary
       - name: Deployment Summary
         run: |
           echo "## 🚀 Development Deployment Complete" >> $GITHUB_STEP_SUMMARY

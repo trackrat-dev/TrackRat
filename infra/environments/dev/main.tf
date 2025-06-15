@@ -34,6 +34,12 @@ module "infrastructure" {
   subnet_cidr = "10.1.1.0/24"
   # db_password is now auto-generated in the database module
   artifact_registry_repository_name = "trackcast-inference-dev"
+
+  # Database connection parameters for secrets module
+  database_host     = module.database.private_ip_address
+  database_name     = module.database.database_name
+  database_user     = module.database.database_user_name
+  database_password = module.database.database_password
 }
 
 module "database" {

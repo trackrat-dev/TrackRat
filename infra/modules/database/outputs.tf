@@ -47,3 +47,9 @@ output "instance_service_account_email" {
   description = "The email address of the service account associated with this Cloud SQL instance."
   value       = google_sql_database_instance.default.service_account_email_address
 }
+
+output "database_password" {
+  description = "The database user password (sensitive)"
+  value       = random_password.database_user_password.result
+  sensitive   = true
+}
