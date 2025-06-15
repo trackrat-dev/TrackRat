@@ -267,7 +267,7 @@ def train_model(station: str, all_stations: bool) -> None:
             logger.error("This command is not available in inference-only environments")
             logger.error(f"Missing: {e}")
             sys.exit(1)
-        
+
         from trackcast.models.training import (
             train_model_for_station,
             train_models_for_all_stations,

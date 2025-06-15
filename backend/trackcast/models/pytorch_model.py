@@ -7,11 +7,18 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import shap
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
+
+# Optional SHAP import for model explanation
+try:
+    import shap
+
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
 
 from ..config import settings
 from ..db.models import ModelData
@@ -702,6 +709,18 @@ class PyTorchTrackPredictor:
         """Generate SHAP values to explain predictions"""
         if self.model is None:
             raise ValueError("Model must be trained or loaded before generating explanations")
+
+        # Check if SHAP is available
+        if not SHAP_AVAILABLE:
+            logger.warning("SHAP not available - cannot generate detailed prediction factors")
+            return [
+                {
+                    "feature": "model_prediction",
+                    "importance": 1.0,
+                    "direction": "positive",
+                    "explanation": "SHAP explanations not available in inference-only mode",
+                }
+            ]
 
         # Create a single-element batch
         dummy_tracks = ["1"]
