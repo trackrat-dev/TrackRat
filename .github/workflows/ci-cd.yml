@@ -108,6 +108,7 @@ jobs:
 
     steps:
       - name: Free up disk space
+        working-directory: ./
         run: |
           echo "🗄️ Disk usage before cleanup:"
           df -h
@@ -241,6 +242,7 @@ jobs:
           sbom: false
 
       - name: Load and test Docker image
+        working-directory: ./
         run: |
           echo "🐳 Loading Docker image..."
           docker load < /tmp/docker-image.tar
