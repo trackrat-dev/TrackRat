@@ -130,7 +130,7 @@ jobs:
           # Use inference requirements to save disk space
           pip install -r requirements-inference.txt
           pip install -e .
-          
+
           # Clean pip cache to save space
           pip cache purge
 
