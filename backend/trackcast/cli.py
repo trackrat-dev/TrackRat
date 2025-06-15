@@ -258,6 +258,16 @@ def update_schema() -> None:
 def train_model(station: str, all_stations: bool) -> None:
     """Train prediction models using historical data"""
     try:
+        # Check if training dependencies are available
+        try:
+            import matplotlib
+            import seaborn
+        except ImportError as e:
+            logger.error("Training dependencies not available (matplotlib, seaborn)")
+            logger.error("This command is not available in inference-only environments")
+            logger.error(f"Missing: {e}")
+            sys.exit(1)
+
         from trackcast.models.training import (
             train_model_for_station,
             train_models_for_all_stations,

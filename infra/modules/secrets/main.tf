@@ -3,7 +3,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = ">= 5.0"
     }
     random = {
       source  = "hashicorp/random"
@@ -43,28 +43,4 @@ resource "google_secret_manager_secret_version" "app_secrets_version" {
   }
 }
 
-# Generate a random password for the database if none provided
-resource "random_password" "db_password" {
-  count   = var.db_password_plaintext == null || var.db_password_plaintext == "" ? 1 : 0
-  length  = 32
-  special = true
-}
-
-# Always create the database password secret
-resource "google_secret_manager_secret" "db_password" {
-  secret_id = "trackrat-db-password"
-  labels = {
-    app         = var.app_name
-    environment = var.environment
-    type        = "database-credentials"
-  }
-  replication {
-    auto {}
-  }
-}
-
-# Use provided password or generated one
-resource "google_secret_manager_secret_version" "db_password_version" {
-  secret      = google_secret_manager_secret.db_password.id
-  secret_data = var.db_password_plaintext != null && var.db_password_plaintext != "" ? var.db_password_plaintext : random_password.db_password[0].result
-}
+# Database password is now auto-generated and stored in the database module

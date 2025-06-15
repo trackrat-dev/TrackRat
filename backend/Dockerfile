@@ -2,44 +2,52 @@
 # Multi-stage build for optimal image size and security
 
 # Stage 1: Dependencies builder
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
-# Set environment variables
+# Set environment variables for minimal installs
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies needed for building Python packages
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy and install Python dependencies
-COPY requirements-inference.txt .
-RUN pip install --no-cache-dir -r requirements-inference.txt
+# Copy and install Python dependencies (CPU-only for container optimization)
+COPY requirements-cpu.txt .
+RUN pip install --no-cache-dir -r requirements-cpu.txt -f https://download.pytorch.org/whl/torch_stable.html \
+    && find /opt/venv -type f -name "*.pyc" -delete \
+    && find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # Stage 2: Production runtime
-FROM python:3.11-slim as runtime
+FROM python:3.11-slim AS runtime
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     MODEL_PATH="/app/models" \
-    TRACKCAST_ENV="prod"
+    TRACKCAST_ENV="dev" \
+    DEBIAN_FRONTEND=noninteractive
 
-# Install runtime system dependencies
+# Install runtime system dependencies (minimal)
 RUN apt-get update && apt-get install -y \
     libpq5 \
     curl \
+    --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && apt-get clean \
+    && apt-get autoremove -y
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash trackcast \
@@ -59,7 +67,9 @@ COPY --chown=trackcast:trackcast config/ ./config/
 COPY --chown=trackcast:trackcast models/ ./models/
 
 # Install the package in development mode for CLI access
-RUN pip install -e .
+RUN pip install -e . \
+    && find /opt/venv -type f -name "*.pyc" -delete \
+    && find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # Switch to non-root user
 USER trackcast

@@ -55,11 +55,7 @@ variable "database_user_name" {
   default     = "trackratuser"
 }
 
-variable "database_user_password" {
-  description = "The password for the database user. This should be sourced from a secure location like Secret Manager."
-  type        = string
-  sensitive   = true
-}
+# database_user_password is now auto-generated using random_password resource
 
 variable "deletion_protection" {
   description = "Whether or not to enable deletion protection for the instance."
@@ -75,11 +71,6 @@ variable "backup_window_start_time" {
 }
 
 # Variables for monitoring flags (from monitoring.tf)
-variable "enable_cloud_sql_insights" {
-  description = "Enable Cloud SQL Insights (Query Insights)."
-  type        = bool
-  default     = true
-}
 
 variable "slow_query_log_min_duration" {
   description = "Minimum query duration in ms to be logged as a slow query. Use 0 to disable. For PostgreSQL, this is 'log_min_duration_statement'."

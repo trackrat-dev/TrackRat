@@ -78,6 +78,12 @@ variable "vpc_connector_id" {
   default     = null
 }
 
+variable "enable_cloudsql_access" {
+  description = "Whether to grant Cloud SQL client permissions to the service account"
+  type        = bool
+  default     = false
+}
+
 variable "startup_probe_path" {
   description = "Path for the startup probe (e.g., /healthz). Disabled if null."
   type        = string

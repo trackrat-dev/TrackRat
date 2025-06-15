@@ -50,10 +50,10 @@ module "vpc" {
 
 # Create Secret Manager resources
 module "secrets" {
-  source                = "./modules/secrets"
-  app_name              = var.app_name
-  environment           = var.environment
-  db_password_plaintext = var.db_password # Pass the password to the secrets module
+  source      = "./modules/secrets"
+  app_name    = var.app_name
+  environment = var.environment
+  # db_password is now auto-generated in the database module
 
   depends_on = [module.apis]
 }

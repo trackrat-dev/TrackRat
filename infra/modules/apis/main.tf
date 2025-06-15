@@ -27,7 +27,8 @@ resource "google_project_service" "apis" {
     "cloudresourcemanager.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
-    "servicenetworking.googleapis.com"
+    "servicenetworking.googleapis.com",
+    "vpcaccess.googleapis.com"
   ])
 
   project = var.project_id

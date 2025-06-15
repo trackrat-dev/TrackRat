@@ -34,10 +34,18 @@ pytz>=2023.3
 schedule>=1.2.0
 apscheduler>=3.10.0
 
+# Testing (minimal for CI)
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+
+# Code quality (minimal for CI)
+black>=23.7.0
+flake8>=6.0.0
+
 # Production dependencies
 # NOTE: Training dependencies excluded:
 # - matplotlib, seaborn (visualization)
 # - shap (model explanation) 
 # - xgboost (if not needed for inference)
-# - pytest and testing tools (moved to dev requirements)
-# - code quality tools (black, flake8, etc.)
+# - pytest-cov, pytest-mock, pytest-xdist (advanced testing)
+# - pylint, bandit, isort, mypy (advanced code quality)

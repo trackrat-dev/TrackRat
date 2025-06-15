@@ -38,12 +38,7 @@ variable "subnet_cidr" {
   default     = "10.0.1.0/24"
 }
 
-variable "db_password" {
-  description = "Database user password, to be passed to the secrets module. Should be supplied via environment-specific .tfvars."
-  type        = string
-  sensitive   = true
-  # No default, must be provided by the environment configuration (e.g., dev.tfvars)
-}
+# db_password is now auto-generated in the database module
 
 variable "artifact_registry_repository_name" {
   description = "Custom Artifact Registry repository name (optional). If not provided, defaults to {app_name}-{environment}"

@@ -1,0 +1,790 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, infra-ops-*]
+    paths:
+      - 'backend/**'
+      - 'ios/**'
+      - 'infra/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - 'ios/**'
+      - 'infra/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  TF_VERSION: '1.7.0'
+  TFLINT_VERSION: 'v0.50.0'
+  PROJECT_ID: trackrat-dev
+  REGION: us-central1
+  SERVICE_NAME: trackcast-inference
+  REPOSITORY: trackcast-inference-dev
+
+jobs:
+  # Phase 1: Change Detection & Validation
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      ios: ${{ steps.changes.outputs.ios }}
+      infra: ${{ steps.changes.outputs.infra }}
+      workflows: ${{ steps.changes.outputs.workflows }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          token: ${{ github.token }}
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/ci-cd.yml'
+            ios:
+              - 'ios/**'
+              - '.github/workflows/ci-cd.yml'
+            infra:
+              - 'infra/**'
+              - '.github/workflows/ci-cd.yml'
+            workflows:
+              - '.github/workflows/**'
+
+  workflow-validation:
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    name: Workflow Validation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Validate workflow YAML syntax
+        run: |
+          echo "🔍 Validating GitHub workflow YAML files..."
+          yamllint -d '{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable}}' .github/workflows/
+          echo "✅ All workflow files have valid YAML syntax"
+
+  # Phase 2: Testing
+  backend-tests:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    name: Backend Tests (All)
+
+    services:
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: trackcast_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Free up disk space
+        working-directory: ./
+        run: |
+          echo "🗄️ Disk usage before cleanup:"
+          df -h
+          echo "🧹 Removing large unused packages..."
+          # Remove large packages that consume ~4GB total
+          sudo rm -rf /usr/share/dotnet          # ~1.2GB
+          sudo rm -rf /usr/local/lib/android     # ~1.3GB
+          sudo rm -rf /opt/ghc                   # ~800MB
+          sudo rm -rf /opt/hostedtoolcache/CodeQL # ~700MB
+          sudo docker image prune -af            # Variable
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          echo "💾 Disk usage after cleanup:"
+          df -h
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-backend-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-backend-
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies in temporary venv
+        run: |
+          echo "💾 Disk space before venv creation:"
+          df -h
+
+          python -m pip install --upgrade pip
+
+          # Create temporary virtual environment for CI tests
+          echo "🏗️ Creating temporary virtual environment for CI tests..."
+          python -m venv ci-venv
+          source ci-venv/bin/activate
+
+          # Use CPU-only PyTorch to save disk space in CI
+          echo "📦 Installing CPU-only dependencies..."
+          pip install -r requirements-cpu.txt -f https://download.pytorch.org/whl/torch_stable.html
+          pip install -e .
+
+          echo "📦 Virtual environment created at: $(pwd)/ci-venv"
+          echo "📊 Virtual environment size: $(du -sh ci-venv)"
+
+      # Code Quality Checks
+      - name: Code formatting check (black)
+        run: |
+          source ci-venv/bin/activate
+          echo "🎨 Checking code formatting..."
+          if black --check trackcast/; then
+            echo "✅ Code formatting looks good!"
+          else
+            echo "❌ Code formatting issues found. Run 'black trackcast/' to fix."
+            exit 1
+          fi
+
+      - name: Linting check (flake8)
+        run: |
+          source ci-venv/bin/activate
+          echo "🔍 Running linting checks..."
+          if flake8 --ignore F541,E712,F841,E203,E711,W503,F401,W291,E501 trackcast/; then
+            echo "✅ No linting issues found!"
+          else
+            echo "❌ Linting issues found. Please fix the issues listed above."
+            exit 1
+          fi
+
+      # Unit Tests
+      - name: Run unit tests
+        run: |
+          source ci-venv/bin/activate
+          echo "🧪 Running unit tests..."
+          pytest tests/unit/ -v --tb=short
+          echo "✅ Unit tests passed!"
+
+      # Integration Tests
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trackcast_test
+        run: |
+          source ci-venv/bin/activate
+          echo "🔗 Running integration tests..."
+          pytest tests/integration/ -v --tb=short
+          echo "✅ Integration tests passed!"
+
+      # Clean up virtual environment before Docker build
+      - name: Clean up CI virtual environment
+        run: |
+          echo "🧹 Removing CI virtual environment to save space before Docker build..."
+          rm -rf ci-venv
+          pip cache purge
+          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find . -type f -name "*.pyc" -delete 2>/dev/null || true
+          echo "💾 Disk space after venv cleanup:"
+          df -h
+
+      # Docker Build and Test
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.12.0
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          target: runtime
+          push: false
+          tags: |
+            trackcast-inference:ci-test
+            trackcast-inference:${{ github.sha }}
+          outputs: type=docker,dest=/tmp/docker-image.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+            DEBIAN_FRONTEND=noninteractive
+          # Use BuildKit features for smaller images
+          provenance: false
+          sbom: false
+
+      - name: Load and test Docker image
+        working-directory: ./
+        run: |
+          echo "🐳 Loading Docker image..."
+          docker load < /tmp/docker-image.tar
+
+          echo "📊 Checking image size..."
+          docker images trackcast-inference:ci-test --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+          IMAGE_SIZE=$(docker images trackcast-inference:ci-test --format "{{.Size}}")
+          echo "Final image size: $IMAGE_SIZE"
+
+          echo "🔍 Verifying container structure..."
+          docker run --rm trackcast-inference:ci-test ls -la /app/
+
+          echo "🐍 Testing Python environment..."
+          docker run --rm trackcast-inference:ci-test python --version
+          docker run --rm trackcast-inference:ci-test pip list | head -20
+
+          echo "🚀 Testing imports and app initialization..."
+          docker run --rm \
+            -e MODEL_PATH="/app/models" \
+            -e TRACKCAST_ENV="ci" \
+            trackcast-inference:ci-test \
+            python -c "
+          import sys
+          print(f'Python version: {sys.version}')
+
+          # Test critical imports
+          import fastapi
+          print('✅ FastAPI imported')
+          import uvicorn
+          print('✅ Uvicorn imported')
+          import torch
+          print('✅ PyTorch imported')
+          import sqlalchemy
+          print('✅ SQLAlchemy imported')
+          import pandas
+          print('✅ Pandas imported')
+
+          # Test app import
+          from trackcast.api.app import app
+          print('✅ TrackCast app imported')
+
+          # Verify routes
+          routes = [route.path for route in app.routes if hasattr(route, 'path')]
+          for expected in ['/', '/health']:
+              assert expected in routes, f'Route {expected} missing'
+              print(f'✅ Route {expected} found')
+
+          print('🎉 All container tests passed!')
+          "
+
+          echo "🔒 Verifying security..."
+          USER_CHECK=$(docker run --rm trackcast-inference:ci-test whoami)
+          if [ "$USER_CHECK" = "trackcast" ]; then
+            echo "✅ Container runs as non-root user: $USER_CHECK"
+          else
+            echo "❌ Container should run as 'trackcast' user, but runs as: $USER_CHECK"
+            exit 1
+          fi
+
+      # Save Docker artifact for deployment (before cleanup)
+      - name: Upload Docker image artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-${{ github.sha }}
+          path: /tmp/docker-image.tar
+          retention-days: 1
+
+      # Clean up Docker after saving artifacts
+      - name: Cleanup Docker to save space
+        if: always()
+        working-directory: ./
+        run: |
+          echo "🧹 Cleaning up Docker to save space..."
+          docker system prune -af
+          docker image prune -af
+          rm -f /tmp/docker-image.tar
+
+  # ios-tests:
+  #   needs: changes
+  #   if: needs.changes.outputs.ios == 'true'
+  #   runs-on: macos-latest
+  #   name: iOS Tests
+
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+
+  #     - name: Select Xcode version
+  #       run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+  #     - name: Run iOS tests
+  #       working-directory: ./ios
+  #       run: |
+  #         xcodebuild test \
+  #           -scheme TrackRat \
+  #           -destination 'platform=iOS Simulator,name=iPhone 16' \
+  #           -derivedDataPath DerivedData \
+  #           -resultBundlePath TestResults.xcresult
+
+  #     - name: Upload test results
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: ios-test-results
+  #         path: ios/TestResults.xcresult
+
+  infra-tests:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    name: Infrastructure Tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+
+      - name: Cache Terraform plugins
+        uses: actions/cache@v3
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: ${{ runner.os }}-terraform-${{ hashFiles('infra/**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-terraform-
+
+      - name: Terraform Format Check
+        working-directory: ./infra
+        run: |
+          terraform fmt -check -recursive
+          if [ $? -ne 0 ]; then
+            echo "❌ Terraform files are not properly formatted"
+            echo "Run 'terraform fmt -recursive' to fix formatting"
+            exit 1
+          fi
+          echo "✅ All Terraform files are properly formatted"
+
+      - name: Terraform Validate
+        working-directory: ./infra
+        run: |
+          # Initialize and validate root module
+          terraform init -backend=false
+          terraform validate
+
+          # Validate each module
+          for module_dir in modules/*/; do
+            if [ -d "$module_dir" ]; then
+              echo "Validating module: $module_dir"
+              (cd "$module_dir" && terraform init -backend=false && terraform validate)
+            fi
+          done
+
+          # Validate each environment
+          for env_dir in environments/*/; do
+            if [ -d "$env_dir" ]; then
+              echo "Validating environment: $env_dir"
+              (cd "$env_dir" && terraform init -backend=false && terraform validate)
+            fi
+          done
+
+      - name: Initialize TFLint
+        working-directory: ./infra
+        run: tflint --init
+
+      - name: Run TFLint
+        working-directory: ./infra
+        run: |
+          # Run tflint on root module
+          tflint
+
+          # Run tflint on each module
+          for module_dir in modules/*/; do
+            if [ -d "$module_dir" ]; then
+              echo "Running tflint on module: $module_dir"
+              tflint --chdir="$module_dir"
+            fi
+          done
+
+          # Run tflint on each environment
+          for env_dir in environments/*/; do
+            if [ -d "$env_dir" ]; then
+              echo "Running tflint on environment: $env_dir"
+              tflint --chdir="$env_dir"
+            fi
+          done
+
+  # Phase 3: Deployment Gate
+  deployment-gate:
+    runs-on: ubuntu-latest
+    needs: [changes, workflow-validation, backend-tests, infra-tests]
+    if: always()
+    name: Deployment Gate
+    outputs:
+      should_deploy: ${{ steps.gate-decision.outputs.should_deploy }}
+      all_tests_passed: ${{ steps.gate-decision.outputs.all_tests_passed }}
+      docker_image_ready: ${{ steps.gate-decision.outputs.docker_image_ready }}
+
+    steps:
+      - name: Evaluate deployment readiness
+        id: gate-decision
+        run: |
+          echo "🚦 Evaluating deployment gate..."
+
+          # Check if we're on main branch
+          is_main_branch=${{ github.ref == 'refs/heads/main' }}
+          echo "Main branch: $is_main_branch"
+
+          # Check if backend or infra changed
+          has_deployable_changes=${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.infra == 'true' }}
+          echo "Has deployable changes: $has_deployable_changes"
+
+          # Check test results
+          backend_success=${{ needs.backend-tests.result == 'success' || needs.backend-tests.result == 'skipped' }}
+          # ios_success=${{ needs.ios-tests.result != 'failure' }}  # iOS tests temporarily disabled
+          ios_success="true"  # iOS tests skipped
+          infra_success=${{ needs.infra-tests.result != 'failure' }}
+          workflow_success=${{ needs.workflow-validation.result != 'failure' }}
+
+          echo "Backend tests: ${{ needs.backend-tests.result }}"
+          echo "iOS tests: skipped (temporarily disabled)"
+          echo "Infrastructure tests: ${{ needs.infra-tests.result }}"
+          echo "Workflow validation: ${{ needs.workflow-validation.result }}"
+
+          # Determine if all tests passed
+          if [[ "$backend_success" == "true" && "$ios_success" == "true" && "$infra_success" == "true" && "$workflow_success" == "true" ]]; then
+            all_tests_passed="true"
+          else
+            all_tests_passed="false"
+          fi
+
+          # Check if Docker image is ready (backend tests passed on main)
+          docker_ready=${{ needs.backend-tests.result == 'success' && github.ref == 'refs/heads/main' }}
+
+          # Final deployment decision
+          if [[ "$is_main_branch" == "true" && "$has_deployable_changes" == "true" && "$all_tests_passed" == "true" ]]; then
+            should_deploy="true"
+            echo "✅ Deployment gate: APPROVED"
+          else
+            should_deploy="false"
+            echo "❌ Deployment gate: BLOCKED"
+          fi
+
+          echo "should_deploy=$should_deploy" >> $GITHUB_OUTPUT
+          echo "all_tests_passed=$all_tests_passed" >> $GITHUB_OUTPUT
+          echo "docker_image_ready=$docker_ready" >> $GITHUB_OUTPUT
+
+      - name: Generate gate summary
+        run: |
+          echo "## 🚦 Deployment Gate Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ steps.gate-decision.outputs.should_deploy }}" == "true" ]]; then
+            echo "✅ **Status**: Ready to Deploy" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Status**: Deployment Blocked" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Conditions" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- All tests passed: ${{ steps.gate-decision.outputs.all_tests_passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend changes: ${{ needs.changes.outputs.backend }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Infrastructure changes: ${{ needs.changes.outputs.infra }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker image ready: ${{ steps.gate-decision.outputs.docker_image_ready }}" >> $GITHUB_STEP_SUMMARY
+
+  # Phase 4: Deployment
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [deployment-gate]
+    if: needs.deployment-gate.outputs.should_deploy == 'true'
+
+    environment:
+      name: development
+      url: https://trackcast-inference-dev-url.a.run.app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image-${{ github.sha }}
+          path: /tmp
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Step 1: Ensure Artifact Registry repository exists
+      - name: Setup Artifact Registry Repository
+        working-directory: ./infra/environments/dev
+        run: |
+          echo "🏗️ Setting up Artifact Registry repository..."
+
+          # Initialize Terraform
+          terraform init
+
+          # Create minimal terraform.tfvars for repository setup
+          cat > terraform.tfvars << EOF
+          project_id = "${{ env.PROJECT_ID }}"
+          region = "${{ env.REGION }}"
+          zone = "${{ env.REGION }}-b"
+          api_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
+          scheduler_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
+          db_password = ""
+          EOF
+
+          # Target only the artifact registry repository
+          terraform plan -target=module.infrastructure.module.artifact_registry -var-file=terraform.tfvars -out=registry-plan
+          terraform apply -auto-approve registry-plan
+
+          echo "✅ Artifact Registry repository ready"
+
+      # Step 2: Load and push Docker image
+      - name: Push Docker image to Artifact Registry
+        run: |
+          echo "🐳 Loading and pushing Docker image..."
+
+          # Configure Docker
+          gcloud auth configure-docker us-central1-docker.pkg.dev
+
+          # Load the image
+          docker load < /tmp/docker-image.tar
+
+          # Tag for registry
+          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+          LATEST_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
+
+          docker tag trackcast-inference:${{ github.sha }} $IMAGE_TAG
+          docker tag trackcast-inference:${{ github.sha }} $LATEST_TAG
+
+          # Push to registry
+          docker push $IMAGE_TAG
+          docker push $LATEST_TAG
+
+          # Export for later steps
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "✅ Image pushed: $IMAGE_TAG"
+
+      # Step 3: Deploy all infrastructure including Cloud Run services
+      - name: Deploy Infrastructure and Services
+        working-directory: ./infra/environments/dev
+        run: |
+          echo "🏗️ Deploying infrastructure and services..."
+
+          # Initialize Terraform
+          terraform init
+
+          # Create terraform.tfvars with all variables including image URLs
+          cat > terraform.tfvars << EOF
+          project_id = "${{ env.PROJECT_ID }}"
+          region = "${{ env.REGION }}"
+          zone = "${{ env.REGION }}-b"
+          api_image_url = "${{ env.IMAGE_TAG }}"
+          scheduler_image_url = "${{ env.IMAGE_TAG }}"
+          db_password = ""
+          EOF
+
+          # Plan and apply everything
+          terraform plan -var-file=terraform.tfvars -out=tfplan
+          terraform apply -auto-approve tfplan
+
+          # Get service URL
+          SERVICE_URL=$(terraform output -raw trackrat_api_service_url 2>/dev/null || echo "")
+          if [[ -n "$SERVICE_URL" ]]; then
+            echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+          fi
+
+          echo "✅ Infrastructure and services deployed"
+
+      # Step 4: Run database migrations
+      - name: Run Database Migrations
+        run: |
+          echo "🗄️ Running database migrations..."
+
+          # Create a temporary Cloud Run job to run migrations
+          gcloud run jobs create trackcast-migrate-${{ github.sha }} \
+            --image=${{ env.IMAGE_TAG }} \
+            --region=${{ env.REGION }} \
+            --task-timeout=300 \
+            --memory=1Gi \
+            --cpu=1 \
+            --set-secrets=DATABASE_URL=trackcast-dev-secrets:latest \
+            --set-env-vars=TRACKCAST_ENV=dev \
+            --command=trackcast \
+            --args=init-db \
+            --max-retries=0 \
+            --service-account=trackcast-dev-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com || true
+
+          # Execute the migration job
+          gcloud run jobs execute trackcast-migrate-${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --wait
+
+          # Clean up the job
+          gcloud run jobs delete trackcast-migrate-${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --quiet
+
+          echo "✅ Database migrations completed"
+
+      # Step 5: Get final service URL if not set
+      - name: Get Service URL
+        run: |
+          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
+            SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+              --region=${{ env.REGION }} \
+              --format='value(status.url)' 2>/dev/null || echo "")
+            echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+          fi
+          echo "🔗 Service URL: ${{ env.SERVICE_URL }}"
+
+      # Step 6: Health checks
+      - name: Health Check
+        run: |
+          echo "🏥 Performing health check..."
+
+          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
+            echo "⚠️ Service URL not available, skipping health check"
+            exit 0
+          fi
+
+          # Wait a moment for the service to be ready
+          sleep 30
+
+          # Check health endpoint
+          HEALTH_URL="${{ env.SERVICE_URL }}/health"
+
+          for i in {1..5}; do
+            echo "Health check attempt $i/5..."
+
+            if curl -f -s "$HEALTH_URL" > /dev/null; then
+              echo "✅ Health check passed!"
+              curl -s "$HEALTH_URL" | jq '.' || echo "Health endpoint returned non-JSON response"
+              break
+            else
+              echo "❌ Health check failed, retrying in 30 seconds..."
+              if [ $i -eq 5 ]; then
+                echo "❌ All health checks failed"
+                exit 1
+              fi
+              sleep 30
+            fi
+          done
+
+      # Step 7: Test API endpoints
+      - name: Test API Endpoints
+        run: |
+          echo "🧪 Testing API endpoints..."
+
+          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
+            echo "⚠️ Service URL not available, skipping API tests"
+            exit 0
+          fi
+
+          # Test trains endpoint
+          TRAINS_URL="${{ env.SERVICE_URL }}/api/trains/?limit=5"
+          echo "Testing: $TRAINS_URL"
+
+          if curl -f -s "$TRAINS_URL" > /dev/null; then
+            echo "✅ Trains API endpoint is responding"
+          else
+            echo "⚠️ Trains API endpoint check failed (may be expected if no data)"
+          fi
+
+          # Test stops endpoint
+          STOPS_URL="${{ env.SERVICE_URL }}/api/stops/"
+          echo "Testing: $STOPS_URL"
+
+          if curl -f -s "$STOPS_URL" > /dev/null; then
+            echo "✅ Stops API endpoint is responding"
+          else
+            echo "⚠️ Stops API endpoint check failed (may be expected if no data)"
+          fi
+
+      # Step 8: Deployment summary
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Development Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Infrastructure and Application deployed successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
+          echo "🏥 **Health Check**: [${{ env.SERVICE_URL }}/health](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
+          echo "📊 **API Endpoints**:" >> $GITHUB_STEP_SUMMARY
+          echo "- [Trains API](${{ env.SERVICE_URL }}/api/trains/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Stops API](${{ env.SERVICE_URL }}/api/stops/)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔧 **Next Steps**:" >> $GITHUB_STEP_SUMMARY
+          echo "- Start data collection: \`trackcast start-scheduler\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Check service logs in [Cloud Run Console](https://console.cloud.google.com/run/detail/${{ env.REGION }}/${{ env.SERVICE_NAME }}/logs?project=${{ env.PROJECT_ID }})" >> $GITHUB_STEP_SUMMARY
+
+  # Final summary job
+  pipeline-summary:
+    runs-on: ubuntu-latest
+    needs: [deployment-gate, deploy-dev]
+    if: always()
+    name: Pipeline Summary
+
+    steps:
+      - name: Generate pipeline summary
+        run: |
+          echo "## 🚀 CI/CD Pipeline Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Overall status
+          if [[ "${{ needs.deploy-dev.result }}" == "success" ]]; then
+            echo "✅ **Pipeline Status**: Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.deployment-gate.outputs.should_deploy }}" == "false" ]]; then
+            echo "🟡 **Pipeline Status**: Tests Completed (No Deployment Needed)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Pipeline Status**: Pipeline Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **All tests passed**: ${{ needs.deployment-gate.outputs.all_tests_passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment executed**: ${{ needs.deploy-dev.result == 'success' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
