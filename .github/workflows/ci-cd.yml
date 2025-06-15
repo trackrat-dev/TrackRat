@@ -1,5 +1,9 @@
 name: CI/CD Pipeline
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   push:
     branches: [main, develop, infra-ops-*]
