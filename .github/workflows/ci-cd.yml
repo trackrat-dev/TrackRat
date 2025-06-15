@@ -28,7 +28,6 @@ env:
   REGION: us-central1
   SERVICE_NAME: trackcast-inference
   REPOSITORY: trackcast-inference-dev
-  IMAGE_SHA_TAG: us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
 
 jobs:
   # Phase 1: Change Detection & Validation
@@ -239,7 +238,7 @@ jobs:
           file: ./backend/Dockerfile
           target: runtime
           push: true
-          tags: ${{ env.IMAGE_SHA_TAG }}
+          tags: us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           cache-from: type=registry,ref=us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:cache
           cache-to: type=registry,ref=us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:cache,mode=max
           platforms: linux/amd64
@@ -517,23 +516,25 @@ jobs:
           # Configure Docker
           gcloud auth configure-docker us-central1-docker.pkg.dev
 
+          # Define image tag
+          IMAGE_SHA_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+
           # Pull the image
-          docker pull ${{ env.IMAGE_SHA_TAG }}
+          docker pull $IMAGE_SHA_TAG
 
           # Tag for registry
-          # IMAGE_TAG is already correctly defined using github.sha, which matches IMAGE_SHA_TAG
           LATEST_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
 
-          docker tag ${{ env.IMAGE_SHA_TAG }} ${{ env.IMAGE_SHA_TAG }} # Ensure the SHA tag is present
-          docker tag ${{ env.IMAGE_SHA_TAG }} $LATEST_TAG
+          docker tag $IMAGE_SHA_TAG $IMAGE_SHA_TAG # Ensure the SHA tag is present
+          docker tag $IMAGE_SHA_TAG $LATEST_TAG
 
           # Push to registry
-          docker push ${{ env.IMAGE_SHA_TAG }}
+          docker push $IMAGE_SHA_TAG
           docker push $LATEST_TAG
 
           # Export for later steps
-          echo "IMAGE_TAG=${{ env.IMAGE_SHA_TAG }}" >> $GITHUB_ENV
-          echo "✅ Image pushed: ${{ env.IMAGE_SHA_TAG }}"
+          echo "IMAGE_TAG=$IMAGE_SHA_TAG" >> $GITHUB_ENV
+          echo "✅ Image pushed: $IMAGE_SHA_TAG"
 
       # Step 3: Deploy all infrastructure including Cloud Run services
       - name: Deploy Infrastructure and Services
@@ -573,7 +574,7 @@ jobs:
 
           # Create a temporary Cloud Run job to run migrations
           gcloud run jobs create trackcast-migrate-${{ github.sha }} \
-            --image=${{ env.IMAGE_TAG }} \
+            --image=${IMAGE_TAG} \
             --region=${{ env.REGION }} \
             --task-timeout=300 \
             --memory=1Gi \
