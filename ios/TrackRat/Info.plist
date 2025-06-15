@@ -46,6 +46,16 @@
     <string>17.0</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>background-fetch</string>
+        <string>background-processing</string>
+        <string>remote-notification</string>
+    </array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.trackrat.backgroundrefresh</string>
+    </array>
     <key>NSSupportsLiveActivities</key>
     <true/>
     <key>NSSupportsLiveActivitiesFrequentUpdates</key>
