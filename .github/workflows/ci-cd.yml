@@ -144,19 +144,19 @@ jobs:
         run: |
           echo "💾 Disk space before venv creation:"
           df -h
-          
+
           python -m pip install --upgrade pip
-          
+
           # Create temporary virtual environment for CI tests
           echo "🏗️ Creating temporary virtual environment for CI tests..."
           python -m venv ci-venv
           source ci-venv/bin/activate
-          
+
           # Use CPU-only PyTorch to save disk space in CI
           echo "📦 Installing CPU-only dependencies..."
           pip install -r requirements-cpu.txt -f https://download.pytorch.org/whl/torch_stable.html
           pip install -e .
-          
+
           echo "📦 Virtual environment created at: $(pwd)/ci-venv"
           echo "📊 Virtual environment size: $(du -sh ci-venv)"
 
@@ -312,6 +312,7 @@ jobs:
       # Clean up Docker after saving artifacts
       - name: Cleanup Docker to save space
         if: always()
+        working-directory: ./
         run: |
           echo "🧹 Cleaning up Docker to save space..."
           docker system prune -af
