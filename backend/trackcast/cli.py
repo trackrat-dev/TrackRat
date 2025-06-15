@@ -95,7 +95,9 @@ def collect_data() -> None:
 @click.option(
     "--debug", is_flag=True, help="Enable debug logging for detailed track usage information"
 )
-def process_features(clear: bool, train_id: Optional[str], time_range: Optional[Tuple], debug: bool) -> None:
+def process_features(
+    clear: bool, train_id: Optional[str], time_range: Optional[Tuple], debug: bool
+) -> None:
     """Process collected train data to generate features"""
     try:
         # Set debug logging if requested
@@ -316,7 +318,9 @@ def train_model(station: Optional[str], all_stations: bool) -> None:
 @click.option("--format", "-f", type=click.Choice(["csv", "json"]), help="Data file format")
 @click.option("--pattern", "-p", type=str, help="File pattern (e.g., '*.csv')")
 @click.option("--clear", is_flag=True, help="Clear all train data from the database before import")
-def import_data(source: Optional[str], format: Optional[str], pattern: Optional[str], clear: bool) -> None:
+def import_data(
+    source: Optional[str], format: Optional[str], pattern: Optional[str], clear: bool
+) -> None:
     """Import train data from files into the database"""
     try:
         session = get_db_session()

@@ -189,15 +189,15 @@ jobs:
           source ci-venv/bin/activate
           echo "🔍 Running type checking on enhanced modules..."
           echo "📋 Phase 1-4 Complete: API routers and CLI modules enhanced with comprehensive type annotations"
-          
+
           # Count type errors in enhanced modules
           ERROR_COUNT=$(mypy trackcast/api/routers/trains.py trackcast/cli.py --config-file mypy.ini 2>&1 | grep -E "(trains\.py:|cli\.py:)" | wc -l || echo "0")
           echo "📊 Type errors in enhanced modules: $ERROR_COUNT (reduced from 15+ to 3)"
-          
+
           # Show the remaining errors for transparency
           echo "🔍 Remaining type errors (if any):"
           mypy trackcast/api/routers/trains.py trackcast/cli.py --config-file mypy.ini 2>&1 | grep -E "(trains\.py:|cli\.py:)" || echo "No type errors found!"
-          
+
           # Check if we're below our success threshold (3 or fewer errors)
           if [ "$ERROR_COUNT" -le 3 ]; then
             echo "✅ Type checking quality target achieved!"
@@ -207,7 +207,7 @@ jobs:
             echo "⚠️  Type error count above target, but infrastructure is working"
             echo "💡 This represents significant progress in type safety"
           fi
-          
+
           echo "✅ Type checking infrastructure successfully running in CI!"
 
       # Unit Tests

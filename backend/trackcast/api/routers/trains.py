@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from trackcast.api.models import (
     ConsolidatedTrainListResponse,
+    ConsolidatedTrainResponse,
+    Metadata,
     PredictionResponse,
     TrainListResponse,
     TrainResponse,
@@ -35,32 +37,35 @@ logger = logging.getLogger(__name__)
 
 
 def _matches_target_station(
-    stop: Any, 
-    stops_at_station: Optional[str], 
-    stops_at_station_code: Optional[str], 
-    stops_at_station_name: Optional[str]
+    stop: Any,
+    stops_at_station: Optional[str],
+    stops_at_station_code: Optional[str],
+    stops_at_station_name: Optional[str],
 ) -> bool:
     """Check if a stop matches any of the target station filters."""
     if stops_at_station:
         # Search both station code and station name
-        return bool(stop.station_code == stops_at_station or (
-            stop.station_name and stops_at_station.lower() in stop.station_name.lower()
-        ))
+        return bool(
+            stop.station_code == stops_at_station
+            or (stop.station_name and stops_at_station.lower() in stop.station_name.lower())
+        )
     elif stops_at_station_code:
         # Exact station code match
         return bool(stop.station_code == stops_at_station_code)
     elif stops_at_station_name:
         # Station name partial match
-        return bool(stop.station_name and stops_at_station_name.lower() in stop.station_name.lower())
+        return bool(
+            stop.station_name and stops_at_station_name.lower() in stop.station_name.lower()
+        )
     return False
 
 
 def _filter_trains_by_stop_order(
-    trains: List[Any], 
-    origin_station_code: Optional[str], 
-    stops_at_station: Optional[str], 
-    stops_at_station_code: Optional[str], 
-    stops_at_station_name: Optional[str]
+    trains: List[Any],
+    origin_station_code: Optional[str],
+    stops_at_station: Optional[str],
+    stops_at_station_code: Optional[str],
+    stops_at_station_name: Optional[str],
 ) -> List[Any]:
     """Filter trains where origin station comes before target station in route and both stops haven't departed."""
     if not origin_station_code or not any(
@@ -110,14 +115,14 @@ def _enrich_train_with_stops(train: Any, stop_repo: TrainStopRepository) -> Any:
         for stop in stops:
             stop_models.append(
                 TrainStop(
-                    station_code=getattr(stop, 'station_code', None),
-                    station_name=getattr(stop, 'station_name', ''),
-                    scheduled_time=getattr(stop, 'scheduled_time', None),
-                    departure_time=getattr(stop, 'departure_time', None),
-                    pickup_only=bool(getattr(stop, 'pickup_only', False)),
-                    dropoff_only=bool(getattr(stop, 'dropoff_only', False)),
-                    departed=bool(getattr(stop, 'departed', False)),
-                    stop_status=getattr(stop, 'stop_status', None),
+                    station_code=getattr(stop, "station_code", None),
+                    station_name=getattr(stop, "station_name", ""),
+                    scheduled_time=getattr(stop, "scheduled_time", None),
+                    departure_time=getattr(stop, "departure_time", None),
+                    pickup_only=bool(getattr(stop, "pickup_only", False)),
+                    dropoff_only=bool(getattr(stop, "dropoff_only", False)),
+                    departed=bool(getattr(stop, "departed", False)),
+                    stop_status=getattr(stop, "stop_status", None),
                 )
             )
         # Add stops to the train object
@@ -354,7 +359,7 @@ async def list_trains(
             logger.info(f"Starting consolidation for {len(enriched_trains)} trains")
             for i, train in enumerate(enriched_trains):
                 logger.info(
-                    f"  Train {i+1}: {train.train_id} from {train.origin_station_code} ({train.data_source}) - {len(getattr(train, 'stops', []))} stops"
+                    f"  Train {i + 1}: {train.train_id} from {train.origin_station_code} ({train.data_source}) - {len(getattr(train, 'stops', []))} stops"
                 )
 
             consolidation_service = TrainConsolidationService()
@@ -365,18 +370,18 @@ async def list_trains(
             logger.info(f"Consolidation complete: {len(consolidated_trains)} consolidated journeys")
             for i, journey in enumerate(consolidated_trains):
                 logger.info(
-                    f"  Journey {i+1}: {journey['train_id']} with {len(journey['data_sources'])} sources"
+                    f"  Journey {i + 1}: {journey['train_id']} with {len(journey['data_sources'])} sources"
                 )
 
             return ConsolidatedTrainListResponse(
-                metadata={
-                    "timestamp": datetime.now().isoformat(),
-                    "model_version": settings.model.version,
-                    "train_count": len(consolidated_trains),
-                    "page": 1,  # Consolidation affects pagination
-                    "total_pages": 1,
-                },
-                trains=consolidated_trains,
+                metadata=Metadata(
+                    timestamp=datetime.now().isoformat(),
+                    model_version=settings.model.version,
+                    train_count=len(consolidated_trains),
+                    page=1,  # Consolidation affects pagination
+                    total_pages=1,
+                ),
+                trains=[ConsolidatedTrainResponse(**train) for train in consolidated_trains],
             )
         else:
             return {

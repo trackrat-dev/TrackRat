@@ -102,7 +102,7 @@ class PredictionService:
             Tuple containing success status and statistics dictionary
         """
         start_time = time.time()
-        stats = {
+        stats: Dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "model_version": None,
             "trains_processed": 0,
@@ -111,6 +111,11 @@ class PredictionService:
             "trains_failed": 0,
             "duration_ms": 0,
         }
+        # Type assertions for mypy to understand these are integers
+        trains_processed = 0
+        trains_predicted = 0
+        trains_skipped = 0
+        trains_failed = 0
 
         try:
             # Get trains that need predictions
@@ -143,7 +148,7 @@ class PredictionService:
                     logger.warning(
                         f"No model found for station {station_code}, skipping {len(station_trains)} trains. Train a model for this station first."
                     )
-                    stats["trains_skipped"] += len(station_trains)
+                    trains_skipped += len(station_trains)
                     continue
 
                 station_models_loaded.append(station_code)
@@ -154,7 +159,7 @@ class PredictionService:
                         # Skip trains without features
                         if not train.model_data:
                             logger.warning(f"Skipping train {train.train_id}: missing features")
-                            stats["trains_skipped"] += 1
+                            trains_skipped += 1
                             continue
 
                         # Skip trains with existing predictions
@@ -162,19 +167,19 @@ class PredictionService:
                             logger.debug(
                                 f"Skipping train {train.train_id}: already has predictions"
                             )
-                            stats["trains_skipped"] += 1
+                            trains_skipped += 1
                             continue
 
                         # Generate prediction using station-specific model
                         prediction_result = self._predict_train(train)
                         if prediction_result:
-                            stats["trains_predicted"] += 1
+                            trains_predicted += 1
                         else:
-                            stats["trains_failed"] += 1
+                            trains_failed += 1
 
                     except Exception as e:
                         logger.error(f"Error predicting train {train.train_id}: {str(e)}")
-                        stats["trains_failed"] += 1
+                        trains_failed += 1
 
             # Set model versions in stats (comma-separated list)
             model_versions = []
@@ -185,16 +190,22 @@ class PredictionService:
                     )
             stats["model_versions"] = ", ".join(model_versions)
 
+            # Update stats with final counts
+            stats["trains_processed"] = trains_processed
+            stats["trains_predicted"] = trains_predicted
+            stats["trains_skipped"] = trains_skipped
+            stats["trains_failed"] = trains_failed
+
             # Calculate duration
             stats["duration_ms"] = int((time.time() - start_time) * 1000)
 
             logger.info(
-                f"Prediction cycle completed: {stats['trains_predicted']} predicted, "
-                f"{stats['trains_skipped']} skipped, {stats['trains_failed']} failed "
+                f"Prediction cycle completed: {trains_predicted} predicted, "
+                f"{trains_skipped} skipped, {trains_failed} failed "
                 f"in {stats['duration_ms']}ms"
             )
 
-            return stats["trains_predicted"] > 0, stats
+            return trains_predicted > 0, stats
 
         except Exception as e:
             logger.error(f"Error in prediction cycle: {str(e)}")
@@ -344,7 +355,7 @@ class PredictionService:
 
             # Load model for train's origin station
             station_code = train.origin_station_code
-            if not self._load_model_for_station(station_code):
+            if not self._load_model_for_station(station_code):  # type: ignore[arg-type]
                 result["error"] = f"Failed to load model for station {station_code}"
                 result["duration_ms"] = int((time.time() - start_time) * 1000)
                 return False, result
