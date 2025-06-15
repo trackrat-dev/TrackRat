@@ -532,7 +532,7 @@ jobs:
           # For backend changes, the image was already built and pushed with latest tag
           # For infrastructure-only changes, use the existing latest image
           echo "Using image tag: $IMAGE_TAG"
-          
+
           # Export for later steps
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "✅ Using image: $IMAGE_TAG"
