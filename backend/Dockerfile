@@ -66,10 +66,16 @@ COPY --chown=trackcast:trackcast pyproject.toml ./
 COPY --chown=trackcast:trackcast config/ ./config/
 COPY --chown=trackcast:trackcast models/ ./models/
 
+# Copy entrypoint script
+COPY --chown=trackcast:trackcast entrypoint.sh ./entrypoint.sh
+
 # Install the package in development mode for CLI access
 RUN pip install -e . \
     && find /opt/venv -type f -name "*.pyc" -delete \
     && find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+# Make entrypoint script executable
+RUN chmod +x ./entrypoint.sh
 
 # Switch to non-root user
 USER trackcast
@@ -80,6 +86,9 @@ EXPOSE 8000
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
+
+# Set entrypoint to run migrations before starting the app
+ENTRYPOINT ["./entrypoint.sh"]
 
 # Default command - can be overridden
 CMD ["gunicorn", "trackcast.api.app:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-"]

@@ -21,8 +21,14 @@ No modules.
 
 | Name | Type |
 |------|------|
-| [google_secret_manager_secret.app_secrets](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
-| [google_secret_manager_secret_version.app_secrets_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
+| [google_secret_manager_secret.amtrak_api_key](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
+| [google_secret_manager_secret.database_url](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
+| [google_secret_manager_secret.njt_password](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
+| [google_secret_manager_secret.njt_username](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
+| [google_secret_manager_secret_version.amtrak_api_key_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
+| [google_secret_manager_secret_version.database_url_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
+| [google_secret_manager_secret_version.njt_password_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
+| [google_secret_manager_secret_version.njt_username_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
 
 ## Inputs
 
@@ -42,6 +48,8 @@ No modules.
 
 | Name | Description |
 |------|-------------|
-| <a name="output_secret_id"></a> [secret\_id](#output\_secret\_id) | ID of the Secret Manager secret |
-| <a name="output_secret_name"></a> [secret\_name](#output\_secret\_name) | Name of the Secret Manager secret |
+| <a name="output_amtrak_api_key_secret_name"></a> [amtrak\_api\_key\_secret\_name](#output\_amtrak\_api\_key\_secret\_name) | Name of the Amtrak API key secret |
+| <a name="output_database_url_secret_name"></a> [database\_url\_secret\_name](#output\_database\_url\_secret\_name) | Name of the database URL secret |
+| <a name="output_njt_password_secret_name"></a> [njt\_password\_secret\_name](#output\_njt\_password\_secret\_name) | Name of the NJ Transit password secret |
+| <a name="output_njt_username_secret_name"></a> [njt\_username\_secret\_name](#output\_njt\_username\_secret\_name) | Name of the NJ Transit username secret |
 <!-- END_TF_DOCS -->

@@ -101,9 +101,9 @@ module "trackrat_api_service" {
 
   # Secret environment variables (sensitive data from Secret Manager)
   secret_environment_variables = {
-    DATABASE_URL = "trackrat-dev-secrets:latest"
-    NJT_USERNAME = "trackrat-dev-secrets:latest"
-    NJT_PASSWORD = "trackrat-dev-secrets:latest"
+    DATABASE_URL = "${module.infrastructure.database_url_secret_name}:latest"
+    NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
+    NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
   }
 
   # If a specific service account is already created for the API for this env:

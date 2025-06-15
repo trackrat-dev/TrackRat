@@ -23,9 +23,24 @@ output "artifact_registry_repository" {
   value       = module.infrastructure.artifact_registry_repository
 }
 
-output "secret_manager_secret_name" {
-  description = "Name of the Secret Manager secret"
-  value       = module.infrastructure.secret_manager_secret_name
+output "database_url_secret_name" {
+  description = "Name of the database URL secret"
+  value       = module.infrastructure.database_url_secret_name
+}
+
+output "njt_username_secret_name" {
+  description = "Name of the NJ Transit username secret"
+  value       = module.infrastructure.njt_username_secret_name
+}
+
+output "njt_password_secret_name" {
+  description = "Name of the NJ Transit password secret"
+  value       = module.infrastructure.njt_password_secret_name
+}
+
+output "amtrak_api_key_secret_name" {
+  description = "Name of the Amtrak API key secret"
+  value       = module.infrastructure.amtrak_api_key_secret_name
 }
 
 output "trackrat_api_service_url" {

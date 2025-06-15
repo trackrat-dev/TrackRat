@@ -46,11 +46,14 @@ No resources.
 
 | Name | Description |
 |------|-------------|
+| <a name="output_amtrak_api_key_secret_name"></a> [amtrak\_api\_key\_secret\_name](#output\_amtrak\_api\_key\_secret\_name) | Name of the Amtrak API key secret |
 | <a name="output_artifact_registry_repository"></a> [artifact\_registry\_repository](#output\_artifact\_registry\_repository) | Artifact Registry repository for Docker images |
+| <a name="output_database_url_secret_name"></a> [database\_url\_secret\_name](#output\_database\_url\_secret\_name) | Name of the database URL secret |
 | <a name="output_network_self_link"></a> [network\_self\_link](#output\_network\_self\_link) | The self-link of the VPC network. |
+| <a name="output_njt_password_secret_name"></a> [njt\_password\_secret\_name](#output\_njt\_password\_secret\_name) | Name of the NJ Transit password secret |
+| <a name="output_njt_username_secret_name"></a> [njt\_username\_secret\_name](#output\_njt\_username\_secret\_name) | Name of the NJ Transit username secret |
 | <a name="output_project_id"></a> [project\_id](#output\_project\_id) | GCP project ID |
 | <a name="output_region"></a> [region](#output\_region) | GCP region |
-| <a name="output_secret_manager_secret_name"></a> [secret\_manager\_secret\_name](#output\_secret\_manager\_secret\_name) | Name of the Secret Manager secret |
 | <a name="output_vpc_network_name"></a> [vpc\_network\_name](#output\_vpc\_network\_name) | Name of the VPC network |
 | <a name="output_vpc_subnet_name"></a> [vpc\_subnet\_name](#output\_vpc\_subnet\_name) | Name of the VPC subnet |
 <!-- END_TF_DOCS -->
