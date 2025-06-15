@@ -34,7 +34,7 @@ variable "cpu_limit" {
 variable "memory_limit" {
   description = "Memory limit for the container"
   type        = string
-  default     = "512Mi"
+  default     = "2Gi"
 }
 
 variable "min_instances" {

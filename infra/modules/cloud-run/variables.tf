@@ -33,7 +33,7 @@ variable "cpu_limit" {
 variable "memory_limit" {
   description = "Memory limit for the container (e.g., '512Mi', '1Gi')"
   type        = string
-  default     = "512Mi"
+  default     = "2Gi"
 }
 
 variable "concurrency" {

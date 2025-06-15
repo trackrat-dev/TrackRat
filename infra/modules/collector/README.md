@@ -44,7 +44,7 @@ No modules.
 | <a name="input_labels"></a> [labels](#input\_labels) | A map of labels to apply to the service. | `map(string)` | `{}` | no |
 | <a name="input_location"></a> [location](#input\_location) | The GCP region for Cloud Run services | `string` | n/a | yes |
 | <a name="input_max_instances"></a> [max\_instances](#input\_max\_instances) | Maximum number of instances for the collector service | `number` | `5` | no |
-| <a name="input_memory_limit"></a> [memory\_limit](#input\_memory\_limit) | Memory limit for the container | `string` | `"512Mi"` | no |
+| <a name="input_memory_limit"></a> [memory\_limit](#input\_memory\_limit) | Memory limit for the container | `string` | `"2Gi"` | no |
 | <a name="input_min_instances"></a> [min\_instances](#input\_min\_instances) | Minimum number of instances for the collector service | `number` | `0` | no |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The GCP project ID | `string` | n/a | yes |
 | <a name="input_pubsub_subscription_name"></a> [pubsub\_subscription\_name](#input\_pubsub\_subscription\_name) | Name for the Pub/Sub subscription. | `string` | `""` | no |

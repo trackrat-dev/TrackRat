@@ -21,8 +21,8 @@ No modules.
 | Name | Type |
 |------|------|
 | [google_cloud_run_domain_mapping.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_domain_mapping) | resource |
+| [google_cloud_run_service_iam_member.public_invoker](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_service_iam_member) | resource |
 | [google_cloud_run_v2_service.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_v2_service) | resource |
-| [google_cloud_run_v2_service_iam_member.public_invoker](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_v2_service_iam_member) | resource |
 | [google_project_iam_member.artifact_registry_reader](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
 | [google_project_iam_member.cloudsql_client](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
 | [google_project_iam_member.secret_accessor](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
@@ -46,7 +46,7 @@ No modules.
 | <a name="input_liveness_probe_period_seconds"></a> [liveness\_probe\_period\_seconds](#input\_liveness\_probe\_period\_seconds) | Periodicity of liveness probe in seconds. | `number` | `30` | no |
 | <a name="input_location"></a> [location](#input\_location) | The GCP region for Cloud Run services | `string` | n/a | yes |
 | <a name="input_max_instances"></a> [max\_instances](#input\_max\_instances) | Maximum number of instances | `number` | `2` | no |
-| <a name="input_memory_limit"></a> [memory\_limit](#input\_memory\_limit) | Memory limit for the container (e.g., '512Mi', '1Gi') | `string` | `"512Mi"` | no |
+| <a name="input_memory_limit"></a> [memory\_limit](#input\_memory\_limit) | Memory limit for the container (e.g., '512Mi', '1Gi') | `string` | `"2Gi"` | no |
 | <a name="input_min_instances"></a> [min\_instances](#input\_min\_instances) | Minimum number of instances | `number` | `0` | no |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The GCP project ID | `string` | n/a | yes |
 | <a name="input_request_timeout_seconds"></a> [request\_timeout\_seconds](#input\_request\_timeout\_seconds) | Request timeout in seconds | `number` | `60` | no |

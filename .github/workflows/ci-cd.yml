@@ -241,11 +241,8 @@ jobs:
           context: ./backend
           file: ./backend/Dockerfile
           target: runtime
-          push: false
-          tags: |
-            trackcast-inference:ci-test
-            trackcast-inference:${{ github.sha }}
-          outputs: type=docker,dest=/tmp/docker-image.tar
+          push: true
+          tags: us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           cache-from: type=registry,ref=us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:cache
           cache-to: type=registry,ref=us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:cache,mode=max
           platforms: linux/amd64
@@ -255,76 +252,6 @@ jobs:
           # Use BuildKit features for smaller images
           provenance: false
           sbom: false
-
-      # - name: Load and test Docker image
-      #   working-directory: ./
-      #   run: |
-      #     echo "🐳 Loading Docker image..."
-      #     docker load < /tmp/docker-image.tar
-
-      #     echo "📊 Checking image size..."
-      #     docker images trackcast-inference:ci-test --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
-      #     IMAGE_SIZE=$(docker images trackcast-inference:ci-test --format "{{.Size}}")
-      #     echo "Final image size: $IMAGE_SIZE"
-
-      #     echo "🔍 Verifying container structure..."
-      #     docker run --rm trackcast-inference:ci-test ls -la /app/
-
-      #     echo "🐍 Testing Python environment..."
-      #     docker run --rm trackcast-inference:ci-test python --version
-      #     docker run --rm trackcast-inference:ci-test pip list | head -20
-
-      #     echo "🚀 Testing imports and app initialization..."
-      #     docker run --rm \
-      #       -e MODEL_PATH="/app/models" \
-      #       -e TRACKCAST_ENV="ci" \
-      #       trackcast-inference:ci-test \
-      #       python -c "
-      #     import sys
-      #     print(f'Python version: {sys.version}')
-
-      #     # Test critical imports
-      #     import fastapi
-      #     print('✅ FastAPI imported')
-      #     import uvicorn
-      #     print('✅ Uvicorn imported')
-      #     import torch
-      #     print('✅ PyTorch imported')
-      #     import sqlalchemy
-      #     print('✅ SQLAlchemy imported')
-      #     import pandas
-      #     print('✅ Pandas imported')
-
-      #     # Test app import
-      #     from trackcast.api.app import app
-      #     print('✅ TrackCast app imported')
-
-      #     # Verify routes
-      #     routes = [route.path for route in app.routes if hasattr(route, 'path')]
-      #     for expected in ['/', '/health']:
-      #         assert expected in routes, f'Route {expected} missing'
-      #         print(f'✅ Route {expected} found')
-
-      #     print('🎉 All container tests passed!')
-      #     "
-
-      #     echo "🔒 Verifying security..."
-      #     USER_CHECK=$(docker run --rm trackcast-inference:ci-test whoami)
-      #     if [ "$USER_CHECK" = "trackcast" ]; then
-      #       echo "✅ Container runs as non-root user: $USER_CHECK"
-      #     else
-      #       echo "❌ Container should run as 'trackcast' user, but runs as: $USER_CHECK"
-      #       exit 1
-      #     fi
-
-      # Save Docker artifact for deployment (before cleanup)
-      - name: Upload Docker image artifact
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image-${{ github.sha }}
-          path: /tmp/docker-image.tar
-          retention-days: 1
 
       # Clean up Docker after saving artifacts
       - name: Cleanup Docker to save space
@@ -456,7 +383,7 @@ jobs:
   # Phase 3: Deployment Gate
   deployment-gate:
     runs-on: ubuntu-latest
-    needs: [changes, workflow-validation, backend-tests, infra-tests]
+    needs: [workflow-validation, backend-tests, infra-tests]
     if: always()
     name: Deployment Gate
     outputs:
@@ -547,12 +474,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download Docker image artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image-${{ github.sha }}
-          path: /tmp
-
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -598,23 +519,25 @@ jobs:
           # Configure Docker
           gcloud auth configure-docker us-central1-docker.pkg.dev
 
-          # Load the image
-          docker load < /tmp/docker-image.tar
+          # Define image tag
+          IMAGE_SHA_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+
+          # Pull the image
+          docker pull $IMAGE_SHA_TAG
 
           # Tag for registry
-          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
           LATEST_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
 
-          docker tag trackcast-inference:${{ github.sha }} $IMAGE_TAG
-          docker tag trackcast-inference:${{ github.sha }} $LATEST_TAG
+          docker tag $IMAGE_SHA_TAG $IMAGE_SHA_TAG # Ensure the SHA tag is present
+          docker tag $IMAGE_SHA_TAG $LATEST_TAG
 
           # Push to registry
-          docker push $IMAGE_TAG
+          docker push $IMAGE_SHA_TAG
           docker push $LATEST_TAG
 
           # Export for later steps
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-          echo "✅ Image pushed: $IMAGE_TAG"
+          echo "IMAGE_TAG=$IMAGE_SHA_TAG" >> $GITHUB_ENV
+          echo "✅ Image pushed: $IMAGE_SHA_TAG"
 
       # Step 3: Deploy all infrastructure including Cloud Run services
       - name: Deploy Infrastructure and Services
@@ -653,7 +576,7 @@ jobs:
 
           # Create a temporary Cloud Run job to run migrations
           gcloud run jobs create trackcast-migrate-${{ github.sha }} \
-            --image=${{ env.IMAGE_TAG }} \
+            --image=${IMAGE_TAG} \
             --region=${{ env.REGION }} \
             --task-timeout=300 \
             --memory=1Gi \

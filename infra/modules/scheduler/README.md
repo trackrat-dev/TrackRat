@@ -42,7 +42,7 @@ No modules.
 | <a name="input_legacy_scheduler_enabled"></a> [legacy\_scheduler\_enabled](#input\_legacy\_scheduler\_enabled) | Whether to create the legacy daily scheduler job | `bool` | `true` | no |
 | <a name="input_location"></a> [location](#input\_location) | The GCP region for Cloud Run services and Scheduler | `string` | n/a | yes |
 | <a name="input_max_instances"></a> [max\_instances](#input\_max\_instances) | Maximum number of instances (must be 1 for this service) | `number` | `1` | no |
-| <a name="input_memory_limit"></a> [memory\_limit](#input\_memory\_limit) | Memory limit for the container | `string` | `"512Mi"` | no |
+| <a name="input_memory_limit"></a> [memory\_limit](#input\_memory\_limit) | Memory limit for the container | `string` | `"2Gi"` | no |
 | <a name="input_min_instances"></a> [min\_instances](#input\_min\_instances) | Minimum number of instances | `number` | `0` | no |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The GCP project ID | `string` | n/a | yes |
 | <a name="input_request_timeout_seconds"></a> [request\_timeout\_seconds](#input\_request\_timeout\_seconds) | Request timeout in seconds (up to 3600 for Cloud Run v2, issue asks for 60 mins) | `number` | `3600` | no |

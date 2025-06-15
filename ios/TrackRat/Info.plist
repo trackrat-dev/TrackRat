@@ -48,8 +48,6 @@
     <false/>
     <key>UIBackgroundModes</key>
     <array>
-        <string>background-fetch</string>
-        <string>background-processing</string>
         <string>remote-notification</string>
     </array>
     <key>BGTaskSchedulerPermittedIdentifiers</key>
