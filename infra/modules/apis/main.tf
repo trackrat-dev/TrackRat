@@ -28,7 +28,8 @@ resource "google_project_service" "apis" {
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "servicenetworking.googleapis.com",
-    "vpcaccess.googleapis.com"
+    "vpcaccess.googleapis.com",
+    "cloudscheduler.googleapis.com"
   ])
 
   project = var.project_id
