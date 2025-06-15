@@ -242,7 +242,9 @@ jobs:
           file: ./backend/Dockerfile
           target: runtime
           push: true
-          tags: us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          tags: |
+            us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest
+            us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
           cache-from: type=registry,ref=us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:cache
           cache-to: type=registry,ref=us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:cache,mode=max
           platforms: linux/amd64
@@ -390,7 +392,6 @@ jobs:
     outputs:
       should_deploy: ${{ steps.gate-decision.outputs.should_deploy }}
       all_tests_passed: ${{ steps.gate-decision.outputs.all_tests_passed }}
-      docker_image_ready: ${{ steps.gate-decision.outputs.docker_image_ready }}
 
     steps:
       - name: Evaluate deployment readiness
@@ -403,7 +404,6 @@ jobs:
           INFRA_OK: ${{ needs.infra-tests.result == 'success' || needs.infra-tests.result == 'skipped' }}
           # Properly handle all workflow-validation states: success, skipped are OK, failure is not
           WORKFLOW_OK: ${{ needs.workflow-validation.result == 'success' || needs.workflow-validation.result == 'skipped' }}
-          DOCKER_READY: ${{ needs.backend-tests.result == 'success' && github.ref == 'refs/heads/main' }}
         run: |
           echo "🚦 Evaluating deployment gate..."
 
@@ -412,7 +412,6 @@ jobs:
           echo "Backend tests passed: $BACKEND_OK (${{ needs.backend-tests.result }})"
           echo "Infra tests passed: $INFRA_OK (${{ needs.infra-tests.result }})"
           echo "Workflow validation OK: $WORKFLOW_OK (${{ needs.workflow-validation.result }})"
-          echo "Docker image ready: $DOCKER_READY"
 
           # Final decision - all conditions must be true
           # Note: Tests that are skipped (no changes in that area) are treated as passing
@@ -438,7 +437,6 @@ jobs:
             ALL_TESTS_OK="true"
           fi
           echo "all_tests_passed=$ALL_TESTS_OK" >> $GITHUB_OUTPUT
-          echo "docker_image_ready=$DOCKER_READY" >> $GITHUB_OUTPUT
 
       - name: Debug Gate Decision
         run: |
@@ -446,7 +444,6 @@ jobs:
           echo "### Gate Outputs:" >> $GITHUB_STEP_SUMMARY
           echo "- should_deploy output: ${{ steps.gate-decision.outputs.should_deploy }}" >> $GITHUB_STEP_SUMMARY
           echo "- all_tests_passed output: ${{ steps.gate-decision.outputs.all_tests_passed }}" >> $GITHUB_STEP_SUMMARY
-          echo "- docker_image_ready output: ${{ steps.gate-decision.outputs.docker_image_ready }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Job Results:" >> $GITHUB_STEP_SUMMARY
           echo "- Backend tests result: ${{ needs.backend-tests.result }}" >> $GITHUB_STEP_SUMMARY
@@ -471,14 +468,13 @@ jobs:
           echo "- All tests passed: ${{ steps.gate-decision.outputs.all_tests_passed }}" >> $GITHUB_STEP_SUMMARY
           echo "- Backend changes: ${{ needs.changes.outputs.backend }}" >> $GITHUB_STEP_SUMMARY
           echo "- Infrastructure changes: ${{ needs.changes.outputs.infra }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Docker image ready: ${{ steps.gate-decision.outputs.docker_image_ready }}" >> $GITHUB_STEP_SUMMARY
 
   # Phase 4: Deployment
   deploy-dev:
     name: Deploy to Development
     runs-on: ubuntu-latest
     needs: [deployment-gate]
-    if: needs.deployment-gate.outputs.should_deploy
+    if: needs.deployment-gate.outputs.should_deploy == 'true'
 
     environment:
       name: development
@@ -525,33 +521,21 @@ jobs:
 
           echo "✅ Artifact Registry repository ready"
 
-      # Step 2: Load and push Docker image
-      - name: Push Docker image to Artifact Registry
+      # Step 2: Determine deployment image
+      - name: Determine deployment image
         run: |
-          echo "🐳 Loading and pushing Docker image..."
+          echo "🐳 Determining deployment image..."
 
-          # Configure Docker
-          gcloud auth configure-docker us-central1-docker.pkg.dev
+          # Define image tag - always use latest for deployment
+          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
 
-          # Define image tag
-          IMAGE_SHA_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
-
-          # Pull the image
-          docker pull $IMAGE_SHA_TAG
-
-          # Tag for registry
-          LATEST_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
-
-          docker tag $IMAGE_SHA_TAG $IMAGE_SHA_TAG # Ensure the SHA tag is present
-          docker tag $IMAGE_SHA_TAG $LATEST_TAG
-
-          # Push to registry
-          docker push $IMAGE_SHA_TAG
-          docker push $LATEST_TAG
-
+          # For backend changes, the image was already built and pushed with latest tag
+          # For infrastructure-only changes, use the existing latest image
+          echo "Using image tag: $IMAGE_TAG"
+          
           # Export for later steps
-          echo "IMAGE_TAG=$IMAGE_SHA_TAG" >> $GITHUB_ENV
-          echo "✅ Image pushed: $IMAGE_SHA_TAG"
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "✅ Using image: $IMAGE_TAG"
 
       # Step 3: Deploy all infrastructure including Cloud Run services
       - name: Deploy Infrastructure and Services
@@ -700,7 +684,9 @@ jobs:
           echo "- [Trains API](${{ env.SERVICE_URL }}/api/trains/)" >> $GITHUB_STEP_SUMMARY
           echo "- [Stops API](${{ env.SERVICE_URL }}/api/stops/)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Strategy**: Always Latest" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Deploy Trigger**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🔧 **Next Steps**:" >> $GITHUB_STEP_SUMMARY
