@@ -34,11 +34,19 @@ struct TrainLiveActivity: Widget {
             } compactLeading: {
                 // Compact leading (left side of Dynamic Island)
                 HStack {
-                    Image(systemName: "tram.fill") // Or a relevant icon
+                    Image(systemName: "tram.fill")
                         .foregroundColor(.white)
-                    Text("\(context.attributes.trainNumber): \(context.state.status.displayText)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
+                    VStack(alignment: .leading) {
+                        Text(context.attributes.trainNumber)
+                            .font(.system(size: 12, weight: .bold)) // Keep train number prominent
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text(context.state.status.displayText)
+                            .font(.system(size: 10, weight: .regular)) // Slightly smaller for status
+                            .foregroundColor(.gray) // Differentiate status text
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } compactTrailing: {
@@ -53,6 +61,8 @@ struct TrainLiveActivity: Widget {
                     Text(context.attributes.trainNumber)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
             .widgetURL(URL(string: "trackrat://train/\(context.attributes.trainId)"))
@@ -224,11 +234,13 @@ struct DynamicIslandCompactTrailing: View {
                 Text("T\(track)")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(.orange)
+                    .lineLimit(1)
             }
             if let nextStop = context.state.nextStop {
                 Text(formatTime(nextStop.estimatedArrival))
                     .font(.system(size: 12))
                     .foregroundColor(.white)
+                    .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -254,17 +266,21 @@ struct TrainStatusView: View {
                     .font(.caption)
                 Text(trainNumber)
                     .font(.caption.bold())
+                    .lineLimit(1)
             }
             
             if let track = track {
                 Text("Track \(track)")
                     .font(.caption2)
                     .foregroundColor(.orange)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             
             Text(status.displayText)
                 .font(.caption2)
                 .foregroundColor(statusColor(status))
+                .lineLimit(1)
         }
     }
     
@@ -292,10 +308,12 @@ struct NextStopView: View {
                 Text(Stations.displayName(for: nextStop.stationName))
                     .font(.caption.bold())
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 
                 Text(formatTime(nextStop.estimatedArrival))
                     .font(.caption2)
                     .foregroundColor(nextStop.isDelayed ? .red : .primary)
+                    .lineLimit(1)
             } else {
                 Text("—")
                     .font(.caption)
@@ -330,6 +348,8 @@ struct JourneyProgressView: View {
                 Text(currentLocation.displayText)
                     .font(.caption2)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 
                 Spacer()
                 
@@ -337,6 +357,8 @@ struct JourneyProgressView: View {
                     Text("Arrives \(destination) ~\(formatTime(eta))")
                         .font(.caption2)
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
         }
