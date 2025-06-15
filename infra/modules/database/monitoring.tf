@@ -22,12 +22,44 @@
 #   default     = false # Can be verbose
 # }
 # variable "log_disconnections" {
-#   description = "Log disconnections from the database."
+#   description = "Log disconnections from thedatabase."
 #   type        = bool
 #   default     = false # Can be verbose
 # }
 
 # Note: Actual database_flags are set in main.tf. This file describes what should be set.
+
+# --- Notification Channel Variables ---
+variable "critical_alert_email" {
+  description = "Email address for critical alerts."
+  type        = string
+}
+
+variable "warning_alert_email" {
+  description = "Email address for warning alerts."
+  type        = string
+}
+
+# --- Notification Channels ---
+resource "google_monitoring_notification_channel" "email_critical" {
+  project      = var.project_id
+  display_name = "Critical Alerts Email"
+  type         = "email"
+  labels = {
+    email_address = var.critical_alert_email
+  }
+  description = "Email channel for critical alerts."
+}
+
+resource "google_monitoring_notification_channel" "email_warning" {
+  project      = var.project_id
+  display_name = "Warning Alerts Email"
+  type         = "email"
+  labels = {
+    email_address = var.warning_alert_email
+  }
+  description = "Email channel for warning alerts."
+}
 
 # --- Monitoring Alerts ---
 
@@ -52,8 +84,7 @@ resource "google_monitoring_alert_policy" "db_high_cpu" {
       }
     }
   }
-  # TODO: Configure notification channels (e.g., email, PagerDuty)
-  # notification_channels = [google_monitoring_notification_channel.email.id]
+  notification_channels = [google_monitoring_notification_channel.email_warning.id]
   documentation {
     content   = "The Cloud SQL instance ${var.instance_name} is experiencing high CPU utilization."
     mime_type = "text/markdown"
@@ -85,7 +116,7 @@ resource "google_monitoring_alert_policy" "db_low_memory" {
       }
     }
   }
-  # TODO: Configure notification channels
+  notification_channels = [google_monitoring_notification_channel.email_warning.id]
   documentation {
     content   = "The Cloud SQL instance ${var.instance_name} is running low on available memory."
     mime_type = "text/markdown"
@@ -125,7 +156,7 @@ resource "google_monitoring_alert_policy" "db_low_memory" {
 #       }
 #     }
 #   }
-#   # TODO: Configure notification channels
+#   notification_channels = [google_monitoring_notification_channel.email_critical.id]
 #   documentation {
 #     content = "The Cloud SQL replica for \${var.instance_name} is experiencing high replication lag."
 #     mime_type = "text/markdown"
@@ -135,6 +166,39 @@ resource "google_monitoring_alert_policy" "db_low_memory" {
 #     "tier"     = "database"
 #   }
 # }
+
+# Critical Alert - Database Connectivity Lost
+resource "google_monitoring_alert_policy" "db_connectivity_lost" {
+  project      = var.project_id
+  display_name = "${var.instance_name} - Database Connectivity Lost"
+  combiner     = "OR"
+  conditions {
+    display_name = "No data received from database for > 5 minutes"
+    condition_absent {
+      filter   = "metric.type=\"cloudsql.googleapis.com/database/disk/read_bytes_count\" resource.type=\"cloudsql_database\" resource.labels.database_id=\"${var.project_id}:${var.instance_name}\""
+      duration = "300s" # 5 minutes
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_COUNT" # Check if any data point arrived
+      }
+      trigger {
+        count = 1 # Alert if no data point in the alignment period for 5 minutes
+      }
+    }
+  }
+  alert_strategy {
+    auto_close = "3600s" # Auto-close after 1 hour if condition is no longer met
+  }
+  notification_channels = [google_monitoring_notification_channel.email_critical.id]
+  documentation {
+    content   = "The Cloud SQL instance ${var.instance_name} has not reported any disk read activity for over 5 minutes, suggesting a potential connectivity issue or instance outage."
+    mime_type = "text/markdown"
+  }
+  user_labels = {
+    "severity" = "critical"
+    "tier"     = "database"
+  }
+}
 
 # Placeholder for connection pool utilization alert - This is typically an application-level metric
 # or requires custom metrics if monitoring Cloud SQL Proxy connections.
@@ -172,7 +236,7 @@ resource "google_monitoring_alert_policy" "db_low_memory" {
 #       }
 #     }
 #   }
-#   # TODO: Configure notification channels
+#   notification_channels = [google_monitoring_notification_channel.email_warning.id]
 #   documentation {
 #     content = "The Cloud SQL instance \${var.instance_name} has a high number of active connections."
 #     mime_type = "text/markdown"

@@ -42,3 +42,15 @@ variable "scheduler_image_url" {
   type        = string
   default     = "us-central1-docker.pkg.dev/trackrat-dev/trackcast-inference-dev/trackcast-inference:latest"
 }
+
+variable "critical_alert_email" {
+  description = "Email address for critical database alerts"
+  type        = string
+  default     = "andy@andymartin.cc"
+}
+
+variable "warning_alert_email" {
+  description = "Email address for warning database alerts"
+  type        = string
+  default     = "andy@andymartin.cc"
+}

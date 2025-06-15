@@ -59,3 +59,4 @@ pre-commit>=3.3.0
 
 # Documentation
 pydocstyle>=6.3.0
+prometheus-fastapi-instrumentator==7.1.0

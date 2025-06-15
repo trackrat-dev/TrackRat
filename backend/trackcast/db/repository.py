@@ -3,9 +3,11 @@ Repository pattern implementation for database access.
 """
 
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from prometheus_client import Histogram
 from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -13,6 +15,12 @@ from sqlalchemy.orm import Session
 from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
 
 logger = logging.getLogger(__name__)
+
+
+# Define Prometheus metrics
+DB_QUERY_DURATION_SECONDS = Histogram(
+    "db_query_duration_seconds", "Duration of database queries", ["query_type"]
+)
 
 
 class BaseRepository:
@@ -44,13 +52,17 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
-            return (
+            result = (
                 self.session.query(Train)
                 .filter(Train.train_id == train_id)
                 .order_by(Train.departure_time.desc())
                 .first()
             )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_train_by_id").observe(duration)
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_train_by_id: {str(e)}")
             raise
@@ -68,8 +80,12 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
-            return self.session.query(Train).filter(Train.id == db_id).first()
+            result = self.session.query(Train).filter(Train.id == db_id).first()
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_train_by_db_id").observe(duration)
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_train_by_db_id: {str(e)}")
             raise
@@ -88,21 +104,27 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        db_start_time = time.time()
         try:
             # Define a small time window to account for minor time differences
             time_window = timedelta(minutes=1)
-            start_time = departure_time - time_window
-            end_time = departure_time + time_window
+            start_time_window = departure_time - time_window
+            end_time_window = departure_time + time_window
 
-            return (
+            result = (
                 self.session.query(Train)
                 .filter(
                     Train.train_id == train_id,
-                    Train.departure_time >= start_time,
-                    Train.departure_time <= end_time,
+                    Train.departure_time >= start_time_window,
+                    Train.departure_time <= end_time_window,
                 )
                 .first()
             )
+            duration = time.time() - db_start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_train_by_id_and_time").observe(
+                duration
+            )
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_train_by_id_and_time: {str(e)}")
             raise
@@ -124,22 +146,28 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        db_start_time = time.time()
         try:
             # Define a small time window to account for minor time differences
             time_window = timedelta(minutes=1)
-            start_time = departure_time - time_window
-            end_time = departure_time + time_window
+            start_time_window = departure_time - time_window
+            end_time_window = departure_time + time_window
 
-            return (
+            result = (
                 self.session.query(Train)
                 .filter(
                     Train.train_id == train_id,
-                    Train.departure_time >= start_time,
-                    Train.departure_time <= end_time,
+                    Train.departure_time >= start_time_window,
+                    Train.departure_time <= end_time_window,
                     Train.origin_station_code == station_code,
                 )
                 .first()
             )
+            duration = time.time() - db_start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_train_by_id_time_and_station").observe(
+                duration
+            )
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_train_by_id_time_and_station: {str(e)}")
             raise
@@ -162,23 +190,29 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        db_start_time = time.time()
         try:
             # Define a small time window to account for minor time differences
             time_window = timedelta(minutes=1)
-            start_time = departure_time - time_window
-            end_time = departure_time + time_window
+            start_time_window = departure_time - time_window
+            end_time_window = departure_time + time_window
 
-            return (
+            result = (
                 self.session.query(Train)
                 .filter(
                     Train.train_id == train_id,
-                    Train.departure_time >= start_time,
-                    Train.departure_time <= end_time,
+                    Train.departure_time >= start_time_window,
+                    Train.departure_time <= end_time_window,
                     Train.origin_station_code == station_code,
                     Train.data_source == data_source,
                 )
                 .first()
             )
+            duration = time.time() - db_start_time
+            DB_QUERY_DURATION_SECONDS.labels(
+                query_type="get_train_by_id_time_and_station_source"
+            ).observe(duration)
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_train_by_id_time_and_station_source: {str(e)}")
             raise
@@ -196,10 +230,13 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             train = Train(**train_data)
             self.session.add(train)
             self.session.commit()
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="create_train").observe(duration)
             logger.info(f"Created train {train.train_id} departing at {train.departure_time}")
             return train
         except SQLAlchemyError as e:
@@ -221,6 +258,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Track old values for logging
             old_track = train.track
@@ -269,6 +307,8 @@ class TrainRepository(BaseRepository):
                 train.track_released_at = timestamp
 
             self.session.commit()
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="update_train").observe(duration)
             return train
         except SQLAlchemyError as e:
             self.session.rollback()
@@ -337,6 +377,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Build base query - if filtering by stops, we need to join with train_stops
             if (
@@ -558,7 +599,8 @@ class TrainRepository(BaseRepository):
 
             # Execute query
             trains = query.all()
-
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains").observe(duration)
             return trains, total_count
 
         except SQLAlchemyError as e:
@@ -579,13 +621,19 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        db_start_time = time.time()
         try:
-            return (
+            result = (
                 self.session.query(Train)
                 .filter(Train.departure_time >= start_time, Train.departure_time <= end_time)
                 .order_by(Train.departure_time.asc())
                 .all()
             )
+            duration = time.time() - db_start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_for_time_range").observe(
+                duration
+            )
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_for_time_range: {str(e)}")
             raise
@@ -603,14 +651,18 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             cutoff_time = datetime.utcnow() - timedelta(hours=hours)
-            return (
+            result = (
                 self.session.query(Train)
                 .filter(Train.departure_time >= cutoff_time)
                 .order_by(Train.departure_time.asc())
                 .all()
             )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_recent_trains").observe(duration)
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_recent_trains: {str(e)}")
             raise
@@ -629,6 +681,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             now = datetime.utcnow()
             four_hours_ahead = now + timedelta(hours=4)
@@ -654,6 +707,11 @@ class TrainRepository(BaseRepository):
                 .order_by(Train.departure_time.asc())
                 .all()
             )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_for_collection").observe(
+                duration
+            )
+            return duration
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_for_collection: {str(e)}")
             raise
@@ -669,13 +727,19 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
-            return (
+            result = (
                 self.session.query(Train)
                 .filter(Train.model_data_id == None)
                 .order_by(Train.departure_time.asc())
                 .all()
             )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_needing_features").observe(
+                duration
+            )
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_needing_features: {str(e)}")
             raise
@@ -691,9 +755,10 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Trains with features but no predictions
-            return (
+            result = (
                 self.session.query(Train)
                 .filter(
                     Train.model_data_id != None,
@@ -704,6 +769,11 @@ class TrainRepository(BaseRepository):
                 .order_by(Train.departure_time.asc())
                 .all()
             )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_needing_predictions").observe(
+                duration
+            )
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_needing_predictions: {str(e)}")
             raise
@@ -718,9 +788,14 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             lines = [r[0] for r in self.session.query(Train.line).distinct().all()]
             destinations = [r[0] for r in self.session.query(Train.destination).distinct().all()]
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_all_lines_and_destinations").observe(
+                duration
+            )
             return {"lines": lines, "destinations": destinations}
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_all_lines_and_destinations: {str(e)}")
@@ -736,6 +811,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Start a transaction
             self.session.begin_nested()
@@ -784,7 +860,8 @@ class TrainRepository(BaseRepository):
                 f"Cleared features for {stats['trains_cleared']} trains, "
                 f"deleted {stats['features_deleted']} feature records"
             )
-
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_all_features").observe(duration)
             return stats
 
         except SQLAlchemyError as e:
@@ -805,6 +882,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Start a transaction
             self.session.begin_nested()
@@ -850,7 +928,10 @@ class TrainRepository(BaseRepository):
                 f"Cleared features for {stats['trains_cleared']} trains with ID {train_id}, "
                 f"deleted {stats['features_deleted']} feature records"
             )
-
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_features_for_train").observe(
+                duration
+            )
             return stats
 
         except SQLAlchemyError as e:
@@ -874,6 +955,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Start a transaction
             self.session.begin_nested()
@@ -932,7 +1014,10 @@ class TrainRepository(BaseRepository):
                 f"Cleared features for {stats['trains_cleared']} trains in range {start_time} to {end_time}, "
                 f"deleted {stats['features_deleted']} feature records"
             )
-
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_features_for_time_range").observe(
+                duration
+            )
             return stats
 
         except SQLAlchemyError as e:
@@ -956,6 +1041,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        db_start_time = time.time()
         try:
             # Start a transaction
             self.session.begin_nested()
@@ -1014,7 +1100,10 @@ class TrainRepository(BaseRepository):
                 f"Cleared predictions for {stats['trains_cleared']} trains in range {start_time} to {end_time}, "
                 f"deleted {stats['predictions_deleted']} prediction records"
             )
-
+            duration = time.time() - db_start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_predictions_for_time_range").observe(
+                duration
+            )
             return stats
 
         except SQLAlchemyError as e:
@@ -1032,6 +1121,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Start a transaction
             self.session.begin_nested()
@@ -1080,7 +1170,8 @@ class TrainRepository(BaseRepository):
                 f"Cleared predictions for {stats['trains_cleared']} trains, "
                 f"deleted {stats['predictions_deleted']} prediction records"
             )
-
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_all_predictions").observe(duration)
             return stats
 
         except SQLAlchemyError as e:
@@ -1098,6 +1189,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Start a transaction
             self.session.begin_nested()
@@ -1136,7 +1228,8 @@ class TrainRepository(BaseRepository):
                 f"{stats['model_data_deleted']} model records, "
                 f"{stats['prediction_data_deleted']} prediction records"
             )
-
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_all_train_data").observe(duration)
             return stats
 
         except SQLAlchemyError as e:
@@ -1157,6 +1250,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             cutoff_time = datetime.utcnow() - timedelta(hours=hours)
 
@@ -1187,6 +1281,8 @@ class TrainRepository(BaseRepository):
 
                 track_usage[train.track].append(usage_period)
 
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_track_usage_history").observe(duration)
             return track_usage
 
         except SQLAlchemyError as e:
@@ -1210,10 +1306,13 @@ class ModelDataRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             model_data_obj = ModelData(**model_data)
             self.session.add(model_data_obj)
             self.session.commit()
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="create_model_data").observe(duration)
             logger.info(f"Created model data with ID {model_data_obj.id}")
             return model_data_obj
         except SQLAlchemyError as e:
@@ -1234,8 +1333,14 @@ class ModelDataRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
-            return self.session.query(ModelData).join(Train).filter(Train.id == train_id).first()
+            result = self.session.query(ModelData).join(Train).filter(Train.id == train_id).first()
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_model_data_for_train").observe(
+                duration
+            )
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_model_data_for_train: {str(e)}")
             raise
@@ -1253,8 +1358,12 @@ class ModelDataRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
-            return self.session.query(ModelData).limit(limit).all()
+            result = self.session.query(ModelData).limit(limit).all()
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_all_model_data").observe(duration)
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_all_model_data: {str(e)}")
             raise
@@ -1276,10 +1385,13 @@ class PredictionDataRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             prediction = PredictionData(**prediction_data)
             self.session.add(prediction)
             self.session.commit()
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="create_prediction").observe(duration)
             logger.info(f"Created prediction data with ID {prediction.id}")
             return prediction
         except SQLAlchemyError as e:
@@ -1300,10 +1412,16 @@ class PredictionDataRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
-            return (
+            result = (
                 self.session.query(PredictionData).join(Train).filter(Train.id == train_id).first()
             )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_prediction_for_train").observe(
+                duration
+            )
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_prediction_for_train: {str(e)}")
             raise
@@ -1318,6 +1436,7 @@ class PredictionDataRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Find trains with both predictions and actual track assignments
             trains_with_both = (
@@ -1362,13 +1481,17 @@ class PredictionDataRepository(BaseRepository):
                     else 0
                 )
 
-            return {
+            result = {
                 "total_predictions": total,
                 "correct_predictions": correct,
                 "accuracy": accuracy,
                 "by_line": by_line,
             }
-
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_prediction_accuracy_stats").observe(
+                duration
+            )
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_prediction_accuracy_stats: {str(e)}")
             raise
@@ -1390,10 +1513,13 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             train_stop = TrainStop(**stop_data)
             self.session.add(train_stop)
             self.session.commit()
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="create_train_stop").observe(duration)
             logger.debug(
                 f"Created train stop for train {train_stop.train_id} at {train_stop.station_name}"
             )
@@ -1425,6 +1551,7 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        db_start_time = time.time()
         try:
             current_time = datetime.utcnow()
             updated_stops = []
@@ -1606,6 +1733,8 @@ class TrainStopRepository(BaseRepository):
                     logger.info(f"Marked stop {stop.station_name} as inactive for train {train_id}")
 
             self.session.commit()
+            duration = time.time() - db_start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="upsert_train_stops").observe(duration)
             logger.debug(f"Updated {len(updated_stops)} stops for train {train_id}")
             return updated_stops
 
@@ -1628,8 +1757,9 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
-            return (
+            result = (
                 self.session.query(TrainStop)
                 .filter(
                     TrainStop.train_id == train_id,
@@ -1638,6 +1768,9 @@ class TrainStopRepository(BaseRepository):
                 .order_by(TrainStop.scheduled_time.asc())
                 .all()
             )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_stops_for_train").observe(duration)
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_stops_for_train: {str(e)}")
             raise
@@ -1656,9 +1789,10 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             cutoff_time = datetime.utcnow() - timedelta(hours=hours)
-            return (
+            result = (
                 self.session.query(TrainStop)
                 .filter(
                     TrainStop.station_code == station_code, TrainStop.scheduled_time >= cutoff_time
@@ -1666,6 +1800,9 @@ class TrainStopRepository(BaseRepository):
                 .order_by(TrainStop.scheduled_time.asc())
                 .all()
             )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_stops_by_station").observe(duration)
+            return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_stops_by_station: {str(e)}")
             raise
@@ -1680,6 +1817,7 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             # Get distinct stations, preferring entries with station codes
             results = (
@@ -1698,6 +1836,8 @@ class TrainStopRepository(BaseRepository):
                     stations.append({"station_code": station_code, "station_name": station_name})
                     seen_names.add(station_name)
 
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_all_stations").observe(duration)
             return stations
 
         except SQLAlchemyError as e:
@@ -1721,6 +1861,7 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             query = self.session.query(TrainStop).filter(TrainStop.train_id == train_id)
 
@@ -1747,6 +1888,8 @@ class TrainStopRepository(BaseRepository):
                     }
                 )
 
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_stop_audit_history").observe(duration)
             return history
 
         except SQLAlchemyError as e:
@@ -1766,6 +1909,7 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
+        start_time = time.time()
         try:
             results = (
                 self.session.query(TrainStop.station_code, TrainStop.station_name)
@@ -1789,6 +1933,8 @@ class TrainStopRepository(BaseRepository):
                     stations.append({"station_code": station_code, "station_name": station_name})
                     seen_names.add(station_name)
 
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="search_stations").observe(duration)
             return stations
 
         except SQLAlchemyError as e:

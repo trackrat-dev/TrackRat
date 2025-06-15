@@ -13,12 +13,28 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
+from prometheus_client import Counter
 
 from trackcast.config import settings
 from trackcast.exceptions import APIError
 from trackcast.utils import clean_destination, parse_iso_datetime_to_eastern
 
 logger = logging.getLogger(__name__)
+
+
+# Define Prometheus counters
+NJ_TRANSIT_FETCH_SUCCESS = Counter(
+    "nj_transit_fetch_success_total", "Number of successful fetches from NJ Transit API"
+)
+NJ_TRANSIT_FETCH_FAILURES = Counter(
+    "nj_transit_fetch_failures_total", "Number of failed fetches from NJ Transit API"
+)
+AMTRAK_FETCH_SUCCESS = Counter(
+    "amtrak_fetch_success_total", "Number of successful fetches from Amtrak API"
+)
+AMTRAK_FETCH_FAILURES = Counter(
+    "amtrak_fetch_failures_total", "Number of failed fetches from Amtrak API"
+)
 
 
 class BaseCollector(abc.ABC):
@@ -327,12 +343,13 @@ class NJTransitCollector(BaseCollector):
                 with open(raw_file, "w") as f:
                     json.dump(raw_data, f, indent=2)
                     logger.debug(f"Saved raw data to {raw_file}")
-
+                NJ_TRANSIT_FETCH_SUCCESS.inc()
                 return {"data": raw_data, "timestamp": collection_time.isoformat()}
 
             except requests.RequestException as e:
                 attempts += 1
                 last_error = e
+                NJ_TRANSIT_FETCH_FAILURES.inc()
                 logger.warning(
                     f"API request failed, attempt {attempts}/{self.retry_attempts}: {str(e)}"
                 )
@@ -617,12 +634,13 @@ class AmtrakCollector(BaseCollector):
                 with open(raw_file, "w") as f:
                     json.dump(raw_data, f, indent=2)
                     logger.debug(f"Saved raw Amtrak data to {raw_file}")
-
+                AMTRAK_FETCH_SUCCESS.inc()
                 return {"data": raw_data, "timestamp": collection_time.isoformat()}
 
             except requests.RequestException as e:
                 attempts += 1
                 last_error = e
+                AMTRAK_FETCH_FAILURES.inc()
                 logger.warning(
                     f"Amtrak API request failed, attempt {attempts}/{self.retry_attempts}: {str(e)}"
                 )
