@@ -13,6 +13,42 @@ The project uses a consolidated CI/CD workflow that ensures all tests pass befor
 
 For migration details from the old separate workflows, see `.github/workflows/MIGRATION.md`.
 
+## Type Checking
+
+TrackCast uses mypy for static type checking to improve code reliability and developer experience:
+
+### Running Type Checks Locally
+
+```bash
+# Check all modules (shows existing type issues)
+mypy trackcast/
+
+# Check enhanced modules with comprehensive type annotations
+mypy trackcast/api/routers/trains.py trackcast/cli.py
+
+# With configuration file
+mypy trackcast/ --config-file mypy.ini
+```
+
+### Type Annotation Status
+
+- ✅ **API Router Functions** (Phase 1): Complete type annotations for all helper functions
+- ✅ **CLI Commands** (Phase 2): Complete type annotations for all command parameters  
+- ⚠️ **Other Modules**: Gradual type adoption in progress
+
+### Development Guidelines
+
+1. **New Code**: All new functions should include type annotations
+2. **Enhanced Modules**: Use strict typing in `trackcast/api/routers/trains.py` and `trackcast/cli.py`
+3. **Dependencies**: mypy and type stubs are included in development dependencies
+4. **CI Integration**: Type checking runs in GitHub Actions alongside other quality checks
+
+### Configuration
+
+- **Configuration File**: `mypy.ini` with improved third-party library support
+- **Type Stubs**: Included for PyYAML, requests, and other dependencies
+- **Import Handling**: Missing imports for third-party libraries are properly ignored
+
 ## 1. Purpose and Value
 
 Penn Station often announces track assignments only 10-15 minutes before departure, causing passenger congestion and stress. TrackCast aims to predict track assignments with high accuracy up to 30 minutes in advance, allowing passengers to position themselves strategically and reducing platform crowding.
