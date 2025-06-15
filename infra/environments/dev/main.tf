@@ -86,18 +86,19 @@ module "trackrat_api_service" {
   vpc_connector_id       = module.vpc_connector.id # Reference the VPC connector we created
   enable_cloudsql_access = true                    # Enable Cloud SQL access permissions
 
-  # Example environment variables
+  # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV  = "development"
-    GIN_MODE = "debug"
-    # Add other non-sensitive configs
+    APP_ENV       = "development"
+    TRACKCAST_ENV = "dev"
+    MODEL_PATH    = "/app/models"
   }
 
-  # Example secret environment variables
-  # secret_environment_variables = {
-  #   DATABASE_URL = "my-db-secret-name:latest" # Replace with actual secret name and version
-  #   API_KEY      = "my-api-key-secret:1"
-  # }
+  # Secret environment variables (sensitive data from Secret Manager)
+  secret_environment_variables = {
+    DATABASE_URL = "trackcast-dev-secrets:latest"
+    NJT_USERNAME = "trackcast-dev-secrets:latest"
+    NJT_PASSWORD = "trackcast-dev-secrets:latest"
+  }
 
   # If a specific service account is already created for the API for this env:
   # service_account_email = "existing-sa@${var.project_id}.iam.gserviceaccount.com"
@@ -112,8 +113,9 @@ module "trackrat_api_service" {
   }
 
   depends_on = [
-    # Add dependencies if any, e.g., module.vpc_connector if defined in this file
-    # module.artifact_registry if image is built and pushed by another terraform module here
+    module.database,      # Database must be created before Cloud Run
+    module.vpc_connector, # VPC connector needed for database connectivity
+    module.infrastructure # Infrastructure (including secrets) must be ready
   ]
 }
 
