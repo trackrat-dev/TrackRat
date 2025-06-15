@@ -10,7 +10,6 @@ class LiveActivityService: ObservableObject {
     @Published var currentActivity: Activity<TrainActivityAttributes>?
     @Published var isActivityActive: Bool = false
     
-    private var updateTimer: Timer?
     private var lastKnownStatus: TrainStatus?
     private var lastKnownStops: [Stop] = []
     private var lastDepartedStopIndex: Int?
@@ -33,8 +32,8 @@ class LiveActivityService: ObservableObject {
         // End any existing activity first
         await endCurrentActivity()
         
-        // Request permissions
-        try await requestPermissions()
+        // Check and request notification permissions
+        try await checkAndRequestNotificationPermissions()
         
         // Create activity attributes
         let attributes = TrainActivityAttributes(
@@ -68,8 +67,10 @@ class LiveActivityService: ObservableObject {
                 self.lastKnownStops = train.stops ?? []
             }
             
-            // Start background updates
-            startBackgroundUpdates(trainId: train.id, attributes: attributes)
+            // Schedule background refresh
+            if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+                appDelegate.scheduleAppRefresh()
+            }
             
             // Send haptic feedback
             await MainActor.run {
@@ -142,19 +143,19 @@ class LiveActivityService: ObservableObject {
     
     /// Refresh the current Live Activity data
     func refreshCurrentActivity() async {
-        guard let activity = currentActivity else { return }
-        
-        let attributes = activity.attributes
-        guard let trainId = Int(attributes.trainId) else { return }
-        
-        await fetchAndUpdateTrain(trainId: trainId, attributes: attributes)
+        // This method might need to be re-evaluated or used carefully,
+        // as fetchAndUpdateTrain now relies on currentActivity.
+        // For now, let's assume it's called when currentActivity is valid.
+        await fetchAndUpdateTrain()
     }
     
     /// End the current Live Activity
     func endCurrentActivity() async {
         guard let activity = currentActivity else { return }
         
-        stopBackgroundUpdates()
+        if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+            appDelegate.cancelAllPendingBackgroundTasks()
+        }
         
         let finalState = activity.content.state
         await activity.end(.init(state: finalState, staleDate: nil), dismissalPolicy: .immediate)
@@ -173,40 +174,27 @@ class LiveActivityService: ObservableObject {
     
     // MARK: - Background Updates
     
-    private func startBackgroundUpdates(trainId: Int, attributes: TrainActivityAttributes) {
-        stopBackgroundUpdates() // Stop any existing timer
-        
-        // Ensure timer runs on main thread
-        DispatchQueue.main.async { [weak self] in
-            self?.updateTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
-                print("⏰ Background timer fired for train \(attributes.trainNumber)")
-                Task {
-                    await self?.fetchAndUpdateTrain(trainId: trainId, attributes: attributes)
-                }
-            }
-            print("🕐 Background timer started for train \(attributes.trainNumber) - will fire every 30 seconds")
+    func fetchAndUpdateTrain() async {
+        guard let activity = self.currentActivity else {
+            print("ℹ️ No current activity to update from background.")
+            return
         }
-    }
-    
-    private func stopBackgroundUpdates() {
-        if updateTimer != nil {
-            print("🛑 Stopping background timer")
-            updateTimer?.invalidate()
-            updateTimer = nil
+        let attributes = activity.attributes
+        guard let _ = Int(attributes.trainId) else { // trainId is String, but APIService expects Int for trainNumber
+            print("❌ Invalid trainId in current activity attributes: \(attributes.trainId)")
+            return
         }
-    }
-    
-    private func fetchAndUpdateTrain(trainId: Int, attributes: TrainActivityAttributes) async {
+
         do {
-            print("🔄 Making API request for train \(attributes.trainNumber) from \(attributes.originStationCode)")
+            print("🔄 Making API request for train \(attributes.trainNumber) from \(attributes.originStationCode) (background)")
             let train = try await APIService.shared.fetchTrainDetailsFlexible(
-                trainId: attributes.trainNumber,
+                trainId: attributes.trainNumber, // This is the train number (e.g., "P625")
                 fromStationCode: attributes.originStationCode
             )
-            print("✅ API request successful for train \(attributes.trainNumber)")
+            print("✅ API request successful for train \(attributes.trainNumber) (background)")
             await updateActivity(with: train)
         } catch {
-            print("❌ Failed to fetch train data for Live Activity update: \(error)")
+            print("❌ Failed to fetch train data for Live Activity update (background): \(error)")
             print("❌ Full error details: \(String(describing: error))")
         }
     }
@@ -416,15 +404,30 @@ class LiveActivityService: ObservableObject {
     
     // MARK: - Permissions and Notifications
     
-    private func requestPermissions() async throws {
-        // Request Live Activity permission (automatic prompt if needed)
-        let authorizationStatus = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
-        
-        if authorizationStatus == .notDetermined {
-            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+    public func checkAndRequestNotificationPermissions() async throws {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+
+        switch settings.authorizationStatus {
+        case .notDetermined:
+            print("Notification permission not determined. Requesting authorization...")
+            let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
             if !granted {
-                print("⚠️ Notification permission not granted")
+                print("⚠️ Notification permission denied by user.")
+                throw LiveActivityError.permissionDenied
             }
+            print("✅ Notification permission granted.")
+        case .denied, .restricted:
+            print("⚠️ Notification permission is denied or restricted.")
+            throw LiveActivityError.permissionDenied
+        case .authorized, .provisional, .ephemeral:
+            print("✅ Notification permission already granted (\(settings.authorizationStatus)).")
+            // Permission already granted
+            break
+        @unknown default:
+            print("⚠️ Unknown notification authorization status: \(settings.authorizationStatus).")
+            // Handle future cases or consider it an error
+            throw LiveActivityError.permissionDenied // Or a more specific error
         }
     }
     
@@ -546,13 +549,12 @@ class LiveActivityService: ObservableObject {
             currentActivity = existingActivity
             isActivityActive = true
             
-            // Resume background updates if needed
-            let attributes = existingActivity.attributes
-            if let trainId = Int(attributes.trainId) {
-                startBackgroundUpdates(trainId: trainId, attributes: attributes)
+            // If resuming, schedule a refresh
+            if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
+                appDelegate.scheduleAppRefresh()
             }
             
-            print("📱 Resumed existing Live Activity for train \(attributes.trainNumber)")
+            print("📱 Resumed existing Live Activity for train \(existingActivity.attributes.trainNumber)")
         }
     }
     
@@ -585,11 +587,11 @@ enum LiveActivityError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notSupported:
-            return "Live Activities are not supported on this device"
+            return "Live Activities are not supported on this device."
         case .failedToStart(let error):
-            return "Failed to start Live Activity: \(error.localizedDescription)"
+            return "Failed to start Live Activity: \(error.localizedDescription)."
         case .permissionDenied:
-            return "Permission denied for Live Activities"
+            return "Notifications are disabled. Please enable them in Settings to receive updates."
         }
     }
 }

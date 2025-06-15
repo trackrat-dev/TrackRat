@@ -2,6 +2,9 @@ import SwiftUI
 import ActivityKit
 import WidgetKit
 import UserNotifications
+import BackgroundTasks
+
+let BACKGROUND_REFRESH_TASK_ID = "com.trackrat.backgroundrefresh"
 
 @main
 struct TrackRatApp: App {
@@ -45,7 +48,14 @@ struct TrackRatApp: App {
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        registerBackgroundTasks()
         return true
+    }
+
+    func registerBackgroundTasks() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: BACKGROUND_REFRESH_TASK_ID, using: nil) { task in
+            self.handleAppRefresh(task: task as! BGAppRefreshTask)
+        }
     }
 
     // Handle foreground notifications
@@ -57,6 +67,63 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         // Here you can add logic to navigate to a specific part of your app based on the notification
         completionHandler()
+    }
+
+    func scheduleAppRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: BACKGROUND_REFRESH_TASK_ID)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 minutes from now
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            print("Background refresh task scheduled.")
+        } catch {
+            print("Could not schedule app refresh: \(error)")
+        }
+    }
+
+    func handleAppRefresh(task: BGAppRefreshTask) {
+        print("Background task started: \(task.identifier)")
+
+        // Schedule the next refresh right away
+        scheduleAppRefresh()
+
+        task.expirationHandler = {
+            // Handle cleanup, e.g., cancel network requests
+            print("Background task expired: \(task.identifier)")
+            LiveActivityService.shared.currentActivity?.end(nil, dismissalPolicy: .immediate) // Example cleanup
+            task.setTaskCompleted(success: false)
+        }
+
+        // Ensure there's an active activity to update
+        guard let activityAttributes = LiveActivityService.shared.currentActivity?.attributes else {
+            print("No active Live Activity to update in background.")
+            task.setTaskCompleted(success: true) // No work to do, but task is "complete"
+            return
+        }
+
+        // It's good practice to store these before starting an async task
+        // trainId in attributes is already a String, matching what fetchTrainDetailsFlexible expects for trainNumber
+        // let trainIdString = activityAttributes.trainId
+        // Guarding Int conversion is not strictly necessary here if APIService.fetchTrainDetailsFlexible expects trainId as String (trainNumber)
+        // guard let _ = Int(trainIdString) else {
+        //     print("Invalid trainId in Live Activity attributes: \(trainIdString)")
+        //     task.setTaskCompleted(success: false)
+        //     return
+        // }
+
+        print("Performing background fetch for Live Activity: Train \(activityAttributes.trainNumber)")
+
+        Task {
+            await LiveActivityService.shared.fetchAndUpdateTrain()
+            // The fetchAndUpdateTrain method itself handles errors internally by logging them.
+            // We assume success here unless a more specific error handling from fetchAndUpdateTrain is needed.
+            print("Background fetch completed for Live Activity: Train \(activityAttributes.trainNumber)")
+            task.setTaskCompleted(success: true)
+        }
+    }
+
+    func cancelAllPendingBackgroundTasks() {
+        BGTaskScheduler.shared.cancelAllTaskRequests()
+        print("All pending background tasks cancelled.")
     }
 }
 
