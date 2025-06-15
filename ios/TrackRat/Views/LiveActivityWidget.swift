@@ -93,8 +93,6 @@ struct TrainLiveActivity: Widget {
             return "tram.fill"
         case .scheduled, .unknown:
             return "questionmark.circle.fill"
-        default:
-            return "tram.fill"
         }
     }
     
@@ -113,8 +111,6 @@ struct TrainLiveActivity: Widget {
             return "SCH"
         case .unknown:
             return "UNK"
-        default:
-            return "?"
         }
     }
 }

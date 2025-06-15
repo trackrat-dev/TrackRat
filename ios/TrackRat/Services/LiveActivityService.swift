@@ -159,28 +159,18 @@ class LiveActivityService: ObservableObject {
             await handleStatusChange(from: lastKnownStatus, to: train.status)
         }
         
-        // Update activity with error handling
-        do {
-            await activity.update(.init(state: newState, staleDate: nil))
-            
-            await MainActor.run {
-                self.lastKnownStatus = train.status
-            }
-            
-            print("🔄 Live Activity updated for train \(train.trainId)")
-            
-            // Check if we should auto-end the activity
-            if shouldAutoEndActivity(train: train, state: newState) {
-                await endCurrentActivity()
-            }
-        } catch {
-            print("❌ Failed to update Live Activity: \(error)")
-            
-            // If update fails with stale content, end the activity
-            if error.localizedDescription.contains("stale") {
-                print("⚠️ Content is stale, ending Live Activity")
-                await endCurrentActivity()
-            }
+        // Update activity
+        await activity.update(.init(state: newState, staleDate: nil))
+        
+        await MainActor.run {
+            self.lastKnownStatus = train.status
+        }
+        
+        print("🔄 Live Activity updated for train \(train.trainId)")
+        
+        // Check if we should auto-end the activity
+        if shouldAutoEndActivity(train: train, state: newState) {
+            await endCurrentActivity()
         }
     }
     

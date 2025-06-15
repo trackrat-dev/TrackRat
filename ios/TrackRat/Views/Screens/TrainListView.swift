@@ -290,7 +290,7 @@ class TrainListViewModel: ObservableObject {
     }
     
     // Initializer for dependency injection
-    init(apiService: APIService = APIService.shared) {
+    init(apiService: APIService = .shared) {
         self.apiService = apiService
     }
 
