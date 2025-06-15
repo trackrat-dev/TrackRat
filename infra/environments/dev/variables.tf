@@ -37,8 +37,3 @@ variable "api_image_url" {
 }
 
 
-variable "scheduler_image_url" {
-  description = "Docker image URL for the trackrat-scheduler service in Dev"
-  type        = string
-  default     = "us-central1-docker.pkg.dev/trackrat-dev/trackcast-inference-dev/trackcast-inference:latest"
-}

@@ -54,14 +54,14 @@ output "trackrat_api_custom_domain_name" {
   sensitive   = true # Contains potentially sensitive domain info
 }
 
-output "trackrat_scheduler_service_url_dev" {
-  description = "URL of the trackrat-scheduler service in dev"
-  value       = module.trackrat_scheduler_dev.scheduler_cloud_run_service_url
+output "scheduler_job_names" {
+  description = "Names of the Cloud Scheduler jobs in dev"
+  value       = [for job in google_cloud_scheduler_job.operations_jobs : job.name]
 }
 
-output "trackrat_scheduler_job_name_dev" {
-  description = "Name of the Cloud Scheduler job for the dev environment"
-  value       = module.trackrat_scheduler_dev.scheduler_job_name
+output "scheduler_service_account_email" {
+  description = "Email of the service account used by scheduler jobs"
+  value       = google_service_account.scheduler_sa.email
 }
 
 # Database connection outputs for automated secret management

@@ -77,12 +77,12 @@ module "trackrat_api_service" {
   container_image = var.api_image_url  # To be defined in variables.tf
   container_port  = 8000               # Assuming the API runs on port 8000
 
-  cpu_limit               = "1"   # As per issue: 1-2 vCPUs
-  memory_limit            = "2Gi" # Ensure 2GB of RAM
+  cpu_limit               = "2"   # Increased for scheduler operations
+  memory_limit            = "4Gi" # Increased for scheduler operations
   concurrency             = 100
-  min_instances           = 0 # For dev/staging
-  max_instances           = 2 # As per issue
-  request_timeout_seconds = 60
+  min_instances           = 1   # Ensure availability for scheduler jobs
+  max_instances           = 3   # Increased for scheduler operations
+  request_timeout_seconds = 300 # Increased for scheduler operations
 
   # Assuming /health is the correct endpoint for trackrat-api
   startup_probe_path            = "/health"
@@ -94,9 +94,10 @@ module "trackrat_api_service" {
 
   # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV       = "development"
-    TRACKCAST_ENV = "dev"
-    MODEL_PATH    = "/app/models"
+    APP_ENV                  = "development"
+    TRACKCAST_ENV            = "dev"
+    MODEL_PATH               = "/app/models"
+    TRACKCAST_SCHEDULER_MODE = "cloud_native" # Enable cloud-native mode to disable internal scheduler
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -125,34 +126,26 @@ module "trackrat_api_service" {
   ]
 }
 
-module "trackrat_scheduler_dev" {
-  source = "../../modules/scheduler"
+# Service account for Cloud Scheduler jobs to invoke API service
+resource "google_service_account" "scheduler_sa" {
+  project      = var.project_id
+  account_id   = "trackrat-scheduler-dev"
+  display_name = "TrackRat Scheduler Service Account (Dev)"
+  description  = "Service account for Cloud Scheduler jobs to invoke API service"
+}
 
-  project_id      = var.project_id
-  location        = var.region
-  service_name    = "trackrat-scheduler-dev"
-  container_image = var.scheduler_image_url # To be defined in variables.tf
+# Grant the scheduler service account permission to invoke the API service
+resource "google_cloud_run_service_iam_member" "scheduler_invoker" {
+  project  = var.project_id
+  location = var.region
+  service  = module.trackrat_api_service.service_name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
 
-  # Assuming scheduler runs on port 8080 by default as per module
-  # container_port = 8080
-
-  # max_instances is 1 by default in the module
-  min_instances = 0     # For dev
-  memory_limit  = "2Gi" # Ensure 2GB of RAM
-
-  # request_timeout_seconds is 3600 (1 hour) by default in module
-
-  scheduler_job_name = "invoke-trackrat-scheduler-dev"
-
-  # Phase 2: Parallel operation - keep legacy scheduler alongside new jobs
-  legacy_scheduler_enabled = true
-  scheduler_schedule       = "0 2 * * *" # Keep existing daily job for now
-
-  # Phase 1: New high-frequency scheduler jobs targeting API service
-  api_service_uri = module.trackrat_api_service.service_url
-
-  # Hourly scheduling as requested (Phase 1 implementation)
-  scheduler_jobs = {
+# Direct Cloud Scheduler jobs targeting API service (Phase 3: Cloud-native scheduler)
+resource "google_cloud_scheduler_job" "operations_jobs" {
+  for_each = {
     data_collection = {
       schedule    = "0 * * * *" # Every hour at :00
       endpoint    = "/api/ops/collect-data"
@@ -170,25 +163,36 @@ module "trackrat_scheduler_dev" {
     }
   }
 
-  # vpc_connector_id = var.vpc_connector_id # If scheduler needs to access VPC resources
+  project          = var.project_id
+  region           = var.region
+  name             = "trackrat-ops-${each.key}-dev"
+  description      = each.value.description
+  schedule         = each.value.schedule
+  time_zone        = "America/New_York"
+  attempt_deadline = "300s"
 
-  environment_variables = {
-    APP_ENV = "development"
-    # Phase 3: Enable cloud-native mode to disable internal scheduler
-    # TRACKCAST_SCHEDULER_MODE = "cloud_native"
-    # For now, keep internal scheduler running alongside new jobs (Phase 2)
-  }
+  http_target {
+    uri         = "${module.trackrat_api_service.service_url}${each.value.endpoint}"
+    http_method = "POST"
 
-  # secret_environment_variables = {
-  #   SOME_SCHEDULER_SECRET = "scheduler-secret-name:latest"
-  # }
+    headers = {
+      "Content-Type" = "application/json"
+    }
 
-  labels = {
-    service = "trackrat-scheduler"
-    env     = "dev"
+    body = base64encode(jsonencode({
+      "operation"    = each.key
+      "triggered_by" = "cloud_scheduler"
+      "environment"  = "development"
+    }))
+
+    oidc_token {
+      service_account_email = google_service_account.scheduler_sa.email
+      audience              = module.trackrat_api_service.service_url
+    }
   }
 
   depends_on = [
-    module.trackrat_api_service # API service must be deployed before scheduler jobs can target it
+    module.trackrat_api_service,
+    google_service_account.scheduler_sa
   ]
 }
