@@ -36,25 +36,36 @@ class LiveActivityService: ObservableObject {
         // Request permissions
         try await requestPermissions()
         
-        // Create activity attributes
+        // Validate input data before creating Live Activity
+        try validateLiveActivityData(train: train, originCode: originCode, destinationCode: destinationCode, origin: origin, destination: destination)
+        
+        // Create activity attributes with validated data
         let attributes = TrainActivityAttributes(
-            trainNumber: train.trainId,
+            trainNumber: sanitizeTrainNumber(train.trainId),
             trainId: String(train.id),
-            routeDescription: "\(origin) → \(destination)",
-            origin: origin,
-            destination: destination,
+            routeDescription: "\(sanitizeStationName(origin)) → \(sanitizeStationName(destination))",
+            origin: sanitizeStationName(origin),
+            destination: sanitizeStationName(destination),
             originStationCode: originCode,
             destinationStationCode: destinationCode
         )
         
-        // Create initial content state
+        // Create initial content state with validation
         let initialState = train.toLiveActivityContentState(
             from: originCode,
             to: destinationCode
         )
         
-        // Start the activity
+        // Final validation of content state
+        try validateContentState(initialState)
+        
+        // Start the activity with enhanced error handling
         do {
+            // Check if Live Activities are available
+            guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+                throw LiveActivityError.permissionDenied
+            }
+            
             let activity = try Activity<TrainActivityAttributes>.request(
                 attributes: attributes,
                 content: .init(state: initialState, staleDate: nil),
@@ -78,12 +89,25 @@ class LiveActivityService: ObservableObject {
             }
             
             // Send push notification for starting to watch
-            await sendTrackingStartedNotification(train: train, route: "\(origin) → \(destination)")
+            await sendTrackingStartedNotification(train: train, route: "\(sanitizeStationName(origin)) → \(sanitizeStationName(destination))")
             
             print("✅ Live Activity started for train \(train.trainId)")
             
+        } catch let error as LiveActivityError {
+            print("❌ Live Activity error: \(error.localizedDescription)")
+            throw error
         } catch {
             print("❌ Failed to start Live Activity: \(error)")
+            
+            // Check if it's an authorization issue
+            if error.localizedDescription.contains("not authorized") || 
+               error.localizedDescription.contains("denied") {
+                throw LiveActivityError.permissionDenied
+            } else if error.localizedDescription.contains("not supported") ||
+                      error.localizedDescription.contains("not enabled") {
+                throw LiveActivityError.notSupported
+            }
+            
             throw LiveActivityError.failedToStart(error)
         }
     }
@@ -98,6 +122,14 @@ class LiveActivityService: ObservableObject {
             to: attributes.destinationStationCode,
             lastKnownStatus: lastKnownStatus
         )
+        
+        // Validate new state before updating
+        do {
+            try validateContentState(newState)
+        } catch {
+            print("❌ Invalid content state, skipping Live Activity update: \(error)")
+            return
+        }
         
         // Check for stop departures and approaching stops
         if let stops = train.stops {
@@ -126,17 +158,28 @@ class LiveActivityService: ObservableObject {
             await handleStatusChange(from: lastKnownStatus, to: train.status)
         }
         
-        await activity.update(.init(state: newState, staleDate: nil))
-        
-        await MainActor.run {
-            self.lastKnownStatus = train.status
-        }
-        
-        print("🔄 Live Activity updated for train \(train.trainId)")
-        
-        // Check if we should auto-end the activity
-        if shouldAutoEndActivity(train: train, state: newState) {
-            await endCurrentActivity()
+        // Update activity with error handling
+        do {
+            await activity.update(.init(state: newState, staleDate: nil))
+            
+            await MainActor.run {
+                self.lastKnownStatus = train.status
+            }
+            
+            print("🔄 Live Activity updated for train \(train.trainId)")
+            
+            // Check if we should auto-end the activity
+            if shouldAutoEndActivity(train: train, state: newState) {
+                await endCurrentActivity()
+            }
+        } catch {
+            print("❌ Failed to update Live Activity: \(error)")
+            
+            // If update fails with stale content, end the activity
+            if error.localizedDescription.contains("stale") {
+                print("⚠️ Content is stale, ending Live Activity")
+                await endCurrentActivity()
+            }
         }
     }
     
@@ -168,7 +211,7 @@ class LiveActivityService: ObservableObject {
             self.approachingNotificationsSent.removeAll()
         }
         
-        print("🛑 Live Activity ended")
+        print("🛑 Live Activity ended and cleaned up")
     }
     
     // MARK: - Background Updates
@@ -208,6 +251,23 @@ class LiveActivityService: ObservableObject {
         } catch {
             print("❌ Failed to fetch train data for Live Activity update: \(error)")
             print("❌ Full error details: \(String(describing: error))")
+            
+            // Handle specific error cases
+            if let urlError = error as? URLError {
+                switch urlError.code {
+                case .notConnectedToInternet, .networkConnectionLost:
+                    print("📶 Network connectivity issue, will retry on next cycle")
+                case .timedOut:
+                    print("⏱️ Request timed out, will retry on next cycle")
+                case .cancelled:
+                    print("🛑 Request was cancelled")
+                default:
+                    print("🌐 Network error: \(urlError.localizedDescription)")
+                }
+            }
+            
+            // Don't end activity immediately on network errors
+            // Let it retry on the next cycle
         }
     }
     
@@ -424,7 +484,16 @@ class LiveActivityService: ObservableObject {
             let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
             if !granted {
                 print("⚠️ Notification permission not granted")
+                // Continue anyway as Live Activities can work without notifications
             }
+        } else if authorizationStatus == .denied {
+            print("⚠️ Notification permission denied, Live Activities may have limited functionality")
+            // Continue anyway as Live Activities don't require notifications
+        }
+        
+        // Check Live Activity specific authorization
+        if !ActivityAuthorizationInfo().areActivitiesEnabled {
+            throw LiveActivityError.notSupported
         }
     }
     
@@ -573,6 +642,83 @@ class LiveActivityService: ObservableObject {
         let attributes = activity.attributes
         return "Tracking Train \(attributes.trainNumber)"
     }
+    
+    // MARK: - Data Validation
+    
+    /// Validate Live Activity input data
+    private func validateLiveActivityData(train: Train, originCode: String, destinationCode: String, origin: String, destination: String) throws {
+        // Validate train data
+        guard !train.trainId.isEmpty else {
+            throw LiveActivityError.invalidData("Train ID cannot be empty")
+        }
+        
+        guard train.id > 0 else {
+            throw LiveActivityError.invalidData("Invalid train ID: \(train.id)")
+        }
+        
+        // Validate station codes
+        guard !originCode.isEmpty && !destinationCode.isEmpty else {
+            throw LiveActivityError.invalidData("Station codes cannot be empty")
+        }
+        
+        guard originCode != destinationCode else {
+            throw LiveActivityError.invalidData("Origin and destination cannot be the same")
+        }
+        
+        // Validate station names
+        guard !origin.isEmpty && !destination.isEmpty else {
+            throw LiveActivityError.invalidData("Station names cannot be empty")
+        }
+        
+        // Validate train number length for Dynamic Island
+        guard train.trainId.count <= 10 else {
+            throw LiveActivityError.invalidData("Train number too long for Dynamic Island: \(train.trainId)")
+        }
+    }
+    
+    /// Validate Live Activity content state
+    private func validateContentState(_ state: TrainActivityAttributes.ContentState) throws {
+        // Validate status has displayText
+        guard !state.status.displayText.isEmpty else {
+            throw LiveActivityError.invalidData("Status display text cannot be empty")
+        }
+        
+        // Validate journey progress
+        guard state.journeyProgress >= 0 && state.journeyProgress <= 1 else {
+            throw LiveActivityError.invalidData("Journey progress out of bounds: \(state.journeyProgress)")
+        }
+        
+        // Validate dates are reasonable
+        let now = Date()
+        if let destinationETA = state.destinationETA {
+            // ETA should be within reasonable bounds (not in distant past/future)
+            let timeInterval = destinationETA.timeIntervalSince(now)
+            guard timeInterval > -3600 && timeInterval < 86400 else { // -1 hour to +24 hours
+                throw LiveActivityError.invalidData("Destination ETA out of reasonable bounds")
+            }
+        }
+        
+        if let nextStop = state.nextStop {
+            let timeInterval = nextStop.estimatedArrival.timeIntervalSince(now)
+            guard timeInterval > -3600 && timeInterval < 86400 else {
+                throw LiveActivityError.invalidData("Next stop ETA out of reasonable bounds")
+            }
+        }
+    }
+    
+    /// Sanitize train number for Dynamic Island display
+    private func sanitizeTrainNumber(_ trainNumber: String) -> String {
+        // Limit to 8 characters for Dynamic Island compatibility
+        let sanitized = String(trainNumber.prefix(8))
+        return sanitized.isEmpty ? "N/A" : sanitized
+    }
+    
+    /// Sanitize station names for display
+    private func sanitizeStationName(_ stationName: String) -> String {
+        // Limit to 20 characters for display
+        let sanitized = String(stationName.prefix(20))
+        return sanitized.isEmpty ? "Unknown" : sanitized
+    }
 }
 
 // MARK: - Error Types
@@ -581,6 +727,7 @@ enum LiveActivityError: LocalizedError {
     case notSupported
     case failedToStart(Error)
     case permissionDenied
+    case invalidData(String)
     
     var errorDescription: String? {
         switch self {
@@ -590,6 +737,8 @@ enum LiveActivityError: LocalizedError {
             return "Failed to start Live Activity: \(error.localizedDescription)"
         case .permissionDenied:
             return "Permission denied for Live Activities"
+        case .invalidData(let message):
+            return "Invalid Live Activity data: \(message)"
         }
     }
 }
