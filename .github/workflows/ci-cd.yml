@@ -399,7 +399,7 @@ jobs:
           # Use environment variables for cleaner evaluation
           IS_MAIN: ${{ github.ref == 'refs/heads/main' }}
           HAS_CHANGES: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.infra == 'true' }}
-          BACKEND_OK: ${{ needs.backend-tests.result == 'success' }}
+          BACKEND_OK: ${{ needs.backend-tests.result == 'success' || needs.backend-tests.result == 'skipped' }}
           INFRA_OK: ${{ needs.infra-tests.result == 'success' || needs.infra-tests.result == 'skipped' }}
           # Properly handle all workflow-validation states: success, skipped are OK, failure is not
           WORKFLOW_OK: ${{ needs.workflow-validation.result == 'success' || needs.workflow-validation.result == 'skipped' }}
@@ -415,6 +415,8 @@ jobs:
           echo "Docker image ready: $DOCKER_READY"
 
           # Final decision - all conditions must be true
+          # Note: Tests that are skipped (no changes in that area) are treated as passing
+          # This allows deployment when only backend OR only infrastructure changes are made
           if [[ "$IS_MAIN" == "true" && "$HAS_CHANGES" == "true" && "$BACKEND_OK" == "true" && "$INFRA_OK" == "true" && "$WORKFLOW_OK" == "true" ]]; then
             SHOULD_DEPLOY="true"
             echo "✅ APPROVED: All conditions met"
@@ -430,7 +432,12 @@ jobs:
 
           # Set outputs explicitly
           echo "should_deploy=$SHOULD_DEPLOY" >> $GITHUB_OUTPUT
-          echo "all_tests_passed=$BACKEND_OK" >> $GITHUB_OUTPUT
+          # All tests passed means both backend and infra tests passed (or were skipped)
+          ALL_TESTS_OK="false"
+          if [[ "$BACKEND_OK" == "true" && "$INFRA_OK" == "true" ]]; then
+            ALL_TESTS_OK="true"
+          fi
+          echo "all_tests_passed=$ALL_TESTS_OK" >> $GITHUB_OUTPUT
           echo "docker_image_ready=$DOCKER_READY" >> $GITHUB_OUTPUT
 
       - name: Debug Gate Decision
