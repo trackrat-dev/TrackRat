@@ -406,14 +406,14 @@ jobs:
           DOCKER_READY: ${{ needs.backend-tests.result == 'success' && github.ref == 'refs/heads/main' }}
         run: |
           echo "🚦 Evaluating deployment gate..."
-          
+
           echo "Branch is main: $IS_MAIN"
           echo "Has deployable changes: $HAS_CHANGES"
           echo "Backend tests passed: $BACKEND_OK (${{ needs.backend-tests.result }})"
           echo "Infra tests passed: $INFRA_OK (${{ needs.infra-tests.result }})"
           echo "Workflow validation OK: $WORKFLOW_OK (${{ needs.workflow-validation.result }})"
           echo "Docker image ready: $DOCKER_READY"
-          
+
           # Final decision - all conditions must be true
           if [[ "$IS_MAIN" == "true" && "$HAS_CHANGES" == "true" && "$BACKEND_OK" == "true" && "$INFRA_OK" == "true" && "$WORKFLOW_OK" == "true" ]]; then
             SHOULD_DEPLOY="true"
@@ -427,7 +427,7 @@ jobs:
             echo "  - Infra OK: $INFRA_OK"
             echo "  - Workflow OK: $WORKFLOW_OK"
           fi
-          
+
           # Set outputs explicitly
           echo "should_deploy=$SHOULD_DEPLOY" >> $GITHUB_OUTPUT
           echo "all_tests_passed=$BACKEND_OK" >> $GITHUB_OUTPUT
