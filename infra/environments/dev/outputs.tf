@@ -72,5 +72,5 @@ output "database_password_secret_id" {
 
 output "app_secrets_name" {
   description = "Name of the main application secrets"
-  value       = "trackcast-dev-secrets"
+  value       = "trackrat-dev-secrets"
 }

@@ -578,7 +578,6 @@ jobs:
           zone = "${{ env.REGION }}-b"
           api_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
           scheduler_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
-          db_password = ""
           EOF
 
           # Target only the artifact registry repository
@@ -629,7 +628,6 @@ jobs:
           zone = "${{ env.REGION }}-b"
           api_image_url = "${{ env.IMAGE_TAG }}"
           scheduler_image_url = "${{ env.IMAGE_TAG }}"
-          db_password = ""
           EOF
 
           # Plan and apply everything
