@@ -59,6 +59,7 @@ class TestNJTransitCollector:
                 with patch.object(NJTransitCollector, "_save_to_csv"):
                     # Using the mocked settings now
                     collector = NJTransitCollector(
+                        base_url_or_config=None,
                         station_code="NY",
                         station_name="New York Penn Station",
                         data_dir="/tmp"
