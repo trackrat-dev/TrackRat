@@ -33,27 +33,48 @@ struct TrainLiveActivity: Widget {
                 }
             } compactLeading: {
                 // Compact leading (left side of Dynamic Island)
-                HStack {
-                    Image(systemName: "tram.fill") // Or a relevant icon
+                // Maximum width: 67pt for Dynamic Island compatibility
+                HStack(spacing: 2) {
+                    Image(systemName: "tram.fill")
+                        .font(.system(size: 8))
                         .foregroundColor(.white)
-                    Text("\(context.attributes.trainNumber): \(context.state.status.displayText)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.white)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(context.attributes.trainNumber)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Text(getCompactStatus(context.state.status))
+                            .font(.system(size: 8, weight: .regular))
+                            .foregroundColor(.gray)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: 67, alignment: .leading)
+                .clipped()
             } compactTrailing: {
                 // Compact trailing (right side of Dynamic Island)
+                // Maximum width: 67pt for Dynamic Island compatibility
                 DynamicIslandCompactTrailing(context: context)
+                    .frame(maxWidth: 67, alignment: .trailing)
+                    .clipped()
             } minimal: {
                 // Minimal (when other Dynamic Islands are active)
-                HStack(spacing: 2) {
-                    Image(systemName: trainStatusIcon(status: context.state.status)) // Helper function needed
-                        .font(.system(size: 10)) // Slightly smaller icon
+                // Maximum width: 32pt for Dynamic Island minimal state
+                HStack(spacing: 1) {
+                    Image(systemName: trainStatusIcon(status: context.state.status))
+                        .font(.system(size: 7))
                         .foregroundColor(.white)
-                    Text(context.attributes.trainNumber)
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white)
+                    if context.attributes.trainNumber.count <= 4 {
+                        Text(context.attributes.trainNumber)
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                    }
                 }
+                .frame(maxWidth: 32, alignment: .center)
+                .clipped()
             }
             .widgetURL(URL(string: "trackrat://train/\(context.attributes.trainId)"))
         }
@@ -63,15 +84,37 @@ struct TrainLiveActivity: Widget {
     private func trainStatusIcon(status: TrainStatus) -> String {
         switch status {
         case .onTime:
-            return "tram.fill" // Or "checkmark.circle.fill"
+            return "tram.fill"
         case .delayed:
             return "exclamationmark.triangle.fill"
         case .boarding:
-            return "figure.walk" // Or "door.left.hand.open"
+            return "figure.walk"
         case .departed:
-            return "tram.fill" // Or "arrow.right.circle.fill"
+            return "tram.fill"
         case .scheduled, .unknown:
-            return "questionmark.circle.fill" // A default icon for unknown statuses
+            return "questionmark.circle.fill"
+        default:
+            return "tram.fill"
+        }
+    }
+    
+    // Helper function to get compact status text for Dynamic Island
+    private func getCompactStatus(_ status: TrainStatus) -> String {
+        switch status {
+        case .boarding:
+            return "BRD"
+        case .delayed:
+            return "DEL"
+        case .departed:
+            return "DEP"
+        case .onTime:
+            return "OT"
+        case .scheduled:
+            return "SCH"
+        case .unknown:
+            return "UNK"
+        default:
+            return "?"
         }
     }
 }
@@ -219,25 +262,41 @@ struct DynamicIslandCompactTrailing: View {
     let context: ActivityViewContext<TrainActivityAttributes>
     
     var body: some View {
-        HStack(spacing: 3) {
-            if let track = context.state.track {
+        HStack(spacing: 2) {
+            // Prioritize track information if available
+            if let track = context.state.track, track.count <= 3 {
                 Text("T\(track)")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.orange)
-            }
-            if let nextStop = context.state.nextStop {
+                    .lineLimit(1)
+            } else if let nextStop = context.state.nextStop {
+                // Show time if no track or track too long
                 Text(formatTime(nextStop.estimatedArrival))
-                    .font(.system(size: 12))
+                    .font(.system(size: 9))
                     .foregroundColor(.white)
+                    .lineLimit(1)
+            } else {
+                // Fallback to journey progress
+                Text("\(Int(context.state.journeyProgress * 100))%")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.blue)
+                    .lineLimit(1)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
+        .frame(maxWidth: 67, alignment: .trailing)
     }
     
     private func formatTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm"
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
         return formatter.string(from: date)
+    }
+    
+    // Check if time is within next few minutes for display priority
+    private func isTimeImportant(_ date: Date) -> Bool {
+        let timeInterval = date.timeIntervalSince(Date())
+        return timeInterval > 0 && timeInterval < 900 // Within 15 minutes
     }
 }
 
@@ -254,17 +313,21 @@ struct TrainStatusView: View {
                     .font(.caption)
                 Text(trainNumber)
                     .font(.caption.bold())
+                    .lineLimit(1)
             }
             
             if let track = track {
                 Text("Track \(track)")
                     .font(.caption2)
                     .foregroundColor(.orange)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             
             Text(status.displayText)
                 .font(.caption2)
                 .foregroundColor(statusColor(status))
+                .lineLimit(1)
         }
     }
     
@@ -292,10 +355,12 @@ struct NextStopView: View {
                 Text(Stations.displayName(for: nextStop.stationName))
                     .font(.caption.bold())
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 
                 Text(formatTime(nextStop.estimatedArrival))
                     .font(.caption2)
                     .foregroundColor(nextStop.isDelayed ? .red : .primary)
+                    .lineLimit(1)
             } else {
                 Text("—")
                     .font(.caption)
@@ -330,6 +395,8 @@ struct JourneyProgressView: View {
                 Text(currentLocation.displayText)
                     .font(.caption2)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 
                 Spacer()
                 
@@ -337,6 +404,8 @@ struct JourneyProgressView: View {
                     Text("Arrives \(destination) ~\(formatTime(eta))")
                         .font(.caption2)
                         .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
         }

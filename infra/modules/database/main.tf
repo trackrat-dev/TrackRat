@@ -78,7 +78,7 @@ resource "google_sql_database" "default" {
 # Generate random password for database user
 resource "random_password" "database_user_password" {
   length  = 32
-  special = true
+  special = false
   upper   = true
   lower   = true
   numeric = true

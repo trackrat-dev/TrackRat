@@ -32,10 +32,10 @@ resource "google_secret_manager_secret_version" "app_secrets_version" {
 
   # Populate with actual secrets if provided, otherwise use placeholders
   secret_data = jsonencode({
-    "database_url"        = var.database_host != "" && var.database_name != "" && var.database_user != "" && var.database_password != "" ? "postgresql://${var.database_user}:${var.database_password}@${var.database_host}:5432/${var.database_name}" : "postgresql://placeholder"
-    "nj_transit_username" = var.nj_transit_username != "" ? var.nj_transit_username : "placeholder"
-    "nj_transit_password" = var.nj_transit_password != "" ? var.nj_transit_password : "placeholder"
-    "amtrak_api_key"      = var.amtrak_api_key != "" ? var.amtrak_api_key : "placeholder"
+    "DATABASE_URL"   = var.database_host != "" && var.database_name != "" && var.database_user != "" && var.database_password != "" ? "postgresql://${var.database_user}:${var.database_password}@${var.database_host}:5432/${var.database_name}" : "postgresql://placeholder"
+    "NJT_USERNAME"   = var.nj_transit_username != "" ? var.nj_transit_username : "placeholder"
+    "NJT_PASSWORD"   = var.nj_transit_password != "" ? var.nj_transit_password : "placeholder"
+    "AMTRAK_API_KEY" = var.amtrak_api_key != "" ? var.amtrak_api_key : "placeholder"
   })
 
   lifecycle {
