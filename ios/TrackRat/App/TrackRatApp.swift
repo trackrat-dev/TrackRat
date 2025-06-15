@@ -89,7 +89,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         task.expirationHandler = {
             // Handle cleanup, e.g., cancel network requests
             print("Background task expired: \(task.identifier)")
-            LiveActivityService.shared.currentActivity?.end(nil, dismissalPolicy: .immediate) // Example cleanup
             task.setTaskCompleted(success: false)
         }
 
@@ -124,6 +123,21 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func cancelAllPendingBackgroundTasks() {
         BGTaskScheduler.shared.cancelAllTaskRequests()
         print("All pending background tasks cancelled.")
+    }
+    
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        // Schedule background refresh when app enters background
+        scheduleAppRefresh()
+    }
+    
+    func applicationWillEnterForeground(_ application: UIApplication) {
+        // Cancel background tasks when returning to foreground
+        BGTaskScheduler.shared.cancelAllTaskRequests()
+        
+        // Resume timer-based updates if there's an active Live Activity
+        Task {
+            await LiveActivityService.shared.refreshCurrentActivity()
+        }
     }
 }
 

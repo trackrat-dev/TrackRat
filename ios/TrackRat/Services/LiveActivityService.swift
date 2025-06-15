@@ -68,8 +68,8 @@ class LiveActivityService: ObservableObject {
             }
             
             // Schedule background refresh
-            if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
-                appDelegate.scheduleAppRefresh()
+            if let appDelegate = await UIApplication.shared.delegate as? AppDelegate {
+                await appDelegate.scheduleAppRefresh()
             }
             
             // Send haptic feedback
@@ -153,8 +153,8 @@ class LiveActivityService: ObservableObject {
     func endCurrentActivity() async {
         guard let activity = currentActivity else { return }
         
-        if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
-            appDelegate.cancelAllPendingBackgroundTasks()
+        if let appDelegate = await UIApplication.shared.delegate as? AppDelegate {
+            await appDelegate.cancelAllPendingBackgroundTasks()
         }
         
         let finalState = activity.content.state
@@ -417,7 +417,7 @@ class LiveActivityService: ObservableObject {
                 throw LiveActivityError.permissionDenied
             }
             print("✅ Notification permission granted.")
-        case .denied, .restricted:
+        case .denied:
             print("⚠️ Notification permission is denied or restricted.")
             throw LiveActivityError.permissionDenied
         case .authorized, .provisional, .ephemeral:
@@ -550,8 +550,10 @@ class LiveActivityService: ObservableObject {
             isActivityActive = true
             
             // If resuming, schedule a refresh
-            if let appDelegate = UIApplication.shared.delegate as? AppDelegate {
-                appDelegate.scheduleAppRefresh()
+            Task {
+                if let appDelegate = await UIApplication.shared.delegate as? AppDelegate {
+                    await appDelegate.scheduleAppRefresh()
+                }
             }
             
             print("📱 Resumed existing Live Activity for train \(existingActivity.attributes.trainNumber)")
