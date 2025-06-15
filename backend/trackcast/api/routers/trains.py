@@ -43,15 +43,15 @@ def _matches_target_station(
     """Check if a stop matches any of the target station filters."""
     if stops_at_station:
         # Search both station code and station name
-        return stop.station_code == stops_at_station or (
+        return bool(stop.station_code == stops_at_station or (
             stop.station_name and stops_at_station.lower() in stop.station_name.lower()
-        )
+        ))
     elif stops_at_station_code:
         # Exact station code match
-        return stop.station_code == stops_at_station_code
+        return bool(stop.station_code == stops_at_station_code)
     elif stops_at_station_name:
         # Station name partial match
-        return stop.station_name and stops_at_station_name.lower() in stop.station_name.lower()
+        return bool(stop.station_name and stops_at_station_name.lower() in stop.station_name.lower())
     return False
 
 
@@ -110,14 +110,14 @@ def _enrich_train_with_stops(train: Any, stop_repo: TrainStopRepository) -> Any:
         for stop in stops:
             stop_models.append(
                 TrainStop(
-                    station_code=stop.station_code,
-                    station_name=stop.station_name,
-                    scheduled_time=stop.scheduled_time,
-                    departure_time=stop.departure_time,
-                    pickup_only=stop.pickup_only,
-                    dropoff_only=stop.dropoff_only,
-                    departed=stop.departed,
-                    stop_status=stop.stop_status,
+                    station_code=getattr(stop, 'station_code', None),
+                    station_name=getattr(stop, 'station_name', ''),
+                    scheduled_time=getattr(stop, 'scheduled_time', None),
+                    departure_time=getattr(stop, 'departure_time', None),
+                    pickup_only=bool(getattr(stop, 'pickup_only', False)),
+                    dropoff_only=bool(getattr(stop, 'dropoff_only', False)),
+                    departed=bool(getattr(stop, 'departed', False)),
+                    stop_status=getattr(stop, 'stop_status', None),
                 )
             )
         # Add stops to the train object
@@ -359,7 +359,7 @@ async def list_trains(
 
             consolidation_service = TrainConsolidationService()
             consolidated_trains = consolidation_service.consolidate_trains(
-                enriched_trains, from_station_code
+                enriched_trains, from_station_code or ""
             )
 
             logger.info(f"Consolidation complete: {len(consolidated_trains)} consolidated journeys")

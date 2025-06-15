@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 import time
-from typing import Optional, Tuple
+from typing import Dict, Optional, Set, Tuple, Union
 
 import click
 import uvicorn
@@ -342,7 +342,7 @@ def import_data(source: Optional[str], format: Optional[str], pattern: Optional[
 
                 # Run import (always overwrite existing records)
                 success, stats = import_service.import_data(
-                    source_dir=source, file_format=format, file_pattern=pattern
+                    source_dir=source, file_format=format or "csv", file_pattern=pattern or "*.csv"
                 )
 
                 if success:
@@ -405,21 +405,24 @@ def backfill_station_codes(dry_run: bool, limit: Optional[int]) -> None:
         stops = query.all()
 
         # Track statistics
-        stats = {"processed": 0, "updated": 0, "no_match": 0, "unmatched_names": set()}
+        processed_count = 0
+        updated_count = 0
+        no_match_count = 0
+        unmatched_names: Set[str] = set()
 
         # Process each stop
         for stop in stops:
-            stats["processed"] += 1
+            processed_count += 1
 
             if stop.station_name:
-                code = station_mapper.get_code_for_name(stop.station_name)
+                code = station_mapper.get_code_for_name(str(stop.station_name))
                 if code:
                     if not dry_run:
                         try:
                             stop.station_code = code
                             # Commit individual stop to catch constraint violations
                             session.commit()
-                            stats["updated"] += 1
+                            updated_count += 1
                             logger.debug(f"Mapped '{stop.station_name}' -> '{code}'")
                         except Exception as e:
                             session.rollback()
@@ -441,31 +444,31 @@ def backfill_station_codes(dry_run: bool, limit: Optional[int]) -> None:
                                     f"Duplicate stop found: train {stop.train_id} already has a stop with code '{code}'"
                                 )
                     else:
-                        stats["updated"] += 1
+                        updated_count += 1
                         logger.debug(f"Mapped '{stop.station_name}' -> '{code}'")
                 else:
-                    stats["no_match"] += 1
-                    stats["unmatched_names"].add(stop.station_name)
+                    no_match_count += 1
+                    unmatched_names.add(str(stop.station_name))
                     logger.debug(f"No match for station name: '{stop.station_name}'")
 
             # Progress update
-            if stats["processed"] % 100 == 0:
-                logger.info(f"Progress: {stats['processed']}/{len(stops)} stops processed")
+            if processed_count % 100 == 0:
+                logger.info(f"Progress: {processed_count}/{len(stops)} stops processed")
 
         # No final commit needed since we commit individually
 
         # Report results
         logger.info(f"Backfill completed:")
-        logger.info(f"  - Processed: {stats['processed']} stops")
-        logger.info(f"  - Updated: {stats['updated']} stops")
-        logger.info(f"  - No match: {stats['no_match']} stops")
+        logger.info(f"  - Processed: {processed_count} stops")
+        logger.info(f"  - Updated: {updated_count} stops")
+        logger.info(f"  - No match: {no_match_count} stops")
 
-        if stats["unmatched_names"]:
-            logger.info(f"  - Unmatched station names ({len(stats['unmatched_names'])}):")
-            for name in sorted(stats["unmatched_names"])[:10]:
+        if unmatched_names:
+            logger.info(f"  - Unmatched station names ({len(unmatched_names)}):")
+            for name in sorted(unmatched_names)[:10]:
                 logger.info(f"    - '{name}'")
-            if len(stats["unmatched_names"]) > 10:
-                logger.info(f"    ... and {len(stats['unmatched_names']) - 10} more")
+            if len(unmatched_names) > 10:
+                logger.info(f"    ... and {len(unmatched_names) - 10} more")
 
         if dry_run:
             logger.info("Dry run completed - no changes were made")
