@@ -282,7 +282,7 @@ async def comprehensive_health_check(
         try:
             from trackcast.db.models import Train
             recent_trains = db.query(Train).filter(
-                Train.created_at >= time.time() - 3600  # Last hour
+                Train.created_at >= datetime.utcnow() - timedelta(hours=1)  # Last hour
             ).count()
             
             health_status["checks"]["recent_data"] = {
