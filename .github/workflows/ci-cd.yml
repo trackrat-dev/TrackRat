@@ -383,7 +383,7 @@ jobs:
   # Phase 3: Deployment Gate
   deployment-gate:
     runs-on: ubuntu-latest
-    needs: [workflow-validation, backend-tests, infra-tests]
+    needs: [changes, workflow-validation, backend-tests, infra-tests]
     if: always()
     name: Deployment Gate
     outputs:
@@ -696,7 +696,7 @@ jobs:
   # Final summary job
   pipeline-summary:
     runs-on: ubuntu-latest
-    needs: [deployment-gate, deploy-dev]
+    needs: [changes, deployment-gate, deploy-dev]
     if: always()
     name: Pipeline Summary
 
