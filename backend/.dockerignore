@@ -5,6 +5,19 @@
 data/
 training_artifacts/
 
+# Additional large files to exclude
+arch_docs/
+CONTAINERIZATION_SUMMARY.md
+DEPLOYMENT.md
+DOCKER_README.md
+USAGE.md
+INDICES.md
+docker-compose.yml
+check_track_conflicts.py
+model.py
+init-db.sql
+cloudbuild.yaml
+
 # Python cache and build artifacts
 __pycache__/
 *.py[cod]
