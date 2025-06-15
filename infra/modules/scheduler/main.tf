@@ -34,9 +34,12 @@ resource "google_cloud_run_v2_service" "scheduler_service" {
       max_instance_count = var.max_instances # Should be 1 as per requirement
     }
 
-    vpc_access {
-      connector = var.vpc_connector_id
-      egress    = var.vpc_connector_id != null ? "ALL_TRAFFIC" : "PRIVATE_RANGES_ONLY"
+    dynamic "vpc_access" {
+      for_each = var.vpc_connector_id != null ? [1] : []
+      content {
+        connector = var.vpc_connector_id
+        egress    = "ALL_TRAFFIC"
+      }
     }
 
     timeout                          = "${var.request_timeout_seconds}s"
