@@ -17,6 +17,10 @@ on:
       - '.github/workflows/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 env:
   TF_VERSION: '1.7.0'
   TFLINT_VERSION: 'v0.50.0'
@@ -37,11 +41,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check for changes
         uses: dorny/paths-filter@v2
         id: changes
         with:
+          token: ${{ github.token }}
           filters: |
             backend:
               - 'backend/**'
