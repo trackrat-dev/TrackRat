@@ -3,7 +3,11 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = ">= 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.4"
     }
   }
 }
@@ -26,11 +30,12 @@ resource "google_secret_manager_secret" "app_secrets" {
 resource "google_secret_manager_secret_version" "app_secrets_version" {
   secret = google_secret_manager_secret.app_secrets.id
 
-  # Initial placeholder - replace with actual secrets
+  # Populate with actual secrets if provided, otherwise use placeholders
   secret_data = jsonencode({
-    "database_url"       = "postgresql://placeholder"
-    "nj_transit_api_key" = "placeholder"
-    "amtrak_api_key"     = "placeholder"
+    "database_url"        = "postgresql://placeholder"
+    "nj_transit_username" = var.nj_transit_username != "" ? var.nj_transit_username : "placeholder"
+    "nj_transit_password" = var.nj_transit_password != "" ? var.nj_transit_password : "placeholder"
+    "amtrak_api_key"      = var.amtrak_api_key != "" ? var.amtrak_api_key : "placeholder"
   })
 
   lifecycle {
@@ -38,25 +43,4 @@ resource "google_secret_manager_secret_version" "app_secrets_version" {
   }
 }
 
-resource "google_secret_manager_secret" "db_password" {
-  # Check if db_password_plaintext is provided before creating
-  count = var.db_password_plaintext != null && var.db_password_plaintext != "" ? 1 : 0
-
-  secret_id = "trackrat-db-password" # As specified in the issue
-  labels = {
-    app         = var.app_name
-    environment = var.environment
-    type        = "database-credentials"
-  }
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "db_password_version" {
-  # Check if db_password_plaintext is provided before creating
-  count = var.db_password_plaintext != null && var.db_password_plaintext != "" ? 1 : 0
-
-  secret      = google_secret_manager_secret.db_password[0].id
-  secret_data = var.db_password_plaintext
-}
+# Database password is now auto-generated and stored in the database module

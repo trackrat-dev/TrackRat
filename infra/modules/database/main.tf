@@ -3,7 +3,11 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = ">= 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.1"
     }
   }
 }
@@ -14,8 +18,7 @@ resource "google_sql_database_instance" "default" {
   database_version = var.database_version
   name             = var.instance_name
   settings {
-    tier    = var.instance_tier
-    edition = "ENTERPRISE"
+    tier = var.instance_tier
 
     ip_configuration {
       ipv4_enabled    = false # Disable public IP
@@ -24,8 +27,8 @@ resource "google_sql_database_instance" "default" {
     }
 
     backup_configuration {
-      enabled            = true
-      binary_log_enabled = true # Required for PITR
+      enabled = true
+      # binary_log_enabled is MySQL-only, PostgreSQL uses WAL automatically
       backup_retention_settings {
         retained_backups = 7
         retention_unit   = "COUNT"
@@ -40,10 +43,6 @@ resource "google_sql_database_instance" "default" {
       update_track = "stable"                    # Or "canary"
     }
 
-    database_flags {
-      name  = "cloudsql.insights.query_insights_enabled"
-      value = var.enable_cloud_sql_insights ? "on" : "off"
-    }
     database_flags {
       name  = "log_min_duration_statement"              # For PostgreSQL
       value = tostring(var.slow_query_log_min_duration) # In milliseconds, 0 to disable
@@ -76,12 +75,36 @@ resource "google_sql_database" "default" {
   collation = "en_US.UTF8"
 }
 
+# Generate random password for database user
+resource "random_password" "database_user_password" {
+  length  = 32
+  special = true
+  upper   = true
+  lower   = true
+  numeric = true
+}
+
+# Store password in Secret Manager
+resource "google_secret_manager_secret" "database_password" {
+  project   = var.project_id
+  secret_id = "${var.instance_name}-db-password"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "database_password_version" {
+  secret      = google_secret_manager_secret.database_password.id
+  secret_data = random_password.database_user_password.result
+}
+
 # Create a user for the database
 resource "google_sql_user" "default" {
   project  = var.project_id
   instance = google_sql_database_instance.default.name
   name     = var.database_user_name
-  password = var.database_user_password # This will be sourced from Secret Manager
+  password = random_password.database_user_password.result
   # host can be restricted if needed, e.g. for specific IP ranges
   # host = "%"
 }

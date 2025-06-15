@@ -280,14 +280,67 @@ gcloud projects get-iam-policy PROJECT_ID
 terraform force-unlock LOCK_ID
 ```
 
-## Next Steps
+## Post-Deployment Operations
 
-After deploying the base infrastructure:
+After deploying the infrastructure with `terraform apply`:
 
-1. **Phase 2**: Deploy Cloud SQL for PostgreSQL
-2. **Phase 3**: Configure Cloud Run services
-3. **Phase 4**: Set up monitoring and alerting
-4. **Phase 5**: Configure CI/CD pipelines
+### What Runs Automatically
+- ✅ **Cloud Run Services**: API and Scheduler services are deployed and running
+- ✅ **Cloud Scheduler**: Configured to trigger data collection at regular intervals
+- ✅ **Database**: Cloud SQL PostgreSQL instance is operational
+- ✅ **Networking**: VPC, subnets, and firewall rules are active
+- ✅ **Secret Manager**: Secrets are created (need to be populated)
+
+### Manual Steps Required
+
+1. **Populate Secrets**: Add API credentials to Secret Manager
+   ```bash
+   gcloud secrets versions add trackrat-{env}-secrets --data-file=secrets.json
+   ```
+
+2. **Verify Services**: Check that Cloud Run services are healthy
+   ```bash
+   curl https://SERVICE_URL/health
+   ```
+
+3. **Monitor Data Collection**: Ensure scheduler is collecting data
+   ```bash
+   gcloud scheduler jobs list --location=us-central1
+   ```
+
+### Operational Procedures
+
+**Daily Operations:**
+- Monitor service health via Cloud Run console
+- Check data collection rates via API endpoints
+- Review logs for any errors or issues
+
+**Weekly Operations:**
+- Review resource utilization and scaling
+- Check database performance metrics
+- Verify backup status
+
+**Monthly Operations:**
+- Rotate API credentials in Secret Manager
+- Review and optimize resource allocation
+- Update ML models with fresh data
+
+### Service URLs
+
+After deployment, services are available at:
+- **API Service**: `https://trackrat-api-{env}-[hash].a.run.app`
+- **Health Checks**: `https://trackrat-api-{env}-[hash].a.run.app/health`
+- **API Documentation**: `https://trackrat-api-{env}-[hash].a.run.app/docs`
+
+### Monitoring and Alerts
+
+Access monitoring via Google Cloud Console:
+- **Cloud Run**: https://console.cloud.google.com/run?project=PROJECT_ID
+- **Cloud SQL**: https://console.cloud.google.com/sql?project=PROJECT_ID
+- **Cloud Scheduler**: https://console.cloud.google.com/cloudscheduler?project=PROJECT_ID
+- **Logs**: https://console.cloud.google.com/logs?project=PROJECT_ID
+
+For detailed operational procedures, see `/OPERATORS_GUIDE.md`.
 
 ## Support
 
