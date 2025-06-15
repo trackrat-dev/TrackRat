@@ -140,21 +140,30 @@ jobs:
             ${{ runner.os }}-pip-backend-
             ${{ runner.os }}-pip-
 
-      - name: Install dependencies
+      - name: Install dependencies in temporary venv
         run: |
+          echo "💾 Disk space before venv creation:"
+          df -h
+          
           python -m pip install --upgrade pip
-          # Use CPU-only PyTorch to save disk space
+          
+          # Create temporary virtual environment for CI tests
+          echo "🏗️ Creating temporary virtual environment for CI tests..."
+          python -m venv ci-venv
+          source ci-venv/bin/activate
+          
+          # Use CPU-only PyTorch to save disk space in CI
+          echo "📦 Installing CPU-only dependencies..."
           pip install -r requirements-cpu.txt -f https://download.pytorch.org/whl/torch_stable.html
           pip install -e .
-
-          # Clean pip cache and temporary files to save space
-          pip cache purge
-          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-          find . -type f -name "*.pyc" -delete 2>/dev/null || true
+          
+          echo "📦 Virtual environment created at: $(pwd)/ci-venv"
+          echo "📊 Virtual environment size: $(du -sh ci-venv)"
 
       # Code Quality Checks
       - name: Code formatting check (black)
         run: |
+          source ci-venv/bin/activate
           echo "🎨 Checking code formatting..."
           if black --check trackcast/; then
             echo "✅ Code formatting looks good!"
@@ -165,6 +174,7 @@ jobs:
 
       - name: Linting check (flake8)
         run: |
+          source ci-venv/bin/activate
           echo "🔍 Running linting checks..."
           if flake8 --ignore F541,E712,F841,E203,E711,W503,F401,W291,E501 trackcast/; then
             echo "✅ No linting issues found!"
@@ -176,6 +186,7 @@ jobs:
       # Unit Tests
       - name: Run unit tests
         run: |
+          source ci-venv/bin/activate
           echo "🧪 Running unit tests..."
           pytest tests/unit/ -v --tb=short
           echo "✅ Unit tests passed!"
@@ -185,9 +196,21 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trackcast_test
         run: |
+          source ci-venv/bin/activate
           echo "🔗 Running integration tests..."
           pytest tests/integration/ -v --tb=short
           echo "✅ Integration tests passed!"
+
+      # Clean up virtual environment before Docker build
+      - name: Clean up CI virtual environment
+        run: |
+          echo "🧹 Removing CI virtual environment to save space before Docker build..."
+          rm -rf ci-venv
+          pip cache purge
+          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find . -type f -name "*.pyc" -delete 2>/dev/null || true
+          echo "💾 Disk space after venv cleanup:"
+          df -h
 
       # Docker Build and Test
       - name: Set up Docker Buildx
