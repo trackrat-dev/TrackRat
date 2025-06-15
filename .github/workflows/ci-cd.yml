@@ -78,13 +78,7 @@ jobs:
       - name: Validate workflow YAML syntax
         run: |
           echo "🔍 Validating GitHub workflow YAML files..."
-          yamllint -c - .github/workflows/ << 'EOF'
-          extends: default
-          rules:
-            line-length: disable
-            document-start: disable
-            truthy: disable
-          EOF
+          yamllint -d '{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable}}' .github/workflows/
           echo "✅ All workflow files have valid YAML syntax"
 
   # Phase 2: Testing
@@ -133,8 +127,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # Use inference requirements to save disk space
+          pip install -r requirements-inference.txt
           pip install -e .
+          
+          # Clean pip cache to save space
+          pip cache purge
 
       # Code Quality Checks
       - name: Code formatting check (black)
