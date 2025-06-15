@@ -28,6 +28,7 @@ resource "google_cloud_run_v2_service" "default" {
   name        = var.service_name
   labels      = var.labels
   annotations = var.annotations
+  ingress     = "INGRESS_TRAFFIC_ALL"
 
   template {
     scaling {
