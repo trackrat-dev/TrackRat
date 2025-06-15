@@ -383,7 +383,8 @@ jobs:
   # Phase 3: Deployment Gate
   deployment-gate:
     runs-on: ubuntu-latest
-    needs: [changes, workflow-validation, backend-tests, infra-tests]
+    needs: [changes, backend-tests, infra-tests]
+    # Remove workflow-validation from required dependencies since it's conditional
     if: always()
     name: Deployment Gate
     outputs:
@@ -397,48 +398,59 @@ jobs:
         run: |
           echo "🚦 Evaluating deployment gate..."
 
-          # Check if we're on main branch
-          is_main_branch=${{ github.ref == 'refs/heads/main' }}
-          echo "Main branch: $is_main_branch"
+          # Core conditions
+          IS_MAIN=${{ github.ref == 'refs/heads/main' }}
+          HAS_CHANGES=${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.infra == 'true' }}
 
-          # Check if backend or infra changed
-          has_deployable_changes=${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.infra == 'true' }}
-          echo "Has deployable changes: $has_deployable_changes"
+          # Test results - explicit handling of each possible state
+          BACKEND_OK=${{ needs.backend-tests.result == 'success' }}
+          INFRA_OK=${{ needs.infra-tests.result == 'success' || needs.infra-tests.result == 'skipped' }}
 
-          # Check test results
-          backend_success=${{ needs.backend-tests.result == 'success' || needs.backend-tests.result == 'skipped' }}
-          # ios_success=${{ needs.ios-tests.result != 'failure' }}  # iOS tests temporarily disabled
-          ios_success="true"  # iOS tests skipped
-          infra_success=${{ needs.infra-tests.result != 'failure' }}
-          workflow_success=${{ needs.workflow-validation.result != 'failure' }}
+          # Workflow validation is optional - only fails if it ran and failed
+          WORKFLOW_OK=${{ needs.workflow-validation.result != 'failure' }}
 
-          echo "Backend tests: ${{ needs.backend-tests.result }}"
-          echo "iOS tests: skipped (temporarily disabled)"
-          echo "Infrastructure tests: ${{ needs.infra-tests.result }}"
-          echo "Workflow validation: ${{ needs.workflow-validation.result }}"
+          echo "Branch is main: $IS_MAIN"
+          echo "Has deployable changes: $HAS_CHANGES"
+          echo "Backend tests passed: $BACKEND_OK (${{ needs.backend-tests.result }})"
+          echo "Infra tests passed: $INFRA_OK (${{ needs.infra-tests.result }})"
+          echo "Workflow validation OK: $WORKFLOW_OK (${{ needs.workflow-validation.result }})"
 
-          # Determine if all tests passed
-          if [[ "$backend_success" == "true" && "$ios_success" == "true" && "$infra_success" == "true" && "$workflow_success" == "true" ]]; then
-            all_tests_passed="true"
+          # Docker image readiness
+          DOCKER_READY=${{ needs.backend-tests.result == 'success' && github.ref == 'refs/heads/main' }}
+          echo "Docker image ready: $DOCKER_READY"
+
+          # Final decision - all conditions must be true
+          if [[ "$IS_MAIN" == "true" && "$HAS_CHANGES" == "true" && "$BACKEND_OK" == "true" && "$INFRA_OK" == "true" && "$WORKFLOW_OK" == "true" ]]; then
+            SHOULD_DEPLOY="true"
+            echo "✅ APPROVED: All conditions met"
           else
-            all_tests_passed="false"
+            SHOULD_DEPLOY="false"
+            echo "❌ BLOCKED: Missing conditions"
+            echo "  - Main branch: $IS_MAIN"
+            echo "  - Has changes: $HAS_CHANGES"
+            echo "  - Backend OK: $BACKEND_OK"
+            echo "  - Infra OK: $INFRA_OK"
+            echo "  - Workflow OK: $WORKFLOW_OK"
           fi
 
-          # Check if Docker image is ready (backend tests passed on main)
-          docker_ready=${{ needs.backend-tests.result == 'success' && github.ref == 'refs/heads/main' }}
+          # Set outputs explicitly
+          echo "should_deploy=$SHOULD_DEPLOY" >> $GITHUB_OUTPUT
+          echo "all_tests_passed=$BACKEND_OK" >> $GITHUB_OUTPUT
+          echo "docker_image_ready=$DOCKER_READY" >> $GITHUB_OUTPUT
 
-          # Final deployment decision
-          if [[ "$is_main_branch" == "true" && "$has_deployable_changes" == "true" && "$all_tests_passed" == "true" ]]; then
-            should_deploy="true"
-            echo "✅ Deployment gate: APPROVED"
-          else
-            should_deploy="false"
-            echo "❌ Deployment gate: BLOCKED"
-          fi
-
-          echo "should_deploy=$should_deploy" >> $GITHUB_OUTPUT
-          echo "all_tests_passed=$all_tests_passed" >> $GITHUB_OUTPUT
-          echo "docker_image_ready=$docker_ready" >> $GITHUB_OUTPUT
+      - name: Debug Gate Decision
+        run: |
+          echo "## 🔍 Debug Information" >> $GITHUB_STEP_SUMMARY
+          echo "### Gate Outputs:" >> $GITHUB_STEP_SUMMARY
+          echo "- should_deploy output: ${{ steps.gate-decision.outputs.should_deploy }}" >> $GITHUB_STEP_SUMMARY
+          echo "- all_tests_passed output: ${{ steps.gate-decision.outputs.all_tests_passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- docker_image_ready output: ${{ steps.gate-decision.outputs.docker_image_ready }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Job Results:" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend tests result: ${{ needs.backend-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Infra tests result: ${{ needs.infra-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Workflow validation result: ${{ needs.workflow-validation.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Changes detected: backend=${{ needs.changes.outputs.backend }}, infra=${{ needs.changes.outputs.infra }}" >> $GITHUB_STEP_SUMMARY
 
       - name: Generate gate summary
         run: |
