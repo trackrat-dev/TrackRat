@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from prometheus_client import Histogram
-
 from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -122,7 +121,9 @@ class TrainRepository(BaseRepository):
                 .first()
             )
             duration = time.time() - db_start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_train_by_id_and_time").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_train_by_id_and_time").observe(
+                duration
+            )
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_train_by_id_and_time: {str(e)}")
@@ -163,7 +164,9 @@ class TrainRepository(BaseRepository):
                 .first()
             )
             duration = time.time() - db_start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_train_by_id_time_and_station").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_train_by_id_time_and_station").observe(
+                duration
+            )
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_train_by_id_time_and_station: {str(e)}")
@@ -206,7 +209,9 @@ class TrainRepository(BaseRepository):
                 .first()
             )
             duration = time.time() - db_start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_train_by_id_time_and_station_source").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(
+                query_type="get_train_by_id_time_and_station_source"
+            ).observe(duration)
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_train_by_id_time_and_station_source: {str(e)}")
@@ -625,7 +630,9 @@ class TrainRepository(BaseRepository):
                 .all()
             )
             duration = time.time() - db_start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_for_time_range").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_for_time_range").observe(
+                duration
+            )
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_for_time_range: {str(e)}")
@@ -701,8 +708,10 @@ class TrainRepository(BaseRepository):
                 .all()
             )
             duration = time.time() - start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_for_collection").observe(duration)
-            return result
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_for_collection").observe(
+                duration
+            )
+            return duration
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_for_collection: {str(e)}")
             raise
@@ -727,7 +736,9 @@ class TrainRepository(BaseRepository):
                 .all()
             )
             duration = time.time() - start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_needing_features").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_needing_features").observe(
+                duration
+            )
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_needing_features: {str(e)}")
@@ -759,7 +770,9 @@ class TrainRepository(BaseRepository):
                 .all()
             )
             duration = time.time() - start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_needing_predictions").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_needing_predictions").observe(
+                duration
+            )
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_needing_predictions: {str(e)}")
@@ -780,7 +793,9 @@ class TrainRepository(BaseRepository):
             lines = [r[0] for r in self.session.query(Train.line).distinct().all()]
             destinations = [r[0] for r in self.session.query(Train.destination).distinct().all()]
             duration = time.time() - start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_all_lines_and_destinations").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_all_lines_and_destinations").observe(
+                duration
+            )
             return {"lines": lines, "destinations": destinations}
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_all_lines_and_destinations: {str(e)}")
@@ -914,7 +929,9 @@ class TrainRepository(BaseRepository):
                 f"deleted {stats['features_deleted']} feature records"
             )
             duration = time.time() - start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_features_for_train").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_features_for_train").observe(
+                duration
+            )
             return stats
 
         except SQLAlchemyError as e:
@@ -998,7 +1015,9 @@ class TrainRepository(BaseRepository):
                 f"deleted {stats['features_deleted']} feature records"
             )
             duration = time.time() - start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_features_for_time_range").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_features_for_time_range").observe(
+                duration
+            )
             return stats
 
         except SQLAlchemyError as e:
@@ -1082,7 +1101,9 @@ class TrainRepository(BaseRepository):
                 f"deleted {stats['predictions_deleted']} prediction records"
             )
             duration = time.time() - db_start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_predictions_for_time_range").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="clear_predictions_for_time_range").observe(
+                duration
+            )
             return stats
 
         except SQLAlchemyError as e:
@@ -1316,7 +1337,9 @@ class ModelDataRepository(BaseRepository):
         try:
             result = self.session.query(ModelData).join(Train).filter(Train.id == train_id).first()
             duration = time.time() - start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_model_data_for_train").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_model_data_for_train").observe(
+                duration
+            )
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_model_data_for_train: {str(e)}")
@@ -1395,7 +1418,9 @@ class PredictionDataRepository(BaseRepository):
                 self.session.query(PredictionData).join(Train).filter(Train.id == train_id).first()
             )
             duration = time.time() - start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_prediction_for_train").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_prediction_for_train").observe(
+                duration
+            )
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_prediction_for_train: {str(e)}")
@@ -1463,7 +1488,9 @@ class PredictionDataRepository(BaseRepository):
                 "by_line": by_line,
             }
             duration = time.time() - start_time
-            DB_QUERY_DURATION_SECONDS.labels(query_type="get_prediction_accuracy_stats").observe(duration)
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_prediction_accuracy_stats").observe(
+                duration
+            )
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_prediction_accuracy_stats: {str(e)}")

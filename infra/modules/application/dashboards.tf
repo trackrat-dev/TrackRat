@@ -1,4 +1,5 @@
 terraform {
+  required_version = ">= 1.0"
   required_providers {
     google = {
       source  = "hashicorp/google"
@@ -25,6 +26,58 @@ variable "cloud_run_location" {
 variable "db_instance_name" {
   description = "The name of the Cloud SQL database instance (e.g., project:region:instance or just instance name if project is implicit)."
   type        = string
+}
+
+variable "critical_alert_channel_ids" {
+  description = "List of notification channel IDs for critical alerts."
+  type        = list(string)
+}
+
+variable "warning_alert_channel_ids" {
+  description = "List of notification channel IDs for warning alerts."
+  type        = list(string)
+}
+
+variable "api_error_rate_threshold" {
+  description = "Error rate threshold (0.0 to 1.0) for API error rate alert."
+  type        = number
+  default     = 0.05
+}
+
+variable "api_latency_p95_threshold_seconds" {
+  description = "P95 latency threshold in seconds for API response time alert."
+  type        = number
+  default     = 2.0
+}
+
+variable "nj_transit_api_host" {
+  description = "Hostname for the NJ Transit API endpoint for uptime checks."
+  type        = string
+  default     = "api.njtransit.com" # Placeholder - update with actual host if different
+}
+
+variable "nj_transit_api_path" {
+  description = "Path for the NJ Transit API health/status endpoint."
+  type        = string
+  default     = "/v2/status" # Placeholder - update with actual path
+}
+
+variable "amtrak_api_host" {
+  description = "Hostname for the Amtrak API endpoint for uptime checks."
+  type        = string
+  default     = "api.amtrak.com" # Placeholder - update with actual host if different
+}
+
+variable "amtrak_api_path" {
+  description = "Path for the Amtrak API health/status endpoint."
+  type        = string
+  default     = "/v2/status" # Placeholder - update with actual path
+}
+
+variable "uptime_check_regions" {
+  description = "List of regions to run uptime checks from."
+  type        = list(string)
+  default     = ["USA_EAST_VIRGINIA", "USA_WEST_CALIFORNIA", "EUROPE_WEST_BELGIUM"]
 }
 
 // Placeholder variables for custom metric names.
@@ -71,11 +124,6 @@ variable "prediction_confidence_metric_name" {
   default     = "custom.googleapis.com/fastapi/track_prediction_confidence_ratio"
 }
 
-variable "model_prediction_accuracy_metric_name" {
-  description = "Metric name for model prediction accuracy (gauge)."
-  type        = string
-  default     = "custom.googleapis.com/fastapi/model_prediction_accuracy"
-}
 
 variable "db_query_duration_metric_name" {
   description = "Metric name for database query duration (histogram)."
@@ -86,7 +134,7 @@ variable "db_query_duration_metric_name" {
 
 # --- Operations Dashboard ---
 resource "google_monitoring_dashboard" "operations_dashboard" {
-  project        = var.project_id
+  project = var.project_id
   dashboard_json = jsonencode({
     "displayName" : "TrackCast - Operations Dashboard",
     "gridLayout" : {
@@ -285,7 +333,7 @@ resource "google_monitoring_dashboard" "operations_dashboard" {
 
 # --- Business Dashboard ---
 resource "google_monitoring_dashboard" "business_dashboard" {
-  project        = var.project_id
+  project = var.project_id
   dashboard_json = jsonencode({
     "displayName" : "TrackCast - Business KPIs Dashboard",
     "gridLayout" : {
@@ -327,11 +375,11 @@ resource "google_monitoring_dashboard" "business_dashboard" {
           "scorecard" : {
             "timeSeriesQuery" : {
               "timeSeriesQuery" : {
-                 "query": "fetch cloud_run_revision::custom.googleapis.com/fastapi/nj_transit_fetch_success_total | metric ::cloud_run_revision | filter resource.service_name == '${var.cloud_run_service_name}' | align delta(5m) | every 60s | group_by [], sum(val())"
+                "query" : "fetch cloud_run_revision::custom.googleapis.com/fastapi/nj_transit_fetch_success_total | metric ::cloud_run_revision | filter resource.service_name == '${var.cloud_run_service_name}' | align delta(5m) | every 60s | group_by [], sum(val())"
               }
             },
             "thresholds" : [
-              { "value": 0.5, "color": "RED", "direction": "BELOW" } // Alert if less than 1 success in 5 mins
+              { "value" : 0.5, "color" : "RED", "direction" : "BELOW" } // Alert if less than 1 success in 5 mins
             ]
           }
         },
@@ -339,12 +387,12 @@ resource "google_monitoring_dashboard" "business_dashboard" {
           "title" : "Amtrak Data - Recent Successes (Count in last 5min)",
           "scorecard" : {
             "timeSeriesQuery" : {
-               "timeSeriesQuery" : {
-                 "query": "fetch cloud_run_revision::custom.googleapis.com/fastapi/amtrak_fetch_success_total | metric ::cloud_run_revision | filter resource.service_name == '${var.cloud_run_service_name}' | align delta(5m) | every 60s | group_by [], sum(val())"
-               }
+              "timeSeriesQuery" : {
+                "query" : "fetch cloud_run_revision::custom.googleapis.com/fastapi/amtrak_fetch_success_total | metric ::cloud_run_revision | filter resource.service_name == '${var.cloud_run_service_name}' | align delta(5m) | every 60s | group_by [], sum(val())"
+              }
             },
             "thresholds" : [
-              { "value": 0.5, "color": "RED", "direction": "BELOW" }
+              { "value" : 0.5, "color" : "RED", "direction" : "BELOW" }
             ]
           }
         },
@@ -373,9 +421,9 @@ resource "google_monitoring_dashboard" "business_dashboard" {
         {
           "title" : "Track Prediction Confidence Distribution",
           "xyChart" : { // Using xyChart to display a distribution (histogram)
-            "chartOptions": {
-              "mode": "COLOR" // COLOR mode is typical for heatmaps/histograms if data is bucketized
-                               // If it's a distribution metric type, GCP Monitoring handles it.
+            "chartOptions" : {
+              "mode" : "COLOR" // COLOR mode is typical for heatmaps/histograms if data is bucketized
+              // If it's a distribution metric type, GCP Monitoring handles it.
             },
             "dataSets" : [
               {
@@ -386,26 +434,26 @@ resource "google_monitoring_dashboard" "business_dashboard" {
                     // If it's a Prometheus histogram, it will have _bucket, _sum, _count.
                     // For a DISTRIBUTION metric type in Cloud Monitoring:
                     "aggregation" : {
-                       "alignmentPeriod": "3600s", // Aggregate over 1 hour
-                       "perSeriesAligner": "ALIGN_DELTA", // Use delta for counters if it's a counter-based histogram
-                       "crossSeriesReducer": "REDUCE_SUM", // Sum counts from all instances
-                       "groupByFields": ["metric.label.le"] // If it's a prometheus histogram with 'le' label
+                      "alignmentPeriod" : "3600s",          // Aggregate over 1 hour
+                      "perSeriesAligner" : "ALIGN_DELTA",   // Use delta for counters if it's a counter-based histogram
+                      "crossSeriesReducer" : "REDUCE_SUM",  // Sum counts from all instances
+                      "groupByFields" : ["metric.label.le"] // If it's a prometheus histogram with 'le' label
                     }
                   },
-                   "outputFullQueryText": true // Useful for debugging the query
+                  "outputFullQueryText" : true // Useful for debugging the query
                 },
                 "plotType" : "HEATMAP" # Or STACKED_BAR if buckets are well-defined and few
                 # "targetAxis": "Y1" # Ensure Y1 is configured if using that
               }
             ],
-             "yAxis": {
-                "label": "Count", # Or "Density"
-                "scale": "LINEAR"
-             },
-             "xAxis": {
-                "label": "Confidence Score",
-                "scale": "LINEAR"
-             }
+            "yAxis" : {
+              "label" : "Count", # Or "Density"
+              "scale" : "LINEAR"
+            },
+            "xAxis" : {
+              "label" : "Confidence Score",
+              "scale" : "LINEAR"
+            }
             # "description": "Distribution of confidence scores for track predictions. This widget assumes the metric '${var.prediction_confidence_metric_name}' is a DISTRIBUTION type or a Prometheus histogram."
           }
         }
@@ -416,7 +464,7 @@ resource "google_monitoring_dashboard" "business_dashboard" {
 
 # --- Troubleshooting Dashboard ---
 resource "google_monitoring_dashboard" "troubleshooting_dashboard" {
-  project        = var.project_id
+  project = var.project_id
   dashboard_json = jsonencode({
     "displayName" : "TrackCast - Troubleshooting Dashboard",
     "gridLayout" : {
@@ -439,7 +487,7 @@ resource "google_monitoring_dashboard" "troubleshooting_dashboard" {
                   }
                 },
                 "plotType" : "STACKED_BAR", // Or LINE
-                "legendTemplate": "${metric.label.response_code_class} - ${metric.label.response_code}"
+                "legendTemplate" : "$${metric.label.response_code_class} - $${metric.label.response_code}"
               }
             ],
             "timeshiftDuration" : "0s",
@@ -452,17 +500,17 @@ resource "google_monitoring_dashboard" "troubleshooting_dashboard" {
         {
           "title" : "DB Query Duration Distribution (All Types)",
           "xyChart" : {
-             "chartOptions": {"mode": "COLOR"},
+            "chartOptions" : { "mode" : "COLOR" },
             "dataSets" : [
               {
                 "timeSeriesQuery" : {
                   "timeSeriesFilter" : {
                     "filter" : "metric.type=\"${var.db_query_duration_metric_name}\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\"",
-                     "aggregation" : { // Aggregation for distribution/histogram
-                       "alignmentPeriod": "300s",
-                       "perSeriesAligner": "ALIGN_DELTA",
-                       "crossSeriesReducer": "REDUCE_SUM",
-                       "groupByFields": ["metric.label.le"] // Assuming 'le' for Prometheus histogram
+                    "aggregation" : { // Aggregation for distribution/histogram
+                      "alignmentPeriod" : "300s",
+                      "perSeriesAligner" : "ALIGN_DELTA",
+                      "crossSeriesReducer" : "REDUCE_SUM",
+                      "groupByFields" : ["metric.label.le"] // Assuming 'le' for Prometheus histogram
                     }
                   }
                 },
@@ -471,30 +519,30 @@ resource "google_monitoring_dashboard" "troubleshooting_dashboard" {
             ],
             "yAxis" : { "label" : "Count", "scale" : "LINEAR" },
             "xAxis" : { "label" : "Query Duration (seconds)", "scale" : "LINEAR" },
-            "description": "Distribution of DB query durations. For specific slow queries, use Cloud SQL Insights."
+            "description" : "Distribution of DB query durations. For specific slow queries, use Cloud SQL Insights."
           }
         },
         // Model Inference Times
         {
           "title" : "Model Inference Time Distribution",
           "xyChart" : {
-            "chartOptions": {"mode": "COLOR"},
+            "chartOptions" : { "mode" : "COLOR" },
             "dataSets" : [
               {
                 "timeSeriesQuery" : {
                   "timeSeriesFilter" : {
                     "filter" : "metric.type=\"${var.model_inference_time_metric_name}\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\"",
                     "aggregation" : {
-                       "alignmentPeriod": "300s",
-                       "perSeriesAligner": "ALIGN_DELTA",
-                       "crossSeriesReducer": "REDUCE_SUM",
-                       "groupByFields": ["metric.label.le", "metric.label.station"] // Group by 'le' for histogram and 'station'
+                      "alignmentPeriod" : "300s",
+                      "perSeriesAligner" : "ALIGN_DELTA",
+                      "crossSeriesReducer" : "REDUCE_SUM",
+                      "groupByFields" : ["metric.label.le", "metric.label.station"] // Group by 'le' for histogram and 'station'
                     }
                   },
-                  "outputFullQueryText": true
+                  "outputFullQueryText" : true
                 },
                 "plotType" : "HEATMAP",
-                "legendTemplate": "${metric.label.station}"
+                "legendTemplate" : "$${metric.label.station}"
               }
             ],
             "yAxis" : { "label" : "Count", "scale" : "LINEAR" },
@@ -503,12 +551,12 @@ resource "google_monitoring_dashboard" "troubleshooting_dashboard" {
         },
         // Dependency Health - API Success Rates
         {
-          "title": "NJ Transit API Success Rate (5min avg)",
-          "gaugeChart": { # Using Gauge for a single percentage value
-            "dataSets": [{
-              "timeSeriesQuery": {
-                "timeSeriesQuery": { # Using MQL for ratio
-                  "query": <<-EOT
+          "title" : "NJ Transit API Success Rate (5min avg)",
+          "gaugeChart" : { # Using Gauge for a single percentage value
+            "dataSets" : [{
+              "timeSeriesQuery" : {
+                "timeSeriesQuery" : { # Using MQL for ratio
+                  "query" : <<-EOT
                     fetch cloud_run_revision
                     | {
                         metric '${var.nj_transit_success_metric_name}'
@@ -525,17 +573,17 @@ resource "google_monitoring_dashboard" "troubleshooting_dashboard" {
               }
             }],
             # Min/Max for gauge are 0 to 1 (representing 0% to 100%)
-            "lowerBound": 0,
-            "upperBound": 1
+            "lowerBound" : 0,
+            "upperBound" : 1
           }
         },
         {
-          "title": "Amtrak API Success Rate (5min avg)",
-          "gaugeChart": {
-            "dataSets": [{
-              "timeSeriesQuery": {
-                "timeSeriesQuery": {
-                  "query": <<-EOT
+          "title" : "Amtrak API Success Rate (5min avg)",
+          "gaugeChart" : {
+            "dataSets" : [{
+              "timeSeriesQuery" : {
+                "timeSeriesQuery" : {
+                  "query" : <<-EOT
                     fetch cloud_run_revision
                     | {
                         metric '${var.amtrak_success_metric_name}'
@@ -551,8 +599,8 @@ resource "google_monitoring_dashboard" "troubleshooting_dashboard" {
                 }
               }
             }],
-            "lowerBound": 0,
-            "upperBound": 1
+            "lowerBound" : 0,
+            "upperBound" : 1
           }
         }
       ]

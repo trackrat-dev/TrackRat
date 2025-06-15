@@ -1,48 +1,4 @@
-terraform {
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = ">= 4.20.0" # Specify a version constraint
-    }
-  }
-}
-
-variable "project_id" {
-  description = "The ID of the Google Cloud project."
-  type        = string
-}
-
-variable "cloud_run_service_name" {
-  description = "The name of the Cloud Run service."
-  type        = string
-}
-
-variable "cloud_run_location" {
-  description = "The location of the Cloud Run service."
-  type        = string
-}
-
-variable "critical_alert_channel_ids" {
-  description = "List of notification channel IDs for critical alerts."
-  type        = list(string)
-}
-
-variable "warning_alert_channel_ids" {
-  description = "List of notification channel IDs for warning alerts."
-  type        = list(string)
-}
-
-variable "api_error_rate_threshold" {
-  description = "Error rate threshold (0.0 to 1.0) for API error rate alert."
-  type        = number
-  default     = 0.05
-}
-
-variable "api_latency_p95_threshold_seconds" {
-  description = "P95 latency threshold in seconds for API response time alert."
-  type        = number
-  default     = 2.0
-}
+# Note: provider configuration and variables are in dashboards.tf
 
 # --- Application Monitoring Alerts ---
 
@@ -54,7 +10,7 @@ resource "google_monitoring_alert_policy" "api_down_request_count" {
   combiner     = "OR"
   conditions {
     display_name = "No requests seen for > 5 minutes"
-    condition_metric_absence {
+    condition_absent {
       filter   = "metric.type=\"run.googleapis.com/request_count\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\" resource.labels.location=\"${var.cloud_run_location}\""
       duration = "300s" # 5 minutes
       aggregations {
@@ -71,7 +27,7 @@ resource "google_monitoring_alert_policy" "api_down_request_count" {
   }
   notification_channels = var.critical_alert_channel_ids
   documentation {
-    content = "The Cloud Run service ${var.cloud_run_service_name} is not receiving any requests, or the request_count metric is not reporting. This could indicate the service is down or inaccessible."
+    content   = "The Cloud Run service ${var.cloud_run_service_name} is not receiving any requests, or the request_count metric is not reporting. This could indicate the service is down or inaccessible."
     mime_type = "text/markdown"
   }
   user_labels = {
@@ -99,7 +55,7 @@ resource "google_monitoring_alert_policy" "no_nj_transit_data_collection" {
       comparison      = "COMPARISON_LT"
       threshold_value = 1
       aggregations {
-        alignment_period   = "1800s" # Aligned with duration for increase check
+        alignment_period   = "1800s"       # Aligned with duration for increase check
         per_series_aligner = "ALIGN_DELTA" # Checks the increase over the alignment period
       }
       trigger {
@@ -166,7 +122,7 @@ resource "google_monitoring_alert_policy" "api_high_error_rate" {
   conditions {
     display_name = "Server error rate > ${var.api_error_rate_threshold * 100}% for 5 minutes"
     condition_monitoring_query_language {
-      query = <<-QUERY
+      query    = <<-QUERY
         fetch cloud_run_revision
         | metric 'run.googleapis.com/request_count'
         | filter resource.service_name == '${var.cloud_run_service_name}' && resource.location == '${var.cloud_run_location}'
@@ -207,35 +163,16 @@ resource "google_monitoring_alert_policy" "api_slow_response_p95" {
   combiner     = "OR"
   conditions {
     display_name = "P95 latency > ${var.api_latency_p95_threshold_seconds}s for 5 minutes"
-    condition_threshold {
-      # Assumes Prometheus metric name: custom.googleapis.com/fastapi/http_request_duration_seconds_bucket
-      # Replace with actual metric name. This filter targets the P95 bucket.
-      # The actual bucket and value depend on your Prometheus histogram configuration.
-      # This is a simplified example; a more precise approach uses distribution_cut.
-      filter          = "metric.type=\"custom.googleapis.com/fastapi/http_request_duration_seconds_bucket\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\" metric.label.le=\"${var.api_latency_p95_threshold_seconds}\""
-      duration        = "300s" # 5 minutes
-      comparison      = "COMPARISON_GT" # This is conceptual for a bucket; better to use distribution percentile
-      threshold_value = 0.95   # This is not how bucket comparison works.
-                               # For histograms, you'd typically use a condition_monitoring_query_language with distribution functions.
-                               # Example MQL:
-                               # fetch cloud_run_revision
-                               # | metric 'custom.googleapis.com/fastapi/http_request_duration_seconds'
-                               # | filter resource.service_name == '${var.cloud_run_service_name}'
-                               # | group_by [resource.location], .sum()
-                               # | align rate(5m)
-                               # | every 30s
-                               # | group_by [], .percentile_true(95, sum)
-                               # | condition val() > ${var.api_latency_p95_threshold_seconds}
-      # Using MQL for P95 latency from a distribution metric
-      condition_monitoring_query_language {
-        query = <<-QUERY
-          fetch cloud_run_revision
-          | metric 'run.googleapis.com/request_latencies'
-          | filter resource.labels.service_name == '${var.cloud_run_service_name}' && resource.labels.location == '${var.cloud_run_location}'
-          | group_by [resource.location], .percentile_value_at(95)
-          | condition val() > ${var.api_latency_p95_threshold_seconds} * 1000
-        QUERY
-      }
+    # Using MQL for P95 latency from a distribution metric (Cloud Run request_latencies)
+    condition_monitoring_query_language {
+      query    = <<-QUERY
+        fetch cloud_run_revision
+        | metric 'run.googleapis.com/request_latencies'
+        | filter resource.labels.service_name == '${var.cloud_run_service_name}' && resource.labels.location == '${var.cloud_run_location}'
+        | group_by [resource.location], .percentile_value_at(95)
+        | condition val() > ${var.api_latency_p95_threshold_seconds} * 1000
+      QUERY
+      duration = "300s" # 5 minutes
       trigger {
         count = 1
       }

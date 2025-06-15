@@ -7,13 +7,13 @@ import csv
 import json
 import logging
 import os
-from prometheus_client import Counter
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import requests
+from prometheus_client import Counter
 
 from trackcast.config import settings
 from trackcast.exceptions import APIError

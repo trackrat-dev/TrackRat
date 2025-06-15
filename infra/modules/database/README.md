@@ -11,8 +11,8 @@
 
 | Name | Version |
 |------|---------|
-| <a name="provider_google"></a> [google](#provider\_google) | 5.45.2 |
-| <a name="provider_random"></a> [random](#provider\_random) | ~> 3.1 |
+| <a name="provider_google"></a> [google](#provider\_google) | 6.39.0 |
+| <a name="provider_random"></a> [random](#provider\_random) | 3.7.2 |
 
 ## Modules
 
@@ -22,8 +22,11 @@ No modules.
 
 | Name | Type |
 |------|------|
+| [google_monitoring_alert_policy.db_connectivity_lost](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_alert_policy) | resource |
 | [google_monitoring_alert_policy.db_high_cpu](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_alert_policy) | resource |
 | [google_monitoring_alert_policy.db_low_memory](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_alert_policy) | resource |
+| [google_monitoring_notification_channel.email_critical](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_notification_channel) | resource |
+| [google_monitoring_notification_channel.email_warning](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_notification_channel) | resource |
 | [google_secret_manager_secret.database_password](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
 | [google_secret_manager_secret_version.database_password_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
 | [google_sql_database.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database) | resource |
@@ -37,6 +40,7 @@ No modules.
 |------|-------------|------|---------|:--------:|
 | <a name="input_backup_window_start_time"></a> [backup\_window\_start\_time](#input\_backup\_window\_start\_time) | The start time of the daily backup window, in HH:MM format (UTC). Example: '03:00'. If null, GCP chooses a default. | `string` | `"03:00"` | no |
 | <a name="input_cpu_alert_threshold_percent"></a> [cpu\_alert\_threshold\_percent](#input\_cpu\_alert\_threshold\_percent) | CPU utilization percentage threshold for alerting. | `number` | `80` | no |
+| <a name="input_critical_alert_email"></a> [critical\_alert\_email](#input\_critical\_alert\_email) | Email address for critical alerts. | `string` | n/a | yes |
 | <a name="input_database_name"></a> [database\_name](#input\_database\_name) | The name of the database to create. | `string` | `"trackratdb"` | no |
 | <a name="input_database_user_name"></a> [database\_user\_name](#input\_database\_user\_name) | The name of the database user. | `string` | `"trackratuser"` | no |
 | <a name="input_database_version"></a> [database\_version](#input\_database\_version) | The version of PostgreSQL to use (e.g., POSTGRES\_15). | `string` | `"POSTGRES_15"` | no |
@@ -53,6 +57,7 @@ No modules.
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The ID of the Google Cloud project. | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | The region for the Cloud SQL instance. | `string` | n/a | yes |
 | <a name="input_slow_query_log_min_duration"></a> [slow\_query\_log\_min\_duration](#input\_slow\_query\_log\_min\_duration) | Minimum query duration in ms to be logged as a slow query. Use 0 to disable. For PostgreSQL, this is 'log\_min\_duration\_statement'. | `number` | `500` | no |
+| <a name="input_warning_alert_email"></a> [warning\_alert\_email](#input\_warning\_alert\_email) | Email address for warning alerts. | `string` | n/a | yes |
 
 ## Outputs
 

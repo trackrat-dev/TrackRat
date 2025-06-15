@@ -1,51 +1,4 @@
-terraform {
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = ">= 4.20.0"
-    }
-  }
-}
-
-variable "project_id" {
-  description = "The ID of the Google Cloud project."
-  type        = string
-}
-
-variable "critical_alert_channel_ids" {
-  description = "List of notification channel IDs for critical alerts."
-  type        = list(string)
-}
-
-variable "nj_transit_api_host" {
-  description = "Hostname for the NJ Transit API endpoint for uptime checks."
-  type        = string
-  default     = "api.njtransit.com" # Placeholder - update with actual host if different
-}
-
-variable "nj_transit_api_path" {
-  description = "Path for the NJ Transit API health/status endpoint."
-  type        = string
-  default     = "/v2/status" # Placeholder - update with actual path
-}
-
-variable "amtrak_api_host" {
-  description = "Hostname for the Amtrak API endpoint for uptime checks."
-  type        = string
-  default     = "api.amtrak.com" # Placeholder - update with actual host if different
-}
-
-variable "amtrak_api_path" {
-  description = "Path for the Amtrak API health/status endpoint."
-  type        = string
-  default     = "/v2/status" # Placeholder - update with actual path
-}
-
-variable "uptime_check_regions" {
-  description = "List of regions to run uptime checks from."
-  type        = list(string)
-  default     = ["USA_EAST_VIRGINIA", "USA_WEST_CALIFORNIA", "EUROPE_WEST_BELGIUM"]
-}
+# Note: provider configuration and variables are in dashboards.tf
 
 # --- Uptime Checks for External Dependencies ---
 
@@ -70,8 +23,8 @@ resource "google_monitoring_uptime_check_config" "nj_transit_api" {
     }
   }
 
-  period  = "300s" # 5 minutes
-  timeout = "10s"
+  period           = "300s" # 5 minutes
+  timeout          = "10s"
   selected_regions = var.uptime_check_regions
 }
 
@@ -94,8 +47,8 @@ resource "google_monitoring_uptime_check_config" "amtrak_api" {
     }
   }
 
-  period  = "300s"
-  timeout = "10s"
+  period           = "300s"
+  timeout          = "10s"
   selected_regions = var.uptime_check_regions
 }
 
@@ -109,10 +62,10 @@ resource "google_monitoring_alert_policy" "nj_transit_api_down" {
   conditions {
     display_name = "NJ Transit API Uptime Check Failing"
     condition_threshold {
-      filter     = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" resource.type=\"uptime_url\" metric.label.check_id=\"${google_monitoring_uptime_check_config.nj_transit_api.uptime_check_id}\""
-      comparison = "COMPARISON_EQ" # Alert if check_passed is false (0)
-      threshold_value = 0 # 0 means false (check failed)
-      duration   = "600s"  # Alert if failing for 10 minutes (2 consecutive failed checks)
+      filter          = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" resource.type=\"uptime_url\" metric.label.check_id=\"${google_monitoring_uptime_check_config.nj_transit_api.uptime_check_id}\""
+      comparison      = "COMPARISON_EQ" # Alert if check_passed is false (0)
+      threshold_value = 0               # 0 means false (check failed)
+      duration        = "600s"          # Alert if failing for 10 minutes (2 consecutive failed checks)
       trigger {
         count = 1 # Alert if condition met once (i.e., 0 passed checks for 10 mins)
       }
@@ -143,10 +96,10 @@ resource "google_monitoring_alert_policy" "amtrak_api_down" {
   conditions {
     display_name = "Amtrak API Uptime Check Failing"
     condition_threshold {
-      filter     = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" resource.type=\"uptime_url\" metric.label.check_id=\"${google_monitoring_uptime_check_config.amtrak_api.uptime_check_id}\""
-      comparison = "COMPARISON_EQ"
+      filter          = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" resource.type=\"uptime_url\" metric.label.check_id=\"${google_monitoring_uptime_check_config.amtrak_api.uptime_check_id}\""
+      comparison      = "COMPARISON_EQ"
       threshold_value = 0
-      duration   = "600s"
+      duration        = "600s"
       trigger {
         count = 1
       }

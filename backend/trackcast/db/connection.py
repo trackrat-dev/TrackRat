@@ -7,7 +7,6 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from prometheus_client import Gauge
-
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -164,7 +163,6 @@ def get_pool_status_metrics() -> None:
             # Max possible connections = configured pool_size + configured max_overflow
             max_possible_connections = pool_size + getattr(settings.database, "max_overflow", 10)
 
-
             if max_possible_connections > 0:
                 utilization_ratio = checkedout / max_possible_connections
                 DB_CONNECTION_POOL_UTILIZATION.set(utilization_ratio)
@@ -174,7 +172,9 @@ def get_pool_status_metrics() -> None:
                     f"utilization_ratio={utilization_ratio:.2f}"
                 )
             else:
-                DB_CONNECTION_POOL_UTILIZATION.set(0) # Avoid division by zero if pool is not configured
+                DB_CONNECTION_POOL_UTILIZATION.set(
+                    0
+                )  # Avoid division by zero if pool is not configured
         else:
             logger.warning("Could not retrieve detailed DB pool status (checkedout/checkedin).")
 

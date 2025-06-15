@@ -8,9 +8,9 @@ for upcoming trains using the trained machine learning model.
 import logging
 import time
 from datetime import datetime, timedelta
-from prometheus_client import Counter, Gauge, Histogram
 from typing import Any, Dict, Optional, Tuple
 
+from prometheus_client import Counter, Gauge, Histogram
 from sqlalchemy.orm import Session
 
 from trackcast.db.models import PredictionData, Train
@@ -31,9 +31,7 @@ MODEL_INFERENCE_TIME = Histogram(
     "Inference time for model predictions by station",
     ["station"],
 )
-TRAINS_PROCESSED_TOTAL = Counter(
-    "trains_processed_total", "Total number of trains processed"
-)
+TRAINS_PROCESSED_TOTAL = Counter("trains_processed_total", "Total number of trains processed")
 TRACK_PREDICTION_CONFIDENCE = Histogram(
     "track_prediction_confidence_ratio",
     "Distribution of track prediction confidence scores",
@@ -430,9 +428,7 @@ class PredictionService:
             inference_start_time = time.time()
             predictions = model.predict([train.model_data])
             inference_duration_seconds = time.time() - inference_start_time
-            MODEL_INFERENCE_TIME.labels(station=station_code).observe(
-                inference_duration_seconds
-            )
+            MODEL_INFERENCE_TIME.labels(station=station_code).observe(inference_duration_seconds)
             # TODO: Implement accuracy metric - requires comparing with actual track after departure
             # MODEL_PREDICTION_ACCURACY.labels(station=station_code).set(accuracy_value)
 
@@ -523,9 +519,7 @@ class PredictionService:
             inference_start_time = time.time()
             predictions = model.predict([train.model_data])
             inference_duration_seconds = time.time() - inference_start_time
-            MODEL_INFERENCE_TIME.labels(station=station_code).observe(
-                inference_duration_seconds
-            )
+            MODEL_INFERENCE_TIME.labels(station=station_code).observe(inference_duration_seconds)
             # TODO: Implement accuracy metric - requires comparing with actual track after departure
             # MODEL_PREDICTION_ACCURACY.labels(station=station_code).set(accuracy_value)
 

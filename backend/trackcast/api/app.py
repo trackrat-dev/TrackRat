@@ -7,16 +7,15 @@ import os
 import time
 from typing import Callable
 
+import httpx  # Added for external API checks
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import text
-import httpx # Added for external API checks
 
 from trackcast.api.routers import operations, stops, trains
 from trackcast.db.connection import get_db, get_pool_status_metrics
-
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -94,8 +93,12 @@ async def health(db=Depends(get_db)):
     overall_healthy = True
 
     # Placeholder URLs for external API health checks - replace with actual status endpoints
-    NJ_TRANSIT_STATUS_URL = os.getenv("NJ_TRANSIT_STATUS_URL", "https://api.njtransit.com/v2/status_placeholder")
-    AMTRAK_STATUS_URL = os.getenv("AMTRAK_STATUS_URL", "https://api.amtrak.com/v2/status_placeholder")
+    NJ_TRANSIT_STATUS_URL = os.getenv(
+        "NJ_TRANSIT_STATUS_URL", "https://api.njtransit.com/v2/status_placeholder"
+    )
+    AMTRAK_STATUS_URL = os.getenv(
+        "AMTRAK_STATUS_URL", "https://api.amtrak.com/v2/status_placeholder"
+    )
 
     # Check database connection
     try:
