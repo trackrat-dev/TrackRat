@@ -45,11 +45,11 @@ module "infrastructure" {
 module "database" {
   source = "../../modules/database"
 
-  project_id    = var.project_id
-  region        = var.region
-  instance_name = "${var.app_name}-${var.environment}-sql" # Example instance name
-  # instance_tier      = "db-f1-micro" # Or use module default / specify per env
-  network_self_link = module.infrastructure.network_self_link # From VPC module output
+  project_id        = var.project_id
+  region            = var.region
+  instance_name     = "${var.app_name}-${var.environment}-sql" # Example instance name
+  instance_tier     = "db-g1-small"                            # 1.7GB memory, 1 shared core
+  network_self_link = module.infrastructure.network_self_link  # From VPC module output
 
   # database_user_password is now auto-generated in the database module
 

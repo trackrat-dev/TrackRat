@@ -23,7 +23,7 @@ variable "database_version" {
 variable "instance_tier" {
   description = "The machine type for the Cloud SQL instance (e.g., db-custom-2-7680)."
   type        = string
-  default     = "db-f1-micro" # Choose a default, consider environment-specific overrides
+  default     = "db-g1-small" # 1.7GB memory, 1 shared core
 }
 
 variable "network_self_link" {
@@ -107,7 +107,7 @@ variable "cpu_alert_threshold_percent" {
 variable "memory_alert_threshold_gb" {
   description = "Available memory threshold in GB for alerting."
   type        = number
-  default     = 1 # Alert if less than 1GB available, adjust based on instance size
+  default     = 1.4 # Alert if less than 1.4GB available (adjusted for 1.7GB instance)
 }
 
 # Removed unused variables: enable_read_replica, replica_lag_alert_threshold_seconds, active_connections_alert_threshold
