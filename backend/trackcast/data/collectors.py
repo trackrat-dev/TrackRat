@@ -322,7 +322,7 @@ class NJTransitCollector(BaseCollector):
                 files = {"token": (None, self.token), "station": (None, self.station_code)}
 
                 logger.debug(
-                    f"Fetching train schedule from {url} (attempt {attempts+1}/{self.retry_attempts})"
+                    f"Fetching train schedule from {url} (attempt {attempts + 1}/{self.retry_attempts})"
                 )
                 response = requests.post(url, files=files, timeout=self.timeout)
                 response.raise_for_status()
@@ -615,7 +615,7 @@ class AmtrakCollector(BaseCollector):
         while attempts < self.retry_attempts:
             try:
                 logger.debug(
-                    f"Fetching Amtrak train data from {self.base_url} (attempt {attempts+1}/{self.retry_attempts})"
+                    f"Fetching Amtrak train data from {self.base_url} (attempt {attempts + 1}/{self.retry_attempts})"
                 )
                 response = requests.get(self.base_url, timeout=self.timeout)
                 response.raise_for_status()

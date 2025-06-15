@@ -34,6 +34,12 @@ module "infrastructure" {
   subnet_cidr = "10.1.1.0/24"
   # db_password is now auto-generated in the database module
   artifact_registry_repository_name = "trackcast-inference-dev"
+
+  # Database connection parameters for secrets module
+  database_host     = module.database.private_ip_address
+  database_name     = module.database.database_name
+  database_user     = module.database.database_user_name
+  database_password = module.database.database_password
 }
 
 module "database" {
@@ -86,18 +92,19 @@ module "trackrat_api_service" {
   vpc_connector_id       = module.vpc_connector.id # Reference the VPC connector we created
   enable_cloudsql_access = true                    # Enable Cloud SQL access permissions
 
-  # Example environment variables
+  # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV  = "development"
-    GIN_MODE = "debug"
-    # Add other non-sensitive configs
+    APP_ENV       = "development"
+    TRACKCAST_ENV = "dev"
+    MODEL_PATH    = "/app/models"
   }
 
-  # Example secret environment variables
-  # secret_environment_variables = {
-  #   DATABASE_URL = "my-db-secret-name:latest" # Replace with actual secret name and version
-  #   API_KEY      = "my-api-key-secret:1"
-  # }
+  # Secret environment variables (sensitive data from Secret Manager)
+  secret_environment_variables = {
+    DATABASE_URL = "trackcast-dev-secrets:latest"
+    NJT_USERNAME = "trackcast-dev-secrets:latest"
+    NJT_PASSWORD = "trackcast-dev-secrets:latest"
+  }
 
   # If a specific service account is already created for the API for this env:
   # service_account_email = "existing-sa@${var.project_id}.iam.gserviceaccount.com"
@@ -112,8 +119,9 @@ module "trackrat_api_service" {
   }
 
   depends_on = [
-    # Add dependencies if any, e.g., module.vpc_connector if defined in this file
-    # module.artifact_registry if image is built and pushed by another terraform module here
+    module.database,      # Database must be created before Cloud Run
+    module.vpc_connector, # VPC connector needed for database connectivity
+    module.infrastructure # Infrastructure (including secrets) must be ready
   ]
 }
 
@@ -134,13 +142,40 @@ module "trackrat_scheduler_dev" {
   # request_timeout_seconds is 3600 (1 hour) by default in module
 
   scheduler_job_name = "invoke-trackrat-scheduler-dev"
-  scheduler_schedule = "0 2 * * *" # Example: Every day at 2 AM
+
+  # Phase 2: Parallel operation - keep legacy scheduler alongside new jobs
+  legacy_scheduler_enabled = true
+  scheduler_schedule       = "0 2 * * *" # Keep existing daily job for now
+
+  # Phase 1: New high-frequency scheduler jobs targeting API service
+  api_service_uri = module.trackrat_api_service.service_url
+
+  # Hourly scheduling as requested (Phase 1 implementation)
+  scheduler_jobs = {
+    data_collection = {
+      schedule    = "0 * * * *" # Every hour at :00
+      endpoint    = "/api/ops/collect-data"
+      description = "Hourly data collection from NJ Transit and Amtrak APIs"
+    }
+    feature_processing = {
+      schedule    = "10 * * * *" # Every hour at :10
+      endpoint    = "/api/ops/process-features"
+      description = "Hourly feature processing for collected train data"
+    }
+    prediction_generation = {
+      schedule    = "20 * * * *" # Every hour at :20
+      endpoint    = "/api/ops/generate-predictions"
+      description = "Hourly track prediction generation for upcoming trains"
+    }
+  }
 
   # vpc_connector_id = var.vpc_connector_id # If scheduler needs to access VPC resources
 
   environment_variables = {
     APP_ENV = "development"
-    # Add other scheduler-specific non-sensitive environment variables
+    # Phase 3: Enable cloud-native mode to disable internal scheduler
+    # TRACKCAST_SCHEDULER_MODE = "cloud_native"
+    # For now, keep internal scheduler running alongside new jobs (Phase 2)
   }
 
   # secret_environment_variables = {
@@ -153,6 +188,6 @@ module "trackrat_scheduler_dev" {
   }
 
   depends_on = [
-    module.trackrat_api_service # Example: if scheduler depends on API being up (e.g. for service discovery)
+    module.trackrat_api_service # API service must be deployed before scheduler jobs can target it
   ]
 }

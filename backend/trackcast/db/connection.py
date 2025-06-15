@@ -33,8 +33,8 @@ logger.info(f"Connecting to database: {DATABASE_URL}")
 
 engine = create_engine(
     DATABASE_URL,
-    pool_size=getattr(settings.database, "pool_size", 5),
-    max_overflow=getattr(settings.database, "max_overflow", 10),
+    pool_size=getattr(settings.database, "pool_size", None) or 5,
+    max_overflow=getattr(settings.database, "max_overflow", None) or 10,
     pool_pre_ping=True,  # Verify connections before using them
     echo=settings.debug,  # Log SQL queries in debug mode
 )

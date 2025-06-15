@@ -30,6 +30,10 @@ No modules.
 |------|-------------|------|---------|:--------:|
 | <a name="input_amtrak_api_key"></a> [amtrak\_api\_key](#input\_amtrak\_api\_key) | Amtrak API key (optional) | `string` | `""` | no |
 | <a name="input_app_name"></a> [app\_name](#input\_app\_name) | Application name | `string` | n/a | yes |
+| <a name="input_database_host"></a> [database\_host](#input\_database\_host) | Database host/IP address | `string` | `""` | no |
+| <a name="input_database_name"></a> [database\_name](#input\_database\_name) | Database name | `string` | `""` | no |
+| <a name="input_database_password"></a> [database\_password](#input\_database\_password) | Database password | `string` | `""` | no |
+| <a name="input_database_user"></a> [database\_user](#input\_database\_user) | Database user name | `string` | `""` | no |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment name (dev, staging, prod) | `string` | n/a | yes |
 | <a name="input_nj_transit_password"></a> [nj\_transit\_password](#input\_nj\_transit\_password) | NJ Transit API password | `string` | `""` | no |
 | <a name="input_nj_transit_username"></a> [nj\_transit\_username](#input\_nj\_transit\_username) | NJ Transit API username | `string` | `""` | no |

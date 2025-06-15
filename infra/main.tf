@@ -53,7 +53,12 @@ module "secrets" {
   source      = "./modules/secrets"
   app_name    = var.app_name
   environment = var.environment
-  # db_password is now auto-generated in the database module
+
+  # Database connection parameters
+  database_host     = var.database_host
+  database_name     = var.database_name
+  database_user     = var.database_user
+  database_password = var.database_password
 
   depends_on = [module.apis]
 }

@@ -14,8 +14,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 import httpx # Added for external API checks
 
-from trackcast.api.routers import stops, trains
+from trackcast.api.routers import operations, stops, trains
 from trackcast.db.connection import get_db, get_pool_status_metrics
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ async def log_requests(request: Request, call_next: Callable):
 # Include routers
 app.include_router(trains.router, prefix="/api/trains", tags=["trains"])
 app.include_router(stops.router, prefix="/api/stops", tags=["stops"])
+app.include_router(operations.router, prefix="/api/ops", tags=["operations"])
 
 
 # Root endpoint

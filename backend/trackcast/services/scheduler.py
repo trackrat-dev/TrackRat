@@ -6,6 +6,7 @@ of data collection, feature engineering, and prediction tasks.
 """
 
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timedelta
@@ -87,6 +88,18 @@ class SchedulerService:
 
     def start(self, blocking: bool = True) -> None:
         """Start the scheduler in a separate thread."""
+        # Check if we're running in cloud-native mode
+        cloud_native_mode = os.getenv("TRACKCAST_SCHEDULER_MODE", "").lower() == "cloud_native"
+
+        if cloud_native_mode:
+            logger.info("Running in cloud-native mode - internal scheduler disabled")
+            logger.info(
+                "Scheduler operations will be triggered by Cloud Scheduler via API endpoints"
+            )
+            # In cloud-native mode, don't start the internal scheduler
+            # The service will just run the API server and wait for HTTP triggers
+            return
+
         if self.running:
             logger.warning("Scheduler is already running")
             return
@@ -100,7 +113,12 @@ class SchedulerService:
             self.thread.daemon = True
             self.thread.start()
 
-        logger.info("Scheduler started")
+        logger.info("Scheduler started (internal scheduling mode)")
+
+    @staticmethod
+    def is_cloud_native_mode() -> bool:
+        """Check if the scheduler is running in cloud-native mode."""
+        return os.getenv("TRACKCAST_SCHEDULER_MODE", "").lower() == "cloud_native"
 
     def stop(self) -> None:
         """Stop the scheduler."""

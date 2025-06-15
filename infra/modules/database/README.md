@@ -11,8 +11,8 @@
 
 | Name | Version |
 |------|---------|
-| <a name="provider_google"></a> [google](#provider\_google) | 6.39.0 |
-| <a name="provider_random"></a> [random](#provider\_random) | 3.7.2 |
+| <a name="provider_google"></a> [google](#provider\_google) | 5.45.2 |
+| <a name="provider_random"></a> [random](#provider\_random) | ~> 3.1 |
 
 ## Modules
 
@@ -59,6 +59,7 @@ No modules.
 | Name | Description |
 |------|-------------|
 | <a name="output_database_name"></a> [database\_name](#output\_database\_name) | The name of the database created. |
+| <a name="output_database_password"></a> [database\_password](#output\_database\_password) | The database user password (sensitive) |
 | <a name="output_database_user_name"></a> [database\_user\_name](#output\_database\_user\_name) | The name of the default database user created. |
 | <a name="output_db_password_secret_id"></a> [db\_password\_secret\_id](#output\_db\_password\_secret\_id) | The ID of the Secret Manager secret holding the DB password. |
 | <a name="output_db_password_secret_version_id"></a> [db\_password\_secret\_version\_id](#output\_db\_password\_secret\_version\_id) | The ID of the Secret Manager secret version holding the DB password. |

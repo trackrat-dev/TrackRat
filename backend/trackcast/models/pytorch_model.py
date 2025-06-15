@@ -423,13 +423,13 @@ class PyTorchTrackPredictor:
                             f"MISSING {len(true_missing)} FEATURES (expected by scaler but not found):"
                         )
                         for i, feature in enumerate(sorted(true_missing)):
-                            logger.error(f"  Missing feature {i+1}: {feature}")
+                            logger.error(f"  Missing feature {i + 1}: {feature}")
                     if extra:
                         logger.error(
                             f"EXTRA {len(extra)} FEATURES (found but not expected by scaler):"
                         )
                         for i, feature in enumerate(sorted(extra)):
-                            logger.error(f"  Extra feature {i+1}: {feature}")
+                            logger.error(f"  Extra feature {i + 1}: {feature}")
 
                     # Compare with previous feature set too
                     prev_set = set(prev_features)
@@ -441,13 +441,13 @@ class PyTorchTrackPredictor:
                             f"REGRESSION: {len(regression_missing)} features present in previous data but missing now:"
                         )
                         for i, feature in enumerate(sorted(regression_missing)):
-                            logger.error(f"  Regression missing {i+1}: {feature}")
+                            logger.error(f"  Regression missing {i + 1}: {feature}")
                     if regression_new:
                         logger.error(
                             f"NEW SINCE LAST RUN: {len(regression_new)} features new since last execution:"
                         )
                         for i, feature in enumerate(sorted(regression_new)):
-                            logger.error(f"  New feature {i+1}: {feature}")
+                            logger.error(f"  New feature {i + 1}: {feature}")
 
                     # Print clear summary showing the dimension mismatch
                     logger.error(
@@ -568,7 +568,7 @@ class PyTorchTrackPredictor:
                 val_accuracies.append(val_accuracy)
 
                 logger.info(
-                    f"Epoch {epoch+1}/{self.num_epochs} - "
+                    f"Epoch {epoch + 1}/{self.num_epochs} - "
                     f"Train Loss: {avg_train_loss:.4f}, "
                     f"Val Loss: {avg_val_loss:.4f}, "
                     f"Val Accuracy: {val_accuracy:.4f}"
@@ -582,11 +582,11 @@ class PyTorchTrackPredictor:
                 else:
                     patience_counter += 1
                     if patience_counter >= patience:
-                        logger.info(f"Early stopping after {epoch+1} epochs")
+                        logger.info(f"Early stopping after {epoch + 1} epochs")
                         break
             else:
                 logger.info(
-                    f"Epoch {epoch+1}/{self.num_epochs} - " f"Train Loss: {avg_train_loss:.4f}"
+                    f"Epoch {epoch + 1}/{self.num_epochs} - " f"Train Loss: {avg_train_loss:.4f}"
                 )
                 # Save model periodically if no validation
                 if (epoch + 1) % 10 == 0:

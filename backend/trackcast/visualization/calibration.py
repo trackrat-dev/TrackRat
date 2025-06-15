@@ -585,7 +585,7 @@ def plot_calibration_analysis(
         for i in range(len(bin_confidences)):
             if bin_counts[i] > 0:
                 f.write(
-                    f"  Bin {i+1}: Confidence {bin_confidences[i]:.3f}, "
+                    f"  Bin {i + 1}: Confidence {bin_confidences[i]:.3f}, "
                     f"Accuracy {bin_accuracies[i]:.3f}, Count {int(bin_counts[i])}\n"
                 )
 
