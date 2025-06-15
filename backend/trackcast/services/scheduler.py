@@ -90,14 +90,16 @@ class SchedulerService:
         """Start the scheduler in a separate thread."""
         # Check if we're running in cloud-native mode
         cloud_native_mode = os.getenv("TRACKCAST_SCHEDULER_MODE", "").lower() == "cloud_native"
-        
+
         if cloud_native_mode:
             logger.info("Running in cloud-native mode - internal scheduler disabled")
-            logger.info("Scheduler operations will be triggered by Cloud Scheduler via API endpoints")
+            logger.info(
+                "Scheduler operations will be triggered by Cloud Scheduler via API endpoints"
+            )
             # In cloud-native mode, don't start the internal scheduler
             # The service will just run the API server and wait for HTTP triggers
             return
-        
+
         if self.running:
             logger.warning("Scheduler is already running")
             return

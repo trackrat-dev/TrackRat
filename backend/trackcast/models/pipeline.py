@@ -965,12 +965,12 @@ class TrackPredictionPipeline:
 
                     if (epoch + 1) % 20 == 0:
                         logger.info(
-                            f"Epoch {epoch+1}/{num_epochs}: Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, Val Acc: {val_accuracy:.4f}"
+                            f"Epoch {epoch + 1}/{num_epochs}: Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, Val Acc: {val_accuracy:.4f}"
                         )
                 else:
                     if (epoch + 1) % 20 == 0:
                         logger.info(
-                            f"Epoch {epoch+1}/{num_epochs}: Train Loss: {avg_train_loss:.4f}"
+                            f"Epoch {epoch + 1}/{num_epochs}: Train Loss: {avg_train_loss:.4f}"
                         )
 
             # Load best model if validation was used
@@ -1213,7 +1213,7 @@ class TrackPredictionPipeline:
         summary += (
             f"Track {most_common_track} was predicted most frequently ({most_common_count} times, "
         )
-        summary += f"{most_common_count/total:.1%} of predictions)."
+        summary += f"{most_common_count / total:.1%} of predictions)."
 
         return summary
 
