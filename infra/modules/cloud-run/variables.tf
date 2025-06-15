@@ -90,6 +90,30 @@ variable "startup_probe_path" {
   default     = "/health" # As per issue spec
 }
 
+variable "startup_probe_initial_delay_seconds" {
+  description = "Initial delay for startup probe in seconds"
+  type        = number
+  default     = 0
+}
+
+variable "startup_probe_timeout_seconds" {
+  description = "Timeout for startup probe in seconds"
+  type        = number
+  default     = 5
+}
+
+variable "startup_probe_period_seconds" {
+  description = "Period for startup probe in seconds"
+  type        = number
+  default     = 10
+}
+
+variable "startup_probe_failure_threshold" {
+  description = "Failure threshold for startup probe"
+  type        = number
+  default     = 60
+}
+
 variable "liveness_probe_path" {
   description = "Path for the liveness probe. Disabled if null."
   type        = string

@@ -20,10 +20,10 @@ resource "google_project_iam_member" "artifact_registry_reader" {
 
 # Allow Cloud Run to be invoked (e.g., by public users, or specific services)
 # By default, new Cloud Run services are private. Add invoker role for public access if needed.
-resource "google_cloud_run_service_iam_member" "public_invoker" {
+resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
   project  = var.project_id
   location = var.location
-  service  = google_cloud_run_v2_service.default.name
+  name     = google_cloud_run_v2_service.default.name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }

@@ -42,13 +42,13 @@ No modules.
 | <a name="input_database_version"></a> [database\_version](#input\_database\_version) | The version of PostgreSQL to use (e.g., POSTGRES\_15). | `string` | `"POSTGRES_15"` | no |
 | <a name="input_deletion_protection"></a> [deletion\_protection](#input\_deletion\_protection) | Whether or not to enable deletion protection for the instance. | `bool` | `false` | no |
 | <a name="input_instance_name"></a> [instance\_name](#input\_instance\_name) | The name of the Cloud SQL instance. | `string` | `"trackrat-db-instance"` | no |
-| <a name="input_instance_tier"></a> [instance\_tier](#input\_instance\_tier) | The machine type for the Cloud SQL instance (e.g., db-custom-2-7680). | `string` | `"db-f1-micro"` | no |
+| <a name="input_instance_tier"></a> [instance\_tier](#input\_instance\_tier) | The machine type for the Cloud SQL instance (e.g., db-custom-2-7680). | `string` | `"db-g1-small"` | no |
 | <a name="input_log_connections"></a> [log\_connections](#input\_log\_connections) | Log connections to the database (flag: log\_connections). | `bool` | `false` | no |
 | <a name="input_log_disconnections"></a> [log\_disconnections](#input\_log\_disconnections) | Log disconnections from the database (flag: log\_disconnections). | `bool` | `false` | no |
 | <a name="input_maintenance_window_day"></a> [maintenance\_window\_day](#input\_maintenance\_window\_day) | The day of the week for the maintenance window (1-7, Monday-Sunday). | `number` | `7` | no |
 | <a name="input_maintenance_window_hour"></a> [maintenance\_window\_hour](#input\_maintenance\_window\_hour) | The hour of the day (UTC) for the maintenance window (0-23). | `number` | `6` | no |
 | <a name="input_max_connections_limit"></a> [max\_connections\_limit](#input\_max\_connections\_limit) | The maximum number of concurrent connections for the database (flag: max\_connections). Default depends on instance size. | `number` | `100` | no |
-| <a name="input_memory_alert_threshold_gb"></a> [memory\_alert\_threshold\_gb](#input\_memory\_alert\_threshold\_gb) | Available memory threshold in GB for alerting. | `number` | `1` | no |
+| <a name="input_memory_alert_threshold_gb"></a> [memory\_alert\_threshold\_gb](#input\_memory\_alert\_threshold\_gb) | Available memory threshold in GB for alerting. | `number` | `1.4` | no |
 | <a name="input_network_self_link"></a> [network\_self\_link](#input\_network\_self\_link) | The self-link of the VPC network to attach the Cloud SQL instance to. | `string` | n/a | yes |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The ID of the Google Cloud project. | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | The region for the Cloud SQL instance. | `string` | n/a | yes |

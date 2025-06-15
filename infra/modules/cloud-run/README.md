@@ -21,8 +21,8 @@ No modules.
 | Name | Type |
 |------|------|
 | [google_cloud_run_domain_mapping.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_domain_mapping) | resource |
-| [google_cloud_run_service_iam_member.public_invoker](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_service_iam_member) | resource |
 | [google_cloud_run_v2_service.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_v2_service) | resource |
+| [google_cloud_run_v2_service_iam_member.public_invoker](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_v2_service_iam_member) | resource |
 | [google_project_iam_member.artifact_registry_reader](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
 | [google_project_iam_member.cloudsql_client](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
 | [google_project_iam_member.secret_accessor](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
@@ -53,7 +53,11 @@ No modules.
 | <a name="input_secret_environment_variables"></a> [secret\_environment\_variables](#input\_secret\_environment\_variables) | A map of environment variables to be sourced from Secret Manager. Key is the env var name, value is the secret name:version. | `map(string)` | `{}` | no |
 | <a name="input_service_account_email"></a> [service\_account\_email](#input\_service\_account\_email) | Email of the service account to run the service as. If null, a new one will be created. | `string` | `null` | no |
 | <a name="input_service_name"></a> [service\_name](#input\_service\_name) | Name of the Cloud Run service | `string` | n/a | yes |
+| <a name="input_startup_probe_failure_threshold"></a> [startup\_probe\_failure\_threshold](#input\_startup\_probe\_failure\_threshold) | Failure threshold for startup probe | `number` | `60` | no |
+| <a name="input_startup_probe_initial_delay_seconds"></a> [startup\_probe\_initial\_delay\_seconds](#input\_startup\_probe\_initial\_delay\_seconds) | Initial delay for startup probe in seconds | `number` | `0` | no |
 | <a name="input_startup_probe_path"></a> [startup\_probe\_path](#input\_startup\_probe\_path) | Path for the startup probe (e.g., /healthz). Disabled if null. | `string` | `"/health"` | no |
+| <a name="input_startup_probe_period_seconds"></a> [startup\_probe\_period\_seconds](#input\_startup\_probe\_period\_seconds) | Period for startup probe in seconds | `number` | `10` | no |
+| <a name="input_startup_probe_timeout_seconds"></a> [startup\_probe\_timeout\_seconds](#input\_startup\_probe\_timeout\_seconds) | Timeout for startup probe in seconds | `number` | `5` | no |
 | <a name="input_vpc_connector_id"></a> [vpc\_connector\_id](#input\_vpc\_connector\_id) | ID of the VPC Access Connector (self\_link) for private IP access to Cloud SQL. Null if not needed. | `string` | `null` | no |
 
 ## Outputs
