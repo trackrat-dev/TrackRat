@@ -226,43 +226,15 @@ resource "google_monitoring_alert_policy" "api_slow_response_p95" {
                                # | every 30s
                                # | group_by [], .percentile_true(95, sum)
                                # | condition val() > ${var.api_latency_p95_threshold_seconds}
-      # This is a placeholder for demonstration.
-      # A real implementation for Prometheus histograms would use MQL with percentile aggregators.
-      # For now, this will likely not work as intended without MQL.
-      # We will use a simplified filter that might not be accurate.
-      # A more robust way is to use `condition_monitoring_query_language` for percentile.
-      # Using a placeholder filter that will likely need adjustment:
-      # filter          = "metric.type=\"custom.googleapis.com/fastapi/http_request_duration_seconds_summary_percentile\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\" metric.label.quantile=\"0.95\""
-      # comparison      = "COMPARISON_GT"
-      # threshold_value = var.api_latency_p95_threshold_seconds
-
       # Using MQL for P95 latency from a distribution metric
-      # This assumes 'custom.googleapis.com/fastapi/http_request_duration_seconds' is a DISTRIBUTION
-      # If it's a HISTOGRAM (like _bucket, _sum, _count), the query would be more complex or need different setup.
-      # For now, let's assume it's a distribution for simplicity in this example.
-      # If it's a Prometheus histogram, the metric would be named ..._bucket, and we'd need to calculate percentile from buckets.
-      # This is a common challenge. For now, we'll use a structure that anticipates a distribution metric.
-      # If the actual metric is a histogram, this will need to be changed.
-      # Correct MQL for distribution:
-      # query = <<-QUERY
-      #   fetch cloud_run_revision
-      #   | metric 'custom.googleapis.com/fastapi/http_request_duration_seconds' # Assuming this is the distribution metric
-      #   | filter resource.service_name == '${var.cloud_run_service_name}' && resource.location == '${var.cloud_run_location}'
-      #   | group_by 5m, .percentile_value_at(95)
-      #   | condition val() > ${var.api_latency_p95_threshold_seconds}
-      # QUERY
-      # For this placeholder, we'll use a simple threshold condition on a _sum or _mean if p95 is not directly available as a metric.
-      # This is often the case with default Prometheus instrumentation if not explicitly configured for percentiles as separate metrics.
-      # Let's assume a generic custom metric for average latency for now, as P95 from buckets is complex for a basic alert.
-      # Or, use the standard run.googleapis.com/request_latencies if it provides P95.
-      # Cloud Run provides `run.googleapis.com/request_latencies` which is a distribution.
-      filter = "metric.type=\"run.googleapis.com/request_latencies\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\" resource.labels.location=\"${var.cloud_run_location}\""
-      comparison = "COMPARISON_GT"
-      threshold_value = var.api_latency_p95_threshold_seconds * 1000 #ms for request_latencies
-      duration = "300s"
-       aggregations {
-        alignment_period = "60s"
-        per_series_aligner = "ALIGN_PERCENTILE_95"
+      condition_monitoring_query_language {
+        query = <<-QUERY
+          fetch cloud_run_revision
+          | metric 'run.googleapis.com/request_latencies'
+          | filter resource.labels.service_name == '${var.cloud_run_service_name}' && resource.labels.location == '${var.cloud_run_location}'
+          | group_by [resource.location], .percentile_value_at(95)
+          | condition val() > ${var.api_latency_p95_threshold_seconds} * 1000
+        QUERY
       }
       trigger {
         count = 1
