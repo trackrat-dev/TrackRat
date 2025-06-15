@@ -96,12 +96,26 @@ class Settings:
         if not hasattr(self._settings, "debug"):
             self._settings.debug = self.env == "dev"
 
-        # If database URL isn't set, use a default SQLite URL for development
-        if not self._settings.database or not getattr(self._settings.database, "url", None):
+        # Database URL precedence: Environment Variable > YAML Config > SQLite Fallback
+        database_url = os.environ.get("DATABASE_URL")
+
+        if database_url:
+            # Environment variable takes highest precedence
+            if not self._settings.database:
+                self._settings.database = DotDict({})
+            self._settings.database.url = database_url
+            logger.info(f"Using DATABASE_URL from environment variable")
+        elif not self._settings.database or not getattr(self._settings.database, "url", None):
+            # Fallback to SQLite if no YAML config exists
             if not self._settings.database:
                 self._settings.database = DotDict({})
             self._settings.database.url = f"sqlite:///trackcast_{self.env}.db"
-            logger.warning(f"Database URL not specified, using {self._settings.database.url}")
+            logger.warning(
+                f"Database URL not specified in environment or config, using fallback: {self._settings.database.url}"
+            )
+        else:
+            # Using database URL from YAML configuration
+            logger.info(f"Using database URL from YAML configuration: {self.config_path}")
 
         # Default model settings
         if not self._settings.model:

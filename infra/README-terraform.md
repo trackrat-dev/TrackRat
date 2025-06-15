@@ -31,6 +31,10 @@ No resources.
 |------|-------------|------|---------|:--------:|
 | <a name="input_app_name"></a> [app\_name](#input\_app\_name) | Application name | `string` | `"trackrat"` | no |
 | <a name="input_artifact_registry_repository_name"></a> [artifact\_registry\_repository\_name](#input\_artifact\_registry\_repository\_name) | Custom Artifact Registry repository name (optional). If not provided, defaults to {app\_name}-{environment} | `string` | `""` | no |
+| <a name="input_database_host"></a> [database\_host](#input\_database\_host) | Database host/IP address | `string` | `""` | no |
+| <a name="input_database_name"></a> [database\_name](#input\_database\_name) | Database name | `string` | `""` | no |
+| <a name="input_database_password"></a> [database\_password](#input\_database\_password) | Database password | `string` | `""` | no |
+| <a name="input_database_user"></a> [database\_user](#input\_database\_user) | Database user name | `string` | `""` | no |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment name (dev, staging, prod) | `string` | n/a | yes |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The GCP project ID | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | The GCP region | `string` | `"us-east1"` | no |

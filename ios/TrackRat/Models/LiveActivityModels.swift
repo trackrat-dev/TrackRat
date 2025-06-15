@@ -35,6 +35,14 @@ struct TrainActivityAttributes: ActivityAttributes {
 
 // MARK: - Supporting Data Models
 
+// Helper function to truncate station names
+private func truncateStationName(_ name: String, maxLength: Int = 18) -> String {
+    if name.count > maxLength {
+        return name.prefix(maxLength - 1) + "…"
+    }
+    return name
+}
+
 enum CurrentLocation: Codable, Hashable {
     case notDeparted(departureTime: Date)
     case boarding(station: String)
@@ -49,23 +57,23 @@ enum CurrentLocation: Codable, Hashable {
         case .notDeparted:
             return "Preparing to depart"
         case .boarding(let station):
-            return "Boarding at \(station)"
+            return "Boarding at \(truncateStationName(station))"
         case .departed(let from, let minutes):
             if minutes == 0 {
-                return "Just departed \(from)"
+                return "Just departed \(truncateStationName(from))"
             } else {
-                return "Departed \(from) \(minutes) min ago"
+                return "Departed \(truncateStationName(from)) \(minutes) min ago"
             }
         case .approaching(let station, let minutes):
             if minutes == 0 {
-                return "Arriving at \(station)"
+                return "Arriving at \(truncateStationName(station))"
             } else {
-                return "Approaching \(station) (~\(minutes) min)"
+                return "Approaching \(truncateStationName(station)) (~\(minutes) min)"
             }
         case .enRoute(let from, let to):
-            return "Between \(from) and \(to)"
+            return "Between \(truncateStationName(from)) and \(truncateStationName(to))"
         case .atStation(let station):
-            return "At \(station)"
+            return "At \(truncateStationName(station))"
         case .arrived:
             return "Arrived"
         }
@@ -84,10 +92,11 @@ struct NextStopInfo: Codable, Hashable {
         formatter.timeStyle = .short
         formatter.timeZone = TimeZone(identifier: "America/New_York")
         
+        let truncatedStationName = truncateStationName(stationName)
         if isDelayed {
-            return "\(stationName) ~\(formatter.string(from: estimatedArrival))"
+            return "\(truncatedStationName) ~\(formatter.string(from: estimatedArrival))"
         } else {
-            return "\(stationName) \(formatter.string(from: estimatedArrival))"
+            return "\(truncatedStationName) \(formatter.string(from: estimatedArrival))"
         }
     }
 }

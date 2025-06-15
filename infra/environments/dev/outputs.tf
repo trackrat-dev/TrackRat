@@ -48,3 +48,29 @@ output "trackrat_scheduler_job_name_dev" {
   description = "Name of the Cloud Scheduler job for the dev environment"
   value       = module.trackrat_scheduler_dev.scheduler_job_name
 }
+
+# Database connection outputs for automated secret management
+output "database_private_ip" {
+  description = "Private IP of the database instance"
+  value       = module.database.private_ip_address
+}
+
+output "database_name" {
+  description = "Name of the database"
+  value       = module.database.database_name
+}
+
+output "database_user_name" {
+  description = "Database user name"
+  value       = module.database.database_user_name
+}
+
+output "database_password_secret_id" {
+  description = "Secret Manager secret ID for database password"
+  value       = module.database.db_password_secret_id
+}
+
+output "app_secrets_name" {
+  description = "Name of the main application secrets"
+  value       = "trackrat-dev-secrets"
+}
