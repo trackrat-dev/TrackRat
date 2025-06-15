@@ -2,6 +2,17 @@
 
 TrackCast is a real-time track prediction system for trains departing from NY Penn Station. It collects data from the NJ Transit API, processes this information into a structured database, and employs machine learning to predict which track a train will depart from before the official announcement.
 
+## CI/CD Pipeline
+
+The project uses a consolidated CI/CD workflow that ensures all tests pass before deployment:
+
+- **Workflow**: `.github/workflows/ci-cd.yml` - Single pipeline for testing and deployment
+- **Testing**: Unit tests, integration tests, code quality checks, and Docker validation
+- **Deployment**: Automatic deployment to GCP Cloud Run when tests pass on main branch
+- **Safety**: Deployment is physically blocked until all tests succeed
+
+For migration details from the old separate workflows, see `.github/workflows/MIGRATION.md`.
+
 ## 1. Purpose and Value
 
 Penn Station often announces track assignments only 10-15 minutes before departure, causing passenger congestion and stress. TrackCast aims to predict track assignments with high accuracy up to 30 minutes in advance, allowing passengers to position themselves strategically and reducing platform crowding.

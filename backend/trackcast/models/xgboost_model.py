@@ -8,8 +8,21 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import shap
-import xgboost as xgb
+
+# Optional XGBoost and SHAP imports
+try:
+    import xgboost as xgb
+
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
+
+try:
+    import shap
+
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
 
 from ..config import settings
 from ..db.models import ModelData
@@ -30,6 +43,8 @@ class XGBoostTrackPredictor(BaseTrackPredictor):
         colsample_bytree: Optional[float] = None,
         model_version: Optional[str] = None,
     ):
+        if not XGBOOST_AVAILABLE:
+            raise ImportError("XGBoost not available. Install with: pip install xgboost")
         # Get hyperparameters from config or use defaults
         learning_rate = learning_rate or settings.get("model.hyperparameters.learning_rate", 0.1)
         max_depth = max_depth or settings.get("model.hyperparameters.max_depth", 6)
@@ -393,6 +408,18 @@ class XGBoostTrackPredictor(BaseTrackPredictor):
         """Generate SHAP values to explain predictions"""
         if self.model is None:
             raise ValueError("Model must be trained or loaded before generating explanations")
+
+        # Check if SHAP is available
+        if not SHAP_AVAILABLE:
+            logger.warning("SHAP not available - cannot generate detailed prediction factors")
+            return [
+                {
+                    "feature": "model_prediction",
+                    "importance": 1.0,
+                    "direction": "positive",
+                    "explanation": "SHAP explanations not available in inference-only mode",
+                }
+            ]
 
         # Create a single-element batch
         dummy_tracks = ["1"]
