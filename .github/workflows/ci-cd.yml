@@ -649,10 +649,10 @@ jobs:
         working-directory: ./infra
         run: |
           echo "🔐 Updating database secrets with connection URL..."
-          
+
           # Run the database secrets update script
           ./scripts/update-database-secrets.sh dev ${{ env.PROJECT_ID }}
-          
+
           echo "✅ Database secrets updated"
 
       # Step 5: Run database migrations
