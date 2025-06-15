@@ -1095,28 +1095,7 @@ struct JourneyStatusView: View {
     
     @ViewBuilder
     private var progressSection: some View {
-        // Use ViewModel's journey properties
-        if journeyTotalStops > 0 { // Display if there's a calculated journey by ViewModel
-            VStack(spacing: 8) {
-                ProgressView(value: Double(journeyProgressPercentage) / 100.0)
-                    .tint(statusColor) // Use statusColor or a dedicated progress bar color
-                    .scaleEffect(y: 2.5)
-
-                Text("\(journeyStopsCompleted) of \(journeyTotalStops) stops completed on your journey")
-                    .font(.caption)
-                    .foregroundColor(.black.opacity(0.7))
-            }
-        } else if let progress = train.progress { // Fallback to API progress if no user journey was processed by VM
-             VStack(spacing: 8) {
-                ProgressView(value: Double(progress.journeyPercent) / 100.0)
-                    .tint(statusColor)
-                    .scaleEffect(y: 2.5)
-
-                Text("\(progress.stopsCompleted) of \(progress.totalStops) stops completed (overall)")
-                    .font(.caption)
-                    .foregroundColor(.black.opacity(0.7))
-            }
-        }
+        EmptyView()
     }
     
     @ViewBuilder
