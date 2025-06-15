@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import time
+from typing import Optional, Tuple
 
 import click
 import uvicorn
@@ -94,7 +95,7 @@ def collect_data() -> None:
 @click.option(
     "--debug", is_flag=True, help="Enable debug logging for detailed track usage information"
 )
-def process_features(clear: bool, train_id: str, time_range: tuple, debug: bool) -> None:
+def process_features(clear: bool, train_id: Optional[str], time_range: Optional[Tuple], debug: bool) -> None:
     """Process collected train data to generate features"""
     try:
         # Set debug logging if requested
@@ -150,7 +151,7 @@ def process_features(clear: bool, train_id: str, time_range: tuple, debug: bool)
     type=click.DateTime(),
     help="Clear predictions for a time range (not implemented yet)",
 )
-def generate_predictions(clear: bool, train_id: str, time_range: tuple) -> None:
+def generate_predictions(clear: bool, train_id: Optional[str], time_range: Optional[Tuple]) -> None:
     """Generate track predictions for upcoming trains"""
     try:
         session = get_db_session()
@@ -255,7 +256,7 @@ def update_schema() -> None:
     "--station", "-s", type=str, help="Train model for specific station code (e.g., 'NY', 'TR')"
 )
 @click.option("--all-stations", is_flag=True, help="Train models for all stations")
-def train_model(station: str, all_stations: bool) -> None:
+def train_model(station: Optional[str], all_stations: bool) -> None:
     """Train prediction models using historical data"""
     try:
         # Check if training dependencies are available
@@ -315,7 +316,7 @@ def train_model(station: str, all_stations: bool) -> None:
 @click.option("--format", "-f", type=click.Choice(["csv", "json"]), help="Data file format")
 @click.option("--pattern", "-p", type=str, help="File pattern (e.g., '*.csv')")
 @click.option("--clear", is_flag=True, help="Clear all train data from the database before import")
-def import_data(source: str, format: str, pattern: str, clear: bool) -> None:
+def import_data(source: Optional[str], format: Optional[str], pattern: Optional[str], clear: bool) -> None:
     """Import train data from files into the database"""
     try:
         session = get_db_session()
@@ -369,7 +370,7 @@ def import_data(source: str, format: str, pattern: str, clear: bool) -> None:
 @main.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
 @click.option("--limit", type=int, help="Limit the number of stops to process")
-def backfill_station_codes(dry_run: bool, limit: int) -> None:
+def backfill_station_codes(dry_run: bool, limit: Optional[int]) -> None:
     """Backfill missing station codes based on station names"""
     try:
         from sqlalchemy import func

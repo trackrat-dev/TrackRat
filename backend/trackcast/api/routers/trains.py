@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Union
+from typing import Any, List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -18,13 +18,13 @@ from trackcast.db.repository import TrainRepository, TrainStopRepository
 from trackcast.services.train_consolidation import TrainConsolidationService
 
 
-def get_train_repository():
+def get_train_repository() -> TrainRepository:
     """Get a train repository instance with a DB session."""
     db = next(get_db())
     return TrainRepository(db)
 
 
-def get_train_stop_repository():
+def get_train_stop_repository() -> TrainStopRepository:
     """Get a train stop repository instance with a DB session."""
     db = next(get_db())
     return TrainStopRepository(db)
@@ -34,7 +34,12 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _matches_target_station(stop, stops_at_station, stops_at_station_code, stops_at_station_name):
+def _matches_target_station(
+    stop: Any, 
+    stops_at_station: Optional[str], 
+    stops_at_station_code: Optional[str], 
+    stops_at_station_name: Optional[str]
+) -> bool:
     """Check if a stop matches any of the target station filters."""
     if stops_at_station:
         # Search both station code and station name
@@ -51,8 +56,12 @@ def _matches_target_station(stop, stops_at_station, stops_at_station_code, stops
 
 
 def _filter_trains_by_stop_order(
-    trains, origin_station_code, stops_at_station, stops_at_station_code, stops_at_station_name
-):
+    trains: List[Any], 
+    origin_station_code: Optional[str], 
+    stops_at_station: Optional[str], 
+    stops_at_station_code: Optional[str], 
+    stops_at_station_name: Optional[str]
+) -> List[Any]:
     """Filter trains where origin station comes before target station in route and both stops haven't departed."""
     if not origin_station_code or not any(
         [stops_at_station, stops_at_station_code, stops_at_station_name]
@@ -90,7 +99,7 @@ def _filter_trains_by_stop_order(
     return filtered_trains
 
 
-def _enrich_train_with_stops(train, stop_repo: TrainStopRepository):
+def _enrich_train_with_stops(train: Any, stop_repo: TrainStopRepository) -> Any:
     """Add stop data to a train object."""
     try:
         stops = stop_repo.get_stops_for_train(train.train_id, train.departure_time)
