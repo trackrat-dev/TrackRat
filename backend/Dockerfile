@@ -71,10 +71,6 @@ RUN pip install -e . \
     && find /opt/venv -type f -name "*.pyc" -delete \
     && find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
-# Perform in-container tests
-RUN ls -la /app/
-RUN python -c "         import sys; print(f'Verifying Python version: {sys.version}');         print('Attempting critical imports...');         import fastapi; print('  ✅ FastAPI imported');         import uvicorn; print('  ✅ Uvicorn imported');         import torch; print('  ✅ PyTorch imported');         import sqlalchemy; print('  ✅ SQLAlchemy imported');         import pandas; print('  ✅ Pandas imported');         print('Attempting application import...');         from trackcast.api.app import app; print('  ✅ TrackCast app imported');         print('Verifying core routes...');         routes = [route.path for route in app.routes if hasattr(route, 'path')];         expected_routes = ['/', '/health'];         for r in expected_routes: assert r in routes, f'Route {r} missing from {routes}'; print(f'  ✅ Route {r} found');         print('🎉 Dockerfile self-tests completed successfully!')     "
-
 # Switch to non-root user
 USER trackcast
 

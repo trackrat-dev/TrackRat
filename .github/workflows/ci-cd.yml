@@ -256,6 +256,31 @@ jobs:
           # The docker/build-push-action with push:true also loads the image into the local Docker daemon by default.
           # So, ${{ env.IMAGE_SHA_TAG }} should be available.
 
+          echo "🔍 Verifying container structure..."
+          docker run --rm ${{ env.IMAGE_SHA_TAG }} ls -la /app/
+
+          echo "🐍 Testing Python environment and app imports..."
+          docker run --rm \
+            -e MODEL_PATH="/app/models" \
+            -e TRACKCAST_ENV="ci" \
+            ${{ env.IMAGE_SHA_TAG }} \
+            python -c " \
+          import sys; print(f'Python version: {sys.version}'); \
+          print('Attempting critical imports...'); \
+          import fastapi; print('  ✅ FastAPI imported'); \
+          import uvicorn; print('  ✅ Uvicorn imported'); \
+          import torch; print('  ✅ PyTorch imported'); \
+          import sqlalchemy; print('  ✅ SQLAlchemy imported'); \
+          import pandas; print('  ✅ Pandas imported'); \
+          print('Attempting application import...'); \
+          from trackcast.api.app import app; print('  ✅ TrackCast app imported'); \
+          print('Verifying core routes...'); \
+          routes = [route.path for route in app.routes if hasattr(route, 'path')]; \
+          expected_routes = ['/', '/health']; \
+          for r in expected_routes: assert r in routes, f'Route {r} missing from {routes}'; print(f'  ✅ Route {r} found'); \
+          print('🎉 Docker image self-tests completed successfully!') \
+        "
+
           echo "🔒 Verifying container security (user)..."
           USER_CHECK=$(docker run --rm ${{ env.IMAGE_SHA_TAG }} whoami)
           if [ "$USER_CHECK" = "trackcast" ]; then
