@@ -94,9 +94,19 @@ class PredictionService:
             self.model_infos.pop(station_code, None)
             return False
 
-    def run_prediction(self) -> Tuple[bool, Dict[str, Any]]:
+    def run_prediction(
+        self,
+        train_id: Optional[str] = None,
+        time_range: Optional[Tuple[datetime, datetime]] = None,
+        future_only: bool = False,
+    ) -> Tuple[bool, Dict[str, Any]]:
         """
-        Run a prediction cycle for all trains needing predictions.
+        Run a prediction cycle for trains needing predictions with optional filtering.
+
+        Args:
+            train_id: Filter to a specific train ID
+            time_range: Filter to trains within a time range (start_time, end_time)
+            future_only: If True, only predict for trains with future departure times
 
         Returns:
             Tuple containing success status and statistics dictionary
@@ -110,12 +120,21 @@ class PredictionService:
             "trains_skipped": 0,
             "trains_failed": 0,
             "duration_ms": 0,
+            "filters": {
+                "train_id": train_id,
+                "time_range": [t.isoformat() for t in time_range] if time_range else None,
+                "future_only": future_only,
+            },
         }
 
         try:
-            # Get trains that need predictions
-            logger.info("Retrieving trains that need predictions")
-            trains = self.train_repo.get_trains_needing_predictions()
+            # Get trains that need predictions with filters
+            logger.info(
+                f"Retrieving trains that need predictions with filters: train_id={train_id}, time_range={time_range}, future_only={future_only}"
+            )
+            trains = self.train_repo.get_trains_needing_predictions(
+                train_id=train_id, time_range=time_range, future_only=future_only
+            )
 
             if not trains:
                 logger.info("No trains found needing predictions")
@@ -629,6 +648,71 @@ class PredictionService:
             logger.info(
                 f"Prediction clearing completed: {clear_stats['predictions_deleted']} predictions deleted "
                 f"from {clear_stats['trains_cleared']} trains in {stats['duration_ms']}ms"
+            )
+
+            return True, stats
+
+        except Exception as e:
+            logger.error(f"Error clearing predictions: {str(e)}")
+            stats["error"] = str(e)
+            stats["duration_ms"] = int((time.time() - start_time) * 1000)
+            return False, stats
+
+    def clear_predictions(
+        self,
+        train_id: Optional[str] = None,
+        time_range: Optional[Tuple[datetime, datetime]] = None,
+        future_only: bool = False,
+    ) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Clear predictions with optional filtering.
+
+        Args:
+            train_id: Clear predictions for a specific train ID
+            time_range: Clear predictions for trains within a time range
+            future_only: If True, only clear predictions for future trains
+
+        Returns:
+            Tuple containing success status and statistics dictionary
+        """
+        start_time = time.time()
+        stats = {
+            "timestamp": datetime.now().isoformat(),
+            "duration_ms": 0,
+            "filters": {
+                "train_id": train_id,
+                "time_range": [t.isoformat() for t in time_range] if time_range else None,
+                "future_only": future_only,
+            },
+        }
+
+        try:
+            # Determine which clearing method to use based on filters
+            if train_id:
+                logger.info(f"Clearing predictions for train {train_id}")
+                clear_stats = self.train_repo.clear_predictions_for_train(train_id)
+            elif time_range:
+                start_time_range, end_time_range = time_range
+                logger.info(
+                    f"Clearing predictions for trains from {start_time_range} to {end_time_range}"
+                )
+                clear_stats = self.train_repo.clear_predictions_for_time_range(
+                    start_time_range, end_time_range
+                )
+            elif future_only:
+                logger.info("Clearing predictions for future trains")
+                clear_stats = self.train_repo.clear_predictions_for_future_trains()
+            else:
+                logger.info("Clearing all predictions")
+                clear_stats = self.train_repo.clear_all_predictions()
+
+            # Update stats with clearing results
+            stats.update(clear_stats)
+            stats["duration_ms"] = int((time.time() - start_time) * 1000)
+
+            logger.info(
+                f"Prediction clearing completed: {clear_stats.get('predictions_deleted', 0)} predictions deleted "
+                f"from {clear_stats.get('trains_cleared', 0)} trains in {stats['duration_ms']}ms"
             )
 
             return True, stats
