@@ -191,6 +191,7 @@ No modules.
 | Name | Type |
 |------|------|
 | [google_cloud_run_v2_job.operation_jobs](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_v2_job) | resource |
+| [google_secret_manager_secret_iam_member.job_secret_access](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_iam_member) | resource |
 
 ## Inputs
 

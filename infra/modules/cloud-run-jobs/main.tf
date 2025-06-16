@@ -20,6 +20,11 @@ locals {
       }
     }
   ]
+
+  # Extract unique secret names for IAM binding
+  secret_names = toset([
+    for v in var.secret_environment_variables : split(":", v)[0]
+  ])
 }
 
 # Create Cloud Run Jobs for each operation
@@ -94,4 +99,18 @@ resource "google_cloud_run_v2_job" "operation_jobs" {
       client_version,
     ]
   }
+
+  depends_on = [
+    google_secret_manager_secret_iam_member.job_secret_access
+  ]
+}
+
+# Grant service account access to required secrets
+resource "google_secret_manager_secret_iam_member" "job_secret_access" {
+  for_each = local.secret_names
+
+  project   = var.project_id
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.service_account_email}"
 }

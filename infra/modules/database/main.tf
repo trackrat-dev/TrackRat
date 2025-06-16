@@ -17,6 +17,10 @@ resource "google_sql_database_instance" "default" {
   region           = var.region
   database_version = var.database_version
   name             = var.instance_name
+
+  # Ensure service networking connection is established before creating the instance
+  depends_on = [var.service_networking_connection]
+
   settings {
     tier = var.instance_tier
 
@@ -97,6 +101,21 @@ resource "google_secret_manager_secret" "database_password" {
 resource "google_secret_manager_secret_version" "database_password_version" {
   secret      = google_secret_manager_secret.database_password.id
   secret_data = random_password.database_user_password.result
+}
+
+# Store database URL in Secret Manager
+resource "google_secret_manager_secret" "database_url" {
+  project   = var.project_id
+  secret_id = "${var.instance_name}-database-url"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "database_url_version" {
+  secret      = google_secret_manager_secret.database_url.id
+  secret_data = "postgresql://${var.database_user_name}:${random_password.database_user_password.result}@${google_sql_database_instance.default.private_ip_address}:5432/${var.database_name}"
 }
 
 # Create a user for the database

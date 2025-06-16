@@ -1,7 +1,4 @@
-output "database_url_secret_name" {
-  description = "Name of the database URL secret"
-  value       = google_secret_manager_secret.database_url.secret_id
-}
+# Database URL secret output moved to database module
 
 output "njt_username_secret_name" {
   description = "Name of the NJ Transit username secret"

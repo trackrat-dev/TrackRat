@@ -38,6 +38,12 @@ variable "subnet_cidr" {
   default     = "10.0.1.0/24"
 }
 
+variable "private_service_connection_ip_range" {
+  description = "The IP CIDR range to reserve for private service connection (e.g., Cloud SQL, Memorystore). Must be /24 or shorter prefix."
+  type        = string
+  default     = "10.100.0.0/24"
+}
+
 # db_password is now auto-generated in the database module
 
 variable "artifact_registry_repository_name" {
@@ -46,28 +52,4 @@ variable "artifact_registry_repository_name" {
   default     = ""
 }
 
-# Database connection parameters for secrets module
-variable "database_host" {
-  description = "Database host/IP address"
-  type        = string
-  default     = ""
-}
-
-variable "database_name" {
-  description = "Database name"
-  type        = string
-  default     = ""
-}
-
-variable "database_user" {
-  description = "Database user name"
-  type        = string
-  default     = ""
-}
-
-variable "database_password" {
-  description = "Database password"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
+# Database connection parameters are now managed by the database module

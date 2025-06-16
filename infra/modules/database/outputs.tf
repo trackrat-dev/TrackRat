@@ -53,3 +53,8 @@ output "database_password" {
   value       = random_password.database_user_password.result
   sensitive   = true
 }
+
+output "database_url_secret_name" {
+  description = "Name of the database URL secret"
+  value       = google_secret_manager_secret.database_url.secret_id
+}

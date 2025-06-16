@@ -48,6 +48,7 @@ No modules.
 | <a name="output_network_name"></a> [network\_name](#output\_network\_name) | Name of the VPC network |
 | <a name="output_network_self_link"></a> [network\_self\_link](#output\_network\_self\_link) | The self-link of the VPC network, for use in Cloud SQL private IP configuration. |
 | <a name="output_router_name"></a> [router\_name](#output\_router\_name) | Name of the Cloud Router |
+| <a name="output_service_networking_connection"></a> [service\_networking\_connection](#output\_service\_networking\_connection) | The service networking connection for private services like Cloud SQL |
 | <a name="output_subnet_id"></a> [subnet\_id](#output\_subnet\_id) | ID of the subnet |
 | <a name="output_subnet_name"></a> [subnet\_name](#output\_subnet\_name) | Name of the subnet |
 <!-- END_TF_DOCS -->

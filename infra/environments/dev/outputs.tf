@@ -25,7 +25,7 @@ output "artifact_registry_repository" {
 
 output "database_url_secret_name" {
   description = "Name of the database URL secret"
-  value       = module.infrastructure.database_url_secret_name
+  value       = module.database.database_url_secret_name
 }
 
 output "njt_username_secret_name" {

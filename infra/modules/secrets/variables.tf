@@ -31,28 +31,4 @@ variable "amtrak_api_key" {
   default     = ""
 }
 
-# Database connection parameters
-variable "database_host" {
-  description = "Database host/IP address"
-  type        = string
-  default     = ""
-}
-
-variable "database_name" {
-  description = "Database name"
-  type        = string
-  default     = ""
-}
-
-variable "database_user" {
-  description = "Database user name"
-  type        = string
-  default     = ""
-}
-
-variable "database_password" {
-  description = "Database password"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
+# Database connection parameters are now managed by the database module

@@ -25,31 +25,29 @@ provider "google" {
 module "infrastructure" {
   source = "../../"
 
-  project_id  = var.project_id
-  region      = var.region
-  zone        = var.zone
-  environment = "dev"
-  app_name    = "trackrat"
-  vpc_cidr    = "10.1.0.0/16"
-  subnet_cidr = "10.1.1.0/24"
+  project_id                          = var.project_id
+  region                              = var.region
+  zone                                = var.zone
+  environment                         = "dev"
+  app_name                            = "trackrat"
+  vpc_cidr                            = "10.1.0.0/16"
+  subnet_cidr                         = "10.1.1.0/24"
+  private_service_connection_ip_range = "10.1.10.0/24"
   # db_password is now auto-generated in the database module
   artifact_registry_repository_name = "trackcast-inference-dev"
 
-  # Database connection parameters for secrets module
-  database_host     = module.database.private_ip_address
-  database_name     = module.database.database_name
-  database_user     = module.database.database_user_name
-  database_password = module.database.database_password
+  # Database connection parameters are now managed by the database module
 }
 
 module "database" {
   source = "../../modules/database"
 
-  project_id        = var.project_id
-  region            = var.region
-  instance_name     = "${var.app_name}-${var.environment}-sql" # Example instance name
-  instance_tier     = "db-g1-small"                            # 1.7GB memory, 1 shared core
-  network_self_link = module.infrastructure.network_self_link  # From VPC module output
+  project_id                    = var.project_id
+  region                        = var.region
+  instance_name                 = "${var.app_name}-${var.environment}-sql" # Example instance name
+  instance_tier                 = "db-g1-small"                            # 1.7GB memory, 1 shared core
+  network_self_link             = module.infrastructure.network_self_link  # From VPC module output
+  service_networking_connection = module.infrastructure.service_networking_connection
 
   # database_user_password is now auto-generated in the database module
 
@@ -102,7 +100,7 @@ module "trackrat_api_service" {
 
   # Secret environment variables (sensitive data from Secret Manager)
   secret_environment_variables = {
-    DATABASE_URL = "${module.infrastructure.database_url_secret_name}:latest"
+    DATABASE_URL = "${module.database.database_url_secret_name}:latest"
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
   }
@@ -155,7 +153,7 @@ module "scheduled_operations" {
 
   # Secret environment variables from Secret Manager
   secret_environment_variables = {
-    DATABASE_URL = "${module.infrastructure.database_url_secret_name}:latest"
+    DATABASE_URL = "${module.database.database_url_secret_name}:latest"
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
   }
