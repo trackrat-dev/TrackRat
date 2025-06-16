@@ -680,10 +680,19 @@ class TrainRepository(BaseRepository):
             logger.error(f"Database error in get_trains_needing_features: {str(e)}")
             raise
 
-    def get_trains_needing_predictions(self) -> List[Train]:
+    def get_trains_needing_predictions(
+        self,
+        train_id: Optional[str] = None,
+        time_range: Optional[Tuple[datetime, datetime]] = None,
+        future_only: bool = False,
+    ) -> List[Train]:
         """
-        Get trains that need predictions.
-        This includes trains with features but no predictions.
+        Get trains that need predictions with optional filtering.
+
+        Args:
+            train_id: Filter to a specific train ID
+            time_range: Filter to trains within a time range (start_time, end_time)
+            future_only: If True, only get trains with future departure times
 
         Returns:
             List of Train objects
@@ -692,20 +701,53 @@ class TrainRepository(BaseRepository):
             SQLAlchemyError: Database error
         """
         try:
-            # Trains with features but no predictions
-            return (
-                self.session.query(Train)
-                .filter(
-                    Train.model_data_id != None,
-                    Train.prediction_data_id == None,
-                    # or_(Train.track == None, Train.track == ''),  # Only predict for trains without a track
-                    # Train.departure_time >= datetime.utcnow(),  # Only future trains
-                )
-                .order_by(Train.departure_time.asc())
-                .all()
+            # Base query: Trains with features but no predictions
+            query = self.session.query(Train).filter(
+                Train.model_data_id != None,
+                Train.prediction_data_id == None,
             )
+
+            # Apply optional filters
+            if train_id:
+                query = query.filter(Train.train_id == train_id)
+
+            if time_range:
+                start_time, end_time = time_range
+                query = query.filter(
+                    Train.departure_time >= start_time, Train.departure_time <= end_time
+                )
+
+            if future_only:
+                query = query.filter(Train.departure_time >= datetime.utcnow())
+
+            return query.order_by(Train.departure_time.asc()).all()
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_needing_predictions: {str(e)}")
+            raise
+
+    def get_future_trains(self, include_predictions: bool = True) -> List[Train]:
+        """
+        Get trains with departure times in the future.
+
+        Args:
+            include_predictions: If True, include all future trains. If False, only include trains that need predictions.
+
+        Returns:
+            List of Train objects
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        try:
+            query = self.session.query(Train).filter(Train.departure_time >= datetime.utcnow())
+
+            if not include_predictions:
+                # Only get trains that need predictions
+                query = query.filter(Train.model_data_id != None, Train.prediction_data_id == None)
+
+            return query.order_by(Train.departure_time.asc()).all()
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_future_trains: {str(e)}")
             raise
 
     def get_all_lines_and_destinations(self) -> Dict[str, List[str]]:
@@ -1086,6 +1128,137 @@ class TrainRepository(BaseRepository):
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Database error in clear_all_predictions: {str(e)}")
+            raise
+
+    def clear_predictions_for_train(self, train_id: str) -> Dict[str, int]:
+        """
+        Clear prediction_data_id for a specific train and delete its prediction_data record.
+
+        Args:
+            train_id: The train ID to clear predictions for
+
+        Returns:
+            Dictionary with statistics about the clearing operation
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        try:
+            # Start a transaction
+            self.session.begin_nested()
+
+            # Get the train and its prediction_data_id
+            train = self.session.query(Train).filter(Train.train_id == train_id).first()
+
+            if not train:
+                logger.warning(f"Train {train_id} not found")
+                return {
+                    "trains_cleared": 0,
+                    "predictions_deleted": 0,
+                    "train_found": False,
+                }
+
+            prediction_data_id = train.prediction_data_id
+
+            # Clear the prediction_data_id from the train
+            if prediction_data_id:
+                train.prediction_data_id = None
+                self.session.add(train)
+
+                # Delete the prediction_data record
+                deleted = (
+                    self.session.query(PredictionData)
+                    .filter(PredictionData.id == prediction_data_id)
+                    .delete(synchronize_session=False)
+                )
+            else:
+                deleted = 0
+
+            # Commit the transaction
+            self.session.commit()
+
+            # Calculate statistics
+            stats = {
+                "trains_cleared": 1 if prediction_data_id else 0,
+                "predictions_deleted": deleted,
+                "train_found": True,
+                "train_had_prediction": prediction_data_id is not None,
+            }
+
+            logger.info(
+                f"Cleared predictions for train {train_id}: "
+                f"deleted {stats['predictions_deleted']} prediction records"
+            )
+
+            return stats
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Database error in clear_predictions_for_train: {str(e)}")
+            raise
+
+    def clear_predictions_for_future_trains(self) -> Dict[str, int]:
+        """
+        Clear prediction_data_id for all trains with future departure times.
+
+        Returns:
+            Dictionary with statistics about the clearing operation
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        try:
+            # Start a transaction
+            self.session.begin_nested()
+
+            # Get current time
+            now = datetime.utcnow()
+
+            # Get prediction_data_ids from trains with future departure times
+            prediction_data_ids = [
+                id
+                for (id,) in self.session.query(Train.prediction_data_id)
+                .filter(Train.departure_time >= now, Train.prediction_data_id != None)
+                .all()
+            ]
+
+            # Clear prediction_data_id from future trains
+            trains_updated = (
+                self.session.query(Train)
+                .filter(Train.departure_time >= now, Train.prediction_data_id != None)
+                .update({"prediction_data_id": None}, synchronize_session=False)
+            )
+
+            # Delete orphaned prediction_data records
+            if prediction_data_ids:
+                deleted = (
+                    self.session.query(PredictionData)
+                    .filter(PredictionData.id.in_(prediction_data_ids))
+                    .delete(synchronize_session=False)
+                )
+            else:
+                deleted = 0
+
+            # Commit the transaction
+            self.session.commit()
+
+            # Calculate statistics
+            stats = {
+                "trains_cleared": trains_updated,
+                "predictions_deleted": deleted,
+                "cutoff_time": now.isoformat(),
+            }
+
+            logger.info(
+                f"Cleared predictions for {stats['trains_cleared']} future trains "
+                f"(departure after {now}), deleted {stats['predictions_deleted']} prediction records"
+            )
+
+            return stats
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Database error in clear_predictions_for_future_trains: {str(e)}")
             raise
 
     def clear_all_train_data(self) -> Dict[str, int]:
