@@ -26,6 +26,6 @@ output "job_uris" {
   description = "Map of job URIs for Cloud Scheduler to invoke"
   value = {
     for job_key, job in google_cloud_run_v2_job.operation_jobs :
-    job_key => "https://${job.location}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/${job.name}:run"
+    job_key => "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${job.location}/jobs/${job.name}:run"
   }
 }

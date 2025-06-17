@@ -114,3 +114,14 @@ resource "google_secret_manager_secret_iam_member" "job_secret_access" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${var.service_account_email}"
 }
+
+# Grant service account permission to invoke these specific jobs
+resource "google_cloud_run_v2_job_iam_member" "job_invoker" {
+  for_each = google_cloud_run_v2_job.operation_jobs
+
+  project  = var.project_id
+  location = each.value.location
+  name     = each.value.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.service_account_email}"
+}

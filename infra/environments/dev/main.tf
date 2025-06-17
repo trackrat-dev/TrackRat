@@ -210,7 +210,7 @@ module "scheduled_operations" {
 # Grant the scheduler service account permission to run Cloud Run Jobs
 resource "google_project_iam_member" "scheduler_job_runner" {
   project = var.project_id
-  role    = "roles/run.developer"
+  role    = "roles/run.invoker"
   member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
 }
 
@@ -248,11 +248,7 @@ resource "google_cloud_scheduler_job" "operations" {
       "Content-Type" = "application/json"
     }
 
-    body = base64encode(jsonencode({
-      "operation"    = each.key
-      "triggered_by" = "cloud_scheduler"
-      "environment"  = "development"
-    }))
+    body = base64encode(jsonencode({}))
 
     oidc_token {
       service_account_email = google_service_account.scheduler_sa.email
