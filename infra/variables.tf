@@ -53,3 +53,31 @@ variable "artifact_registry_repository_name" {
 }
 
 # Database connection parameters are now managed by the database module
+
+variable "nj_transit_username" {
+  description = "NJ Transit API username"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "nj_transit_password" {
+  description = "NJ Transit API password"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "nj_transit_token" {
+  description = "NJ Transit API token (alternative to username/password)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "amtrak_api_key" {
+  description = "Amtrak API key (optional)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

@@ -35,6 +35,11 @@ output "njt_password_secret_name" {
   value       = module.secrets.njt_password_secret_name
 }
 
+output "njt_token_secret_name" {
+  description = "Name of the NJ Transit token secret"
+  value       = module.secrets.njt_token_secret_name
+}
+
 output "amtrak_api_key_secret_name" {
   description = "Name of the Amtrak API key secret"
   value       = module.secrets.amtrak_api_key_secret_name

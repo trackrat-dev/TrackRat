@@ -10,6 +10,11 @@ output "njt_password_secret_name" {
   value       = google_secret_manager_secret.njt_password.secret_id
 }
 
+output "njt_token_secret_name" {
+  description = "Name of the NJ Transit token secret"
+  value       = google_secret_manager_secret.njt_token.secret_id
+}
+
 output "amtrak_api_key_secret_name" {
   description = "Name of the Amtrak API key secret"
   value       = google_secret_manager_secret.amtrak_api_key.secret_id

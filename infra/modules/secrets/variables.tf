@@ -24,6 +24,13 @@ variable "nj_transit_password" {
   default     = ""
 }
 
+variable "nj_transit_token" {
+  description = "NJ Transit API token (alternative to username/password)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "amtrak_api_key" {
   description = "Amtrak API key (optional)"
   type        = string

@@ -51,9 +51,13 @@ module "vpc" {
 
 # Create Secret Manager resources
 module "secrets" {
-  source      = "./modules/secrets"
-  app_name    = var.app_name
-  environment = var.environment
+  source              = "./modules/secrets"
+  app_name            = var.app_name
+  environment         = var.environment
+  nj_transit_username = var.nj_transit_username
+  nj_transit_password = var.nj_transit_password
+  nj_transit_token    = var.nj_transit_token
+  amtrak_api_key      = var.amtrak_api_key
 
   depends_on = [module.apis]
 }

@@ -42,6 +42,20 @@ resource "google_secret_manager_secret" "njt_password" {
   }
 }
 
+resource "google_secret_manager_secret" "njt_token" {
+  secret_id = "${var.app_name}-${var.environment}-njt-token"
+
+  labels = {
+    app         = var.app_name
+    environment = var.environment
+    type        = "api-credentials"
+  }
+
+  replication {
+    auto {}
+  }
+}
+
 resource "google_secret_manager_secret" "amtrak_api_key" {
   secret_id = "${var.app_name}-${var.environment}-amtrak-api-key"
 
@@ -70,6 +84,15 @@ resource "google_secret_manager_secret_version" "njt_username_version" {
 resource "google_secret_manager_secret_version" "njt_password_version" {
   secret      = google_secret_manager_secret.njt_password.id
   secret_data = var.nj_transit_password != "" ? var.nj_transit_password : "placeholder"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_version" "njt_token_version" {
+  secret      = google_secret_manager_secret.njt_token.id
+  secret_data = var.nj_transit_token != "" ? var.nj_transit_token : "placeholder"
 
   lifecycle {
     ignore_changes = [secret_data]

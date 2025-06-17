@@ -156,6 +156,7 @@ module "scheduled_operations" {
     DATABASE_URL = "${module.database.database_url_secret_name}:latest"
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
+    NJT_TOKEN    = "${module.infrastructure.njt_token_secret_name}:latest"
   }
 
   # Job configurations
