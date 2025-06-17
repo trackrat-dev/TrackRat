@@ -82,8 +82,19 @@ extension Date {
 final class APIService: ObservableObject {
     static let shared = APIService()
     
-    private let baseURL = "https://trackrat.net/api"
+    private var baseURL: String
     private let session = URLSession.shared
+    private let storageService = StorageService()
+    
+    init() {
+        let environment = storageService.loadServerEnvironment()
+        self.baseURL = environment.baseURL
+    }
+    
+    func updateServerEnvironment(_ environment: ServerEnvironment) {
+        self.baseURL = environment.baseURL
+    }
+    
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder throws -> Date in
