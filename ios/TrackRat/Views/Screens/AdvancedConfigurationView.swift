@@ -25,15 +25,6 @@ struct AdvancedConfigurationView: View {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 40))
                             .foregroundColor(.orange)
-                        
-                        Text("Advanced Configuration")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                        
-                        Text("Configure backend server settings")
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.7))
                     }
                     .padding(.top, 20)
                     
@@ -91,41 +82,12 @@ struct AdvancedConfigurationView: View {
                         .padding(.horizontal)
                     }
                     
-                    // Warning Section
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.yellow)
-                            Text("Important Notes")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("• Production server provides real-time train data")
-                            Text("• Staging and Development servers are for testing only")
-                            Text("• Changes require app restart to take full effect")
-                            Text("• Invalid server URLs may cause connection failures")
-                        }
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.8))
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(.yellow.opacity(0.1))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(.yellow.opacity(0.3), lineWidth: 1)
-                            )
-                    )
                 }
                 .padding()
                 .padding(.bottom, 40)
             }
         }
-        .navigationTitle("Settings")
+        .navigationTitle("Advanced Configuration")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             selectedEnvironment = storageService.loadServerEnvironment()
