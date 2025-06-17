@@ -24,7 +24,7 @@ variable "subnet_cidr" {
 }
 
 variable "private_service_connection_ip_range" {
-  description = "The IP CIDR range to reserve for private service connection (e.g., Cloud SQL, Memorystore). Must be /24 or shorter prefix."
+  description = "The IP CIDR range to reserve for private service connection (e.g., Cloud SQL, Memorystore). Must be /20 or shorter prefix for sufficient capacity."
   type        = string
-  default     = "10.100.0.0/24" # Example, ensure this doesn't overlap with other ranges
+  default     = "10.100.0.0/20" # Larger range (4096 IPs) for Google managed services
 }

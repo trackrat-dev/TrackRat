@@ -35,7 +35,7 @@ No modules.
 |------|-------------|------|---------|:--------:|
 | <a name="input_app_name"></a> [app\_name](#input\_app\_name) | Application name | `string` | n/a | yes |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment name (dev, staging, prod) | `string` | n/a | yes |
-| <a name="input_private_service_connection_ip_range"></a> [private\_service\_connection\_ip\_range](#input\_private\_service\_connection\_ip\_range) | The IP CIDR range to reserve for private service connection (e.g., Cloud SQL, Memorystore). Must be /24 or shorter prefix. | `string` | `"10.100.0.0/24"` | no |
+| <a name="input_private_service_connection_ip_range"></a> [private\_service\_connection\_ip\_range](#input\_private\_service\_connection\_ip\_range) | The IP CIDR range to reserve for private service connection (e.g., Cloud SQL, Memorystore). Must be /20 or shorter prefix for sufficient capacity. | `string` | `"10.100.0.0/20"` | no |
 | <a name="input_region"></a> [region](#input\_region) | The GCP region | `string` | n/a | yes |
 | <a name="input_subnet_cidr"></a> [subnet\_cidr](#input\_subnet\_cidr) | CIDR block for subnet | `string` | n/a | yes |
 | <a name="input_vpc_cidr"></a> [vpc\_cidr](#input\_vpc\_cidr) | CIDR block for VPC | `string` | n/a | yes |

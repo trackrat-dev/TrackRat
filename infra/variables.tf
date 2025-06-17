@@ -39,9 +39,9 @@ variable "subnet_cidr" {
 }
 
 variable "private_service_connection_ip_range" {
-  description = "The IP CIDR range to reserve for private service connection (e.g., Cloud SQL, Memorystore). Must be /24 or shorter prefix."
+  description = "The IP CIDR range to reserve for private service connection (e.g., Cloud SQL, Memorystore). Must be /20 or shorter prefix for sufficient capacity."
   type        = string
-  default     = "10.100.0.0/24"
+  default     = "10.100.0.0/20"
 }
 
 # db_password is now auto-generated in the database module

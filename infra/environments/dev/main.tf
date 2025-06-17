@@ -32,7 +32,7 @@ module "infrastructure" {
   app_name                            = "trackrat"
   vpc_cidr                            = "10.1.0.0/16"
   subnet_cidr                         = "10.1.1.0/24"
-  private_service_connection_ip_range = "10.1.10.0/24"
+  private_service_connection_ip_range = "10.1.16.0/20"
   # db_password is now auto-generated in the database module
   artifact_registry_repository_name = "trackcast-inference-dev"
 
