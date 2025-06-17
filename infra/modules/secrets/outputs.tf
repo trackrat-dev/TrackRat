@@ -1,7 +1,4 @@
-output "database_url_secret_name" {
-  description = "Name of the database URL secret"
-  value       = google_secret_manager_secret.database_url.secret_id
-}
+# Database URL secret output moved to database module
 
 output "njt_username_secret_name" {
   description = "Name of the NJ Transit username secret"
@@ -11,6 +8,11 @@ output "njt_username_secret_name" {
 output "njt_password_secret_name" {
   description = "Name of the NJ Transit password secret"
   value       = google_secret_manager_secret.njt_password.secret_id
+}
+
+output "njt_token_secret_name" {
+  description = "Name of the NJ Transit token secret"
+  value       = google_secret_manager_secret.njt_token.secret_id
 }
 
 output "amtrak_api_key_secret_name" {

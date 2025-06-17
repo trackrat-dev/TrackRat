@@ -27,3 +27,8 @@ output "network_self_link" {
   description = "The self-link of the VPC network, for use in Cloud SQL private IP configuration."
   value       = google_compute_network.vpc.self_link
 }
+
+output "service_networking_connection" {
+  description = "The service networking connection for private services like Cloud SQL"
+  value       = google_service_networking_connection.default
+}

@@ -254,6 +254,73 @@ gcloud run jobs create train-$(date +%s) \
   --command=trackcast --args="train-model --all-stations"
 ```
 
+### Prediction Management
+
+The `generate-predictions` command now supports advanced filtering for both generating and clearing predictions:
+
+```bash
+# Generate predictions for all trains needing them
+gcloud run jobs create predict-$(date +%s) \
+  --image=LATEST_IMAGE \
+  --region=us-central1 \
+  --set-secrets=DATABASE_URL=trackrat-prod-secrets:latest \
+  --command=trackcast --args="generate-predictions"
+
+# Generate predictions for future trains only
+gcloud run jobs create predict-future-$(date +%s) \
+  --image=LATEST_IMAGE \
+  --region=us-central1 \
+  --set-secrets=DATABASE_URL=trackrat-prod-secrets:latest \
+  --command=trackcast --args="generate-predictions --future"
+
+# Clear and regenerate predictions for future trains (recommended for fresh predictions)
+gcloud run jobs create refresh-predictions-$(date +%s) \
+  --image=LATEST_IMAGE \
+  --region=us-central1 \
+  --set-secrets=DATABASE_URL=trackrat-prod-secrets:latest \
+  --command=trackcast --args="generate-predictions --clear --future"
+
+# Generate predictions for specific train
+gcloud run jobs create predict-train-$(date +%s) \
+  --image=LATEST_IMAGE \
+  --region=us-central1 \
+  --set-secrets=DATABASE_URL=trackrat-prod-secrets:latest \
+  --command=trackcast --args="generate-predictions --train-id 7001"
+
+# Generate predictions for trains in a time range
+gcloud run jobs create predict-range-$(date +%s) \
+  --image=LATEST_IMAGE \
+  --region=us-central1 \
+  --set-secrets=DATABASE_URL=trackrat-prod-secrets:latest \
+  --command=trackcast --args="generate-predictions --time-range 2025-06-17T10:00:00 2025-06-17T18:00:00"
+
+# Clear all predictions
+gcloud run jobs create clear-predictions-$(date +%s) \
+  --image=LATEST_IMAGE \
+  --region=us-central1 \
+  --set-secrets=DATABASE_URL=trackrat-prod-secrets:latest \
+  --command=trackcast --args="generate-predictions --clear"
+
+# Clear predictions for specific train
+gcloud run jobs create clear-train-$(date +%s) \
+  --image=LATEST_IMAGE \
+  --region=us-central1 \
+  --set-secrets=DATABASE_URL=trackrat-prod-secrets:latest \
+  --command=trackcast --args="generate-predictions --clear --train-id 7001"
+```
+
+**Available Filtering Options:**
+- `--train-id TEXT`: Filter to a specific train ID
+- `--time-range START END`: Filter to trains within a time range (ISO format)
+- `--future`: Filter to trains with future departure times
+- `--clear`: Clear predictions instead of generating them
+
+**Important Notes:**
+- Only one filtering option can be used at a time
+- All filters work with both generation (`--clear` omitted) and clearing (`--clear` included) modes
+- Use `--future` flag to continuously refresh predictions for upcoming trains without affecting historical data
+- Time range format: `YYYY-MM-DDTHH:MM:SS` (ISO 8601)
+
 ### Data Quality Monitoring
 
 Monitor data quality via API endpoints:

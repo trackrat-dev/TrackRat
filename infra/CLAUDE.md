@@ -28,9 +28,16 @@ infra/
 │   └── prod/                        # Production environment (similar structure)
 └── modules/                         # Reusable Terraform modules
     ├── apis/                        # GCP API enablement module
+    ├── application/                 # Application-level configuration
     ├── artifact-registry/           # Container registry module
+    ├── cloud-run/                   # Cloud Run service module
+    ├── cloud-run-jobs/             # Cloud Run jobs module
+    ├── collector/                   # Data collector service module
+    ├── database/                    # Cloud SQL database module
+    ├── scheduler/                   # Cloud Scheduler module
     ├── secrets/                     # Secret Manager module
-    └── vpc/                         # VPC and networking module
+    ├── vpc/                         # VPC and networking module
+    └── vpc-connector/               # VPC connector for Cloud Run
 ```
 
 ## Terraform Module Architecture
@@ -48,9 +55,16 @@ infra/
 
 ### Child Modules (`modules/*/`)
 - **apis**: Enables required GCP APIs
-- **vpc**: Creates VPC, subnets, NAT, firewall rules
-- **secrets**: Sets up Secret Manager for sensitive data
+- **application**: Application-level configuration and service orchestration
 - **artifact-registry**: Creates Docker repositories with cleanup policies
+- **cloud-run**: Cloud Run service configuration with auto-scaling
+- **cloud-run-jobs**: Cloud Run jobs for batch processing
+- **collector**: Data collector service for train data ingestion
+- **database**: Cloud SQL PostgreSQL instance with private networking
+- **scheduler**: Cloud Scheduler for automated task execution
+- **secrets**: Sets up Secret Manager for sensitive data
+- **vpc**: Creates VPC, subnets, NAT, firewall rules
+- **vpc-connector**: VPC connector for Cloud Run private networking
 
 ## Key Infrastructure Components
 
@@ -374,27 +388,37 @@ terraform plan             # Review planned changes
 2. **Git History**: All changes tracked in version control
 3. **Manual Intervention**: Document manual steps if needed
 
-## Future Infrastructure Needs
+## Current Infrastructure Status
 
-### Phase 2: Database Layer
+### ✅ Phase 1: Foundation Layer (Complete)
+- VPC and networking with private subnets
+- Secret Manager for credentials
+- Artifact Registry for container images
+- Required APIs enabled
+
+### ✅ Phase 2: Database Layer (Complete)
 - Cloud SQL PostgreSQL instances
-- Private IP connectivity
+- Private IP connectivity via VPC
 - Backup and high availability configuration
+- Database monitoring and alerting
 
-### Phase 3: Application Layer
-- Cloud Run services
-- Load balancing and SSL certificates
-- Auto-scaling configuration
+### ✅ Phase 3: Application Layer (Complete)
+- Cloud Run services with auto-scaling
+- VPC connectors for private networking
+- SSL certificates and load balancing
+- Data collector and scheduler services
 
-### Phase 4: Monitoring Layer
+### 🔄 Phase 4: Monitoring Layer (In Progress)
 - Cloud Monitoring dashboards
-- Alerting policies
+- Alerting policies for database and services
 - Log aggregation and analysis
+- Performance monitoring
 
-### Phase 5: CI/CD Layer
+### 📋 Phase 5: CI/CD Layer (Planned)
 - Cloud Build pipelines
 - Artifact promotion between environments
 - Automated testing and deployment
+- Enhanced monitoring and rollback
 
 ## Quick Reference Commands
 

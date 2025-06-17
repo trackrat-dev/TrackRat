@@ -1,5 +1,34 @@
 import Foundation
 
+// MARK: - Server Environment Model
+enum ServerEnvironment: String, CaseIterable, Codable {
+    case production = "production"
+    case staging = "staging"
+    case development = "development"
+    
+    var displayName: String {
+        switch self {
+        case .production:
+            return "Production"
+        case .staging:
+            return "Staging"
+        case .development:
+            return "Development"
+        }
+    }
+    
+    var baseURL: String {
+        switch self {
+        case .production:
+            return "https://trackrat.net/api"
+        case .staging:
+            return "https://trackrat-api-dev-41862227966.us-central1.run.app/api"
+        case .development:
+            return "https://trackrat-api-dev-41862227966.us-central1.run.app/api"
+        }
+    }
+}
+
 // MARK: - Trip Pair Model
 struct TripPair: Codable, Identifiable {
     var id: String { "\(departureCode)-\(destinationCode)" }
@@ -31,6 +60,7 @@ final class StorageService {
     private let recentDestinationsKey = "trackrat.recentDestinations"
     private let recentTripsKey = "trackrat.recentTrips"
     private let recentDeparturesKey = "trackrat.recentDepartures"
+    private let serverEnvironmentKey = "trackrat.serverEnvironment"
     private let maxRecentDestinations = 5
     private let maxRecentTrips = 10
     private let maxRecentDepartures = 5
@@ -185,6 +215,19 @@ final class StorageService {
         if let data = try? JSONEncoder().encode(departures) {
             userDefaults.set(data, forKey: recentDeparturesKey)
         }
+    }
+    
+    // MARK: - Server Environment
+    func loadServerEnvironment() -> ServerEnvironment {
+        guard let environmentString = userDefaults.string(forKey: serverEnvironmentKey),
+              let environment = ServerEnvironment(rawValue: environmentString) else {
+            return .production // Default to production
+        }
+        return environment
+    }
+    
+    func saveServerEnvironment(_ environment: ServerEnvironment) {
+        userDefaults.set(environment.rawValue, forKey: serverEnvironmentKey)
     }
     
     // MARK: - Migration

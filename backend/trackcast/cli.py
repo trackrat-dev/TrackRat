@@ -144,31 +144,41 @@ def process_features(
 
 @main.command()
 @click.option("--clear", is_flag=True, help="Clear predictions instead of generating them")
-@click.option(
-    "--train-id", type=str, help="Clear predictions for a specific train ID (not implemented yet)"
-)
+@click.option("--train-id", type=str, help="Filter to a specific train ID")
 @click.option(
     "--time-range",
     nargs=2,
     type=click.DateTime(),
-    help="Clear predictions for a time range (not implemented yet)",
+    help="Filter to trains within a time range (start_time end_time)",
 )
-def generate_predictions(clear: bool, train_id: Optional[str], time_range: Optional[Tuple]) -> None:
+
+@click.option("--future", is_flag=True, help="Filter to trains with future departure times")
+def generate_predictions(clear: bool, train_id: Optional[str], time_range: Optional[Tuple], future: Optional[bool]) -> None:
     """Generate track predictions for upcoming trains"""
     try:
         session = get_db_session()
         prediction_service = PredictionService(session)
 
+        # Parse time range if provided
+        parsed_time_range = None
+        if time_range:
+            parsed_time_range = (time_range[0], time_range[1])
+
+        # Validate conflicting options
+        filter_count = sum([bool(train_id), bool(time_range), future])
+        if filter_count > 1:
+            click.echo(
+                "Cannot use multiple filtering options simultaneously. Use only one of: --train-id, --time-range, or --future",
+                err=True,
+            )
+            sys.exit(1)
+
         if clear:
             # Handle clearing predictions
-            if train_id or time_range:
-                logger.error(
-                    "Train ID and time range filtering for prediction clearing is not implemented yet"
-                )
-                sys.exit(1)
-
             logger.info("Clearing predictions as requested")
-            success, stats = prediction_service.clear_all_predictions()
+            success, stats = prediction_service.clear_predictions(
+                train_id=train_id, time_range=parsed_time_range, future_only=future
+            )
 
             if success:
                 logger.info(f"Prediction clearing completed: {stats}")
@@ -176,8 +186,11 @@ def generate_predictions(clear: bool, train_id: Optional[str], time_range: Optio
                 logger.error(f"Prediction clearing failed: {stats}")
                 sys.exit(1)
         else:
-            # Normal prediction generation
-            success, stats = prediction_service.run_prediction()
+            # Normal prediction generation with optional filtering
+            success, stats = prediction_service.run_prediction(
+                train_id=train_id, time_range=parsed_time_range, future_only=future
+            )
+
             if success:
                 logger.info(f"Prediction completed: {stats}")
             else:
@@ -207,9 +220,13 @@ def start_api(host: str, port: int) -> None:
 
 @main.command()
 def start_scheduler() -> None:
-    """Start the scheduler for automatic periodic execution"""
+    """Start the scheduler for automatic periodic execution (DEPRECATED: Use Cloud Run Jobs instead)"""
     try:
-        logger.info("Starting scheduler")
+        logger.warning(
+            "DEPRECATED: The internal scheduler is deprecated. Use Cloud Run Jobs for scheduled operations."
+        )
+        logger.warning("This command is kept for backward compatibility only.")
+        logger.info("Starting internal scheduler")
         scheduler = SchedulerService()
         scheduler.start()
 

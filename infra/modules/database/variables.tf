@@ -31,6 +31,12 @@ variable "network_self_link" {
   type        = string
 }
 
+variable "service_networking_connection" {
+  description = "The service networking connection for private services (used for dependency)"
+  type        = any
+  default     = null
+}
+
 variable "maintenance_window_day" {
   description = "The day of the week for the maintenance window (1-7, Monday-Sunday)."
   type        = number

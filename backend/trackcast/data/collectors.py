@@ -83,6 +83,7 @@ class NJTransitCollector(BaseCollector):
         base_url_or_config: Optional[Union[str, Dict[str, Any]]] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
+        token: Optional[str] = None,
         station_code: Optional[str] = None,
         station_name: Optional[str] = None,
         retry_attempts: Optional[int] = None,
@@ -98,6 +99,7 @@ class NJTransitCollector(BaseCollector):
             base_url_or_config: Base API URL (defaults to config value) or config dict
             username: NJ Transit API username (from config or env var)
             password: NJ Transit API password (from config or env var)
+            token: Direct authentication token (from env var NJT_TOKEN)
             station_code: Station code to fetch data for
             station_name: Human-readable station name
             retry_attempts: Number of retry attempts for API calls
@@ -164,9 +166,14 @@ class NJTransitCollector(BaseCollector):
         if self.debug_mode:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
 
-        # Token management
+        # Token management with priority order
         self.token_file = token_file or str(self.data_dir / "token.json")
-        self.token = self._load_token_from_file()
+        self._direct_token_provided = bool(token or os.environ.get("NJT_TOKEN"))
+        self.token = (
+            token  # Direct parameter (highest priority)
+            or os.environ.get("NJT_TOKEN")  # Environment variable
+            or self._load_token_from_file()  # Cached token file (lowest priority)
+        )
 
         if not self.base_url:
             raise ValueError("NJ Transit API base URL is required")
@@ -292,9 +299,18 @@ class NJTransitCollector(BaseCollector):
 
         # Ensure we have a valid token
         if not self.token:
+            logger.info("No direct token provided, authenticating via getToken API")
             self.token = self._get_token()
             if not self.token:
                 raise APIError("Failed to obtain authentication token")
+        else:
+            # Log which token source we're using
+            if os.environ.get("NJT_TOKEN"):
+                logger.info("Using direct token from NJT_TOKEN environment variable")
+            elif os.path.exists(self.token_file):
+                logger.info("Using cached token from file")
+            else:
+                logger.info("Using direct token from parameter")
 
         # Now fetch train schedule data
         attempts = 0
@@ -337,16 +353,22 @@ class NJTransitCollector(BaseCollector):
                     f"API request failed, attempt {attempts}/{self.retry_attempts}: {str(e)}"
                 )
 
-                # If token may be expired, try to get a new one
+                # If token may be expired, try to get a new one (only if not using direct token)
                 if attempts == 1 and (
                     (hasattr(e, "response") and e.response and e.response.status_code == 401)
                     or "Unauthorized" in str(e)
                 ):
-                    logger.info("Token may be expired, attempting to refresh")
-                    try:
-                        self.token = self._get_token()
-                    except APIError as auth_error:
-                        logger.error(f"Failed to refresh token: {str(auth_error)}")
+                    # Only try to refresh if we're not using a direct token from env var or param
+                    if not self._direct_token_provided:
+                        logger.info("Token may be expired, attempting to refresh")
+                        try:
+                            self.token = self._get_token()
+                        except APIError as auth_error:
+                            logger.error(f"Failed to refresh token: {str(auth_error)}")
+                    else:
+                        logger.warning(
+                            "Direct token appears expired but cannot auto-refresh - manual token update required"
+                        )
 
                 if attempts < self.retry_attempts:
                     time.sleep(2)  # Wait before retry

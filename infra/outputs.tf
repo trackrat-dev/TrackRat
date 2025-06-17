@@ -23,10 +23,7 @@ output "artifact_registry_repository" {
   value       = module.artifact_registry.repository_id
 }
 
-output "database_url_secret_name" {
-  description = "Name of the database URL secret"
-  value       = module.secrets.database_url_secret_name
-}
+# Database URL secret name is now output by the database module
 
 output "njt_username_secret_name" {
   description = "Name of the NJ Transit username secret"
@@ -38,6 +35,11 @@ output "njt_password_secret_name" {
   value       = module.secrets.njt_password_secret_name
 }
 
+output "njt_token_secret_name" {
+  description = "Name of the NJ Transit token secret"
+  value       = module.secrets.njt_token_secret_name
+}
+
 output "amtrak_api_key_secret_name" {
   description = "Name of the Amtrak API key secret"
   value       = module.secrets.amtrak_api_key_secret_name
@@ -46,4 +48,9 @@ output "amtrak_api_key_secret_name" {
 output "network_self_link" {
   description = "The self-link of the VPC network."
   value       = module.vpc.network_self_link
+}
+
+output "service_networking_connection" {
+  description = "The service networking connection for private services"
+  value       = module.vpc.service_networking_connection
 }

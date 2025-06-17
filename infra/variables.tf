@@ -38,6 +38,12 @@ variable "subnet_cidr" {
   default     = "10.0.1.0/24"
 }
 
+variable "private_service_connection_ip_range" {
+  description = "The IP CIDR range to reserve for private service connection (e.g., Cloud SQL, Memorystore). Must be /20 or shorter prefix for sufficient capacity."
+  type        = string
+  default     = "10.100.0.0/20"
+}
+
 # db_password is now auto-generated in the database module
 
 variable "artifact_registry_repository_name" {
@@ -46,27 +52,31 @@ variable "artifact_registry_repository_name" {
   default     = ""
 }
 
-# Database connection parameters for secrets module
-variable "database_host" {
-  description = "Database host/IP address"
+# Database connection parameters are now managed by the database module
+
+variable "nj_transit_username" {
+  description = "NJ Transit API username"
   type        = string
+  sensitive   = true
   default     = ""
 }
 
-variable "database_name" {
-  description = "Database name"
+variable "nj_transit_password" {
+  description = "NJ Transit API password"
   type        = string
+  sensitive   = true
   default     = ""
 }
 
-variable "database_user" {
-  description = "Database user name"
+variable "nj_transit_token" {
+  description = "NJ Transit API token (alternative to username/password)"
   type        = string
+  sensitive   = true
   default     = ""
 }
 
-variable "database_password" {
-  description = "Database password"
+variable "amtrak_api_key" {
+  description = "Amtrak API key (optional)"
   type        = string
   sensitive   = true
   default     = ""

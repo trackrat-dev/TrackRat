@@ -15,21 +15,19 @@ struct TripSelectionView: View {
             TrackRatTheme.Colors.primaryGradient
                 .ignoresSafeArea()
             
-            VStack(spacing: 24) {
-                // Title
-                VStack(spacing: TrackRatTheme.Spacing.sm) {
-                    Text("Where would you")
-                        .font(TrackRatTheme.Typography.title1)
-                        .foregroundColor(TrackRatTheme.Colors.onSurface)
-                    
-                    Text("like to go?")
-                        .font(TrackRatTheme.Typography.title1)
-                        .foregroundColor(TrackRatTheme.Colors.onSurface)
-                }
-                .padding(.top, 60)
-                
-                ScrollView {
-                    VStack(spacing: 20) {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Title
+                    VStack(spacing: TrackRatTheme.Spacing.sm) {
+                        Text("Where would you")
+                            .font(TrackRatTheme.Typography.title1)
+                            .foregroundColor(TrackRatTheme.Colors.onSurface)
+                        
+                        Text("like to go?")
+                            .font(TrackRatTheme.Typography.title1)
+                            .foregroundColor(TrackRatTheme.Colors.onSurface)
+                    }
+                    .padding(.top, 60)
                         // Active trips (Live Activity)
                         if #available(iOS 16.1, *) {
                             ActiveTripsSection()
@@ -118,6 +116,40 @@ struct TripSelectionView: View {
                         }
                         .padding(.top, 20)
                         
+                        // Advanced Configuration button
+                        Button {
+                            appState.navigationPath.append(NavigationDestination.advancedConfiguration)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.gray)
+                                
+                                Text("Advanced Configuration")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.7))
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(.white.opacity(0.08))
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(.white.opacity(0.15), lineWidth: 1)
+                                    )
+                            )
+                            .padding(.horizontal)
+                        }
+                        .padding(.top, 20)
+                        
                         // WhatsApp Community button
                         Button {
                             openWhatsAppCommunity()
@@ -150,11 +182,9 @@ struct TripSelectionView: View {
                             )
                             .padding(.horizontal)
                         }
-                        .padding(.top, 30)
                         
-                    }
-                    .padding(.bottom, 40)
                 }
+                .padding(.bottom, 40)
             }
         }
         .toolbar(.hidden, for: .navigationBar)

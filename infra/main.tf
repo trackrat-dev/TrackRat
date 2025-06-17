@@ -38,27 +38,26 @@ module "apis" {
 
 # Create VPC and networking
 module "vpc" {
-  source      = "./modules/vpc"
-  app_name    = var.app_name
-  environment = var.environment
-  region      = var.region
-  vpc_cidr    = var.vpc_cidr
-  subnet_cidr = var.subnet_cidr
+  source                              = "./modules/vpc"
+  app_name                            = var.app_name
+  environment                         = var.environment
+  region                              = var.region
+  vpc_cidr                            = var.vpc_cidr
+  subnet_cidr                         = var.subnet_cidr
+  private_service_connection_ip_range = var.private_service_connection_ip_range
 
   depends_on = [module.apis]
 }
 
 # Create Secret Manager resources
 module "secrets" {
-  source      = "./modules/secrets"
-  app_name    = var.app_name
-  environment = var.environment
-
-  # Database connection parameters
-  database_host     = var.database_host
-  database_name     = var.database_name
-  database_user     = var.database_user
-  database_password = var.database_password
+  source              = "./modules/secrets"
+  app_name            = var.app_name
+  environment         = var.environment
+  nj_transit_username = var.nj_transit_username
+  nj_transit_password = var.nj_transit_password
+  nj_transit_token    = var.nj_transit_token
+  amtrak_api_key      = var.amtrak_api_key
 
   depends_on = [module.apis]
 }

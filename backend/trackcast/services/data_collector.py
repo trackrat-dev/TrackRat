@@ -48,7 +48,7 @@ class DataCollectorService:
             for station in settings.njtransit_api.stations:
                 if station.enabled:
                     collector = NJTransitCollector(
-                        base_url=settings.njtransit_api.base_url,
+                        base_url_or_config=settings.njtransit_api.base_url,
                         station_code=station.code,
                         station_name=station.name,
                         retry_attempts=settings.njtransit_api.retry_attempts,

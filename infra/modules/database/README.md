@@ -25,7 +25,9 @@ No modules.
 | [google_monitoring_alert_policy.db_high_cpu](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_alert_policy) | resource |
 | [google_monitoring_alert_policy.db_low_memory](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_alert_policy) | resource |
 | [google_secret_manager_secret.database_password](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
+| [google_secret_manager_secret.database_url](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
 | [google_secret_manager_secret_version.database_password_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
+| [google_secret_manager_secret_version.database_url_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
 | [google_sql_database.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database) | resource |
 | [google_sql_database_instance.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database_instance) | resource |
 | [google_sql_user.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_user) | resource |
@@ -52,6 +54,7 @@ No modules.
 | <a name="input_network_self_link"></a> [network\_self\_link](#input\_network\_self\_link) | The self-link of the VPC network to attach the Cloud SQL instance to. | `string` | n/a | yes |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The ID of the Google Cloud project. | `string` | n/a | yes |
 | <a name="input_region"></a> [region](#input\_region) | The region for the Cloud SQL instance. | `string` | n/a | yes |
+| <a name="input_service_networking_connection"></a> [service\_networking\_connection](#input\_service\_networking\_connection) | The service networking connection for private services (used for dependency) | `any` | `null` | no |
 | <a name="input_slow_query_log_min_duration"></a> [slow\_query\_log\_min\_duration](#input\_slow\_query\_log\_min\_duration) | Minimum query duration in ms to be logged as a slow query. Use 0 to disable. For PostgreSQL, this is 'log\_min\_duration\_statement'. | `number` | `500` | no |
 
 ## Outputs
@@ -60,6 +63,7 @@ No modules.
 |------|-------------|
 | <a name="output_database_name"></a> [database\_name](#output\_database\_name) | The name of the database created. |
 | <a name="output_database_password"></a> [database\_password](#output\_database\_password) | The database user password (sensitive) |
+| <a name="output_database_url_secret_name"></a> [database\_url\_secret\_name](#output\_database\_url\_secret\_name) | Name of the database URL secret |
 | <a name="output_database_user_name"></a> [database\_user\_name](#output\_database\_user\_name) | The name of the default database user created. |
 | <a name="output_db_password_secret_id"></a> [db\_password\_secret\_id](#output\_db\_password\_secret\_id) | The ID of the Secret Manager secret holding the DB password. |
 | <a name="output_db_password_secret_version_id"></a> [db\_password\_secret\_version\_id](#output\_db\_password\_secret\_version\_id) | The ID of the Secret Manager secret version holding the DB password. |

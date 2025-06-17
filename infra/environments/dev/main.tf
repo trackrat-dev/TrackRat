@@ -25,31 +25,29 @@ provider "google" {
 module "infrastructure" {
   source = "../../"
 
-  project_id  = var.project_id
-  region      = var.region
-  zone        = var.zone
-  environment = "dev"
-  app_name    = "trackrat"
-  vpc_cidr    = "10.1.0.0/16"
-  subnet_cidr = "10.1.1.0/24"
+  project_id                          = var.project_id
+  region                              = var.region
+  zone                                = var.zone
+  environment                         = "dev"
+  app_name                            = "trackrat"
+  vpc_cidr                            = "10.1.0.0/16"
+  subnet_cidr                         = "10.1.1.0/24"
+  private_service_connection_ip_range = "10.1.16.0/20"
   # db_password is now auto-generated in the database module
   artifact_registry_repository_name = "trackcast-inference-dev"
 
-  # Database connection parameters for secrets module
-  database_host     = module.database.private_ip_address
-  database_name     = module.database.database_name
-  database_user     = module.database.database_user_name
-  database_password = module.database.database_password
+  # Database connection parameters are now managed by the database module
 }
 
 module "database" {
   source = "../../modules/database"
 
-  project_id        = var.project_id
-  region            = var.region
-  instance_name     = "${var.app_name}-${var.environment}-sql" # Example instance name
-  instance_tier     = "db-g1-small"                            # 1.7GB memory, 1 shared core
-  network_self_link = module.infrastructure.network_self_link  # From VPC module output
+  project_id                    = var.project_id
+  region                        = var.region
+  instance_name                 = "${var.app_name}-${var.environment}-sql" # Example instance name
+  instance_tier                 = "db-g1-small"                            # 1.7GB memory, 1 shared core
+  network_self_link             = module.infrastructure.network_self_link  # From VPC module output
+  service_networking_connection = module.infrastructure.service_networking_connection
 
   # database_user_password is now auto-generated in the database module
 
@@ -77,12 +75,12 @@ module "trackrat_api_service" {
   container_image = var.api_image_url  # To be defined in variables.tf
   container_port  = 8000               # Assuming the API runs on port 8000
 
-  cpu_limit               = "1"   # As per issue: 1-2 vCPUs
-  memory_limit            = "2Gi" # Ensure 2GB of RAM
+  cpu_limit               = "1"   # Reduced since no longer handling scheduler operations
+  memory_limit            = "2Gi" # Reduced since no longer handling scheduler operations  
   concurrency             = 100
-  min_instances           = 0 # For dev/staging
-  max_instances           = 2 # As per issue
-  request_timeout_seconds = 60
+  min_instances           = 0  # Scale to 0 since using Cloud Run Jobs for operations
+  max_instances           = 5  # Increased for user traffic handling
+  request_timeout_seconds = 60 # Reduced to normal API timeout
 
   # Assuming /health is the correct endpoint for trackrat-api
   startup_probe_path            = "/health"
@@ -94,14 +92,15 @@ module "trackrat_api_service" {
 
   # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV       = "development"
-    TRACKCAST_ENV = "dev"
-    MODEL_PATH    = "/app/models"
+    APP_ENV                  = "development"
+    TRACKCAST_ENV            = "dev"
+    MODEL_PATH               = "/app/models"
+    TRACKCAST_SCHEDULER_MODE = "cloud_native" # Enable cloud-native mode to disable internal scheduler
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
   secret_environment_variables = {
-    DATABASE_URL = "${module.infrastructure.database_url_secret_name}:latest"
+    DATABASE_URL = "${module.database.database_url_secret_name}:latest"
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
   }
@@ -125,70 +124,143 @@ module "trackrat_api_service" {
   ]
 }
 
-module "trackrat_scheduler_dev" {
-  source = "../../modules/scheduler"
+# Service account for Cloud Scheduler jobs to invoke Cloud Run Jobs
+resource "google_service_account" "scheduler_sa" {
+  project      = var.project_id
+  account_id   = "trackrat-scheduler-dev"
+  display_name = "TrackRat Scheduler Service Account (Dev)"
+  description  = "Service account for Cloud Scheduler jobs to invoke Cloud Run Jobs"
+}
 
-  project_id      = var.project_id
-  location        = var.region
-  service_name    = "trackrat-scheduler-dev"
-  container_image = var.scheduler_image_url # To be defined in variables.tf
+# Cloud Run Jobs for scheduled operations
+module "scheduled_operations" {
+  source = "../../modules/cloud-run-jobs"
 
-  # Assuming scheduler runs on port 8080 by default as per module
-  # container_port = 8080
+  project_id            = var.project_id
+  location              = var.region
+  job_name_prefix       = "trackrat-ops-dev"
+  container_image       = var.api_image_url
+  service_account_email = google_service_account.scheduler_sa.email
+  vpc_connector_id      = module.vpc_connector.id
 
-  # max_instances is 1 by default in the module
-  min_instances = 0     # For dev
-  memory_limit  = "2Gi" # Ensure 2GB of RAM
-
-  # request_timeout_seconds is 3600 (1 hour) by default in module
-
-  scheduler_job_name = "invoke-trackrat-scheduler-dev"
-
-  # Phase 2: Parallel operation - keep legacy scheduler alongside new jobs
-  legacy_scheduler_enabled = true
-  scheduler_schedule       = "0 2 * * *" # Keep existing daily job for now
-
-  # Phase 1: New high-frequency scheduler jobs targeting API service
-  api_service_uri = module.trackrat_api_service.service_url
-
-  # Hourly scheduling as requested (Phase 1 implementation)
-  scheduler_jobs = {
-    data_collection = {
-      schedule    = "0 * * * *" # Every hour at :00
-      endpoint    = "/api/ops/collect-data"
-      description = "Hourly data collection from NJ Transit and Amtrak APIs"
-    }
-    feature_processing = {
-      schedule    = "10 * * * *" # Every hour at :10
-      endpoint    = "/api/ops/process-features"
-      description = "Hourly feature processing for collected train data"
-    }
-    prediction_generation = {
-      schedule    = "20 * * * *" # Every hour at :20
-      endpoint    = "/api/ops/generate-predictions"
-      description = "Hourly track prediction generation for upcoming trains"
-    }
-  }
-
-  # vpc_connector_id = var.vpc_connector_id # If scheduler needs to access VPC resources
-
+  # Global environment variables for all jobs
   environment_variables = {
-    APP_ENV = "development"
-    # Phase 3: Enable cloud-native mode to disable internal scheduler
-    # TRACKCAST_SCHEDULER_MODE = "cloud_native"
-    # For now, keep internal scheduler running alongside new jobs (Phase 2)
+    APP_ENV                  = "development"
+    TRACKCAST_ENV            = "dev"
+    MODEL_PATH               = "/app/models"
+    TRACKCAST_SCHEDULER_MODE = "cloud_native"
   }
 
-  # secret_environment_variables = {
-  #   SOME_SCHEDULER_SECRET = "scheduler-secret-name:latest"
-  # }
+  # Secret environment variables from Secret Manager
+  secret_environment_variables = {
+    DATABASE_URL = "${module.database.database_url_secret_name}:latest"
+    NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
+    NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
+    NJT_TOKEN    = "${module.infrastructure.njt_token_secret_name}:latest"
+  }
+
+  # Job configurations
+  jobs = {
+    data-collection = {
+      command      = ["trackcast", "collect-data"]
+      cpu_limit    = "1"
+      memory_limit = "2Gi"
+      max_retries  = 3
+      task_timeout = "300s"
+      environment_variables = {
+        JOB_TYPE = "data_collection"
+      }
+    }
+
+    feature-processing = {
+      command      = ["trackcast", "process-features"]
+      cpu_limit    = "2"
+      memory_limit = "4Gi"
+      max_retries  = 2
+      task_timeout = "600s"
+      environment_variables = {
+        JOB_TYPE = "feature_processing"
+      }
+    }
+
+    prediction-generation = {
+      command      = ["trackcast", "generate-predictions"]
+      cpu_limit    = "2"
+      memory_limit = "4Gi"
+      max_retries  = 2
+      task_timeout = "600s"
+      environment_variables = {
+        JOB_TYPE = "prediction_generation"
+      }
+    }
+  }
 
   labels = {
-    service = "trackrat-scheduler"
-    env     = "dev"
+    environment = "dev"
+    component   = "scheduler"
   }
 
   depends_on = [
-    module.trackrat_api_service # API service must be deployed before scheduler jobs can target it
+    module.database,
+    module.vpc_connector,
+    module.infrastructure
+  ]
+}
+
+# IAM permissions for jobs are handled at the job level in the cloud-run-jobs module
+
+
+# Cloud Scheduler jobs targeting Cloud Run Jobs
+resource "google_cloud_scheduler_job" "operations" {
+  for_each = {
+    data-collection = {
+      schedule    = "0,15,30,45 * * * *" # Every 15 minutes at :00, :15, :30, :45
+      description = "Data collection from NJ Transit and Amtrak APIs every 15 minutes"
+      job_name    = "data-collection"
+    }
+    feature-processing = {
+      schedule    = "5,20,35,50 * * * *" # Every 15 minutes at :05, :20, :35, :50
+      description = "Feature processing for collected train data every 15 minutes"
+      job_name    = "feature-processing"
+    }
+    prediction-generation = {
+      schedule    = "10,25,40,55 * * * *" # Every 15 minutes at :10, :25, :40, :55
+      description = "Track prediction generation for upcoming trains every 15 minutes"
+      job_name    = "prediction-generation"
+    }
+  }
+
+  project          = var.project_id
+  region           = var.region
+  name             = "trackrat-ops-dev-${each.value.job_name}-scheduler-trigger"
+  description      = each.value.description
+  schedule         = each.value.schedule
+  time_zone        = "America/New_York"
+  attempt_deadline = "180s"
+
+  retry_config {
+    max_retry_duration   = "0s"
+    min_backoff_duration = "5s"
+    max_backoff_duration = "3600s"
+    max_doublings        = 5
+  }
+
+  http_target {
+    uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/trackrat-ops-dev-${each.value.job_name}:run"
+    http_method = "POST"
+
+    headers = {
+      "User-Agent" = "Google-Cloud-Scheduler"
+    }
+
+    oauth_token {
+      service_account_email = google_service_account.scheduler_sa.email
+      scope                 = "https://www.googleapis.com/auth/cloud-platform"
+    }
+  }
+
+  depends_on = [
+    module.scheduled_operations,
+    google_service_account.scheduler_sa
   ]
 }
