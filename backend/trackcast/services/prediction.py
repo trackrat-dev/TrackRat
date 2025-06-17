@@ -147,7 +147,7 @@ class PredictionService:
                 return True, stats
 
             logger.info(f"Generating predictions for {len(trains)} trains")
-            stats["trains_processed"] = len(trains)
+            trains_processed = len(trains)
 
             # Group trains by station for efficient model loading
             trains_by_station = {}

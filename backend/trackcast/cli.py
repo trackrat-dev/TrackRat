@@ -151,9 +151,10 @@ def process_features(
     type=click.DateTime(),
     help="Filter to trains within a time range (start_time end_time)",
 )
-
 @click.option("--future", is_flag=True, help="Filter to trains with future departure times")
-def generate_predictions(clear: bool, train_id: Optional[str], time_range: Optional[Tuple], future: Optional[bool]) -> None:
+def generate_predictions(
+    clear: bool, train_id: Optional[str], time_range: Optional[Tuple], future: Optional[bool]
+) -> None:
     """Generate track predictions for upcoming trains"""
     try:
         session = get_db_session()
