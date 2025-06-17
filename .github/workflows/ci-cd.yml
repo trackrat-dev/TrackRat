@@ -329,40 +329,11 @@ jobs:
             echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
           fi
 
+
           echo "✅ Infrastructure and services deployed"
 
-      # Step 4: Run database migrations
-      - name: Run Database Migrations
-        run: |
-          echo "🗄️ Running database migrations..."
 
-          # Create a temporary Cloud Run job to run migrations
-          gcloud run jobs create trackcast-migrate-${{ github.sha }} \
-            --image=${IMAGE_TAG} \
-            --region=${{ env.REGION }} \
-            --task-timeout=300 \
-            --memory=1Gi \
-            --cpu=1 \
-            --set-secrets=DATABASE_URL=trackcast-dev-secrets:latest \
-            --set-env-vars=TRACKCAST_ENV=dev \
-            --command=trackcast \
-            --args=init-db \
-            --max-retries=0 \
-            --service-account=trackcast-dev-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com || true
-
-          # Execute the migration job
-          gcloud run jobs execute trackcast-migrate-${{ github.sha }} \
-            --region=${{ env.REGION }} \
-            --wait
-
-          # Clean up the job
-          gcloud run jobs delete trackcast-migrate-${{ github.sha }} \
-            --region=${{ env.REGION }} \
-            --quiet
-
-          echo "✅ Database migrations completed"
-
-      # Step 5: Get final service URL if not set
+      # Step 4: Get final service URL if not set
       - name: Get Service URL
         run: |
           if [[ -z "${{ env.SERVICE_URL }}" ]]; then
@@ -373,7 +344,7 @@ jobs:
           fi
           echo "🔗 Service URL: ${{ env.SERVICE_URL }}"
 
-      # Step 6: Health checks
+      # Step 5: Health checks
       - name: Health Check
         run: |
           echo "🏥 Performing health check..."
@@ -406,7 +377,7 @@ jobs:
             fi
           done
 
-      # Step 7: Test API endpoints
+      # Step 6: Test API endpoints
       - name: Test API Endpoints
         run: |
           echo "🧪 Testing API endpoints..."
@@ -436,7 +407,7 @@ jobs:
             echo "⚠️ Stops API endpoint check failed (may be expected if no data)"
           fi
 
-      # Step 8: Deployment summary
+      # Step 7: Deployment summary
       - name: Deployment Summary
         run: |
           echo "## 🚀 Development Deployment Complete" >> $GITHUB_STEP_SUMMARY
