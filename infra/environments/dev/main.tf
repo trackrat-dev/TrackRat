@@ -207,12 +207,7 @@ module "scheduled_operations" {
   ]
 }
 
-# Grant the scheduler service account permission to run Cloud Run Jobs
-resource "google_project_iam_member" "scheduler_job_runner" {
-  project = var.project_id
-  role    = "roles/run.invoker"
-  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
-}
+# IAM permissions for jobs are handled at the job level in the cloud-run-jobs module
 
 
 # Cloud Scheduler jobs targeting Cloud Run Jobs
@@ -221,44 +216,51 @@ resource "google_cloud_scheduler_job" "operations" {
     data-collection = {
       schedule    = "0 * * * *" # Every hour at :00
       description = "Hourly data collection from NJ Transit and Amtrak APIs"
+      job_name    = "data-collection"
     }
     feature-processing = {
       schedule    = "10 * * * *" # Every hour at :10
       description = "Hourly feature processing for collected train data"
+      job_name    = "feature-processing"
     }
     prediction-generation = {
       schedule    = "20 * * * *" # Every hour at :20
       description = "Hourly track prediction generation for upcoming trains"
+      job_name    = "prediction-generation"
     }
   }
 
   project          = var.project_id
   region           = var.region
-  name             = "trackrat-ops-${each.key}-dev"
+  name             = "trackrat-ops-dev-${each.value.job_name}-scheduler-trigger"
   description      = each.value.description
   schedule         = each.value.schedule
   time_zone        = "America/New_York"
-  attempt_deadline = "300s"
+  attempt_deadline = "180s"
+
+  retry_config {
+    max_retry_duration   = "0s"
+    min_backoff_duration = "5s"
+    max_backoff_duration = "3600s"
+    max_doublings        = 5
+  }
 
   http_target {
-    uri         = module.scheduled_operations.job_uris[each.key]
+    uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/trackrat-ops-dev-${each.value.job_name}:run"
     http_method = "POST"
 
     headers = {
-      "Content-Type" = "application/json"
+      "User-Agent" = "Google-Cloud-Scheduler"
     }
 
-    body = base64encode(jsonencode({}))
-
-    oidc_token {
+    oauth_token {
       service_account_email = google_service_account.scheduler_sa.email
-      audience              = module.scheduled_operations.job_uris[each.key]
+      scope                 = "https://www.googleapis.com/auth/cloud-platform"
     }
   }
 
   depends_on = [
     module.scheduled_operations,
-    google_service_account.scheduler_sa,
-    google_project_iam_member.scheduler_job_runner
+    google_service_account.scheduler_sa
   ]
 }

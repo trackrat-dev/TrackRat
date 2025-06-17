@@ -124,4 +124,8 @@ resource "google_cloud_run_v2_job_iam_member" "job_invoker" {
   name     = each.value.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.service_account_email}"
+
+  depends_on = [
+    google_cloud_run_v2_job.operation_jobs
+  ]
 }
