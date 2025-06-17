@@ -214,18 +214,18 @@ module "scheduled_operations" {
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
     data-collection = {
-      schedule    = "0 * * * *" # Every hour at :00
-      description = "Hourly data collection from NJ Transit and Amtrak APIs"
+      schedule    = "0,15,30,45 * * * *" # Every 15 minutes at :00, :15, :30, :45
+      description = "Data collection from NJ Transit and Amtrak APIs every 15 minutes"
       job_name    = "data-collection"
     }
     feature-processing = {
-      schedule    = "10 * * * *" # Every hour at :10
-      description = "Hourly feature processing for collected train data"
+      schedule    = "5,20,35,50 * * * *" # Every 15 minutes at :05, :20, :35, :50
+      description = "Feature processing for collected train data every 15 minutes"
       job_name    = "feature-processing"
     }
     prediction-generation = {
-      schedule    = "20 * * * *" # Every hour at :20
-      description = "Hourly track prediction generation for upcoming trains"
+      schedule    = "10,25,40,55 * * * *" # Every 15 minutes at :10, :25, :40, :55
+      description = "Track prediction generation for upcoming trains every 15 minutes"
       job_name    = "prediction-generation"
     }
   }
