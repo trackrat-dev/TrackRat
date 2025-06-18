@@ -220,11 +220,8 @@ class DataCollectorService:
                 departure_time = train_record.get("departure_time")
                 if isinstance(departure_time, str):
                     try:
-                        # Normalize time to nearest minute for consistency
-                        normalized_time_str = station_mapper.normalize_time_to_nearest_minute(
-                            departure_time
-                        )
-                        departure_time = datetime.fromisoformat(normalized_time_str)
+                        # Parse time string as-is, preserving original precision
+                        departure_time = datetime.fromisoformat(departure_time)
                     except ValueError:
                         # Try parsing as original string
                         try:
@@ -299,23 +296,11 @@ class DataCollectorService:
                 # Process stops for both new and existing trains
                 if "stops" in train_record and train_record["stops"]:
                     try:
-                        # Normalize stop times for consistency
-                        normalized_stops = []
-                        for stop in train_record["stops"]:
-                            normalized_stop = stop.copy()
-                            for time_field in ["scheduled_time", "departure_time"]:
-                                if time_field in normalized_stop and normalized_stop[time_field]:
-                                    normalized_stop[time_field] = (
-                                        station_mapper.normalize_time_to_nearest_minute(
-                                            normalized_stop[time_field]
-                                        )
-                                    )
-                            normalized_stops.append(normalized_stop)
-
+                        # Pass stop times as-is, fuzzy matching handles consolidation
                         self.stop_repo.upsert_train_stops(
                             train_record.get("train_id"),
                             departure_time,
-                            normalized_stops,
+                            train_record["stops"],  # Use original stops without normalization
                             train_record.get("data_source", "njtransit"),
                         )
                     except Exception as e:
@@ -575,10 +560,8 @@ class DataCollectorService:
             departure_time = train_record.get("departure_time")
 
             if departure_time:
-                # For now, just normalize time to nearest minute (skip NJ Transit alignment to avoid errors)
-                normalized["departure_time"] = station_mapper.normalize_time_to_nearest_minute(
-                    departure_time
-                )
+                # Preserve original time precision, fuzzy matching handles consolidation
+                normalized["departure_time"] = departure_time
 
             # Normalize origin station
             origin_code = train_record.get("origin_station_code")
@@ -614,13 +597,8 @@ class DataCollectorService:
                         normalized_stop["station_name"] = normalized_station["name"]
 
                     # Normalize times
-                    for time_field in ["scheduled_time", "departure_time"]:
-                        if time_field in normalized_stop and normalized_stop[time_field]:
-                            normalized_stop[time_field] = (
-                                station_mapper.normalize_time_to_nearest_minute(
-                                    normalized_stop[time_field]
-                                )
-                            )
+                    # Preserve original time precision in stop data
+                    # Fuzzy matching handles time differences during consolidation
 
                     normalized_stops.append(normalized_stop)
 

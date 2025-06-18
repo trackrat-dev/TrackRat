@@ -6,7 +6,8 @@ supporting both NJ Transit and Amtrak stations.
 """
 
 import logging
-from typing import Dict, List, Optional, Set
+from datetime import datetime
+from typing import Dict, List, Optional, Set, Union
 
 logger = logging.getLogger(__name__)
 
@@ -528,6 +529,66 @@ class StationMapper:
 
         # No normalization available, return originals
         return {"code": station_code, "name": station_name}
+
+    def times_match_within_tolerance(
+        self,
+        time1: Optional[Union[str, datetime]],
+        time2: Optional[Union[str, datetime]],
+        tolerance_seconds: int = 300,
+    ) -> bool:
+        """
+        Check if two times are within tolerance, handling None values and different formats.
+
+        This replaces normalize_time_to_nearest_minute for a more robust approach to
+        time matching that preserves original precision while enabling consolidation.
+
+        Args:
+            time1: First time (datetime object, ISO string, or None)
+            time2: Second time (datetime object, ISO string, or None)
+            tolerance_seconds: Maximum difference in seconds (default: 300 = 5 minutes)
+
+        Returns:
+            True if times are within tolerance or both are None, False otherwise
+        """
+        # Handle None cases
+        if time1 is None and time2 is None:
+            return True
+        if time1 is None or time2 is None:
+            return False
+
+        try:
+            # Convert to datetime objects if needed
+            if isinstance(time1, str):
+                dt1 = datetime.fromisoformat(time1.replace("Z", "+00:00"))
+            elif isinstance(time1, datetime):
+                dt1 = time1
+            else:
+                logger.debug(f"Unexpected time1 type: {type(time1)}, value: {time1}")
+                return False
+
+            if isinstance(time2, str):
+                dt2 = datetime.fromisoformat(time2.replace("Z", "+00:00"))
+            elif isinstance(time2, datetime):
+                dt2 = time2
+            else:
+                logger.debug(f"Unexpected time2 type: {type(time2)}, value: {time2}")
+                return False
+
+            # Handle timezone differences by converting both to naive UTC if needed
+            if dt1.tzinfo is not None and dt2.tzinfo is None:
+                # dt1 has timezone, dt2 doesn't - assume dt2 is in same timezone as dt1
+                dt2 = dt2.replace(tzinfo=dt1.tzinfo)
+            elif dt1.tzinfo is None and dt2.tzinfo is not None:
+                # dt2 has timezone, dt1 doesn't - assume dt1 is in same timezone as dt2
+                dt1 = dt1.replace(tzinfo=dt2.tzinfo)
+
+            # Check if within tolerance
+            time_diff = abs((dt1 - dt2).total_seconds())
+            return time_diff <= tolerance_seconds
+
+        except (ValueError, AttributeError, TypeError) as e:
+            logger.warning(f"Failed to compare times '{time1}' and '{time2}': {str(e)}")
+            return False
 
     def normalize_time_to_nearest_minute(self, time_str: Optional[str]) -> Optional[str]:
         """
