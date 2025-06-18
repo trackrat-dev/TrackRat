@@ -290,7 +290,7 @@ class SchedulerService:
 
                 unprocessed = (
                     session.query(Train.id)
-                    .filter(Train.model_data_id is None, Train.departure_time >= datetime.now())
+                    .filter(Train.model_data_id.is_(None), Train.departure_time >= datetime.now())
                     .count()
                 )
 
@@ -312,10 +312,10 @@ class SchedulerService:
                 unpredicted = (
                     session.query(Train.id)
                     .filter(
-                        Train.model_data_id is not None,
-                        Train.prediction_data_id is None,
+                        Train.model_data_id.is_not(None),
+                        Train.prediction_data_id.is_(None),
                         Train.departure_time >= datetime.now(),
-                        Train.track is None,
+                        Train.track.is_(None),
                     )
                     .count()
                 )

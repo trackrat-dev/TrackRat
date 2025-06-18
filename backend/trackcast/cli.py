@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import time
+from typing import Dict, Optional, Set, Tuple, Union
 
 import click
 import uvicorn
@@ -94,7 +95,9 @@ def collect_data() -> None:
 @click.option(
     "--debug", is_flag=True, help="Enable debug logging for detailed track usage information"
 )
-def process_features(clear: bool, train_id: str, time_range: tuple, debug: bool) -> None:
+def process_features(
+    clear: bool, train_id: Optional[str], time_range: Optional[Tuple], debug: bool
+) -> None:
     """Process collected train data to generate features"""
     try:
         # Set debug logging if requested
@@ -149,7 +152,9 @@ def process_features(clear: bool, train_id: str, time_range: tuple, debug: bool)
     help="Filter to trains within a time range (start_time end_time)",
 )
 @click.option("--future", is_flag=True, help="Filter to trains with future departure times")
-def generate_predictions(clear: bool, train_id: str, time_range: tuple, future: bool) -> None:
+def generate_predictions(
+    clear: bool, train_id: Optional[str], time_range: Optional[Tuple], future: Optional[bool]
+) -> None:
     """Generate track predictions for upcoming trains"""
     try:
         session = get_db_session()
@@ -271,7 +276,7 @@ def update_schema() -> None:
     "--station", "-s", type=str, help="Train model for specific station code (e.g., 'NY', 'TR')"
 )
 @click.option("--all-stations", is_flag=True, help="Train models for all stations")
-def train_model(station: str, all_stations: bool) -> None:
+def train_model(station: Optional[str], all_stations: bool) -> None:
     """Train prediction models using historical data"""
     try:
         # Check if training dependencies are available
@@ -331,7 +336,9 @@ def train_model(station: str, all_stations: bool) -> None:
 @click.option("--format", "-f", type=click.Choice(["csv", "json"]), help="Data file format")
 @click.option("--pattern", "-p", type=str, help="File pattern (e.g., '*.csv')")
 @click.option("--clear", is_flag=True, help="Clear all train data from the database before import")
-def import_data(source: str, format: str, pattern: str, clear: bool) -> None:
+def import_data(
+    source: Optional[str], format: Optional[str], pattern: Optional[str], clear: bool
+) -> None:
     """Import train data from files into the database"""
     try:
         session = get_db_session()
@@ -357,7 +364,7 @@ def import_data(source: str, format: str, pattern: str, clear: bool) -> None:
 
                 # Run import (always overwrite existing records)
                 success, stats = import_service.import_data(
-                    source_dir=source, file_format=format, file_pattern=pattern
+                    source_dir=source, file_format=format or "csv", file_pattern=pattern or "*.csv"
                 )
 
                 if success:
@@ -385,7 +392,7 @@ def import_data(source: str, format: str, pattern: str, clear: bool) -> None:
 @main.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
 @click.option("--limit", type=int, help="Limit the number of stops to process")
-def backfill_station_codes(dry_run: bool, limit: int) -> None:
+def backfill_station_codes(dry_run: bool, limit: Optional[int]) -> None:
     """Backfill missing station codes based on station names"""
     try:
         from sqlalchemy import func
@@ -420,21 +427,24 @@ def backfill_station_codes(dry_run: bool, limit: int) -> None:
         stops = query.all()
 
         # Track statistics
-        stats = {"processed": 0, "updated": 0, "no_match": 0, "unmatched_names": set()}
+        processed_count = 0
+        updated_count = 0
+        no_match_count = 0
+        unmatched_names: Set[str] = set()
 
         # Process each stop
         for stop in stops:
-            stats["processed"] += 1
+            processed_count += 1
 
             if stop.station_name:
-                code = station_mapper.get_code_for_name(stop.station_name)
+                code = station_mapper.get_code_for_name(str(stop.station_name))
                 if code:
                     if not dry_run:
                         try:
                             stop.station_code = code
                             # Commit individual stop to catch constraint violations
                             session.commit()
-                            stats["updated"] += 1
+                            updated_count += 1
                             logger.debug(f"Mapped '{stop.station_name}' -> '{code}'")
                         except Exception as e:
                             session.rollback()
@@ -456,31 +466,31 @@ def backfill_station_codes(dry_run: bool, limit: int) -> None:
                                     f"Duplicate stop found: train {stop.train_id} already has a stop with code '{code}'"
                                 )
                     else:
-                        stats["updated"] += 1
+                        updated_count += 1
                         logger.debug(f"Mapped '{stop.station_name}' -> '{code}'")
                 else:
-                    stats["no_match"] += 1
-                    stats["unmatched_names"].add(stop.station_name)
+                    no_match_count += 1
+                    unmatched_names.add(str(stop.station_name))
                     logger.debug(f"No match for station name: '{stop.station_name}'")
 
             # Progress update
-            if stats["processed"] % 100 == 0:
-                logger.info(f"Progress: {stats['processed']}/{len(stops)} stops processed")
+            if processed_count % 100 == 0:
+                logger.info(f"Progress: {processed_count}/{len(stops)} stops processed")
 
         # No final commit needed since we commit individually
 
         # Report results
         logger.info(f"Backfill completed:")
-        logger.info(f"  - Processed: {stats['processed']} stops")
-        logger.info(f"  - Updated: {stats['updated']} stops")
-        logger.info(f"  - No match: {stats['no_match']} stops")
+        logger.info(f"  - Processed: {processed_count} stops")
+        logger.info(f"  - Updated: {updated_count} stops")
+        logger.info(f"  - No match: {no_match_count} stops")
 
-        if stats["unmatched_names"]:
-            logger.info(f"  - Unmatched station names ({len(stats['unmatched_names'])}):")
-            for name in sorted(stats["unmatched_names"])[:10]:
+        if unmatched_names:
+            logger.info(f"  - Unmatched station names ({len(unmatched_names)}):")
+            for name in sorted(unmatched_names)[:10]:
                 logger.info(f"    - '{name}'")
-            if len(stats["unmatched_names"]) > 10:
-                logger.info(f"    ... and {len(stats['unmatched_names']) - 10} more")
+            if len(unmatched_names) > 10:
+                logger.info(f"    ... and {len(unmatched_names) - 10} more")
 
         if dry_run:
             logger.info("Dry run completed - no changes were made")

@@ -2,12 +2,14 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Union
+from typing import Any, List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from trackcast.api.models import (
     ConsolidatedTrainListResponse,
+    ConsolidatedTrainResponse,
+    Metadata,
     PredictionResponse,
     TrainListResponse,
     TrainResponse,
@@ -18,13 +20,13 @@ from trackcast.db.repository import TrainRepository, TrainStopRepository
 from trackcast.services.train_consolidation import TrainConsolidationService
 
 
-def get_train_repository():
+def get_train_repository() -> TrainRepository:
     """Get a train repository instance with a DB session."""
     db = next(get_db())
     return TrainRepository(db)
 
 
-def get_train_stop_repository():
+def get_train_stop_repository() -> TrainStopRepository:
     """Get a train stop repository instance with a DB session."""
     db = next(get_db())
     return TrainStopRepository(db)
@@ -34,25 +36,37 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _matches_target_station(stop, stops_at_station, stops_at_station_code, stops_at_station_name):
+def _matches_target_station(
+    stop: Any,
+    stops_at_station: Optional[str],
+    stops_at_station_code: Optional[str],
+    stops_at_station_name: Optional[str],
+) -> bool:
     """Check if a stop matches any of the target station filters."""
     if stops_at_station:
         # Search both station code and station name
-        return stop.station_code == stops_at_station or (
-            stop.station_name and stops_at_station.lower() in stop.station_name.lower()
+        return bool(
+            stop.station_code == stops_at_station
+            or (stop.station_name and stops_at_station.lower() in stop.station_name.lower())
         )
     elif stops_at_station_code:
         # Exact station code match
-        return stop.station_code == stops_at_station_code
+        return bool(stop.station_code == stops_at_station_code)
     elif stops_at_station_name:
         # Station name partial match
-        return stop.station_name and stops_at_station_name.lower() in stop.station_name.lower()
+        return bool(
+            stop.station_name and stops_at_station_name.lower() in stop.station_name.lower()
+        )
     return False
 
 
 def _filter_trains_by_stop_order(
-    trains, origin_station_code, stops_at_station, stops_at_station_code, stops_at_station_name
-):
+    trains: List[Any],
+    origin_station_code: Optional[str],
+    stops_at_station: Optional[str],
+    stops_at_station_code: Optional[str],
+    stops_at_station_name: Optional[str],
+) -> List[Any]:
     """Filter trains where origin station comes before target station in route and both stops haven't departed."""
     if not origin_station_code or not any(
         [stops_at_station, stops_at_station_code, stops_at_station_name]
@@ -90,7 +104,7 @@ def _filter_trains_by_stop_order(
     return filtered_trains
 
 
-def _enrich_train_with_stops(train, stop_repo: TrainStopRepository):
+def _enrich_train_with_stops(train: Any, stop_repo: TrainStopRepository) -> Any:
     """Add stop data to a train object."""
     try:
         stops = stop_repo.get_stops_for_train(train.train_id, train.departure_time)
@@ -101,14 +115,14 @@ def _enrich_train_with_stops(train, stop_repo: TrainStopRepository):
         for stop in stops:
             stop_models.append(
                 TrainStop(
-                    station_code=stop.station_code,
-                    station_name=stop.station_name,
-                    scheduled_time=stop.scheduled_time,
-                    departure_time=stop.departure_time,
-                    pickup_only=stop.pickup_only,
-                    dropoff_only=stop.dropoff_only,
-                    departed=stop.departed,
-                    stop_status=stop.stop_status,
+                    station_code=getattr(stop, "station_code", None),
+                    station_name=getattr(stop, "station_name", ""),
+                    scheduled_time=getattr(stop, "scheduled_time", None),
+                    departure_time=getattr(stop, "departure_time", None),
+                    pickup_only=bool(getattr(stop, "pickup_only", False)),
+                    dropoff_only=bool(getattr(stop, "dropoff_only", False)),
+                    departed=bool(getattr(stop, "departed", False)),
+                    stop_status=getattr(stop, "stop_status", None),
                 )
             )
         # Add stops to the train object
@@ -350,7 +364,7 @@ async def list_trains(
 
             consolidation_service = TrainConsolidationService()
             consolidated_trains = consolidation_service.consolidate_trains(
-                enriched_trains, from_station_code
+                enriched_trains, from_station_code or ""
             )
 
             logger.info(f"Consolidation complete: {len(consolidated_trains)} consolidated journeys")
@@ -360,14 +374,14 @@ async def list_trains(
                 )
 
             return ConsolidatedTrainListResponse(
-                metadata={
-                    "timestamp": datetime.now().isoformat(),
-                    "model_version": settings.model.version,
-                    "train_count": len(consolidated_trains),
-                    "page": 1,  # Consolidation affects pagination
-                    "total_pages": 1,
-                },
-                trains=consolidated_trains,
+                metadata=Metadata(
+                    timestamp=datetime.now().isoformat(),
+                    model_version=settings.model.version,
+                    train_count=len(consolidated_trains),
+                    page=1,  # Consolidation affects pagination
+                    total_pages=1,
+                ),
+                trains=[ConsolidatedTrainResponse(**train) for train in consolidated_trains],
             )
         else:
             return {
