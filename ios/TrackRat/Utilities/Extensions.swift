@@ -60,9 +60,24 @@ struct GlassmorphicNavigationBar: ViewModifier {
     }
 }
 
+struct ScrollAwareNavigationBar: ViewModifier {
+    let isVisible: Bool
+    
+    func body(content: Content) -> some View {
+        content
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(isVisible ? .visible : .hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+}
+
 extension View {
     func glassmorphicNavigationBar() -> some View {
         self.modifier(GlassmorphicNavigationBar())
+    }
+    
+    func scrollAwareNavigationBar(isVisible: Bool) -> some View {
+        self.modifier(ScrollAwareNavigationBar(isVisible: isVisible))
     }
     
     func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {

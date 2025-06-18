@@ -5,6 +5,7 @@ struct DeparturePickerView: View {
     @State private var searchText = ""
     @State private var isSearching = false
     @FocusState private var searchFieldFocused: Bool
+    @State private var navigationBarVisible = false
     
     private var searchResults: [String] {
         Stations.search(searchText)
@@ -27,7 +28,7 @@ struct DeparturePickerView: View {
                 .ignoresSafeArea()
             
             
-            VStack(spacing: 32) {
+            VStack(spacing: 16) {
                 // Conditional title with spacing - only show when not searching
                 if shouldShowTitle {
                     VStack(spacing: TrackRatTheme.Spacing.sm) {
@@ -61,7 +62,7 @@ struct DeparturePickerView: View {
                             }
                             .onChange(of: searchFieldFocused) { _, newValue in
                                 withAnimation(.easeInOut(duration: 0.3)) {
-                                    // Trigger UI update when focus changes
+                                    navigationBarVisible = newValue
                                 }
                             }
                             .onSubmit {
@@ -170,19 +171,9 @@ struct DeparturePickerView: View {
                 Spacer()
             }
         }
-        .navigationTitle("Select Departure")
         .navigationBarTitleDisplayMode(.inline)
-        .glassmorphicNavigationBar()
+        .scrollAwareNavigationBar(isVisible: navigationBarVisible)
         .tint(.orange)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Close") {
-                    // Navigate back to the root (TripSelectionView)
-                    appState.navigationPath.removeLast(appState.navigationPath.count)
-                }
-                .foregroundColor(.orange)
-            }
-        }
     }
     
     private func selectDeparture(name: String, code: String) {

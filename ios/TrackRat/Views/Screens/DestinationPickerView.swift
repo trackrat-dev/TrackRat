@@ -5,6 +5,7 @@ struct DestinationPickerView: View {
     @State private var searchText = ""
     @State private var isSearching = false
     @FocusState private var searchFieldFocused: Bool
+    @State private var navigationBarVisible = false
     
     private var searchResults: [String] {
         let results = Stations.search(searchText)
@@ -34,7 +35,7 @@ struct DestinationPickerView: View {
                 .ignoresSafeArea()
             
             
-            VStack(spacing: 32) {
+            VStack(spacing: 16) {
                 // Conditional title with spacing - only show when not searching
                 if shouldShowTitle {
                     Text("Where to?")
@@ -67,7 +68,7 @@ struct DestinationPickerView: View {
                             }
                             .onChange(of: searchFieldFocused) { _, newValue in
                                 withAnimation(.easeInOut(duration: 0.3)) {
-                                    // Trigger UI update when focus changes
+                                    navigationBarVisible = newValue
                                 }
                             }
                         
@@ -165,23 +166,10 @@ struct DestinationPickerView: View {
                 Spacer()
             }
         }
-        .navigationTitle("Select Destination")
         .navigationBarTitleDisplayMode(.inline)
-        .glassmorphicNavigationBar()
+        .scrollAwareNavigationBar(isVisible: navigationBarVisible)
         .tint(.orange)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                if let departure = appState.selectedDeparture {
-                    VStack(spacing: 0) {
-                        Text("Select Destination")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text("from \(Stations.displayName(for: departure))")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                }
-            }
             
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Close") {
