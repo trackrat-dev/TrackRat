@@ -1618,18 +1618,8 @@ class TrainStopRepository(BaseRepository):
                 .all()
             )
 
-            # Create lookup map using station name, code, and scheduled time to handle multiple stops at same station
-            existing_map = {}
-            for stop in existing_stops:
-                # Use scheduled_time to distinguish multiple stops at the same station
-                scheduled_time_key = (
-                    stop.scheduled_time.isoformat() if stop.scheduled_time else None
-                )
-                key = (stop.station_name, stop.station_code, scheduled_time_key)
-                existing_map[key] = stop
-
-            # Track which stops we've seen in this update
-            seen_stops = set()
+            # Track which existing stops we've matched
+            matched_stops = set()
 
             # Process incoming stops
             for stop_data in stops_data:
@@ -1642,18 +1632,27 @@ class TrainStopRepository(BaseRepository):
                             f"Derived station code '{derived_code}' for '{stop_data['station_name']}'"
                         )
 
-                # Create consistent key using scheduled_time to distinguish multiple stops at same station
-                scheduled_time_key = self._time_to_isoformat(stop_data.get("scheduled_time"))
-                station_key = (
-                    stop_data.get("station_name"),
-                    stop_data.get("station_code"),
-                    scheduled_time_key,
-                )
-                seen_stops.add(station_key)
+                # Find matching existing stop using fuzzy time matching
+                matched_stop = None
+                for stop in existing_stops:
+                    # Must match station name and code exactly
+                    if stop.station_name == stop_data.get(
+                        "station_name"
+                    ) and stop.station_code == stop_data.get("station_code"):
 
-                if station_key in existing_map:
+                        # Use fuzzy time matching for scheduled_time (5-minute tolerance)
+                        if station_mapper.times_match_within_tolerance(
+                            stop.scheduled_time,
+                            stop_data.get("scheduled_time"),
+                            tolerance_seconds=300,  # 5 minutes
+                        ):
+                            matched_stop = stop
+                            break
+
+                if matched_stop:
                     # Update existing stop
-                    stop = existing_map[station_key]
+                    stop = matched_stop
+                    matched_stops.add(stop)
 
                     # Track what changed
                     changes = {
@@ -1680,8 +1679,46 @@ class TrainStopRepository(BaseRepository):
                         if data_key in ["departed", "pickup_only", "dropoff_only"]:
                             new_value = stop_data.get(data_key, False)
 
-                        # Convert datetime objects for comparison
-                        if isinstance(old_value, datetime):
+                        # Special handling for time fields to support drift tracking
+                        if field_name in ["scheduled_time", "departure_time"] and isinstance(
+                            old_value, datetime
+                        ):
+                            if isinstance(new_value, str):
+                                try:
+                                    new_datetime = datetime.fromisoformat(new_value)
+                                except ValueError:
+                                    new_datetime = new_value
+                            elif isinstance(new_value, datetime):
+                                new_datetime = new_value
+                            else:
+                                new_datetime = new_value
+
+                            # Always update time fields when fuzzy matched to prevent drift
+                            # This allows gradual schedule changes to be tracked
+                            if new_datetime and old_value != new_datetime:
+                                time_diff = abs((old_value - new_datetime).total_seconds())
+
+                                # Log significant time changes for monitoring
+                                if time_diff > 60:  # More than 1 minute difference
+                                    logger.info(
+                                        f"Time drift detected for {stop.station_name} on train {train_id}: "
+                                        f"{old_value.isoformat()} → {new_datetime.isoformat()} "
+                                        f"({time_diff}s difference)"
+                                    )
+
+                                changes["changes"][field_name] = {
+                                    "old": old_value.isoformat(),
+                                    "new": new_datetime.isoformat(),
+                                    "drift_seconds": time_diff,
+                                    "drift_reason": (
+                                        "schedule_adjustment"
+                                        if time_diff > 60
+                                        else "precision_update"
+                                    ),
+                                }
+                                setattr(stop, field_name, new_datetime)
+                        # Convert datetime objects for comparison (non-time fields)
+                        elif isinstance(old_value, datetime):
                             old_value_str = old_value.isoformat() if old_value else None
                             new_value_str = (
                                 new_value.isoformat()
@@ -1730,6 +1767,21 @@ class TrainStopRepository(BaseRepository):
                     if "scheduled_time" in stop_data:
                         stop_data["original_scheduled_time"] = stop_data["scheduled_time"]
 
+                    # Convert string datetime fields to datetime objects for SQLite compatibility
+                    for time_field in [
+                        "scheduled_time",
+                        "departure_time",
+                        "original_scheduled_time",
+                    ]:
+                        if time_field in stop_data and isinstance(stop_data[time_field], str):
+                            try:
+                                stop_data[time_field] = datetime.fromisoformat(
+                                    stop_data[time_field]
+                                )
+                            except (ValueError, TypeError):
+                                # If conversion fails, leave as None
+                                stop_data[time_field] = None
+
                     # Initialize audit trail with creation event
                     stop_data["audit_trail"] = [
                         {
@@ -1754,9 +1806,9 @@ class TrainStopRepository(BaseRepository):
                     self.session.add(new_stop)
                     updated_stops.append(new_stop)
 
-            # Mark missing stops as inactive (NOT deleted) with audit trail
-            for station_key, stop in existing_map.items():
-                if station_key not in seen_stops and stop.is_active:
+            # Mark unmatched stops as inactive (NOT deleted) with audit trail
+            for stop in existing_stops:
+                if stop not in matched_stops and stop.is_active:
                     stop.is_active = False
                     stop.api_removed_at = current_time
 
