@@ -33,6 +33,8 @@
 		A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */; };
 		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
 		A1976F512DEDE6EC008FA904 /* ExperimentalFeaturesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1976F502DEDE6EC008FA904 /* ExperimentalFeaturesView.swift */; };
+		A1A2391B2E02E38500FE5A7D /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */; };
+		A1A2391C2E02E38500FE5A7D /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */; };
 		A1AA1BB12DEF00AA001FA904 /* LaunchScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB02DEF00AA001FA904 /* LaunchScreenView.swift */; };
 		A1AA1BB32DEF00BB001FA904 /* TrackRatTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */; };
 		A1AA1BB52DEF00CC001FA904 /* TrackRatLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */; };
@@ -84,6 +86,7 @@
 		A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityDebugView.swift; path = Views/Components/LiveActivityDebugView.swift; sourceTree = "<group>"; };
 		A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveTripsSection.swift; path = Views/Components/ActiveTripsSection.swift; sourceTree = "<group>"; };
 		A1976F502DEDE6EC008FA904 /* ExperimentalFeaturesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExperimentalFeaturesView.swift; path = Views/Screens/ExperimentalFeaturesView.swift; sourceTree = "<group>"; };
+		A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendWakeupService.swift; path = TrackRat/Services/BackendWakeupService.swift; sourceTree = "<group>"; };
 		A1AA1BB02DEF00AA001FA904 /* LaunchScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LaunchScreenView.swift; path = Views/LaunchScreen/LaunchScreenView.swift; sourceTree = "<group>"; };
 		A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatTheme.swift; path = Theme/TrackRatTheme.swift; sourceTree = "<group>"; };
 		A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatLoadingView.swift; path = Views/Components/TrackRatLoadingView.swift; sourceTree = "<group>"; };
@@ -126,6 +129,7 @@
 				A10E97F62DE39EF9002F3214 /* APIService.swift */,
 				A10E97F72DE39EF9002F3214 /* StorageService.swift */,
 				A10077AF2E01E0C0007C6022 /* AdvancedConfigurationView.swift */,
+				A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -347,6 +351,7 @@
 				A1AA1BB32DEF00BB001FA904 /* TrackRatTheme.swift in Sources */,
 				A1AA1BB52DEF00CC001FA904 /* TrackRatLoadingView.swift in Sources */,
 				A1AA1BB92DEF00EE001FA904 /* TrackRatMascot.swift in Sources */,
+				A1A2391B2E02E38500FE5A7D /* BackendWakeupService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -355,6 +360,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1BA60EC2DFC73650002FB39 /* BuildTests.swift in Sources */,
+				A1A2391C2E02E38500FE5A7D /* BackendWakeupService.swift in Sources */,
 				A1BA60ED2DFC73650002FB39 /* StationsTests.swift in Sources */,
 				A1BA60EE2DFC73650002FB39 /* TrainTests.swift in Sources */,
 				A1BA60EF2DFC73650002FB39 /* APIServiceTests.swift in Sources */,

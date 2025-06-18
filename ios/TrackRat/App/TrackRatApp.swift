@@ -11,6 +11,7 @@ struct TrackRatApp: App {
     @StateObject private var appState = AppState()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var showLaunchScreen = true
+    @Environment(\.scenePhase) private var scenePhase
     
     var body: some Scene {
         WindowGroup {
@@ -27,6 +28,21 @@ struct TrackRatApp: App {
                         .preferredColorScheme(.dark)
                         .tint(TrackRatTheme.Colors.accent)
                         .transition(.opacity)
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                switch newPhase {
+                case .active:
+                    print("📱 Scene Phase Active: Triggering backend wake-up...")
+                    Task {
+                        BackendWakeupService.shared.wakeupBackend()
+                    }
+                case .inactive:
+                    print("📱 Scene Phase Inactive")
+                case .background:
+                    print("📱 Scene Phase Background")
+                @unknown default:
+                    break
                 }
             }
         }
@@ -49,6 +65,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         registerBackgroundTasks()
+        
+        // Wake up backend on app launch
+        print("📱 App Launch: Triggering backend wake-up...")
+        Task {
+            BackendWakeupService.shared.wakeupBackend()
+        }
+        
         return true
     }
 
@@ -134,9 +157,25 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // Cancel background tasks when returning to foreground
         BGTaskScheduler.shared.cancelAllTaskRequests()
         
+        // Wake up backend when coming from background
+        print("📱 App Foreground: Triggering backend wake-up...")
+        Task {
+            BackendWakeupService.shared.wakeupBackend()
+        }
+        
         // Resume timer-based updates if there's an active Live Activity
         Task {
             await LiveActivityService.shared.refreshCurrentActivity()
+        }
+    }
+    
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        // This is called more reliably when app becomes active
+        print("📱 App Active: Checking if backend wake-up needed...")
+        
+        // Wake up backend when app becomes active
+        Task {
+            BackendWakeupService.shared.wakeupBackend()
         }
     }
 }

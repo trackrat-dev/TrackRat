@@ -4,6 +4,8 @@ struct AdvancedConfigurationView: View {
     @EnvironmentObject private var appState: AppState
     @State private var selectedEnvironment: ServerEnvironment
     @State private var hasChanges = false
+    @State private var healthCheckResult: HealthCheckResult?
+    @State private var isTestingConnection = false
     
     private let storageService = StorageService()
     
@@ -13,75 +15,19 @@ struct AdvancedConfigurationView: View {
     }
     
     var body: some View {
-        ZStack {
-            // Background gradient
-            TrackRatTheme.Colors.primaryGradient
-                .ignoresSafeArea()
+        let backgroundView = TrackRatTheme.Colors.primaryGradient
+            .ignoresSafeArea()
+        
+        let serverEnvironmentSection = createServerEnvironmentSection()
+        let healthCheckSection = createHealthCheckSection()
+        
+        return ZStack {
+            backgroundView
             
             ScrollView {
                 VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 8) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 40))
-                            .foregroundColor(.orange)
-                    }
-                    .padding(.top, 20)
-                    
-                    // Server Environment Section
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Backend Server")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                        
-                        Text("Choose which backend server to connect to. Production is recommended for normal use.")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                        
-                        VStack(spacing: 12) {
-                            ForEach(ServerEnvironment.allCases, id: \.self) { environment in
-                                ServerEnvironmentRow(
-                                    environment: environment,
-                                    isSelected: selectedEnvironment == environment
-                                ) {
-                                    selectedEnvironment = environment
-                                    hasChanges = true
-                                }
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(.white.opacity(0.1))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(.white.opacity(0.2), lineWidth: 1)
-                            )
-                    )
-                    
-                    // Save Button
-                    if hasChanges {
-                        Button {
-                            saveConfiguration()
-                        } label: {
-                            HStack {
-                                Image(systemName: "checkmark.circle.fill")
-                                Text("Save Changes")
-                            }
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.orange)
-                            )
-                        }
-                        .padding(.horizontal)
-                    }
-                    
+                    serverEnvironmentSection
+                    healthCheckSection
                 }
                 .padding()
                 .padding(.bottom, 40)
@@ -95,6 +41,200 @@ struct AdvancedConfigurationView: View {
         }
     }
     
+    @ViewBuilder
+    private func createServerEnvironmentSection() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Backend Server")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+            
+            Text("Choose which backend server to connect to. Production is recommended for normal use.")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+            
+            VStack(spacing: 12) {
+                ForEach(ServerEnvironment.allCases, id: \.self) { environment in
+                    ServerEnvironmentRow(
+                        environment: environment,
+                        isSelected: selectedEnvironment == environment
+                    ) {
+                        selectedEnvironment = environment
+                        hasChanges = true
+                        healthCheckResult = nil
+                    }
+                }
+            }
+            
+            // Save Button inside the server section
+            if hasChanges {
+                Button {
+                    saveConfiguration()
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Save Changes")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.orange)
+                    )
+                }
+                .padding(.top, 8)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+    
+    @ViewBuilder
+    private func createHealthCheckSection() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Backend Server Health")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+            
+            Text("Test the connection to the selected backend server.")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+            
+            createTestConnectionButton()
+            createHealthCheckResult()
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+    
+    @ViewBuilder
+    private func createTestConnectionButton() -> some View {
+        Button {
+            testConnection()
+        } label: {
+            HStack {
+                if isTestingConnection {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: "network")
+                }
+                Text(isTestingConnection ? "Testing..." : "Test Connection")
+            }
+            .font(.headline)
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isTestingConnection ? .gray : .orange)
+            )
+        }
+        .disabled(isTestingConnection)
+    }
+    
+    @ViewBuilder
+    private func createHealthCheckResult() -> some View {
+        if let result = healthCheckResult {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(result.success ? .green : .red)
+                    
+                    Text(result.success ? "Connected" : "Connection Failed")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                }
+                
+                createConnectionDetails(result: result)
+            }
+            .transition(.scale.combined(with: .opacity))
+            .animation(.easeInOut(duration: 0.3), value: healthCheckResult)
+        }
+    }
+    
+    @ViewBuilder
+    private func createConnectionDetails(result: HealthCheckResult) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let statusCode = result.statusCode {
+                HStack {
+                    Text("Status:")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                    Text("HTTP \(statusCode)")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                }
+            }
+            
+            HStack {
+                Text("Response Time:")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+                Text("\(String(format: "%.2f", result.responseTime))s")
+                    .font(.caption)
+                    .foregroundColor(.white)
+            }
+            
+            if let errorMessage = result.errorMessage {
+                HStack {
+                    Text("Error:")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                }
+            }
+            
+            if result.success, let body = result.responseBody {
+                HStack {
+                    Text("Response:")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                    Text(body)
+                        .font(.caption)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(result.success ? .green.opacity(0.15) : .red.opacity(0.15))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(result.success ? .green.opacity(0.3) : .red.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+    
+    
     private func saveConfiguration() {
         storageService.saveServerEnvironment(selectedEnvironment)
         APIService.shared.updateServerEnvironment(selectedEnvironment)
@@ -102,6 +242,29 @@ struct AdvancedConfigurationView: View {
         
         // Haptic feedback
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+    
+    private func testConnection() {
+        isTestingConnection = true
+        healthCheckResult = nil
+        
+        Task {
+            let result = await BackendWakeupService.shared.performHealthCheck(environment: selectedEnvironment)
+            
+            await MainActor.run {
+                withAnimation {
+                    healthCheckResult = result
+                    isTestingConnection = false
+                }
+                
+                // Haptic feedback
+                if result.success {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+            }
+        }
     }
 }
 
