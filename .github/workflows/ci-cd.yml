@@ -47,21 +47,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Free up disk space
-        run: |
-          echo "🗄️ Disk usage before cleanup:"
-          df -h
-          echo "🧹 Removing large unused packages..."
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune -af
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          echo "💾 Disk usage after cleanup:"
-          df -h
-
       # Backend Tests
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
@@ -224,14 +209,6 @@ jobs:
           echo "🔍 Validating GitHub workflow YAML files..."
           yamllint -d '{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable}}' .github/workflows/
           echo "✅ All workflow files have valid YAML syntax"
-
-      # Cleanup
-      - name: Cleanup Docker
-        if: always()
-        run: |
-          echo "🧹 Cleaning up Docker to save space..."
-          docker system prune -af
-          docker image prune -af
 
   # Deploy only when tests pass and on main branch
   deploy:
