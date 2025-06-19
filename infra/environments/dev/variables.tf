@@ -49,4 +49,14 @@ variable "custom_domain_name" {
 }
 
 
+variable "critical_alert_email" {
+  description = "Email address for critical database alerts"
+  type        = string
+  default     = "andy@andymartin.cc"
+}
 
+variable "warning_alert_email" {
+  description = "Email address for warning database alerts"
+  type        = string
+  default     = "andy@andymartin.cc"
+}
