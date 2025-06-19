@@ -164,8 +164,7 @@ class TrainStop(Base, TimestampMixin):
             "train_departure_time",
             "station_name",
             "data_source",
-            "scheduled_time",
-            name="uix_train_stop_unique_with_time",
+            name="uix_train_stop_unique_without_time",  # Renamed for clarity
         ),
     )
 
