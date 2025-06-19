@@ -288,7 +288,9 @@ class TrainRepository(BaseRepository):
 
                         # Ensure MODEL_PREDICTION_ACCURACY is imported
                         # from trackcast.services.prediction import MODEL_PREDICTION_ACCURACY
-                        MODEL_PREDICTION_ACCURACY.labels(station=train.origin_station_code).set(accuracy_value)
+                        MODEL_PREDICTION_ACCURACY.labels(station=train.origin_station_code).set(
+                            accuracy_value
+                        )
                         logger.info(
                             f"Updated MODEL_PREDICTION_ACCURACY for train {train.train_id} at station {train.origin_station_code}: {accuracy_value}"
                         )
