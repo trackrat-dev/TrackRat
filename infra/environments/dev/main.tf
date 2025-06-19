@@ -51,6 +51,10 @@ module "database" {
 
   # database_user_password is now auto-generated in the database module
 
+  # Alert notification emails
+  critical_alert_email = var.critical_alert_email
+  warning_alert_email  = var.warning_alert_email
+
   # Adjust other variables as needed for the dev environment
   maintenance_window_day  = 7     # Sunday
   maintenance_window_hour = 2     # 2 AM UTC for dev
