@@ -112,7 +112,7 @@ class TestTrainStopRepository:
         Test that multiple stops at the same station with different times are handled correctly.
         This ensures the scheduled_time is part of the matching key.
         """
-        # Two stops at same station but different times
+        # Two stops at same station but different times (more than 60 minutes apart)
         existing_stops = [
             TrainStop(
                 train_id="3862",
@@ -120,7 +120,7 @@ class TestTrainStopRepository:
                 data_source="njtransit",
                 station_code="NP",
                 station_name="Newark Penn Station",
-                scheduled_time=datetime(2025, 6, 18, 18, 20, 0),  # First stop - 10 minutes before second
+                scheduled_time=datetime(2025, 6, 18, 16, 20, 0),  # First stop - 2+ hours before second
                 is_active=True,
                 data_version=1,
                 audit_trail=[],
@@ -187,8 +187,8 @@ class TestTrainStopRepository:
                 diff = abs((t1 - t2).total_seconds())
                 
                 # For this test:
-                # - First stop: 18:20:00 vs incoming 18:30:00 = 600 seconds (10 min) > 300 sec tolerance
-                # - Second stop: 18:30:15 vs incoming 18:30:00 = 15 seconds < 300 sec tolerance
+                # - First stop: 16:20:00 vs incoming 18:30:00 = 7800 seconds (2h 10min) > 3600 sec tolerance
+                # - Second stop: 18:30:15 vs incoming 18:30:00 = 15 seconds < 3600 sec tolerance
                 result = diff <= tolerance_seconds
                 print(f"Fuzzy match: {time1} vs {time2} = {diff}s, within {tolerance_seconds}s? {result}")
                 return result
@@ -205,13 +205,13 @@ class TestTrainStopRepository:
             )
             
             
-            # First stop should be marked inactive (time doesn't match within 5-minute tolerance)
-            # 18:20:00 vs 18:30:00 is 10 minutes - beyond tolerance
+            # First stop should be marked inactive (time doesn't match within 60-minute tolerance)
+            # 16:20:00 vs 18:30:00 is 2h 10min - beyond tolerance
             assert existing_stops[0].is_active is False
             assert existing_stops[0].api_removed_at is not None
             
             # Second stop should remain active (matched by fuzzy time matching within tolerance)
-            # 18:30:15 vs 18:30:00 is only 15 seconds difference - well within tolerance
+            # 18:30:15 vs 18:30:00 is only 15 seconds difference - well within 60-minute tolerance
             assert existing_stops[1].is_active is True
             assert existing_stops[1].api_removed_at is None
 
