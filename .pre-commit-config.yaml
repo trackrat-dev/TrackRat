@@ -1,0 +1,45 @@
+# Pre-commit hooks configuration
+# Mirrors CI/CD pipeline checks to prevent drift
+# Each hook runs the same commands as GitHub Actions CI
+
+repos:
+  # Backend hooks - uses comprehensive test script
+  - repo: local
+    hooks:
+      - id: backend-all-tests
+        name: Backend All Tests
+        entry: bash -c 'cd backend && ./tests/run_all_tests.sh'
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+        stages: [push]  # Run on push since it's comprehensive
+
+  # Infrastructure hooks - mirror CI exactly
+  - repo: local
+    hooks:
+      - id: terraform-fmt
+        name: Terraform Format Check
+        entry: bash -c 'cd infra && terraform fmt -check -recursive'
+        language: system
+        files: ^infra/.*\.tf$
+        pass_filenames: false
+
+      - id: terraform-validate
+        name: Terraform Validate
+        entry: bash -c 'cd infra && terraform init -backend=false && terraform validate'
+        language: system
+        files: ^infra/.*\.tf$
+        pass_filenames: false
+
+  # Workflow validation - from CI
+  - repo: local
+    hooks:
+      - id: validate-workflows
+        name: Validate GitHub Workflows
+        entry: ./.pre-commit-yamllint.sh
+        language: system
+        files: ^\.github/workflows/.*\.ya?ml$
+        pass_filenames: false
+
+# Configuration to run different hooks at different stages
+default_stages: [commit]
