@@ -4,6 +4,14 @@ resource "google_cloud_run_domain_mapping" "default" {
   location = var.location
   name     = var.custom_domain_name
 
+  metadata {
+    namespace = var.project_id
+    labels = {
+      service     = google_cloud_run_v2_service.default.name
+      environment = var.labels["env"]
+    }
+  }
+
   spec {
     route_name = google_cloud_run_v2_service.default.name
     # certificate_mode = "AUTOMATIC" # Default is AUTOMATIC
