@@ -17,10 +17,12 @@ permissions:
 env:
   TF_VERSION: '1.7.0'
   TFLINT_VERSION: 'v0.50.0'
-  PROJECT_ID: trackrat-dev
+  # Dynamic environment variables based on branch
+  PROJECT_ID: ${{ github.ref == 'refs/heads/main' && 'trackrat-dev' || 'trackrat-staging' }}
   REGION: us-central1
   SERVICE_NAME: trackcast-inference
-  REPOSITORY: trackcast-inference-dev
+  REPOSITORY: ${{ github.ref == 'refs/heads/main' && 'trackcast-inference-dev' || 'trackcast-inference-staging' }}
+  ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'dev' || 'staging' }}
 
 jobs:
   # Simplified CI/CD: Run all tests unconditionally
@@ -210,16 +212,16 @@ jobs:
           yamllint -d '{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable}}' .github/workflows/
           echo "✅ All workflow files have valid YAML syntax"
 
-  # Deploy only when tests pass and on main branch
+  # Deploy when tests pass and on main or staging branch
   deploy:
-    name: Deploy to Development
+    name: Deploy to ${{ github.ref == 'refs/heads/main' && 'Development' || 'Staging' }}
     runs-on: ubuntu-latest
     needs: [test]
-    if: github.ref == 'refs/heads/main' && needs.test.result == 'success'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging') && needs.test.result == 'success'
 
     environment:
-      name: development
-      url: https://trackcast-inference-dev-url.a.run.app
+      name: ${{ github.ref == 'refs/heads/main' && 'development' || 'staging' }}
+      url: ${{ github.ref == 'refs/heads/main' && 'https://dev.api.trackrat.net' || 'https://staging.api.trackrat.net' }}
 
     steps:
       - name: Checkout
@@ -240,7 +242,7 @@ jobs:
 
       # Step 1: Ensure Artifact Registry repository exists
       - name: Setup Artifact Registry Repository
-        working-directory: ./infra/environments/dev
+        working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
         run: |
           echo "🏗️ Setting up Artifact Registry repository..."
 
@@ -280,7 +282,7 @@ jobs:
 
       # Step 3: Deploy all infrastructure including Cloud Run services
       - name: Deploy Infrastructure and Services
-        working-directory: ./infra/environments/dev
+        working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
         run: |
           echo "🏗️ Deploying infrastructure and services..."
 
@@ -387,7 +389,7 @@ jobs:
       # Step 7: Deployment summary
       - name: Deployment Summary
         run: |
-          echo "## 🚀 Development Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 ${{ env.ENVIRONMENT == 'dev' && 'Development' || 'Staging' }} Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Infrastructure and Application deployed successfully**" >> $GITHUB_STEP_SUMMARY
           echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
@@ -422,7 +424,7 @@ jobs:
           if [[ "${{ needs.deploy.result }}" == "success" ]]; then
             echo "✅ **Pipeline Status**: Deployment Successful" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.deploy.result }}" == "skipped" ]]; then
-            echo "🟡 **Pipeline Status**: Tests Completed (No Deployment - Not Main Branch or Tests Failed)" >> $GITHUB_STEP_SUMMARY
+            echo "🟡 **Pipeline Status**: Tests Completed (No Deployment - Not Main/Staging Branch or Tests Failed)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Pipeline Status**: Pipeline Failed" >> $GITHUB_STEP_SUMMARY
           fi

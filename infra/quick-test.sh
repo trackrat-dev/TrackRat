@@ -103,7 +103,6 @@ required_dirs=(
     "modules/apis"
     "environments/dev"
     "environments/staging"
-    "environments/prod"
 )
 
 for dir in "${required_dirs[@]}"; do
