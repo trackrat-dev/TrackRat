@@ -331,6 +331,174 @@ resource "google_monitoring_dashboard" "operations_dashboard" {
   })
 }
 
+# --- Executive Dashboard ---
+resource "google_monitoring_dashboard" "executive_dashboard" {
+  project = var.project_id
+  dashboard_json = jsonencode({
+    "displayName" : "TrackCast - Executive Dashboard",
+    "gridLayout" : {
+      "widgets" : [
+        // System Health Score (Scorecard - API Error Rate as Proxy)
+        {
+          "title" : "System Health - API Error Rate (5XX)",
+          "scorecard" : {
+            "timeSeriesQuery" : {
+              "timeSeriesQuery" : { // MQL for ratio of 5XX to total requests
+                "query" : <<-EOT
+                  fetch cloud_run_revision
+                  | {
+                      metric 'run.googleapis.com/request_count'
+                      | filter resource.service_name == '${var.cloud_run_service_name}' && metric.response_code_class == '5XX'
+                      | align rate(24h) // Daily rate
+                      | group_by [], five_xx_errors = sum(val());
+                      metric 'run.googleapis.com/request_count'
+                      | filter resource.service_name == '${var.cloud_run_service_name}'
+                      | align rate(24h) // Daily rate
+                      | group_by [], total_requests = sum(val())
+                    }
+                  | ratio (five_xx_errors / total_requests)
+                  | default 0 // Avoid no data if no requests
+                EOT
+              }
+            },
+            "thresholds" : [ // Example thresholds: >5% error rate is RED
+              { "value" : 0.0, "color" : "GREEN" },
+              { "value" : 0.02, "color" : "YELLOW", "direction" : "ABOVE" },
+              { "value" : 0.05, "color" : "RED", "direction" : "ABOVE" }
+            ],
+            "gaugeView": { "lowerBound": 0, "upperBound": 0.1 } // Display 0-10% range, as error rates should be low
+          }
+        },
+        // Daily Trains Processed (Scorecard)
+        {
+          "title" : "Daily Trains Processed",
+          "scorecard" : {
+            "timeSeriesQuery" : {
+              "timeSeriesFilter" : {
+                "filter" : "metric.type=\"${var.trains_processed_metric_name}\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\"",
+                "aggregation" : {
+                  "alignmentPeriod" : "86400s", // 24 hours
+                  "perSeriesAligner" : "ALIGN_SUM" // Sum over the day
+                }
+              }
+            },
+            "sparkChartView": { "sparkChartType": "BAR" } // Show a simple bar for daily trend
+          }
+        },
+        // Prediction Accuracy Trends (xyChart - Line - Placeholder)
+        /*
+        {
+          "title": "Prediction Accuracy Trends (PMA - Placeholder)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "metric.type=\"${var.model_prediction_accuracy_metric_name}\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\"",
+                    "aggregation": {
+                      "alignmentPeriod": "86400s", // Daily average
+                      "perSeriesAligner": "ALIGN_MEAN"
+                    }
+                  }
+                },
+                "plotType": "LINE"
+              }
+            ],
+            "yAxis": { "label": "Accuracy", "scale": "LINEAR" }
+          },
+          "description": "Note: This metric (${var.model_prediction_accuracy_metric_name}) is currently a TODO and needs to be fully implemented."
+        },
+        */
+        // Data Collection Uptime Percentage (Scorecard)
+        {
+          "title" : "Data Collection Uptime % (NJT & Amtrak Avg)",
+          "scorecard" : {
+            "timeSeriesQuery" : {
+              "timeSeriesQuery" : { // MQL for combined success rate
+                "query" : <<-EOT
+                  fetch cloud_run_revision
+                  | {
+                      metric '${var.nj_transit_success_metric_name}' | align rate(24h) | group_by [], nj_success = sum(val());
+                      metric '${var.nj_transit_failure_metric_name}' | align rate(24h) | group_by [], nj_failure = sum(val());
+                      metric '${var.amtrak_success_metric_name}' | align rate(24h) | group_by [], am_success = sum(val());
+                      metric '${var.amtrak_failure_metric_name}' | align rate(24h) | group_by [], am_failure = sum(val())
+                    }
+                  | value [
+                      nj_rate = nj_success / (nj_success + nj_failure),
+                      am_rate = am_success / (am_success + am_failure),
+                      overall_rate = (nj_success + am_success) / (nj_success + nj_failure + am_success + am_failure)
+                    ]
+                  | map overall_rate // Output just the overall rate
+                  | default 1 // Avoid no data issues
+                EOT
+              }
+            },
+            "thresholds" : [
+              { "value" : 0.95, "color" : "GREEN", "direction" : "ABOVE" },
+              { "value" : 0.90, "color" : "YELLOW", "direction" : "BELOW" },
+              { "value" : 0.85, "color" : "RED", "direction" : "BELOW" }
+            ],
+            "gaugeView": { "lowerBound": 0.8, "upperBound": 1 } // Focus on 80-100% range
+          }
+        },
+        // SLA Compliance Tracking (Uptime - Scorecard)
+        {
+          "title" : "SLA: Service Uptime % (Non-5XX)",
+          "scorecard" : {
+            "timeSeriesQuery" : {
+              "timeSeriesQuery" : { // MQL for 1 - error rate
+                "query" : <<-EOT
+                  fetch cloud_run_revision
+                  | {
+                      metric 'run.googleapis.com/request_count'
+                      | filter resource.service_name == '${var.cloud_run_service_name}' && metric.response_code_class == '5XX'
+                      | align rate(24h)
+                      | group_by [], five_xx_errors = sum(val());
+                      metric 'run.googleapis.com/request_count'
+                      | filter resource.service_name == '${var.cloud_run_service_name}'
+                      | align rate(24h)
+                      | group_by [], total_requests = sum(val())
+                    }
+                  | value [uptime = 1 - (five_xx_errors / total_requests)]
+                  | map uptime
+                  | default 1 // Avoid no data if no requests
+                EOT
+              }
+            },
+            "thresholds" : [ // Example thresholds for uptime
+              { "value" : 0.999, "color" : "GREEN", "direction" : "ABOVE" },
+              { "value" : 0.99, "color" : "YELLOW", "direction" : "BELOW" },
+              { "value" : 0.95, "color" : "RED", "direction" : "BELOW" }
+            ],
+            "gaugeView": { "lowerBound": 0.9, "upperBound": 1 } // Focus on 90-100% range
+          }
+        },
+        // Cost and Usage Trends (xyChart - Line - Cloud Run Instance Count)
+        {
+          "title" : "Usage Trend - Cloud Run Instance Count (Daily Avg)",
+          "xyChart" : {
+            "dataSets" : [
+              {
+                "timeSeriesQuery" : {
+                  "timeSeriesFilter" : {
+                    "filter" : "metric.type=\"run.googleapis.com/container/instance_count\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\" resource.labels.location=\"${var.cloud_run_location}\"",
+                    "aggregation" : {
+                      "alignmentPeriod" : "86400s", // Daily average
+                      "perSeriesAligner" : "ALIGN_MEAN"
+                    }
+                  }
+                },
+                "plotType" : "LINE"
+              }
+            ],
+            "yAxis" : { "label" : "Avg Instances", "scale" : "LINEAR" }
+          }
+        }
+      ]
+    }
+  })
+}
+
 # --- Business Dashboard ---
 resource "google_monitoring_dashboard" "business_dashboard" {
   project = var.project_id
