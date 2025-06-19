@@ -1658,7 +1658,9 @@ class TrainStopRepository(BaseRepository):
                     if stop_data.get("departure_time"):
                         if isinstance(stop_data["departure_time"], str):
                             try:
-                                stop.departure_time = datetime.fromisoformat(stop_data["departure_time"])
+                                stop.departure_time = datetime.fromisoformat(
+                                    stop_data["departure_time"]
+                                )
                             except ValueError:
                                 stop.departure_time = stop_data["departure_time"]
                         else:
@@ -1666,27 +1668,33 @@ class TrainStopRepository(BaseRepository):
 
                     stop.stop_status = stop_data.get("stop_status", stop.stop_status)
                     stop.departed = stop_data.get("departed", stop.departed)
-                    
+
                     # Handle scheduled_time updates (allowing drift)
                     if stop_data.get("scheduled_time"):
                         if isinstance(stop_data["scheduled_time"], str):
                             try:
-                                new_scheduled_time = datetime.fromisoformat(stop_data["scheduled_time"])
+                                new_scheduled_time = datetime.fromisoformat(
+                                    stop_data["scheduled_time"]
+                                )
                             except ValueError:
                                 new_scheduled_time = stop_data["scheduled_time"]
                         else:
                             new_scheduled_time = stop_data["scheduled_time"]
-                        
+
                         # Log significant time changes for monitoring
-                        if isinstance(stop.scheduled_time, datetime) and isinstance(new_scheduled_time, datetime):
-                            time_diff = abs((stop.scheduled_time - new_scheduled_time).total_seconds())
+                        if isinstance(stop.scheduled_time, datetime) and isinstance(
+                            new_scheduled_time, datetime
+                        ):
+                            time_diff = abs(
+                                (stop.scheduled_time - new_scheduled_time).total_seconds()
+                            )
                             if time_diff > 3600:  # More than 1 hour difference
                                 logger.info(
                                     f"Time drift detected for {stop.station_name} on train {train_id}: "
                                     f"{stop.scheduled_time.isoformat()} → {new_scheduled_time.isoformat()} "
                                     f"({time_diff}s difference)"
                                 )
-                        
+
                         stop.scheduled_time = new_scheduled_time
 
                     stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
@@ -1718,7 +1726,9 @@ class TrainStopRepository(BaseRepository):
                         if stop_data.get("departure_time"):
                             if isinstance(stop_data["departure_time"], str):
                                 try:
-                                    stop.departure_time = datetime.fromisoformat(stop_data["departure_time"])
+                                    stop.departure_time = datetime.fromisoformat(
+                                        stop_data["departure_time"]
+                                    )
                                 except ValueError:
                                     stop.departure_time = stop_data["departure_time"]
                             else:
@@ -1726,11 +1736,13 @@ class TrainStopRepository(BaseRepository):
 
                         stop.stop_status = stop_data.get("stop_status", stop.stop_status)
                         stop.departed = stop_data.get("departed", stop.departed)
-                        
+
                         if stop_data.get("scheduled_time"):
                             if isinstance(stop_data["scheduled_time"], str):
                                 try:
-                                    stop.scheduled_time = datetime.fromisoformat(stop_data["scheduled_time"])
+                                    stop.scheduled_time = datetime.fromisoformat(
+                                        stop_data["scheduled_time"]
+                                    )
                                 except ValueError:
                                     stop.scheduled_time = stop_data["scheduled_time"]
                             else:
@@ -1911,7 +1923,6 @@ class TrainStopRepository(BaseRepository):
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_all_stations: {str(e)}")
             raise
-
 
     def search_stations(self, query: str) -> List[Dict[str, str]]:
         """
@@ -2120,4 +2131,3 @@ class TrainStopRepository(BaseRepository):
             )
             self.session.rollback()
             return None
-

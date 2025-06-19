@@ -693,41 +693,43 @@ def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
 def remove_audit_trail_fields(session: Session) -> Dict[str, Any]:
     """
     Remove audit trail related fields from train_stops table.
-    
+
     Args:
         session: SQLAlchemy database session
-        
+
     Returns:
         Dictionary with migration results
     """
     try:
         # Check if columns exist before dropping
-        check_columns_query = text("""
+        check_columns_query = text(
+            """
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'train_stops' 
             AND column_name IN ('audit_trail', 'data_version', 'original_scheduled_time', 'api_removed_at')
-        """)
-        
+        """
+        )
+
         result = session.execute(check_columns_query)
         existing_columns = [row[0] for row in result]
-        
+
         if not existing_columns:
             logger.info("No audit trail columns found to drop")
             return {"status": "skipped", "message": "No audit trail columns to drop"}
-            
+
         logger.info(f"Found columns to drop: {existing_columns}")
-        
+
         # Drop each column that exists
         for column in existing_columns:
             drop_query = text(f"ALTER TABLE train_stops DROP COLUMN IF EXISTS {column}")
             session.execute(drop_query)
             logger.info(f"Dropped column: {column}")
-        
+
         session.commit()
         logger.info("Successfully removed audit trail fields from train_stops table")
         return {"status": "success", "message": f"Dropped columns: {', '.join(existing_columns)}"}
-        
+
     except Exception as e:
         session.rollback()
         logger.error(f"Error removing audit trail fields: {str(e)}")
