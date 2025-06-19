@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from prometheus_client import Histogram
 from sqlalchemy import and_, or_, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
@@ -1724,245 +1724,148 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
-        db_start_time = time.time()
-        try:
-            current_time = datetime.utcnow()
-            updated_stops = []
+        current_time = datetime.utcnow()
+        updated_stops = []
 
-            # Import StationMapper for station code derivation
-            from trackcast.services.station_mapping import StationMapper
+        # Import StationMapper for station code derivation
+        from trackcast.services.station_mapping import StationMapper
 
-            station_mapper = StationMapper()
+        station_mapper = StationMapper()
 
-            # Get existing stops
-            existing_stops = (
-                self.session.query(TrainStop)
-                .filter(
-                    TrainStop.train_id == train_id,
-                    TrainStop.train_departure_time == train_departure_time,
-                    TrainStop.data_source == data_source,
-                )
-                .all()
+        # Get existing stops
+        existing_stops = (
+            self.session.query(TrainStop)
+            .filter(
+                TrainStop.train_id == train_id,
+                TrainStop.train_departure_time == train_departure_time,
+                TrainStop.data_source == data_source,
             )
+            .all()
+        )
 
-            # Track which existing stops we've matched
-            matched_stops = set()
+        # Track which existing stops we've matched
+        matched_stops = set()
 
-            # Process incoming stops
-            for stop_data in stops_data:
-                # Derive station code if missing
-                if not stop_data.get("station_code") and stop_data.get("station_name"):
-                    derived_code = station_mapper.get_code_for_name(stop_data["station_name"])
-                    if derived_code:
-                        stop_data["station_code"] = derived_code
-                        logger.debug(
-                            f"Derived station code '{derived_code}' for '{stop_data['station_name']}'"
-                        )
-
-                # Find matching existing stop using fuzzy time matching
-                matched_stop = None
-                for stop in existing_stops:
-                    # Must match station name and code exactly
-                    if stop.station_name == stop_data.get(
-                        "station_name"
-                    ) and stop.station_code == stop_data.get("station_code"):
-
-                        # Use fuzzy time matching for scheduled_time (5-minute tolerance)
-                        if station_mapper.times_match_within_tolerance(
-                            stop.scheduled_time,
-                            stop_data.get("scheduled_time"),
-                            tolerance_seconds=3600,  # 60 minutes
-                        ):
-                            matched_stop = stop
-                            break
-
-                if matched_stop:
-                    # Update existing stop
-                    stop = matched_stop
-                    matched_stops.add(stop)
-
-                    # Update fields directly without tracking changes
-                    if stop_data.get("departure_time"):
-                        if isinstance(stop_data["departure_time"], str):
-                            try:
-                                stop.departure_time = datetime.fromisoformat(
-                                    stop_data["departure_time"]
-                                )
-                            except ValueError:
-                                stop.departure_time = stop_data["departure_time"]
-                        else:
-                            stop.departure_time = stop_data["departure_time"]
-
-                    stop.stop_status = stop_data.get("stop_status", stop.stop_status)
-                    stop.departed = stop_data.get("departed", stop.departed)
-
-                    # Handle scheduled_time updates (allowing drift)
-                    if stop_data.get("scheduled_time"):
-                        if isinstance(stop_data["scheduled_time"], str):
-                            try:
-                                new_scheduled_time = datetime.fromisoformat(
-                                    stop_data["scheduled_time"]
-                                )
-                            except ValueError:
-                                new_scheduled_time = stop_data["scheduled_time"]
-                        else:
-                            new_scheduled_time = stop_data["scheduled_time"]
-
-                        # Log significant time changes for monitoring
-                        if isinstance(stop.scheduled_time, datetime) and isinstance(
-                            new_scheduled_time, datetime
-                        ):
-                            time_diff = abs(
-                                (stop.scheduled_time - new_scheduled_time).total_seconds()
-                            )
-                            if time_diff > 3600:  # More than 1 hour difference
-                                logger.info(
-                                    f"Time drift detected for {stop.station_name} on train {train_id}: "
-                                    f"{stop.scheduled_time.isoformat()} → {new_scheduled_time.isoformat()} "
-                                    f"({time_diff}s difference)"
-                                )
-
-                        stop.scheduled_time = new_scheduled_time
-
-                    stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
-                    stop.dropoff_only = stop_data.get("dropoff_only", stop.dropoff_only)
-
-                    # Update lifecycle fields
-                    stop.last_seen_at = current_time
-                    stop.is_active = True
-
-                    updated_stops.append(stop)
-
-                else:
-                    # Fuzzy matching failed - check for exact match before creating new stop
-                    # This prevents unique constraint violations when stops reappear with exact same values
-                    exact_match_stop = self._find_exact_match_stop(
-                        train_id=train_id,
-                        train_departure_time=train_departure_time,
-                        station_name=stop_data.get("station_name"),
-                        data_source=data_source,
-                        scheduled_time=stop_data.get("scheduled_time"),
+        # Process incoming stops
+        for stop_data in stops_data:
+            # Derive station code if missing
+            if not stop_data.get("station_code") and stop_data.get("station_name"):
+                derived_code = station_mapper.get_code_for_name(stop_data["station_name"])
+                if derived_code:
+                    stop_data["station_code"] = derived_code
+                    logger.debug(
+                        f"Derived station code '{derived_code}' for '{stop_data['station_name']}'"
                     )
 
-                    if exact_match_stop:
-                        # Found exact match (likely inactive) - reactivate it
-                        stop = exact_match_stop
-                        matched_stops.add(stop)
-
-                        # Update fields
-                        if stop_data.get("departure_time"):
-                            if isinstance(stop_data["departure_time"], str):
-                                try:
-                                    stop.departure_time = datetime.fromisoformat(
-                                        stop_data["departure_time"]
-                                    )
-                                except ValueError:
-                                    stop.departure_time = stop_data["departure_time"]
-                            else:
-                                stop.departure_time = stop_data["departure_time"]
-
-                        stop.stop_status = stop_data.get("stop_status", stop.stop_status)
-                        stop.departed = stop_data.get("departed", stop.departed)
-
-                        if stop_data.get("scheduled_time"):
-                            if isinstance(stop_data["scheduled_time"], str):
-                                try:
-                                    stop.scheduled_time = datetime.fromisoformat(
-                                        stop_data["scheduled_time"]
-                                    )
-                                except ValueError:
-                                    stop.scheduled_time = stop_data["scheduled_time"]
-                            else:
-                                stop.scheduled_time = stop_data["scheduled_time"]
-
-                        stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
-                        stop.dropoff_only = stop_data.get("dropoff_only", stop.dropoff_only)
-
-                        # Reactivate the stop
-                        stop.last_seen_at = current_time
-                        stop.is_active = True
-
-                        updated_stops.append(stop)
-
-                        logger.info(
-                            f"Reactivated stop {stop.station_name} for train {train_id} "
-                            f"using exact match fallback (avoiding constraint violation)"
-                        )
-
-                    else:
-                        # No match found - create new stop
-                        stop_data["train_id"] = train_id
-                        stop_data["train_departure_time"] = train_departure_time
-                        stop_data["data_source"] = data_source
-                        stop_data["last_seen_at"] = current_time
-                        stop_data["is_active"] = True
-
-                        # Convert string datetime fields to datetime objects for SQLite compatibility
-                        for time_field in ["scheduled_time", "departure_time"]:
-                            if time_field in stop_data and isinstance(stop_data[time_field], str):
-                                try:
-                                    stop_data[time_field] = datetime.fromisoformat(
-                                        stop_data[time_field]
-                                    )
-                                except (ValueError, TypeError):
-                                    # If conversion fails, leave as None
-                                    stop_data[time_field] = None
-
-                        new_stop = TrainStop(**stop_data)
-                        self.session.add(new_stop)
-                        updated_stops.append(new_stop)
-
-            # Mark unmatched stops as inactive (NOT deleted)
+            # Find matching existing stop using fuzzy time matching
+            matched_stop = None
             for stop in existing_stops:
-                if stop not in matched_stops and stop.is_active:
-                    stop.is_active = False
-                    logger.info(f"Marked stop {stop.station_name} as inactive for train {train_id}")
+                # Must match station name and code exactly
+                if stop.station_name == stop_data.get(
+                    "station_name"
+                ) and stop.station_code == stop_data.get("station_code"):
 
-            # Commit with constraint violation handling
-            try:
-                self.session.commit()
-                duration = time.time() - db_start_time
-                DB_QUERY_DURATION_SECONDS.labels(query_type="upsert_train_stops").observe(duration)
-                logger.debug(f"Updated {len(updated_stops)} stops for train {train_id}")
-                return updated_stops
+                    # Use fuzzy time matching for scheduled_time (5-minute tolerance)
+                    if station_mapper.times_match_within_tolerance(
+                        stop.scheduled_time,
+                        stop_data.get("scheduled_time"),
+                        tolerance_seconds=3600,  # 60 minutes
+                    ):
+                        matched_stop = stop
+                        break
 
-            except Exception as commit_error:
-                # Check if this is a unique constraint violation
-                if self._is_unique_constraint_violation(commit_error):
-                    logger.warning(
-                        f"Unique constraint violation during commit for train {train_id}. "
-                        f"Attempting recovery by refreshing and retrying exact matches."
-                    )
+            if matched_stop:
+                # Update existing stop
+                stop = matched_stop
+                matched_stops.add(stop)
 
-                    # Rollback the failed transaction
-                    self.session.rollback()
-
-                    # Attempt recovery by finding exact matches for any stops that failed
-                    recovered_stops = self._recover_from_constraint_violation(
-                        train_id, train_departure_time, stops_data, data_source, current_time
-                    )
-
-                    if recovered_stops is not None:
-                        logger.info(
-                            f"Successfully recovered from constraint violation for train {train_id}. "
-                            f"Processed {len(recovered_stops)} stops."
-                        )
-                        duration = time.time() - db_start_time
-                        DB_QUERY_DURATION_SECONDS.labels(query_type="upsert_train_stops").observe(
-                            duration
-                        )
-                        return recovered_stops
+                # Update fields directly without tracking changes
+                if stop_data.get("departure_time"):
+                    if isinstance(stop_data["departure_time"], str):
+                        try:
+                            stop.departure_time = datetime.fromisoformat(
+                                stop_data["departure_time"]
+                            )
+                        except ValueError:
+                            stop.departure_time = stop_data["departure_time"]
                     else:
-                        logger.error(
-                            f"Failed to recover from constraint violation for train {train_id}. "
-                            f"Original error: {str(commit_error)}"
-                        )
-                        raise commit_error
-                else:
-                    # Not a constraint violation, re-raise original error
-                    raise commit_error
+                        stop.departure_time = stop_data["departure_time"]
 
-        except SQLAlchemyError as e:
+                stop.stop_status = stop_data.get("stop_status", stop.stop_status)
+                stop.departed = stop_data.get("departed", stop.departed)
+
+                # Handle scheduled_time updates (allowing drift)
+                if stop_data.get("scheduled_time"):
+                    if isinstance(stop_data["scheduled_time"], str):
+                        try:
+                            new_scheduled_time = datetime.fromisoformat(stop_data["scheduled_time"])
+                        except ValueError:
+                            new_scheduled_time = stop_data["scheduled_time"]
+                    else:
+                        new_scheduled_time = stop_data["scheduled_time"]
+
+                    # Log significant time changes for monitoring
+                    if isinstance(stop.scheduled_time, datetime) and isinstance(
+                        new_scheduled_time, datetime
+                    ):
+                        time_diff = abs((stop.scheduled_time - new_scheduled_time).total_seconds())
+                        if time_diff > 3600:  # More than 1 hour difference
+                            logger.info(
+                                f"Time drift detected for {stop.station_name} on train {train_id}: "
+                                f"{stop.scheduled_time.isoformat()} → {new_scheduled_time.isoformat()} "
+                                f"({time_diff}s difference)"
+                            )
+
+                    stop.scheduled_time = new_scheduled_time
+
+                stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
+                stop.dropoff_only = stop_data.get("dropoff_only", stop.dropoff_only)
+
+                # Update lifecycle fields
+                stop.last_seen_at = current_time
+                stop.is_active = True
+
+                updated_stops.append(stop)
+
+            else:
+                # No fuzzy match found - create new stop
+                stop_data["train_id"] = train_id
+                stop_data["train_departure_time"] = train_departure_time
+                stop_data["data_source"] = data_source
+                stop_data["last_seen_at"] = current_time
+                stop_data["is_active"] = True
+
+                # Convert string datetime fields to datetime objects for SQLite compatibility
+                for time_field in ["scheduled_time", "departure_time"]:
+                    if time_field in stop_data and isinstance(stop_data[time_field], str):
+                        try:
+                            stop_data[time_field] = datetime.fromisoformat(stop_data[time_field])
+                        except (ValueError, TypeError):
+                            # If conversion fails, leave as None
+                            stop_data[time_field] = None
+
+                new_stop = TrainStop(**stop_data)
+                self.session.add(new_stop)
+                updated_stops.append(new_stop)
+
+        # Mark unmatched stops as inactive (NOT deleted)
+        for stop in existing_stops:
+            if stop not in matched_stops and stop.is_active:
+                stop.is_active = False
+                logger.info(f"Marked stop {stop.station_name} as inactive for train {train_id}")
+
+        # Commit changes
+        try:
+            self.session.commit()
+            logger.debug(f"Updated {len(updated_stops)} stops for train {train_id}")
+            return updated_stops
+        except IntegrityError as e:
+            self.session.rollback()
+            logger.warning(
+                f"Unique constraint violation for train {train_id} during upsert_train_stops: {e}"
+            )
+            raise e
+        except SQLAlchemyError as e:  # Catch other SQLAlchemy errors that are not IntegrityError
             self.session.rollback()
             logger.error(f"Database error in upsert_train_stops: {str(e)}")
             raise
@@ -2164,169 +2067,3 @@ class TrainStopRepository(BaseRepository):
         except SQLAlchemyError as e:
             logger.error(f"Database error in search_stations: {str(e)}")
             raise
-
-    def _find_exact_match_stop(
-        self,
-        train_id: str,
-        train_departure_time: datetime,
-        station_name: str,
-        data_source: str,
-        scheduled_time: Any,
-    ) -> Optional[TrainStop]:
-        """
-        Find a stop that exactly matches the unique constraint fields.
-
-        This is used as a fallback when fuzzy matching fails to prevent
-        unique constraint violations when stops reappear with identical values.
-
-        Args:
-            train_id: Train identifier
-            train_departure_time: Train departure time
-            station_name: Station name
-            data_source: Data source identifier
-            scheduled_time: Scheduled time (can be datetime, string, or None)
-
-        Returns:
-            TrainStop object if exact match found, None otherwise
-        """
-        try:
-            # Convert scheduled_time to datetime if it's a string
-            if isinstance(scheduled_time, str):
-                try:
-                    scheduled_time = datetime.fromisoformat(scheduled_time)
-                except (ValueError, TypeError):
-                    scheduled_time = None
-
-            # Query for exact match on all unique constraint fields
-            exact_match = (
-                self.session.query(TrainStop)
-                .filter(
-                    TrainStop.train_id == train_id,
-                    TrainStop.train_departure_time == train_departure_time,
-                    TrainStop.station_name == station_name,
-                    TrainStop.data_source == data_source,
-                    TrainStop.scheduled_time == scheduled_time,
-                )
-                .first()
-            )
-
-            if exact_match:
-                logger.debug(
-                    f"Found exact match for stop {station_name} on train {train_id} "
-                    f"(active: {exact_match.is_active})"
-                )
-
-            return exact_match
-
-        except SQLAlchemyError as e:
-            logger.error(f"Database error in _find_exact_match_stop: {str(e)}")
-            # Don't raise - this is a fallback operation, return None to allow normal flow
-            return None
-
-    def _is_unique_constraint_violation(self, error: Exception) -> bool:
-        """
-        Check if the given error is a unique constraint violation.
-
-        Args:
-            error: The exception to check
-
-        Returns:
-            True if this is a unique constraint violation, False otherwise
-        """
-        # Check for SQLAlchemy IntegrityError wrapping psycopg2 UniqueViolation
-        error_str = str(error).lower()
-        error_type = type(error).__name__.lower()
-
-        # Check for various indicators of unique constraint violations
-        constraint_indicators = [
-            "unique constraint",
-            "uniqueviolation",
-            "uix_train_stop_unique_with_time",
-            "duplicate key value",
-            "integrity constraint",
-        ]
-
-        return (
-            any(indicator in error_str for indicator in constraint_indicators)
-            or "integrity" in error_type
-        )
-
-    def _recover_from_constraint_violation(
-        self,
-        train_id: str,
-        train_departure_time: datetime,
-        stops_data: List[Dict[str, Any]],
-        data_source: str,
-        current_time: datetime,
-    ) -> Optional[List[TrainStop]]:
-        """
-        Attempt to recover from a unique constraint violation by finding exact matches
-        and updating them instead of creating new records.
-
-        Args:
-            train_id: Train identifier
-            train_departure_time: Train departure time
-            stops_data: Original stops data that caused the violation
-            data_source: Data source identifier
-            current_time: Current timestamp
-
-        Returns:
-            List of recovered stops or None if recovery failed
-        """
-        try:
-            logger.info(f"Attempting constraint violation recovery for train {train_id}")
-            recovered_stops = []
-
-            # For each stop in the original data, try to find exact match and update
-            for stop_data in stops_data:
-                exact_match = self._find_exact_match_stop(
-                    train_id=train_id,
-                    train_departure_time=train_departure_time,
-                    station_name=stop_data.get("station_name"),
-                    data_source=data_source,
-                    scheduled_time=stop_data.get("scheduled_time"),
-                )
-
-                if exact_match:
-                    # Update the existing stop
-                    logger.debug(
-                        f"Recovery: Found exact match for {stop_data.get('station_name')}, updating"
-                    )
-
-                    # Simple update of key fields
-                    if stop_data.get("departure_time"):
-                        if isinstance(stop_data["departure_time"], str):
-                            try:
-                                exact_match.departure_time = datetime.fromisoformat(
-                                    stop_data["departure_time"]
-                                )
-                            except ValueError:
-                                pass
-                        else:
-                            exact_match.departure_time = stop_data["departure_time"]
-
-                    exact_match.stop_status = stop_data.get("stop_status", exact_match.stop_status)
-                    exact_match.departed = stop_data.get("departed", exact_match.departed)
-                    exact_match.is_active = True
-                    exact_match.last_seen_at = current_time
-
-                    recovered_stops.append(exact_match)
-                else:
-                    logger.warning(
-                        f"Recovery: No exact match found for {stop_data.get('station_name')}. "
-                        f"Cannot recover this stop."
-                    )
-                    # If we can't recover any stop, the recovery fails
-                    return None
-
-            # Try to commit the recovery
-            self.session.commit()
-            logger.info(f"Constraint violation recovery successful for train {train_id}")
-            return recovered_stops
-
-        except Exception as recovery_error:
-            logger.error(
-                f"Constraint violation recovery failed for train {train_id}: {str(recovery_error)}"
-            )
-            self.session.rollback()
-            return None
