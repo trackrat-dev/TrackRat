@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
-from sqlalchemy import text
+from sqlalchemy import or_, text
 
 from trackcast.api.routers import stops, trains
 from trackcast.db.connection import get_db, get_pool_status_metrics
@@ -88,8 +88,15 @@ async def health(db=Depends(get_db)):
     Comprehensive health check endpoint for containerized inference service.
     Verifies database connection, model availability, service readiness, and external API connectivity.
     """
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import func
+
     health_status = {"status": "healthy", "timestamp": time.time(), "checks": {}}
     overall_healthy = True
+
+    # Get current time in Eastern timezone for database queries
+    current_time = datetime.utcnow()
 
     # Placeholder URLs for external API health checks - replace with actual status endpoints
     NJ_TRANSIT_STATUS_URL = os.getenv(
@@ -113,6 +120,146 @@ async def health(db=Depends(get_db)):
             "message": f"Database connection failed: {str(e)}",
         }
         overall_healthy = False
+
+    # Database metrics (only if database is healthy)
+    if health_status["checks"]["database"]["status"] == "healthy":
+        try:
+            from trackcast.db.models import PredictionData, Train
+
+            # Basic counts with time windows
+            one_hour_ago = current_time - timedelta(hours=1)
+            one_day_ago = current_time - timedelta(days=1)
+            five_minutes_ago = current_time - timedelta(minutes=5)
+
+            # Total trains in last hour
+            trains_last_hour = (
+                db.query(func.count(Train.id)).filter(Train.created_at >= one_hour_ago).scalar()
+            )
+
+            # Total trains in last 24 hours
+            trains_last_24h = (
+                db.query(func.count(Train.id)).filter(Train.created_at >= one_day_ago).scalar()
+            )
+
+            # Trains with predictions in last hour
+            trains_with_predictions = (
+                db.query(func.count(Train.id))
+                .filter(Train.created_at >= one_hour_ago, Train.prediction_data_id.isnot(None))
+                .scalar()
+            )
+
+            # Trains with track assignments
+            trains_with_tracks = (
+                db.query(func.count(Train.id))
+                .filter(
+                    Train.created_at >= one_hour_ago, Train.track.isnot(None), Train.track != ""
+                )
+                .scalar()
+            )
+
+            # Data freshness indicators
+            most_recent_train = db.query(func.max(Train.created_at)).scalar()
+            most_recent_prediction = db.query(func.max(PredictionData.created_at)).scalar()
+
+            # Count of active trains (not departed)
+            active_trains = (
+                db.query(func.count(Train.id))
+                .filter(
+                    Train.departure_time >= current_time,
+                    Train.status != "DEPARTED",
+                    Train.track_released_at.is_(None),
+                )
+                .scalar()
+            )
+
+            # Source breakdown
+            trains_by_source = dict(
+                db.query(Train.data_source, func.count(Train.id))
+                .filter(Train.created_at >= one_hour_ago)
+                .group_by(Train.data_source)
+                .all()
+            )
+
+            trains_by_station = dict(
+                db.query(Train.origin_station_code, func.count(Train.id))
+                .filter(Train.created_at >= one_hour_ago)
+                .group_by(Train.origin_station_code)
+                .all()
+            )
+
+            # Count trains missing critical fields (in last hour)
+            trains_missing_fields = (
+                db.query(func.count(Train.id))
+                .filter(
+                    Train.created_at >= one_hour_ago,
+                    or_(
+                        Train.line.is_(None),
+                        Train.line == "",
+                        Train.destination.is_(None),
+                        Train.destination == "",
+                        Train.departure_time.is_(None),
+                    ),
+                )
+                .scalar()
+            )
+
+            # Quality metrics
+            track_assignment_rate = (
+                (trains_with_tracks / trains_last_hour * 100) if trains_last_hour > 0 else 0
+            )
+            prediction_rate = (
+                (trains_with_predictions / trains_last_hour * 100) if trains_last_hour > 0 else 0
+            )
+            missing_fields_rate = (
+                (trains_missing_fields / trains_last_hour * 100) if trains_last_hour > 0 else 0
+            )
+
+            # Check for stale data
+            stale_data_warning = False
+            if most_recent_train:
+                minutes_since_update = (current_time - most_recent_train).total_seconds() / 60
+                if minutes_since_update > 5:
+                    stale_data_warning = True
+
+            health_status["checks"]["database_metrics"] = {
+                "status": "healthy" if not stale_data_warning else "warning",
+                "basic_counts": {
+                    "trains_last_hour": trains_last_hour,
+                    "trains_last_24h": trains_last_24h,
+                    "trains_with_predictions_last_hour": trains_with_predictions,
+                    "trains_with_tracks_last_hour": trains_with_tracks,
+                    "active_trains": active_trains,
+                    "trains_missing_critical_fields": trains_missing_fields,
+                },
+                "data_freshness": {
+                    "most_recent_train": (
+                        most_recent_train.isoformat() if most_recent_train else None
+                    ),
+                    "most_recent_prediction": (
+                        most_recent_prediction.isoformat() if most_recent_prediction else None
+                    ),
+                    "minutes_since_last_train": (
+                        round(minutes_since_update, 1) if most_recent_train else None
+                    ),
+                    "stale_data_warning": stale_data_warning,
+                },
+                "source_breakdown": {
+                    "by_data_source": trains_by_source,
+                    "by_origin_station": trains_by_station,
+                },
+                "quality_metrics": {
+                    "track_assignment_rate": round(track_assignment_rate, 1),
+                    "prediction_rate": round(prediction_rate, 1),
+                    "missing_fields_rate": round(missing_fields_rate, 1),
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Database metrics check failed: {str(e)}")
+            health_status["checks"]["database_metrics"] = {
+                "status": "error",
+                "message": f"Failed to gather database metrics: {str(e)}",
+            }
 
     # Check model directory and availability
     model_path = os.getenv("MODEL_PATH", "/app/models")
