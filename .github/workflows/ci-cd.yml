@@ -18,11 +18,11 @@ env:
   TF_VERSION: '1.7.0'
   TFLINT_VERSION: 'v0.50.0'
   # Dynamic environment variables based on branch
-  PROJECT_ID: ${{ github.ref == 'refs/heads/main' && 'trackrat-dev' || 'trackrat-staging' }}
+  PROJECT_ID: ${{ github.ref == 'refs/heads/main' && 'trackrat-dev' || github.ref == 'refs/heads/staging' && 'trackrat-staging' || 'trackrat-prod' }}
   REGION: us-central1
   SERVICE_NAME: trackcast-inference
-  REPOSITORY: ${{ github.ref == 'refs/heads/main' && 'trackcast-inference-dev' || 'trackcast-inference-staging' }}
-  ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'dev' || 'staging' }}
+  REPOSITORY: ${{ github.ref == 'refs/heads/main' && 'trackcast-inference-dev' || github.ref == 'refs/heads/staging' && 'trackcast-inference-staging' || 'trackcast-inference-prod' }}
+  ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'dev' || github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
 
 jobs:
   # Simplified CI/CD: Run all tests unconditionally
@@ -212,16 +212,16 @@ jobs:
           yamllint -d '{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable}}' .github/workflows/
           echo "✅ All workflow files have valid YAML syntax"
 
-  # Deploy when tests pass and on main or staging branch
+  # Deploy when tests pass and on main, staging, or production branch
   deploy:
-    name: Deploy to ${{ github.ref == 'refs/heads/main' && 'Development' || 'Staging' }}
+    name: Deploy to ${{ github.ref == 'refs/heads/main' && 'Development' || github.ref == 'refs/heads/staging' && 'Staging' || 'Production' }}
     runs-on: ubuntu-latest
     needs: [test]
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging') && needs.test.result == 'success'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/production') && needs.test.result == 'success'
 
     environment:
-      name: ${{ github.ref == 'refs/heads/main' && 'development' || 'staging' }}
-      url: ${{ github.ref == 'refs/heads/main' && 'https://dev.api.trackrat.net' || 'https://staging.api.trackrat.net' }}
+      name: ${{ github.ref == 'refs/heads/main' && 'development' || github.ref == 'refs/heads/staging' && 'staging' || 'production' }}
+      url: ${{ github.ref == 'refs/heads/main' && 'https://dev.api.trackrat.net' || github.ref == 'refs/heads/staging' && 'https://staging.api.trackrat.net' || 'https://prod.api.trackrat.net' }}
 
     steps:
       - name: Checkout
@@ -389,7 +389,7 @@ jobs:
       # Step 7: Deployment summary
       - name: Deployment Summary
         run: |
-          echo "## 🚀 ${{ env.ENVIRONMENT == 'dev' && 'Development' || 'Staging' }} Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 ${{ env.ENVIRONMENT == 'dev' && 'Development' || env.ENVIRONMENT == 'staging' && 'Staging' || 'Production' }} Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Infrastructure and Application deployed successfully**" >> $GITHUB_STEP_SUMMARY
           echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
@@ -424,7 +424,7 @@ jobs:
           if [[ "${{ needs.deploy.result }}" == "success" ]]; then
             echo "✅ **Pipeline Status**: Deployment Successful" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.deploy.result }}" == "skipped" ]]; then
-            echo "🟡 **Pipeline Status**: Tests Completed (No Deployment - Not Main/Staging Branch or Tests Failed)" >> $GITHUB_STEP_SUMMARY
+            echo "🟡 **Pipeline Status**: Tests Completed (No Deployment - Not Main/Staging/Production Branch or Tests Failed)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Pipeline Status**: Pipeline Failed" >> $GITHUB_STEP_SUMMARY
           fi

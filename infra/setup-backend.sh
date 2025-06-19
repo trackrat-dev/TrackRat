@@ -30,7 +30,7 @@ STAGING_PROJECT_ID=${STAGING_PROJECT_ID:-"trackrat-staging"}
 PROD_PROJECT_ID=${PROD_PROJECT_ID:-"trackrat-prod"}
 
 # Region for buckets
-REGION=${REGION:-"us-east1"}
+REGION=${REGION:-"us-central1"}
 
 # Function to create a bucket if it doesn't exist
 create_bucket() {
