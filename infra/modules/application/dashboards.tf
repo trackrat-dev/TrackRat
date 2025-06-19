@@ -366,7 +366,7 @@ resource "google_monitoring_dashboard" "executive_dashboard" {
               { "value" : 0.02, "color" : "YELLOW", "direction" : "ABOVE" },
               { "value" : 0.05, "color" : "RED", "direction" : "ABOVE" }
             ],
-            "gaugeView": { "lowerBound": 0, "upperBound": 0.1 } // Display 0-10% range, as error rates should be low
+            "gaugeView" : { "lowerBound" : 0, "upperBound" : 0.1 } // Display 0-10% range, as error rates should be low
           }
         },
         // Daily Trains Processed (Scorecard)
@@ -377,12 +377,12 @@ resource "google_monitoring_dashboard" "executive_dashboard" {
               "timeSeriesFilter" : {
                 "filter" : "metric.type=\"${var.trains_processed_metric_name}\" resource.type=\"cloud_run_revision\" resource.labels.service_name=\"${var.cloud_run_service_name}\"",
                 "aggregation" : {
-                  "alignmentPeriod" : "86400s", // 24 hours
+                  "alignmentPeriod" : "86400s",    // 24 hours
                   "perSeriesAligner" : "ALIGN_SUM" // Sum over the day
                 }
               }
             },
-            "sparkChartView": { "sparkChartType": "BAR" } // Show a simple bar for daily trend
+            "sparkChartView" : { "sparkChartType" : "BAR" } // Show a simple bar for daily trend
           }
         },
         // Prediction Accuracy Trends (xyChart - Line - Placeholder)
@@ -438,7 +438,7 @@ resource "google_monitoring_dashboard" "executive_dashboard" {
               { "value" : 0.90, "color" : "YELLOW", "direction" : "BELOW" },
               { "value" : 0.85, "color" : "RED", "direction" : "BELOW" }
             ],
-            "gaugeView": { "lowerBound": 0.8, "upperBound": 1 } // Focus on 80-100% range
+            "gaugeView" : { "lowerBound" : 0.8, "upperBound" : 1 } // Focus on 80-100% range
           }
         },
         // SLA Compliance Tracking (Uptime - Scorecard)
@@ -470,7 +470,7 @@ resource "google_monitoring_dashboard" "executive_dashboard" {
               { "value" : 0.99, "color" : "YELLOW", "direction" : "BELOW" },
               { "value" : 0.95, "color" : "RED", "direction" : "BELOW" }
             ],
-            "gaugeView": { "lowerBound": 0.9, "upperBound": 1 } // Focus on 90-100% range
+            "gaugeView" : { "lowerBound" : 0.9, "upperBound" : 1 } // Focus on 90-100% range
           }
         },
         // Cost and Usage Trends (xyChart - Line - Cloud Run Instance Count)
