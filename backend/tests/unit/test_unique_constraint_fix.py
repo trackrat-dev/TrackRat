@@ -57,15 +57,6 @@ class TestUniqueConstraintFix:
         existing_stop.scheduled_time = datetime(2025, 6, 18, 19, 37, 7)  # Exact time from error
         existing_stop.departure_time = datetime(2025, 6, 18, 19, 38, 45)
         existing_stop.is_active = False  # Key: stop is inactive
-        existing_stop.api_removed_at = datetime(2025, 6, 18, 23, 31, 31)
-        existing_stop.data_version = 1
-        existing_stop.audit_trail = [
-            {
-                "timestamp": "2025-06-18T23:31:31.019978",
-                "action": "removed_from_api",
-                "note": "Stop no longer present in API response",
-            }
-        ]
         existing_stop.last_seen_at = datetime(2025, 6, 18, 23, 31, 31)
 
         # Mock the queries - initial query returns existing stop, exact match query also returns it
@@ -114,20 +105,9 @@ class TestUniqueConstraintFix:
             
             # Verify the existing stop was reactivated instead of creating new
             assert existing_stop.is_active is True
-            assert existing_stop.api_removed_at is None
-            assert existing_stop.data_version == 2  # Should be incremented
             
             # Verify no new stops were added (which would cause constraint violation)
             assert len(added_stops) == 0
-            
-            # Verify audit trail was updated with reactivation
-            assert len(existing_stop.audit_trail) == 2
-            latest_audit = existing_stop.audit_trail[1]
-            assert latest_audit["action"] == "updated"
-            assert latest_audit["note"] == "Stop reappeared in API with exact match fallback"
-            assert "is_active" in latest_audit["changes"]
-            assert latest_audit["changes"]["is_active"]["old"] is False
-            assert latest_audit["changes"]["is_active"]["new"] is True
             
             # Verify session.commit was called
             mock_session.commit.assert_called_once()
@@ -149,8 +129,8 @@ class TestUniqueConstraintFix:
         inactive_stop_1.station_name = "Newark Penn Station"
         inactive_stop_1.scheduled_time = datetime(2025, 6, 18, 19, 30, 0)  # Different time
         inactive_stop_1.is_active = False
-        inactive_stop_1.data_version = 1
-        inactive_stop_1.audit_trail = []
+        
+        
         inactive_stop_1.last_seen_at = datetime.utcnow()
 
         inactive_stop_2 = TrainStop()
@@ -161,8 +141,8 @@ class TestUniqueConstraintFix:
         inactive_stop_2.station_name = "Newark Penn Station"
         inactive_stop_2.scheduled_time = datetime(2025, 6, 18, 19, 37, 7)  # Exact match target
         inactive_stop_2.is_active = False
-        inactive_stop_2.data_version = 1
-        inactive_stop_2.audit_trail = []
+        
+        
         inactive_stop_2.last_seen_at = datetime.utcnow()
 
         # Mock the queries for this test
@@ -229,8 +209,8 @@ class TestUniqueConstraintFix:
         existing_stop.station_name = "Trenton"
         existing_stop.scheduled_time = datetime(2025, 6, 18, 20, 27, 22)  # From error logs
         existing_stop.is_active = False
-        existing_stop.data_version = 1
-        existing_stop.audit_trail = []
+        
+        
         existing_stop.last_seen_at = datetime.utcnow()
 
         # Mock the queries - both the initial query and the exact match query

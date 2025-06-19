@@ -1584,7 +1584,7 @@ class TrainStopRepository(BaseRepository):
         data_source: str = "njtransit",
     ) -> List[TrainStop]:
         """
-        Intelligently update train stops without audit trail tracking.
+        Intelligently update train stops without deletion, maintaining full audit trail.
 
         Args:
             train_id: Train identifier
@@ -1654,47 +1654,104 @@ class TrainStopRepository(BaseRepository):
                     stop = matched_stop
                     matched_stops.add(stop)
 
-                    # Update fields directly without tracking changes
-                    if stop_data.get("departure_time"):
-                        if isinstance(stop_data["departure_time"], str):
-                            try:
-                                stop.departure_time = datetime.fromisoformat(stop_data["departure_time"])
-                            except ValueError:
-                                stop.departure_time = stop_data["departure_time"]
-                        else:
-                            stop.departure_time = stop_data["departure_time"]
+                    # Track what changed
+                    changes = {
+                        "timestamp": current_time.isoformat(),
+                        "action": "updated",
+                        "changes": {},
+                    }
 
-                    stop.stop_status = stop_data.get("stop_status", stop.stop_status)
-                    stop.departed = stop_data.get("departed", stop.departed)
-                    
-                    # Handle scheduled_time updates (allowing drift)
-                    if stop_data.get("scheduled_time"):
-                        if isinstance(stop_data["scheduled_time"], str):
-                            try:
-                                new_scheduled_time = datetime.fromisoformat(stop_data["scheduled_time"])
-                            except ValueError:
-                                new_scheduled_time = stop_data["scheduled_time"]
-                        else:
-                            new_scheduled_time = stop_data["scheduled_time"]
-                        
-                        # Log significant time changes for monitoring
-                        if isinstance(stop.scheduled_time, datetime) and isinstance(new_scheduled_time, datetime):
-                            time_diff = abs((stop.scheduled_time - new_scheduled_time).total_seconds())
-                            if time_diff > 3600:  # More than 1 hour difference
-                                logger.info(
-                                    f"Time drift detected for {stop.station_name} on train {train_id}: "
-                                    f"{stop.scheduled_time.isoformat()} → {new_scheduled_time.isoformat()} "
-                                    f"({time_diff}s difference)"
-                                )
-                        
-                        stop.scheduled_time = new_scheduled_time
+                    # Check and update each field that might change
+                    fields_to_check = [
+                        ("departure_time", "departure_time"),
+                        ("stop_status", "stop_status"),
+                        ("departed", "departed"),
+                        ("scheduled_time", "scheduled_time"),
+                        ("pickup_only", "pickup_only"),
+                        ("dropoff_only", "dropoff_only"),
+                    ]
 
-                    stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
-                    stop.dropoff_only = stop_data.get("dropoff_only", stop.dropoff_only)
+                    for field_name, data_key in fields_to_check:
+                        old_value = getattr(stop, field_name)
+                        new_value = stop_data.get(data_key)
+
+                        # Handle boolean fields properly
+                        if data_key in ["departed", "pickup_only", "dropoff_only"]:
+                            new_value = stop_data.get(data_key, False)
+
+                        # Special handling for time fields to support drift tracking
+                        if field_name in ["scheduled_time", "departure_time"] and isinstance(
+                            old_value, datetime
+                        ):
+                            if isinstance(new_value, str):
+                                try:
+                                    new_datetime = datetime.fromisoformat(new_value)
+                                except ValueError:
+                                    new_datetime = new_value
+                            elif isinstance(new_value, datetime):
+                                new_datetime = new_value
+                            else:
+                                new_datetime = new_value
+
+                            # Always update time fields when fuzzy matched to prevent drift
+                            # This allows gradual schedule changes to be tracked
+                            if new_datetime and old_value != new_datetime:
+                                time_diff = abs((old_value - new_datetime).total_seconds())
+
+                                # Log significant time changes for monitoring
+                                if time_diff > 3600:  # More than 1 hour difference
+                                    logger.info(
+                                        f"Time drift detected for {stop.station_name} on train {train_id}: "
+                                        f"{old_value.isoformat()} → {new_datetime.isoformat()} "
+                                        f"({time_diff}s difference)"
+                                    )
+
+                                changes["changes"][field_name] = {
+                                    "old": old_value.isoformat(),
+                                    "new": new_datetime.isoformat(),
+                                    "drift_seconds": time_diff,
+                                    "drift_reason": (
+                                        "schedule_adjustment"
+                                        if time_diff > 60
+                                        else "precision_update"
+                                    ),
+                                }
+                                setattr(stop, field_name, new_datetime)
+                        # Convert datetime objects for comparison (non-time fields)
+                        elif isinstance(old_value, datetime):
+                            old_value_str = old_value.isoformat() if old_value else None
+                            new_value_str = (
+                                new_value.isoformat()
+                                if isinstance(new_value, datetime)
+                                else new_value
+                            )
+                            if old_value_str != new_value_str:
+                                changes["changes"][field_name] = {
+                                    "old": old_value_str,
+                                    "new": new_value_str,
+                                }
+                                setattr(stop, field_name, new_value)
+                        elif old_value != new_value:
+                            changes["changes"][field_name] = {"old": old_value, "new": new_value}
+                            setattr(stop, field_name, new_value)
 
                     # Update lifecycle fields
+                    if not stop.is_active:
+                        changes["changes"]["is_active"] = {"old": False, "new": True}
+                        changes["note"] = "Stop reappeared in API"
+
                     stop.last_seen_at = current_time
                     stop.is_active = True
+                    stop.api_removed_at = None
+                    stop.data_version += 1
+
+                    # Append to audit trail if there were changes
+                    if changes["changes"]:
+                        if stop.audit_trail is None:
+                            stop.audit_trail = []
+                        stop.audit_trail = stop.audit_trail + [
+                            changes
+                        ]  # Create new list for SQLAlchemy to detect change
 
                     updated_stops.append(stop)
 
@@ -1714,34 +1771,90 @@ class TrainStopRepository(BaseRepository):
                         stop = exact_match_stop
                         matched_stops.add(stop)
 
-                        # Update fields
-                        if stop_data.get("departure_time"):
-                            if isinstance(stop_data["departure_time"], str):
-                                try:
-                                    stop.departure_time = datetime.fromisoformat(stop_data["departure_time"])
-                                except ValueError:
-                                    stop.departure_time = stop_data["departure_time"]
-                            else:
-                                stop.departure_time = stop_data["departure_time"]
+                        # Track reactivation
+                        changes = {
+                            "timestamp": current_time.isoformat(),
+                            "action": "updated",
+                            "changes": {},
+                            "note": "Stop reappeared in API with exact match fallback",
+                        }
 
-                        stop.stop_status = stop_data.get("stop_status", stop.stop_status)
-                        stop.departed = stop_data.get("departed", stop.departed)
-                        
-                        if stop_data.get("scheduled_time"):
-                            if isinstance(stop_data["scheduled_time"], str):
-                                try:
-                                    stop.scheduled_time = datetime.fromisoformat(stop_data["scheduled_time"])
-                                except ValueError:
-                                    stop.scheduled_time = stop_data["scheduled_time"]
-                            else:
-                                stop.scheduled_time = stop_data["scheduled_time"]
+                        # Check and update fields (same logic as fuzzy match)
+                        fields_to_check = [
+                            ("departure_time", "departure_time"),
+                            ("stop_status", "stop_status"),
+                            ("departed", "departed"),
+                            ("scheduled_time", "scheduled_time"),
+                            ("pickup_only", "pickup_only"),
+                            ("dropoff_only", "dropoff_only"),
+                        ]
 
-                        stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
-                        stop.dropoff_only = stop_data.get("dropoff_only", stop.dropoff_only)
+                        for field_name, data_key in fields_to_check:
+                            old_value = getattr(stop, field_name)
+                            new_value = stop_data.get(data_key)
+
+                            # Handle boolean fields properly
+                            if data_key in ["departed", "pickup_only", "dropoff_only"]:
+                                new_value = stop_data.get(data_key, False)
+
+                            # Handle time fields and other updates (same logic as above)
+                            if field_name in ["scheduled_time", "departure_time"] and isinstance(
+                                old_value, datetime
+                            ):
+                                if isinstance(new_value, str):
+                                    try:
+                                        new_datetime = datetime.fromisoformat(new_value)
+                                    except ValueError:
+                                        new_datetime = new_value
+                                elif isinstance(new_value, datetime):
+                                    new_datetime = new_value
+                                else:
+                                    new_datetime = new_value
+
+                                if new_datetime and old_value != new_datetime:
+                                    time_diff = abs((old_value - new_datetime).total_seconds())
+                                    changes["changes"][field_name] = {
+                                        "old": old_value.isoformat(),
+                                        "new": new_datetime.isoformat(),
+                                        "drift_seconds": time_diff,
+                                        "drift_reason": "exact_match_update",
+                                    }
+                                    setattr(stop, field_name, new_datetime)
+                            elif isinstance(old_value, datetime):
+                                old_value_str = old_value.isoformat() if old_value else None
+                                new_value_str = (
+                                    new_value.isoformat()
+                                    if isinstance(new_value, datetime)
+                                    else new_value
+                                )
+                                if old_value_str != new_value_str:
+                                    changes["changes"][field_name] = {
+                                        "old": old_value_str,
+                                        "new": new_value_str,
+                                    }
+                                    setattr(stop, field_name, new_value)
+                            elif old_value != new_value:
+                                changes["changes"][field_name] = {
+                                    "old": old_value,
+                                    "new": new_value,
+                                }
+                                setattr(stop, field_name, new_value)
 
                         # Reactivate the stop
+                        if not stop.is_active:
+                            changes["changes"]["is_active"] = {"old": False, "new": True}
+                            if "note" not in changes:
+                                changes["note"] = "Stop reappeared in API"
+
                         stop.last_seen_at = current_time
                         stop.is_active = True
+                        stop.api_removed_at = None
+                        stop.data_version += 1
+
+                        # Append to audit trail
+                        if stop.audit_trail is None:
+                            stop.audit_trail = []
+                        stop.audit_trail = stop.audit_trail + [changes]
 
                         updated_stops.append(stop)
 
@@ -1758,8 +1871,16 @@ class TrainStopRepository(BaseRepository):
                         stop_data["last_seen_at"] = current_time
                         stop_data["is_active"] = True
 
+                        # Preserve original scheduled time
+                        if "scheduled_time" in stop_data:
+                            stop_data["original_scheduled_time"] = stop_data["scheduled_time"]
+
                         # Convert string datetime fields to datetime objects for SQLite compatibility
-                        for time_field in ["scheduled_time", "departure_time"]:
+                        for time_field in [
+                            "scheduled_time",
+                            "departure_time",
+                            "original_scheduled_time",
+                        ]:
                             if time_field in stop_data and isinstance(stop_data[time_field], str):
                                 try:
                                     stop_data[time_field] = datetime.fromisoformat(
@@ -1769,14 +1890,52 @@ class TrainStopRepository(BaseRepository):
                                     # If conversion fails, leave as None
                                     stop_data[time_field] = None
 
+                        # Initialize audit trail with creation event
+                        stop_data["audit_trail"] = [
+                            {
+                                "timestamp": current_time.isoformat(),
+                                "action": "created",
+                                "initial_data": {
+                                    "station_name": stop_data.get("station_name"),
+                                    "station_code": stop_data.get("station_code"),
+                                    "scheduled_time": self._time_to_isoformat(
+                                        stop_data.get("scheduled_time")
+                                    ),
+                                    "departure_time": self._time_to_isoformat(
+                                        stop_data.get("departure_time")
+                                    ),
+                                    "departed": stop_data.get("departed", False),
+                                    "stop_status": stop_data.get("stop_status"),
+                                },
+                            }
+                        ]
+
                         new_stop = TrainStop(**stop_data)
                         self.session.add(new_stop)
                         updated_stops.append(new_stop)
 
-            # Mark unmatched stops as inactive (NOT deleted)
+            # Mark unmatched stops as inactive (NOT deleted) with audit trail
             for stop in existing_stops:
                 if stop not in matched_stops and stop.is_active:
                     stop.is_active = False
+                    stop.api_removed_at = current_time
+
+                    # Add removal to audit trail
+                    removal_event = {
+                        "timestamp": current_time.isoformat(),
+                        "action": "removed_from_api",
+                        "note": "Stop no longer present in API response",
+                        "last_known_state": {
+                            "departed": stop.departed,
+                            "stop_status": stop.stop_status,
+                            "departure_time": self._time_to_isoformat(stop.departure_time),
+                        },
+                    }
+
+                    if stop.audit_trail is None:
+                        stop.audit_trail = []
+                    stop.audit_trail = stop.audit_trail + [removal_event]
+
                     logger.info(f"Marked stop {stop.station_name} as inactive for train {train_id}")
 
             # Commit with constraint violation handling
@@ -1912,6 +2071,54 @@ class TrainStopRepository(BaseRepository):
             logger.error(f"Database error in get_all_stations: {str(e)}")
             raise
 
+    def get_stop_audit_history(
+        self, train_id: str, station_name: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get audit history for train stops, optionally filtered by station.
+        Useful for debugging stop lifecycle issues.
+
+        Args:
+            train_id: Train identifier
+            station_name: Optional station name filter
+
+        Returns:
+            List of stop audit histories
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        try:
+            query = self.session.query(TrainStop).filter(TrainStop.train_id == train_id)
+
+            if station_name:
+                query = query.filter(TrainStop.station_name == station_name)
+
+            stops = query.all()
+
+            history = []
+            for stop in stops:
+                history.append(
+                    {
+                        "station_name": stop.station_name,
+                        "station_code": stop.station_code,
+                        "is_active": stop.is_active,
+                        "last_seen_at": (
+                            stop.last_seen_at.isoformat() if stop.last_seen_at else None
+                        ),
+                        "api_removed_at": (
+                            stop.api_removed_at.isoformat() if stop.api_removed_at else None
+                        ),
+                        "data_version": stop.data_version,
+                        "audit_trail": stop.audit_trail or [],
+                    }
+                )
+
+            return history
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_stop_audit_history: {str(e)}")
+            raise
 
     def search_stations(self, query: str) -> List[Dict[str, str]]:
         """
@@ -2098,7 +2305,21 @@ class TrainStopRepository(BaseRepository):
                     exact_match.stop_status = stop_data.get("stop_status", exact_match.stop_status)
                     exact_match.departed = stop_data.get("departed", exact_match.departed)
                     exact_match.is_active = True
+                    exact_match.api_removed_at = None
                     exact_match.last_seen_at = current_time
+                    exact_match.data_version += 1
+
+                    # Add recovery audit entry
+                    if exact_match.audit_trail is None:
+                        exact_match.audit_trail = []
+
+                    recovery_audit = {
+                        "timestamp": current_time.isoformat(),
+                        "action": "constraint_violation_recovery",
+                        "note": "Stop recovered from unique constraint violation",
+                        "recovery_method": "exact_match_update",
+                    }
+                    exact_match.audit_trail = exact_match.audit_trail + [recovery_audit]
 
                     recovered_stops.append(exact_match)
                 else:
@@ -2121,3 +2342,25 @@ class TrainStopRepository(BaseRepository):
             self.session.rollback()
             return None
 
+    def _time_to_isoformat(self, time_value) -> Optional[str]:
+        """
+        Convert time value to ISO format string, handling both datetime objects and strings.
+
+        Args:
+            time_value: Either a datetime object, string, or None
+
+        Returns:
+            ISO format string or None
+        """
+        if time_value is None:
+            return None
+
+        from datetime import datetime
+
+        if isinstance(time_value, datetime):
+            return time_value.isoformat()
+        elif isinstance(time_value, str):
+            return time_value  # Assume it's already in ISO format
+        else:
+            # Handle unexpected types by converting to string
+            return str(time_value)

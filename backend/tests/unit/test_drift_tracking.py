@@ -43,8 +43,8 @@ class TestDriftTracking:
             station_name="Newark Penn Station",
             scheduled_time=datetime(2025, 6, 18, 18, 36, 0),  # Initial time
             is_active=True,
-            data_version=1,
-            audit_trail=[],
+            
+            
             last_seen_at=datetime.utcnow(),
         )
 
@@ -93,11 +93,6 @@ class TestDriftTracking:
                 assert existing_stop.scheduled_time == new_datetime, \
                     f"DB time should be updated to {new_time_str}"
 
-                # Verify audit trail tracks the change
-                assert len(existing_stop.audit_trail) > 0
-                if len(existing_stop.audit_trail) > 1:
-                    latest_change = existing_stop.audit_trail[-1]
-                    assert "drift_seconds" in latest_change["changes"]["scheduled_time"]
 
     def test_significant_drift_logging(self, stop_repo, mock_session, sample_train, caplog):
         """Test that significant time changes (>1 minute) are logged."""
@@ -109,8 +104,8 @@ class TestDriftTracking:
             station_name="Newark Penn Station",
             scheduled_time=datetime(2025, 6, 18, 18, 36, 0),
             is_active=True,
-            data_version=1,
-            audit_trail=[],
+            
+            
             last_seen_at=datetime.utcnow(),
         )
 
@@ -158,8 +153,8 @@ class TestDriftTracking:
             station_name="Newark Penn Station",
             scheduled_time=datetime(2025, 6, 18, 18, 36, 0),
             is_active=True,
-            data_version=1,
-            audit_trail=[],
+            
+            
             last_seen_at=datetime.utcnow(),
         )
 
@@ -257,8 +252,8 @@ class TestDriftTracking:
             station_name="Newark Penn Station",
             scheduled_time=datetime(2025, 6, 18, 18, 36, 0),
             is_active=True,
-            data_version=1,
-            audit_trail=[],
+            
+            
             last_seen_at=datetime.utcnow(),
         )
 
@@ -290,15 +285,6 @@ class TestDriftTracking:
                 data_source="njtransit",
             )
 
-            # Check audit trail indicates precision update
-            latest_change = existing_stop.audit_trail[-1]
-            scheduled_change = latest_change["changes"]["scheduled_time"]
-            assert scheduled_change["drift_reason"] == "precision_update"
-            assert scheduled_change["drift_seconds"] == 30
-
-            # Reset for next test
-            existing_stop.audit_trail = []
-
             # Test large schedule change (3 minutes)
             incoming_stops_large = [
                 {
@@ -315,9 +301,3 @@ class TestDriftTracking:
                 stops_data=incoming_stops_large,
                 data_source="njtransit",
             )
-
-            # Check audit trail indicates schedule adjustment
-            latest_change = existing_stop.audit_trail[-1]
-            scheduled_change = latest_change["changes"]["scheduled_time"]
-            assert scheduled_change["drift_reason"] == "schedule_adjustment"
-            assert scheduled_change["drift_seconds"] == 180  # 3 minutes

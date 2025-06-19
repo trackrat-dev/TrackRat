@@ -55,8 +55,8 @@ class TestTrainStopRepository:
             is_active=True,
             stop_status="OnTime",
             departed=False,
-            data_version=1,
-            audit_trail=[],
+            
+            
             last_seen_at=datetime.utcnow(),
         )
         
@@ -102,7 +102,6 @@ class TestTrainStopRepository:
             
             # Verify the stop was NOT marked as inactive
             assert existing_stop.is_active is True
-            assert existing_stop.api_removed_at is None
             
             # Verify session.commit was called
             mock_session.commit.assert_called_once()
@@ -122,8 +121,8 @@ class TestTrainStopRepository:
                 station_name="Newark Penn Station",
                 scheduled_time=datetime(2025, 6, 18, 16, 20, 0),  # First stop - 2+ hours before second
                 is_active=True,
-                data_version=1,
-                audit_trail=[],
+                
+                
                 last_seen_at=datetime.utcnow(),
             ),
             TrainStop(
@@ -134,8 +133,8 @@ class TestTrainStopRepository:
                 station_name="Newark Penn Station",
                 scheduled_time=datetime(2025, 6, 18, 18, 30, 15),  # Second stop
                 is_active=True,
-                data_version=1,
-                audit_trail=[],
+                
+                
                 last_seen_at=datetime.utcnow(),
             ),
         ]
@@ -208,12 +207,10 @@ class TestTrainStopRepository:
             # First stop should be marked inactive (time doesn't match within 60-minute tolerance)
             # 16:20:00 vs 18:30:00 is 2h 10min - beyond tolerance
             assert existing_stops[0].is_active is False
-            assert existing_stops[0].api_removed_at is not None
             
             # Second stop should remain active (matched by fuzzy time matching within tolerance)
             # 18:30:15 vs 18:30:00 is only 15 seconds difference - well within 60-minute tolerance
             assert existing_stops[1].is_active is True
-            assert existing_stops[1].api_removed_at is None
 
     def test_stop_reactivation_after_being_marked_inactive(self, stop_repo, mock_session, sample_train):
         """
@@ -229,15 +226,7 @@ class TestTrainStopRepository:
             station_name="Newark Penn Station",
             scheduled_time=datetime(2025, 6, 18, 18, 36, 30),
             is_active=False,  # Previously marked inactive
-            api_removed_at=datetime(2025, 6, 18, 17, 0, 0),
-            audit_trail=[
-                {
-                    "timestamp": "2025-06-18T17:00:00",
-                    "action": "removed_from_api",
-                    "note": "Stop no longer present in API response",
-                }
-            ],
-            data_version=1,
+            
             last_seen_at=datetime.utcnow(),
         )
         
@@ -276,12 +265,6 @@ class TestTrainStopRepository:
             
             # Stop should be reactivated
             assert existing_stop.is_active is True
-            assert existing_stop.api_removed_at is None
-            
-            # Check audit trail was updated
-            assert len(existing_stop.audit_trail) == 2
-            assert existing_stop.audit_trail[1]["action"] == "updated"
-            assert existing_stop.audit_trail[1]["note"] == "Stop reappeared in API"
 
     def test_edge_case_near_minute_boundary_with_fuzzy_matching(self, stop_repo, mock_session, sample_train):
         """
@@ -297,8 +280,8 @@ class TestTrainStopRepository:
             station_name="Newark Penn Station",
             scheduled_time=datetime(2025, 6, 18, 18, 36, 59),  # 1 second before 18:37:00
             is_active=True,
-            data_version=1,
-            audit_trail=[],
+            
+            
             last_seen_at=datetime.utcnow(),
         )
         
@@ -337,7 +320,6 @@ class TestTrainStopRepository:
             
             # Stop should NOT be marked inactive (times match within fuzzy tolerance)
             assert existing_stop.is_active is True
-            assert existing_stop.api_removed_at is None
 
     def test_null_scheduled_time_handling(self, stop_repo, mock_session, sample_train):
         """
@@ -353,8 +335,8 @@ class TestTrainStopRepository:
                 station_name="Newark Penn Station",
                 scheduled_time=None,  # No scheduled time
                 is_active=True,
-                data_version=1,
-                audit_trail=[],
+                
+                
                 last_seen_at=datetime.utcnow(),
             ),
             TrainStop(
@@ -365,8 +347,8 @@ class TestTrainStopRepository:
                 station_name="New York Penn Station",
                 scheduled_time=datetime(2025, 6, 18, 19, 0, 0),
                 is_active=True,
-                data_version=1,
-                audit_trail=[],
+                
+                
                 last_seen_at=datetime.utcnow(),
             ),
         ]
@@ -420,4 +402,3 @@ class TestTrainStopRepository:
             
             # Both stops should remain active
             assert all(stop.is_active for stop in existing_stops)
-            assert all(stop.api_removed_at is None for stop in existing_stops)
