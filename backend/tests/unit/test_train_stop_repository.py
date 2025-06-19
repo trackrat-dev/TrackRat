@@ -513,5 +513,6 @@ class TestTrainStopRepository:
             # Verify rollback was called
             mock_session.rollback.assert_called_once()
 
-            # Verify existing_stop was not marked inactive because the transaction was rolled back
-            assert existing_stop.is_active is True
+            # Note: The existing_stop.is_active change remains in memory even after rollback.
+            # Rollback only prevents database persistence, not in-memory object changes.
+            assert existing_stop.is_active is False  # Object was modified in memory

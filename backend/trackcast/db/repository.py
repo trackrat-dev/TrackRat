@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, or_, text
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
@@ -1598,155 +1598,148 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
-        try:
-            current_time = datetime.utcnow()
-            updated_stops = []
+        current_time = datetime.utcnow()
+        updated_stops = []
 
-            # Import StationMapper for station code derivation
-            from trackcast.services.station_mapping import StationMapper
+        # Import StationMapper for station code derivation
+        from trackcast.services.station_mapping import StationMapper
 
-            station_mapper = StationMapper()
+        station_mapper = StationMapper()
 
-            # Get existing stops
-            existing_stops = (
-                self.session.query(TrainStop)
-                .filter(
-                    TrainStop.train_id == train_id,
-                    TrainStop.train_departure_time == train_departure_time,
-                    TrainStop.data_source == data_source,
-                )
-                .all()
+        # Get existing stops
+        existing_stops = (
+            self.session.query(TrainStop)
+            .filter(
+                TrainStop.train_id == train_id,
+                TrainStop.train_departure_time == train_departure_time,
+                TrainStop.data_source == data_source,
             )
+            .all()
+        )
 
-            # Track which existing stops we've matched
-            matched_stops = set()
+        # Track which existing stops we've matched
+        matched_stops = set()
 
-            # Process incoming stops
-            for stop_data in stops_data:
-                # Derive station code if missing
-                if not stop_data.get("station_code") and stop_data.get("station_name"):
-                    derived_code = station_mapper.get_code_for_name(stop_data["station_name"])
-                    if derived_code:
-                        stop_data["station_code"] = derived_code
-                        logger.debug(
-                            f"Derived station code '{derived_code}' for '{stop_data['station_name']}'"
-                        )
+        # Process incoming stops
+        for stop_data in stops_data:
+            # Derive station code if missing
+            if not stop_data.get("station_code") and stop_data.get("station_name"):
+                derived_code = station_mapper.get_code_for_name(stop_data["station_name"])
+                if derived_code:
+                    stop_data["station_code"] = derived_code
+                    logger.debug(
+                        f"Derived station code '{derived_code}' for '{stop_data['station_name']}'"
+                    )
 
-                # Find matching existing stop using fuzzy time matching
-                matched_stop = None
-                for stop in existing_stops:
-                    # Must match station name and code exactly
-                    if stop.station_name == stop_data.get(
-                        "station_name"
-                    ) and stop.station_code == stop_data.get("station_code"):
-
-                        # Use fuzzy time matching for scheduled_time (5-minute tolerance)
-                        if station_mapper.times_match_within_tolerance(
-                            stop.scheduled_time,
-                            stop_data.get("scheduled_time"),
-                            tolerance_seconds=3600,  # 60 minutes
-                        ):
-                            matched_stop = stop
-                            break
-
-                if matched_stop:
-                    # Update existing stop
-                    stop = matched_stop
-                    matched_stops.add(stop)
-
-                    # Update fields directly without tracking changes
-                    if stop_data.get("departure_time"):
-                        if isinstance(stop_data["departure_time"], str):
-                            try:
-                                stop.departure_time = datetime.fromisoformat(
-                                    stop_data["departure_time"]
-                                )
-                            except ValueError:
-                                stop.departure_time = stop_data["departure_time"]
-                        else:
-                            stop.departure_time = stop_data["departure_time"]
-
-                    stop.stop_status = stop_data.get("stop_status", stop.stop_status)
-                    stop.departed = stop_data.get("departed", stop.departed)
-
-                    # Handle scheduled_time updates (allowing drift)
-                    if stop_data.get("scheduled_time"):
-                        if isinstance(stop_data["scheduled_time"], str):
-                            try:
-                                new_scheduled_time = datetime.fromisoformat(
-                                    stop_data["scheduled_time"]
-                                )
-                            except ValueError:
-                                new_scheduled_time = stop_data["scheduled_time"]
-                        else:
-                            new_scheduled_time = stop_data["scheduled_time"]
-
-                        # Log significant time changes for monitoring
-                        if isinstance(stop.scheduled_time, datetime) and isinstance(
-                            new_scheduled_time, datetime
-                        ):
-                            time_diff = abs(
-                                (stop.scheduled_time - new_scheduled_time).total_seconds()
-                            )
-                            if time_diff > 3600:  # More than 1 hour difference
-                                logger.info(
-                                    f"Time drift detected for {stop.station_name} on train {train_id}: "
-                                    f"{stop.scheduled_time.isoformat()} → {new_scheduled_time.isoformat()} "
-                                    f"({time_diff}s difference)"
-                                )
-
-                        stop.scheduled_time = new_scheduled_time
-
-                    stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
-                    stop.dropoff_only = stop_data.get("dropoff_only", stop.dropoff_only)
-
-                    # Update lifecycle fields
-                    stop.last_seen_at = current_time
-                    stop.is_active = True
-
-                    updated_stops.append(stop)
-
-                else:
-                    # No fuzzy match found - create new stop
-                    stop_data["train_id"] = train_id
-                    stop_data["train_departure_time"] = train_departure_time
-                    stop_data["data_source"] = data_source
-                    stop_data["last_seen_at"] = current_time
-                    stop_data["is_active"] = True
-
-                    # Convert string datetime fields to datetime objects for SQLite compatibility
-                    for time_field in ["scheduled_time", "departure_time"]:
-                        if time_field in stop_data and isinstance(stop_data[time_field], str):
-                            try:
-                                stop_data[time_field] = datetime.fromisoformat(
-                                    stop_data[time_field]
-                                )
-                            except (ValueError, TypeError):
-                                # If conversion fails, leave as None
-                                stop_data[time_field] = None
-
-                    new_stop = TrainStop(**stop_data)
-                    self.session.add(new_stop)
-                    updated_stops.append(new_stop)
-
-            # Mark unmatched stops as inactive (NOT deleted)
+            # Find matching existing stop using fuzzy time matching
+            matched_stop = None
             for stop in existing_stops:
-                if stop not in matched_stops and stop.is_active:
-                    stop.is_active = False
-                    logger.info(f"Marked stop {stop.station_name} as inactive for train {train_id}")
+                # Must match station name and code exactly
+                if stop.station_name == stop_data.get(
+                    "station_name"
+                ) and stop.station_code == stop_data.get("station_code"):
 
-            # Commit changes
-            try:
-                self.session.commit()
-                logger.debug(f"Updated {len(updated_stops)} stops for train {train_id}")
-                return updated_stops
-            except IntegrityError as e:
-                self.session.rollback()
-                logger.warning(
-                    f"Unique constraint violation for train {train_id} during upsert_train_stops: {e}"
-                )
-                raise e
-        except SQLAlchemyError as e: # Catch other SQLAlchemy errors that are not IntegrityError
+                    # Use fuzzy time matching for scheduled_time (5-minute tolerance)
+                    if station_mapper.times_match_within_tolerance(
+                        stop.scheduled_time,
+                        stop_data.get("scheduled_time"),
+                        tolerance_seconds=3600,  # 60 minutes
+                    ):
+                        matched_stop = stop
+                        break
+
+            if matched_stop:
+                # Update existing stop
+                stop = matched_stop
+                matched_stops.add(stop)
+
+                # Update fields directly without tracking changes
+                if stop_data.get("departure_time"):
+                    if isinstance(stop_data["departure_time"], str):
+                        try:
+                            stop.departure_time = datetime.fromisoformat(
+                                stop_data["departure_time"]
+                            )
+                        except ValueError:
+                            stop.departure_time = stop_data["departure_time"]
+                    else:
+                        stop.departure_time = stop_data["departure_time"]
+
+                stop.stop_status = stop_data.get("stop_status", stop.stop_status)
+                stop.departed = stop_data.get("departed", stop.departed)
+
+                # Handle scheduled_time updates (allowing drift)
+                if stop_data.get("scheduled_time"):
+                    if isinstance(stop_data["scheduled_time"], str):
+                        try:
+                            new_scheduled_time = datetime.fromisoformat(stop_data["scheduled_time"])
+                        except ValueError:
+                            new_scheduled_time = stop_data["scheduled_time"]
+                    else:
+                        new_scheduled_time = stop_data["scheduled_time"]
+
+                    # Log significant time changes for monitoring
+                    if isinstance(stop.scheduled_time, datetime) and isinstance(
+                        new_scheduled_time, datetime
+                    ):
+                        time_diff = abs((stop.scheduled_time - new_scheduled_time).total_seconds())
+                        if time_diff > 3600:  # More than 1 hour difference
+                            logger.info(
+                                f"Time drift detected for {stop.station_name} on train {train_id}: "
+                                f"{stop.scheduled_time.isoformat()} → {new_scheduled_time.isoformat()} "
+                                f"({time_diff}s difference)"
+                            )
+
+                    stop.scheduled_time = new_scheduled_time
+
+                stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
+                stop.dropoff_only = stop_data.get("dropoff_only", stop.dropoff_only)
+
+                # Update lifecycle fields
+                stop.last_seen_at = current_time
+                stop.is_active = True
+
+                updated_stops.append(stop)
+
+            else:
+                # No fuzzy match found - create new stop
+                stop_data["train_id"] = train_id
+                stop_data["train_departure_time"] = train_departure_time
+                stop_data["data_source"] = data_source
+                stop_data["last_seen_at"] = current_time
+                stop_data["is_active"] = True
+
+                # Convert string datetime fields to datetime objects for SQLite compatibility
+                for time_field in ["scheduled_time", "departure_time"]:
+                    if time_field in stop_data and isinstance(stop_data[time_field], str):
+                        try:
+                            stop_data[time_field] = datetime.fromisoformat(stop_data[time_field])
+                        except (ValueError, TypeError):
+                            # If conversion fails, leave as None
+                            stop_data[time_field] = None
+
+                new_stop = TrainStop(**stop_data)
+                self.session.add(new_stop)
+                updated_stops.append(new_stop)
+
+        # Mark unmatched stops as inactive (NOT deleted)
+        for stop in existing_stops:
+            if stop not in matched_stops and stop.is_active:
+                stop.is_active = False
+                logger.info(f"Marked stop {stop.station_name} as inactive for train {train_id}")
+
+        # Commit changes
+        try:
+            self.session.commit()
+            logger.debug(f"Updated {len(updated_stops)} stops for train {train_id}")
+            return updated_stops
+        except IntegrityError as e:
+            self.session.rollback()
+            logger.warning(
+                f"Unique constraint violation for train {train_id} during upsert_train_stops: {e}"
+            )
+            raise e
+        except SQLAlchemyError as e:  # Catch other SQLAlchemy errors that are not IntegrityError
             self.session.rollback()
             logger.error(f"Database error in upsert_train_stops: {str(e)}")
             raise
