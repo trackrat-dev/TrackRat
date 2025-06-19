@@ -69,6 +69,39 @@ The system deploys automatically via GitHub Actions:
 5. **Migrate**: Database migrations run automatically
 6. **Verify**: Health checks and API endpoint testing
 
+### Local Development Deployment
+
+For rapid iteration during development, use the deployment tools:
+
+```bash
+# Quick deployment (most common - skip tests and Terraform)
+make deploy-dev-quick
+
+# Full deployment (infrastructure + application)
+./deploy-dev.sh
+
+# Check deployment status
+make status-dev
+
+# View logs
+make logs-dev
+```
+
+The deployment script handles all complexity:
+- GCP authentication and project setup
+- Docker image building and pushing
+- Terraform infrastructure updates
+- Cloud Run service deployments
+- Health checks and verification
+
+Options for different scenarios:
+```bash
+./deploy-dev.sh --skip-tests          # Skip test suite
+./deploy-dev.sh --skip-terraform      # App changes only
+./deploy-dev.sh --terraform-only      # Infrastructure only
+./deploy-dev.sh --dry-run             # Preview changes
+```
+
 ### Manual Deployment (if needed)
 
 If you need to deploy manually:
@@ -205,6 +238,42 @@ gcloud logging read "resource.type=cloud_run_revision AND resource.labels.servic
 
 # Filter by error level
 gcloud logging read "resource.type=cloud_run_revision AND severity>=ERROR" --limit=20
+```
+
+## System Status Checks
+
+### Quick Status Overview
+
+Use the status check tool for a comprehensive view:
+
+```bash
+# Check development environment status
+./check-dev-status.sh
+
+# Or use Makefile
+make status-dev
+```
+
+This provides:
+- Authentication and project status
+- Cloud Run service health
+- Database connection status
+- Scheduler job status
+- Recent deployments
+- Docker images in registry
+- System metrics summary
+
+### Manual Status Checks
+
+```bash
+# List all services
+gcloud run services list --region=us-central1
+
+# Check specific service
+gcloud run services describe trackrat-api-dev --region=us-central1
+
+# View recent revisions
+gcloud run revisions list --service=trackrat-api-dev --region=us-central1
 ```
 
 ## Configuration Management

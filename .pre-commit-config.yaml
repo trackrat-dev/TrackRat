@@ -12,7 +12,7 @@ repos:
         language: system
         files: ^backend/.*\.py$
         pass_filenames: false
-        stages: [push]  # Run on push since it's comprehensive
+        stages: [pre-commit]  # Run on every commit
 
   # Infrastructure hooks - mirror CI exactly
   - repo: local
@@ -42,4 +42,4 @@ repos:
         pass_filenames: false
 
 # Configuration to run different hooks at different stages
-default_stages: [commit]
+default_stages: [pre-commit]

@@ -40,6 +40,25 @@ python proxy.py  # Development only
 open http://localhost:9998
 ```
 
+## Development
+
+### Local Development Deployment
+
+Deploy your local changes to the development environment:
+
+```bash
+# Full deployment (infrastructure + application)
+./deploy-dev.sh
+
+# Quick deployment (skip tests and Terraform)
+make deploy-dev-quick
+
+# Check deployment status
+make status-dev
+```
+
+See [Deployment Tools](#deployment-tools) section for more details.
+
 ## Production
 
 Fully automated deployment via GitHub Actions to Google Cloud Run with:
@@ -55,3 +74,37 @@ Fully automated deployment via GitHub Actions to Google Cloud Run with:
 - **Web**: `webpage/CLAUDE.md` - Web application development
 - **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP setup
 - **Operations**: `OPERATORS_GUIDE.md` - Production monitoring and troubleshooting
+
+## Deployment Tools
+
+### Quick Commands
+
+```bash
+make deploy-dev         # Full deployment (infrastructure + application)
+make deploy-dev-quick   # Quick app deployment (skip tests & Terraform)
+make deploy-dev-infra   # Infrastructure only
+make deploy-dev-docker  # Docker only
+make status-dev         # Check environment status
+make logs-dev           # View recent logs
+```
+
+### Deployment Script Options
+
+The `deploy-dev.sh` script provides flexible deployment options:
+
+```bash
+./deploy-dev.sh [OPTIONS]
+  --skip-tests          Skip running tests
+  --skip-terraform      Skip Terraform apply (only update Cloud Run)
+  --skip-docker         Skip Docker build (only run Terraform)
+  --terraform-only      Only apply Terraform changes
+  --docker-only         Only build/deploy Docker images
+  --auto-approve        Skip confirmation prompts
+  --dry-run             Show what would be done without executing
+```
+
+### Configuration
+
+Deployment settings are stored in `.deploy/`:
+- `dev.env` - Development environment configuration
+- `deploy.config` - Default deployment settings

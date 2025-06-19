@@ -75,6 +75,33 @@ All platforms recognize: `ALL ABOARD`, `BOARDING`, `DEPARTED`, `CANCELLED`, `DEL
 
 ## Development Workflow
 
+### Local Development Deployment
+
+For rapid iteration during development, use the local deployment tools:
+
+```bash
+# Quick deployment (most common - skip tests and Terraform)
+make deploy-dev-quick
+
+# Full deployment (infrastructure + application)
+./deploy-dev.sh
+
+# Check deployment status
+make status-dev
+
+# View logs
+make logs-dev
+```
+
+The `deploy-dev.sh` script handles:
+- Docker image building and pushing to Artifact Registry
+- Terraform infrastructure updates (optional)
+- Cloud Run service deployments
+- Health checks and verification
+- Rollback on failure
+
+See [Deployment Tools](#deployment-tools) section for detailed options.
+
 ### Automated Deployment
 
 The system uses GitHub Actions for fully automated CI/CD:
@@ -448,6 +475,54 @@ Real-time tracking of ML model performance:
    - Service worker for offline caching
    - Push notifications via web standards
    - Desktop app packaging
+
+## Deployment Tools
+
+### Quick Deployment Commands
+
+```bash
+# Most common - quick app deployment
+make deploy-dev-quick
+
+# Full deployment options
+make deploy-dev         # Full deployment (infrastructure + application)
+make deploy-dev-infra   # Infrastructure only
+make deploy-dev-docker  # Docker only
+make status-dev         # Check environment status
+make logs-dev           # View recent logs
+```
+
+### Deployment Script (`deploy-dev.sh`)
+
+The main deployment script provides flexible options:
+
+```bash
+./deploy-dev.sh [OPTIONS]
+  --skip-tests          Skip running tests
+  --skip-terraform      Skip Terraform apply (only update Cloud Run)
+  --skip-docker         Skip Docker build (only run Terraform)
+  --terraform-only      Only apply Terraform changes
+  --docker-only         Only build/deploy Docker images
+  --auto-approve        Skip confirmation prompts
+  --dry-run             Show what would be done without executing
+```
+
+### Configuration
+
+Deployment settings in `.deploy/`:
+- `dev.env` - Development environment variables
+- `deploy.config` - Default deployment behavior
+
+### Deployment Workflow
+
+1. **Pre-flight checks**: GCP auth, git status, Docker buildx setup
+2. **Testing** (optional): Backend tests, Terraform validation
+3. **Docker operations**: Build for linux/amd64, tag, push to Artifact Registry
+4. **Infrastructure**: Terraform plan and apply
+5. **Cloud Run update**: Deploy new image to services
+6. **Verification**: Health checks, API tests
+
+**Note**: The script automatically builds Docker images for `linux/amd64` platform to ensure compatibility with Cloud Run, even when running on Apple Silicon (M1/M2) Macs.
 
 ## Quick Reference
 
