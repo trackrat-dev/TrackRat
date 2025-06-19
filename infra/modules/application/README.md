@@ -10,7 +10,7 @@
 
 | Name | Version |
 |------|---------|
-| <a name="provider_google"></a> [google](#provider\_google) | 6.39.0 |
+| <a name="provider_google"></a> [google](#provider\_google) | 6.40.0 |
 
 ## Modules
 
@@ -28,6 +28,7 @@ No modules.
 | [google_monitoring_alert_policy.no_amtrak_data_collection](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_alert_policy) | resource |
 | [google_monitoring_alert_policy.no_nj_transit_data_collection](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_alert_policy) | resource |
 | [google_monitoring_dashboard.business_dashboard](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_dashboard) | resource |
+| [google_monitoring_dashboard.executive_dashboard](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_dashboard) | resource |
 | [google_monitoring_dashboard.operations_dashboard](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_dashboard) | resource |
 | [google_monitoring_dashboard.troubleshooting_dashboard](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_dashboard) | resource |
 | [google_monitoring_uptime_check_config.amtrak_api](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/monitoring_uptime_check_config) | resource |
