@@ -21,6 +21,13 @@ TrackRat is a full-stack train tracking system that combines a sophisticated Pyt
                         │  Cloud SQL     │
                         │  (PostgreSQL)  │
                         └────────────────┘
+                                │
+                        ┌───────▼────────┐
+                        │ Cloud Monitoring│
+                        │ • Dashboards    │
+                        │ • Metrics       │
+                        │ • Alerts       │
+                        └────────────────┘
 ```
 
 ### Key Features Across Platforms
@@ -211,6 +218,12 @@ cd webpage && python proxy.py
    GET /api/trains/?consolidate=true&train_id=X
    ```
 
+5. **Health & Metrics**:
+   ```
+   GET /health                  # System health with quality metrics
+   GET /metrics                 # Prometheus metrics endpoint
+   ```
+
 ### Data Synchronization
 
 1. **Polling Intervals**:
@@ -234,8 +247,10 @@ cd webpage && python proxy.py
 - **Automatic**: GitHub Actions handles build, deploy, and migrations
 - **Configuration**: Via Terraform and Secret Manager
 - **Scaling**: Auto-scales from 0 to configured max instances
-- **Health Checks**: Built-in startup and liveness probes
+- **Health Checks**: Built-in startup and liveness probes with extended timeout
 - **Database**: Cloud SQL PostgreSQL with VPC connectivity
+- **Startup**: Extended startup probe (10 minutes) for model loading
+- **VPC Connector**: Name limited to 25 characters (e.g., `trackrat-dev-vpc`)
 
 ### iOS Deployment
 - Update bundle version and build number
@@ -356,11 +371,14 @@ When adding new features that span multiple platforms:
 - [ ] Implement iOS UI/functionality
 - [ ] Implement web app functionality
 - [ ] Test end-to-end flow on all platforms
-- [ ] Update all CLAUDE.md files
+- [ ] Update all CLAUDE.md files with new features
 - [ ] Consider Live Activity implications
 - [ ] Verify performance impact
 - [ ] Check error handling
 - [ ] Test mobile responsiveness
+- [ ] Add monitoring dashboards if needed
+- [ ] Update metrics collection
+- [ ] Document in Recent Enhancements section
 
 ## Recent Enhancements
 
@@ -382,6 +400,22 @@ New `progress` field provides detailed journey information:
 - **New Fields**: `status_v2`, `progress` (both optional for backward compatibility)
 - **Enhanced Data**: `last_departed`, `next_arrival`, `journey_percent`
 - **No Breaking Changes**: All existing fields preserved
+
+### Executive Dashboard
+High-level monitoring dashboard for system health and performance:
+- **Infrastructure**: Google Cloud Monitoring dashboards deployed via Terraform
+- **Metrics**: System health score, daily trains processed, prediction accuracy, API uptime
+- **Monitoring**: Four dashboards (Executive, Operations, Business KPIs, Troubleshooting)
+- **Access**: Via GCP Console (no frontend implementation)
+- **Benefits**: At-a-glance system health monitoring for stakeholders
+
+### Model Prediction Accuracy Tracking
+Real-time tracking of ML model performance:
+- **Backend**: Automatic accuracy calculation when actual track is assigned
+- **Metrics**: `model_prediction_accuracy` Prometheus metric by station
+- **API**: Enhanced `/health` endpoint with quality metrics
+- **Monitoring**: Accuracy trends displayed in executive dashboard
+- **Benefits**: Continuous model performance monitoring and alerting
 
 ## Architecture Decisions
 

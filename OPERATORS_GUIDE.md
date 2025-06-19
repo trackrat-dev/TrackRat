@@ -97,6 +97,12 @@ gcloud run jobs delete temp-migrate --region=us-central1 --quiet
 
 ## Monitoring and Observability
 
+TrackRat provides comprehensive monitoring through:
+- Health endpoints for real-time status
+- Prometheus metrics for detailed tracking
+- Cloud Monitoring dashboards for visual insights
+- Automatic model accuracy tracking
+
 ### Service URLs
 
 **Development:**
@@ -120,11 +126,26 @@ curl https://SERVICE_URL/api/stops/
 # Example healthy response
 {
   "status": "healthy",
-  "timestamp": 1703123456.789,
-  "checks": {
-    "database": {"status": "healthy", "message": "Connected"},
-    "models": {"status": "healthy", "message": "7 models loaded"},
-    "environment": {"status": "healthy", "message": "All configs loaded"}
+  "database": {
+    "connected": true,
+    "latency_ms": 2.5
+  },
+  "data_freshness": {
+    "latest_train": "2025-06-01T20:30:00",
+    "minutes_ago": 2
+  },
+  "processing_metrics": {
+    "trains_last_hour": 156,
+    "trains_last_24h": 3421,
+    "by_source": {
+      "njtransit": 2845,
+      "amtrak": 576
+    }
+  },
+  "quality_metrics": {
+    "track_assignment_rate": 0.78,
+    "prediction_rate": 0.92,
+    "accuracy_last_24h": 0.85
   }
 }
 ```
@@ -148,6 +169,30 @@ Access via Google Cloud Console:
 4. **Secret Manager**:
    - https://console.cloud.google.com/security/secret-manager?project=PROJECT_ID
    - Manage API keys and database credentials
+
+5. **Cloud Monitoring Dashboards**:
+   - https://console.cloud.google.com/monitoring/dashboards?project=PROJECT_ID
+   - Access custom dashboards created by Terraform:
+     - **Executive Dashboard**: System health score, daily trains processed, API uptime
+     - **Operations Dashboard**: Service latency, error rates, database performance
+     - **Business KPIs Dashboard**: Train processing volume, API usage patterns
+     - **Troubleshooting Dashboard**: Error logs, performance bottlenecks
+
+### Prometheus Metrics
+
+The API service exposes Prometheus metrics at `/metrics`:
+
+```bash
+# View raw metrics
+curl https://SERVICE_URL/metrics
+
+# Key metrics to monitor:
+# - model_prediction_accuracy: Track prediction accuracy by station
+# - trains_processed_total: Total trains processed
+# - track_prediction_confidence_ratio: Confidence score distribution
+# - nj_transit_fetch_success_total: API success rate
+# - model_inference_time_seconds: Model performance
+```
 
 ### Log Analysis
 
@@ -336,6 +381,33 @@ curl "https://SERVICE_URL/api/stops/"
 curl "https://SERVICE_URL/api/trains/123/prediction"
 ```
 
+### Model Accuracy Monitoring
+
+The system automatically tracks prediction accuracy when actual tracks are assigned:
+
+```bash
+# View current accuracy metrics
+curl https://SERVICE_URL/metrics | grep model_prediction_accuracy
+
+# Check accuracy via health endpoint
+curl https://SERVICE_URL/health | jq '.quality_metrics.accuracy_last_24h'
+
+# Monitor accuracy trends in Cloud Monitoring
+# Executive Dashboard > Prediction Accuracy Trends widget
+```
+
+**Accuracy Tracking Process:**
+1. When a train's actual track is assigned, the system compares it with the predicted track
+2. Accuracy is recorded as 1.0 (correct) or 0.0 (incorrect) by station
+3. Metrics are exposed via Prometheus and displayed in dashboards
+4. Alerts can be configured for accuracy drops below thresholds
+
+**Response to Low Accuracy:**
+- Check for API data quality issues
+- Review recent system changes
+- Consider retraining models with recent data
+- Verify station-specific patterns haven't changed
+
 ## Troubleshooting
 
 ### Common Issues
@@ -359,7 +431,30 @@ curl -v https://SERVICE_URL/health
 - Review resource limits (CPU/Memory)
 - Ensure latest image deployed
 
-#### 2. Database Connection Issues
+#### 2. Service Startup Failures
+
+```bash
+# Check startup logs
+gcloud logging read "resource.labels.service_name=trackrat-api-prod AND textPayload:'Starting'" --limit=50
+
+# Monitor startup probe status
+gcloud run services describe trackrat-api-prod --region=us-central1 --format="value(spec.template.spec.containers[0].startupProbe)"
+
+# Check model loading logs
+gcloud logging read "resource.labels.service_name=trackrat-api-prod AND textPayload:'Loading model'" --limit=20
+```
+
+**Solutions:**
+- Allow adequate startup time (10 minutes for ML models)
+- Verify model files are included in Docker image
+- Check memory allocation during model loading
+- Review startup probe configuration:
+  - Initial delay: 30 seconds
+  - Period: 15 seconds  
+  - Failure threshold: 40 attempts
+- Consider increasing memory allocation for model loading
+
+#### 3. Database Connection Issues
 
 ```bash
 # Test database connectivity
@@ -378,7 +473,7 @@ gcloud compute networks vpc-access connectors list --region=us-central1
 - Ensure database instance is running
 - Review firewall rules
 
-#### 3. No Recent Data
+#### 4. No Recent Data
 
 ```bash
 # Check scheduler job status
@@ -397,7 +492,7 @@ gcloud scheduler jobs run invoke-trackrat-scheduler-prod --location=us-central1
 - Review scheduler configuration
 - Examine scheduler service logs
 
-#### 4. High Error Rates
+#### 5. High Error Rates
 
 ```bash
 # Check error logs

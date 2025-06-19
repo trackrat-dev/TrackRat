@@ -18,6 +18,9 @@ TrackCast is a real-time track prediction system for trains departing from multi
 - **Stops API**: New endpoints for querying station information and station-specific train data
 - **Enhanced CLI**: Added station code backfilling and advanced data clearing options
 - **Model Training Improvements**: Comprehensive visualization outputs including calibration curves and confusion matrices
+- **Model Accuracy Tracking**: Real-time monitoring of prediction accuracy with automatic metric updates
+- **Health & Metrics Endpoints**: Comprehensive system health monitoring and Prometheus metrics
+- **Executive Dashboard**: Google Cloud Monitoring dashboards for system-wide visibility (infrastructure-level)
 
 ## Development Commands
 
@@ -152,6 +155,11 @@ gunicorn trackcast.api.app:app --workers 4 --worker-class uvicorn.workers.Uvicor
    - Implements proper temporal splitting to avoid data leakage
 3. **Prediction**: Generates probability distributions across possible tracks using the appropriate station model
 4. **Explanation**: Uses perturbation-based feature importance to explain prediction factors
+5. **Accuracy Tracking**: Automatic model performance monitoring
+   - When a train's actual track is assigned, the system compares it with the predicted track
+   - Updates the `model_prediction_accuracy` metric by station
+   - Enables real-time monitoring of model performance degradation
+   - Supports alerting when accuracy drops below thresholds
 
 ## Configuration
 
@@ -509,3 +517,49 @@ This enables:
 - Accurate progress bars in UIs
 - Time-to-arrival calculations
 - Better user journey tracking
+
+### Health & Monitoring Endpoints
+
+- `GET /health` - Comprehensive health check endpoint
+  - Returns database connection status
+  - Train processing metrics (last hour/24h)
+  - Data freshness indicators
+  - Source breakdown by station
+  - Quality metrics (track assignment rate, prediction rate)
+  
+- `GET /metrics` - Prometheus metrics endpoint
+  - `model_prediction_accuracy` - Accuracy by station (compares predicted vs actual tracks)
+  - `trains_processed_total` - Total trains processed
+  - `track_prediction_confidence_ratio` - Distribution of prediction confidence scores
+  - `nj_transit_fetch_success_total` / `nj_transit_fetch_failures_total` - API fetch metrics
+  - `amtrak_fetch_success_total` / `amtrak_fetch_failures_total` - API fetch metrics
+  - `model_inference_time_seconds` - Model performance metrics
+  - `db_query_duration_seconds` - Database performance metrics
+
+Example health check response:
+```json
+{
+  "status": "healthy",
+  "database": {
+    "connected": true,
+    "latency_ms": 2.5
+  },
+  "data_freshness": {
+    "latest_train": "2025-06-01T20:30:00",
+    "minutes_ago": 2
+  },
+  "processing_metrics": {
+    "trains_last_hour": 156,
+    "trains_last_24h": 3421,
+    "by_source": {
+      "njtransit": 2845,
+      "amtrak": 576
+    }
+  },
+  "quality_metrics": {
+    "track_assignment_rate": 0.78,
+    "prediction_rate": 0.92,
+    "accuracy_last_24h": 0.85
+  }
+}
+```

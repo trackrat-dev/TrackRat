@@ -113,6 +113,56 @@ infra/
 - Artifact Registry, Compute Engine
 - IAM and Resource Manager
 
+### 5. Cloud Run Services (`modules/cloud-run/`)
+**Purpose**: Scalable serverless container deployment
+**Configuration**:
+- Auto-scaling from 0 to configured max instances
+- VPC connector for private database access
+- Extended startup probe configuration:
+  - Initial delay: 30 seconds
+  - Timeout per probe: 10 seconds
+  - Check period: 15 seconds
+  - Failure threshold: 40 attempts (10 minutes total)
+- Liveness probe on `/health` endpoint every 30 seconds
+- Request timeout: 60 seconds for API operations
+
+**Key Configuration Updates**:
+- Startup timeout extended to accommodate ML model loading
+- VPC connector names limited to 25 characters (e.g., `trackrat-dev-vpc`)
+- Health checks ensure service readiness before traffic routing
+
+### 6. Cloud Monitoring Dashboards (`modules/application/dashboards.tf`)
+**Purpose**: Comprehensive system observability
+**Dashboards**:
+1. **Executive Dashboard**: High-level business metrics
+   - System health score (based on API error rate)
+   - Daily trains processed
+   - Prediction accuracy trends
+   - Data collection uptime %
+   - SLA compliance tracking
+   - Cost and usage trends
+
+2. **Operations Dashboard**: Detailed operational metrics
+   - Service uptime and latency
+   - Request/response patterns
+   - Error rates by service
+   - Database performance
+
+3. **Business KPIs Dashboard**: Business performance indicators
+   - Train processing volume
+   - API usage patterns
+   - Model performance metrics
+
+4. **Troubleshooting Dashboard**: Debugging and diagnostics
+   - Error logs and traces
+   - Performance bottlenecks
+   - Resource utilization
+
+**Metrics Integration**:
+- Prometheus metrics exposed via `/metrics` endpoint
+- Model prediction accuracy tracked automatically
+- Real-time data freshness monitoring
+
 ## Terraform State Management
 
 ### Backend Configuration
@@ -359,6 +409,12 @@ Cloud Run services will use:
 3. **Resource Conflicts**: Check resource naming and dependencies
 4. **State Lock**: Wait for operations to complete or force unlock
 
+### Cloud Run Configuration Issues
+1. **Startup Timeout**: Increase `startup_probe_failure_threshold` for slow-starting services
+2. **VPC Connector Name Too Long**: Keep names under 25 characters
+3. **Model Loading Failures**: Ensure adequate startup time (10+ minutes for ML models)
+4. **Health Check Failures**: Verify `/health` endpoint is implemented and responsive
+
 ### GCP-Specific Issues
 1. **Quota Limits**: Check GCP quotas for the region
 2. **Billing**: Ensure billing is enabled for all projects
@@ -407,12 +463,16 @@ terraform plan             # Review planned changes
 - VPC connectors for private networking
 - SSL certificates and load balancing
 - Data collector and scheduler services
+- Extended startup probes for model loading (10 minutes)
+- VPC connector name constraints (25 character limit)
 
-### 🔄 Phase 4: Monitoring Layer (In Progress)
-- Cloud Monitoring dashboards
+### ✅ Phase 4: Monitoring Layer (Complete)
+- Cloud Monitoring dashboards (Executive, Operations, Business KPIs, Troubleshooting)
 - Alerting policies for database and services
 - Log aggregation and analysis
-- Performance monitoring
+- Performance monitoring with Prometheus metrics
+- Model prediction accuracy tracking
+- Executive dashboard with system health score, daily trains processed, API uptime
 
 ### 📋 Phase 5: CI/CD Layer (Planned)
 - Cloud Build pipelines
