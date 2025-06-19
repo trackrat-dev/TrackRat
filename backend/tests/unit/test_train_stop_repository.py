@@ -3,6 +3,7 @@
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
+from sqlalchemy.exc import IntegrityError # Added IntegrityError
 
 from trackcast.db.models import Train, TrainStop
 from trackcast.db.repository import TrainStopRepository
@@ -402,3 +403,116 @@ class TestTrainStopRepository:
             
             # Both stops should remain active
             assert all(stop.is_active for stop in existing_stops)
+
+    def test_no_fuzzy_match_creates_new_stop(self, stop_repo, mock_session, sample_train):
+        """
+        Test that when fuzzy matching does not find an existing stop,
+        a new stop is created.
+        """
+        # No existing stops
+        mock_query = Mock()
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = []
+        # mock_query.first.return_value = None # This was for exact match, not needed now.
+        mock_session.query.return_value = mock_query
+
+        # Track what gets added
+        added_stops = []
+        mock_session.add.side_effect = lambda stop: added_stops.append(stop)
+
+        # Incoming stop data - use sample_train.train_id for consistency
+        incoming_stops = [
+            {
+                "station_code": "NY",
+                "station_name": "New York Penn Station",
+                "scheduled_time": datetime(2025, 6, 18, 20, 3, 0), # Different time from sample_train
+                "departed": False,
+            }
+        ]
+
+        with patch('trackcast.services.station_mapping.StationMapper') as mock_mapper_class:
+            mock_mapper = Mock()
+            mock_mapper_class.return_value = mock_mapper
+            mock_mapper.times_match_within_tolerance.return_value = False # Fuzzy match fails
+            mock_mapper.get_code_for_name.return_value = None
+
+            # Call upsert
+            result = stop_repo.upsert_train_stops(
+                train_id=sample_train.train_id, # Use ID from fixture
+                train_departure_time=sample_train.departure_time,
+                stops_data=incoming_stops,
+                data_source="njtransit",
+            )
+
+            # Should create exactly one new stop
+            assert len(added_stops) == 1
+            assert len(result) == 1
+            assert result[0] is added_stops[0]
+
+            # New stop should have correct properties
+            new_stop = added_stops[0]
+            assert new_stop.train_id == sample_train.train_id # Check against fixture ID
+            assert new_stop.station_name == "New York Penn Station"
+            assert new_stop.is_active is True
+
+    def test_integrity_error_on_duplicate_key_fields_different_scheduled_time(self, stop_repo, mock_session, sample_train):
+        """
+        Test that an IntegrityError is raised when an incoming stop, after failing
+        fuzzy match, would cause a unique constraint violation on commit.
+        The unique constraint is (train_id, train_departure_time, station_name, data_source).
+        """
+        # Existing stop
+        existing_stop_time = datetime(2025, 6, 18, 17, 0, 0)
+        existing_stop = TrainStop(
+            train_id=sample_train.train_id,
+            train_departure_time=sample_train.departure_time,
+            data_source="njtransit",
+            station_code="NP",
+            station_name="Newark Penn Station",
+            scheduled_time=existing_stop_time,
+            is_active=True,
+            last_seen_at=datetime.utcnow(),
+        )
+
+        mock_query = Mock()
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = [existing_stop] # Simulate this stop exists
+        mock_session.query.return_value = mock_query
+
+        # Incoming stop data: same key fields, but different scheduled_time (outside fuzzy tolerance)
+        incoming_stop_scheduled_time_str = "2025-06-18T19:00:00" # 2 hours after existing_stop_time
+
+        incoming_stops_data = [
+            {
+                "station_code": "NP", # Same as existing
+                "station_name": "Newark Penn Station", # Same as existing
+                "scheduled_time": incoming_stop_scheduled_time_str, # Different, >60min away
+                "stop_status": "OnTime",
+                "departed": False,
+            }
+        ]
+
+        # Mock StationMapper: fuzzy match fails due to >60min difference
+        with patch('trackcast.services.station_mapping.StationMapper') as mock_mapper_class:
+            mock_mapper_instance = Mock()
+            mock_mapper_instance.times_match_within_tolerance.return_value = False # Fuzzy match fails
+            mock_mapper_instance.get_code_for_name.return_value = "NP" # Station code derivation
+            mock_mapper_class.return_value = mock_mapper_instance
+
+            # Mock session.commit to raise IntegrityError
+            mock_session.commit.side_effect = IntegrityError("mock integrity error", params={}, orig=None)
+
+            with pytest.raises(IntegrityError):
+                stop_repo.upsert_train_stops(
+                    train_id=sample_train.train_id,
+                    train_departure_time=sample_train.departure_time,
+                    stops_data=incoming_stops_data,
+                    data_source="njtransit",
+                )
+
+            # Verify rollback was called
+            mock_session.rollback.assert_called_once()
+
+            # Note: The existing_stop.is_active change remains in memory even after rollback.
+            # Rollback only prevents database persistence, not in-memory object changes.
+            assert existing_stop.is_active is False  # Object was modified in memory
