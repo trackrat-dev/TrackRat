@@ -64,7 +64,7 @@ module "database" {
 module "vpc_connector" {
   source = "../../modules/vpc-connector"
 
-  name          = "${var.app_name}-${var.environment}-connector"
+  name          = "${var.app_name}-${var.environment}-vpc"
   region        = var.region
   network_name  = module.infrastructure.vpc_network_name
   ip_cidr_range = "10.1.2.0/28" # Dedicated /28 range outside the subnet to avoid conflict
