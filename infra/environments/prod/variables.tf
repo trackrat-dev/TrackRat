@@ -43,7 +43,7 @@ variable "enable_custom_domain" {
 variable "custom_domain_name" {
   description = "Custom domain name for the API service"
   type        = string
-  default     = "api.trackrat.net"
+  default     = "prod.api.trackrat.net"
 }
 
 variable "critical_alert_email" {
