@@ -75,7 +75,7 @@ module "trackrat_api_service" {
   container_port  = 8000
 
   cpu_limit               = "1"
-  memory_limit            = "1Gi"
+  memory_limit            = "512Mi"
   concurrency             = 100
   min_instances           = 0 # Same as staging for cost efficiency
   max_instances           = 2 # Same as staging
@@ -159,7 +159,7 @@ module "scheduled_operations" {
     data-collection = {
       command      = ["trackcast", "collect-data"]
       cpu_limit    = "1"
-      memory_limit = "1Gi"
+      memory_limit = "512Mi"
       max_retries  = 2
       task_timeout = "60s"
       environment_variables = {
@@ -170,7 +170,7 @@ module "scheduled_operations" {
     feature-processing = {
       command      = ["trackcast", "process-features"]
       cpu_limit    = "1"
-      memory_limit = "1Gi"
+      memory_limit = "512Mi"
       max_retries  = 1
       task_timeout = "60s"
       environment_variables = {
@@ -181,7 +181,7 @@ module "scheduled_operations" {
     prediction-generation = {
       command      = ["trackcast", "generate-predictions"]
       cpu_limit    = "1"
-      memory_limit = "1Gi"
+      memory_limit = "512Mi"
       max_retries  = 1
       task_timeout = "60s"
       environment_variables = {
