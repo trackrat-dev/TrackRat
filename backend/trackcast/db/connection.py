@@ -6,25 +6,19 @@ import logging
 from contextlib import contextmanager
 from typing import Iterator
 
-from prometheus_client import Gauge
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
 from trackcast.config import settings
+from trackcast.metrics import DB_CONNECTION_POOL_UTILIZATION
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Create Base class for all models
 Base = declarative_base()
-
-# Define Prometheus metrics
-DB_CONNECTION_POOL_UTILIZATION = Gauge(
-    "db_connection_pool_utilization_ratio",
-    "Ratio of active DB connections to max connections",
-)
 
 # Create engine
 DATABASE_URL = settings.database.url

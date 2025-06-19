@@ -7,21 +7,14 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from prometheus_client import Histogram
 from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
-from trackcast.services.prediction import MODEL_PREDICTION_ACCURACY
+from trackcast.metrics import DB_QUERY_DURATION_SECONDS, MODEL_PREDICTION_ACCURACY
 
 logger = logging.getLogger(__name__)
-
-
-# Define Prometheus metrics
-DB_QUERY_DURATION_SECONDS = Histogram(
-    "db_query_duration_seconds", "Duration of database queries", ["query_type"]
-)
 
 
 class BaseRepository:
