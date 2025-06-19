@@ -264,18 +264,15 @@ class TestCrossApiDriftIntegration:
         
         print(f"✅ All stops remain active after drift: {len(active_stops)} stops")
 
-        # === VERIFICATION: Check drift tracking in audit trails ===
-        print("\n=== VERIFICATION: Audit Trail Analysis ===")
+        # === VERIFICATION: Check drift tracking ===
+        print("\n=== VERIFICATION: Drift Tracking ===")
         
+        # Verify stops were updated with new times
         for stop in final_stops:
-            if stop.audit_trail and len(stop.audit_trail) > 1:
-                print(f"\n{stop.station_name} audit trail:")
-                for i, entry in enumerate(stop.audit_trail):
-                    if "changes" in entry and "scheduled_time" in entry["changes"]:
-                        change = entry["changes"]["scheduled_time"]
-                        if "drift_seconds" in change:
-                            print(f"  {i+1}. {change['old']} → {change['new']} "
-                                  f"({change['drift_seconds']}s drift, {change['drift_reason']})")
+            if stop.station_name == "New York Penn Station":
+                print(f"\n{stop.station_name} time updates:")
+                print(f"  Current scheduled time: {stop.scheduled_time}")
+                print(f"  Last seen at: {stop.last_seen_at}")
 
         # === SCENARIO VERIFICATION ===
         print("\n=== SCENARIO VERIFICATION ===")
@@ -288,7 +285,7 @@ class TestCrossApiDriftIntegration:
         print(f"✅ Total schedule drift: {total_drift} seconds ({total_drift/60:.1f} minutes)")
         print(f"✅ All stops remained active throughout drift")
         print(f"✅ Cross-API precision differences handled successfully")
-        print(f"✅ Audit trail preserved complete drift history")
+        print(f"✅ Drift tracking handled successfully")
         
         # Verify that without drift tracking, this would have failed
         # (5+ minute total drift would exceed tolerance if we didn't update incrementally)
