@@ -1948,7 +1948,9 @@ class TrainStopRepository(BaseRepository):
                             f"Processed {len(recovered_stops)} stops."
                         )
                         duration = time.time() - db_start_time
-                        DB_QUERY_DURATION_SECONDS.labels(query_type="upsert_train_stops").observe(duration)
+                        DB_QUERY_DURATION_SECONDS.labels(query_type="upsert_train_stops").observe(
+                            duration
+                        )
                         return recovered_stops
                     else:
                         logger.error(
