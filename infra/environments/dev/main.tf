@@ -87,9 +87,13 @@ module "trackrat_api_service" {
   request_timeout_seconds = 60 # Reduced to normal API timeout
 
   # Assuming /health is the correct endpoint for trackrat-api
-  startup_probe_path            = "/health"
-  liveness_probe_path           = "/health"
-  liveness_probe_period_seconds = 30
+  startup_probe_path                  = "/health"
+  startup_probe_initial_delay_seconds = 30 # Give app time to start
+  startup_probe_timeout_seconds       = 10 # Increase timeout per probe
+  startup_probe_period_seconds        = 15 # Check every 15 seconds
+  startup_probe_failure_threshold     = 40 # 40 attempts = 10 minutes total
+  liveness_probe_path                 = "/health"
+  liveness_probe_period_seconds       = 30
 
   vpc_connector_id       = module.vpc_connector.id # Reference the VPC connector we created
   enable_cloudsql_access = true                    # Enable Cloud SQL access permissions
