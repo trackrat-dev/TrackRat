@@ -7,20 +7,14 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from prometheus_client import Histogram
 from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
+from trackcast.metrics import DB_QUERY_DURATION_SECONDS, MODEL_PREDICTION_ACCURACY
 
 logger = logging.getLogger(__name__)
-
-
-# Define Prometheus metrics
-DB_QUERY_DURATION_SECONDS = Histogram(
-    "db_query_duration_seconds", "Duration of database queries", ["query_type"]
-)
 
 
 class BaseRepository:
@@ -277,6 +271,22 @@ class TrainRepository(BaseRepository):
                         f"Track {update_data['track']} assigned to train {train.train_id} at %s"
                         % timestamp
                     )
+
+                    # Calculate and record model prediction accuracy
+                    if train.prediction_data and train.prediction_data.top_track:
+                        predicted_track = train.prediction_data.top_track
+                        actual_track = train.track  # This is the newly assigned track
+                        is_correct = predicted_track == actual_track
+                        accuracy_value = 1.0 if is_correct else 0.0
+
+                        # Ensure MODEL_PREDICTION_ACCURACY is imported
+                        # from trackcast.services.prediction import MODEL_PREDICTION_ACCURACY
+                        MODEL_PREDICTION_ACCURACY.labels(station=train.origin_station_code).set(
+                            accuracy_value
+                        )
+                        logger.info(
+                            f"Updated MODEL_PREDICTION_ACCURACY for train {train.train_id} at station {train.origin_station_code}: {accuracy_value}"
+                        )
 
             # Calculate delay_minutes when track_released_at is set (train has departed)
             # Use "not train.delay_minutes and train.track_released_at" to identify trains needing delay calculation

@@ -10,33 +10,21 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
-from prometheus_client import Counter, Gauge, Histogram
 from sqlalchemy.orm import Session
 
 from trackcast.db.models import PredictionData, Train
 from trackcast.db.repository import PredictionDataRepository, TrainRepository
+from trackcast.metrics import (
+    MODEL_INFERENCE_TIME,
+    MODEL_PREDICTION_ACCURACY,
+    PREDICTION_ERRORS,
+    PREDICTIONS_GENERATED,
+    TRACK_PREDICTION_CONFIDENCE,
+    TRAINS_PROCESSED_TOTAL,
+)
 from trackcast.models.pipeline import TrackPredictionPipeline
 
 logger = logging.getLogger(__name__)
-
-
-# Define Prometheus metrics
-MODEL_PREDICTION_ACCURACY = Gauge(
-    "model_prediction_accuracy",
-    "Prediction accuracy of the model by station",
-    ["station"],
-)
-MODEL_INFERENCE_TIME = Histogram(
-    "model_inference_time_seconds",
-    "Inference time for model predictions by station",
-    ["station"],
-)
-TRAINS_PROCESSED_TOTAL = Counter("trains_processed_total", "Total number of trains processed")
-TRACK_PREDICTION_CONFIDENCE = Histogram(
-    "track_prediction_confidence_ratio",
-    "Distribution of track prediction confidence scores",
-    ["station"],
-)
 
 
 class PredictionService:
