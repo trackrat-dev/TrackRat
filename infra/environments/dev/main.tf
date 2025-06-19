@@ -108,9 +108,9 @@ module "trackrat_api_service" {
   # If a specific service account is already created for the API for this env:
   # service_account_email = "existing-sa@${var.project_id}.iam.gserviceaccount.com"
 
-  # Custom domain (optional for dev, more likely for prod)
-  # enable_custom_domain   = true
-  # custom_domain_name     = "api.dev.example.com" # Replace with actual domain
+  # Custom domain configuration
+  enable_custom_domain = var.enable_custom_domain
+  custom_domain_name   = var.custom_domain_name
 
   labels = {
     service = "trackrat-api"

@@ -51,7 +51,11 @@ output "trackrat_api_service_url" {
 output "trackrat_api_custom_domain_name" {
   description = "Custom domain name for the trackrat-api service in dev"
   value       = module.trackrat_api_service.custom_domain_name
-  sensitive   = true # Contains potentially sensitive domain info
+}
+
+output "trackrat_api_custom_domain_mapping_status" {
+  description = "Status of the custom domain mapping for the trackrat-api service"
+  value       = module.trackrat_api_service.custom_domain_mapping_status
 }
 
 output "scheduler_job_names" {

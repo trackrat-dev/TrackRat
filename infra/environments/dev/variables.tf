@@ -7,13 +7,13 @@ variable "project_id" {
 variable "region" {
   description = "The GCP region"
   type        = string
-  default     = "us-east1"
+  default     = "us-central1"
 }
 
 variable "zone" {
   description = "The GCP zone"
   type        = string
-  default     = "us-east1-b"
+  default     = "us-central1-b"
 }
 
 variable "app_name" {
@@ -34,6 +34,18 @@ variable "api_image_url" {
   description = "Docker image URL for the trackrat-api service"
   type        = string
   default     = "us-central1-docker.pkg.dev/trackrat-dev/trackcast-inference-dev/trackcast-inference:latest"
+}
+
+variable "enable_custom_domain" {
+  description = "Enable custom domain mapping for the API service"
+  type        = bool
+  default     = true
+}
+
+variable "custom_domain_name" {
+  description = "Custom domain name for the API service"
+  type        = string
+  default     = "dev.api.trackrat.net"
 }
 
 
