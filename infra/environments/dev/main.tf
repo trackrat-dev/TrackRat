@@ -45,8 +45,8 @@ module "database" {
   project_id                    = var.project_id
   region                        = var.region
   instance_name                 = "${var.app_name}-${var.environment}-sql" # Example instance name
-  instance_tier                 = "db-g1-small"                            # 1.7GB memory, 1 shared core
-  network_self_link             = module.infrastructure.network_self_link  # From VPC module output
+  instance_tier                 = "db-f1-micro"
+  network_self_link             = module.infrastructure.network_self_link # From VPC module output
   service_networking_connection = module.infrastructure.service_networking_connection
 
   # database_user_password is now auto-generated in the database module
@@ -76,10 +76,10 @@ module "trackrat_api_service" {
   container_port  = 8000               # Assuming the API runs on port 8000
 
   cpu_limit               = "1"   # Reduced since no longer handling scheduler operations
-  memory_limit            = "2Gi" # Reduced since no longer handling scheduler operations  
+  memory_limit            = "1Gi" # Reduced since no longer handling scheduler operations  
   concurrency             = 100
   min_instances           = 0  # Scale to 0 since using Cloud Run Jobs for operations
-  max_instances           = 5  # Increased for user traffic handling
+  max_instances           = 2  # Increased for user traffic handling
   request_timeout_seconds = 60 # Reduced to normal API timeout
 
   # Assuming /health is the correct endpoint for trackrat-api
@@ -164,9 +164,9 @@ module "scheduled_operations" {
     data-collection = {
       command      = ["trackcast", "collect-data"]
       cpu_limit    = "1"
-      memory_limit = "2Gi"
-      max_retries  = 3
-      task_timeout = "300s"
+      memory_limit = "1Gi"
+      max_retries  = 2
+      task_timeout = "60s"
       environment_variables = {
         JOB_TYPE = "data_collection"
       }
@@ -174,10 +174,10 @@ module "scheduled_operations" {
 
     feature-processing = {
       command      = ["trackcast", "process-features"]
-      cpu_limit    = "2"
-      memory_limit = "4Gi"
-      max_retries  = 2
-      task_timeout = "600s"
+      cpu_limit    = "1"
+      memory_limit = "1Gi"
+      max_retries  = 1
+      task_timeout = "60s"
       environment_variables = {
         JOB_TYPE = "feature_processing"
       }
@@ -185,10 +185,10 @@ module "scheduled_operations" {
 
     prediction-generation = {
       command      = ["trackcast", "generate-predictions"]
-      cpu_limit    = "2"
-      memory_limit = "4Gi"
-      max_retries  = 2
-      task_timeout = "600s"
+      cpu_limit    = "1"
+      memory_limit = "1Gi"
+      max_retries  = 1
+      task_timeout = "60s"
       environment_variables = {
         JOB_TYPE = "prediction_generation"
       }
