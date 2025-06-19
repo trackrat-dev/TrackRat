@@ -126,6 +126,22 @@ async def health(db=Depends(get_db)):
         try:
             from trackcast.db.models import PredictionData, Train
 
+            # Get DB pool status
+            try:
+                from trackcast.db.connection import engine
+
+                pool = engine.pool
+                pool_status = {
+                    "size": pool.size(),
+                    "checked_out": pool.checkedout(),
+                    "overflow": pool.overflow(),
+                    "total": pool.size() + pool.overflow(),
+                    "max_overflow": getattr(pool, "_max_overflow", 10),
+                }
+            except Exception as e:
+                logger.warning(f"Could not get pool status: {str(e)}")
+                pool_status = None
+
             # Basic counts with time windows
             one_hour_ago = current_time - timedelta(hours=1)
             one_day_ago = current_time - timedelta(days=1)
@@ -252,6 +268,7 @@ async def health(db=Depends(get_db)):
                     "prediction_rate": round(prediction_rate, 1),
                     "missing_fields_rate": round(missing_fields_rate, 1),
                 },
+                "connection_pool": pool_status,
             }
 
         except Exception as e:
