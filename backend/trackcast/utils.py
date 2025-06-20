@@ -19,6 +19,7 @@ from trackcast.constants import (
     MORNING_RUSH_END_HOUR,
     MORNING_RUSH_START_HOUR,
     PROD_CONFIG_PATH,
+    STAGING_CONFIG_PATH,
 )
 from trackcast.exceptions import ConfigError
 
@@ -59,6 +60,7 @@ def load_config(env: Optional[str] = None) -> dict[str, Any]:
 
     config_path = {
         "dev": DEV_CONFIG_PATH,
+        "staging": STAGING_CONFIG_PATH,
         "prod": PROD_CONFIG_PATH,
     }.get(env.lower(), DEFAULT_CONFIG_PATH)
 
