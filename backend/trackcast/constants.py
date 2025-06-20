@@ -6,7 +6,8 @@ VERSION = "0.1.0"
 # Configuration
 DEFAULT_CONFIG_PATH = "config/default.yaml"
 DEV_CONFIG_PATH = "config/dev.yaml"
-PROD_CONFIG_PATH = "config/prod.yaml"
+PROD_CONFIG_PATH = "config/production.yaml"
+STAGING_CONFIG_PATH = "config/staging.yaml"
 ENV_VAR_NAME = "TRACKCAST_ENV"
 
 # Data collection
