@@ -5,6 +5,8 @@ concurrency:
   cancel-in-progress: false
 
 on:
+  push:
+    branches: [main, staging, production]
   pull_request:
     branches: [main, staging, production]
   workflow_dispatch:
