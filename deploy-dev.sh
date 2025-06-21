@@ -278,6 +278,11 @@ get_timestamp() {
     date -u +"%Y%m%d-%H%M%S"
 }
 
+# Get git short SHA
+get_git_sha() {
+    git rev-parse --short=7 HEAD 2>/dev/null || echo "0000000"
+}
+
 # Build and push Docker image
 build_and_push_docker() {
     if [[ "$SKIP_DOCKER" == "true" ]]; then
@@ -289,15 +294,20 @@ build_and_push_docker() {
     
     cd "$SCRIPT_DIR/backend"
     
-    local timestamp=$(get_timestamp)
+    # Generate version similar to CI/CD but for local development
+    local timestamp=$(date -u +"%Y.%m.%d")
+    local build_id=$(date +%s)  # Use timestamp as build ID for local
+    local git_sha=$(get_git_sha)
+    local version="${timestamp}-local${build_id}-${git_sha}"
+    
     local image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${SERVICE_NAME}"
-    local dev_tag="${image_tag}:dev-local-${timestamp}"
+    local version_tag="${image_tag}:${version}"
     local latest_tag="${image_tag}:latest"
     
-    log_info "Building image: $dev_tag"
+    log_info "Building image with version: $version"
     
     if [[ "$DRY_RUN" == "true" ]]; then
-        log_info "[DRY RUN] Would build: docker build --platform linux/amd64 -t $dev_tag -t $latest_tag --target runtime ."
+        log_info "[DRY RUN] Would build: docker build --platform linux/amd64 -t $version_tag -t $latest_tag --target runtime ."
         return
     fi
     
@@ -307,7 +317,7 @@ build_and_push_docker() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     # Force build for linux/amd64 platform (required for Cloud Run)
-    if docker build --platform linux/amd64 -t "$dev_tag" -t "$latest_tag" --target runtime . 2>&1 | while IFS= read -r line; do
+    if docker build --platform linux/amd64 -t "$version_tag" -t "$latest_tag" --target runtime . 2>&1 | while IFS= read -r line; do
         echo "  $line"
     done; then
         complete_progress "Docker image built for linux/amd64"
@@ -321,12 +331,12 @@ build_and_push_docker() {
     # Push to Artifact Registry
     log_info "Pushing image to Artifact Registry..."
     
-    # Push specific tag
-    echo "Pushing $dev_tag..."
-    if docker push "$dev_tag" 2>&1 | grep -E "(Pushing|Copying|Mounted|Pushed|digest:|size:)" | while IFS= read -r line; do
+    # Push specific version tag
+    echo "Pushing $version_tag..."
+    if docker push "$version_tag" 2>&1 | grep -E "(Pushing|Copying|Mounted|Pushed|digest:|size:)" | while IFS= read -r line; do
         echo "  $line"
     done; then
-        complete_progress "Image pushed: $dev_tag"
+        complete_progress "Image pushed: $version_tag"
     else
         log_error "Failed to push Docker image"
         exit 1
@@ -343,8 +353,9 @@ build_and_push_docker() {
         exit 1
     fi
     
-    # Export for later use
-    export DOCKER_IMAGE_URL="$latest_tag"
+    # Export for later use - use specific version for deployment
+    export DOCKER_IMAGE_URL="$version_tag"
+    export DOCKER_VERSION="$version"
     
     cd "$SCRIPT_DIR"
 }
@@ -378,7 +389,7 @@ deploy_infrastructure() {
     # Create terraform.tfvars
     log_info "Creating terraform.tfvars..."
     
-    # Use the latest image URL or a placeholder
+    # Use the specific version image URL or a placeholder
     local api_image="${DOCKER_IMAGE_URL:-${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${SERVICE_NAME}:latest}"
     local scheduler_image="${DOCKER_IMAGE_URL:-${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${SERVICE_NAME}:latest}"
     
@@ -613,6 +624,7 @@ show_summary() {
     
     if [[ -n "${DOCKER_IMAGE_URL:-}" ]]; then
         echo
+        echo "Version: ${DOCKER_VERSION:-unknown}"
         echo "Docker Image: $DOCKER_IMAGE_URL"
     fi
     

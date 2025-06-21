@@ -147,6 +147,14 @@ jobs:
           driver-opts: |
             image=moby/buildkit:v0.12.0
 
+      - name: Generate automatic version
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production'
+        run: |
+          # Create automatic version using date + build number + sha
+          VERSION="$(date -u +%Y.%m.%d)-build${{ github.run_number }}-${GITHUB_SHA:0:7}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Generated version: $VERSION"
+
       - name: Build and push Docker image for main branch (dev + staging)
         if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
@@ -156,8 +164,10 @@ jobs:
           target: runtime
           push: true
           tags: |
+            us-central1-docker.pkg.dev/trackrat-dev/trackcast-inference-dev/${{ env.SERVICE_NAME }}:${{ env.VERSION }}
             us-central1-docker.pkg.dev/trackrat-dev/trackcast-inference-dev/${{ env.SERVICE_NAME }}:latest
             us-central1-docker.pkg.dev/trackrat-dev/trackcast-inference-dev/${{ env.SERVICE_NAME }}:${{ github.sha }}
+            us-central1-docker.pkg.dev/trackrat-staging/trackcast-inference-staging/${{ env.SERVICE_NAME }}:${{ env.VERSION }}
             us-central1-docker.pkg.dev/trackrat-staging/trackcast-inference-staging/${{ env.SERVICE_NAME }}:latest
             us-central1-docker.pkg.dev/trackrat-staging/trackcast-inference-staging/${{ env.SERVICE_NAME }}:${{ github.sha }}
           cache-from: type=registry,ref=us-central1-docker.pkg.dev/trackrat-dev/trackcast-inference-dev/${{ env.SERVICE_NAME }}:cache
@@ -178,6 +188,7 @@ jobs:
           target: runtime
           push: true
           tags: |
+            us-central1-docker.pkg.dev/trackrat-prod/trackcast-inference-prod/${{ env.SERVICE_NAME }}:${{ env.VERSION }}
             us-central1-docker.pkg.dev/trackrat-prod/trackcast-inference-prod/${{ env.SERVICE_NAME }}:latest
             us-central1-docker.pkg.dev/trackrat-prod/trackcast-inference-prod/${{ env.SERVICE_NAME }}:${{ github.sha }}
           cache-from: type=registry,ref=us-central1-docker.pkg.dev/trackrat-prod/trackcast-inference-prod/${{ env.SERVICE_NAME }}:cache
@@ -324,14 +335,17 @@ jobs:
         run: |
           echo "🐳 Determining deployment image..."
 
-          # Define image tag - always use latest for deployment
-          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
+          # Generate the same version string as in the build step
+          VERSION="$(date -u +%Y.%m.%d)-build${{ github.run_number }}-${GITHUB_SHA:0:7}"
 
-          # For backend changes, the image was already built and pushed with latest tag
-          # For infrastructure-only changes, use the existing latest image
+          # Use the specific version for deployment
+          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${VERSION}"
+
+          echo "Using version: $VERSION"
           echo "Using image tag: $IMAGE_TAG"
 
           # Export for later steps
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "✅ Using image: $IMAGE_TAG"
 
@@ -451,7 +465,7 @@ jobs:
           echo "- [Trains API](${{ env.SERVICE_URL }}/api/trains/)" >> $GITHUB_STEP_SUMMARY
           echo "- [Stops API](${{ env.SERVICE_URL }}/api/stops/)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image Strategy**: Always Latest" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: \`${{ env.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Deploy Trigger**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
@@ -522,14 +536,17 @@ jobs:
         run: |
           echo "🐳 Determining deployment image..."
 
-          # Define image tag - always use latest for deployment
-          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
+          # Generate the same version string as in the build step
+          VERSION="$(date -u +%Y.%m.%d)-build${{ github.run_number }}-${GITHUB_SHA:0:7}"
 
-          # For backend changes, the image was already built and pushed with latest tag
-          # For infrastructure-only changes, use the existing latest image
+          # Use the specific version for deployment
+          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${VERSION}"
+
+          echo "Using version: $VERSION"
           echo "Using image tag: $IMAGE_TAG"
 
           # Export for later steps
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "✅ Using image: $IMAGE_TAG"
 
@@ -649,7 +666,7 @@ jobs:
           echo "- [Trains API](${{ env.SERVICE_URL }}/api/trains/)" >> $GITHUB_STEP_SUMMARY
           echo "- [Stops API](${{ env.SERVICE_URL }}/api/stops/)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image Strategy**: Always Latest" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: \`${{ env.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Deploy Trigger**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
@@ -720,14 +737,17 @@ jobs:
         run: |
           echo "🐳 Determining deployment image..."
 
-          # Define image tag - always use latest for deployment
-          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
+          # Generate the same version string as in the build step
+          VERSION="$(date -u +%Y.%m.%d)-build${{ github.run_number }}-${GITHUB_SHA:0:7}"
 
-          # For backend changes, the image was already built and pushed with latest tag
-          # For infrastructure-only changes, use the existing latest image
+          # Use the specific version for deployment
+          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${VERSION}"
+
+          echo "Using version: $VERSION"
           echo "Using image tag: $IMAGE_TAG"
 
           # Export for later steps
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "✅ Using image: $IMAGE_TAG"
 
@@ -847,7 +867,7 @@ jobs:
           echo "- [Trains API](${{ env.SERVICE_URL }}/api/trains/)" >> $GITHUB_STEP_SUMMARY
           echo "- [Stops API](${{ env.SERVICE_URL }}/api/stops/)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image Strategy**: Always Latest" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: \`${{ env.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Deploy Trigger**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
