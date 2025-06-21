@@ -18,6 +18,7 @@ from trackcast.config import settings
 from trackcast.db.connection import get_db
 from trackcast.db.repository import TrainRepository, TrainStopRepository
 from trackcast.services.train_consolidation import TrainConsolidationService
+from trackcast.telemetry import trace_operation
 
 
 def get_train_repository() -> TrainRepository:
@@ -338,85 +339,16 @@ async def list_trains(
                 data_source=data_source,
             )
 
-        # Enrich trains with stop data using eager loading
+        # Enrich trains with stop data
         enriched_trains = []
-
-        # Get all train IDs for eager loading
-        train_db_ids = [train.id for train in trains]
-
-        # Import tracing for custom spans
-        from trackcast.telemetry import trace_operation
-
-        # Eager load all stops for all trains in one query
-        if train_db_ids:
-            logger.info(f"Eager loading stops for {len(train_db_ids)} trains")
-            with trace_operation(
-                "api.enrich_trains_with_stops",
-                train_count=len(train_db_ids),
-                consolidate=consolidate,
-            ) as span:
-                stops_by_train = train_repo.get_trains_with_stops(train_db_ids)
-
-                # Enrich each train with its stops
-                with trace_operation(
-                    "api.convert_stops_to_api_models",
-                    train_count=len(trains),
-                    total_stops=sum(len(stops_by_train.get(t.id, [])) for t in trains),
-                ) as conv_span:
-                    # Import here to avoid circular imports
-                    from trackcast.api.models import TrainStop as TrainStopAPI
-
-                    stops_converted = 0
-                    for train in trains:
-                        stop_models = []
-                        if train.id in stops_by_train:
-                            for stop in stops_by_train[train.id]:
-                                stop_models.append(
-                                    TrainStopAPI(
-                                        station_code=stop.station_code,
-                                        station_name=stop.station_name or "",
-                                        scheduled_time=stop.scheduled_time,
-                                        departure_time=stop.departure_time,
-                                        pickup_only=bool(stop.pickup_only),
-                                        dropoff_only=bool(stop.dropoff_only),
-                                        departed=bool(stop.departed),
-                                        stop_status=stop.stop_status,
-                                    )
-                                )
-                                stops_converted += 1
-
-                        # Add stops to the train object
-                        train.stops = stop_models
-
-                    conv_span.set_attribute("stops_converted", stops_converted)
-
-                    # Apply context-aware predictions if from_station_code is provided
-                    # UGH THIS IS A HACK - WE NEED TO MOVE QUERIES FOR INDIVIDUAL TRAINS OFF OF THE LIST ENDPOINT....
-                    if from_station_code and not to_station_code:
-                        with trace_operation(
-                            "api.context_prediction_generation",
-                            train_id=train.train_id,
-                            from_station_code=from_station_code,
-                        ) as ctx_span:
-                            original_prediction = train.prediction_data
-                            train = _enrich_with_context_prediction(train, from_station_code)
-                            ctx_span.set_attribute(
-                                "prediction_generated", train.prediction_data is not None
-                            )
-                            ctx_span.set_attribute(
-                                "prediction_changed", train.prediction_data != original_prediction
-                            )
-
-                    enriched_trains.append(train)
-
-                # Add span attributes for the enrichment results
-                span.set_attribute("enrichment.trains_processed", len(enriched_trains))
-                span.set_attribute(
-                    "enrichment.total_stops",
-                    sum(len(getattr(t, "stops", [])) for t in enriched_trains),
+        for train in trains:
+            enriched_train = _enrich_train_with_stops(train, stop_repo)
+            # Filter predictions by station context if from_station_code provided
+            if from_station_code:
+                enriched_train = _filter_prediction_by_station_context(
+                    enriched_train, from_station_code
                 )
-        else:
-            enriched_trains = trains
+            enriched_trains.append(enriched_train)
 
         # Filter by stop order if both origin and target station filters are specified
         enriched_trains = _filter_trains_by_stop_order(
@@ -537,9 +469,11 @@ async def get_train(
         # Enrich train with stop data
         enriched_train = _enrich_train_with_stops(train, stop_repo)
 
-        # Generate context-aware prediction if from_station_code provided
+        # Filter predictions by station context if from_station_code provided
         if from_station_code:
-            enriched_train = _enrich_with_context_prediction(enriched_train, from_station_code)
+            enriched_train = _filter_prediction_by_station_context(
+                enriched_train, from_station_code
+            )
 
         return enriched_train
     except HTTPException:
@@ -591,13 +525,19 @@ async def get_train_prediction(
             if not train:
                 raise HTTPException(status_code=404, detail=f"Train with ID {train_id} not found")
 
-        # If context-aware prediction requested, generate it
+        # Filter prediction by station context if from_station_code provided
         if from_station_code:
-            context_prediction = _generate_context_prediction(train, from_station_code)
-            if context_prediction:
-                return context_prediction
+            # Apply the same filtering logic as other endpoints
+            filtered_train = _filter_prediction_by_station_context(train, from_station_code)
+            if filtered_train.prediction_data:
+                return filtered_train.prediction_data
+            else:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No relevant prediction data available for train ID {train.train_id} at station {from_station_code}",
+                )
 
-        # Fallback to existing prediction
+        # Return existing prediction without context filtering
         if not train.prediction_data:
             raise HTTPException(
                 status_code=404,
@@ -620,65 +560,33 @@ def _train_stops_at_station(train, station_code: str) -> bool:
     return any(stop.station_code == station_code for stop in train.stops)
 
 
-def _enrich_with_context_prediction(train, boarding_station_code: str):
-    """Enrich train with context-aware prediction data."""
+def _filter_prediction_by_station_context(train, from_station_code: str):
+    """Only show predictions if they match the boarding station context."""
     try:
         # Verify train stops at boarding station
-        if not _train_stops_at_station(train, boarding_station_code):
+        if not _train_stops_at_station(train, from_station_code):
             logger.warning(
-                f"Train {train.train_id} doesn't stop at {boarding_station_code}, using original prediction"
+                f"Train {train.train_id} doesn't stop at {from_station_code}, removing predictions"
             )
+            train.prediction_data = None
             return train
 
-        # Generate context prediction
-        context_prediction = _generate_context_prediction(train, boarding_station_code)
-        if context_prediction:
-            # Replace the prediction data with context-aware version
-            train.prediction_data = context_prediction
-
-        return train
-    except Exception as e:
-        logger.error(f"Error generating context prediction for train {train.train_id}: {str(e)}")
-        return train
-
-
-def _generate_context_prediction(train, boarding_station_code: str):
-    """Generate a context-aware prediction using the boarding station's model."""
-    try:
-        # Verify train stops at boarding station
-        if not _train_stops_at_station(train, boarding_station_code):
-            logger.warning(f"Train {train.train_id} doesn't stop at {boarding_station_code}")
-            return None
-
-        # Check if train has features
-        if not train.model_data:
-            logger.warning(f"Train {train.train_id} has no features for context prediction")
-            return None
-
-        # Import prediction service
-        from trackcast.db.connection import get_db
-        from trackcast.services.prediction import PredictionService
-
-        # Create prediction service with database session
-        db_session = next(get_db())
-        prediction_service = PredictionService(db_session)
-
-        # Generate context-aware prediction
-        success, result = prediction_service.predict_train_with_context(
-            train.train_id, boarding_station_code
-        )
-
-        if success and result.get("prediction_data"):
-            logger.info(
-                f"Generated context prediction for train {train.train_id} from {boarding_station_code}"
+        # Only show predictions if they match the context station
+        if train.origin_station_code == from_station_code:
+            # Predictions are relevant - keep them
+            logger.debug(
+                f"Train {train.train_id}: showing {train.origin_station_code} predictions for {from_station_code} context"
             )
-            return result["prediction_data"]
+            return train
         else:
-            logger.warning(
-                f"Failed to generate context prediction for train {train.train_id}: {result.get('error', 'Unknown error')}"
+            # Predictions are for a different station - hide them
+            logger.debug(
+                f"Train {train.train_id}: hiding {train.origin_station_code} predictions for {from_station_code} context"
             )
-            return None
+            train.prediction_data = None
+            return train
 
     except Exception as e:
-        logger.error(f"Error generating context prediction for train {train.train_id}: {str(e)}")
-        return None
+        logger.error(f"Error filtering predictions for train {train.train_id}: {str(e)}")
+        train.prediction_data = None
+        return train
