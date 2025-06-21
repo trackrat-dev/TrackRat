@@ -5,9 +5,8 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  push:  # Triggers on push to ANY branch
   pull_request:
-    branches: [main, develop]
+    branches: [main, staging, production]
   workflow_dispatch:
 
 permissions:
