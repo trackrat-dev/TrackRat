@@ -229,10 +229,12 @@ async def list_trains(
         station_mapper = StationMapper()
 
         # Validate from/to station parameters
-        if (from_station_code is None) != (to_station_code is None):
+        # to_station_code requires from_station_code (destination needs origin)
+        # but from_station_code can be used alone (for context predictions)
+        if to_station_code and not from_station_code:
             raise HTTPException(
                 status_code=400,
-                detail="Both from_station_code and to_station_code must be provided together, or neither should be provided",
+                detail="to_station_code requires from_station_code to be provided",
             )
 
         if from_station_code and to_station_code and from_station_code == to_station_code:
@@ -340,6 +342,9 @@ async def list_trains(
         enriched_trains = []
         for train in trains:
             enriched_train = _enrich_train_with_stops(train, stop_repo)
+            # Apply context-aware predictions if from_station_code is provided
+            if from_station_code:
+                enriched_train = _enrich_with_context_prediction(enriched_train, from_station_code)
             enriched_trains.append(enriched_train)
 
         # Filter by stop order if both origin and target station filters are specified
@@ -394,6 +399,8 @@ async def list_trains(
                 },
                 "trains": enriched_trains,
             }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception(f"Error fetching trains: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

@@ -261,7 +261,7 @@ final class APIService: ObservableObject {
     }
     
     // MARK: - Consolidated Train Query
-    func fetchTrainByTrainId(_ trainId: String, sinceHoursAgo: Int = 6, consolidate: Bool = true) async throws -> [Train] {
+    func fetchTrainByTrainId(_ trainId: String, fromStationCode: String? = nil, sinceHoursAgo: Int = 6, consolidate: Bool = true) async throws -> [Train] {
         print("🔍 fetchTrainByTrainId called for: \(trainId)")
         
         // Calculate time filter (6 hours ago by default)
@@ -272,13 +272,20 @@ final class APIService: ObservableObject {
         let departureTimeAfter = formatter.string(from: timeFilter)
         
         var components = URLComponents(string: "\(baseURL)/trains/")!
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "train_id", value: trainId),
             URLQueryItem(name: "departure_time_after", value: departureTimeAfter),
             URLQueryItem(name: "consolidate", value: String(consolidate)),
             URLQueryItem(name: "show_sources", value: "true"),
             URLQueryItem(name: "include_predictions", value: "true")
         ]
+        
+        // Add from_station_code if provided
+        if let fromStationCode = fromStationCode {
+            queryItems.append(URLQueryItem(name: "from_station_code", value: fromStationCode))
+        }
+        
+        components.queryItems = queryItems
         
         guard let url = components.url else {
             throw APIError.invalidURL
@@ -342,7 +349,7 @@ final class APIService: ObservableObject {
         }
         
         print("🔍 fetchTrainDetailsFlexible: Using fetchTrainByTrainId for trainId: \(trainId)")
-        let trains = try await fetchTrainByTrainId(trainId)
+        let trains = try await fetchTrainByTrainId(trainId, fromStationCode: fromStationCode)
         print("📊 fetchTrainDetailsFlexible: Got \(trains.count) trains for trainId: \(trainId)")
         
         // If we have a station code, filter for trains that stop there
