@@ -103,6 +103,17 @@ jobs:
           echo "🔗 Running integration tests..."
           pytest tests/integration/ -v --tb=short
 
+      - name: Clean up Python environment
+        working-directory: ./backend
+        run: |
+          echo "🧹 Removing CI virtual environment to save space before Docker build..."
+          rm -rf ci-venv
+          pip cache purge
+          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find . -type f -name "*.pyc" -delete 2>/dev/null || true
+          echo "💾 Disk space after venv cleanup:"
+          df -h
+
       # Docker Build
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
