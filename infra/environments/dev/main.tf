@@ -105,7 +105,7 @@ module "trackrat_api_service" {
     MODEL_PATH               = "/app/models"
     TRACKCAST_SCHEDULER_MODE = "cloud_native"      # Enable cloud-native mode to disable internal scheduler
     GOOGLE_CLOUD_PROJECT     = var.project_id      # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "1"                 # Override Dockerfile default for environment-specific tuning
+    OTEL_SAMPLE_RATE         = "1"                 # 100% sampling for development debugging
     OTEL_SERVICE_NAME        = "trackcast-api-dev" # Environment-specific service name
   }
 
@@ -161,7 +161,7 @@ module "scheduled_operations" {
     MODEL_PATH               = "/app/models"
     TRACKCAST_SCHEDULER_MODE = "cloud_native"
     GOOGLE_CLOUD_PROJECT     = var.project_id      # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "1"                 # Override Dockerfile default for environment-specific tuning
+    OTEL_SAMPLE_RATE         = "1"                 # 100% sampling for development debugging
     OTEL_SERVICE_NAME        = "trackcast-ops-dev" # Environment-specific service name for jobs
   }
 
@@ -197,6 +197,13 @@ module "scheduled_operations" {
     module.vpc_connector,
     module.infrastructure
   ]
+}
+
+# Grant Cloud Trace Agent role to the scheduler service account for tracing
+resource "google_project_iam_member" "scheduler_cloud_trace_agent" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
 }
 
 # IAM permissions for jobs are handled at the job level in the cloud-run-jobs module
