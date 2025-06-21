@@ -4,8 +4,9 @@ import ActivityKit
 // MARK: - Live Activity Attributes
 struct TrainActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
-        // Core train info
-        let status: TrainStatus
+        // Core train info (StatusV2 only)
+        let statusV2: String  // StatusV2.current value
+        let statusLocation: String?  // StatusV2.location value
         let track: String?
         let delayMinutes: Int?
         

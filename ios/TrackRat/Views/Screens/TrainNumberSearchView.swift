@@ -29,7 +29,7 @@ struct TrainNumberSearchView: View {
                 VStack(spacing: 24) {
                     // Input field
                     VStack(alignment: .leading, spacing: 8) {
-                        TextField("e.g. 3710 or A170", text: $trainNumber)
+                        TextField("e.g. 3710, 170, A170", text: $trainNumber)
                             .textFieldStyle(.plain)
                             .font(.title2)
                             .focused($isInputFocused)
@@ -83,6 +83,42 @@ struct TrainNumberSearchView: View {
         }
     }
     
+    // MARK: - Helper Methods
+    
+    /// Check if input contains only digits (for Amtrak auto-detection)
+    private func isNumericInput(_ input: String) -> Bool {
+        let trimmedInput = input.trimmingCharacters(in: .whitespaces)
+        return !trimmedInput.isEmpty && trimmedInput.allSatisfy(\.isNumber)
+    }
+    
+    /// Attempt to search for a train with the given train number
+    private func attemptTrainSearch(trainNumber: String) async throws -> Train {
+        let train = try await APIService.shared.fetchTrainByNumber(
+            trainNumber,
+            fromStationCode: appState.departureStationCode
+        )
+        
+        // Verify the train can be loaded in details view before proceeding
+        _ = try await APIService.shared.fetchTrainDetailsFlexible(
+            id: nil,
+            trainId: trainNumber,
+            fromStationCode: appState.departureStationCode
+        )
+        
+        return train
+    }
+    
+    /// Check if error indicates "train not found" (vs network/server errors)
+    private func isTrainNotFoundError(_ error: Error) -> Bool {
+        if let apiError = error as? APIError {
+            return apiError == .noData
+        } else if let urlError = error as? URLError {
+            return urlError.localizedDescription == "No data received"
+        } else {
+            return error.localizedDescription == "No data received"
+        }
+    }
+    
     private func searchTrain() {
         guard isValidInput else { return }
         
@@ -93,82 +129,98 @@ struct TrainNumberSearchView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         
         Task {
+            let trimmedInput = trainNumber.trimmingCharacters(in: .whitespaces)
+            var lastError: Error?
+            var foundTrain: Train?
+            var successfulTrainNumber: String?
+            
+            // First attempt: Try user's exact input
             do {
-                let train = try await APIService.shared.fetchTrainByNumber(
-                    trainNumber,
-                    fromStationCode: appState.departureStationCode
-                )
-                
-                // Verify the train can be loaded in details view before navigating
-                // This prevents navigation to a view that will show an error
-                do {
-                    _ = try await APIService.shared.fetchTrainDetailsFlexible(
-                        id: nil,
-                        trainId: trainNumber,
-                        fromStationCode: appState.departureStationCode
-                    )
-                    
-                    // Train can be loaded, proceed with navigation
-                    appState.currentTrainId = train.id
-                    // Use flexible navigation with train number for direct access
-                    appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
-                        trainNumber: trainNumber,
-                        fromStation: appState.departureStationCode
-                    ))
-                } catch {
-                    // Train was found in search but can't be loaded in details
-                    // This happens when the train is outside the time window
-                    print("🔴 Train \(trainNumber) found in search but not available in details view")
-                    throw error
-                }
+                foundTrain = try await attemptTrainSearch(trainNumber: trimmedInput)
+                successfulTrainNumber = trimmedInput
+                print("✅ Found train with exact input: \(trimmedInput)")
             } catch {
-                // Log the error details for debugging
-                print("🔴 TrainNumberSearchView error for train \(trainNumber):")
-                print("  - Error type: \(type(of: error))")
-                print("  - Error description: \(error)")
-                print("  - Localized description: \(error.localizedDescription)")
+                lastError = error
+                print("🔍 First attempt failed for '\(trimmedInput)': \(error.localizedDescription)")
                 
-                // Use the actual error description for consistency
-                if let apiError = error as? APIError {
-                    switch apiError {
-                    case .noData:
-                        self.error = "Train not found"
-                    default:
-                        self.error = apiError.localizedDescription
-                    }
-                } else if let urlError = error as? URLError {
-                    // Handle URLError specifically
-                    print("🔴 URLError code: \(urlError.code)")
-                    switch urlError.code {
-                    case .notConnectedToInternet:
-                        self.error = "No internet connection"
-                    case .timedOut:
-                        self.error = "Request timed out"
-                    case .cannotFindHost, .cannotConnectToHost:
-                        self.error = "Cannot connect to server"
-                    case .networkConnectionLost:
-                        self.error = "Network connection lost"
-                    default:
-                        // Check if the error description is "No data received" from URLError
-                        if urlError.localizedDescription == "No data received" {
-                            self.error = "Train not found"
-                        } else {
-                            self.error = urlError.localizedDescription
-                        }
-                    }
-                } else {
-                    // For any other error type, check if it says "No data received"
-                    if error.localizedDescription == "No data received" {
-                        print("🔴 Unexpected error with 'No data received' message")
-                        self.error = "Train not found"
-                    } else {
-                        self.error = error.localizedDescription
+                // Second attempt: If input is numeric and first attempt failed with "not found", try with "A" prefix
+                if isNumericInput(trimmedInput) && isTrainNotFoundError(error) {
+                    let amtrakTrainNumber = "A\(trimmedInput)"
+                    do {
+                        foundTrain = try await attemptTrainSearch(trainNumber: amtrakTrainNumber)
+                        successfulTrainNumber = amtrakTrainNumber
+                        print("✅ Found Amtrak train with A prefix: \(amtrakTrainNumber)")
+                    } catch {
+                        lastError = error
+                        print("🔍 Second attempt failed for '\(amtrakTrainNumber)': \(error.localizedDescription)")
                     }
                 }
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
+            
+            // Handle results
+            if let train = foundTrain, let trainNumber = successfulTrainNumber {
+                // Success - navigate to train details
+                appState.currentTrainId = train.id
+                appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                    trainNumber: trainNumber,
+                    fromStation: appState.departureStationCode
+                ))
+            } else if let error = lastError {
+                // Handle the final error
+                handleSearchError(error, originalInput: trimmedInput)
+            }
+            
             isLoading = false
         }
+    }
+    
+    /// Handle search errors with user-friendly messages
+    private func handleSearchError(_ error: Error, originalInput: String) {
+        print("🔴 TrainNumberSearchView final error for input '\(originalInput)':")
+        print("  - Error type: \(type(of: error))")
+        print("  - Error description: \(error)")
+        print("  - Localized description: \(error.localizedDescription)")
+        
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .noData:
+                // Provide more helpful message for numeric inputs that might be Amtrak
+                if isNumericInput(originalInput) {
+                    self.error = "Train not found. Note: Amtrak trains typically need an 'A' prefix (e.g., A\(originalInput))"
+                } else {
+                    self.error = "Train not found"
+                }
+            default:
+                self.error = apiError.localizedDescription
+            }
+        } else if let urlError = error as? URLError {
+            print("🔴 URLError code: \(urlError.code)")
+            switch urlError.code {
+            case .notConnectedToInternet:
+                self.error = "No internet connection"
+            case .timedOut:
+                self.error = "Request timed out"
+            case .cannotFindHost, .cannotConnectToHost:
+                self.error = "Cannot connect to server"
+            case .networkConnectionLost:
+                self.error = "Network connection lost"
+            default:
+                if urlError.localizedDescription == "No data received" {
+                    self.error = "Train not found"
+                } else {
+                    self.error = urlError.localizedDescription
+                }
+            }
+        } else {
+            if error.localizedDescription == "No data received" {
+                print("🔴 Unexpected error with 'No data received' message")
+                self.error = "Train not found"
+            } else {
+                self.error = error.localizedDescription
+            }
+        }
+        
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
     }
 }
 

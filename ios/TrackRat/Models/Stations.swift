@@ -267,6 +267,51 @@ struct Stations {
     }
     
     static func getStationCode(_ stationName: String) -> String? {
-        return stationCodes[stationName]
+        // First try exact match
+        if let code = stationCodes[stationName] {
+            return code
+        }
+        
+        // Try common variations for ambiguous names
+        let normalized = stationName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        switch normalized {
+        case "new york":
+            return "NY"
+        case "newark":
+            return "NP"  // Default to Newark Penn Station
+        case "trenton":
+            return "TR"
+        case "princeton":
+            return "PJ"  // Princeton Junction is more common than Princeton
+        case "philadelphia":
+            return "PH"
+        case "washington":
+            return "WS"  // Washington Union Station
+        case "baltimore":
+            return "BL"
+        case "boston":
+            return "BOS"  // Boston South Station
+        default:
+            break
+        }
+        
+        // Try partial matching for "Penn Station" destinations
+        if normalized.contains("penn") {
+            if normalized.contains("new york") || normalized.contains("ny") {
+                return "NY"
+            } else if normalized.contains("newark") {
+                return "NP"
+            }
+        }
+        
+        // Try partial matching - find station names that contain the search term
+        for (fullName, code) in stationCodes {
+            if fullName.lowercased().contains(normalized) {
+                return code
+            }
+        }
+        
+        return nil
     }
 }

@@ -5,9 +5,8 @@ concurrency:
   cancel-in-progress: false
 
 on:
-  push:  # Triggers on push to ANY branch
   pull_request:
-    branches: [main, develop]
+    branches: [main, staging, production]
   workflow_dispatch:
 
 permissions:
@@ -74,7 +73,10 @@ jobs:
           python -m venv ci-venv
           source ci-venv/bin/activate
           echo "📦 Installing CPU-only dependencies..."
-          pip install -r requirements-cpu.txt -f https://download.pytorch.org/whl/torch_stable.html
+          # Install PyTorch CPU-only first to avoid CUDA dependencies (~2GB savings)
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-production.txt
+          pip install -r requirements-cpu.txt  # also needed for black and other tools
           pip install -e .
           echo "📦 Virtual environment created at: $(pwd)/ci-venv"
           echo "📊 Virtual environment size: $(du -sh ci-venv)"

@@ -24,8 +24,9 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy and install Python dependencies (CPU-only for container optimization)
-COPY requirements-cpu.txt .
-RUN pip install --no-cache-dir -r requirements-cpu.txt -f https://download.pytorch.org/whl/torch_stable.html \
+COPY requirements-production.txt .
+# Install all dependencies with CPU-only PyTorch pinned in requirements (~2GB savings)
+RUN pip install --no-cache-dir -r requirements-production.txt \
     && find /opt/venv -type f -name "*.pyc" -delete \
     && find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 

@@ -84,7 +84,9 @@ struct HistoricalDataView: View {
                             
                             Button("Try Again") {
                                 Task {
-                                    await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: appState.destinationStationCode)
+                                    // Use user's selected destination if available, otherwise fall back to train's actual destination
+                                    let toStationCode = appState.destinationStationCode ?? Stations.getStationCode(train.destination)
+                                    await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: toStationCode)
                                 }
                             }
                             .padding(.horizontal, 24)
@@ -113,7 +115,9 @@ struct HistoricalDataView: View {
             .toolbarBackground(.visible, for: .navigationBar)
         }
         .task {
-            await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: appState.destinationStationCode)
+            // Use user's selected destination if available, otherwise fall back to train's actual destination
+            let toStationCode = appState.destinationStationCode ?? Stations.getStationCode(train.destination)
+            await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: toStationCode)
         }
     }
 }
@@ -372,8 +376,16 @@ class HistoricalDataViewModel: ObservableObject {
         
         // Validate destination station code
         guard let toCode = toStationCode else {
-            print("❌ Error: Missing toStationCode in loadHistoricalData")
-            self.error = "Historical data is not available for this route"
+            print("❌ Error: Missing toStationCode in loadHistoricalData for train destination: \(train.destination)")
+            self.error = "Cannot determine destination station code for '\(train.destination)'"
+            isLoading = false
+            return
+        }
+        
+        // Ensure from and to stations are different
+        guard fromCode != toCode else {
+            print("❌ Error: fromStationCode and toStationCode are the same: \(fromCode)")
+            self.error = "Historical data requires different departure and destination stations"
             isLoading = false
             return
         }

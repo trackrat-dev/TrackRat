@@ -170,9 +170,9 @@ struct CombinedDetailsCard: View {
         VStack(spacing: 0) {
             // Top section with status info
             VStack(spacing: 16) {
-                // Boarding status
-                // Only show boarding UI if track is assigned
-                if train.displayStatus == .boarding && train.displayTrack != nil {
+                // Boarding status (StatusV2 only)
+                // Only show boarding UI if StatusV2 confirms boarding with track
+                if train.isActuallyBoarding {
                     HStack {
                         Image(systemName: "circle.fill")
                             .foregroundColor(.white)
@@ -203,8 +203,8 @@ struct CombinedDetailsCard: View {
                     .foregroundColor(.black)
                     .multilineTextAlignment(.center)
                 
-                // Track or prediction
-                if train.displayStatus != .boarding {
+                // Track or prediction (StatusV2 only)
+                if !train.isActuallyBoarding {
                     if let prediction = train.predictionData {
                         TrackRatPredictionView(prediction: prediction)
                     }
@@ -289,15 +289,10 @@ struct CombinedDetailsCard: View {
     }
 }
 
-// MARK: - Status Card
+// MARK: - StatusV2 Card
 struct StatusCard: View {
     let train: Train
     @EnvironmentObject private var appState: AppState
-    
-    private var isActuallyBoarding: Bool {
-        (train.statusV2?.current == "BOARDING" && train.displayTrack != nil) ||
-        (train.statusV2 == nil && train.displayStatus == .boarding && train.displayTrack != nil)
-    }
 
     private var departureTime: String {
         let formatter = DateFormatter()
@@ -315,91 +310,64 @@ struct StatusCard: View {
     }
     
     private var textColor: Color {
-        if isActuallyBoarding { // Orange card background
-            return .white
-        } else if let statusV2 = train.statusV2, !(statusV2.current == "BOARDING" && train.displayTrack == nil) {
-            // statusV2 is present and has its own blue background (unless it's the specific case we made "Scheduled" for statusV2 which also has blue bg)
-            return .white
-        } else {
-            // Covers:
-            // 1. Legacy "Scheduled" (boarding without track, white card bg)
-            // 2. Legacy non-boarding (white card bg)
-            return .black
+        guard train.statusV2 != nil else {
+            return .black // No statusV2, fallback to black
         }
+        
+        // StatusV2 cards always use white text
+        return .white
     }
     
     var body: some View {
         VStack(spacing: 16) {
-            // Enhanced status display using new status_v2 if available
+            // StatusV2-only display
             if let statusV2 = train.statusV2 {
-                // Use enhanced status with location info
                 VStack(spacing: 8) {
                     HStack {
-                        // Pulsing Icon: Show only if statusV2.current == "BOARDING" && train.displayTrack != nil
-                        if statusV2.current == "BOARDING" && train.displayTrack != nil {
+                        // Pulsing Icon: Show only for actual boarding
+                        if train.isActuallyBoarding {
                             Image(systemName: "circle.fill")
                                 .foregroundColor(.white)
                                 .font(.title2)
                                 .symbolEffect(.pulse)
                         }
                         
-                        // Status Text Logic
-                        if statusV2.current == "BOARDING" && train.displayTrack != nil {
-                            Text("Boarding on Track \(train.displayTrack!)") // Safe to force unwrap due to condition
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                        } else if statusV2.current == "BOARDING" && train.displayTrack == nil {
-                            Text("Scheduled") // Display "Scheduled"
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white) // Style like other statusV2 text
-                        } else {
-                            Text(statusV2.current) // Default status text
+                        // Status Text using StatusV2 computed properties
+                        Text(train.statusV2DisplayText)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                        
+                        // Show track for boarding trains
+                        if train.isActuallyBoarding, let track = train.displayTrack {
+                            Text("Track \(track)")
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
                         }
                     }
                     
-                    // Show location info
-                    Text(statusV2.location)
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.9))
+                    // Show location info from StatusV2
+                    if !statusV2.location.isEmpty {
+                        Text(statusV2.location)
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.9))
+                    }
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
-                // Background color for the VStack
-                .background(statusV2.current == "BOARDING" && train.displayTrack != nil ? Color.orange.opacity(0.9) : Color.blue.opacity(0.8))
+                .background(Color(train.statusV2Color).opacity(0.9))
                 .cornerRadius(12)
-            } else { // No statusV2, use displayStatus for logic
-                if train.displayStatus == .boarding && train.displayTrack != nil {
-                    // This is the "actual boarding" case for legacy
-                    HStack {
-                        Image(systemName: "circle.fill")
-                            .foregroundColor(.white)
-                            .font(.title2)
-                            .symbolEffect(.pulse)
-
-                        Text("Boarding on Track \(train.displayTrack!)") // displayTrack is non-nil here
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                    }
+            } else {
+                // No StatusV2 data - show error state
+                Text("Status Unknown")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.black)
                     .padding()
                     .frame(maxWidth: .infinity)
-                    .background(Color.orange.opacity(0.9)) // Orange background for this specific case
+                    .background(Color.gray.opacity(0.3))
                     .cornerRadius(12)
-                } else if train.displayStatus == .boarding && train.displayTrack == nil {
-                    // Boarding but no track, show "Scheduled"
-                    Text("Scheduled")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.black) // Explicit black text on white card background
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                // If not (train.displayStatus == .boarding), then nothing is shown from this block for status.
             }
             
             // Departure time
@@ -440,8 +408,8 @@ struct StatusCard: View {
                 .cornerRadius(8)
             }
             
-            // Track or prediction
-            if train.displayStatus != .boarding {
+            // Track or prediction (StatusV2 only)
+            if !train.isActuallyBoarding {
                 if let track = train.displayTrack, !track.isEmpty {
                     Label("Track \(track)", systemImage: "tram.fill")
                         .font(.title3)
@@ -469,12 +437,12 @@ struct StatusCard: View {
         }
         .padding()
         .frame(maxWidth: .infinity)
-        .background(isActuallyBoarding ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
+        .background(train.isActuallyBoarding ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
         
-        // Show detailed prediction below the card if no track assigned
-        if train.displayStatus != .boarding,
+        // Show detailed prediction below the card if no track assigned (StatusV2 only)
+        if !train.isActuallyBoarding,
            (train.displayTrack == nil || train.displayTrack!.isEmpty),
            let prediction = train.predictionData {
             TrackRatPredictionView(prediction: prediction)
@@ -708,6 +676,10 @@ class TrainDetailsViewModel: ObservableObject {
     private let trainNumber: String?
     private let preferredStationCode: String?
     
+    // Store current origin and destination for stop filtering
+    private var currentOriginStationCode: String?
+    private var currentDestinationName: String?
+    
     private let apiService = APIService.shared
     
     // Timer for auto-refresh
@@ -734,14 +706,101 @@ class TrainDetailsViewModel: ObservableObject {
     
     // Display properties
     var displayableTrainStops: [Stop] {
-        return train?.stops ?? []
+        guard let stops = train?.stops,
+              let originStationCode = currentOriginStationCode,
+              let destinationName = currentDestinationName else {
+            return train?.stops ?? []
+        }
+        
+        // Find indices of origin and destination stops
+        let originIndex = stops.firstIndex { stop in
+            // First try to match by station code
+            if let stopCode = stop.stationCode {
+                return stopCode.uppercased() == originStationCode.uppercased()
+            }
+            
+            // If no station code, find the expected station name for the origin code
+            let expectedStationName = Stations.departureStations.first { $0.code == originStationCode.uppercased() }?.name
+            if let expectedName = expectedStationName {
+                return stop.stationName.lowercased() == expectedName.lowercased()
+            }
+            
+            return false
+        }
+        
+        let destinationIndex = stops.firstIndex { stop in
+            stop.stationName.lowercased() == destinationName.lowercased()
+        }
+        
+        // If we found both indices, return the slice
+        if let startIdx = originIndex, let endIdx = destinationIndex, startIdx <= endIdx {
+            // Include both origin and destination (endIdx inclusive)
+            return Array(stops[startIdx...endIdx])
+        }
+        
+        // Fallback to all stops if we can't find the stations or if indices are invalid
+        return stops
     }
     
     var hasPreviousDisplayStops: Bool {
-        return false
+        guard let stops = train?.stops,
+              let originStationCode = currentOriginStationCode,
+              currentDestinationName != nil else {
+            return false
+        }
+        
+        // Find the origin index
+        let originIndex = stops.firstIndex { stop in
+            // First try to match by station code
+            if let stopCode = stop.stationCode {
+                return stopCode.uppercased() == originStationCode.uppercased()
+            }
+            
+            // If no station code, find the expected station name for the origin code
+            let expectedStationName = Stations.departureStations.first { $0.code == originStationCode.uppercased() }?.name
+            if let expectedName = expectedStationName {
+                return stop.stationName.lowercased() == expectedName.lowercased()
+            }
+            
+            return false
+        }
+        
+        // Return true if there are stops before the origin
+        return originIndex != nil && originIndex! > 0
     }
     
     var hasMoreDisplayStops: Bool {
+        guard let stops = train?.stops,
+              let originStationCode = currentOriginStationCode,
+              let destinationName = currentDestinationName else {
+            return false
+        }
+        
+        // Find indices of origin and destination stops
+        let originIndex = stops.firstIndex { stop in
+            // First try to match by station code
+            if let stopCode = stop.stationCode {
+                return stopCode.uppercased() == originStationCode.uppercased()
+            }
+            
+            // If no station code, find the expected station name for the origin code
+            let expectedStationName = Stations.departureStations.first { $0.code == originStationCode.uppercased() }?.name
+            if let expectedName = expectedStationName {
+                return stop.stationName.lowercased() == expectedName.lowercased()
+            }
+            
+            return false
+        }
+        
+        let destinationIndex = stops.firstIndex { stop in
+            stop.stationName.lowercased() == destinationName.lowercased()
+        }
+        
+        // Return true if there are stops after the destination
+        if let endIdx = destinationIndex, let startIdx = originIndex, startIdx <= endIdx {
+            return endIdx < stops.count - 1
+        }
+        
         return false
     }
     
@@ -760,6 +819,10 @@ class TrainDetailsViewModel: ObservableObject {
     func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         isLoading = true
         error = nil
+        
+        // Store current origin and destination for filtering
+        self.currentOriginStationCode = fromStationCode
+        self.currentDestinationName = selectedDestinationName
         
         do {
             // Use the flexible API method
@@ -786,6 +849,10 @@ class TrainDetailsViewModel: ObservableObject {
     }
     
     func refreshTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+        // Store current origin and destination for filtering
+        self.currentOriginStationCode = fromStationCode
+        self.currentDestinationName = selectedDestinationName
+        
         // Silent refresh
         do {
             let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
@@ -801,11 +868,10 @@ class TrainDetailsViewModel: ObservableObject {
             
             // Check for boarding status change using consolidated display properties
             if let currentTrain = train {
-                // Modified condition for boarding haptic:
-                // Previous state was not boarding OR was boarding but no track
-                // New state is boarding AND has a track
-                if (currentTrain.displayStatus != .boarding || currentTrain.displayTrack == nil) &&
-                   (newTrain.displayStatus == .boarding && newTrain.displayTrack != nil) {
+                // StatusV2-only boarding haptic:
+                // Previous state was not actually boarding
+                // New state is actually boarding (StatusV2 with track)
+                if !currentTrain.isActuallyBoarding && newTrain.isActuallyBoarding {
                     triggerBoardingHaptic = true
                 }
                 
@@ -1158,13 +1224,10 @@ struct JourneyStatusView: View {
     // The view now receives journeyProgressPercentage, journeyStopsCompleted, journeyTotalStops as parameters.
     
     private var displayStatus: String {
-        let rawStatus: String
-        if let statusV2 = train.statusV2 {
-            rawStatus = statusV2.current
-        } else {
-            rawStatus = train.displayStatus.displayText.uppercased()
+        guard let statusV2 = train.statusV2 else {
+            return "Unknown"
         }
-        return humanFriendlyStatus(rawStatus)
+        return humanFriendlyStatus(statusV2.current)
     }
     
     /// Convert technical status to human-friendly display text
@@ -1198,7 +1261,10 @@ struct JourneyStatusView: View {
     }
     
     private var statusEmoji: String {
-        let status = train.statusV2?.current ?? train.displayStatus.displayText.uppercased()
+        guard let statusV2 = train.statusV2 else {
+            return "❓"
+        }
+        let status = statusV2.current
         switch status {
         case "EN_ROUTE", "DEPARTED":
             return "🚆"
@@ -1220,7 +1286,10 @@ struct JourneyStatusView: View {
     }
     
     private var statusColor: Color {
-        let status = train.statusV2?.current ?? train.displayStatus.displayText.uppercased()
+        guard let statusV2 = train.statusV2 else {
+            return .gray
+        }
+        let status = statusV2.current
         switch status {
         case "EN_ROUTE", "DEPARTED":
             return .blue
