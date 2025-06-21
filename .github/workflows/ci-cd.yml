@@ -6,9 +6,9 @@ concurrency:
 
 on:
   push:
-    branches: [main, staging, production]
+    branches: [main, production]
   pull_request:
-    branches: [main, staging, production]
+    branches: [main, production]
   workflow_dispatch:
 
 permissions:
@@ -18,12 +18,8 @@ permissions:
 env:
   TF_VERSION: '1.7.0'
   TFLINT_VERSION: 'v0.50.0'
-  # Dynamic environment variables based on branch
-  PROJECT_ID: ${{ github.ref == 'refs/heads/main' && 'trackrat-dev' || github.ref == 'refs/heads/staging' && 'trackrat-staging' || 'trackrat-prod' }}
   REGION: us-central1
   SERVICE_NAME: trackcast-inference
-  REPOSITORY: ${{ github.ref == 'refs/heads/main' && 'trackcast-inference-dev' || github.ref == 'refs/heads/staging' && 'trackcast-inference-staging' || 'trackcast-inference-prod' }}
-  ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'dev' || github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
 
 jobs:
   # Simplified CI/CD: Run all tests unconditionally
@@ -239,16 +235,21 @@ jobs:
           docker system prune -af
           docker image prune -af
 
-  # Deploy when tests pass and on main, staging, or production branch
-  deploy:
-    name: Deploy to ${{ github.ref == 'refs/heads/main' && 'Development' || github.ref == 'refs/heads/staging' && 'Staging' || 'Production' }}
+  # Sequential deployment for main branch: dev -> staging
+  deploy-dev:
+    name: Deploy to Development
     runs-on: ubuntu-latest
     needs: [test]
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/production') && needs.test.result == 'success'
+    if: github.ref == 'refs/heads/main' && needs.test.result == 'success'
 
     environment:
-      name: ${{ github.ref == 'refs/heads/main' && 'development' || github.ref == 'refs/heads/staging' && 'staging' || 'production' }}
-      url: ${{ github.ref == 'refs/heads/main' && 'https://dev.api.trackrat.net' || github.ref == 'refs/heads/staging' && 'https://staging.api.trackrat.net' || 'https://prod.api.trackrat.net' }}
+      name: development
+      url: https://dev.api.trackrat.net
+
+    env:
+      PROJECT_ID: trackrat-dev
+      REPOSITORY: trackcast-inference-dev
+      ENVIRONMENT: dev
 
     steps:
       - name: Checkout
@@ -335,9 +336,7 @@ jobs:
             echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
           fi
 
-
           echo "✅ Infrastructure and services deployed"
-
 
       # Step 4: Get final service URL if not set
       - name: Get Service URL
@@ -416,7 +415,403 @@ jobs:
       # Step 7: Deployment summary
       - name: Deployment Summary
         run: |
-          echo "## 🚀 ${{ env.ENVIRONMENT == 'dev' && 'Development' || env.ENVIRONMENT == 'staging' && 'Staging' || 'Production' }} Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Development Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Infrastructure and Application deployed successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
+          echo "🏥 **Health Check**: [${{ env.SERVICE_URL }}/health](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
+          echo "📊 **API Endpoints**:" >> $GITHUB_STEP_SUMMARY
+          echo "- [Trains API](${{ env.SERVICE_URL }}/api/trains/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Stops API](${{ env.SERVICE_URL }}/api/stops/)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Strategy**: Always Latest" >> $GITHUB_STEP_SUMMARY
+          echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Deploy Trigger**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔧 **Next Steps**:" >> $GITHUB_STEP_SUMMARY
+          echo "- Start data collection: \`trackcast start-scheduler\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Check service logs in [Cloud Run Console](https://console.cloud.google.com/run/detail/${{ env.REGION }}/${{ env.SERVICE_NAME }}/logs?project=${{ env.PROJECT_ID }})" >> $GITHUB_STEP_SUMMARY
+
+  # Deploy to staging after dev deployment succeeds
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [deploy-dev]
+    if: github.ref == 'refs/heads/main' && needs.deploy-dev.result == 'success'
+
+    environment:
+      name: staging
+      url: https://staging.api.trackrat.net
+
+    env:
+      PROJECT_ID: trackrat-staging
+      REPOSITORY: trackcast-inference-staging
+      ENVIRONMENT: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Step 1: Ensure Artifact Registry repository exists
+      - name: Setup Artifact Registry Repository
+        working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
+        run: |
+          echo "🏗️ Setting up Artifact Registry repository..."
+
+          # Initialize Terraform
+          terraform init
+
+          # Create minimal terraform.tfvars for repository setup
+          cat > terraform.tfvars << EOF
+          project_id = "${{ env.PROJECT_ID }}"
+          region = "${{ env.REGION }}"
+          zone = "${{ env.REGION }}-b"
+          api_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
+          scheduler_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
+          EOF
+
+          # Target only the artifact registry repository
+          terraform plan -target=module.infrastructure.module.artifact_registry -var-file=terraform.tfvars -out=registry-plan
+          terraform apply -auto-approve registry-plan
+
+          echo "✅ Artifact Registry repository ready"
+
+      # Step 2: Determine deployment image
+      - name: Determine deployment image
+        run: |
+          echo "🐳 Determining deployment image..."
+
+          # Define image tag - always use latest for deployment
+          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
+
+          # For backend changes, the image was already built and pushed with latest tag
+          # For infrastructure-only changes, use the existing latest image
+          echo "Using image tag: $IMAGE_TAG"
+
+          # Export for later steps
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "✅ Using image: $IMAGE_TAG"
+
+      # Step 3: Deploy all infrastructure including Cloud Run services
+      - name: Deploy Infrastructure and Services
+        working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
+        run: |
+          echo "🏗️ Deploying infrastructure and services..."
+
+          # Initialize Terraform
+          terraform init
+
+          # Create terraform.tfvars with all variables including image URLs
+          cat > terraform.tfvars << EOF
+          project_id = "${{ env.PROJECT_ID }}"
+          region = "${{ env.REGION }}"
+          zone = "${{ env.REGION }}-b"
+          api_image_url = "${{ env.IMAGE_TAG }}"
+          scheduler_image_url = "${{ env.IMAGE_TAG }}"
+          EOF
+
+          # Plan and apply everything
+          terraform plan -var-file=terraform.tfvars -out=tfplan
+          terraform apply -auto-approve tfplan
+
+          # Get service URL
+          SERVICE_URL=$(terraform output -raw trackrat_api_service_url 2>/dev/null || echo "")
+          if [[ -n "$SERVICE_URL" ]]; then
+            echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+          fi
+
+          echo "✅ Infrastructure and services deployed"
+
+      # Step 4: Get final service URL if not set
+      - name: Get Service URL
+        run: |
+          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
+            SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+              --region=${{ env.REGION }} \
+              --format='value(status.url)' 2>/dev/null || echo "")
+            echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+          fi
+          echo "🔗 Service URL: ${{ env.SERVICE_URL }}"
+
+      # Step 5: Health checks
+      - name: Health Check
+        run: |
+          echo "🏥 Performing health check..."
+
+          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
+            echo "⚠️ Service URL not available, skipping health check"
+            exit 0
+          fi
+
+          # Wait a moment for the service to be ready
+          sleep 30
+
+          # Check health endpoint
+          HEALTH_URL="${{ env.SERVICE_URL }}/health"
+
+          for i in {1..5}; do
+            echo "Health check attempt $i/5..."
+
+            if curl -f -s "$HEALTH_URL" > /dev/null; then
+              echo "✅ Health check passed!"
+              curl -s "$HEALTH_URL" | jq '.' || echo "Health endpoint returned non-JSON response"
+              break
+            else
+              echo "❌ Health check failed, retrying in 30 seconds..."
+              if [ $i -eq 5 ]; then
+                echo "❌ All health checks failed"
+                exit 1
+              fi
+              sleep 30
+            fi
+          done
+
+      # Step 6: Test API endpoints
+      - name: Test API Endpoints
+        run: |
+          echo "🧪 Testing API endpoints..."
+
+          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
+            echo "⚠️ Service URL not available, skipping API tests"
+            exit 0
+          fi
+
+          # Test trains endpoint
+          TRAINS_URL="${{ env.SERVICE_URL }}/api/trains/?limit=5"
+          echo "Testing: $TRAINS_URL"
+
+          if curl -f -s "$TRAINS_URL" > /dev/null; then
+            echo "✅ Trains API endpoint is responding"
+          else
+            echo "⚠️ Trains API endpoint check failed (may be expected if no data)"
+          fi
+
+          # Test stops endpoint
+          STOPS_URL="${{ env.SERVICE_URL }}/api/stops/"
+          echo "Testing: $STOPS_URL"
+
+          if curl -f -s "$STOPS_URL" > /dev/null; then
+            echo "✅ Stops API endpoint is responding"
+          else
+            echo "⚠️ Stops API endpoint check failed (may be expected if no data)"
+          fi
+
+      # Step 7: Deployment summary
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Infrastructure and Application deployed successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
+          echo "🏥 **Health Check**: [${{ env.SERVICE_URL }}/health](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
+          echo "📊 **API Endpoints**:" >> $GITHUB_STEP_SUMMARY
+          echo "- [Trains API](${{ env.SERVICE_URL }}/api/trains/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Stops API](${{ env.SERVICE_URL }}/api/stops/)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Strategy**: Always Latest" >> $GITHUB_STEP_SUMMARY
+          echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Deploy Trigger**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔧 **Next Steps**:" >> $GITHUB_STEP_SUMMARY
+          echo "- Start data collection: \`trackcast start-scheduler\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Check service logs in [Cloud Run Console](https://console.cloud.google.com/run/detail/${{ env.REGION }}/${{ env.SERVICE_NAME }}/logs?project=${{ env.PROJECT_ID }})" >> $GITHUB_STEP_SUMMARY
+
+  # Deploy to production when production branch is pushed (unchanged workflow)
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/production' && needs.test.result == 'success'
+
+    environment:
+      name: production
+      url: https://prod.api.trackrat.net
+
+    env:
+      PROJECT_ID: trackrat-prod
+      REPOSITORY: trackcast-inference-prod
+      ENVIRONMENT: prod
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Step 1: Ensure Artifact Registry repository exists
+      - name: Setup Artifact Registry Repository
+        working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
+        run: |
+          echo "🏗️ Setting up Artifact Registry repository..."
+
+          # Initialize Terraform
+          terraform init
+
+          # Create minimal terraform.tfvars for repository setup
+          cat > terraform.tfvars << EOF
+          project_id = "${{ env.PROJECT_ID }}"
+          region = "${{ env.REGION }}"
+          zone = "${{ env.REGION }}-b"
+          api_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
+          scheduler_image_url = "us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:placeholder"
+          EOF
+
+          # Target only the artifact registry repository
+          terraform plan -target=module.infrastructure.module.artifact_registry -var-file=terraform.tfvars -out=registry-plan
+          terraform apply -auto-approve registry-plan
+
+          echo "✅ Artifact Registry repository ready"
+
+      # Step 2: Determine deployment image
+      - name: Determine deployment image
+        run: |
+          echo "🐳 Determining deployment image..."
+
+          # Define image tag - always use latest for deployment
+          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:latest"
+
+          # For backend changes, the image was already built and pushed with latest tag
+          # For infrastructure-only changes, use the existing latest image
+          echo "Using image tag: $IMAGE_TAG"
+
+          # Export for later steps
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "✅ Using image: $IMAGE_TAG"
+
+      # Step 3: Deploy all infrastructure including Cloud Run services
+      - name: Deploy Infrastructure and Services
+        working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
+        run: |
+          echo "🏗️ Deploying infrastructure and services..."
+
+          # Initialize Terraform
+          terraform init
+
+          # Create terraform.tfvars with all variables including image URLs
+          cat > terraform.tfvars << EOF
+          project_id = "${{ env.PROJECT_ID }}"
+          region = "${{ env.REGION }}"
+          zone = "${{ env.REGION }}-b"
+          api_image_url = "${{ env.IMAGE_TAG }}"
+          scheduler_image_url = "${{ env.IMAGE_TAG }}"
+          EOF
+
+          # Plan and apply everything
+          terraform plan -var-file=terraform.tfvars -out=tfplan
+          terraform apply -auto-approve tfplan
+
+          # Get service URL
+          SERVICE_URL=$(terraform output -raw trackrat_api_service_url 2>/dev/null || echo "")
+          if [[ -n "$SERVICE_URL" ]]; then
+            echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+          fi
+
+          echo "✅ Infrastructure and services deployed"
+
+      # Step 4: Get final service URL if not set
+      - name: Get Service URL
+        run: |
+          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
+            SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+              --region=${{ env.REGION }} \
+              --format='value(status.url)' 2>/dev/null || echo "")
+            echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+          fi
+          echo "🔗 Service URL: ${{ env.SERVICE_URL }}"
+
+      # Step 5: Health checks
+      - name: Health Check
+        run: |
+          echo "🏥 Performing health check..."
+
+          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
+            echo "⚠️ Service URL not available, skipping health check"
+            exit 0
+          fi
+
+          # Wait a moment for the service to be ready
+          sleep 30
+
+          # Check health endpoint
+          HEALTH_URL="${{ env.SERVICE_URL }}/health"
+
+          for i in {1..5}; do
+            echo "Health check attempt $i/5..."
+
+            if curl -f -s "$HEALTH_URL" > /dev/null; then
+              echo "✅ Health check passed!"
+              curl -s "$HEALTH_URL" | jq '.' || echo "Health endpoint returned non-JSON response"
+              break
+            else
+              echo "❌ Health check failed, retrying in 30 seconds..."
+              if [ $i -eq 5 ]; then
+                echo "❌ All health checks failed"
+                exit 1
+              fi
+              sleep 30
+            fi
+          done
+
+      # Step 6: Test API endpoints
+      - name: Test API Endpoints
+        run: |
+          echo "🧪 Testing API endpoints..."
+
+          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
+            echo "⚠️ Service URL not available, skipping API tests"
+            exit 0
+          fi
+
+          # Test trains endpoint
+          TRAINS_URL="${{ env.SERVICE_URL }}/api/trains/?limit=5"
+          echo "Testing: $TRAINS_URL"
+
+          if curl -f -s "$TRAINS_URL" > /dev/null; then
+            echo "✅ Trains API endpoint is responding"
+          else
+            echo "⚠️ Trains API endpoint check failed (may be expected if no data)"
+          fi
+
+          # Test stops endpoint
+          STOPS_URL="${{ env.SERVICE_URL }}/api/stops/"
+          echo "Testing: $STOPS_URL"
+
+          if curl -f -s "$STOPS_URL" > /dev/null; then
+            echo "✅ Stops API endpoint is responding"
+          else
+            echo "⚠️ Stops API endpoint check failed (may be expected if no data)"
+          fi
+
+      # Step 7: Deployment summary
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Infrastructure and Application deployed successfully**" >> $GITHUB_STEP_SUMMARY
           echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
@@ -437,7 +832,7 @@ jobs:
   # Summary job - always runs
   summary:
     runs-on: ubuntu-latest
-    needs: [test, deploy]
+    needs: [test, deploy-dev, deploy-staging, deploy-production]
     if: always()
     name: Pipeline Summary
 
@@ -447,11 +842,13 @@ jobs:
           echo "## 🚀 CI/CD Pipeline Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Overall status
-          if [[ "${{ needs.deploy.result }}" == "success" ]]; then
+          # Overall status based on new job structure
+          if [[ "${{ needs.deploy-staging.result }}" == "success" || "${{ needs.deploy-production.result }}" == "success" ]]; then
             echo "✅ **Pipeline Status**: Deployment Successful" >> $GITHUB_STEP_SUMMARY
-          elif [[ "${{ needs.deploy.result }}" == "skipped" ]]; then
-            echo "🟡 **Pipeline Status**: Tests Completed (No Deployment - Not Main/Staging/Production Branch or Tests Failed)" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.deploy-dev.result }}" == "success" ]]; then
+            echo "🟡 **Pipeline Status**: Development Deployed (Staging Skipped or Failed)" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.deploy-dev.result }}" == "skipped" && "${{ needs.deploy-production.result }}" == "skipped" ]]; then
+            echo "🟡 **Pipeline Status**: Tests Completed (No Deployment - Not Main/Production Branch or Tests Failed)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Pipeline Status**: Pipeline Failed" >> $GITHUB_STEP_SUMMARY
           fi
@@ -462,6 +859,8 @@ jobs:
           echo "- **Branch**: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Tests Result**: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deploy Result**: ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dev Deploy**: ${{ needs.deploy-dev.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Staging Deploy**: ${{ needs.deploy-staging.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Production Deploy**: ${{ needs.deploy-production.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Run Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
