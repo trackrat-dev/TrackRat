@@ -310,7 +310,7 @@ struct StatusCard: View {
     }
     
     private var textColor: Color {
-        guard let statusV2 = train.statusV2 else {
+        guard train.statusV2 != nil else {
             return .black // No statusV2, fallback to black
         }
         
