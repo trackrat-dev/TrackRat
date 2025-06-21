@@ -344,40 +344,55 @@ async def list_trains(
         # Get all train IDs for eager loading
         train_db_ids = [train.id for train in trains]
 
+        # Import tracing for custom spans
+        from trackcast.telemetry import trace_operation
+
         # Eager load all stops for all trains in one query
         if train_db_ids:
             logger.info(f"Eager loading stops for {len(train_db_ids)} trains")
-            stops_by_train = train_repo.get_trains_with_stops(train_db_ids)
+            with trace_operation(
+                "api.enrich_trains_with_stops",
+                train_count=len(train_db_ids),
+                consolidate=consolidate,
+            ) as span:
+                stops_by_train = train_repo.get_trains_with_stops(train_db_ids)
 
-            # Enrich each train with its stops
-            for train in trains:
-                # Convert SQLAlchemy stop objects to API models
-                from trackcast.api.models import TrainStop as TrainStopAPI
+                # Enrich each train with its stops
+                for train in trains:
+                    # Convert SQLAlchemy stop objects to API models
+                    from trackcast.api.models import TrainStop as TrainStopAPI
 
-                stop_models = []
-                if train.id in stops_by_train:
-                    for stop in stops_by_train[train.id]:
-                        stop_models.append(
-                            TrainStopAPI(
-                                station_code=stop.station_code,
-                                station_name=stop.station_name or "",
-                                scheduled_time=stop.scheduled_time,
-                                departure_time=stop.departure_time,
-                                pickup_only=bool(stop.pickup_only),
-                                dropoff_only=bool(stop.dropoff_only),
-                                departed=bool(stop.departed),
-                                stop_status=stop.stop_status,
+                    stop_models = []
+                    if train.id in stops_by_train:
+                        for stop in stops_by_train[train.id]:
+                            stop_models.append(
+                                TrainStopAPI(
+                                    station_code=stop.station_code,
+                                    station_name=stop.station_name or "",
+                                    scheduled_time=stop.scheduled_time,
+                                    departure_time=stop.departure_time,
+                                    pickup_only=bool(stop.pickup_only),
+                                    dropoff_only=bool(stop.dropoff_only),
+                                    departed=bool(stop.departed),
+                                    stop_status=stop.stop_status,
+                                )
                             )
-                        )
 
-                # Add stops to the train object
-                train.stops = stop_models
+                    # Add stops to the train object
+                    train.stops = stop_models
 
-                # Apply context-aware predictions if from_station_code is provided
-                if from_station_code:
-                    train = _enrich_with_context_prediction(train, from_station_code)
+                    # Apply context-aware predictions if from_station_code is provided
+                    if from_station_code:
+                        train = _enrich_with_context_prediction(train, from_station_code)
 
-                enriched_trains.append(train)
+                    enriched_trains.append(train)
+
+                # Add span attributes for the enrichment results
+                span.set_attribute("enrichment.trains_processed", len(enriched_trains))
+                span.set_attribute(
+                    "enrichment.total_stops",
+                    sum(len(getattr(t, "stops", [])) for t in enriched_trains),
+                )
         else:
             enriched_trains = trains
 
@@ -401,10 +416,22 @@ async def list_trains(
                     f"  Train {i + 1}: {train.train_id} from {train.origin_station_code} ({train.data_source}) - {len(getattr(train, 'stops', []))} stops"
                 )
 
-            consolidation_service = TrainConsolidationService()
-            consolidated_trains = consolidation_service.consolidate_trains(
-                enriched_trains, from_station_code or ""
-            )
+            with trace_operation(
+                "api.consolidate_trains",
+                input_train_count=len(enriched_trains),
+                from_station_code=from_station_code,
+            ) as span:
+                consolidation_service = TrainConsolidationService()
+                consolidated_trains = consolidation_service.consolidate_trains(
+                    enriched_trains, from_station_code or ""
+                )
+
+                # Add consolidation results to span
+                span.set_attribute("consolidation.output_count", len(consolidated_trains))
+                span.set_attribute(
+                    "consolidation.reduction_ratio",
+                    len(consolidated_trains) / len(enriched_trains) if enriched_trains else 0,
+                )
 
             logger.info(f"Consolidation complete: {len(consolidated_trains)} consolidated journeys")
             for i, journey in enumerate(consolidated_trains):

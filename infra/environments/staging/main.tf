@@ -94,6 +94,9 @@ module "trackrat_api_service" {
     TRACKCAST_ENV            = "staging"
     MODEL_PATH               = "/app/models"
     TRACKCAST_SCHEDULER_MODE = "cloud_native"
+    GOOGLE_CLOUD_PROJECT     = var.project_id          # Automatically enable GCP Cloud Trace
+    OTEL_SAMPLE_RATE         = "0.2"                   # Higher sampling for staging environment testing
+    OTEL_SERVICE_NAME        = "trackcast-api-staging" # Environment-specific service name
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -144,6 +147,9 @@ module "scheduled_operations" {
     TRACKCAST_ENV            = "staging"
     MODEL_PATH               = "/app/models"
     TRACKCAST_SCHEDULER_MODE = "cloud_native"
+    GOOGLE_CLOUD_PROJECT     = var.project_id          # Automatically enable GCP Cloud Trace
+    OTEL_SAMPLE_RATE         = "0.2"                   # Higher sampling for staging environment testing
+    OTEL_SERVICE_NAME        = "trackcast-ops-staging" # Environment-specific service name for jobs
   }
 
   # Secret environment variables from Secret Manager

@@ -103,7 +103,10 @@ module "trackrat_api_service" {
     APP_ENV                  = "development"
     TRACKCAST_ENV            = "dev"
     MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native" # Enable cloud-native mode to disable internal scheduler
+    TRACKCAST_SCHEDULER_MODE = "cloud_native"      # Enable cloud-native mode to disable internal scheduler
+    GOOGLE_CLOUD_PROJECT     = var.project_id      # Automatically enable GCP Cloud Trace
+    OTEL_SAMPLE_RATE         = "1"                 # Override Dockerfile default for environment-specific tuning
+    OTEL_SERVICE_NAME        = "trackcast-api-dev" # Environment-specific service name
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -157,6 +160,9 @@ module "scheduled_operations" {
     TRACKCAST_ENV            = "dev"
     MODEL_PATH               = "/app/models"
     TRACKCAST_SCHEDULER_MODE = "cloud_native"
+    GOOGLE_CLOUD_PROJECT     = var.project_id      # Automatically enable GCP Cloud Trace
+    OTEL_SAMPLE_RATE         = "1"                 # Override Dockerfile default for environment-specific tuning
+    OTEL_SERVICE_NAME        = "trackcast-ops-dev" # Environment-specific service name for jobs
   }
 
   # Secret environment variables from Secret Manager

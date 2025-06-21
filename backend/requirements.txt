@@ -59,4 +59,18 @@ pre-commit>=3.3.0
 
 # Documentation
 pydocstyle>=6.3.0
+
+# Monitoring and Observability
 prometheus-fastapi-instrumentator==7.1.0
+
+# OpenTelemetry
+opentelemetry-api>=1.21.0
+opentelemetry-sdk>=1.21.0
+opentelemetry-instrumentation-fastapi>=0.42b0
+opentelemetry-instrumentation-sqlalchemy>=0.42b0
+opentelemetry-instrumentation-httpx>=0.42b0
+opentelemetry-instrumentation-requests>=0.42b0
+opentelemetry-instrumentation-logging>=0.42b0
+opentelemetry-exporter-gcp-trace>=1.6.0
+opentelemetry-resourcedetector-gcp>=1.6.0a0
+opentelemetry-propagator-gcp>=1.6.0
