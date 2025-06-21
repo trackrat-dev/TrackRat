@@ -358,32 +358,54 @@ async def list_trains(
                 stops_by_train = train_repo.get_trains_with_stops(train_db_ids)
 
                 # Enrich each train with its stops
-                for train in trains:
-                    # Convert SQLAlchemy stop objects to API models
+                with trace_operation(
+                    "api.convert_stops_to_api_models",
+                    train_count=len(trains),
+                    total_stops=sum(len(stops_by_train.get(t.id, [])) for t in trains),
+                ) as conv_span:
+                    # Import here to avoid circular imports
                     from trackcast.api.models import TrainStop as TrainStopAPI
 
-                    stop_models = []
-                    if train.id in stops_by_train:
-                        for stop in stops_by_train[train.id]:
-                            stop_models.append(
-                                TrainStopAPI(
-                                    station_code=stop.station_code,
-                                    station_name=stop.station_name or "",
-                                    scheduled_time=stop.scheduled_time,
-                                    departure_time=stop.departure_time,
-                                    pickup_only=bool(stop.pickup_only),
-                                    dropoff_only=bool(stop.dropoff_only),
-                                    departed=bool(stop.departed),
-                                    stop_status=stop.stop_status,
+                    stops_converted = 0
+                    for train in trains:
+                        stop_models = []
+                        if train.id in stops_by_train:
+                            for stop in stops_by_train[train.id]:
+                                stop_models.append(
+                                    TrainStopAPI(
+                                        station_code=stop.station_code,
+                                        station_name=stop.station_name or "",
+                                        scheduled_time=stop.scheduled_time,
+                                        departure_time=stop.departure_time,
+                                        pickup_only=bool(stop.pickup_only),
+                                        dropoff_only=bool(stop.dropoff_only),
+                                        departed=bool(stop.departed),
+                                        stop_status=stop.stop_status,
+                                    )
                                 )
-                            )
+                                stops_converted += 1
 
-                    # Add stops to the train object
-                    train.stops = stop_models
+                        # Add stops to the train object
+                        train.stops = stop_models
+
+                    conv_span.set_attribute("stops_converted", stops_converted)
 
                     # Apply context-aware predictions if from_station_code is provided
-                    if from_station_code:
-                        train = _enrich_with_context_prediction(train, from_station_code)
+                    # UGH THIS IS A HACK - WE NEED TO MOVE QUERIES FOR INDIVIDUAL TRAINS OFF OF THE LIST ENDPOINT....
+                    if from_station_code and not to_station_code:
+                        with trace_operation(
+                            "api.context_prediction_generation",
+                            train_id=train.train_id,
+                            from_station_code=from_station_code,
+                        ) as ctx_span:
+                            original_prediction = train.prediction_data
+                            train = _enrich_with_context_prediction(train, from_station_code)
+                            ctx_span.set_attribute(
+                                "prediction_generated", train.prediction_data is not None
+                            )
+                            ctx_span.set_attribute(
+                                "prediction_changed", train.prediction_data != original_prediction
+                            )
 
                     enriched_trains.append(train)
 

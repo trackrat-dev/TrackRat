@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
 from trackcast.metrics import DB_QUERY_DURATION_SECONDS, MODEL_PREDICTION_ACCURACY
+from trackcast.telemetry import trace_operation
 
 logger = logging.getLogger(__name__)
 
@@ -671,17 +672,37 @@ class TrainRepository(BaseRepository):
                 .all()
             )
 
-            # Group stops by train
-            stops_by_train = {}
-            for db_id, (train_id, departure_time) in train_mapping.items():
-                stops_by_train[db_id] = []
+            # Group stops by train with optimized lookup
+            with trace_operation(
+                "db.post_process_stops_matching",
+                stop_count=len(all_stops),
+                train_count=len(train_mapping),
+            ) as span:
+                # Initialize result dictionary
+                stops_by_train = {}
+                for db_id in train_mapping.keys():
+                    stops_by_train[db_id] = []
 
-            for stop in all_stops:
-                # Find which train this stop belongs to
-                for db_id, (train_id, departure_time) in train_mapping.items():
-                    if stop.train_id == train_id and stop.train_departure_time == departure_time:
+                # Create reverse lookup dictionary for O(1) train matching - O(m)
+                train_lookup = {
+                    (train_id, departure_time): db_id
+                    for db_id, (train_id, departure_time) in train_mapping.items()
+                }
+
+                # Single loop with O(1) lookups - O(n) instead of O(n*m)
+                matched_stops = 0
+                for stop in all_stops:
+                    lookup_key = (stop.train_id, stop.train_departure_time)
+                    db_id = train_lookup.get(lookup_key)
+                    if db_id is not None:
                         stops_by_train[db_id].append(stop)
-                        break
+                        matched_stops += 1
+
+                # Add performance metrics to span
+                span.set_attribute("matched_stops", matched_stops)
+                span.set_attribute("unmatched_stops", len(all_stops) - matched_stops)
+                total_stop_assignments = sum(len(stops) for stops in stops_by_train.values())
+                span.set_attribute("total_stop_assignments", total_stop_assignments)
 
             duration = time.time() - start_time
             DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_with_stops").observe(duration)
