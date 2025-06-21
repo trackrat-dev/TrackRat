@@ -348,8 +348,8 @@ struct StatusCard: View {
                     }
                     
                     // Show location info from StatusV2
-                    if let location = statusV2.location {
-                        Text(location)
+                    if !statusV2.location.isEmpty {
+                        Text(statusV2.location)
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.9))
                     }
