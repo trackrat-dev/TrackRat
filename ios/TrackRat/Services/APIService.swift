@@ -381,9 +381,9 @@ final class APIService: ObservableObject {
             trainStats: calculateDelayStats(from: trainHistory),
             lineStats: calculateDelayStats(from: lineHistory),
             destinationStats: calculateDelayStats(from: destinationHistory),
-            trainTrackStats: calculateTrackStats(from: trainHistory),
-            lineTrackStats: calculateTrackStats(from: lineHistory),
-            destinationTrackStats: calculateTrackStats(from: destinationHistory)
+            trainTrackStats: calculateTrackStats(from: trainHistory, fromStation: fromStationCode),
+            lineTrackStats: calculateTrackStats(from: lineHistory, fromStation: fromStationCode),
+            destinationTrackStats: calculateTrackStats(from: destinationHistory, fromStation: fromStationCode)
         )
     }
     
@@ -393,7 +393,8 @@ final class APIService: ObservableObject {
             URLQueryItem(name: "train_id", value: trainId),
             URLQueryItem(name: "no_pagination", value: "true"),
             URLQueryItem(name: "from_station_code", value: fromStationCode),
-            URLQueryItem(name: "to_station_code", value: toStationCode)
+            URLQueryItem(name: "to_station_code", value: toStationCode),
+            URLQueryItem(name: "consolidate", value: "true")
         ]
         components.queryItems = queryItems
         
@@ -415,7 +416,8 @@ final class APIService: ObservableObject {
             URLQueryItem(name: "line", value: line),
             URLQueryItem(name: "limit", value: "1000"),
             URLQueryItem(name: "from_station_code", value: fromStationCode),
-            URLQueryItem(name: "to_station_code", value: toStationCode)
+            URLQueryItem(name: "to_station_code", value: toStationCode),
+            URLQueryItem(name: "consolidate", value: "true")
         ]
         components.queryItems = queryItems
         
@@ -437,7 +439,8 @@ final class APIService: ObservableObject {
             URLQueryItem(name: "destination", value: destination),
             URLQueryItem(name: "limit", value: "1000"),
             URLQueryItem(name: "from_station_code", value: fromStationCode),
-            URLQueryItem(name: "to_station_code", value: toStationCode)
+            URLQueryItem(name: "to_station_code", value: toStationCode),
+            URLQueryItem(name: "consolidate", value: "true")
         ]
         components.queryItems = queryItems
         
@@ -487,22 +490,39 @@ final class APIService: ObservableObject {
         )
     }
     
-    private func calculateTrackStats(from trains: [Train]) -> TrackStats? {
-        let trainsWithTracks = trains.filter { $0.track != nil && !$0.track!.isEmpty }
-        guard !trainsWithTracks.isEmpty else { return nil }
-        
+    private func calculateTrackStats(from trains: [Train], fromStation: String?) -> TrackStats? {
         var trackCounts: [String: Int] = [:]
-        for train in trainsWithTracks {
-            if let track = train.track {
+        var totalTrainsWithTracks = 0
+        
+        for train in trains {
+            var trackUsed = false
+            
+            // If we have a fromStation and the train has stops, look for platform data
+            if let fromStation = fromStation, let stops = train.stops {
+                // Find the stop that matches the fromStation
+                if let departureStop = stops.first(where: { stop in
+                    stop.stationCode == fromStation
+                }), let platform = departureStop.platform, !platform.isEmpty {
+                    // Use the platform from the specific stop
+                    trackCounts[platform, default: 0] += 1
+                    totalTrainsWithTracks += 1
+                    trackUsed = true
+                }
+            }
+            
+            // Fallback to train track if no platform was used
+            if !trackUsed, let track = train.track, !track.isEmpty {
                 trackCounts[track, default: 0] += 1
+                totalTrainsWithTracks += 1
             }
         }
         
-        let total = trainsWithTracks.count
-        let sortedTracks = trackCounts.sorted { $0.value > $1.value }
-            .map { (track: $0.key, percentage: Int((Double($0.value) / Double(total)) * 100), count: $0.value) }
+        guard totalTrainsWithTracks > 0 else { return nil }
         
-        return TrackStats(tracks: sortedTracks, total: total)
+        let sortedTracks = trackCounts.sorted { $0.value > $1.value }
+            .map { (track: $0.key, percentage: Int((Double($0.value) / Double(totalTrainsWithTracks)) * 100), count: $0.value) }
+        
+        return TrackStats(tracks: sortedTracks, total: totalTrainsWithTracks)
     }
 }
 

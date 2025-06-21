@@ -759,6 +759,16 @@ class TrainConsolidationService:
                         "departed": stop.departed,
                         "departed_confirmed_by": [],
                         "stop_status": stop.stop_status,
+                        # Populate platform from train.track if this is the origin station and track is valid
+                        "platform": (
+                            train.track
+                            if (
+                                stop.station_code == train.origin_station_code
+                                and train.track
+                                and train.track.strip()
+                            )
+                            else None
+                        ),
                         # Track which train/timestamp determined the departed status
                         "_departed_source_train": train if stop.departed else None,
                         "_departed_source_timestamp": train.updated_at if stop.departed else None,
@@ -799,6 +809,15 @@ class TrainConsolidationService:
                     # Update actual times if available (take first non-None value)
                     if stop.departure_time and not stop_map[key]["departure_time"]:
                         stop_map[key]["departure_time"] = stop.departure_time.isoformat()
+
+                    # Update platform if this is the origin station and we don't have one yet
+                    if (
+                        stop.station_code == train.origin_station_code
+                        and train.track
+                        and train.track.strip()
+                    ):
+                        if not stop_map[key].get("platform"):
+                            stop_map[key]["platform"] = train.track
 
         # Clean up internal tracking fields before returning
         for stop_data in stop_map.values():
