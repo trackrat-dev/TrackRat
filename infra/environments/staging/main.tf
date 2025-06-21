@@ -75,7 +75,7 @@ module "trackrat_api_service" {
   container_port  = 8000
 
   cpu_limit               = "1"
-  memory_limit            = "512Mi"
+  memory_limit            = "1Gi"
   concurrency             = 100
   min_instances           = 0 # Scale to 0 for cost efficiency
   max_instances           = 2
@@ -160,7 +160,7 @@ module "scheduled_operations" {
     pipeline = {
       command      = ["trackcast", "run-pipeline"]
       cpu_limit    = "1"
-      memory_limit = "512Mi"
+      memory_limit = "1Gi"
       max_retries  = 1
       task_timeout = "300s"
       environment_variables = {

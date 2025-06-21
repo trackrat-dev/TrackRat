@@ -79,8 +79,8 @@ module "trackrat_api_service" {
   container_image = var.api_image_url  # To be defined in variables.tf
   container_port  = 8000               # Assuming the API runs on port 8000
 
-  cpu_limit               = "1"     # Reduced since no longer handling scheduler operations
-  memory_limit            = "512Mi" # Reduced since no longer handling scheduler operations  
+  cpu_limit               = "1"   # Reduced since no longer handling scheduler operations
+  memory_limit            = "1Gi" # Reduced since no longer handling scheduler operations  
   concurrency             = 100
   min_instances           = 0  # Scale to 0 since using Cloud Run Jobs for operations
   max_instances           = 2  # Increased for user traffic handling
@@ -172,7 +172,7 @@ module "scheduled_operations" {
     pipeline = {
       command      = ["trackcast", "run-pipeline"]
       cpu_limit    = "1"
-      memory_limit = "512Mi"
+      memory_limit = "1Gi"
       max_retries  = 1
       task_timeout = "300s"
       environment_variables = {
