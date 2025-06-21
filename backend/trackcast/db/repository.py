@@ -617,6 +617,82 @@ class TrainRepository(BaseRepository):
             logger.error(f"Database error in get_trains: {str(e)}")
             raise
 
+    def get_trains_with_stops(
+        self,
+        train_ids: List[int],
+    ) -> Dict[int, List[TrainStop]]:
+        """
+        Get stops for multiple trains in a single query to avoid N+1 problem.
+
+        Args:
+            train_ids: List of train database IDs
+
+        Returns:
+            Dictionary mapping train ID to list of TrainStop objects
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            if not train_ids:
+                return {}
+
+            # Get all trains with their departure times in one query
+            trains_info = (
+                self.session.query(Train.id, Train.train_id, Train.departure_time)
+                .filter(Train.id.in_(train_ids))
+                .all()
+            )
+
+            if not trains_info:
+                return {}
+
+            # Create mapping of database ID to (train_id, departure_time)
+            train_mapping = {
+                train.id: (train.train_id, train.departure_time) for train in trains_info
+            }
+
+            # Build conditions for all trains
+            conditions = []
+            for train_id, departure_time in train_mapping.values():
+                conditions.append(
+                    and_(
+                        TrainStop.train_id == train_id,
+                        TrainStop.train_departure_time == departure_time,
+                    )
+                )
+
+            # Get all stops for all trains in one query
+            all_stops = (
+                self.session.query(TrainStop)
+                .filter(or_(*conditions))
+                .order_by(TrainStop.train_id, TrainStop.scheduled_time.asc())
+                .all()
+            )
+
+            # Group stops by train
+            stops_by_train = {}
+            for db_id, (train_id, departure_time) in train_mapping.items():
+                stops_by_train[db_id] = []
+
+            for stop in all_stops:
+                # Find which train this stop belongs to
+                for db_id, (train_id, departure_time) in train_mapping.items():
+                    if stop.train_id == train_id and stop.train_departure_time == departure_time:
+                        stops_by_train[db_id].append(stop)
+                        break
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_with_stops").observe(duration)
+            logger.info(f"Loaded stops for {len(train_ids)} trains in {duration:.3f}s")
+
+            return stops_by_train
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_trains_with_stops: {str(e)}")
+            raise
+
     def get_trains_for_time_range(self, start_time: datetime, end_time: datetime) -> List[Train]:
         """
         Get all trains within a time range.

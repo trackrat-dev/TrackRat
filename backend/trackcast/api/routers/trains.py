@@ -338,14 +338,48 @@ async def list_trains(
                 data_source=data_source,
             )
 
-        # Enrich trains with stop data
+        # Enrich trains with stop data using eager loading
         enriched_trains = []
-        for train in trains:
-            enriched_train = _enrich_train_with_stops(train, stop_repo)
-            # Apply context-aware predictions if from_station_code is provided
-            if from_station_code:
-                enriched_train = _enrich_with_context_prediction(enriched_train, from_station_code)
-            enriched_trains.append(enriched_train)
+
+        # Get all train IDs for eager loading
+        train_db_ids = [train.id for train in trains]
+
+        # Eager load all stops for all trains in one query
+        if train_db_ids:
+            logger.info(f"Eager loading stops for {len(train_db_ids)} trains")
+            stops_by_train = train_repo.get_trains_with_stops(train_db_ids)
+
+            # Enrich each train with its stops
+            for train in trains:
+                # Convert SQLAlchemy stop objects to API models
+                from trackcast.api.models import TrainStop as TrainStopAPI
+
+                stop_models = []
+                if train.id in stops_by_train:
+                    for stop in stops_by_train[train.id]:
+                        stop_models.append(
+                            TrainStopAPI(
+                                station_code=stop.station_code,
+                                station_name=stop.station_name or "",
+                                scheduled_time=stop.scheduled_time,
+                                departure_time=stop.departure_time,
+                                pickup_only=bool(stop.pickup_only),
+                                dropoff_only=bool(stop.dropoff_only),
+                                departed=bool(stop.departed),
+                                stop_status=stop.stop_status,
+                            )
+                        )
+
+                # Add stops to the train object
+                train.stops = stop_models
+
+                # Apply context-aware predictions if from_station_code is provided
+                if from_station_code:
+                    train = _enrich_with_context_prediction(train, from_station_code)
+
+                enriched_trains.append(train)
+        else:
+            enriched_trains = trains
 
         # Filter by stop order if both origin and target station filters are specified
         enriched_trains = _filter_trains_by_stop_order(

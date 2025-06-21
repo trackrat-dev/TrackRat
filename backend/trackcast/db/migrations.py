@@ -736,6 +736,31 @@ def remove_audit_trail_fields(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def add_performance_indexes(session: Session) -> Dict[str, Any]:
+    """
+    Add performance indexes for train stops table to improve query performance.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        from trackcast.db.add_performance_indexes import upgrade
+
+        logger.info("Adding performance indexes for better query performance")
+        upgrade(session)
+
+        logger.info("Successfully added performance indexes")
+        return {"status": "success", "message": "Performance indexes added successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding performance indexes: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -759,7 +784,8 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
         ("add_data_source_to_train_stops", add_data_source_to_train_stops),
         ("add_train_stops_lifecycle_fields", add_train_stops_lifecycle_fields),
         ("update_train_stop_unique_constraint", update_train_stop_unique_constraint),
-        ("remove_audit_trail_fields", remove_audit_trail_fields),  # New migration
+        ("remove_audit_trail_fields", remove_audit_trail_fields),
+        ("add_performance_indexes", add_performance_indexes),  # Performance improvements
     ]
 
     for name, migration_func in migrations:
