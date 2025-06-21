@@ -18,7 +18,7 @@ pandas>=2.0.0
 scikit-learn>=1.3.0
 
 # Machine Learning - CPU ONLY (explicit CPU-only installation)
-# Note: torch will be installed separately with --index-url flag
+torch --index-url https://download.pytorch.org/whl/cpu
 xgboost>=1.7.0
 shap>=0.42.0
 
