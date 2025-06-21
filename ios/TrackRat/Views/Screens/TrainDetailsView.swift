@@ -676,6 +676,10 @@ class TrainDetailsViewModel: ObservableObject {
     private let trainNumber: String?
     private let preferredStationCode: String?
     
+    // Store current origin and destination for stop filtering
+    private var currentOriginStationCode: String?
+    private var currentDestinationName: String?
+    
     private let apiService = APIService.shared
     
     // Timer for auto-refresh
@@ -702,14 +706,101 @@ class TrainDetailsViewModel: ObservableObject {
     
     // Display properties
     var displayableTrainStops: [Stop] {
-        return train?.stops ?? []
+        guard let stops = train?.stops,
+              let originStationCode = currentOriginStationCode,
+              let destinationName = currentDestinationName else {
+            return train?.stops ?? []
+        }
+        
+        // Find indices of origin and destination stops
+        let originIndex = stops.firstIndex { stop in
+            // First try to match by station code
+            if let stopCode = stop.stationCode {
+                return stopCode.uppercased() == originStationCode.uppercased()
+            }
+            
+            // If no station code, find the expected station name for the origin code
+            let expectedStationName = Stations.departureStations.first { $0.code == originStationCode.uppercased() }?.name
+            if let expectedName = expectedStationName {
+                return stop.stationName.lowercased() == expectedName.lowercased()
+            }
+            
+            return false
+        }
+        
+        let destinationIndex = stops.firstIndex { stop in
+            stop.stationName.lowercased() == destinationName.lowercased()
+        }
+        
+        // If we found both indices, return the slice
+        if let startIdx = originIndex, let endIdx = destinationIndex, startIdx <= endIdx {
+            // Include both origin and destination (endIdx inclusive)
+            return Array(stops[startIdx...endIdx])
+        }
+        
+        // Fallback to all stops if we can't find the stations or if indices are invalid
+        return stops
     }
     
     var hasPreviousDisplayStops: Bool {
-        return false
+        guard let stops = train?.stops,
+              let originStationCode = currentOriginStationCode,
+              currentDestinationName != nil else {
+            return false
+        }
+        
+        // Find the origin index
+        let originIndex = stops.firstIndex { stop in
+            // First try to match by station code
+            if let stopCode = stop.stationCode {
+                return stopCode.uppercased() == originStationCode.uppercased()
+            }
+            
+            // If no station code, find the expected station name for the origin code
+            let expectedStationName = Stations.departureStations.first { $0.code == originStationCode.uppercased() }?.name
+            if let expectedName = expectedStationName {
+                return stop.stationName.lowercased() == expectedName.lowercased()
+            }
+            
+            return false
+        }
+        
+        // Return true if there are stops before the origin
+        return originIndex != nil && originIndex! > 0
     }
     
     var hasMoreDisplayStops: Bool {
+        guard let stops = train?.stops,
+              let originStationCode = currentOriginStationCode,
+              let destinationName = currentDestinationName else {
+            return false
+        }
+        
+        // Find indices of origin and destination stops
+        let originIndex = stops.firstIndex { stop in
+            // First try to match by station code
+            if let stopCode = stop.stationCode {
+                return stopCode.uppercased() == originStationCode.uppercased()
+            }
+            
+            // If no station code, find the expected station name for the origin code
+            let expectedStationName = Stations.departureStations.first { $0.code == originStationCode.uppercased() }?.name
+            if let expectedName = expectedStationName {
+                return stop.stationName.lowercased() == expectedName.lowercased()
+            }
+            
+            return false
+        }
+        
+        let destinationIndex = stops.firstIndex { stop in
+            stop.stationName.lowercased() == destinationName.lowercased()
+        }
+        
+        // Return true if there are stops after the destination
+        if let endIdx = destinationIndex, let startIdx = originIndex, startIdx <= endIdx {
+            return endIdx < stops.count - 1
+        }
+        
         return false
     }
     
@@ -728,6 +819,10 @@ class TrainDetailsViewModel: ObservableObject {
     func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         isLoading = true
         error = nil
+        
+        // Store current origin and destination for filtering
+        self.currentOriginStationCode = fromStationCode
+        self.currentDestinationName = selectedDestinationName
         
         do {
             // Use the flexible API method
@@ -754,6 +849,10 @@ class TrainDetailsViewModel: ObservableObject {
     }
     
     func refreshTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+        // Store current origin and destination for filtering
+        self.currentOriginStationCode = fromStationCode
+        self.currentDestinationName = selectedDestinationName
+        
         // Silent refresh
         do {
             let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
