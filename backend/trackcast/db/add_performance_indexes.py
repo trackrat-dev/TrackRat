@@ -60,13 +60,10 @@ def upgrade(session: Session):
             logger.error(f"Failed to create index: {e}")
             raise
 
-    # Analyze tables to update statistics
-    try:
-        session.execute(text("ANALYZE train_stops"))
-        session.execute(text("ANALYZE trains"))
-        logger.info("Successfully analyzed tables")
-    except Exception as e:
-        logger.warning(f"Failed to analyze tables (non-critical): {e}")
+    # Skip ANALYZE during migrations to prevent blocking issues
+    # PostgreSQL's autovacuum daemon will update statistics automatically
+    # without causing locks that can block concurrent operations
+    logger.info("Skipping ANALYZE - statistics will be updated by autovacuum")
 
     session.commit()
     logger.info("Performance indexes migration completed successfully")

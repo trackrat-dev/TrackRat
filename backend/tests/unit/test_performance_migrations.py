@@ -25,8 +25,8 @@ class TestPerformanceMigrations:
         with patch('trackcast.db.add_performance_indexes.logger') as mock_logger:
             upgrade(mock_session)
             
-            # Should execute 6 CREATE INDEX statements + 2 ANALYZE statements
-            assert mock_session.execute.call_count == 8
+            # Should execute 6 CREATE INDEX statements (no ANALYZE statements)
+            assert mock_session.execute.call_count == 6
             
             # Verify specific indexes are created
             execute_calls = [call.args[0] for call in mock_session.execute.call_args_list]
@@ -70,23 +70,18 @@ class TestPerformanceMigrations:
             # Should log the error
             mock_logger.error.assert_called_with("Failed to create index: Index creation failed")
     
-    def test_upgrade_continues_after_analyze_failure(self, mock_session):
-        """Test that upgrade continues even if ANALYZE fails (non-critical)."""
-        # Make ANALYZE commands fail but index creation succeed
-        def execute_side_effect(sql):
-            sql_str = str(sql).lower()
-            if 'analyze' in sql_str:
-                raise SQLAlchemyError("ANALYZE failed")
-            return None
-        
-        mock_session.execute.side_effect = execute_side_effect
-        
+    def test_upgrade_skips_analyze(self, mock_session):
+        """Test that upgrade skips ANALYZE to prevent blocking issues."""
         with patch('trackcast.db.add_performance_indexes.logger') as mock_logger:
-            # Should not raise exception
             upgrade(mock_session)
             
-            # Should log warning about ANALYZE failure
-            mock_logger.warning.assert_called_with("Failed to analyze tables (non-critical): ANALYZE failed")
+            # Verify no ANALYZE commands were executed
+            execute_calls = [str(call.args[0]) for call in mock_session.execute.call_args_list]
+            analyze_calls = [call for call in execute_calls if 'analyze' in call.lower()]
+            assert len(analyze_calls) == 0, "Should not execute any ANALYZE commands"
+            
+            # Should log that ANALYZE is being skipped
+            mock_logger.info.assert_any_call("Skipping ANALYZE - statistics will be updated by autovacuum")
             
             # Should still commit
             mock_session.commit.assert_called_once()
