@@ -58,10 +58,12 @@ def setup_telemetry(
         sample_rate = float(os.getenv("OTEL_SAMPLE_RATE", "0.1"))
 
     if enable_gcp_trace is None:
-        enable_gcp_trace = bool(os.getenv("GOOGLE_CLOUD_PROJECT")) and not _is_development()
+        # Enable GCP trace when GOOGLE_CLOUD_PROJECT is set (works in both dev and prod)
+        enable_gcp_trace = bool(os.getenv("GOOGLE_CLOUD_PROJECT"))
 
     if enable_console is None:
-        enable_console = _is_development()
+        # Only enable console tracing if explicitly requested via environment variable
+        enable_console = os.getenv("OTEL_ENABLE_CONSOLE", "false").lower() == "true"
 
     logger.info(
         f"Initializing telemetry: service={service_name}, sample_rate={sample_rate}, "
@@ -89,12 +91,8 @@ def setup_telemetry(
     resource = gcp_resource.merge(manual_resource)
 
     # Set up the tracer provider with sampling
-    # Use always-on sampling for development to see all traces
-    sampler = (
-        StaticSampler(Decision.RECORD_AND_SAMPLE)
-        if enable_console
-        else TraceIdRatioBased(sample_rate)
-    )
+    # Always use ratio-based sampling to control trace volume
+    sampler = TraceIdRatioBased(sample_rate)
     provider = TracerProvider(resource=resource, sampler=sampler)
 
     # Add exporters
