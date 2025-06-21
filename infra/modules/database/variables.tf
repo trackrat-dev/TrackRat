@@ -15,9 +15,9 @@ variable "instance_name" {
 }
 
 variable "database_version" {
-  description = "The version of PostgreSQL to use (e.g., POSTGRES_15)."
+  description = "The version of PostgreSQL to use (e.g., POSTGRES_17)."
   type        = string
-  default     = "POSTGRES_15"
+  default     = "POSTGRES_17"
 }
 
 variable "instance_tier" {
