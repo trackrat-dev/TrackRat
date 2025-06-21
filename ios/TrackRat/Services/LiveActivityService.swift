@@ -10,7 +10,7 @@ class LiveActivityService: ObservableObject {
     @Published var currentActivity: Activity<TrainActivityAttributes>?
     @Published var isActivityActive: Bool = false
     
-    private var lastKnownStatus: TrainStatus?
+    private var lastKnownStatusV2: String?
     private var lastKnownStops: [Stop] = []
     private var lastDepartedStopIndex: Int?
     private var approachingNotificationsSent: Set<String> = []
@@ -74,7 +74,7 @@ class LiveActivityService: ObservableObject {
             await MainActor.run {
                 self.currentActivity = activity
                 self.isActivityActive = true
-                self.lastKnownStatus = train.status
+                self.lastKnownStatusV2 = train.statusV2?.current
                 self.lastKnownStops = train.stops ?? []
             }
             
@@ -121,7 +121,7 @@ class LiveActivityService: ObservableObject {
         let newState = train.toLiveActivityContentState(
             from: attributes.originStationCode,
             to: attributes.destinationStationCode,
-            lastKnownStatus: lastKnownStatus
+            lastKnownStatusV2: lastKnownStatusV2
         )
         
         // Validate new state before updating
@@ -156,14 +156,14 @@ class LiveActivityService: ObservableObject {
         
         // Check for status changes that warrant haptic feedback
         if newState.hasStatusChanged {
-            await handleStatusChange(from: lastKnownStatus, to: train.status)
+            await handleStatusChange(from: lastKnownStatusV2, to: train.statusV2?.current)
         }
         
         // Update activity
         await activity.update(.init(state: newState, staleDate: nil))
         
         await MainActor.run {
-            self.lastKnownStatus = train.status
+            self.lastKnownStatusV2 = train.statusV2?.current
         }
         
         print("🔄 Live Activity updated for train \(train.trainId)")
@@ -196,7 +196,7 @@ class LiveActivityService: ObservableObject {
         await MainActor.run {
             self.currentActivity = nil
             self.isActivityActive = false
-            self.lastKnownStatus = nil
+            self.lastKnownStatusV2 = nil
             self.lastKnownStops = []
             self.lastDepartedStopIndex = nil
             self.approachingNotificationsSent.removeAll()
@@ -501,22 +501,25 @@ class LiveActivityService: ObservableObject {
         }
     }
     
-    private func sendStatusChangeNotification(from oldStatus: TrainStatus, to newStatus: TrainStatus) async {
-        guard let activity = currentActivity else { return }
+    private func sendStatusChangeNotification(from oldStatusV2: String?, to newStatusV2: String?) async {
+        guard let activity = currentActivity,
+              let newStatus = newStatusV2,
+              let oldStatus = oldStatusV2,
+              oldStatus != newStatus else { return }
         
         let content = UNMutableNotificationContent()
         let attributes = activity.attributes
         
         switch newStatus {
-        case .boarding:
+        case "BOARDING":
             content.title = "🚪 Train \(attributes.trainNumber) is Boarding!"
             content.body = "Your train to \(attributes.destination) is now boarding"
             content.sound = .default
-        case .delayed:
+        case "DELAYED":
             content.title = "⏰ Train \(attributes.trainNumber) Delayed"
             content.body = "Your train to \(attributes.destination) has been delayed"
             content.sound = .default
-        case .departed:
+        case "EN_ROUTE", "DEPARTED":
             content.title = "🚆 Train \(attributes.trainNumber) Departed"
             content.body = "Your train to \(attributes.destination) has left the station"
             content.sound = .default
@@ -532,24 +535,26 @@ class LiveActivityService: ObservableObject {
         
         do {
             try await UNUserNotificationCenter.current().add(request)
-            print("📱 Sent status change notification: \(oldStatus.displayText) → \(newStatus.displayText)")
+            print("📱 Sent status change notification: \(oldStatus) → \(newStatus)")
         } catch {
             print("❌ Failed to send status change notification: \(error)")
         }
     }
     
-    private func handleStatusChange(from oldStatus: TrainStatus?, to newStatus: TrainStatus) async {
-        guard let oldStatus = oldStatus, oldStatus != newStatus else { return }
+    private func handleStatusChange(from oldStatusV2: String?, to newStatusV2: String?) async {
+        guard let oldStatus = oldStatusV2, 
+              let newStatus = newStatusV2, 
+              oldStatus != newStatus else { return }
         
         // Generate haptic feedback for important status changes
         let haptic: UINotificationFeedbackGenerator.FeedbackType?
         
         switch newStatus {
-        case .boarding:
+        case "BOARDING":
             haptic = .success
-        case .delayed:
+        case "DELAYED":
             haptic = .warning
-        case .departed:
+        case "EN_ROUTE", "DEPARTED":
             haptic = .success
         default:
             haptic = nil
@@ -563,9 +568,9 @@ class LiveActivityService: ObservableObject {
         }
         
         // Send push notification for status changes
-        await sendStatusChangeNotification(from: oldStatus, to: newStatus)
+        await sendStatusChangeNotification(from: oldStatusV2, to: newStatusV2)
         
-        print("📱 Status changed from \(oldStatus.displayText) to \(newStatus.displayText)")
+        print("📱 Status changed from \(oldStatus) to \(newStatus)")
     }
     
     // MARK: - Auto-End Conditions
@@ -582,7 +587,7 @@ class LiveActivityService: ObservableObject {
         }
         
         // End if train has been departed for a while and we're past the destination ETA
-        if train.status == .departed,
+        if train.hasDeparted,
            let destinationETA = state.destinationETA,
            Date() > destinationETA.addingTimeInterval(3600) { // 1 hour buffer
             return true
@@ -663,9 +668,9 @@ class LiveActivityService: ObservableObject {
     
     /// Validate Live Activity content state
     private func validateContentState(_ state: TrainActivityAttributes.ContentState) throws {
-        // Validate status has displayText
-        guard !state.status.displayText.isEmpty else {
-            throw LiveActivityError.invalidData("Status display text cannot be empty")
+        // Validate statusV2 is not empty
+        guard !state.statusV2.isEmpty else {
+            throw LiveActivityError.invalidData("StatusV2 cannot be empty")
         }
         
         // Validate journey progress

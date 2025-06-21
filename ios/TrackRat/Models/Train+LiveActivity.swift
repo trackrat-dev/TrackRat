@@ -71,8 +71,8 @@ extension Train {
             return .boarding(station: boardingStop.stationName)
         }
         
-        // Check train-level status
-        if status == .boarding {
+        // Check train-level status (StatusV2 only)
+        if isActuallyBoarding {
             // Find the origin station for boarding using robust matching
             if let originStop = stops.first(where: { Stations.stationMatches($0, stationCode: originCode) }) {
                 return .boarding(station: originStop.stationName)
@@ -173,8 +173,8 @@ extension Train {
         )
     }
     
-    /// Create Live Activity content state from current train data
-    func toLiveActivityContentState(from originCode: String, to destinationCode: String, lastKnownStatus: TrainStatus? = nil) -> TrainActivityAttributes.ContentState {
+    /// Create Live Activity content state from current train data (StatusV2 only)
+    func toLiveActivityContentState(from originCode: String, to destinationCode: String, lastKnownStatusV2: String? = nil) -> TrainActivityAttributes.ContentState {
         // Use new enhanced location if available
         var currentLocation = getCurrentLocation(from: originCode)
         if let statusV2 = statusV2 {
@@ -230,10 +230,11 @@ extension Train {
         let destinationETA = getDestinationETA(to: destinationCode)
         let trackRatPrediction = getTrackRatPredictionInfo()
         
-        let hasStatusChanged = lastKnownStatus != nil && lastKnownStatus != status
+        let hasStatusChanged = lastKnownStatusV2 != nil && lastKnownStatusV2 != statusV2?.current
         
         return TrainActivityAttributes.ContentState(
-            status: status,
+            statusV2: statusV2?.current ?? "UNKNOWN",
+            statusLocation: statusV2?.location,
             track: displayTrack,  // Use displayTrack instead of track for consolidated data
             delayMinutes: displayDelayMinutes,  // Use displayDelayMinutes for consolidated data
             currentLocation: currentLocation,

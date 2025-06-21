@@ -140,9 +140,9 @@ struct TrainCard: View {
     let destination: String
     let onTap: () -> Void
     
-    /// Check if train is boarding specifically at the user's origin station
+    /// Check if train is boarding specifically at the user's origin station (StatusV2 only)
     private var isBoardingAtOrigin: Bool {
-        guard train.status == .boarding,
+        guard train.isActuallyBoarding,
               let departureCode = appState.departureStationCode,
               let stops = train.stops else {
             return false
@@ -219,10 +219,9 @@ struct TrainCard: View {
     }
 }
 
-// MARK: - Status Badge
-struct StatusBadge: View {
-    let status: TrainStatus
-    let delayMinutes: Int?
+// MARK: - StatusV2 Badge
+struct StatusV2Badge: View {
+    let train: Train
     
     var body: some View {
         HStack(spacing: 4) {
@@ -241,28 +240,46 @@ struct StatusBadge: View {
     }
     
     private var statusColor: Color {
-        switch status {
-        case .onTime: return .green
-        case .delayed: return .red
-        case .boarding: return .orange
-        case .departed: return .gray
-        case .scheduled: return .gray
-        case .unknown: return .gray
+        guard let statusV2 = train.statusV2 else {
+            return .gray
+        }
+        
+        switch statusV2.current {
+        case "BOARDING":
+            return train.displayTrack != nil ? .orange : .gray
+        case "EN_ROUTE":
+            return .blue
+        case "ARRIVED":
+            return .green
+        case "DELAYED":
+            return .red
+        case "CANCELLED":
+            return .red
+        default:
+            return .gray
         }
     }
     
     private var statusText: String {
-        switch status {
-        case .onTime: return "On Time"
-        case .delayed:
-            if let minutes = delayMinutes {
-                return "Delayed \(minutes)min"
-            }
+        guard let statusV2 = train.statusV2 else {
+            return "Unknown"
+        }
+        
+        switch statusV2.current {
+        case "BOARDING":
+            return train.displayTrack != nil ? "Boarding" : "Scheduled"
+        case "EN_ROUTE":
+            return "En Route"
+        case "ARRIVED":
+            return "Arrived"
+        case "DELAYED":
             return "Delayed"
-        case .boarding: return "Boarding"
-        case .departed: return "Departed"
-        case .scheduled: return "Scheduled"
-        case .unknown: return "Unknown"
+        case "CANCELLED":
+            return "Cancelled"
+        case "SCHEDULED":
+            return "Scheduled"
+        default:
+            return statusV2.current.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
 }
@@ -355,10 +372,10 @@ class TrainListViewModel: ObservableObject {
             // Sort trains by origin station departure time
             let newTrains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
             
-            // Check for boarding status changes
+            // Check for boarding status changes (StatusV2 only)
             for train in trains {
                 if let newTrain = newTrains.first(where: { $0.id == train.id }) {
-                    if train.status != .boarding && newTrain.status == .boarding {
+                    if !train.isActuallyBoarding && newTrain.isActuallyBoarding {
                         // Haptic feedback for boarding status
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     }
