@@ -390,29 +390,31 @@ def import_data(
 
 
 @main.command()
-@click.option('--skip-collection', is_flag=True, help='Skip data collection step')
-@click.option('--skip-features', is_flag=True, help='Skip feature processing step')
-@click.option('--skip-predictions', is_flag=True, help='Skip prediction generation step')
-@click.option('--dry-run', is_flag=True, help='Show what would be executed without running')
-@click.option('--debug', is_flag=True, help='Enable debug logging for feature processing')
-def run_pipeline(skip_collection: bool, skip_features: bool, skip_predictions: bool, dry_run: bool, debug: bool) -> None:
+@click.option("--skip-collection", is_flag=True, help="Skip data collection step")
+@click.option("--skip-features", is_flag=True, help="Skip feature processing step")
+@click.option("--skip-predictions", is_flag=True, help="Skip prediction generation step")
+@click.option("--dry-run", is_flag=True, help="Show what would be executed without running")
+@click.option("--debug", is_flag=True, help="Enable debug logging for feature processing")
+def run_pipeline(
+    skip_collection: bool, skip_features: bool, skip_predictions: bool, dry_run: bool, debug: bool
+) -> None:
     """Run the complete data pipeline: collection -> features -> predictions"""
     try:
         steps = [
-            ('collect-data', not skip_collection, lambda: _execute_collect_data()),
-            ('process-features', not skip_features, lambda: _execute_process_features(debug)),
-            ('generate-predictions', not skip_predictions, lambda: _execute_generate_predictions())
+            ("collect-data", not skip_collection, lambda: _execute_collect_data()),
+            ("process-features", not skip_features, lambda: _execute_process_features(debug)),
+            ("generate-predictions", not skip_predictions, lambda: _execute_generate_predictions()),
         ]
-        
+
         successful_steps = []
         failed_step = None
-        
+
         logger.info("Starting data pipeline execution")
-        
+
         for step_name, should_run, execute_func in steps:
             if should_run:
                 logger.info(f"Pipeline step: {step_name}")
-                
+
                 if dry_run:
                     logger.info(f"[DRY RUN] Would execute: {step_name}")
                     successful_steps.append(step_name)
@@ -432,7 +434,7 @@ def run_pipeline(skip_collection: bool, skip_features: bool, skip_predictions: b
                         break
             else:
                 logger.info(f"Pipeline step: {step_name} (skipped)")
-        
+
         # Report results
         if dry_run:
             logger.info(f"Pipeline dry run completed successfully")
@@ -444,7 +446,7 @@ def run_pipeline(skip_collection: bool, skip_features: bool, skip_predictions: b
         else:
             logger.info(f"Pipeline completed successfully")
             logger.info(f"Executed steps: {', '.join(successful_steps)}")
-            
+
     except Exception as e:
         logger.error(f"Error in pipeline execution: {str(e)}")
         sys.exit(1)
@@ -478,7 +480,7 @@ def _execute_process_features(debug: bool = False) -> bool:
             logging.getLogger("trackcast.features").setLevel(logging.DEBUG)
             logging.getLogger("trackcast.features.extractors").setLevel(logging.DEBUG)
             logger.info("Debug logging enabled for feature extraction")
-        
+
         session = get_db_session()
         try:
             feature_service = FeatureEngineeringService(session)
