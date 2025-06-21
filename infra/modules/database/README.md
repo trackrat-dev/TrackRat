@@ -45,7 +45,7 @@ No modules.
 | <a name="input_critical_alert_email"></a> [critical\_alert\_email](#input\_critical\_alert\_email) | Email address for critical alerts. | `string` | n/a | yes |
 | <a name="input_database_name"></a> [database\_name](#input\_database\_name) | The name of the database to create. | `string` | `"trackratdb"` | no |
 | <a name="input_database_user_name"></a> [database\_user\_name](#input\_database\_user\_name) | The name of the database user. | `string` | `"trackratuser"` | no |
-| <a name="input_database_version"></a> [database\_version](#input\_database\_version) | The version of PostgreSQL to use (e.g., POSTGRES\_15). | `string` | `"POSTGRES_15"` | no |
+| <a name="input_database_version"></a> [database\_version](#input\_database\_version) | The version of PostgreSQL to use (e.g., POSTGRES\_17). | `string` | `"POSTGRES_17"` | no |
 | <a name="input_deletion_protection"></a> [deletion\_protection](#input\_deletion\_protection) | Whether or not to enable deletion protection for the instance. | `bool` | `false` | no |
 | <a name="input_instance_name"></a> [instance\_name](#input\_instance\_name) | The name of the Cloud SQL instance. | `string` | `"trackrat-db-instance"` | no |
 | <a name="input_instance_tier"></a> [instance\_tier](#input\_instance\_tier) | The machine type for the Cloud SQL instance (e.g., db-custom-2-7680). | `string` | `"db-g1-small"` | no |

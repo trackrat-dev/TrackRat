@@ -156,36 +156,15 @@ module "scheduled_operations" {
 
   # Job configurations
   jobs = {
-    data-collection = {
-      command      = ["trackcast", "collect-data"]
+    # Consolidated pipeline job - runs all steps sequentially
+    pipeline = {
+      command      = ["trackcast", "run-pipeline"]
       cpu_limit    = "1"
-      memory_limit = "512Mi"
-      max_retries  = 2
-      task_timeout = "60s"
-      environment_variables = {
-        JOB_TYPE = "data_collection"
-      }
-    }
-
-    feature-processing = {
-      command      = ["trackcast", "process-features"]
-      cpu_limit    = "1"
-      memory_limit = "512Mi"
+      memory_limit = "1Gi"
       max_retries  = 1
-      task_timeout = "60s"
+      task_timeout = "300s"
       environment_variables = {
-        JOB_TYPE = "feature_processing"
-      }
-    }
-
-    prediction-generation = {
-      command      = ["trackcast", "generate-predictions"]
-      cpu_limit    = "1"
-      memory_limit = "512Mi"
-      max_retries  = 1
-      task_timeout = "60s"
-      environment_variables = {
-        JOB_TYPE = "prediction_generation"
+        JOB_TYPE = "pipeline"
       }
     }
   }
@@ -205,20 +184,11 @@ module "scheduled_operations" {
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    data-collection = {
-      schedule    = "0,15,30,45 * * * *" # Every 15 minutes at :00, :15, :30, :45
-      description = "Data collection from NJ Transit and Amtrak APIs every 15 minutes"
-      job_name    = "data-collection"
-    }
-    feature-processing = {
-      schedule    = "5,20,35,50 * * * *" # Every 15 minutes at :05, :20, :35, :50
-      description = "Feature processing for collected train data every 15 minutes"
-      job_name    = "feature-processing"
-    }
-    prediction-generation = {
-      schedule    = "10,25,40,55 * * * *" # Every 15 minutes at :10, :25, :40, :55
-      description = "Track prediction generation for upcoming trains every 15 minutes"
-      job_name    = "prediction-generation"
+    # Consolidated pipeline scheduler - runs every 5 minutes
+    pipeline = {
+      schedule    = "*/5 * * * *" # Every 5 minutes
+      description = "Complete data pipeline: collection -> features -> predictions every 5 minutes"
+      job_name    = "pipeline"
     }
   }
 
