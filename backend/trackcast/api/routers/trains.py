@@ -475,7 +475,7 @@ async def list_trains(
 
             return ConsolidatedTrainListResponse(
                 metadata=Metadata(
-                    timestamp=datetime.now().isoformat(),
+                    timestamp=get_eastern_now().isoformat(),
                     model_version=settings.model.version,
                     train_count=len(consolidated_trains),
                     page=1,  # Consolidation affects pagination
