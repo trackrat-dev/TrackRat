@@ -114,6 +114,7 @@ module "trackrat_api_service" {
     DATABASE_URL = "${module.database.database_url_secret_name}:latest"
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
+    NJT_TOKEN    = "${module.infrastructure.njt_token_secret_name}:latest"
   }
 
   # If a specific service account is already created for the API for this env:
