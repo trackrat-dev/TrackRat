@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from trackcast.db.models import Train, TrainStop
 from trackcast.exceptions import TrackCastError
+from trackcast.utils import get_eastern_now
 
 logger = logging.getLogger(__name__)
 
@@ -1010,7 +1011,7 @@ class TrainConsolidationService:
         progress["total_stops"] = len(stops)
 
         # Count completed stops and find last departed/next arrival
-        now = datetime.now()
+        now = get_eastern_now()  # Use Eastern timezone to match stored train times
         last_departed_stop = None
         next_arrival_stop = None
 
