@@ -593,19 +593,6 @@ struct StopRow: View {
                         .fontWeight((isDestination || isDeparture) ? .semibold : .regular)
                         .foregroundColor(textColor)
                     
-                    if stop.stopStatus == "BOARDING" {
-                        if let track = boardingTrack {
-                            Text("BOARDING on Track \(track)")
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundColor(.orange)
-                        } else {
-                            Text("BOARDING")
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundColor(.orange)
-                        }
-                    }
                 }
                 
                 HStack(spacing: 4) {
