@@ -70,29 +70,43 @@ def setup_telemetry(
         f"gcp_trace={enable_gcp_trace}, console={enable_console}"
     )
 
+    # Determine final service name with proper precedence
+    final_service_name = _get_service_name()
+
+    logger.info(f"Service name determined: {final_service_name}")
+
     # Create resource with GCP metadata
     try:
-        # Try to detect GCP resources
+        # Try to detect GCP resources first
         gcp_resource = GoogleCloudResourceDetector().detect()
     except Exception as e:
         logger.warning(f"Failed to detect GCP resources: {e}")
         gcp_resource = Resource.empty()
 
-    # Create manual resource attributes
+    # Create manual resource attributes (these will override GCP detected ones)
     manual_resource = Resource.create(
         {
-            "service.name": service_name,
+            "service.name": final_service_name,
             "service.version": os.getenv("K_REVISION", os.getenv("SERVICE_VERSION", "unknown")),
             "service.instance.id": os.getenv("HOSTNAME", "localhost"),
+            "deployment.environment": _get_environment(),
+            "cloud.provider": "gcp",
+            "cloud.platform": "gcp_cloud_run",
+            "cloud.region": os.getenv("GOOGLE_CLOUD_REGION", "unknown"),
+            "gcp.cloud_run.job.name": os.getenv("CLOUD_RUN_JOB"),
+            "gcp.cloud_run.service.name": os.getenv("K_SERVICE"),
         }
     )
 
-    # Merge resources
+    # Merge resources (manual resource takes precedence)
     resource = gcp_resource.merge(manual_resource)
 
-    # Set up the tracer provider with sampling
-    # Always use ratio-based sampling to control trace volume
-    sampler = TraceIdRatioBased(sample_rate)
+    # Verify service name is set correctly
+    service_name_attr = resource.attributes.get("service.name")
+    logger.info(f"Final service name in resource: {service_name_attr}")
+
+    # Set up the tracer provider with intelligent sampling
+    sampler = _create_intelligent_sampler(sample_rate)
     provider = TracerProvider(resource=resource, sampler=sampler)
 
     # Add exporters
@@ -202,9 +216,37 @@ def get_tracer(name: str = None) -> trace.Tracer:
     return _tracer
 
 
+def _sanitize_attribute_value(value):
+    """Sanitize attribute values for security and OpenTelemetry compliance."""
+    if value is None:
+        return None
+
+    # Convert to string if needed
+    value_str = str(value)
+
+    # Redact sensitive patterns
+    import re
+
+    # Credit card numbers
+    value_str = re.sub(r"\b\d{4}[-\s]\d{4}[-\s]\d{4}[-\s]\d{4}\b", "****-****-****-****", value_str)
+    # Email addresses
+    value_str = re.sub(r"\b[\w.-]+@[\w.-]+\.\w+\b", "***@***.***", value_str)
+    # Potential passwords or keys (simple heuristic)
+    if len(value_str) > 20 and any(
+        c in value_str.lower() for c in ["password", "key", "secret", "token"]
+    ):
+        value_str = "***REDACTED***"
+
+    # Truncate very long values to prevent excessive span size
+    if len(value_str) > 1000:
+        value_str = value_str[:997] + "..."
+
+    return value_str
+
+
 @contextmanager
 def trace_operation(operation_name: str, **attributes):
-    """Context manager for tracing custom operations.
+    """Context manager for tracing custom operations with enhanced error handling.
 
     Usage:
         with trace_operation("data_collection.fetch_trains", station="NY") as span:
@@ -213,11 +255,27 @@ def trace_operation(operation_name: str, **attributes):
     """
     tracer = get_tracer()
     with tracer.start_as_current_span(operation_name) as span:
-        # Set initial attributes
+        # Set initial attributes with sanitization
         for key, value in attributes.items():
             if value is not None:
-                span.set_attribute(key, value)
-        yield span
+                try:
+                    sanitized_value = _sanitize_attribute_value(value)
+                    if sanitized_value is not None:
+                        span.set_attribute(key, sanitized_value)
+                except Exception as e:
+                    # Don't let attribute setting break the operation
+                    logger.warning(f"Failed to set span attribute {key}: {e}")
+
+        try:
+            yield span
+            # Mark span as successful if no exception occurred
+            span.set_status(trace.Status(trace.StatusCode.OK))
+        except Exception as e:
+            # Record the exception and mark span as error
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            # Re-raise the exception to not interfere with normal error handling
+            raise
 
 
 def trace_function(operation_name: str = None, **default_attributes):
@@ -306,17 +364,64 @@ def _requests_name_callback(request):
     return "http.request"
 
 
+def _create_intelligent_sampler(base_rate: float):
+    """Create intelligent sampler that adapts based on environment and span characteristics."""
+    env = _get_environment()
+
+    # Environment-specific sampling rates
+    if base_rate is None:
+        environment_rates = {
+            "dev": 1.0,  # 100% in development for debugging
+            "development": 1.0,
+            "staging": 0.5,  # 50% in staging for testing
+            "prod": 0.1,  # 10% in production for efficiency
+            "production": 0.1,
+        }
+        base_rate = environment_rates.get(env, 0.1)
+
+    # For now, return a standard ratio-based sampler
+    # Future enhancement: implement custom sampler that always samples errors
+    # and uses different rates for different span types
+    return TraceIdRatioBased(base_rate)
+
+
+def _get_environment() -> str:
+    """Get deployment environment."""
+    return (
+        os.getenv("TRACKCAST_ENV") or os.getenv("ENV") or os.getenv("K_SERVICE", "").split("-")[-1]
+        if os.getenv("K_SERVICE")
+        else None or "unknown"
+    )
+
+
+def _get_service_name() -> str:
+    """Determine service name based on environment and type."""
+    # Priority order: OTEL_SERVICE_NAME > calculated name
+    base_name = os.getenv("OTEL_SERVICE_NAME")
+    if base_name:
+        return base_name
+
+    # Fallback logic based on service type and environment
+    service_type = os.getenv("SERVICE_TYPE", "unknown")
+    job_type = os.getenv("JOB_TYPE")
+    env = _get_environment()
+
+    if service_type == "api":
+        return f"trackcast-api-{env}"
+    elif service_type == "job" and job_type:
+        return f"trackcast-{job_type}-{env}"
+    else:
+        return f"trackcast-{service_type}-{env}"
+
+
 def _is_development() -> bool:
     """Check if running in development environment."""
     # Don't enable console tracing during tests
     if "pytest" in os.getenv("_", ""):
         return False
 
-    return (
-        os.getenv("TRACKCAST_ENV", "").lower() in ("dev", "development")
-        or os.getenv("ENV", "").lower() in ("dev", "development")
-        or os.getenv("K_SERVICE") is None  # Not in Cloud Run
-    )
+    env = _get_environment()
+    return env in ("dev", "development") or os.getenv("K_SERVICE") is None  # Not in Cloud Run
 
 
 # Convenience functions for common tracing patterns

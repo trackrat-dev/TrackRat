@@ -42,7 +42,8 @@ ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     OTEL_SAMPLE_RATE="0.1" \
     OTEL_SERVICE_NAME="trackcast-api" \
-    OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED="true"
+    OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED="true" \
+    SERVICE_TYPE="api"
 
 # Install runtime system dependencies (minimal)
 RUN apt-get update && apt-get install -y \

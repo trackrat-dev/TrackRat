@@ -107,6 +107,7 @@ module "trackrat_api_service" {
     GOOGLE_CLOUD_PROJECT     = var.project_id      # Automatically enable GCP Cloud Trace
     OTEL_SAMPLE_RATE         = "1"                 # 100% sampling for development debugging
     OTEL_SERVICE_NAME        = "trackcast-api-dev" # Environment-specific service name
+    SERVICE_TYPE             = "api"               # Service type for tracing differentiation
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -182,7 +183,8 @@ module "scheduled_operations" {
       max_retries  = 1
       task_timeout = "300s"
       environment_variables = {
-        JOB_TYPE = "pipeline"
+        JOB_TYPE     = "pipeline"
+        SERVICE_TYPE = "job"
       }
     }
   }
