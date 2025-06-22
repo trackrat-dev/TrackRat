@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
 from trackcast.metrics import DB_QUERY_DURATION_SECONDS, MODEL_PREDICTION_ACCURACY
 from trackcast.telemetry import trace_operation
+from trackcast.utils import get_eastern_now
 
 logger = logging.getLogger(__name__)
 
@@ -760,7 +761,7 @@ class TrainRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = get_eastern_now() - timedelta(hours=hours)
             result = (
                 self.session.query(Train)
                 .filter(Train.departure_time >= cutoff_time)
@@ -790,7 +791,7 @@ class TrainRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            now = datetime.utcnow()
+            now = get_eastern_now()
             four_hours_ahead = now + timedelta(hours=4)
             thirty_minutes_ago = now - timedelta(minutes=30)
 
@@ -890,7 +891,7 @@ class TrainRepository(BaseRepository):
                 )
 
             if future_only:
-                query = query.filter(Train.departure_time >= datetime.utcnow())
+                query = query.filter(Train.departure_time >= get_eastern_now())
 
             result = query.order_by(Train.departure_time.asc()).all()
             duration = time.time() - start_time
@@ -916,7 +917,7 @@ class TrainRepository(BaseRepository):
             SQLAlchemyError: Database error
         """
         try:
-            query = self.session.query(Train).filter(Train.departure_time >= datetime.utcnow())
+            query = self.session.query(Train).filter(Train.departure_time >= get_eastern_now())
 
             if not include_predictions:
                 # Only get trains that need predictions
@@ -1410,7 +1411,7 @@ class TrainRepository(BaseRepository):
             self.session.begin_nested()
 
             # Get current time
-            now = datetime.utcnow()
+            now = get_eastern_now()
 
             # Get prediction_data_ids from trains with future departure times
             prediction_data_ids = [
@@ -1532,7 +1533,7 @@ class TrainRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = get_eastern_now() - timedelta(hours=hours)
 
             # Get all trains with tracks assigned in the time period
             trains = (
@@ -1556,7 +1557,7 @@ class TrainRepository(BaseRepository):
                     "line": train.line,
                     "destination": train.destination,
                     "assigned_at": train.track_assigned_at,
-                    "released_at": train.track_released_at or datetime.utcnow(),
+                    "released_at": train.track_released_at or get_eastern_now(),
                 }
 
                 track_usage[train.track].append(usage_period)
@@ -1567,6 +1568,37 @@ class TrainRepository(BaseRepository):
 
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_track_usage_history: {str(e)}")
+            raise
+
+    def update(self, train: Train) -> Train:
+        """
+        Update a train record.
+
+        Args:
+            train: Train object to update
+
+        Returns:
+            Updated Train object
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Mark the object as modified
+            train.updated_at = get_eastern_now()
+
+            # Commit the changes
+            self.session.commit()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="update_train").observe(duration)
+            logger.debug(f"Updated train {train.train_id} (ID: {train.id})")
+            return train
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Database error in update train: {str(e)}")
             raise
 
 
@@ -1830,7 +1862,7 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
-        current_time = datetime.utcnow()
+        current_time = get_eastern_now()
         updated_stops = []
 
         # Import StationMapper for station code derivation
@@ -2024,7 +2056,7 @@ class TrainStopRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = get_eastern_now() - timedelta(hours=hours)
             result = (
                 self.session.query(TrainStop)
                 .filter(
@@ -2038,6 +2070,49 @@ class TrainStopRepository(BaseRepository):
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_stops_by_station: {str(e)}")
+            raise
+
+    def get_stop_by_train_and_station(
+        self,
+        train_id: str,
+        train_departure_time: datetime,
+        station_name: str,
+        data_source: str = "njtransit",
+    ) -> Optional[TrainStop]:
+        """
+        Get a specific train stop by train and station.
+
+        Args:
+            train_id: Train identifier
+            train_departure_time: Train departure time
+            station_name: Station name
+            data_source: Data source identifier
+
+        Returns:
+            TrainStop object or None if not found
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            result = (
+                self.session.query(TrainStop)
+                .filter(
+                    TrainStop.train_id == train_id,
+                    TrainStop.train_departure_time == train_departure_time,
+                    TrainStop.station_name == station_name,
+                    TrainStop.data_source == data_source,
+                )
+                .first()
+            )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_stop_by_train_and_station").observe(
+                duration
+            )
+            return result
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_stop_by_train_and_station: {str(e)}")
             raise
 
     def get_all_stations(self) -> List[Dict[str, str]]:
@@ -2172,4 +2247,37 @@ class TrainStopRepository(BaseRepository):
 
         except SQLAlchemyError as e:
             logger.error(f"Database error in search_stations: {str(e)}")
+            raise
+
+    def update(self, train_stop: TrainStop) -> TrainStop:
+        """
+        Update a train stop record.
+
+        Args:
+            train_stop: TrainStop object to update
+
+        Returns:
+            Updated TrainStop object
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Mark the object as modified
+            train_stop.updated_at = get_eastern_now()
+
+            # Commit the changes
+            self.session.commit()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="update_train_stop").observe(duration)
+            logger.debug(
+                f"Updated train stop {train_stop.id} for train {train_stop.train_id} at {train_stop.station_name}"
+            )
+            return train_stop
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Database error in update train_stop: {str(e)}")
             raise

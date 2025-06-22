@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from trackcast.db.connection import Base
+from trackcast.utils import get_eastern_now
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,8 @@ logger = logging.getLogger(__name__)
 class TimestampMixin:
     """Mixin to add creation and update timestamps to models."""
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_eastern_now, nullable=False)
+    updated_at = Column(DateTime, default=get_eastern_now, onupdate=get_eastern_now, nullable=False)
 
 
 class Train(Base, TimestampMixin):
@@ -64,6 +65,19 @@ class Train(Base, TimestampMixin):
 
     # Data split for model training (train, validation, test)
     train_split = Column(String(10), nullable=True, index=True)
+
+    # Journey tracking fields
+    journey_completion_status = Column(String(20), nullable=True, index=True)
+    # Values: 'in_progress', 'completed', 'terminated_early', 'lost_tracking'
+
+    journey_validated_at = Column(DateTime, nullable=True)
+    # When we last checked this train's full journey via getTrainStopList
+
+    next_validation_check = Column(DateTime, nullable=True, index=True)
+    # When to check again if journey not complete
+
+    stops_last_updated = Column(DateTime, nullable=True, index=True)
+    # When we last fetched stop data from getTrainStopList API
 
     # Relationships (one-to-one with the feature and prediction data)
     model_data_id = Column(Integer, ForeignKey("model_data.id", ondelete="SET NULL"), nullable=True)
@@ -143,6 +157,7 @@ class TrainStop(Base, TimestampMixin):
     # Timing information
     scheduled_time = Column(DateTime, nullable=True)
     departure_time = Column(DateTime, nullable=True)
+    actual_arrival_time = Column(DateTime, nullable=True)  # When train actually arrived at platform
 
     # Stop characteristics
     pickup_only = Column(Boolean, default=False, nullable=False)
@@ -151,7 +166,7 @@ class TrainStop(Base, TimestampMixin):
     stop_status = Column(String(20), nullable=True)
 
     # Lifecycle tracking
-    last_seen_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    last_seen_at = Column(DateTime, nullable=False, default=get_eastern_now, index=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
 
     # Note: Relationship to train handled via queries due to composite key complexity

@@ -23,7 +23,7 @@ from trackcast.metrics import (
     NJ_TRANSIT_FETCH_FAILURES,
     NJ_TRANSIT_FETCH_SUCCESS,
 )
-from trackcast.utils import clean_destination, parse_iso_datetime_to_eastern
+from trackcast.utils import clean_destination, get_eastern_now, parse_iso_datetime_to_eastern
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class BaseCollector(abc.ABC):
         """
         start_time = time.time()
         stats = {
-            "collected_at": datetime.now().isoformat(),
+            "collected_at": get_eastern_now().isoformat(),
             "record_count": 0,
             "new_records": 0,
             "updated_records": 0,
@@ -84,6 +84,7 @@ class NJTransitCollector(BaseCollector):
     # API endpoint constants
     TOKEN_ENDPOINT = "getToken"
     TRAIN_SCHEDULE_ENDPOINT = "getTrainSchedule"
+    TRAIN_STOP_LIST_ENDPOINT = "getTrainStopList"
 
     def __init__(
         self,
@@ -279,7 +280,7 @@ class NJTransitCollector(BaseCollector):
             response: API response or data dictionary
             endpoint_name: Name of the API endpoint for the filename
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = get_eastern_now().strftime("%Y%m%d_%H%M%S")
         filename = self.debug_dir / f"{endpoint_name}_{timestamp}.json"
 
         try:
@@ -302,7 +303,7 @@ class NJTransitCollector(BaseCollector):
         Raises:
             APIError: If the API request fails after all retry attempts
         """
-        collection_time = datetime.now()
+        collection_time = get_eastern_now()
 
         # Ensure we have a valid token
         if not self.token:
@@ -501,6 +502,62 @@ class NJTransitCollector(BaseCollector):
 
     # CSV saving method removed - not needed for iOS app
 
+    def get_train_stops(self, train_id: str) -> Dict[str, Any]:
+        """
+        Get detailed stop information for a specific train using getTrainStopList API.
+
+        Args:
+            train_id: NJ Transit train ID
+
+        Returns:
+            Dict containing train details and stop list
+
+        Raises:
+            APIError: If the API request fails
+        """
+        # Ensure we have a valid token
+        if not self.token:
+            logger.info("No token available, authenticating")
+            self.token = self._get_token()
+            if not self.token:
+                raise APIError("Failed to obtain authentication token")
+
+        url = f"{self.base_url}/{self.TRAIN_STOP_LIST_ENDPOINT}"
+        files = {"token": (None, self.token), "train": (None, str(train_id))}
+
+        try:
+            logger.debug(f"Fetching stop list for train {train_id}")
+            response = requests.post(url, files=files, timeout=self.timeout)
+            response.raise_for_status()
+
+            data = response.json()
+
+            # Archive raw response if debug mode is enabled
+            if self.debug_mode:
+                self._archive_response(data, f"{self.TRAIN_STOP_LIST_ENDPOINT}_{train_id}")
+
+            logger.info(f"Successfully fetched stop list for train {train_id}")
+            return data
+
+        except requests.RequestException as e:
+            error_msg = f"Failed to fetch stops for train {train_id}: {str(e)}"
+            logger.error(error_msg)
+
+            # If unauthorized, try to refresh token once
+            if hasattr(e, "response") and e.response and e.response.status_code == 401:
+                if not self._direct_token_provided:
+                    logger.info("Token may be expired, attempting to refresh")
+                    try:
+                        self.token = self._get_token()
+                        # Retry once with new token
+                        response = requests.post(url, files=files, timeout=self.timeout)
+                        response.raise_for_status()
+                        return response.json()
+                    except Exception:
+                        pass
+
+            raise APIError(error_msg)
+
 
 class AmtrakCollector(BaseCollector):
     """Collector for Amtrak real-time train tracking API."""
@@ -551,7 +608,7 @@ class AmtrakCollector(BaseCollector):
             response: API response
             endpoint_name: Name of the API endpoint for the filename
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = get_eastern_now().strftime("%Y%m%d_%H%M%S")
         filename = self.debug_dir / f"{endpoint_name}_{timestamp}.json"
 
         try:
@@ -571,7 +628,7 @@ class AmtrakCollector(BaseCollector):
         Raises:
             APIError: If the API request fails after all retry attempts
         """
-        collection_time = datetime.now()
+        collection_time = get_eastern_now()
         attempts = 0
         last_error = None
 

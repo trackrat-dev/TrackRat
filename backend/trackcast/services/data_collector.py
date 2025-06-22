@@ -17,7 +17,7 @@ from trackcast.data.collectors import AmtrakCollector, NJTransitCollector
 from trackcast.db.models import Train
 from trackcast.db.repository import TrainRepository, TrainStopRepository
 from trackcast.exceptions import APIError
-from trackcast.utils import clean_destination
+from trackcast.utils import clean_destination, get_eastern_now
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ class DataCollectorService:
         """
         start_time = time.time()
         stats = {
-            "collection_timestamp": datetime.now().isoformat(),
+            "collection_timestamp": get_eastern_now().isoformat(),
             "stations_processed": 0,
             "stations_failed": 0,
             "trains_total": 0,
@@ -170,6 +170,9 @@ class DataCollectorService:
             # Add station details to stats
             stats["station_details"][station_code] = station_stats
 
+        # Journey validation is handled by CLI after data collection
+        stats["journeys_validated"] = 0
+
         # Final statistics
         stats["duration_ms"] = int((time.time() - start_time) * 1000)
 
@@ -202,7 +205,7 @@ class DataCollectorService:
             trains_new = 0
             trains_updated = 0
             trains_departed = 0
-            current_time = datetime.now()
+            current_time = get_eastern_now()
 
             # Get a set of train IDs in this batch for later comparison
             current_train_ids = {
@@ -338,7 +341,7 @@ class DataCollectorService:
         try:
             # Look for trains with departure times before current time and status of BOARDING
             # that are also not in the current API response
-            current_time = datetime.now()
+            current_time = get_eastern_now()
 
             logger.info(
                 f"Running departed train check at {current_time}, current API has {len(current_train_ids)} train records"
@@ -415,7 +418,7 @@ class DataCollectorService:
             trains_new = 0
             trains_updated = 0
             trains_departed = 0
-            current_time = datetime.now()
+            current_time = get_eastern_now()
 
             # Get a set of train IDs in this batch for later comparison
             current_train_ids = {
