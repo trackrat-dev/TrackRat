@@ -124,9 +124,9 @@ class TrackPredictionPipeline:
             Dict with model file paths and metadata, or None if no model found
         """
         if station_code:
-            logger.info(f"Looking for latest trained model for station {station_code}")
+            logger.debug(f"Looking for latest trained model for station {station_code}")
         else:
-            logger.info("Looking for latest trained model")
+            logger.debug("Looking for latest trained model")
 
         # Look in both MODEL_SAVE_PATH and main models directory
         search_dirs = [Path(MODEL_SAVE_PATH), Path("models"), Path("models/saved")]
@@ -205,7 +205,7 @@ class TrackPredictionPipeline:
             "station_code": station_code,
         }
 
-        logger.info(f"Found latest model: {latest_model}")
+        logger.debug(f"Found latest model: {latest_model}")
         return model_info
 
     def load(self, model_path: str, metadata_path: str = None, scaler_path: str = None) -> None:
@@ -217,11 +217,11 @@ class TrackPredictionPipeline:
             metadata_path: Path to the metadata file
             scaler_path: Path to the scaler file
         """
-        logger.info(f"Loading PyTorch model from {model_path}")
+        logger.debug(f"Loading PyTorch model from {model_path}")
 
         # Load metadata first to get model architecture
         if metadata_path and os.path.exists(metadata_path):
-            logger.info(f"Loading metadata from {metadata_path}")
+            logger.debug(f"Loading metadata from {metadata_path}")
             with open(metadata_path, "r") as f:
                 self.metadata = json.load(f)
                 self.model_version = self.metadata.get("model_version", "1.0.0")
@@ -248,13 +248,13 @@ class TrackPredictionPipeline:
             state_dict = torch.load(model_path, map_location="cpu")
             self.model.load_state_dict(state_dict)
             self.model.eval()  # Set to evaluation mode
-            logger.info("PyTorch model loaded successfully")
+            logger.debug("PyTorch model loaded successfully")
 
             # Load temperature parameter if available in metadata
             if self.metadata and "temperature" in self.metadata:
                 temperature_value = self.metadata["temperature"]
                 self.model.temperature.data = torch.tensor([temperature_value])
-                logger.info(f"Loaded temperature parameter: {temperature_value}")
+                logger.debug(f"Loaded temperature parameter: {temperature_value}")
 
         except Exception as e:
             logger.error(f"Error loading PyTorch model: {e}")
@@ -262,7 +262,7 @@ class TrackPredictionPipeline:
 
         # Load scaler if provided
         if scaler_path and os.path.exists(scaler_path):
-            logger.info(f"Loading scaler from {scaler_path}")
+            logger.debug(f"Loading scaler from {scaler_path}")
             with open(scaler_path, "rb") as f:
                 self.scaler = pickle.load(f)
         else:
@@ -329,7 +329,6 @@ class TrackPredictionPipeline:
 
         # Handle batch prediction
         if isinstance(features, list):
-            logger.info(f"Making batch predictions for {len(features)} samples")
             return [self.predict(f) for f in features]
 
         # Prepare features

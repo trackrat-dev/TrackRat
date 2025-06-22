@@ -1672,7 +1672,6 @@ class PredictionDataRepository(BaseRepository):
             self.session.commit()
             duration = time.time() - start_time
             DB_QUERY_DURATION_SECONDS.labels(query_type="create_prediction").observe(duration)
-            logger.info(f"Created prediction data with ID {prediction.id}")
             return prediction
         except SQLAlchemyError as e:
             self.session.rollback()

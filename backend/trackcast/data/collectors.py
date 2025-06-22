@@ -406,8 +406,6 @@ class NJTransitCollector(BaseCollector):
             timestamp = raw_data["timestamp"]
             items = raw_data["data"]["ITEMS"]
 
-            logger.info(f"Processing {len(items)} train records")
-
             for item in items:
                 # Parse departure time
                 departure_time_str = item.get("SCHED_DEP_DATE", "")
@@ -687,10 +685,6 @@ class AmtrakCollector(BaseCollector):
             timestamp = raw_data["timestamp"]
             trains_data = raw_data["data"]
 
-            # Debug: Log data structure
-            logger.info(f"Raw data keys: {list(raw_data.keys())}")
-            logger.info(f"Data type: {type(trains_data)}")
-
             # Amtrak API returns {trainNumber: [trainData]} structure, not [trainData]
             all_trains = []
             if isinstance(trains_data, dict):
@@ -706,16 +700,6 @@ class AmtrakCollector(BaseCollector):
             else:
                 logger.error(f"Expected dict structure but got {type(trains_data)}")
                 return []
-
-            logger.info(f"Processing {len(all_trains)} Amtrak train records")
-
-            # Debug: Log the first train structure
-            if all_trains and len(all_trains) > 0:
-                sample_train = all_trains[0]
-                logger.info(
-                    f"Sample train structure: trainNum={sample_train.get('trainNum')}, "
-                    f"stations_count={len(sample_train.get('stations', []))}"
-                )
 
             for train in all_trains:
                 # Skip if train is not a dictionary
