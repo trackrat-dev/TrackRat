@@ -58,28 +58,27 @@ class TestNJTransitCollector:
         # Create the collector with test config
         with patch.object(NJTransitCollector, "_get_token", return_value="test-token"):
             with patch.object(NJTransitCollector, "_archive_response"):
-                with patch.object(NJTransitCollector, "_save_to_csv"):
-                    # Using the mocked settings now
-                    collector = NJTransitCollector(
-                        base_url_or_config=None,
-                        station_code="NY",
-                        station_name="New York Penn Station",
-                        data_dir="/tmp"
-                    )
-                    collector.token = "test-token"  # Skip token loading
-                    
-                    # Run the collection
-                    departures, stats = collector.run()
-                    
-                    # Verify the response
-                    assert len(departures) == 2
-                    assert departures[0]["train_id"] == "3829"
-                    assert departures[1]["train_id"] == "6317"
-                    
-                    # Verify stats contains expected keys
-                    assert isinstance(stats, dict)
-                    assert "record_count" in stats
-                    assert "processing_time_ms" in stats
+                # Using the mocked settings now
+                collector = NJTransitCollector(
+                    base_url_or_config=None,
+                    station_code="NY",
+                    station_name="New York Penn Station",
+                    data_dir="/tmp"
+                )
+                collector.token = "test-token"  # Skip token loading
+                
+                # Run the collection
+                departures, stats = collector.run()
+                
+                # Verify the response
+                assert len(departures) == 2
+                assert departures[0]["train_id"] == "3829"
+                assert departures[1]["train_id"] == "6317"
+                
+                # Verify stats contains expected keys
+                assert isinstance(stats, dict)
+                assert "record_count" in stats
+                assert "processing_time_ms" in stats
 
     def test_direct_token_parameter(self):
         """Test using direct token parameter bypasses username/password authentication."""

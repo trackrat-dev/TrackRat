@@ -3,7 +3,8 @@ Data collection modules for TrackCast.
 """
 
 import abc
-import csv
+
+# csv import removed - not needed for iOS app
 import json
 import logging
 import os
@@ -490,8 +491,7 @@ class NJTransitCollector(BaseCollector):
                     }
                 )
 
-            # Save processed data to CSV for easy inspection
-            self._save_to_csv(processed_data, timestamp)
+            # CSV export removed - not needed for iOS app
 
             logger.info(f"Processed {len(processed_data)} train records successfully")
             return processed_data
@@ -501,54 +501,7 @@ class NJTransitCollector(BaseCollector):
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-    def _save_to_csv(self, data: List[Dict[str, Any]], timestamp: str) -> None:
-        """
-        Save processed data to CSV file.
-
-        Args:
-            data: List of processed train records
-            timestamp: Collection timestamp
-        """
-        # Format timestamp for filename
-        file_timestamp = timestamp.replace(":", "-").replace(".", "-")
-        filename = self.processed_dir / f"trains_{file_timestamp}.csv"
-
-        fieldnames = [
-            "Timestamp",
-            "Train_ID",
-            "Origin_Station_Code",
-            "Origin_Station_Name",
-            "Destination",
-            "Track",
-            "Departure_Time",
-            "Status",
-            "Line",
-            "Line_Code",
-            "Last_Modified",
-        ]
-
-        with open(filename, "w", newline="") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-
-            for item in data:
-                writer.writerow(
-                    {
-                        "Timestamp": item["timestamp"],
-                        "Train_ID": item["train_id"],
-                        "Origin_Station_Code": item["origin_station_code"],
-                        "Origin_Station_Name": item["origin_station_name"],
-                        "Destination": item["destination"],
-                        "Track": item["track"],
-                        "Departure_Time": item["departure_time"],
-                        "Status": item["status"],
-                        "Line": item["line"],
-                        "Line_Code": item["line_code"],
-                        "Last_Modified": item["last_modified"],
-                    }
-                )
-
-            logger.debug(f"Saved processed data to {filename}")
+    # CSV saving method removed - not needed for iOS app
 
 
 class AmtrakCollector(BaseCollector):
@@ -820,8 +773,7 @@ class AmtrakCollector(BaseCollector):
                     }
                 )
 
-            # Save processed data to CSV for easy inspection
-            self._save_to_csv(processed_data, timestamp)
+            # CSV export removed - not needed for iOS app
 
             logger.info(f"Processed {len(processed_data)} Amtrak train records successfully")
             return processed_data
@@ -911,53 +863,4 @@ class AmtrakCollector(BaseCollector):
 
         return mapped_code, mapped_name
 
-    def _save_to_csv(self, data: List[Dict[str, Any]], timestamp: str) -> None:
-        """
-        Save processed Amtrak data to CSV file.
-
-        Args:
-            data: List of processed train records
-            timestamp: Collection timestamp
-        """
-        # Format timestamp for filename
-        file_timestamp = timestamp.replace(":", "-").replace(".", "-")
-        filename = self.processed_dir / f"amtrak_trains_{file_timestamp}.csv"
-
-        fieldnames = [
-            "Timestamp",
-            "Train_ID",
-            "Origin_Station_Code",
-            "Origin_Station_Name",
-            "Destination",
-            "Track",
-            "Departure_Time",
-            "Status",
-            "Line",
-            "Line_Code",
-            "Data_Source",
-            "Delay_Minutes",
-        ]
-
-        with open(filename, "w", newline="") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-
-            for item in data:
-                writer.writerow(
-                    {
-                        "Timestamp": item["timestamp"],
-                        "Train_ID": item["train_id"],
-                        "Origin_Station_Code": item["origin_station_code"],
-                        "Origin_Station_Name": item["origin_station_name"],
-                        "Destination": item["destination"],
-                        "Track": item["track"],
-                        "Departure_Time": item["departure_time"],
-                        "Status": item["status"],
-                        "Line": item["line"],
-                        "Line_Code": item["line_code"],
-                        "Data_Source": item["data_source"],
-                        "Delay_Minutes": item["delay_minutes"],
-                    }
-                )
-
-        logger.debug(f"Saved processed Amtrak data to {filename}")
+    # CSV saving method removed - not needed for iOS app

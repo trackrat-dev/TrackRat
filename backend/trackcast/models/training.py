@@ -530,7 +530,7 @@ def evaluate_model_performance(db_session: Session, days: int = 7) -> Dict[str, 
 
         # Visualization removed - evaluation metrics only
         logger.info("Evaluation visualization skipped (visualization module removed)")
-        
+
         # For backward compatibility, generate text-based evaluation only
         eval_file = artifacts_dir / f"eval_report_{days}days.txt"
 
