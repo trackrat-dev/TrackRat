@@ -102,14 +102,19 @@ def create_train_stops_table(session: Session) -> Dict[str, Any]:
                 id SERIAL PRIMARY KEY,
                 train_id VARCHAR(20) NOT NULL,
                 train_departure_time TIMESTAMP NOT NULL,
-                station_code VARCHAR(10) NOT NULL,
+                station_code VARCHAR(10),
                 station_name VARCHAR(100) NOT NULL,
-                scheduled_time TIMESTAMP,
-                departure_time TIMESTAMP,
+                scheduled_arrival TIMESTAMP,
+                scheduled_departure TIMESTAMP,
+                actual_arrival TIMESTAMP,
+                actual_departure TIMESTAMP,
                 pickup_only BOOLEAN NOT NULL DEFAULT FALSE,
                 dropoff_only BOOLEAN NOT NULL DEFAULT FALSE,
                 departed BOOLEAN NOT NULL DEFAULT FALSE,
                 stop_status VARCHAR(20),
+                data_source VARCHAR(20) NOT NULL DEFAULT 'njtransit',
+                last_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
@@ -124,7 +129,10 @@ def create_train_stops_table(session: Session) -> Dict[str, Any]:
             CREATE INDEX ix_train_stops_train_id ON train_stops (train_id);
             CREATE INDEX ix_train_stops_train_departure_time ON train_stops (train_departure_time);
             CREATE INDEX ix_train_stops_station_code ON train_stops (station_code);
-            CREATE UNIQUE INDEX uix_train_stop_unique ON train_stops (train_id, train_departure_time, station_code);
+            CREATE INDEX ix_train_stops_data_source ON train_stops (data_source);
+            CREATE INDEX ix_train_stops_last_seen_at ON train_stops (last_seen_at);
+            CREATE INDEX ix_train_stops_is_active ON train_stops (is_active);
+            CREATE UNIQUE INDEX uix_train_stop_unique_without_time ON train_stops (train_id, train_departure_time, station_name, data_source);
         """
         )
         session.execute(create_indexes_query)
@@ -517,19 +525,18 @@ def add_train_stops_lifecycle_fields(session: Session) -> Dict[str, Any]:
         Dictionary with migration results
     """
     try:
-        # Check if columns already exist
+        # Check if essential lifecycle columns already exist
         check_query = text(
             """
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'train_stops' 
-            AND column_name IN ('last_seen_at', 'is_active', 'api_removed_at', 
-                               'data_version', 'original_scheduled_time', 'audit_trail')
+            AND column_name IN ('last_seen_at', 'is_active')
         """
         )
         result = session.execute(check_query).fetchall()
 
-        if len(result) == 6:
+        if len(result) == 2:
             logger.info("Lifecycle tracking columns already exist in train_stops table")
             return {"status": "skipped", "message": "Columns already exist"}
 
@@ -599,23 +606,53 @@ def add_train_stops_lifecycle_fields(session: Session) -> Dict[str, Any]:
         )
         session.execute(create_indexes_query)
 
-        # Update existing records
+        # Update existing records - check if scheduled_time column exists first
         logger.info("Updating existing train_stops records with initial values")
-        update_existing_query = text(
+
+        # Check if scheduled_time column exists
+        check_scheduled_time_query = text(
             """
-            UPDATE train_stops 
-            SET last_seen_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP),
-                original_scheduled_time = scheduled_time,
-                audit_trail = jsonb_build_array(
-                    jsonb_build_object(
-                        'timestamp', COALESCE(created_at, CURRENT_TIMESTAMP)::text,
-                        'action', 'migrated',
-                        'note', 'Existing stop migrated to new schema'
-                    )
-                )
-            WHERE audit_trail = '[]'::jsonb
-        """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' AND column_name = 'scheduled_time'
+            """
         )
+        scheduled_time_exists = session.execute(check_scheduled_time_query).fetchone()
+
+        if scheduled_time_exists:
+            # Update with scheduled_time if it exists
+            update_existing_query = text(
+                """
+                UPDATE train_stops 
+                SET last_seen_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP),
+                    original_scheduled_time = scheduled_time,
+                    audit_trail = jsonb_build_array(
+                        jsonb_build_object(
+                            'timestamp', COALESCE(created_at, CURRENT_TIMESTAMP)::text,
+                            'action', 'migrated',
+                            'note', 'Existing stop migrated to new schema'
+                        )
+                    )
+                WHERE audit_trail = '[]'::jsonb
+                """
+            )
+        else:
+            # Update without scheduled_time if it doesn't exist
+            update_existing_query = text(
+                """
+                UPDATE train_stops 
+                SET last_seen_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP),
+                    audit_trail = jsonb_build_array(
+                        jsonb_build_object(
+                            'timestamp', COALESCE(created_at, CURRENT_TIMESTAMP)::text,
+                            'action', 'migrated',
+                            'note', 'Existing stop migrated to new schema'
+                        )
+                    )
+                WHERE audit_trail = '[]'::jsonb
+                """
+            )
+
         session.execute(update_existing_query)
 
         # Commit the changes
@@ -634,6 +671,7 @@ def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
     """
     Update the unique constraint on train_stops to include scheduled_time,
     allowing multiple stops at the same station if they occur at different times.
+    Falls back to a simpler constraint if scheduled_time column doesn't exist.
 
     Args:
         session: SQLAlchemy database session
@@ -648,7 +686,7 @@ def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
             SELECT indexname 
             FROM pg_indexes 
             WHERE tablename = 'train_stops' 
-            AND indexname = 'uix_train_stop_unique_with_time'
+            AND indexname IN ('uix_train_stop_unique_with_time', 'uix_train_stop_unique_without_time')
         """
         )
         result = session.execute(check_constraint_query).fetchone()
@@ -657,7 +695,7 @@ def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
             logger.info("Updated unique constraint already exists")
             return {"status": "skipped", "message": "Updated constraint already exists"}
 
-        logger.info("Updating train_stops unique constraint to include scheduled_time")
+        logger.info("Updating train_stops unique constraint")
 
         # Drop the old unique constraint
         logger.info("Dropping old unique constraint")
@@ -668,14 +706,35 @@ def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
         )
         session.execute(drop_constraint_query)
 
-        # Create new unique constraint including scheduled_time
-        logger.info("Creating new unique constraint with scheduled_time")
-        create_constraint_query = text(
+        # Check if scheduled_time column exists
+        check_scheduled_time_query = text(
             """
-            CREATE UNIQUE INDEX uix_train_stop_unique_with_time 
-            ON train_stops (train_id, train_departure_time, station_name, data_source, scheduled_time)
-        """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' AND column_name = 'scheduled_time'
+            """
         )
+        scheduled_time_exists = session.execute(check_scheduled_time_query).fetchone()
+
+        if scheduled_time_exists:
+            # Create new unique constraint including scheduled_time
+            logger.info("Creating new unique constraint with scheduled_time")
+            create_constraint_query = text(
+                """
+                CREATE UNIQUE INDEX uix_train_stop_unique_with_time 
+                ON train_stops (train_id, train_departure_time, station_name, data_source, scheduled_time)
+                """
+            )
+        else:
+            # Create simpler constraint without scheduled_time
+            logger.info("Creating new unique constraint without scheduled_time")
+            create_constraint_query = text(
+                """
+                CREATE UNIQUE INDEX uix_train_stop_unique_without_time 
+                ON train_stops (train_id, train_departure_time, station_name, data_source)
+                """
+            )
+
         session.execute(create_constraint_query)
 
         # Commit the changes

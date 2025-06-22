@@ -16,7 +16,11 @@ class TestPerformanceMigrations:
     def mock_session(self):
         """Create a mock database session."""
         session = Mock()
-        session.execute = Mock()
+        
+        # Mock the execute method to return a result object with fetchone method
+        mock_result = Mock()
+        mock_result.fetchone = Mock(return_value=None)  # Simulate no columns found
+        session.execute = Mock(return_value=mock_result)
         session.commit = Mock()
         return session
     
@@ -25,18 +29,19 @@ class TestPerformanceMigrations:
         with patch('trackcast.db.add_performance_indexes.logger') as mock_logger:
             upgrade(mock_session)
             
-            # Should execute 6 CREATE INDEX statements (no ANALYZE statements)
-            assert mock_session.execute.call_count == 6
+            # Should execute 8 total statements: 2 column checks + 6 CREATE INDEX statements
+            assert mock_session.execute.call_count == 8
             
             # Verify specific indexes are created
             execute_calls = [call.args[0] for call in mock_session.execute.call_args_list]
             
             # Check that all expected indexes are included
+            # Since mock returns None for column checks, it will use alternative indexes  
             index_names = [
                 'idx_train_stops_train_lookup',
-                'idx_train_stops_station_scheduled', 
+                'idx_train_stops_station_code',  # Alternative when no scheduled columns
                 'idx_train_stops_departed',
-                'idx_train_stops_station_departed_scheduled',
+                'idx_train_stops_station_departed',  # Alternative when no scheduled columns
                 'idx_train_stops_data_source',
                 'idx_trains_id_train_id_departure'
             ]
@@ -60,8 +65,16 @@ class TestPerformanceMigrations:
     
     def test_upgrade_handles_index_creation_failure(self, mock_session):
         """Test that upgrade properly handles index creation failures."""
-        # Mock execute to fail on second call
-        mock_session.execute.side_effect = [None, SQLAlchemyError("Index creation failed"), None]
+        # Mock results for column checks (first two calls)
+        mock_result = Mock()
+        mock_result.fetchone = Mock(return_value=None)
+        
+        # Mock execute to fail on third call (first index creation)
+        mock_session.execute.side_effect = [
+            mock_result,  # First column check 
+            mock_result,  # Second column check
+            SQLAlchemyError("Index creation failed")  # First index creation fails
+        ]
         
         with patch('trackcast.db.add_performance_indexes.logger') as mock_logger:
             with pytest.raises(SQLAlchemyError):
@@ -171,12 +184,12 @@ class TestPerformanceMigrations:
         
         execute_calls = [str(call.args[0]) for call in mock_session.execute.call_args_list]
         
-        # Test specific index definitions
+        # Test specific index definitions (based on no scheduled columns found)
         index_tests = [
-            ('idx_train_stops_train_lookup', 'train_id, train_departure_time, scheduled_time'),
-            ('idx_train_stops_station_scheduled', 'station_code, scheduled_time'),
+            ('idx_train_stops_train_lookup', 'train_id, train_departure_time, station_code'),
+            ('idx_train_stops_station_code', 'station_code'),
             ('idx_train_stops_departed', 'departed'),
-            ('idx_train_stops_station_departed_scheduled', 'station_code, departed, scheduled_time'),
+            ('idx_train_stops_station_departed', 'station_code, departed'),
             ('idx_train_stops_data_source', 'data_source'),
             ('idx_trains_id_train_id_departure', 'id, train_id, departure_time'),
         ]
@@ -202,10 +215,10 @@ class TestPerformanceMigrations:
         
         execute_calls = [str(call.args[0]) for call in mock_session.execute.call_args_list]
         
-        # Find statements that should have WHERE clauses
+        # Find statements that should have WHERE clauses (based on no scheduled columns)
         partial_indexes = [
-            'idx_train_stops_station_scheduled',
-            'idx_train_stops_station_departed_scheduled'
+            'idx_train_stops_station_code',
+            'idx_train_stops_station_departed'
         ]
         
         for index_name in partial_indexes:
