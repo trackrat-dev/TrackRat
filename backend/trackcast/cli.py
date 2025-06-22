@@ -21,7 +21,8 @@ from trackcast.services.data_collector import DataCollectorService
 from trackcast.services.data_import import DataImportService
 from trackcast.services.feature_engineering import FeatureEngineeringService
 from trackcast.services.prediction import PredictionService
-from trackcast.services.scheduler import SchedulerService
+
+# SchedulerService removed - using Cloud Run Jobs for scheduling
 
 # Configure logging
 logging.basicConfig(
@@ -219,28 +220,7 @@ def start_api(host: str, port: int) -> None:
         sys.exit(1)
 
 
-@main.command()
-def start_scheduler() -> None:
-    """Start the scheduler for automatic periodic execution (DEPRECATED: Use Cloud Run Jobs instead)"""
-    try:
-        logger.warning(
-            "DEPRECATED: The internal scheduler is deprecated. Use Cloud Run Jobs for scheduled operations."
-        )
-        logger.warning("This command is kept for backward compatibility only.")
-        logger.info("Starting internal scheduler")
-        scheduler = SchedulerService()
-        scheduler.start()
-
-        # Keep the main thread alive while scheduler runs
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("Keyboard interrupt received, shutting down scheduler")
-            scheduler.stop()
-    except Exception as e:
-        logger.error(f"Error in scheduler: {str(e)}")
-        sys.exit(1)
+# start_scheduler command removed - use Cloud Run Jobs for scheduling
 
 
 @main.command()

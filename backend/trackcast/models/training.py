@@ -7,22 +7,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from sqlalchemy.orm import Session
 
 from trackcast.config import settings
 from trackcast.db.models import ModelData, Train
 from trackcast.models.pipeline import TrackPredictionPipeline
-from trackcast.visualization.calibration import plot_all_calibration_curves, plot_calibration_curve
-from trackcast.visualization.confusion import plot_all_confusion_matrices, plot_confusion_matrix
-from trackcast.visualization.feature_importance import (
-    plot_feature_importance,
-    plot_track_specific_feature_importance,
-)
-from trackcast.visualization.training import plot_learning_curves
 
 logger = logging.getLogger(__name__)
 
@@ -398,10 +389,10 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
 
             logger.info(f"Test accuracy: {accuracy:.4f}, F1 score: {f1:.4f}")
 
-            # Make predictions with probabilities for calibration and other plots
+            # Make predictions with probabilities for evaluation
             test_predictions_proba = model.predict(test_data)
 
-            # Get timestamps for time-based visualizations
+            # Get timestamps for evaluation metrics
             test_timestamps = []
             test_lines = []
             test_destinations = []
@@ -413,73 +404,8 @@ def train_new_model(db_session: Session) -> Tuple[bool, Dict[str, Any]]:
             # Generate model timestamp for consistent file naming
             model_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
-            # 1. Generate learning curve plots
-            logger.info("Generating learning curve plots")
-            plot_learning_curves(
-                training_stats.get("train_losses", []),
-                training_stats.get("val_losses", []),
-                training_stats.get("val_accuracies", []),
-                artifacts_dir,
-                settings.model.version,
-                model_timestamp,
-            )
-
-            # 2. Generate calibration curves (overall, per-line, per-destination)
-            logger.info("Generating calibration curves")
-            plot_all_calibration_curves(
-                test_tracks,
-                test_predictions_proba,
-                test_lines,
-                test_destinations,
-                artifacts_dir,
-                settings.model.version,
-                model_timestamp,
-            )
-
-            # 3. Generate confusion matrices (overall, per-line, per-destination)
-            logger.info("Generating confusion matrices")
-            plot_all_confusion_matrices(
-                test_tracks,
-                predicted_tracks,
-                test_lines,
-                test_destinations,
-                artifacts_dir,
-                settings.model.version,
-                model_timestamp,
-            )
-
-            # 6. Try to generate feature importance visualization if model supports it
-            try:
-                logger.info("Attempting to generate feature importance visualizations")
-
-                # Extract feature names from model
-                if hasattr(model, "feature_columns") and model.feature_columns:
-                    # Get importance scores - this is model-specific
-                    # For permutation importance, we'd need the model and test data
-                    # For now, we'll extract feature importance from model if available
-                    if hasattr(model.model, "feature_importances_"):
-                        # For tree-based models that have feature importances
-                        importances = model.model.feature_importances_
-                        plot_feature_importance(
-                            model.feature_columns,
-                            importances,
-                            artifacts_dir,
-                            settings.model.version,
-                            model_timestamp,
-                        )
-
-                    # If SHAP is available, try to use it
-                    try:
-                        import shap
-
-                        logger.info("Generating SHAP-based feature importance")
-                        # This would depend on model type and require more code
-                        # We'll leave as a placeholder for future implementation
-                    except (ImportError, Exception) as e:
-                        logger.warning(f"SHAP visualization not available: {str(e)}")
-
-            except Exception as e:
-                logger.warning(f"Failed to generate feature importance: {str(e)}")
+            # Visualization removed - keeping core training functionality only
+            logger.info("Training artifacts generation skipped (visualization module removed)")
 
             # Still generate the classification report for backward compatibility
             report = classification_report(test_tracks, predicted_tracks)
@@ -602,37 +528,11 @@ def evaluate_model_performance(db_session: Session, days: int = 7) -> Dict[str, 
         eval_dir = artifacts_dir / f"eval_{days}days_{eval_timestamp}"
         eval_dir.mkdir(exist_ok=True, parents=True)
 
-        # 1. Generate confusion matrices (overall, per-line, per-destination)
-        logger.info("Generating evaluation confusion matrices")
-        confusion_files = plot_all_confusion_matrices(
-            tracks,
-            predicted_tracks,
-            lines,
-            destinations,
-            eval_dir,
-            settings.model.version,
-            eval_timestamp,
-        )
+        # Visualization removed - evaluation metrics only
+        logger.info("Evaluation visualization skipped (visualization module removed)")
 
-        # 2. Generate calibration curves (overall, per-line, per-destination)
-        logger.info("Generating evaluation calibration curves")
-        calibration_files = plot_all_calibration_curves(
-            tracks,
-            predictions,
-            lines,
-            destinations,
-            eval_dir,
-            settings.model.version,
-            eval_timestamp,
-        )
-
-        # For backward compatibility, still generate the basic confusion matrix and report
-        eval_file = artifacts_dir / f"eval_cm_{days}days.png"
-
-        # Generate a standard confusion matrix for the main output directory
-        plot_confusion_matrix(
-            tracks, predicted_tracks, artifacts_dir, settings.model.version, eval_timestamp
-        )
+        # For backward compatibility, generate text-based evaluation only
+        eval_file = artifacts_dir / f"eval_report_{days}days.txt"
 
         # Generate classification report
         report = classification_report(tracks, predicted_tracks)
@@ -678,7 +578,7 @@ def evaluate_model_performance(db_session: Session, days: int = 7) -> Dict[str, 
             "total_samples": len(tracks),
             "accuracy": float(accuracy),
             "f1_score": float(f1),
-            "confusion_matrix_file": str(eval_file),
+            "evaluation_report_file": str(eval_file),
             "line_metrics": line_metrics,
             "destination_metrics": dest_metrics,
             "model_version": getattr(settings.model, "version", "1.0.0"),

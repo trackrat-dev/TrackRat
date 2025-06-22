@@ -12,8 +12,6 @@ alembic>=1.11.0
 numpy>=1.24.0
 pandas>=2.0.0
 scikit-learn>=1.3.0
-matplotlib
-seaborn
 
 # Machine Learning
 torch>=2.0.0
@@ -30,9 +28,7 @@ pyyaml>=6.0.0
 python-dotenv>=1.0.0
 pytz>=2023.3
 
-# Task scheduling
-schedule>=1.2.0
-apscheduler>=3.10.0
+# Task scheduling removed - using Cloud Run Jobs for scheduling
 
 # Testing
 pytest>=7.4.0
