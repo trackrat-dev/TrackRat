@@ -164,7 +164,7 @@ module "scheduled_operations" {
   jobs = {
     # Consolidated pipeline job - runs all steps sequentially
     pipeline = {
-      command      = ["trackcast", "run-pipeline"]
+      command      = ["trackcast", "run-pipeline", "--regenerate"]
       cpu_limit    = "1"
       memory_limit = "1Gi"
       max_retries  = 1
