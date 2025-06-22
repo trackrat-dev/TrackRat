@@ -10,7 +10,6 @@ from trackcast.api.models import (
     ConsolidatedTrainListResponse,
     ConsolidatedTrainResponse,
     Metadata,
-    PredictionResponse,
     TrainListResponse,
     TrainResponse,
 )
@@ -483,74 +482,7 @@ async def get_train(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/{train_id}/prediction", response_model=PredictionResponse)
-async def get_train_prediction(
-    train_id: str,
-    from_station_code: Optional[str] = Query(
-        None, description="Context station for journey-specific data (predictions, times)"
-    ),
-    train_repo: TrainRepository = Depends(get_train_repository),
-):
-    """
-    Get prediction data for a specific train by ID.
-
-    If train_id is numeric, it's treated as a database ID (primary key).
-    If train_id is not numeric, it's treated as an external train identifier.
-
-    When from_station_code is provided, generates context-aware prediction using the boarding station model.
-    """
-    try:
-        # Validate from_station_code if provided
-        if from_station_code:
-            from trackcast.services.station_mapping import StationMapper
-
-            station_mapper = StationMapper()
-            if not station_mapper.is_valid_code(from_station_code):
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid from_station_code: '{from_station_code}'"
-                )
-            from_station_code = station_mapper.translate_frontend_to_db_code(from_station_code)
-
-        # Check if train_id is a numeric database ID
-        if train_id.isdigit():
-            db_id = int(train_id)
-            train = train_repo.get_train_by_db_id(db_id)
-            if not train:
-                raise HTTPException(
-                    status_code=404, detail=f"Train with database ID {db_id} not found"
-                )
-        else:
-            # Use original lookup by train_id
-            train = train_repo.get_train_by_id(train_id)
-            if not train:
-                raise HTTPException(status_code=404, detail=f"Train with ID {train_id} not found")
-
-        # Filter prediction by station context if from_station_code provided
-        if from_station_code:
-            # Apply the same filtering logic as other endpoints
-            filtered_train = _filter_prediction_by_station_context(train, from_station_code)
-            if filtered_train.prediction_data:
-                return filtered_train.prediction_data
-            else:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No relevant prediction data available for train ID {train.train_id} at station {from_station_code}",
-                )
-
-        # Return existing prediction without context filtering
-        if not train.prediction_data:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No prediction data available for train ID {train.train_id} (DB ID: {train.id})",
-            )
-
-        return train.prediction_data
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching prediction for train {train_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+# Prediction endpoint removed - iOS app gets predictions inline with train data
 
 
 def _train_stops_at_station(train, station_code: str) -> bool:

@@ -8,12 +8,11 @@ import time
 from typing import Callable
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import or_, text
 
-from trackcast.api.routers import stops, trains
+from trackcast.api.routers import trains
 from trackcast.db.connection import engine, get_db, get_pool_status_metrics
 from trackcast.telemetry import instrument_app, setup_telemetry
 
@@ -36,14 +35,7 @@ app = FastAPI(
 instrument_app(app, engine)
 Instrumentator().instrument(app).expose(app)
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS middleware removed - no web clients to serve
 
 
 # Add middleware for request logging
@@ -74,7 +66,6 @@ async def log_requests(request: Request, call_next: Callable):
 
 # Include routers
 app.include_router(trains.router, prefix="/api/trains", tags=["trains"])
-app.include_router(stops.router, prefix="/api/stops", tags=["stops"])
 
 
 # Root endpoint
