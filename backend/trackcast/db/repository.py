@@ -1104,7 +1104,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
-        start_time = time.time()
+        db_start_time = time.time()
         try:
             # Start a transaction
             self.session.begin_nested()
@@ -1163,7 +1163,7 @@ class TrainRepository(BaseRepository):
                 f"Cleared features for {stats['trains_cleared']} trains in range {start_time} to {end_time}, "
                 f"deleted {stats['features_deleted']} feature records"
             )
-            duration = time.time() - start_time
+            duration = time.time() - db_start_time
             DB_QUERY_DURATION_SECONDS.labels(query_type="clear_features_for_time_range").observe(
                 duration
             )
