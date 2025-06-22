@@ -1569,6 +1569,37 @@ class TrainRepository(BaseRepository):
             logger.error(f"Database error in get_track_usage_history: {str(e)}")
             raise
 
+    def update(self, train: Train) -> Train:
+        """
+        Update a train record.
+
+        Args:
+            train: Train object to update
+
+        Returns:
+            Updated Train object
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Mark the object as modified
+            train.updated_at = datetime.utcnow()
+
+            # Commit the changes
+            self.session.commit()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="update_train").observe(duration)
+            logger.debug(f"Updated train {train.train_id} (ID: {train.id})")
+            return train
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Database error in update train: {str(e)}")
+            raise
+
 
 class ModelDataRepository(BaseRepository):
     """Repository for model feature data operations."""
@@ -2040,6 +2071,49 @@ class TrainStopRepository(BaseRepository):
             logger.error(f"Database error in get_stops_by_station: {str(e)}")
             raise
 
+    def get_stop_by_train_and_station(
+        self,
+        train_id: str,
+        train_departure_time: datetime,
+        station_name: str,
+        data_source: str = "njtransit",
+    ) -> Optional[TrainStop]:
+        """
+        Get a specific train stop by train and station.
+
+        Args:
+            train_id: Train identifier
+            train_departure_time: Train departure time
+            station_name: Station name
+            data_source: Data source identifier
+
+        Returns:
+            TrainStop object or None if not found
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            result = (
+                self.session.query(TrainStop)
+                .filter(
+                    TrainStop.train_id == train_id,
+                    TrainStop.train_departure_time == train_departure_time,
+                    TrainStop.station_name == station_name,
+                    TrainStop.data_source == data_source,
+                )
+                .first()
+            )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_stop_by_train_and_station").observe(
+                duration
+            )
+            return result
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_stop_by_train_and_station: {str(e)}")
+            raise
+
     def get_all_stations(self) -> List[Dict[str, str]]:
         """
         Get all unique stations from the train_stops table.
@@ -2172,4 +2246,37 @@ class TrainStopRepository(BaseRepository):
 
         except SQLAlchemyError as e:
             logger.error(f"Database error in search_stations: {str(e)}")
+            raise
+
+    def update(self, train_stop: TrainStop) -> TrainStop:
+        """
+        Update a train stop record.
+
+        Args:
+            train_stop: TrainStop object to update
+
+        Returns:
+            Updated TrainStop object
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Mark the object as modified
+            train_stop.updated_at = datetime.utcnow()
+
+            # Commit the changes
+            self.session.commit()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="update_train_stop").observe(duration)
+            logger.debug(
+                f"Updated train stop {train_stop.id} for train {train_stop.train_id} at {train_stop.station_name}"
+            )
+            return train_stop
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Database error in update train_stop: {str(e)}")
             raise

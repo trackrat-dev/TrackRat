@@ -83,6 +83,7 @@ class NJTransitCollector(BaseCollector):
     # API endpoint constants
     TOKEN_ENDPOINT = "getToken"
     TRAIN_SCHEDULE_ENDPOINT = "getTrainSchedule"
+    TRAIN_STOP_LIST_ENDPOINT = "getTrainStopList"
 
     def __init__(
         self,
@@ -547,6 +548,62 @@ class NJTransitCollector(BaseCollector):
                 )
 
             logger.debug(f"Saved processed data to {filename}")
+
+    def get_train_stops(self, train_id: str) -> Dict[str, Any]:
+        """
+        Get detailed stop information for a specific train using getTrainStopList API.
+
+        Args:
+            train_id: NJ Transit train ID
+
+        Returns:
+            Dict containing train details and stop list
+
+        Raises:
+            APIError: If the API request fails
+        """
+        # Ensure we have a valid token
+        if not self.token:
+            logger.info("No token available, authenticating")
+            self.token = self._get_token()
+            if not self.token:
+                raise APIError("Failed to obtain authentication token")
+
+        url = f"{self.base_url}/{self.TRAIN_STOP_LIST_ENDPOINT}"
+        files = {"token": (None, self.token), "train": (None, str(train_id))}
+
+        try:
+            logger.debug(f"Fetching stop list for train {train_id}")
+            response = requests.post(url, files=files, timeout=self.timeout)
+            response.raise_for_status()
+
+            data = response.json()
+
+            # Archive raw response if debug mode is enabled
+            if self.debug_mode:
+                self._archive_response(data, f"{self.TRAIN_STOP_LIST_ENDPOINT}_{train_id}")
+
+            logger.info(f"Successfully fetched stop list for train {train_id}")
+            return data
+
+        except requests.RequestException as e:
+            error_msg = f"Failed to fetch stops for train {train_id}: {str(e)}"
+            logger.error(error_msg)
+
+            # If unauthorized, try to refresh token once
+            if hasattr(e, "response") and e.response and e.response.status_code == 401:
+                if not self._direct_token_provided:
+                    logger.info("Token may be expired, attempting to refresh")
+                    try:
+                        self.token = self._get_token()
+                        # Retry once with new token
+                        response = requests.post(url, files=files, timeout=self.timeout)
+                        response.raise_for_status()
+                        return response.json()
+                    except Exception:
+                        pass
+
+            raise APIError(error_msg)
 
 
 class AmtrakCollector(BaseCollector):

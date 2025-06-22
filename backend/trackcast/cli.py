@@ -62,8 +62,14 @@ def init_db() -> None:
 
 
 @main.command()
-def collect_data() -> None:
-    """Run a one-time data collection from NJ Transit API"""
+@click.option(
+    "--validate-journeys",
+    is_flag=True,
+    default=True,
+    help="Run post-journey validation (default: enabled)",
+)
+def collect_data(validate_journeys: bool) -> None:
+    """Run a one-time data collection from NJ Transit API with optional journey validation"""
     try:
         session = get_db_session()
         collector = DataCollectorService(session)
@@ -71,6 +77,25 @@ def collect_data() -> None:
         success, stats = collector.run_collection()
         if success:
             logger.info(f"Data collection completed: {stats}")
+
+            # Run post-journey validation if enabled
+            if validate_journeys:
+                try:
+                    from trackcast.db.repository import TrainRepository, TrainStopRepository
+                    from trackcast.services.journey_validator import JourneyValidator
+
+                    logger.info("Running post-journey validation")
+                    train_repo = TrainRepository(session)
+                    stop_repo = TrainStopRepository(session)
+                    validator = JourneyValidator(train_repo, stop_repo)
+
+                    validated_trains = validator.validate_completed_journeys(batch_size=10)
+                    logger.info(
+                        f"Journey validation completed: {len(validated_trains)} trains validated"
+                    )
+
+                except Exception as e:
+                    logger.warning(f"Journey validation failed (continuing anyway): {e}")
         else:
             logger.error(f"Data collection failed: {stats}")
             sys.exit(1)
@@ -475,7 +500,7 @@ def run_pipeline(
 
 
 def _execute_collect_data() -> bool:
-    """Execute data collection step"""
+    """Execute data collection step with journey validation"""
     try:
         session = get_db_session()
         try:
@@ -483,6 +508,25 @@ def _execute_collect_data() -> bool:
             success, stats = collector.run_collection()
             if success:
                 logger.info(f"Data collection completed: {stats}")
+
+                # Run post-journey validation
+                try:
+                    from trackcast.db.repository import TrainRepository, TrainStopRepository
+                    from trackcast.services.journey_validator import JourneyValidator
+
+                    logger.info("Running post-journey validation")
+                    train_repo = TrainRepository(session)
+                    stop_repo = TrainStopRepository(session)
+                    validator = JourneyValidator(train_repo, stop_repo)
+
+                    validated_trains = validator.validate_completed_journeys(batch_size=10)
+                    logger.info(
+                        f"Journey validation completed: {len(validated_trains)} trains validated"
+                    )
+
+                except Exception as e:
+                    logger.warning(f"Journey validation failed (continuing anyway): {e}")
+
                 return True
             else:
                 logger.error(f"Data collection failed: {stats}")

@@ -170,6 +170,19 @@ class DataCollectorService:
             # Add station details to stats
             stats["station_details"][station_code] = station_stats
 
+        # Run post-journey validation for trains that may have completed
+        try:
+            from trackcast.services.journey_validator import JourneyValidator
+
+            validator = JourneyValidator(self.train_repo, self.stop_repo)
+            validated_trains = validator.validate_completed_journeys(batch_size=10)
+            stats["journeys_validated"] = len(validated_trains)
+            logger.info(f"Journey validation: {len(validated_trains)} trains validated")
+
+        except Exception as e:
+            logger.warning(f"Journey validation failed (continuing anyway): {e}")
+            stats["journeys_validated"] = 0
+
         # Final statistics
         stats["duration_ms"] = int((time.time() - start_time) * 1000)
 

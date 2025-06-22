@@ -65,6 +65,19 @@ class Train(Base, TimestampMixin):
     # Data split for model training (train, validation, test)
     train_split = Column(String(10), nullable=True, index=True)
 
+    # Journey tracking fields
+    journey_completion_status = Column(String(20), nullable=True, index=True)
+    # Values: 'in_progress', 'completed', 'terminated_early', 'lost_tracking'
+
+    journey_validated_at = Column(DateTime, nullable=True)
+    # When we last checked this train's full journey via getTrainStopList
+
+    next_validation_check = Column(DateTime, nullable=True, index=True)
+    # When to check again if journey not complete
+
+    stops_last_updated = Column(DateTime, nullable=True, index=True)
+    # When we last fetched stop data from getTrainStopList API
+
     # Relationships (one-to-one with the feature and prediction data)
     model_data_id = Column(Integer, ForeignKey("model_data.id", ondelete="SET NULL"), nullable=True)
     prediction_data_id = Column(
@@ -143,6 +156,7 @@ class TrainStop(Base, TimestampMixin):
     # Timing information
     scheduled_time = Column(DateTime, nullable=True)
     departure_time = Column(DateTime, nullable=True)
+    actual_arrival_time = Column(DateTime, nullable=True)  # When train actually arrived at platform
 
     # Stop characteristics
     pickup_only = Column(Boolean, default=False, nullable=False)

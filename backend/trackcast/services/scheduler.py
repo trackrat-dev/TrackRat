@@ -86,6 +86,8 @@ class SchedulerService:
         schedule.every(15).minutes.do(self._health_check)
         logger.info("Scheduled health check every 15 minutes")
 
+        # Note: Journey validation is now integrated into data collection
+
     def start(self, blocking: bool = True) -> None:
         """Start the scheduler in a separate thread."""
         # Check if we're running in cloud-native mode
@@ -328,6 +330,9 @@ class SchedulerService:
             logger.error(f"Prediction health check failed: {str(e)}")
 
         logger.info("Health check completed")
+
+    # Journey validation is now integrated into data collection
+    # Removed _run_journey_validation method
 
     def get_status(self) -> Dict[str, Any]:
         """

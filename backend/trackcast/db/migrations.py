@@ -761,6 +761,231 @@ def add_performance_indexes(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def add_arrival_time_tracking(session: Session) -> Dict[str, Any]:
+    """
+    Add arrival time tracking fields for journey validation.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        logger.info("Adding arrival time tracking fields")
+
+        # Check if actual_arrival_time already exists in train_stops
+        check_arrival_query = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' AND column_name = 'actual_arrival_time'
+            """
+        )
+        result = session.execute(check_arrival_query).fetchone()
+
+        if not result:
+            # Add actual arrival time to train stops
+            logger.info("Adding actual_arrival_time column to train_stops table")
+            add_arrival_query = text(
+                """
+                ALTER TABLE train_stops 
+                ADD COLUMN actual_arrival_time TIMESTAMP
+                """
+            )
+            session.execute(add_arrival_query)
+
+        # Check if journey tracking columns exist in trains
+        check_journey_query = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'trains' 
+            AND column_name IN ('journey_completion_status', 'journey_validated_at', 
+                               'next_validation_check', 'stops_last_updated')
+            """
+        )
+        existing_columns = session.execute(check_journey_query).fetchall()
+        existing_column_names = [row[0] for row in existing_columns]
+
+        if len(existing_column_names) < 4:
+            # Add missing journey tracking fields to trains
+            if "journey_completion_status" not in existing_column_names:
+                logger.info("Adding journey_completion_status column to trains table")
+                add_status_query = text(
+                    """
+                    ALTER TABLE trains 
+                    ADD COLUMN journey_completion_status VARCHAR(20)
+                    """
+                )
+                session.execute(add_status_query)
+
+            if "journey_validated_at" not in existing_column_names:
+                logger.info("Adding journey_validated_at column to trains table")
+                add_validated_query = text(
+                    """
+                    ALTER TABLE trains 
+                    ADD COLUMN journey_validated_at TIMESTAMP
+                    """
+                )
+                session.execute(add_validated_query)
+
+            if "next_validation_check" not in existing_column_names:
+                logger.info("Adding next_validation_check column to trains table")
+                add_next_check_query = text(
+                    """
+                    ALTER TABLE trains 
+                    ADD COLUMN next_validation_check TIMESTAMP
+                    """
+                )
+                session.execute(add_next_check_query)
+
+            if "stops_last_updated" not in existing_column_names:
+                logger.info("Adding stops_last_updated column to trains table")
+                add_stops_updated_query = text(
+                    """
+                    ALTER TABLE trains 
+                    ADD COLUMN stops_last_updated TIMESTAMP
+                    """
+                )
+                session.execute(add_stops_updated_query)
+
+        # Check if indexes exist
+        check_validation_index = text(
+            """
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'trains' 
+            AND indexname = 'idx_trains_journey_validation'
+            """
+        )
+        validation_index_exists = session.execute(check_validation_index).fetchone()
+
+        if not validation_index_exists:
+            # Create journey validation index
+            logger.info("Creating journey validation index")
+            create_validation_index = text(
+                """
+                CREATE INDEX idx_trains_journey_validation 
+                ON trains(data_source, journey_completion_status, next_validation_check)
+                WHERE data_source = 'njtransit'
+                """
+            )
+            session.execute(create_validation_index)
+
+        check_freshness_index = text(
+            """
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'trains' 
+            AND indexname = 'idx_trains_stop_freshness'
+            """
+        )
+        freshness_index_exists = session.execute(check_freshness_index).fetchone()
+
+        if not freshness_index_exists:
+            # Create stop freshness index
+            logger.info("Creating stop freshness index")
+            create_freshness_index = text(
+                """
+                CREATE INDEX idx_trains_stop_freshness 
+                ON trains(data_source, status, stops_last_updated)
+                WHERE data_source = 'njtransit' AND status IN ('BOARDING', 'DEPARTED')
+                """
+            )
+            session.execute(create_freshness_index)
+
+        # Commit the changes
+        session.commit()
+
+        logger.info("Successfully added arrival time tracking fields")
+        return {"status": "success", "message": "Arrival time tracking fields added successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding arrival time tracking fields: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+def simplify_train_stop_constraint(session: Session) -> Dict[str, Any]:
+    """
+    Simplify the train_stops unique constraint by removing scheduled_time.
+    This is the final state we want - allowing duplicate stops at same station
+    only if they have different train_id, departure_time, or data_source.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check which constraint currently exists
+        check_with_time = text(
+            """
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'train_stops' 
+            AND indexname = 'uix_train_stop_unique_with_time'
+            """
+        )
+        with_time_exists = session.execute(check_with_time).fetchone()
+
+        check_without_time = text(
+            """
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'train_stops' 
+            AND indexname = 'uix_train_stop_unique_without_time'
+            """
+        )
+        without_time_exists = session.execute(check_without_time).fetchone()
+
+        if without_time_exists and not with_time_exists:
+            logger.info("Simplified constraint already exists")
+            return {"status": "skipped", "message": "Simplified constraint already in place"}
+
+        # Drop any existing constraints
+        if with_time_exists:
+            logger.info("Dropping constraint with scheduled_time")
+            drop_with_time = text(
+                """
+                DROP INDEX IF EXISTS uix_train_stop_unique_with_time
+                """
+            )
+            session.execute(drop_with_time)
+
+        # Also drop the old unnamed constraint if it exists
+        drop_old_constraint = text(
+            """
+            DROP INDEX IF EXISTS uix_train_stop_unique
+            """
+        )
+        session.execute(drop_old_constraint)
+
+        # Create the simplified constraint if it doesn't exist
+        if not without_time_exists:
+            logger.info("Creating simplified unique constraint without scheduled_time")
+            create_constraint = text(
+                """
+                CREATE UNIQUE INDEX uix_train_stop_unique_without_time 
+                ON train_stops (train_id, train_departure_time, station_name, data_source)
+                """
+            )
+            session.execute(create_constraint)
+
+        # Commit the changes
+        session.commit()
+
+        logger.info("Successfully simplified train_stops unique constraint")
+        return {"status": "success", "message": "Constraint simplified successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error simplifying train_stop constraint: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -785,7 +1010,12 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
         ("add_train_stops_lifecycle_fields", add_train_stops_lifecycle_fields),
         ("update_train_stop_unique_constraint", update_train_stop_unique_constraint),
         ("remove_audit_trail_fields", remove_audit_trail_fields),
-        ("add_performance_indexes", add_performance_indexes),  # Performance improvements
+        ("add_arrival_time_tracking", add_arrival_time_tracking),  # Arrival time tracking
+        (
+            "simplify_train_stop_constraint",
+            simplify_train_stop_constraint,
+        ),  # Final constraint state
+        ("add_performance_indexes", add_performance_indexes),  # Performance improvements (last)
     ]
 
     for name, migration_func in migrations:
