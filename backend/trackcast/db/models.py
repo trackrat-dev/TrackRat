@@ -20,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from trackcast.db.connection import Base
+from trackcast.utils import get_eastern_now
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,8 @@ logger = logging.getLogger(__name__)
 class TimestampMixin:
     """Mixin to add creation and update timestamps to models."""
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=get_eastern_now, nullable=False)
+    updated_at = Column(DateTime, default=get_eastern_now, onupdate=get_eastern_now, nullable=False)
 
 
 class Train(Base, TimestampMixin):
@@ -165,7 +166,7 @@ class TrainStop(Base, TimestampMixin):
     stop_status = Column(String(20), nullable=True)
 
     # Lifecycle tracking
-    last_seen_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    last_seen_at = Column(DateTime, nullable=False, default=get_eastern_now, index=True)
     is_active = Column(Boolean, default=True, nullable=False, index=True)
 
     # Note: Relationship to train handled via queries due to composite key complexity

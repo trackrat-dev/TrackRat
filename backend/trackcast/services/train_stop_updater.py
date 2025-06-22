@@ -4,12 +4,13 @@ Service for updating train stop data from NJ Transit API.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from trackcast.data.collectors import NJTransitCollector
 from trackcast.db.models import Train, TrainStop
 from trackcast.db.repository import TrainRepository, TrainStopRepository
 from trackcast.exceptions import APIError
+from trackcast.utils import get_eastern_now
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,82 @@ class TrainStopUpdater:
         self.train_repo = train_repo
         self.stop_repo = stop_repo
         self.nj_collector = nj_collector
+
+    def update_multiple_trains_stops(self, trains: List[Train]) -> Dict[str, bool]:
+        """
+        Update train stops for multiple trains with the same train_id using a single NJ Transit API call.
+
+        Args:
+            trains: List of trains to update (must all have same train_id and be NJ Transit)
+
+        Returns:
+            Dict mapping train database ID to completion status
+
+        Raises:
+            APIError: If the API request fails
+        """
+        if not trains:
+            return {}
+
+        if not self.nj_collector:
+            raise ValueError("NJTransitCollector not provided")
+
+        # Validate all trains have same train_id and are NJ Transit
+        train_id = trains[0].train_id
+        non_nj_trains = [t for t in trains if t.data_source != "njtransit"]
+        if non_nj_trains:
+            logger.warning(f"Skipping {len(non_nj_trains)} non-NJ Transit trains")
+
+        different_id_trains = [t for t in trains if t.train_id != train_id]
+        if different_id_trains:
+            raise ValueError(
+                f"All trains must have same train_id, found multiple: {set(t.train_id for t in trains)}"
+            )
+
+        # Filter to only NJ Transit trains
+        nj_trains = [t for t in trains if t.data_source == "njtransit"]
+        if not nj_trains:
+            logger.warning(f"No NJ Transit trains to update for train_id {train_id}")
+            return {}
+
+        try:
+            # Fetch stop data from API once for the train_id
+            stop_data = self.nj_collector.get_train_stops(train_id)
+
+            if not stop_data or "STOPS" not in stop_data:
+                logger.warning(f"No stop data returned for train {train_id}")
+                return {str(train.id): False for train in nj_trains}
+
+            # Process and update stops for each train
+            results = {}
+            for train in nj_trains:
+                try:
+                    journey_complete = self._process_stop_updates(train, stop_data["STOPS"])
+
+                    # Update the stops_last_updated timestamp
+                    train.stops_last_updated = get_eastern_now()
+                    self.train_repo.update(train)
+
+                    results[str(train.id)] = journey_complete
+                    logger.debug(
+                        f"Updated stops for train {train.train_id} (DB ID: {train.id}), complete: {journey_complete}"
+                    )
+
+                except Exception as e:
+                    logger.error(
+                        f"Error updating stops for train {train.train_id} (DB ID: {train.id}): {e}"
+                    )
+                    results[str(train.id)] = False
+
+            logger.info(f"Updated stops for {len(results)} trains with train_id {train_id}")
+            return results
+
+        except APIError as e:
+            logger.error(f"API error updating stops for train {train_id}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error updating stops for train {train_id}: {e}")
+            raise
 
     def update_train_stops(self, train: Train) -> bool:
         """
@@ -59,7 +136,7 @@ class TrainStopUpdater:
             journey_complete = self._process_stop_updates(train, stop_data["STOPS"])
 
             # Update the stops_last_updated timestamp
-            train.stops_last_updated = datetime.utcnow()
+            train.stops_last_updated = get_eastern_now()
             self.train_repo.update(train)
 
             return journey_complete
@@ -111,7 +188,7 @@ class TrainStopUpdater:
             # Update status fields
             existing_stop.departed = stop_data.get("DEPARTED") == "YES"
             existing_stop.stop_status = stop_data.get("STOP_STATUS", "")
-            existing_stop.last_seen_at = datetime.utcnow()
+            existing_stop.last_seen_at = get_eastern_now()
 
             # Check if this stop is still pending
             if not existing_stop.departed:
@@ -155,9 +232,7 @@ class TrainStopUpdater:
         if train.data_source != "njtransit":
             return False
 
-        # Only refresh trains that are boarding or departed
-        if train.status not in ["BOARDING", "DEPARTED"]:
-            return False
+        # Allow refresh for all train statuses
 
         # Never fetched stop data
         if not train.stops_last_updated:
@@ -173,7 +248,7 @@ class TrainStopUpdater:
 
         try:
             minutes_since_update = (
-                datetime.utcnow() - train.stops_last_updated
+                get_eastern_now() - train.stops_last_updated
             ).total_seconds() / 60
             return minutes_since_update > 5
         except (TypeError, AttributeError):

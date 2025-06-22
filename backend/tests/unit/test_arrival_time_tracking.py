@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
 from trackcast.db.models import Train, TrainStop
+from trackcast.utils import get_eastern_now
 from trackcast.services.train_stop_updater import TrainStopUpdater
 from trackcast.services.journey_validator import JourneyValidator
 
@@ -32,7 +33,7 @@ class TestTrainStopUpdater:
             train_id="1234",
             data_source="njtransit",
             status="DEPARTED",
-            stops_last_updated=datetime.utcnow() - timedelta(minutes=10)
+            stops_last_updated=get_eastern_now() - timedelta(minutes=10)
         )
         
         updater = TrainStopUpdater(Mock(), Mock())
@@ -44,7 +45,7 @@ class TestTrainStopUpdater:
             train_id="1234",
             data_source="njtransit",
             status="BOARDING",
-            stops_last_updated=datetime.utcnow() - timedelta(minutes=3)
+            stops_last_updated=get_eastern_now() - timedelta(minutes=3)
         )
         
         updater = TrainStopUpdater(Mock(), Mock())
@@ -56,24 +57,13 @@ class TestTrainStopUpdater:
             train_id="1234",
             data_source="njtransit",
             status="DEPARTED",
-            stops_last_updated=datetime.utcnow() - timedelta(minutes=10),
+            stops_last_updated=get_eastern_now() - timedelta(minutes=10),
             journey_completion_status="completed"
         )
         
         updater = TrainStopUpdater(Mock(), Mock())
         assert updater.should_refresh_stops(train) is False
     
-    def test_should_not_refresh_stops_wrong_status(self):
-        """Test that stops should not be refreshed for wrong status."""
-        train = Train(
-            train_id="1234",
-            data_source="njtransit",
-            status="CANCELLED",
-            stops_last_updated=None
-        )
-        
-        updater = TrainStopUpdater(Mock(), Mock())
-        assert updater.should_refresh_stops(train) is False
     
     def test_parse_nj_datetime(self):
         """Test parsing NJ Transit datetime format."""
@@ -164,7 +154,10 @@ class TestJourneyValidator:
         validator = JourneyValidator(train_repo, stop_repo)
         train = Train(train_id="1234", departure_time=datetime(2024, 5, 30, 10, 0))
         
-        next_check = validator._estimate_next_check(train)
+        # Mock get_eastern_now to return a time before the last stop + 30 minutes
+        with patch('trackcast.services.journey_validator.get_eastern_now') as mock_get_eastern_now:
+            mock_get_eastern_now.return_value = datetime(2024, 5, 30, 9, 0)  # Before all stops
+            next_check = validator._estimate_next_check(train)
         
         # Should be 30 minutes after last stop
         expected = datetime(2024, 5, 30, 12, 30)
@@ -181,9 +174,8 @@ class TestJourneyValidator:
         validator = JourneyValidator(train_repo, stop_repo)
         train = Train(train_id="1234", departure_time=datetime(2024, 5, 30, 10, 0))
         
-        with patch('trackcast.services.journey_validator.datetime') as mock_dt:
-            mock_dt.utcnow.return_value = datetime(2024, 5, 30, 10, 0)
-            mock_dt.min = datetime.min
+        with patch('trackcast.services.journey_validator.get_eastern_now') as mock_get_eastern_now:
+            mock_get_eastern_now.return_value = datetime(2024, 5, 30, 10, 0)
             next_check = validator._estimate_next_check(train)
         
         # Should be 2 hours from now

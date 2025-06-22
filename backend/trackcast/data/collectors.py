@@ -23,7 +23,7 @@ from trackcast.metrics import (
     NJ_TRANSIT_FETCH_FAILURES,
     NJ_TRANSIT_FETCH_SUCCESS,
 )
-from trackcast.utils import clean_destination, parse_iso_datetime_to_eastern
+from trackcast.utils import clean_destination, get_eastern_now, parse_iso_datetime_to_eastern
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class BaseCollector(abc.ABC):
         """
         start_time = time.time()
         stats = {
-            "collected_at": datetime.now().isoformat(),
+            "collected_at": get_eastern_now().isoformat(),
             "record_count": 0,
             "new_records": 0,
             "updated_records": 0,
@@ -280,7 +280,7 @@ class NJTransitCollector(BaseCollector):
             response: API response or data dictionary
             endpoint_name: Name of the API endpoint for the filename
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = get_eastern_now().strftime("%Y%m%d_%H%M%S")
         filename = self.debug_dir / f"{endpoint_name}_{timestamp}.json"
 
         try:
@@ -303,7 +303,7 @@ class NJTransitCollector(BaseCollector):
         Raises:
             APIError: If the API request fails after all retry attempts
         """
-        collection_time = datetime.now()
+        collection_time = get_eastern_now()
 
         # Ensure we have a valid token
         if not self.token:
@@ -608,7 +608,7 @@ class AmtrakCollector(BaseCollector):
             response: API response
             endpoint_name: Name of the API endpoint for the filename
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = get_eastern_now().strftime("%Y%m%d_%H%M%S")
         filename = self.debug_dir / f"{endpoint_name}_{timestamp}.json"
 
         try:
@@ -628,7 +628,7 @@ class AmtrakCollector(BaseCollector):
         Raises:
             APIError: If the API request fails after all retry attempts
         """
-        collection_time = datetime.now()
+        collection_time = get_eastern_now()
         attempts = 0
         last_error = None
 

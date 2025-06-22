@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
 from trackcast.metrics import DB_QUERY_DURATION_SECONDS, MODEL_PREDICTION_ACCURACY
 from trackcast.telemetry import trace_operation
+from trackcast.utils import get_eastern_now
 
 logger = logging.getLogger(__name__)
 
@@ -760,7 +761,7 @@ class TrainRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = get_eastern_now() - timedelta(hours=hours)
             result = (
                 self.session.query(Train)
                 .filter(Train.departure_time >= cutoff_time)
@@ -790,7 +791,7 @@ class TrainRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            now = datetime.utcnow()
+            now = get_eastern_now()
             four_hours_ahead = now + timedelta(hours=4)
             thirty_minutes_ago = now - timedelta(minutes=30)
 
@@ -890,7 +891,7 @@ class TrainRepository(BaseRepository):
                 )
 
             if future_only:
-                query = query.filter(Train.departure_time >= datetime.utcnow())
+                query = query.filter(Train.departure_time >= get_eastern_now())
 
             result = query.order_by(Train.departure_time.asc()).all()
             duration = time.time() - start_time
@@ -916,7 +917,7 @@ class TrainRepository(BaseRepository):
             SQLAlchemyError: Database error
         """
         try:
-            query = self.session.query(Train).filter(Train.departure_time >= datetime.utcnow())
+            query = self.session.query(Train).filter(Train.departure_time >= get_eastern_now())
 
             if not include_predictions:
                 # Only get trains that need predictions
@@ -1410,7 +1411,7 @@ class TrainRepository(BaseRepository):
             self.session.begin_nested()
 
             # Get current time
-            now = datetime.utcnow()
+            now = get_eastern_now()
 
             # Get prediction_data_ids from trains with future departure times
             prediction_data_ids = [
@@ -1532,7 +1533,7 @@ class TrainRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = get_eastern_now() - timedelta(hours=hours)
 
             # Get all trains with tracks assigned in the time period
             trains = (
@@ -1556,7 +1557,7 @@ class TrainRepository(BaseRepository):
                     "line": train.line,
                     "destination": train.destination,
                     "assigned_at": train.track_assigned_at,
-                    "released_at": train.track_released_at or datetime.utcnow(),
+                    "released_at": train.track_released_at or get_eastern_now(),
                 }
 
                 track_usage[train.track].append(usage_period)
@@ -1585,7 +1586,7 @@ class TrainRepository(BaseRepository):
         start_time = time.time()
         try:
             # Mark the object as modified
-            train.updated_at = datetime.utcnow()
+            train.updated_at = get_eastern_now()
 
             # Commit the changes
             self.session.commit()
@@ -1861,7 +1862,7 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
-        current_time = datetime.utcnow()
+        current_time = get_eastern_now()
         updated_stops = []
 
         # Import StationMapper for station code derivation
@@ -2055,7 +2056,7 @@ class TrainStopRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = get_eastern_now() - timedelta(hours=hours)
             result = (
                 self.session.query(TrainStop)
                 .filter(
@@ -2264,7 +2265,7 @@ class TrainStopRepository(BaseRepository):
         start_time = time.time()
         try:
             # Mark the object as modified
-            train_stop.updated_at = datetime.utcnow()
+            train_stop.updated_at = get_eastern_now()
 
             # Commit the changes
             self.session.commit()
