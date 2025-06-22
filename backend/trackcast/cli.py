@@ -395,15 +395,37 @@ def import_data(
 @click.option("--skip-predictions", is_flag=True, help="Skip prediction generation step")
 @click.option("--dry-run", is_flag=True, help="Show what would be executed without running")
 @click.option("--debug", is_flag=True, help="Enable debug logging for feature processing")
+@click.option(
+    "--regenerate",
+    is_flag=True,
+    help="Clear and regenerate features/predictions for future trains (next 24h)",
+)
 def run_pipeline(
-    skip_collection: bool, skip_features: bool, skip_predictions: bool, dry_run: bool, debug: bool
+    skip_collection: bool,
+    skip_features: bool,
+    skip_predictions: bool,
+    dry_run: bool,
+    debug: bool,
+    regenerate: bool,
 ) -> None:
     """Run the complete data pipeline: collection -> features -> predictions"""
     try:
+        # Log regeneration mode
+        if regenerate:
+            logger.info("Pipeline will regenerate features and predictions for future trains")
+
         steps = [
             ("collect-data", not skip_collection, lambda: _execute_collect_data()),
-            ("process-features", not skip_features, lambda: _execute_process_features(debug)),
-            ("generate-predictions", not skip_predictions, lambda: _execute_generate_predictions()),
+            (
+                "process-features",
+                not skip_features,
+                lambda: _execute_process_features(debug, regenerate),
+            ),
+            (
+                "generate-predictions",
+                not skip_predictions,
+                lambda: _execute_generate_predictions(regenerate),
+            ),
         ]
 
         successful_steps = []
@@ -472,7 +494,7 @@ def _execute_collect_data() -> bool:
         return False
 
 
-def _execute_process_features(debug: bool = False) -> bool:
+def _execute_process_features(debug: bool = False, regenerate: bool = False) -> bool:
     """Execute feature processing step"""
     try:
         # Set debug logging if requested
@@ -484,7 +506,15 @@ def _execute_process_features(debug: bool = False) -> bool:
         session = get_db_session()
         try:
             feature_service = FeatureEngineeringService(session)
-            success, stats = feature_service.process_pending_trains()
+
+            if regenerate:
+                # Use regeneration method for future trains only
+                logger.info("Regenerating features for future trains (next 24 hours)")
+                success, stats = feature_service.process_future_trains_with_regeneration()
+            else:
+                # Use regular incremental processing
+                success, stats = feature_service.process_pending_trains()
+
             if success:
                 logger.info(f"Feature processing completed: {stats}")
                 return True
@@ -498,13 +528,21 @@ def _execute_process_features(debug: bool = False) -> bool:
         return False
 
 
-def _execute_generate_predictions() -> bool:
+def _execute_generate_predictions(regenerate: bool = False) -> bool:
     """Execute prediction generation step"""
     try:
         session = get_db_session()
         try:
             prediction_service = PredictionService(session)
-            success, stats = prediction_service.run_prediction()
+
+            if regenerate:
+                # Use regeneration method for future trains only
+                logger.info("Regenerating predictions for future trains (next 24 hours)")
+                success, stats = prediction_service.run_prediction_with_regeneration()
+            else:
+                # Use regular incremental processing
+                success, stats = prediction_service.run_prediction()
+
             if success:
                 logger.info(f"Prediction generation completed: {stats}")
                 return True

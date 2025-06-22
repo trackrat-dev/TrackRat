@@ -608,11 +608,13 @@ class PredictionService:
             Tuple containing success status and statistics dictionary
         """
         start_time = time.time()
-        now = datetime.now()
+        from trackcast.utils import get_eastern_now
+
+        now = get_eastern_now()
         end_time = now + timedelta(hours=24)  # Regenerate predictions for next 24 hours
 
         stats = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": get_eastern_now().isoformat(),
             "model_versions": {},  # Changed to support multiple station models
             "regeneration": True,
             "predictions_cleared": 0,
