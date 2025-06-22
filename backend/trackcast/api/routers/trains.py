@@ -118,9 +118,10 @@ def _enrich_train_with_stops(train: Any, stop_repo: TrainStopRepository) -> Any:
                 TrainStop(
                     station_code=getattr(stop, "station_code", None),
                     station_name=getattr(stop, "station_name", ""),
-                    scheduled_time=getattr(stop, "scheduled_time", None),
-                    departure_time=getattr(stop, "departure_time", None),
-                    actual_arrival_time=getattr(stop, "actual_arrival_time", None),
+                    scheduled_arrival=getattr(stop, "scheduled_arrival", None),
+                    scheduled_departure=getattr(stop, "scheduled_departure", None),
+                    actual_arrival=getattr(stop, "actual_arrival", None),
+                    actual_departure=getattr(stop, "actual_departure", None),
                     pickup_only=bool(getattr(stop, "pickup_only", False)),
                     dropoff_only=bool(getattr(stop, "dropoff_only", False)),
                     departed=bool(getattr(stop, "departed", False)),

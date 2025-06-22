@@ -295,10 +295,10 @@ class TrainRepository(BaseRepository):
             # WARNING: track_released_at is only valid when status=DEPARTED (see "Handle train departure" section below)
             if not train.delay_minutes and train.track_released_at and train.status == "DEPARTED":
                 # Calculate delay as the difference between scheduled and actual departure
-                scheduled_time = train.departure_time
+                scheduled_departure = train.departure_time
                 departure_time = train.track_released_at
                 # Calculate delay in minutes (can be negative if early)
-                delay_in_minutes = int((departure_time - scheduled_time).total_seconds() // 60)
+                delay_in_minutes = int((departure_time - scheduled_departure).total_seconds() // 60)
 
                 # Only set delay_minutes if there's an actual delay (> 0 minutes)
                 if delay_in_minutes > 0:
@@ -514,9 +514,9 @@ class TrainRepository(BaseRepository):
                             Train.departure_time == to_stop.train_departure_time,
                             to_stop.station_code == to_station_code,
                             # Ensure from_stop happens before to_stop
-                            from_stop.scheduled_time.isnot(None),
-                            to_stop.scheduled_time.isnot(None),
-                            from_stop.scheduled_time < to_stop.scheduled_time,
+                            from_stop.scheduled_arrival.isnot(None),
+                            to_stop.scheduled_arrival.isnot(None),
+                            from_stop.scheduled_arrival < to_stop.scheduled_arrival,
                         ),
                     )
                     .distinct()
@@ -533,15 +533,15 @@ class TrainRepository(BaseRepository):
                 if departure_time_after:
                     query = query.filter(
                         and_(
-                            from_stop.scheduled_time.isnot(None),
-                            from_stop.scheduled_time >= departure_time_after,
+                            from_stop.scheduled_arrival.isnot(None),
+                            from_stop.scheduled_arrival >= departure_time_after,
                         )
                     )
                 if departure_time_before:
                     query = query.filter(
                         and_(
-                            from_stop.scheduled_time.isnot(None),
-                            from_stop.scheduled_time <= departure_time_before,
+                            from_stop.scheduled_arrival.isnot(None),
+                            from_stop.scheduled_arrival <= departure_time_before,
                         )
                     )
                 if track:
@@ -669,7 +669,7 @@ class TrainRepository(BaseRepository):
             all_stops = (
                 self.session.query(TrainStop)
                 .filter(or_(*conditions))
-                .order_by(TrainStop.train_id, TrainStop.scheduled_time.asc())
+                .order_by(TrainStop.train_id, TrainStop.scheduled_arrival.asc())
                 .all()
             )
 
@@ -1903,10 +1903,10 @@ class TrainStopRepository(BaseRepository):
                     "station_name"
                 ) and stop.station_code == stop_data.get("station_code"):
 
-                    # Use fuzzy time matching for scheduled_time (5-minute tolerance)
+                    # Use fuzzy time matching for scheduled_arrival (60-minute tolerance)
                     if station_mapper.times_match_within_tolerance(
-                        stop.scheduled_time,
-                        stop_data.get("scheduled_time"),
+                        stop.scheduled_arrival,
+                        stop_data.get("scheduled_arrival"),
                         tolerance_seconds=3600,  # 60 minutes
                     ):
                         matched_stop = stop
@@ -1918,43 +1918,47 @@ class TrainStopRepository(BaseRepository):
                 matched_stops.add(stop)
 
                 # Update fields directly without tracking changes
-                if stop_data.get("departure_time"):
-                    if isinstance(stop_data["departure_time"], str):
+                if stop_data.get("scheduled_departure"):
+                    if isinstance(stop_data["scheduled_departure"], str):
                         try:
-                            stop.departure_time = datetime.fromisoformat(
-                                stop_data["departure_time"]
+                            stop.scheduled_departure = datetime.fromisoformat(
+                                stop_data["scheduled_departure"]
                             )
                         except ValueError:
-                            stop.departure_time = stop_data["departure_time"]
+                            stop.scheduled_departure = stop_data["scheduled_departure"]
                     else:
-                        stop.departure_time = stop_data["departure_time"]
+                        stop.scheduled_departure = stop_data["scheduled_departure"]
 
                 stop.stop_status = stop_data.get("stop_status", stop.stop_status)
                 stop.departed = stop_data.get("departed", stop.departed)
 
-                # Handle scheduled_time updates (allowing drift)
-                if stop_data.get("scheduled_time"):
-                    if isinstance(stop_data["scheduled_time"], str):
+                # Handle scheduled_arrival updates (allowing drift)
+                if stop_data.get("scheduled_arrival"):
+                    if isinstance(stop_data["scheduled_arrival"], str):
                         try:
-                            new_scheduled_time = datetime.fromisoformat(stop_data["scheduled_time"])
+                            new_scheduled_arrival = datetime.fromisoformat(
+                                stop_data["scheduled_arrival"]
+                            )
                         except ValueError:
-                            new_scheduled_time = stop_data["scheduled_time"]
+                            new_scheduled_arrival = stop_data["scheduled_arrival"]
                     else:
-                        new_scheduled_time = stop_data["scheduled_time"]
+                        new_scheduled_arrival = stop_data["scheduled_arrival"]
 
                     # Log significant time changes for monitoring
-                    if isinstance(stop.scheduled_time, datetime) and isinstance(
-                        new_scheduled_time, datetime
+                    if isinstance(stop.scheduled_arrival, datetime) and isinstance(
+                        new_scheduled_arrival, datetime
                     ):
-                        time_diff = abs((stop.scheduled_time - new_scheduled_time).total_seconds())
+                        time_diff = abs(
+                            (stop.scheduled_arrival - new_scheduled_arrival).total_seconds()
+                        )
                         if time_diff > 3600:  # More than 1 hour difference
                             logger.info(
                                 f"Time drift detected for {stop.station_name} on train {train_id}: "
-                                f"{stop.scheduled_time.isoformat()} → {new_scheduled_time.isoformat()} "
+                                f"{stop.scheduled_arrival.isoformat()} → {new_scheduled_arrival.isoformat()} "
                                 f"({time_diff}s difference)"
                             )
 
-                    stop.scheduled_time = new_scheduled_time
+                    stop.scheduled_arrival = new_scheduled_arrival
 
                 stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
                 stop.dropoff_only = stop_data.get("dropoff_only", stop.dropoff_only)
@@ -1974,7 +1978,12 @@ class TrainStopRepository(BaseRepository):
                 stop_data["is_active"] = True
 
                 # Convert string datetime fields to datetime objects for SQLite compatibility
-                for time_field in ["scheduled_time", "departure_time"]:
+                for time_field in [
+                    "scheduled_arrival",
+                    "scheduled_departure",
+                    "actual_arrival",
+                    "actual_departure",
+                ]:
                     if time_field in stop_data and isinstance(stop_data[time_field], str):
                         try:
                             stop_data[time_field] = datetime.fromisoformat(stop_data[time_field])
@@ -1999,10 +2008,17 @@ class TrainStopRepository(BaseRepository):
             return updated_stops
         except IntegrityError as e:
             self.session.rollback()
-            logger.warning(
-                f"Unique constraint violation for train {train_id} during upsert_train_stops: {e}"
-            )
-            raise e
+            if "uix_train_stop_unique_without_time" in str(e):
+                logger.warning(
+                    f"Duplicate train stop for train {train_id} - stops may already exist, skipping insert"
+                )
+                # Return empty list to indicate no new stops were created
+                return []
+            else:
+                logger.warning(
+                    f"Unique constraint violation for train {train_id} during upsert_train_stops: {e}"
+                )
+                raise e
         except SQLAlchemyError as e:  # Catch other SQLAlchemy errors that are not IntegrityError
             self.session.rollback()
             logger.error(f"Database error in upsert_train_stops: {str(e)}")
@@ -2030,7 +2046,7 @@ class TrainStopRepository(BaseRepository):
                     TrainStop.train_id == train_id,
                     TrainStop.train_departure_time == train_departure_time,
                 )
-                .order_by(TrainStop.scheduled_time.asc())
+                .order_by(TrainStop.scheduled_arrival.asc())
                 .all()
             )
             duration = time.time() - start_time
@@ -2060,9 +2076,10 @@ class TrainStopRepository(BaseRepository):
             result = (
                 self.session.query(TrainStop)
                 .filter(
-                    TrainStop.station_code == station_code, TrainStop.scheduled_time >= cutoff_time
+                    TrainStop.station_code == station_code,
+                    TrainStop.scheduled_arrival >= cutoff_time,
                 )
-                .order_by(TrainStop.scheduled_time.asc())
+                .order_by(TrainStop.scheduled_arrival.asc())
                 .all()
             )
             duration = time.time() - start_time

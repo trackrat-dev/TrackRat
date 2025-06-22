@@ -110,24 +110,24 @@ class TestStopLifecycleIntegration:
                     {
                         "station_code": "NP",
                         "station_name": "Newark Penn Station",
-                        "scheduled_time": "2025-06-18T18:02:18",  # Note: has seconds!
-                        "departure_time": "2025-06-18T17:49:00",
+                        "scheduled_arrival": "2025-06-18T18:02:18",  # Note: has seconds!
+                        "scheduled_departure": "2025-06-18T17:49:00",
                         "departed": False,
                         "stop_status": "On Time",
                     },
                     {
                         "station_code": "SE",
                         "station_name": "Secaucus Upper Lvl",
-                        "scheduled_time": "2025-06-18T18:11:45",  # Note: has seconds!
-                        "departure_time": "2025-06-18T17:56:30",
+                        "scheduled_arrival": "2025-06-18T18:11:45",  # Note: has seconds!
+                        "scheduled_departure": "2025-06-18T17:56:30",
                         "departed": False,
                         "stop_status": "On Time",
                     },
                     {
                         "station_code": "NY",
                         "station_name": "New York Penn Station",
-                        "scheduled_time": "2025-06-18T18:24:30",  # Note: has seconds!
-                        "departure_time": "2025-06-18T18:09:00",
+                        "scheduled_arrival": "2025-06-18T18:24:30",  # Note: has seconds!
+                        "scheduled_departure": "2025-06-18T18:09:00",
                         "departed": False,
                         "stop_status": "On Time",
                     },
@@ -171,7 +171,7 @@ class TestStopLifecycleIntegration:
         
         # Store original scheduled times (with seconds)
         original_times = {
-            stop.station_name: stop.scheduled_time for stop in initial_stops
+            stop.station_name: stop.scheduled_arrival for stop in initial_stops
         }
         
         # Second collection - simulate normalized times (no seconds)
@@ -179,15 +179,15 @@ class TestStopLifecycleIntegration:
         normalized_stops = []
         for stop in processed_data[0]["stops"]:
             normalized_stop = stop.copy()
-            # Normalize scheduled_time to nearest minute (remove seconds)
-            if stop["scheduled_time"]:
+            # Normalize scheduled_arrival to nearest minute (remove seconds)
+            if stop["scheduled_arrival"]:
                 # Handle both string and datetime formats
-                if isinstance(stop["scheduled_time"], str):
-                    dt = datetime.fromisoformat(stop["scheduled_time"])
+                if isinstance(stop["scheduled_arrival"], str):
+                    dt = datetime.fromisoformat(stop["scheduled_arrival"])
                 else:
-                    dt = stop["scheduled_time"]
+                    dt = stop["scheduled_arrival"]
                 # Simple normalization - just zero out seconds
-                normalized_stop["scheduled_time"] = dt.replace(second=0).isoformat()
+                normalized_stop["scheduled_arrival"] = dt.replace(second=0).isoformat()
             normalized_stops.append(normalized_stop)
         
         # Process normalized stops
@@ -212,7 +212,7 @@ class TestStopLifecycleIntegration:
             # The scheduled time may have been updated to the normalized version
             # This is actually correct behavior to prevent drift
             original_time = original_times[stop.station_name]
-            current_time = stop.scheduled_time
+            current_time = stop.scheduled_arrival
             
             # Verify the time difference is small (within normalization tolerance)
             time_diff = abs((current_time - original_time).total_seconds())
@@ -244,19 +244,19 @@ class TestStopLifecycleIntegration:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": "2025-06-18T18:02:00",
+                "scheduled_arrival": "2025-06-18T18:02:00",
                 "departed": False,
             },
             {
                 "station_code": "SE",
                 "station_name": "Secaucus Upper Lvl",
-                "scheduled_time": "2025-06-18T18:12:00",
+                "scheduled_arrival": "2025-06-18T18:12:00",
                 "departed": False,
             },
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": "2025-06-18T18:24:00",
+                "scheduled_arrival": "2025-06-18T18:24:00",
                 "departed": False,
             },
         ]
@@ -279,13 +279,13 @@ class TestStopLifecycleIntegration:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": "2025-06-18T18:02:00",
+                "scheduled_arrival": "2025-06-18T18:02:00",
                 "departed": True,  # Now departed
             },
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": "2025-06-18T18:24:00",
+                "scheduled_arrival": "2025-06-18T18:24:00",
                 "departed": False,
             },
         ]
@@ -312,19 +312,19 @@ class TestStopLifecycleIntegration:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": "2025-06-18T18:02:00",
+                "scheduled_arrival": "2025-06-18T18:02:00",
                 "departed": True,
             },
             {
                 "station_code": "SE",
                 "station_name": "Secaucus Upper Lvl",
-                "scheduled_time": "2025-06-18T18:12:00",
+                "scheduled_arrival": "2025-06-18T18:12:00",
                 "departed": False,
             },
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": "2025-06-18T18:24:00",
+                "scheduled_arrival": "2025-06-18T18:24:00",
                 "departed": False,
             },
         ]
@@ -365,13 +365,13 @@ class TestStopLifecycleIntegration:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": "2025-06-18T18:00:30",  # Has seconds
+                "scheduled_arrival": "2025-06-18T18:00:30",  # Has seconds
                 "departed": False,
             },
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": "2025-06-18T18:15:45",  # Has seconds
+                "scheduled_arrival": "2025-06-18T18:15:45",  # Has seconds
                 "departed": False,
             },
         ]
@@ -388,19 +388,19 @@ class TestStopLifecycleIntegration:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": "2025-06-18T18:01:00",  # Normalized
+                "scheduled_arrival": "2025-06-18T18:01:00",  # Normalized
                 "departed": False,
             },
             {
                 "station_code": "NP", 
                 "station_name": "Newark Penn Station",
-                "scheduled_time": "2025-06-18T18:16:00",  # Normalized
+                "scheduled_arrival": "2025-06-18T18:16:00",  # Normalized
                 "departed": False,
             },
             {
                 "station_code": "PHL",
                 "station_name": "Philadelphia 30th Street",
-                "scheduled_time": "2025-06-18T19:30:00",
+                "scheduled_arrival": "2025-06-18T19:30:00",
                 "departed": False,
             },
         ]
@@ -430,13 +430,13 @@ class TestStopLifecycleIntegration:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": "2025-06-18T18:01:00",  # 30s rounds to 1 min
+                "scheduled_arrival": "2025-06-18T18:01:00",  # 30s rounds to 1 min
                 "departed": True,
             },
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": "2025-06-18T18:16:00",  # 45s rounds to 16 min
+                "scheduled_arrival": "2025-06-18T18:16:00",  # 45s rounds to 16 min
                 "departed": False,
             },
         ]

@@ -210,7 +210,7 @@ class TrainConsolidationService:
         train2_schedule = {}
 
         for stop in train1.stops:
-            if stop.station_code and stop.scheduled_time:
+            if stop.station_code and stop.scheduled_arrival:
                 # Normalize station code in case it's from Amtrak
                 normalized = station_mapper.normalize_amtrak_station(
                     stop.station_code, stop.station_name
@@ -220,10 +220,10 @@ class TrainConsolidationService:
                     logger.debug(
                         f"Normalized station {stop.station_code} -> {station_code} for train1"
                     )
-                train1_schedule[station_code] = stop.scheduled_time
+                train1_schedule[station_code] = stop.scheduled_arrival
 
         for stop in train2.stops:
-            if stop.station_code and stop.scheduled_time:
+            if stop.station_code and stop.scheduled_arrival:
                 # Normalize station code in case it's from Amtrak
                 normalized = station_mapper.normalize_amtrak_station(
                     stop.station_code, stop.station_name
@@ -233,7 +233,7 @@ class TrainConsolidationService:
                     logger.debug(
                         f"Normalized station {stop.station_code} -> {station_code} for train2"
                     )
-                train2_schedule[station_code] = stop.scheduled_time
+                train2_schedule[station_code] = stop.scheduled_arrival
 
         # Find common stations
         common_stations = set(train1_schedule.keys()) & set(train2_schedule.keys())
@@ -358,9 +358,9 @@ class TrainConsolidationService:
         for train in trains:
             if hasattr(train, "stops") and train.stops:
                 for stop in train.stops:
-                    if stop.scheduled_time:
-                        if earliest_time is None or stop.scheduled_time < earliest_time:
-                            earliest_time = stop.scheduled_time
+                    if stop.scheduled_arrival:
+                        if earliest_time is None or stop.scheduled_arrival < earliest_time:
+                            earliest_time = stop.scheduled_arrival
 
         # If no stops found, use the earliest departure time
         if earliest_time is None:
@@ -516,9 +516,9 @@ class TrainConsolidationService:
         for train in trains:
             if hasattr(train, "stops") and train.stops:
                 for stop in train.stops:
-                    if stop.scheduled_time:
-                        if earliest_time is None or stop.scheduled_time < earliest_time:
-                            earliest_time = stop.scheduled_time
+                    if stop.scheduled_arrival:
+                        if earliest_time is None or stop.scheduled_arrival < earliest_time:
+                            earliest_time = stop.scheduled_arrival
                             earliest_station = stop.station_code
 
         return earliest_station
@@ -598,7 +598,7 @@ class TrainConsolidationService:
             if stop.station_code not in stop_status:
                 stop_status[stop.station_code] = {
                     "station_name": stop.station_name,
-                    "scheduled_time": stop.scheduled_time,
+                    "scheduled_time": stop.scheduled_arrival,
                     "departed": False,
                 }
             # If any source says departed, mark as departed
@@ -633,8 +633,8 @@ class TrainConsolidationService:
                         "code": sorted_stops[0][0],
                         "name": sorted_stops[0][1]["station_name"],
                         "scheduled_arrival": (
-                            sorted_stops[0][1]["scheduled_time"].isoformat()
-                            if sorted_stops[0][1]["scheduled_time"]
+                            sorted_stops[0][1]["scheduled_arrival"].isoformat()
+                            if sorted_stops[0][1]["scheduled_arrival"]
                             else None
                         ),
                     }
@@ -648,8 +648,8 @@ class TrainConsolidationService:
                 "code": last_departed[0],
                 "name": last_departed[1]["station_name"],
                 "scheduled_departure": (
-                    last_departed[1]["scheduled_time"].isoformat()
-                    if last_departed[1]["scheduled_time"]
+                    last_departed[1]["scheduled_departure"].isoformat()
+                    if last_departed[1]["scheduled_departure"]
                     else None
                 ),
             }
@@ -660,8 +660,8 @@ class TrainConsolidationService:
                 "code": next_station[0],
                 "name": next_station[1]["station_name"],
                 "scheduled_arrival": (
-                    next_station[1]["scheduled_time"].isoformat()
-                    if next_station[1]["scheduled_time"]
+                    next_station[1]["scheduled_arrival"].isoformat()
+                    if next_station[1]["scheduled_arrival"]
                     else None
                 ),
             }
@@ -701,7 +701,7 @@ class TrainConsolidationService:
                     {
                         "code": merged_stops[0]["station_code"],
                         "name": merged_stops[0]["station_name"],
-                        "scheduled_arrival": merged_stops[0]["scheduled_time"],
+                        "scheduled_arrival": merged_stops[0]["scheduled_arrival"],
                     }
                     if merged_stops
                     else None
@@ -712,7 +712,7 @@ class TrainConsolidationService:
             "last_departed_station": {
                 "code": last_departed["station_code"],
                 "name": last_departed["station_name"],
-                "scheduled_departure": last_departed["scheduled_time"],
+                "scheduled_departure": last_departed["scheduled_departure"],
             }
         }
 
@@ -720,7 +720,7 @@ class TrainConsolidationService:
             position["next_station"] = {
                 "code": next_station["station_code"],
                 "name": next_station["station_name"],
-                "scheduled_arrival": next_station["scheduled_time"],
+                "scheduled_arrival": next_station["scheduled_arrival"],
             }
 
         return position
@@ -749,11 +749,19 @@ class TrainConsolidationService:
                     stop_map[key] = {
                         "station_code": stop.station_code,
                         "station_name": stop.station_name,
-                        "scheduled_time": (
-                            stop.scheduled_time.isoformat() if stop.scheduled_time else None
+                        "scheduled_arrival": (
+                            stop.scheduled_arrival.isoformat() if stop.scheduled_arrival else None
                         ),
-                        "departure_time": (
-                            stop.departure_time.isoformat() if stop.departure_time else None
+                        "scheduled_departure": (
+                            stop.scheduled_departure.isoformat()
+                            if stop.scheduled_departure
+                            else None
+                        ),
+                        "actual_arrival": (
+                            stop.actual_arrival.isoformat() if stop.actual_arrival else None
+                        ),
+                        "actual_departure": (
+                            stop.actual_departure.isoformat() if stop.actual_departure else None
                         ),
                         "pickup_only": stop.pickup_only,
                         "dropoff_only": stop.dropoff_only,
@@ -773,6 +781,14 @@ class TrainConsolidationService:
                         # Track which train/timestamp determined the departed status
                         "_departed_source_train": train if stop.departed else None,
                         "_departed_source_timestamp": train.updated_at if stop.departed else None,
+                        # Track which timestamp provided the scheduled departure time
+                        "_scheduled_departure_source_timestamp": (
+                            train.updated_at if stop.scheduled_departure else None
+                        ),
+                        # Track which timestamp provided the actual departure time
+                        "_actual_departure_source_timestamp": (
+                            train.updated_at if stop.actual_departure else None
+                        ),
                     }
                     # Add to confirmed_by if this source says departed
                     if stop.departed:
@@ -807,9 +823,82 @@ class TrainConsolidationService:
                                 f"from more recent source over {train.origin_station_code} ({current_departed})"
                             )
 
-                    # Update actual times if available (take first non-None value)
-                    if stop.departure_time and not stop_map[key]["departure_time"]:
-                        stop_map[key]["departure_time"] = stop.departure_time.isoformat()
+                    # Update scheduled departure time using most recent train logic
+                    if stop.scheduled_departure:
+                        existing_scheduled_departure = stop_map[key].get("scheduled_departure")
+
+                        # If no existing scheduled departure time, use this one
+                        if not existing_scheduled_departure:
+                            stop_map[key][
+                                "scheduled_departure"
+                            ] = stop.scheduled_departure.isoformat()
+                            stop_map[key][
+                                "_scheduled_departure_source_timestamp"
+                            ] = train.updated_at
+                        else:
+                            # Compare timestamps to use most recent source
+                            existing_timestamp = stop_map[key].get(
+                                "_scheduled_departure_source_timestamp"
+                            )
+                            current_timestamp = train.updated_at
+
+                            if existing_timestamp is None or current_timestamp > existing_timestamp:
+                                logger.debug(
+                                    f"Station {key}: Using more recent scheduled departure from {train.origin_station_code} "
+                                    f"({stop.scheduled_departure.isoformat()}) over previous time ({existing_scheduled_departure})"
+                                )
+                                stop_map[key][
+                                    "scheduled_departure"
+                                ] = stop.scheduled_departure.isoformat()
+                                stop_map[key][
+                                    "_scheduled_departure_source_timestamp"
+                                ] = current_timestamp
+                            else:
+                                logger.debug(
+                                    f"Station {key}: Keeping existing scheduled departure ({existing_scheduled_departure}) "
+                                    f"from more recent source over {train.origin_station_code} ({stop.scheduled_departure.isoformat()})"
+                                )
+
+                    # Update actual arrival time using most recent train logic
+                    if stop.actual_arrival:
+                        existing_actual_arrival = stop_map[key].get("actual_arrival")
+
+                        if not existing_actual_arrival:
+                            stop_map[key]["actual_arrival"] = stop.actual_arrival.isoformat()
+                        else:
+                            # Always use the most recent actual arrival time
+                            existing_timestamp = stop_map[key].get("_departed_source_timestamp")
+                            current_timestamp = train.updated_at
+
+                            if existing_timestamp is None or current_timestamp > existing_timestamp:
+                                stop_map[key]["actual_arrival"] = stop.actual_arrival.isoformat()
+
+                    # Update actual departure time using most recent train logic
+                    if stop.actual_departure:
+                        existing_actual_departure = stop_map[key].get("actual_departure")
+
+                        # If no existing actual departure time, use this one
+                        if not existing_actual_departure:
+                            stop_map[key]["actual_departure"] = stop.actual_departure.isoformat()
+                            stop_map[key]["_actual_departure_source_timestamp"] = train.updated_at
+                        else:
+                            # Compare timestamps to use most recent source
+                            existing_timestamp = stop_map[key].get(
+                                "_actual_departure_source_timestamp"
+                            )
+                            current_timestamp = train.updated_at
+
+                            if existing_timestamp is None or current_timestamp > existing_timestamp:
+                                logger.debug(
+                                    f"Station {key}: Using more recent actual departure from {train.origin_station_code} "
+                                    f"({stop.actual_departure.isoformat()}) over previous time ({existing_actual_departure})"
+                                )
+                                stop_map[key][
+                                    "actual_departure"
+                                ] = stop.actual_departure.isoformat()
+                                stop_map[key][
+                                    "_actual_departure_source_timestamp"
+                                ] = current_timestamp
 
                     # Update platform if this is the origin station and we don't have one yet
                     if (
@@ -824,13 +913,17 @@ class TrainConsolidationService:
         for stop_data in stop_map.values():
             stop_data.pop("_departed_source_train", None)
             stop_data.pop("_departed_source_timestamp", None)
+            stop_data.pop("_scheduled_departure_source_timestamp", None)
+            stop_data.pop("_actual_departure_source_timestamp", None)
 
-        # Sort stops by scheduled time
+        # Sort stops by scheduled arrival time
         # Use datetime.min for None values to ensure proper sorting
         sorted_stops = sorted(
             stop_map.values(),
             key=lambda s: (
-                datetime.fromisoformat(s["scheduled_time"]) if s["scheduled_time"] else datetime.min
+                datetime.fromisoformat(s["scheduled_arrival"])
+                if s["scheduled_arrival"]
+                else datetime.min
             ),
         )
         return sorted_stops
@@ -1029,15 +1122,15 @@ class TrainConsolidationService:
             departure_time = None
             delay_minutes = 0
 
-            if stop.get("departure_time"):
-                departure_time = stop["departure_time"]
-            elif stop.get("scheduled_time"):
-                departure_time = stop["scheduled_time"]
+            if stop.get("actual_departure"):
+                departure_time = stop["actual_departure"]
+            elif stop.get("scheduled_departure"):
+                departure_time = stop["scheduled_departure"]
 
             # Calculate delay if we have both scheduled and actual times
-            if stop.get("departure_time") and stop.get("scheduled_time"):
-                scheduled = datetime.fromisoformat(stop["scheduled_time"])
-                actual = datetime.fromisoformat(stop["departure_time"])
+            if stop.get("actual_departure") and stop.get("scheduled_departure"):
+                scheduled = datetime.fromisoformat(stop["scheduled_departure"])
+                actual = datetime.fromisoformat(stop["actual_departure"])
                 delay_minutes = int((actual - scheduled).total_seconds() / 60)
 
             progress["last_departed"] = {
@@ -1049,17 +1142,17 @@ class TrainConsolidationService:
         # Set next arrival info
         if next_arrival_stop:
             idx, stop = next_arrival_stop
-            scheduled_time = stop.get("scheduled_time")
+            scheduled_arrival = stop.get("scheduled_arrival")
 
             # Estimate arrival time based on delay pattern
-            estimated_time = scheduled_time
+            estimated_time = scheduled_arrival
             if (
-                scheduled_time
+                scheduled_arrival
                 and progress["last_departed"]
                 and progress["last_departed"]["delay_minutes"] > 0
             ):
-                # Apply the delay to the scheduled time
-                scheduled_dt = datetime.fromisoformat(scheduled_time)
+                # Apply the delay to the scheduled arrival time
+                scheduled_dt = datetime.fromisoformat(scheduled_arrival)
                 estimated_dt = scheduled_dt + timedelta(
                     minutes=progress["last_departed"]["delay_minutes"]
                 )
@@ -1076,8 +1169,8 @@ class TrainConsolidationService:
 
             progress["next_arrival"] = {
                 "station_code": stop["station_code"],
-                "scheduled_time": scheduled_time or "",
-                "estimated_time": estimated_time or scheduled_time or "",
+                "scheduled_time": scheduled_arrival or "",
+                "estimated_time": estimated_time or scheduled_arrival or "",
                 "minutes_away": minutes_away,
             }
 

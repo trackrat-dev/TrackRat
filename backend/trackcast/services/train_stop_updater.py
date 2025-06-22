@@ -178,12 +178,12 @@ class TrainStopUpdater:
                 )
                 continue
 
-            # Update actual times - NEVER modify scheduled_time!
-            if stop_data.get("TIME"):  # Actual arrival time
-                existing_stop.actual_arrival_time = self._parse_nj_datetime(stop_data["TIME"])
+            # Update actual times - NEVER modify scheduled times!
+            if stop_data.get("TIME"):  # Actual arrival time at platform
+                existing_stop.actual_arrival = self._parse_nj_datetime(stop_data["TIME"])
 
-            if stop_data.get("DEP_TIME"):  # Actual departure time
-                existing_stop.departure_time = self._parse_nj_datetime(stop_data["DEP_TIME"])
+            if stop_data.get("DEP_TIME"):  # Actual departure time from platform
+                existing_stop.actual_departure = self._parse_nj_datetime(stop_data["DEP_TIME"])
 
             # Update status fields
             existing_stop.departed = stop_data.get("DEPARTED") == "YES"

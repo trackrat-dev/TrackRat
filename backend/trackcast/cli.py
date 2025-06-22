@@ -46,7 +46,7 @@ def main(env: str) -> None:
 
 @main.command()
 def init_db() -> None:
-    """Initialize the database schema"""
+    """Initialize the database schema and run migrations"""
     try:
         # Get database URL from settings
         db_url = settings.database.url
@@ -57,8 +57,66 @@ def init_db() -> None:
         Base.metadata.create_all(engine)
 
         logger.info("Database initialized successfully")
+
+        # Run migrations
+        session = get_db_session()
+        try:
+            logger.info("Running database migrations...")
+            results = run_migrations(session)
+            for result in results:
+                if result["status"] == "success":
+                    logger.info(f"✓ {result['name']}: {result['message']}")
+                elif result["status"] == "skipped":
+                    logger.debug(f"- {result['name']}: {result['message']}")
+                else:
+                    logger.warning(f"✗ {result['name']}: {result['message']}")
+            logger.info("Migrations completed")
+        finally:
+            session.close()
+
     except Exception as e:
         logger.error(f"Error initializing database: {str(e)}")
+        sys.exit(1)
+
+
+@main.command()
+def update_schema() -> None:
+    """Update database schema by running pending migrations"""
+    try:
+        logger.info("Running database migrations...")
+
+        session = get_db_session()
+        try:
+            results = run_migrations(session)
+
+            success_count = 0
+            skipped_count = 0
+            error_count = 0
+
+            for result in results:
+                if result["status"] == "success":
+                    logger.info(f"✓ {result['name']}: {result['message']}")
+                    success_count += 1
+                elif result["status"] == "skipped":
+                    logger.debug(f"- {result['name']}: {result['message']}")
+                    skipped_count += 1
+                else:
+                    logger.error(f"✗ {result['name']}: {result['message']}")
+                    error_count += 1
+
+            logger.info(
+                f"Migrations completed: {success_count} applied, "
+                f"{skipped_count} skipped, {error_count} errors"
+            )
+
+            if error_count > 0:
+                sys.exit(1)
+
+        finally:
+            session.close()
+
+    except Exception as e:
+        logger.error(f"Error updating schema: {str(e)}")
         sys.exit(1)
 
 
@@ -246,34 +304,6 @@ def start_api(host: str, port: int) -> None:
 
 
 # start_scheduler command removed - use Cloud Run Jobs for scheduling
-
-
-@main.command()
-def update_schema() -> None:
-    """Update the database schema with migrations"""
-    try:
-        logger.info("Running database schema migrations")
-        session = get_db_session()
-
-        try:
-            results = run_migrations(session)
-
-            # Log results
-            for result in results:
-                if result["status"] == "success":
-                    logger.info(f"Migration {result['name']} completed: {result['message']}")
-                elif result["status"] == "skipped":
-                    logger.info(f"Migration {result['name']} skipped: {result['message']}")
-                else:
-                    logger.error(f"Migration {result['name']} failed: {result['message']}")
-                    sys.exit(1)
-
-            logger.info("Database schema update completed successfully")
-        finally:
-            session.close()
-    except Exception as e:
-        logger.error(f"Error updating database schema: {str(e)}")
-        sys.exit(1)
 
 
 @main.command()

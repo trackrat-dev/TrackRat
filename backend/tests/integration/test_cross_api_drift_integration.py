@@ -68,24 +68,24 @@ class TestCrossApiDriftIntegration:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": datetime(2025, 6, 18, 14, 30, 18),  # NJ Transit precision (18 seconds)
-                "departure_time": datetime(2025, 6, 18, 14, 30, 18),
+                "scheduled_arrival": datetime(2025, 6, 18, 14, 30, 18),  # NJ Transit precision (18 seconds)
+                "scheduled_departure": datetime(2025, 6, 18, 14, 30, 18),
                 "departed": True,
                 "stop_status": "DEPARTED",
             },
             {
                 "station_code": "NP", 
                 "station_name": "Newark Penn Station",
-                "scheduled_time": datetime(2025, 6, 18, 14, 45, 42),  # 42 seconds
-                "departure_time": datetime(2025, 6, 18, 14, 45, 42),
+                "scheduled_arrival": datetime(2025, 6, 18, 14, 45, 42),  # 42 seconds
+                "scheduled_departure": datetime(2025, 6, 18, 14, 45, 42),
                 "departed": True,
                 "stop_status": "DEPARTED",
             },
             {
                 "station_code": "PHL",
                 "station_name": "Philadelphia 30th Street",
-                "scheduled_time": datetime(2025, 6, 18, 16, 15, 33),  # 33 seconds
-                "departure_time": datetime(2025, 6, 18, 16, 15, 33),
+                "scheduled_arrival": datetime(2025, 6, 18, 16, 15, 33),  # 33 seconds
+                "scheduled_departure": datetime(2025, 6, 18, 16, 15, 33),
                 "departed": False,
                 "stop_status": "OnTime",
             },
@@ -105,8 +105,8 @@ class TestCrossApiDriftIntegration:
         assert len(initial_stops) == 3
         
         ny_stop = next(s for s in initial_stops if s.station_code == "NY")
-        assert ny_stop.scheduled_time == datetime(2025, 6, 18, 14, 30, 18)
-        print(f"✅ NY stop created: {ny_stop.scheduled_time}")
+        assert ny_stop.scheduled_arrival == datetime(2025, 6, 18, 14, 30, 18)
+        print(f"✅ NY stop created: {ny_stop.scheduled_arrival}")
 
         # === DAY 1 LATER: Same train from Amtrak API (minute precision) ===
         print("\n=== DAY 1 LATER: Amtrak Data (Different Precision) ===")
@@ -115,24 +115,24 @@ class TestCrossApiDriftIntegration:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station", 
-                "scheduled_time": datetime(2025, 6, 18, 14, 30, 0),  # Amtrak minute precision (no seconds)
-                "departure_time": datetime(2025, 6, 18, 14, 30, 0),
+                "scheduled_arrival": datetime(2025, 6, 18, 14, 30, 0),  # Amtrak minute precision (no seconds)
+                "scheduled_departure": datetime(2025, 6, 18, 14, 30, 0),
                 "departed": True,
                 "stop_status": "DEPARTED",
             },
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": datetime(2025, 6, 18, 14, 46, 0),  # Rounded to minute
-                "departure_time": datetime(2025, 6, 18, 14, 46, 0), 
+                "scheduled_arrival": datetime(2025, 6, 18, 14, 46, 0),  # Rounded to minute
+                "scheduled_departure": datetime(2025, 6, 18, 14, 46, 0), 
                 "departed": True,
                 "stop_status": "DEPARTED",
             },
             {
                 "station_code": "PHL",
                 "station_name": "Philadelphia 30th Street",
-                "scheduled_time": datetime(2025, 6, 18, 16, 15, 0),  # Minute precision
-                "departure_time": datetime(2025, 6, 18, 16, 15, 0),
+                "scheduled_arrival": datetime(2025, 6, 18, 16, 15, 0),  # Minute precision
+                "scheduled_departure": datetime(2025, 6, 18, 16, 15, 0),
                 "departed": False,
                 "stop_status": "OnTime",
             },
@@ -152,7 +152,7 @@ class TestCrossApiDriftIntegration:
         
         ny_stop_updated = next(s for s in updated_stops if s.station_code == "NY")
         # Should be updated to Amtrak's minute precision due to drift tracking
-        print(f"✅ NY stop after Amtrak: {ny_stop_updated.scheduled_time}")
+        print(f"✅ NY stop after Amtrak: {ny_stop_updated.scheduled_arrival}")
         print(f"   (Updated from 14:30:18 to handle precision difference)")
 
         # === DAY 2: Schedule adjustment from NJ Transit ===
@@ -162,24 +162,24 @@ class TestCrossApiDriftIntegration:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": datetime(2025, 6, 19, 14, 32, 0),  # 2-minute delay
-                "departure_time": datetime(2025, 6, 19, 14, 32, 15),
+                "scheduled_arrival": datetime(2025, 6, 19, 14, 32, 0),  # 2-minute delay
+                "scheduled_departure": datetime(2025, 6, 19, 14, 32, 15),
                 "departed": True,
                 "stop_status": "DEPARTED",
             },
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station", 
-                "scheduled_time": datetime(2025, 6, 19, 14, 47, 30),  # Adjusted timing
-                "departure_time": datetime(2025, 6, 19, 14, 47, 45),
+                "scheduled_arrival": datetime(2025, 6, 19, 14, 47, 30),  # Adjusted timing
+                "scheduled_departure": datetime(2025, 6, 19, 14, 47, 45),
                 "departed": True,
                 "stop_status": "DEPARTED",
             },
             {
                 "station_code": "PHL",
                 "station_name": "Philadelphia 30th Street",
-                "scheduled_time": datetime(2025, 6, 19, 16, 18, 0),  # Propagated delay
-                "departure_time": datetime(2025, 6, 19, 16, 18, 0),
+                "scheduled_arrival": datetime(2025, 6, 19, 16, 18, 0),  # Propagated delay
+                "scheduled_departure": datetime(2025, 6, 19, 16, 18, 0),
                 "departed": False,
                 "stop_status": "OnTime",
             },
@@ -221,24 +221,24 @@ class TestCrossApiDriftIntegration:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": datetime(2025, 6, 19, 14, 38, 30),  # 6.5 more minutes drift from Day 2
-                "departure_time": datetime(2025, 6, 19, 14, 38, 30),
+                "scheduled_arrival": datetime(2025, 6, 19, 14, 38, 30),  # 6.5 more minutes drift from Day 2
+                "scheduled_departure": datetime(2025, 6, 19, 14, 38, 30),
                 "departed": True,
                 "stop_status": "DEPARTED",
             },
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": datetime(2025, 6, 19, 14, 50, 0),  # Continued drift
-                "departure_time": datetime(2025, 6, 19, 14, 50, 0),
+                "scheduled_arrival": datetime(2025, 6, 19, 14, 50, 0),  # Continued drift
+                "scheduled_departure": datetime(2025, 6, 19, 14, 50, 0),
                 "departed": True, 
                 "stop_status": "DEPARTED",
             },
             {
                 "station_code": "PHL",
                 "station_name": "Philadelphia 30th Street",
-                "scheduled_time": datetime(2025, 6, 19, 16, 22, 0),  # 4 more minutes drift
-                "departure_time": datetime(2025, 6, 19, 16, 22, 0),
+                "scheduled_arrival": datetime(2025, 6, 19, 16, 22, 0),  # 4 more minutes drift
+                "scheduled_departure": datetime(2025, 6, 19, 16, 22, 0),
                 "departed": False,
                 "stop_status": "OnTime",
             },
@@ -271,7 +271,7 @@ class TestCrossApiDriftIntegration:
         for stop in final_stops:
             if stop.station_name == "New York Penn Station":
                 print(f"\n{stop.station_name} time updates:")
-                print(f"  Current scheduled time: {stop.scheduled_time}")
+                print(f"  Current scheduled time: {stop.scheduled_arrival}")
                 print(f"  Last seen at: {stop.last_seen_at}")
 
         # === SCENARIO VERIFICATION ===
@@ -312,8 +312,8 @@ class TestCrossApiDriftIntegration:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": datetime(2025, 6, 18, 18, 36, 0),
-                "departure_time": datetime(2025, 6, 18, 18, 36, 0),
+                "scheduled_arrival": datetime(2025, 6, 18, 18, 36, 0),
+                "scheduled_departure": datetime(2025, 6, 18, 18, 36, 0),
                 "departed": False,
                 "stop_status": "OnTime",
             }
@@ -332,8 +332,8 @@ class TestCrossApiDriftIntegration:
             {
                 "station_code": "NP", 
                 "station_name": "Newark Penn Station",
-                "scheduled_time": datetime(2025, 6, 18, 18, 41, 0),  # Exactly 5 minutes later
-                "departure_time": datetime(2025, 6, 18, 18, 41, 0),
+                "scheduled_arrival": datetime(2025, 6, 18, 18, 41, 0),  # Exactly 5 minutes later
+                "scheduled_departure": datetime(2025, 6, 18, 18, 41, 0),
                 "departed": False,
                 "stop_status": "OnTime",
             }
@@ -355,7 +355,7 @@ class TestCrossApiDriftIntegration:
         ).first()
         
         assert stop.is_active, "Stop should remain active at 5-minute boundary"
-        assert stop.scheduled_time == datetime(2025, 6, 18, 18, 41, 0), "Time should be updated"
+        assert stop.scheduled_arrival == datetime(2025, 6, 18, 18, 41, 0), "Time should be updated"
         print("✅ 5-minute boundary test passed")
 
         # Test just over 5-minute boundary (should not match, create new stop)
@@ -363,8 +363,8 @@ class TestCrossApiDriftIntegration:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station", 
-                "scheduled_time": datetime(2025, 6, 18, 18, 46, 1),  # 5 minutes 1 second from updated time
-                "departure_time": datetime(2025, 6, 18, 18, 46, 1),
+                "scheduled_arrival": datetime(2025, 6, 18, 18, 46, 1),  # 5 minutes 1 second from updated time
+                "scheduled_departure": datetime(2025, 6, 18, 18, 46, 1),
                 "departed": False,
                 "stop_status": "OnTime",
             }
@@ -410,8 +410,8 @@ class TestCrossApiDriftIntegration:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": datetime(2025, 3, 9, 2, 30, 0),  # This time gets skipped in DST!
-                "departure_time": datetime(2025, 3, 9, 2, 30, 0),
+                "scheduled_arrival": datetime(2025, 3, 9, 2, 30, 0),  # This time gets skipped in DST!
+                "scheduled_departure": datetime(2025, 3, 9, 2, 30, 0),
                 "departed": False,
                 "stop_status": "OnTime",
             }
@@ -422,8 +422,8 @@ class TestCrossApiDriftIntegration:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": datetime(2025, 3, 9, 2, 30, 0),  # Same time for simplicity
-                "departure_time": datetime(2025, 3, 9, 2, 30, 0),
+                "scheduled_arrival": datetime(2025, 3, 9, 2, 30, 0),  # Same time for simplicity
+                "scheduled_departure": datetime(2025, 3, 9, 2, 30, 0),
                 "departed": False,
                 "stop_status": "OnTime",
             }

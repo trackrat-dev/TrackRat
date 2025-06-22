@@ -48,7 +48,10 @@ class TestGitHubIssue93Fix:
                 train_id=train.id,
                 station_code=station_code,
                 station_name=station_name,
-                scheduled_time=scheduled_time,
+                scheduled_arrival=scheduled_time,
+                scheduled_departure=scheduled_time + timedelta(minutes=1),
+                actual_arrival=None,
+                actual_departure=None,
                 departed=False,
                 created_at=base_time
             )

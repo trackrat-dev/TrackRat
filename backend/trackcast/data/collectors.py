@@ -463,8 +463,10 @@ class NJTransitCollector(BaseCollector):
                                 {
                                     "station_code": station_code,
                                     "station_name": stop.get("STATIONNAME", ""),
-                                    "scheduled_time": stop_time,
-                                    "departure_time": dep_time,
+                                    "scheduled_arrival": stop_time,
+                                    "scheduled_departure": dep_time,
+                                    "actual_arrival": None,  # Not available from getTrainSchedule
+                                    "actual_departure": None,  # Not available from getTrainSchedule
                                     "pickup_only": pickup_val.strip() == "Pick Up Only",
                                     "dropoff_only": dropoff_val.strip() == "Drop Off Only",
                                     "departed": departed_val.strip() == "YES",

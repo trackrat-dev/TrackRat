@@ -51,8 +51,10 @@ class TestTrainStopRepository:
             data_source="njtransit",
             station_code="NP",
             station_name="Newark Penn Station",
-            scheduled_time=datetime(2025, 6, 18, 18, 36, 18),  # Has seconds!
-            departure_time=datetime(2025, 6, 18, 18, 37, 0),
+            scheduled_arrival=datetime(2025, 6, 18, 18, 36, 18),  # Has seconds!
+            scheduled_departure=datetime(2025, 6, 18, 18, 36, 30),
+            actual_arrival=None,
+            actual_departure=None,
             is_active=True,
             stop_status="OnTime",
             departed=False,
@@ -72,7 +74,7 @@ class TestTrainStopRepository:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": "2025-06-18T18:36:00",  # Minute precision, no seconds
+                "scheduled_arrival": "2025-06-18T18:36:00",  # Minute precision, no seconds
                 "departure_time": "2025-06-18T18:37:00",
                 "stop_status": "OnTime",
                 "departed": False,
@@ -110,7 +112,7 @@ class TestTrainStopRepository:
     def test_multiple_stops_at_same_station_different_times(self, stop_repo, mock_session, sample_train):
         """
         Test that multiple stops at the same station with different times are handled correctly.
-        This ensures the scheduled_time is part of the matching key.
+        This ensures the scheduled_arrival is part of the matching key.
         """
         # Two stops at same station but different times (more than 60 minutes apart)
         existing_stops = [
@@ -120,7 +122,10 @@ class TestTrainStopRepository:
                 data_source="njtransit",
                 station_code="NP",
                 station_name="Newark Penn Station",
-                scheduled_time=datetime(2025, 6, 18, 16, 20, 0),  # First stop - 2+ hours before second
+                scheduled_arrival=datetime(2025, 6, 18, 16, 20, 0),  # First stop - 2+ hours before second
+                scheduled_departure=datetime(2025, 6, 18, 16, 22, 0),
+                actual_arrival=None,
+                actual_departure=None,
                 is_active=True,
                 
                 
@@ -132,7 +137,10 @@ class TestTrainStopRepository:
                 data_source="njtransit",
                 station_code="NP", 
                 station_name="Newark Penn Station",
-                scheduled_time=datetime(2025, 6, 18, 18, 30, 15),  # Second stop
+                scheduled_arrival=datetime(2025, 6, 18, 18, 30, 15),  # Second stop
+                scheduled_departure=datetime(2025, 6, 18, 18, 32, 15),
+                actual_arrival=None,
+                actual_departure=None,
                 is_active=True,
                 
                 
@@ -155,7 +163,7 @@ class TestTrainStopRepository:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": "2025-06-18T18:30:00",  # Matches second stop when normalized
+                "scheduled_arrival": "2025-06-18T18:30:00",  # Matches second stop when normalized
                 "departed": False,
             }
         ]
@@ -225,7 +233,10 @@ class TestTrainStopRepository:
             data_source="njtransit",
             station_code="NP",
             station_name="Newark Penn Station",
-            scheduled_time=datetime(2025, 6, 18, 18, 36, 30),
+            scheduled_arrival=datetime(2025, 6, 18, 18, 36, 30),
+            scheduled_departure=datetime(2025, 6, 18, 18, 38, 0),
+            actual_arrival=None,
+            actual_departure=None,
             is_active=False,  # Previously marked inactive
             
             last_seen_at=datetime.utcnow(),
@@ -242,7 +253,7 @@ class TestTrainStopRepository:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station", 
-                "scheduled_time": "2025-06-18T18:37:00",  # 30 seconds diff - within tolerance
+                "scheduled_arrival": "2025-06-18T18:37:00",  # 30 seconds diff - within tolerance
                 "departed": False,
             }
         ]
@@ -279,7 +290,10 @@ class TestTrainStopRepository:
             data_source="njtransit",
             station_code="NP",
             station_name="Newark Penn Station",
-            scheduled_time=datetime(2025, 6, 18, 18, 36, 59),  # 1 second before 18:37:00
+            scheduled_arrival=datetime(2025, 6, 18, 18, 36, 59),  # 1 second before 18:37:00
+            scheduled_departure=datetime(2025, 6, 18, 18, 38, 59),
+            actual_arrival=None,
+            actual_departure=None,
             is_active=True,
             
             
@@ -297,7 +311,7 @@ class TestTrainStopRepository:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": "2025-06-18T18:37:00",
+                "scheduled_arrival": "2025-06-18T18:37:00",
                 "departed": False,
             }
         ]
@@ -322,7 +336,7 @@ class TestTrainStopRepository:
             # Stop should NOT be marked inactive (times match within fuzzy tolerance)
             assert existing_stop.is_active is True
 
-    def test_null_scheduled_time_handling(self, stop_repo, mock_session, sample_train):
+    def test_null_scheduled_arrival_handling(self, stop_repo, mock_session, sample_train):
         """
         Test that stops with null scheduled times are handled correctly.
         """
@@ -334,7 +348,10 @@ class TestTrainStopRepository:
                 data_source="njtransit",
                 station_code="NP",
                 station_name="Newark Penn Station",
-                scheduled_time=None,  # No scheduled time
+                scheduled_arrival=None,  # No scheduled time
+                scheduled_departure=None,
+                actual_arrival=None,
+                actual_departure=None,
                 is_active=True,
                 
                 
@@ -346,7 +363,10 @@ class TestTrainStopRepository:
                 data_source="njtransit",
                 station_code="NY",
                 station_name="New York Penn Station",
-                scheduled_time=datetime(2025, 6, 18, 19, 0, 0),
+                scheduled_arrival=datetime(2025, 6, 18, 19, 0, 0),
+                scheduled_departure=datetime(2025, 6, 18, 19, 2, 0),
+                actual_arrival=None,
+                actual_departure=None,
                 is_active=True,
                 
                 
@@ -365,13 +385,13 @@ class TestTrainStopRepository:
             {
                 "station_code": "NP",
                 "station_name": "Newark Penn Station",
-                "scheduled_time": None,
+                "scheduled_arrival": None,
                 "departed": False,
             },
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": "2025-06-18T19:00:00",
+                "scheduled_arrival": "2025-06-18T19:00:00",
                 "departed": False,
             },
         ]
@@ -425,7 +445,7 @@ class TestTrainStopRepository:
             {
                 "station_code": "NY",
                 "station_name": "New York Penn Station",
-                "scheduled_time": datetime(2025, 6, 18, 20, 3, 0), # Different time from sample_train
+                "scheduled_arrival": datetime(2025, 6, 18, 20, 3, 0), # Different time from sample_train
                 "departed": False,
             }
         ]
@@ -455,7 +475,7 @@ class TestTrainStopRepository:
             assert new_stop.station_name == "New York Penn Station"
             assert new_stop.is_active is True
 
-    def test_integrity_error_on_duplicate_key_fields_different_scheduled_time(self, stop_repo, mock_session, sample_train):
+    def test_integrity_error_on_duplicate_key_fields_different_scheduled_arrival(self, stop_repo, mock_session, sample_train):
         """
         Test that an IntegrityError is raised when an incoming stop, after failing
         fuzzy match, would cause a unique constraint violation on commit.
@@ -469,7 +489,10 @@ class TestTrainStopRepository:
             data_source="njtransit",
             station_code="NP",
             station_name="Newark Penn Station",
-            scheduled_time=existing_stop_time,
+            scheduled_arrival=existing_stop_time,
+            scheduled_departure=existing_stop_time + timedelta(minutes=2),
+            actual_arrival=None,
+            actual_departure=None,
             is_active=True,
             last_seen_at=datetime.utcnow(),
         )
@@ -479,14 +502,14 @@ class TestTrainStopRepository:
         mock_query.all.return_value = [existing_stop] # Simulate this stop exists
         mock_session.query.return_value = mock_query
 
-        # Incoming stop data: same key fields, but different scheduled_time (outside fuzzy tolerance)
+        # Incoming stop data: same key fields, but different scheduled_arrival (outside fuzzy tolerance)
         incoming_stop_scheduled_time_str = "2025-06-18T19:00:00" # 2 hours after existing_stop_time
 
         incoming_stops_data = [
             {
                 "station_code": "NP", # Same as existing
                 "station_name": "Newark Penn Station", # Same as existing
-                "scheduled_time": incoming_stop_scheduled_time_str, # Different, >60min away
+                "scheduled_arrival": incoming_stop_scheduled_time_str, # Different, >60min away
                 "stop_status": "OnTime",
                 "departed": False,
             }

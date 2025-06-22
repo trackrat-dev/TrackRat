@@ -94,7 +94,7 @@ class TestTrainStopUpdater:
             train_departure_time=datetime(2024, 5, 30, 10, 0),
             station_name="Long Branch",
             data_source="njtransit",
-            scheduled_time=datetime(2024, 5, 30, 10, 52),
+            scheduled_arrival=datetime(2024, 5, 30, 10, 52),
             departed=False
         )
         
@@ -125,8 +125,8 @@ class TestTrainStopUpdater:
         is_complete = updater._process_stop_updates(train, stops_data)
         
         # Verify the stop was updated
-        assert existing_stop.actual_arrival_time == datetime(2024, 5, 30, 10, 52, 30)
-        assert existing_stop.departure_time == datetime(2024, 5, 30, 10, 53, 30)
+        assert existing_stop.actual_arrival == datetime(2024, 5, 30, 10, 52, 30)
+        assert existing_stop.actual_departure == datetime(2024, 5, 30, 10, 53, 30)
         assert existing_stop.departed is True
         assert existing_stop.stop_status == "OnTime"
         assert is_complete is True

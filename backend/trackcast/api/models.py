@@ -11,14 +11,17 @@ class TrainStop(BaseModel):
 
     station_code: Optional[str] = None
     station_name: str
-    scheduled_time: Optional[datetime] = Field(
-        None, description="Scheduled time in Eastern timezone"
+    scheduled_arrival: Optional[datetime] = Field(
+        None, description="Scheduled arrival time at platform in Eastern timezone"
     )
-    departure_time: Optional[datetime] = Field(
-        None, description="Actual departure time in Eastern timezone"
+    scheduled_departure: Optional[datetime] = Field(
+        None, description="Scheduled departure time from platform in Eastern timezone"
     )
-    actual_arrival_time: Optional[datetime] = Field(
+    actual_arrival: Optional[datetime] = Field(
         None, description="Actual arrival time at platform in Eastern timezone"
+    )
+    actual_departure: Optional[datetime] = Field(
+        None, description="Actual departure time from platform in Eastern timezone"
     )
     pickup_only: bool = False
     dropoff_only: bool = False
@@ -239,8 +242,12 @@ class ConsolidatedStop(BaseModel):
 
     station_code: Optional[str] = None
     station_name: str
-    scheduled_time: Optional[str] = Field(None, description="ISO timestamp")
-    departure_time: Optional[str] = Field(None, description="ISO timestamp")
+    scheduled_arrival: Optional[str] = Field(None, description="ISO timestamp of scheduled arrival")
+    scheduled_departure: Optional[str] = Field(
+        None, description="ISO timestamp of scheduled departure"
+    )
+    actual_arrival: Optional[str] = Field(None, description="ISO timestamp of actual arrival")
+    actual_departure: Optional[str] = Field(None, description="ISO timestamp of actual departure")
     pickup_only: bool = False
     dropoff_only: bool = False
     departed: bool = False

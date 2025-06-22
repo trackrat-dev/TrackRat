@@ -154,10 +154,11 @@ class TrainStop(Base, TimestampMixin):
     station_code = Column(String(10), nullable=True, index=True)
     station_name = Column(String(100), nullable=False)
 
-    # Timing information
-    scheduled_time = Column(DateTime, nullable=True)
-    departure_time = Column(DateTime, nullable=True)
-    actual_arrival_time = Column(DateTime, nullable=True)  # When train actually arrived at platform
+    # Timing information - clear field names
+    scheduled_arrival = Column(DateTime, nullable=True)  # When train should arrive at platform
+    scheduled_departure = Column(DateTime, nullable=True)  # When train should depart from platform
+    actual_arrival = Column(DateTime, nullable=True)  # When train actually arrived at platform
+    actual_departure = Column(DateTime, nullable=True)  # When train actually departed from platform
 
     # Stop characteristics
     pickup_only = Column(Boolean, default=False, nullable=False)
@@ -187,7 +188,7 @@ class TrainStop(Base, TimestampMixin):
         """String representation of the train stop."""
         return (
             f"<TrainStop(id={self.id}, train_id='{self.train_id}', "
-            f"station='{self.station_name}', scheduled='{self.scheduled_time}')>"
+            f"station='{self.station_name}', scheduled='{self.scheduled_arrival}')>"
         )
 
     @property

@@ -986,6 +986,143 @@ def simplify_train_stop_constraint(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def rename_train_stop_time_fields(session: Session) -> Dict[str, Any]:
+    """
+    Rename train stop time fields for clarity and add actual_departure field.
+
+    This migration:
+    1. Renames scheduled_time to scheduled_arrival
+    2. Renames departure_time to scheduled_departure
+    3. Renames actual_arrival_time to actual_arrival
+    4. Adds actual_departure field
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if new columns already exist
+        check_new_columns = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' 
+            AND column_name IN ('scheduled_arrival', 'scheduled_departure', 
+                               'actual_arrival', 'actual_departure')
+            """
+        )
+        existing_new_columns = session.execute(check_new_columns).fetchall()
+        existing_new_names = [row[0] for row in existing_new_columns]
+
+        if len(existing_new_names) == 4:
+            logger.info("Train stop time fields already renamed")
+            return {"status": "skipped", "message": "Fields already renamed"}
+
+        # Check if old columns exist
+        check_old_columns = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' 
+            AND column_name IN ('scheduled_time', 'departure_time', 'actual_arrival_time')
+            """
+        )
+        existing_old_columns = session.execute(check_old_columns).fetchall()
+        existing_old_names = [row[0] for row in existing_old_columns]
+
+        if not existing_old_names:
+            logger.warning("Old columns not found - may need manual intervention")
+            return {"status": "warning", "message": "Old columns not found"}
+
+        # Rename columns
+        if "scheduled_time" in existing_old_names and "scheduled_arrival" not in existing_new_names:
+            logger.info("Renaming scheduled_time to scheduled_arrival")
+            rename_scheduled_time = text(
+                """
+                ALTER TABLE train_stops 
+                RENAME COLUMN scheduled_time TO scheduled_arrival
+                """
+            )
+            session.execute(rename_scheduled_time)
+
+        if (
+            "departure_time" in existing_old_names
+            and "scheduled_departure" not in existing_new_names
+        ):
+            logger.info("Renaming departure_time to scheduled_departure")
+            rename_departure_time = text(
+                """
+                ALTER TABLE train_stops 
+                RENAME COLUMN departure_time TO scheduled_departure
+                """
+            )
+            session.execute(rename_departure_time)
+
+        if (
+            "actual_arrival_time" in existing_old_names
+            and "actual_arrival" not in existing_new_names
+        ):
+            logger.info("Renaming actual_arrival_time to actual_arrival")
+            rename_actual_arrival = text(
+                """
+                ALTER TABLE train_stops 
+                RENAME COLUMN actual_arrival_time TO actual_arrival
+                """
+            )
+            session.execute(rename_actual_arrival)
+
+        # Add actual_departure if it doesn't exist
+        if "actual_departure" not in existing_new_names:
+            logger.info("Adding actual_departure column to train_stops table")
+            add_actual_departure = text(
+                """
+                ALTER TABLE train_stops 
+                ADD COLUMN actual_departure TIMESTAMP
+                """
+            )
+            session.execute(add_actual_departure)
+
+        # Create indexes on new time columns for performance
+        index_names = [
+            ("idx_train_stops_scheduled_arrival", "scheduled_arrival"),
+            ("idx_train_stops_actual_arrival", "actual_arrival"),
+        ]
+
+        for index_name, column_name in index_names:
+            check_index = text(
+                f"""
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'train_stops' 
+                AND indexname = '{index_name}'
+                """
+            )
+            index_exists = session.execute(check_index).fetchone()
+
+            if not index_exists:
+                logger.info(f"Creating index {index_name}")
+                create_index = text(
+                    f"""
+                    CREATE INDEX {index_name} 
+                    ON train_stops({column_name})
+                    """
+                )
+                session.execute(create_index)
+
+        # Commit the changes
+        session.commit()
+
+        logger.info("Successfully renamed train stop time fields")
+        return {"status": "success", "message": "Time fields renamed successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error renaming train stop time fields: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -1015,6 +1152,10 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
             "simplify_train_stop_constraint",
             simplify_train_stop_constraint,
         ),  # Final constraint state
+        (
+            "rename_train_stop_time_fields",
+            rename_train_stop_time_fields,
+        ),  # Rename time fields for clarity
         ("add_performance_indexes", add_performance_indexes),  # Performance improvements (last)
     ]
 
