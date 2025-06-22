@@ -149,11 +149,6 @@ class DataCollectorService:
                     stats["trains_total"] += station_stats["trains_total"]
                     stats["trains_new"] += station_stats["trains_new"]
                     stats["trains_updated"] += station_stats["trains_updated"]
-
-                    logger.info(
-                        f"Processed {station_stats['trains_total']} trains for {station_name}: "
-                        f"{station_stats['trains_new']} new, {station_stats['trains_updated']} updated"
-                    )
                 else:
                     station_stats["error"] = "Failed to process train data"
                     stats["stations_failed"] += 1
@@ -345,18 +340,15 @@ class DataCollectorService:
             # that are also not in the current API response
             current_time = datetime.now()
 
-            logger.info(f"Running departed train check at {current_time}")
-            logger.info(f"Current API has {len(current_train_ids)} train records")
+            logger.info(
+                f"Running departed train check at {current_time}, current API has {len(current_train_ids)} train records"
+            )
 
             query = self.session.query(Train).filter(
                 Train.departure_time <= current_time,
                 Train.status == "BOARDING",
                 Train.origin_station_code == station_code,
             )
-
-            # Log the SQL query being executed
-            query_sql = str(query.statement.compile(compile_kwargs={"literal_binds": True}))
-            logger.info(f"Executing SQL query: {query_sql}")
 
             potential_departed = query.all()
             logger.info(

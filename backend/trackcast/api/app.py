@@ -14,10 +14,16 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import or_, text
 
 from trackcast.api.routers import stops, trains
-from trackcast.db.connection import get_db, get_pool_status_metrics
+from trackcast.db.connection import engine, get_db, get_pool_status_metrics
+from trackcast.telemetry import instrument_app, setup_telemetry
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Initialize OpenTelemetry tracing
+setup_telemetry(
+    service_name="trackcast-api", sample_rate=float(os.getenv("OTEL_SAMPLE_RATE", "0.1"))
+)
 
 # Create FastAPI app
 app = FastAPI(
@@ -26,6 +32,8 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# Instrument app with OpenTelemetry and Prometheus
+instrument_app(app, engine)
 Instrumentator().instrument(app).expose(app)
 
 # Add CORS middleware

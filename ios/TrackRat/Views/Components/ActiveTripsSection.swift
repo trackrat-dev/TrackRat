@@ -111,12 +111,12 @@ struct ActiveTripsSection: View {
     
     private func statusAndTrackRow(for activity: Activity<TrainActivityAttributes>) -> some View {
         HStack {
-            // Status
+            // Status (StatusV2)
             HStack(spacing: 4) {
                 Circle()
-                    .fill(statusColor(activity.content.state.status))
+                    .fill(statusV2Color(activity.content.state.statusV2))
                     .frame(width: 8, height: 8)
-                Text(activity.content.state.status.displayText)
+                Text(statusV2DisplayText(activity.content.state.statusV2))
                     .font(.subheadline.bold())
                     .foregroundColor(.white)
             }
@@ -193,13 +193,27 @@ struct ActiveTripsSection: View {
         appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(trainNumber: trainNumber, fromStation: fromStation))
     }
     
-    private func statusColor(_ status: TrainStatus) -> Color {
-        switch status {
-        case .onTime: return .green
-        case .delayed: return .red
-        case .boarding: return .orange
-        case .departed: return .blue
+    private func statusV2Color(_ statusV2: String) -> Color {
+        switch statusV2 {
+        case "SCHEDULED": return .green
+        case "DELAYED": return .red
+        case "BOARDING": return .orange
+        case "EN_ROUTE", "DEPARTED": return .blue
+        case "ARRIVED": return .green
+        case "CANCELLED": return .red
         default: return .white
+        }
+    }
+    
+    private func statusV2DisplayText(_ statusV2: String) -> String {
+        switch statusV2 {
+        case "EN_ROUTE": return "En Route"
+        case "BOARDING": return "Boarding"
+        case "SCHEDULED": return "Scheduled"
+        case "DELAYED": return "Delayed"
+        case "ARRIVED": return "Arrived"
+        case "CANCELLED": return "Cancelled"
+        default: return statusV2.capitalized
         }
     }
     
@@ -242,7 +256,7 @@ struct ActiveTripsSection: View {
             destination: attributes.destination,
             departureTime: Date(), // We don't have departure time in Live Activity
             track: contentState.track,
-            status: contentState.status,
+            status: .unknown, // Legacy status not used
             delayMinutes: contentState.delayMinutes,
             stops: nil, // Live Activity doesn't store full stops data
             predictionData: nil,

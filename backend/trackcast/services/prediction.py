@@ -145,16 +145,25 @@ class PredictionService:
             logger.info(
                 f"Retrieving trains that need predictions with filters: train_id={train_id}, time_range={time_range}, future_only={future_only}"
             )
-            trains = self.train_repo.get_trains_needing_predictions(
+            all_trains = self.train_repo.get_trains_needing_predictions(
                 train_id=train_id, time_range=time_range, future_only=future_only
             )
 
+            # Filter to only NY station trains (only station with trained model)
+            trains = [train for train in all_trains if train.origin_station_code == "NY"]
+
+            if len(all_trains) > len(trains):
+                skipped_count = len(all_trains) - len(trains)
+                logger.info(
+                    f"Filtered to NY station only: processing {len(trains)} trains, skipping {skipped_count} from other stations"
+                )
+
             if not trains:
-                logger.info("No trains found needing predictions")
+                logger.info("No NY station trains found needing predictions")
                 stats["duration_ms"] = int((time.time() - start_time) * 1000)
                 return True, stats
 
-            logger.info(f"Generating predictions for {len(trains)} trains")
+            logger.info(f"Generating predictions for {len(trains)} NY station trains")
             trains_processed = len(trains)
             TRAINS_PROCESSED_TOTAL.inc(len(trains))
 
@@ -503,7 +512,6 @@ class PredictionService:
             train.prediction_data_id = prediction.id
             self.session.commit()
 
-            logger.info(f"Created prediction for train {train.train_id}")
             return prediction
 
         except Exception as e:
@@ -608,11 +616,13 @@ class PredictionService:
             Tuple containing success status and statistics dictionary
         """
         start_time = time.time()
-        now = datetime.now()
+        from trackcast.utils import get_eastern_now
+
+        now = get_eastern_now()
         end_time = now + timedelta(hours=24)  # Regenerate predictions for next 24 hours
 
         stats = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": get_eastern_now().isoformat(),
             "model_versions": {},  # Changed to support multiple station models
             "regeneration": True,
             "predictions_cleared": 0,

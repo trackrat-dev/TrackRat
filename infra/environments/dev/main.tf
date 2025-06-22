@@ -79,8 +79,8 @@ module "trackrat_api_service" {
   container_image = var.api_image_url  # To be defined in variables.tf
   container_port  = 8000               # Assuming the API runs on port 8000
 
-  cpu_limit               = "1"     # Reduced since no longer handling scheduler operations
-  memory_limit            = "512Mi" # Reduced since no longer handling scheduler operations  
+  cpu_limit               = "1"   # Reduced since no longer handling scheduler operations
+  memory_limit            = "1Gi" # Reduced since no longer handling scheduler operations  
   concurrency             = 100
   min_instances           = 0  # Scale to 0 since using Cloud Run Jobs for operations
   max_instances           = 2  # Increased for user traffic handling
@@ -103,7 +103,10 @@ module "trackrat_api_service" {
     APP_ENV                  = "development"
     TRACKCAST_ENV            = "dev"
     MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native" # Enable cloud-native mode to disable internal scheduler
+    TRACKCAST_SCHEDULER_MODE = "cloud_native"      # Enable cloud-native mode to disable internal scheduler
+    GOOGLE_CLOUD_PROJECT     = var.project_id      # Automatically enable GCP Cloud Trace
+    OTEL_SAMPLE_RATE         = "1"                 # 100% sampling for development debugging
+    OTEL_SERVICE_NAME        = "trackcast-api-dev" # Environment-specific service name
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -157,6 +160,9 @@ module "scheduled_operations" {
     TRACKCAST_ENV            = "dev"
     MODEL_PATH               = "/app/models"
     TRACKCAST_SCHEDULER_MODE = "cloud_native"
+    GOOGLE_CLOUD_PROJECT     = var.project_id      # Automatically enable GCP Cloud Trace
+    OTEL_SAMPLE_RATE         = "1"                 # 100% sampling for development debugging
+    OTEL_SERVICE_NAME        = "trackcast-ops-dev" # Environment-specific service name for jobs
   }
 
   # Secret environment variables from Secret Manager
@@ -169,36 +175,14 @@ module "scheduled_operations" {
 
   # Job configurations
   jobs = {
-    data-collection = {
-      command      = ["trackcast", "collect-data"]
+    pipeline = {
+      command      = ["trackcast", "run-pipeline", "--regenerate"]
       cpu_limit    = "1"
-      memory_limit = "512Mi"
-      max_retries  = 2
-      task_timeout = "60s"
-      environment_variables = {
-        JOB_TYPE = "data_collection"
-      }
-    }
-
-    feature-processing = {
-      command      = ["trackcast", "process-features"]
-      cpu_limit    = "1"
-      memory_limit = "512Mi"
+      memory_limit = "1Gi"
       max_retries  = 1
-      task_timeout = "60s"
+      task_timeout = "300s"
       environment_variables = {
-        JOB_TYPE = "feature_processing"
-      }
-    }
-
-    prediction-generation = {
-      command      = ["trackcast", "generate-predictions"]
-      cpu_limit    = "1"
-      memory_limit = "512Mi"
-      max_retries  = 1
-      task_timeout = "60s"
-      environment_variables = {
-        JOB_TYPE = "prediction_generation"
+        JOB_TYPE = "pipeline"
       }
     }
   }
@@ -215,26 +199,24 @@ module "scheduled_operations" {
   ]
 }
 
+# Grant Cloud Trace Agent role to the scheduler service account for tracing
+resource "google_project_iam_member" "scheduler_cloud_trace_agent" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
 # IAM permissions for jobs are handled at the job level in the cloud-run-jobs module
 
 
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    data-collection = {
-      schedule    = "0,15,30,45 * * * *" # Every 15 minutes at :00, :15, :30, :45
-      description = "Data collection from NJ Transit and Amtrak APIs every 15 minutes"
-      job_name    = "data-collection"
-    }
-    feature-processing = {
-      schedule    = "5,20,35,50 * * * *" # Every 15 minutes at :05, :20, :35, :50
-      description = "Feature processing for collected train data every 15 minutes"
-      job_name    = "feature-processing"
-    }
-    prediction-generation = {
-      schedule    = "10,25,40,55 * * * *" # Every 15 minutes at :10, :25, :40, :55
-      description = "Track prediction generation for upcoming trains every 15 minutes"
-      job_name    = "prediction-generation"
+    # Consolidated pipeline scheduler - runs every hour
+    pipeline = {
+      schedule    = "0 * * * *" # Every hour
+      description = "Complete data pipeline: collection -> features -> predictions every hours"
+      job_name    = "pipeline"
     }
   }
 

@@ -71,6 +71,35 @@ class StationsTests: XCTestCase {
         XCTAssertNil(Stations.getStationCode(""))
     }
     
+    func testGetStationCodeWithVariations() {
+        // Test common destination variations that might come from API
+        XCTAssertEqual(Stations.getStationCode("New York"), "NY", "Should handle 'New York' → 'NY'")
+        XCTAssertEqual(Stations.getStationCode("Newark"), "NP", "Should handle 'Newark' → 'NP'")
+        XCTAssertEqual(Stations.getStationCode("Philadelphia"), "PH", "Should handle 'Philadelphia' → 'PH'")
+        XCTAssertEqual(Stations.getStationCode("Washington"), "WS", "Should handle 'Washington' → 'WS'")
+        XCTAssertEqual(Stations.getStationCode("Baltimore"), "BL", "Should handle 'Baltimore' → 'BL'")
+        XCTAssertEqual(Stations.getStationCode("Boston"), "BOS", "Should handle 'Boston' → 'BOS'")
+        XCTAssertEqual(Stations.getStationCode("Princeton"), "PJ", "Should handle 'Princeton' → 'PJ'")
+        
+        // Test case insensitive matching
+        XCTAssertEqual(Stations.getStationCode("new york"), "NY", "Should be case insensitive")
+        XCTAssertEqual(Stations.getStationCode("NEW YORK"), "NY", "Should be case insensitive")
+        XCTAssertEqual(Stations.getStationCode("New York"), "NY", "Should be case insensitive")
+        
+        // Test with extra whitespace
+        XCTAssertEqual(Stations.getStationCode(" New York "), "NY", "Should handle whitespace")
+        XCTAssertEqual(Stations.getStationCode("\tTrenton\n"), "TR", "Should handle whitespace")
+    }
+    
+    func testGetStationCodeWithPartialMatching() {
+        // Test partial matching for stations containing search terms
+        XCTAssertEqual(Stations.getStationCode("Metropark"), "MP", "Should find exact match first")
+        
+        // Test that partial matching works as fallback
+        let result = Stations.getStationCode("some partial station name that doesn't exist")
+        XCTAssertNil(result, "Should return nil for non-existent partial matches")
+    }
+    
     func testStationCodesCoverDepartureStations() {
         for departureStation in Stations.departureStations {
             XCTAssertNotNil(Stations.stationCodes[departureStation.name], 

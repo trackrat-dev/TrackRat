@@ -290,6 +290,16 @@ def ensure_eastern_timezone(dt: datetime) -> datetime:
     return eastern_dt.replace(tzinfo=None)
 
 
+def get_eastern_now() -> datetime:
+    """Get current time in Eastern timezone as a naive datetime.
+
+    Returns:
+        Naive datetime representing current time in Eastern timezone
+    """
+    eastern = pytz.timezone("US/Eastern")
+    return datetime.now(eastern).replace(tzinfo=None)
+
+
 def parse_iso_datetime_to_eastern(datetime_str: str) -> Optional[datetime]:
     """Parse ISO datetime string (potentially with timezone) to Eastern time.
 

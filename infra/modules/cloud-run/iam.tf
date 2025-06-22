@@ -45,4 +45,12 @@ resource "google_project_iam_member" "cloudsql_client" {
   member  = "serviceAccount:${local.effective_service_account_email}"
 }
 
+# Grant Cloud Trace Agent role for OpenTelemetry tracing
+resource "google_project_iam_member" "cloud_trace_agent" {
+  count   = var.service_account_email == null ? 1 : 0 # Only if SA is created by this module
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${local.effective_service_account_email}"
+}
+
 # Add other necessary IAM bindings here, for example, Pub/Sub subscriber if triggered by Pub/Sub, etc.

@@ -14,9 +14,9 @@ struct TrainLiveActivity: Widget {
             DynamicIsland {
                 // Expanded UI (when tapped)
                 DynamicIslandExpandedRegion(.leading) {
-                    TrainStatusView(
+                    TrainStatusV2View(
                         trainNumber: context.attributes.trainNumber,
-                        status: context.state.status,
+                        statusV2: context.state.statusV2,
                         track: context.state.track
                     )
                 }
@@ -44,7 +44,7 @@ struct TrainLiveActivity: Widget {
                             .foregroundColor(.white)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                        Text(getCompactStatus(context.state.status))
+                        Text(getCompactStatusV2(context.state.statusV2))
                             .font(.system(size: 8, weight: .regular))
                             .foregroundColor(.gray)
                             .lineLimit(1)
@@ -63,7 +63,7 @@ struct TrainLiveActivity: Widget {
                 // Minimal (when other Dynamic Islands are active)
                 // Maximum width: 32pt for Dynamic Island minimal state
                 HStack(spacing: 1) {
-                    Image(systemName: trainStatusIcon(status: context.state.status))
+                    Image(systemName: trainStatusV2Icon(statusV2: context.state.statusV2))
                         .font(.system(size: 7))
                         .foregroundColor(.white)
                     if context.attributes.trainNumber.count <= 4 {
@@ -80,36 +80,44 @@ struct TrainLiveActivity: Widget {
         }
     }
 
-    // Helper function to determine the icon based on train status
-    private func trainStatusIcon(status: TrainStatus) -> String {
-        switch status {
-        case .onTime:
-            return "tram.fill"
-        case .delayed:
+    // Helper function to determine the icon based on StatusV2
+    private func trainStatusV2Icon(statusV2: String) -> String {
+        switch statusV2 {
+        case "SCHEDULED":
+            return "clock.fill"
+        case "DELAYED":
             return "exclamationmark.triangle.fill"
-        case .boarding:
+        case "BOARDING":
             return "figure.walk"
-        case .departed:
+        case "EN_ROUTE", "DEPARTED":
             return "tram.fill"
-        case .scheduled, .unknown:
+        case "ARRIVED":
+            return "flag.checkered"
+        case "CANCELLED":
+            return "xmark.circle.fill"
+        default:
             return "questionmark.circle.fill"
         }
     }
     
-    // Helper function to get compact status text for Dynamic Island
-    private func getCompactStatus(_ status: TrainStatus) -> String {
-        switch status {
-        case .boarding:
+    // Helper function to get compact StatusV2 text for Dynamic Island
+    private func getCompactStatusV2(_ statusV2: String) -> String {
+        switch statusV2 {
+        case "BOARDING":
             return "BRD"
-        case .delayed:
+        case "DELAYED":
             return "DEL"
-        case .departed:
+        case "EN_ROUTE":
+            return "ENR"
+        case "DEPARTED":
             return "DEP"
-        case .onTime:
-            return "OT"
-        case .scheduled:
+        case "SCHEDULED":
             return "SCH"
-        case .unknown:
+        case "ARRIVED":
+            return "ARR"
+        case "CANCELLED":
+            return "CAN"
+        default:
             return "UNK"
         }
     }
@@ -132,7 +140,7 @@ struct TrainLiveActivityView: View {
                         Spacer()
                         
                         if let track = context.state.track {
-                            TrackBadge(track: track, status: context.state.status)
+                            TrackBadgeV2(track: track, statusV2: context.state.statusV2)
                         }
                     }
                     
@@ -143,7 +151,7 @@ struct TrainLiveActivityView: View {
                 
                 Spacer()
                 
-                LiveActivityStatusBadge(status: context.state.status)
+                LiveActivityStatusBadgeV2(statusV2: context.state.statusV2)
             }
             
             // Journey progress bar
@@ -297,9 +305,9 @@ struct DynamicIslandCompactTrailing: View {
 }
 
 @available(iOS 16.1, *)
-struct TrainStatusView: View {
+struct TrainStatusV2View: View {
     let trainNumber: String
-    let status: TrainStatus
+    let statusV2: String
     let track: String?
     
     var body: some View {
@@ -320,19 +328,34 @@ struct TrainStatusView: View {
                     .truncationMode(.tail)
             }
             
-            Text(status.displayText)
+            Text(statusV2DisplayText(statusV2))
                 .font(.caption2)
-                .foregroundColor(statusColor(status))
+                .foregroundColor(statusV2Color(statusV2))
                 .lineLimit(1)
         }
     }
     
-    private func statusColor(_ status: TrainStatus) -> Color {
-        switch status {
-        case .onTime: return .green
-        case .delayed: return .red
-        case .boarding: return .orange
+    private func statusV2Color(_ statusV2: String) -> Color {
+        switch statusV2 {
+        case "SCHEDULED": return .green
+        case "DELAYED": return .red
+        case "BOARDING": return .orange
+        case "EN_ROUTE": return .blue
+        case "ARRIVED": return .green
+        case "CANCELLED": return .red
         default: return .primary
+        }
+    }
+    
+    private func statusV2DisplayText(_ statusV2: String) -> String {
+        switch statusV2 {
+        case "EN_ROUTE": return "En Route"
+        case "BOARDING": return "Boarding"
+        case "SCHEDULED": return "Scheduled"
+        case "DELAYED": return "Delayed"
+        case "ARRIVED": return "Arrived"
+        case "CANCELLED": return "Cancelled"
+        default: return statusV2.capitalized
         }
     }
 }
@@ -504,36 +527,50 @@ struct JourneyProgressBar: View {
 }
 
 @available(iOS 16.1, *)
-struct LiveActivityStatusBadge: View {
-    let status: TrainStatus
+struct LiveActivityStatusBadgeV2: View {
+    let statusV2: String
     
     var body: some View {
-        Text(status.displayText)
+        Text(statusV2DisplayText(statusV2))
             .font(.caption.bold())
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(backgroundColor())
+                    .fill(backgroundColorV2())
             )
             .foregroundColor(.white)
     }
     
-    private func backgroundColor() -> Color {
-        switch status {
-        case .onTime: return .green
-        case .delayed: return .red
-        case .boarding: return .orange
-        case .departed: return .blue
+    private func backgroundColorV2() -> Color {
+        switch statusV2 {
+        case "SCHEDULED": return .green
+        case "DELAYED": return .red
+        case "BOARDING": return .orange
+        case "EN_ROUTE", "DEPARTED": return .blue
+        case "ARRIVED": return .green
+        case "CANCELLED": return .red
         default: return .gray
+        }
+    }
+    
+    private func statusV2DisplayText(_ statusV2: String) -> String {
+        switch statusV2 {
+        case "EN_ROUTE": return "En Route"
+        case "BOARDING": return "Boarding"
+        case "SCHEDULED": return "Scheduled"
+        case "DELAYED": return "Delayed"
+        case "ARRIVED": return "Arrived"
+        case "CANCELLED": return "Cancelled"
+        default: return statusV2.capitalized
         }
     }
 }
 
 @available(iOS 16.1, *)
-struct TrackBadge: View {
+struct TrackBadgeV2: View {
     let track: String
-    let status: TrainStatus
+    let statusV2: String
     
     var body: some View {
         HStack(spacing: 2) {
@@ -546,7 +583,7 @@ struct TrackBadge: View {
         .padding(.vertical, 2)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(status == .boarding ? .orange : .blue)
+                .fill(statusV2 == "BOARDING" ? .orange : .blue)
         )
         .foregroundColor(.white)
     }

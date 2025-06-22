@@ -250,11 +250,13 @@ class FeatureEngineeringService:
             Tuple containing success status and statistics dictionary
         """
         start_time = time.time()
-        now = datetime.now()
+        from trackcast.utils import get_eastern_now
+
+        now = get_eastern_now()
         end_time = now + timedelta(hours=hours_ahead)
 
         stats = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": get_eastern_now().isoformat(),
             "start_time": now.isoformat(),
             "end_time": end_time.isoformat(),
             "regeneration": True,

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
 from trackcast.metrics import DB_QUERY_DURATION_SECONDS, MODEL_PREDICTION_ACCURACY
+from trackcast.telemetry import trace_operation
 
 logger = logging.getLogger(__name__)
 
@@ -617,6 +618,102 @@ class TrainRepository(BaseRepository):
             logger.error(f"Database error in get_trains: {str(e)}")
             raise
 
+    def get_trains_with_stops(
+        self,
+        train_ids: List[int],
+    ) -> Dict[int, List[TrainStop]]:
+        """
+        Get stops for multiple trains in a single query to avoid N+1 problem.
+
+        Args:
+            train_ids: List of train database IDs
+
+        Returns:
+            Dictionary mapping train ID to list of TrainStop objects
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            if not train_ids:
+                return {}
+
+            # Get all trains with their departure times in one query
+            trains_info = (
+                self.session.query(Train.id, Train.train_id, Train.departure_time)
+                .filter(Train.id.in_(train_ids))
+                .all()
+            )
+
+            if not trains_info:
+                return {}
+
+            # Create mapping of database ID to (train_id, departure_time)
+            train_mapping = {
+                train.id: (train.train_id, train.departure_time) for train in trains_info
+            }
+
+            # Build conditions for all trains
+            conditions = []
+            for train_id, departure_time in train_mapping.values():
+                conditions.append(
+                    and_(
+                        TrainStop.train_id == train_id,
+                        TrainStop.train_departure_time == departure_time,
+                    )
+                )
+
+            # Get all stops for all trains in one query
+            all_stops = (
+                self.session.query(TrainStop)
+                .filter(or_(*conditions))
+                .order_by(TrainStop.train_id, TrainStop.scheduled_time.asc())
+                .all()
+            )
+
+            # Group stops by train with optimized lookup
+            with trace_operation(
+                "db.post_process_stops_matching",
+                stop_count=len(all_stops),
+                train_count=len(train_mapping),
+            ) as span:
+                # Initialize result dictionary
+                stops_by_train = {}
+                for db_id in train_mapping.keys():
+                    stops_by_train[db_id] = []
+
+                # Create reverse lookup dictionary for O(1) train matching - O(m)
+                train_lookup = {
+                    (train_id, departure_time): db_id
+                    for db_id, (train_id, departure_time) in train_mapping.items()
+                }
+
+                # Single loop with O(1) lookups - O(n) instead of O(n*m)
+                matched_stops = 0
+                for stop in all_stops:
+                    lookup_key = (stop.train_id, stop.train_departure_time)
+                    db_id = train_lookup.get(lookup_key)
+                    if db_id is not None:
+                        stops_by_train[db_id].append(stop)
+                        matched_stops += 1
+
+                # Add performance metrics to span
+                span.set_attribute("matched_stops", matched_stops)
+                span.set_attribute("unmatched_stops", len(all_stops) - matched_stops)
+                total_stop_assignments = sum(len(stops) for stops in stops_by_train.values())
+                span.set_attribute("total_stop_assignments", total_stop_assignments)
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_with_stops").observe(duration)
+            logger.info(f"Loaded stops for {len(train_ids)} trains in {duration:.3f}s")
+
+            return stops_by_train
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_trains_with_stops: {str(e)}")
+            raise
+
     def get_trains_for_time_range(self, start_time: datetime, end_time: datetime) -> List[Train]:
         """
         Get all trains within a time range.
@@ -1007,7 +1104,7 @@ class TrainRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
-        start_time = time.time()
+        db_start_time = time.time()
         try:
             # Start a transaction
             self.session.begin_nested()
@@ -1066,7 +1163,7 @@ class TrainRepository(BaseRepository):
                 f"Cleared features for {stats['trains_cleared']} trains in range {start_time} to {end_time}, "
                 f"deleted {stats['features_deleted']} feature records"
             )
-            duration = time.time() - start_time
+            duration = time.time() - db_start_time
             DB_QUERY_DURATION_SECONDS.labels(query_type="clear_features_for_time_range").observe(
                 duration
             )
@@ -1575,7 +1672,6 @@ class PredictionDataRepository(BaseRepository):
             self.session.commit()
             duration = time.time() - start_time
             DB_QUERY_DURATION_SECONDS.labels(query_type="create_prediction").observe(duration)
-            logger.info(f"Created prediction data with ID {prediction.id}")
             return prediction
         except SQLAlchemyError as e:
             self.session.rollback()

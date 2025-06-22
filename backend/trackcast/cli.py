@@ -390,6 +390,173 @@ def import_data(
 
 
 @main.command()
+@click.option("--skip-collection", is_flag=True, help="Skip data collection step")
+@click.option("--skip-features", is_flag=True, help="Skip feature processing step")
+@click.option("--skip-predictions", is_flag=True, help="Skip prediction generation step")
+@click.option("--dry-run", is_flag=True, help="Show what would be executed without running")
+@click.option("--debug", is_flag=True, help="Enable debug logging for feature processing")
+@click.option(
+    "--regenerate",
+    is_flag=True,
+    help="Clear and regenerate features/predictions for future trains (next 24h)",
+)
+def run_pipeline(
+    skip_collection: bool,
+    skip_features: bool,
+    skip_predictions: bool,
+    dry_run: bool,
+    debug: bool,
+    regenerate: bool,
+) -> None:
+    """Run the complete data pipeline: collection -> features -> predictions"""
+    try:
+        # Log regeneration mode
+        if regenerate:
+            logger.info("Pipeline will regenerate features and predictions for future trains")
+
+        steps = [
+            ("collect-data", not skip_collection, lambda: _execute_collect_data()),
+            (
+                "process-features",
+                not skip_features,
+                lambda: _execute_process_features(debug, regenerate),
+            ),
+            (
+                "generate-predictions",
+                not skip_predictions,
+                lambda: _execute_generate_predictions(regenerate),
+            ),
+        ]
+
+        successful_steps = []
+        failed_step = None
+
+        logger.info("Starting data pipeline execution")
+
+        for step_name, should_run, execute_func in steps:
+            if should_run:
+                logger.info(f"Pipeline step: {step_name}")
+
+                if dry_run:
+                    logger.info(f"[DRY RUN] Would execute: {step_name}")
+                    successful_steps.append(step_name)
+                else:
+                    try:
+                        success = execute_func()
+                        if success:
+                            logger.info(f"Pipeline step '{step_name}' completed successfully")
+                            successful_steps.append(step_name)
+                        else:
+                            logger.error(f"Pipeline step '{step_name}' failed")
+                            failed_step = step_name
+                            break
+                    except Exception as e:
+                        logger.error(f"Pipeline step '{step_name}' failed with exception: {str(e)}")
+                        failed_step = step_name
+                        break
+            else:
+                logger.info(f"Pipeline step: {step_name} (skipped)")
+
+        # Report results
+        if dry_run:
+            logger.info(f"Pipeline dry run completed successfully")
+            logger.info(f"Would execute steps: {', '.join(successful_steps)}")
+        elif failed_step:
+            logger.error(f"Pipeline failed at step: {failed_step}")
+            logger.info(f"Successfully completed steps: {', '.join(successful_steps)}")
+            sys.exit(1)
+        else:
+            logger.info(f"Pipeline completed successfully")
+            logger.info(f"Executed steps: {', '.join(successful_steps)}")
+
+    except Exception as e:
+        logger.error(f"Error in pipeline execution: {str(e)}")
+        sys.exit(1)
+
+
+def _execute_collect_data() -> bool:
+    """Execute data collection step"""
+    try:
+        session = get_db_session()
+        try:
+            collector = DataCollectorService(session)
+            success, stats = collector.run_collection()
+            if success:
+                logger.info(f"Data collection completed: {stats}")
+                return True
+            else:
+                logger.error(f"Data collection failed: {stats}")
+                return False
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Error in data collection: {str(e)}")
+        return False
+
+
+def _execute_process_features(debug: bool = False, regenerate: bool = False) -> bool:
+    """Execute feature processing step"""
+    try:
+        # Set debug logging if requested
+        if debug:
+            logging.getLogger("trackcast.features").setLevel(logging.DEBUG)
+            logging.getLogger("trackcast.features.extractors").setLevel(logging.DEBUG)
+            logger.info("Debug logging enabled for feature extraction")
+
+        session = get_db_session()
+        try:
+            feature_service = FeatureEngineeringService(session)
+
+            if regenerate:
+                # Use regeneration method for future trains only
+                logger.info("Regenerating features for future trains (next 24 hours)")
+                success, stats = feature_service.process_future_trains_with_regeneration()
+            else:
+                # Use regular incremental processing
+                success, stats = feature_service.process_pending_trains()
+
+            if success:
+                logger.info(f"Feature processing completed: {stats}")
+                return True
+            else:
+                logger.error(f"Feature processing failed: {stats}")
+                return False
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Error in feature processing: {str(e)}")
+        return False
+
+
+def _execute_generate_predictions(regenerate: bool = False) -> bool:
+    """Execute prediction generation step"""
+    try:
+        session = get_db_session()
+        try:
+            prediction_service = PredictionService(session)
+
+            if regenerate:
+                # Use regeneration method for future trains only
+                logger.info("Regenerating predictions for future trains (next 24 hours)")
+                success, stats = prediction_service.run_prediction_with_regeneration()
+            else:
+                # Use regular incremental processing
+                success, stats = prediction_service.run_prediction()
+
+            if success:
+                logger.info(f"Prediction generation completed: {stats}")
+                return True
+            else:
+                logger.error(f"Prediction generation failed: {stats}")
+                return False
+        finally:
+            session.close()
+    except Exception as e:
+        logger.error(f"Error in prediction generation: {str(e)}")
+        return False
+
+
+@main.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
 @click.option("--limit", type=int, help="Limit the number of stops to process")
 def backfill_station_codes(dry_run: bool, limit: Optional[int]) -> None:

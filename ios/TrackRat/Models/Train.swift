@@ -565,26 +565,74 @@ extension Train {
         return track
     }
     
-    /// Get unified status from consolidated data or legacy status
-    var displayStatus: TrainStatus {
-        // If we have consolidated status, map it to TrainStatus enum
-        if let consolidated = statusSummary {
-            return mapConsolidatedStatus(consolidated.currentStatus)
+    /// StatusV2-only status display (no fallbacks)
+    var statusV2Display: String {
+        guard let statusV2 = statusV2 else {
+            return "UNKNOWN"
         }
-        
-        // Fall back to legacy status
-        return status
+        return statusV2.current
     }
     
-    /// Get enhanced status with better handling of conflicting data
-    var enhancedDisplayStatus: String {
-        // Use new status_v2 if available
-        if let statusV2 = statusV2 {
-            return statusV2.current
+    /// Check if train is actually boarding (requires StatusV2 and track)
+    var isActuallyBoarding: Bool {
+        guard let statusV2 = statusV2 else {
+            return false
+        }
+        return statusV2.current == "BOARDING" && displayTrack != nil
+    }
+    
+    /// Check if train has departed (StatusV2 only)
+    var hasDeparted: Bool {
+        guard let statusV2 = statusV2 else {
+            return false
+        }
+        return statusV2.current == "EN_ROUTE" || statusV2.current == "ARRIVED"
+    }
+    
+    /// Get StatusV2-based color for UI display
+    var statusV2Color: String {
+        guard let statusV2 = statusV2 else {
+            return "gray"
         }
         
-        // Fall back to display status
-        return displayStatus.displayText
+        switch statusV2.current {
+        case "BOARDING":
+            return displayTrack != nil ? "orange" : "gray"
+        case "EN_ROUTE":
+            return "blue"
+        case "ARRIVED":
+            return "green"
+        case "DELAYED":
+            return "red"
+        case "CANCELLED":
+            return "red"
+        default:
+            return "gray"
+        }
+    }
+    
+    /// Human-friendly StatusV2 text for display
+    var statusV2DisplayText: String {
+        guard let statusV2 = statusV2 else {
+            return "Unknown"
+        }
+        
+        switch statusV2.current {
+        case "BOARDING":
+            return displayTrack != nil ? "Boarding" : "Scheduled"
+        case "EN_ROUTE":
+            return "En Route"
+        case "ARRIVED":
+            return "Arrived"
+        case "DELAYED":
+            return "Delayed"
+        case "CANCELLED":
+            return "Cancelled"
+        case "SCHEDULED":
+            return "Scheduled"
+        default:
+            return statusV2.current.replacingOccurrences(of: "_", with: " ").capitalized
+        }
     }
     
     /// Get human-readable location description

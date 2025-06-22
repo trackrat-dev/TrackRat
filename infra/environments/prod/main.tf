@@ -75,10 +75,10 @@ module "trackrat_api_service" {
   container_port  = 8000
 
   cpu_limit               = "1"
-  memory_limit            = "512Mi"
+  memory_limit            = "1Gi"
   concurrency             = 100
-  min_instances           = 0 # Same as staging for cost efficiency
-  max_instances           = 2 # Same as staging
+  min_instances           = 1
+  max_instances           = 2
   request_timeout_seconds = 60
 
   startup_probe_path            = "/health"
@@ -94,6 +94,9 @@ module "trackrat_api_service" {
     TRACKCAST_ENV            = "production"
     MODEL_PATH               = "/app/models"
     TRACKCAST_SCHEDULER_MODE = "cloud_native"
+    GOOGLE_CLOUD_PROJECT     = var.project_id       # Automatically enable GCP Cloud Trace
+    OTEL_SAMPLE_RATE         = "0.05"               # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME        = "trackcast-api-prod" # Environment-specific service name
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -144,6 +147,9 @@ module "scheduled_operations" {
     TRACKCAST_ENV            = "production"
     MODEL_PATH               = "/app/models"
     TRACKCAST_SCHEDULER_MODE = "cloud_native"
+    GOOGLE_CLOUD_PROJECT     = var.project_id       # Automatically enable GCP Cloud Trace
+    OTEL_SAMPLE_RATE         = "0.05"               # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME        = "trackcast-ops-prod" # Environment-specific service name for jobs
   }
 
   # Secret environment variables from Secret Manager
@@ -156,36 +162,15 @@ module "scheduled_operations" {
 
   # Job configurations
   jobs = {
-    data-collection = {
-      command      = ["trackcast", "collect-data"]
+    # Consolidated pipeline job - runs all steps sequentially
+    pipeline = {
+      command      = ["trackcast", "run-pipeline", "--regenerate"]
       cpu_limit    = "1"
-      memory_limit = "512Mi"
-      max_retries  = 2
-      task_timeout = "60s"
-      environment_variables = {
-        JOB_TYPE = "data_collection"
-      }
-    }
-
-    feature-processing = {
-      command      = ["trackcast", "process-features"]
-      cpu_limit    = "1"
-      memory_limit = "512Mi"
+      memory_limit = "1Gi"
       max_retries  = 1
-      task_timeout = "60s"
+      task_timeout = "300s"
       environment_variables = {
-        JOB_TYPE = "feature_processing"
-      }
-    }
-
-    prediction-generation = {
-      command      = ["trackcast", "generate-predictions"]
-      cpu_limit    = "1"
-      memory_limit = "512Mi"
-      max_retries  = 1
-      task_timeout = "60s"
-      environment_variables = {
-        JOB_TYPE = "prediction_generation"
+        JOB_TYPE = "pipeline"
       }
     }
   }
@@ -205,20 +190,11 @@ module "scheduled_operations" {
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    data-collection = {
-      schedule    = "0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45,48,51,54,57 * * * *"
-      description = "Data collection from NJ Transit and Amtrak APIs every 3 minutes"
-      job_name    = "data-collection"
-    }
-    feature-processing = {
-      schedule    = "1,4,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,58 * * * *"
-      description = "Feature processing for collected train data every 3 minutes"
-      job_name    = "feature-processing"
-    }
-    prediction-generation = {
-      schedule    = "2,5,8,11,14,17,20,23,26,29,32,35,38,41,44,47,50,53,56,59 * * * *"
-      description = "Track prediction generation for upcoming trains every 3 minutes"
-      job_name    = "prediction-generation"
+    # Consolidated pipeline scheduler - runs every 5 minutes
+    pipeline = {
+      schedule    = "*/5 * * * *" # Every 5 minutes
+      description = "Complete data pipeline: collection -> features -> predictions every 5 minutes"
+      job_name    = "pipeline"
     }
   }
 
