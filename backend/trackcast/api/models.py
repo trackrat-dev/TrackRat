@@ -17,6 +17,9 @@ class TrainStop(BaseModel):
     departure_time: Optional[datetime] = Field(
         None, description="Actual departure time in Eastern timezone"
     )
+    actual_arrival_time: Optional[datetime] = Field(
+        None, description="Actual arrival time at platform in Eastern timezone"
+    )
     pickup_only: bool = False
     dropoff_only: bool = False
     departed: bool = False
@@ -136,6 +139,18 @@ class TrainResponse(TrainBase):
     )
     delay_minutes: Optional[int] = None
     train_split: Optional[str] = None
+
+    # Journey tracking fields
+    journey_completion_status: Optional[str] = Field(
+        None,
+        description="Journey status: 'in_progress', 'completed', 'terminated_early', 'lost_tracking'",
+    )
+    stops_last_updated: Optional[datetime] = Field(
+        None, description="When stop data was last refreshed from NJ Transit getTrainStopList API"
+    )
+    journey_validated_at: Optional[datetime] = Field(
+        None, description="When this train's complete journey was last validated"
+    )
 
 
 class Metadata(BaseModel):
