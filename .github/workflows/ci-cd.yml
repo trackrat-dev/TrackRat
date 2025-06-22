@@ -455,6 +455,8 @@ jobs:
 
       # Step 7: Deployment summary
       - name: Deployment Summary
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           echo "## 🚀 Development Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -467,7 +469,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version**: \`${{ env.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Deploy Trigger**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deploy Trigger**: ${COMMIT_MESSAGE}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🔧 **Next Steps**:" >> $GITHUB_STEP_SUMMARY
@@ -656,6 +658,8 @@ jobs:
 
       # Step 7: Deployment summary
       - name: Deployment Summary
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           echo "## 🚀 Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -668,7 +672,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version**: \`${{ env.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Deploy Trigger**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deploy Trigger**: ${COMMIT_MESSAGE}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🔧 **Next Steps**:" >> $GITHUB_STEP_SUMMARY
@@ -857,6 +861,8 @@ jobs:
 
       # Step 7: Deployment summary
       - name: Deployment Summary
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           echo "## 🚀 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -869,7 +875,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version**: \`${{ env.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Deploy Trigger**: ${{ github.event.head_commit.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deploy Trigger**: ${COMMIT_MESSAGE}" >> $GITHUB_STEP_SUMMARY
           echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🔧 **Next Steps**:" >> $GITHUB_STEP_SUMMARY
