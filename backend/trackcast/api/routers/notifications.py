@@ -104,7 +104,6 @@ class LiveActivityTokenResponse(BaseModel):
 
 
 @router.post("/device-tokens", response_model=DeviceTokenResponse, tags=["notifications"])
-# @trace_operation("register_device_token")  # Temporarily disabled
 async def register_device_token(
     request: DeviceTokenRequest, db: Session = Depends(get_db)
 ) -> DeviceTokenResponse:
@@ -204,7 +203,6 @@ async def register_device_token(
 @router.post(
     "/live-activities/register", response_model=LiveActivityTokenResponse, tags=["notifications"]
 )
-# @trace_operation("register_live_activity_token")  # Temporarily disabled
 async def register_live_activity_token(
     request: LiveActivityTokenRequest, db: Session = Depends(get_db)
 ) -> LiveActivityTokenResponse:
@@ -349,7 +347,6 @@ async def register_live_activity_token(
 
 
 @router.get("/live-activities/active", tags=["notifications"])
-# @trace_operation("get_active_live_activities")  # Temporarily disabled
 async def get_active_live_activities(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """
     Get all active Live Activity tokens.
@@ -425,7 +422,6 @@ async def get_active_live_activities(db: Session = Depends(get_db)) -> List[Dict
 
 
 @router.delete("/live-activities/{token_id}", tags=["notifications"])
-# @trace_operation("deactivate_live_activity_token")  # Temporarily disabled
 async def deactivate_live_activity_token(
     token_id: int, db: Session = Depends(get_db)
 ) -> Dict[str, str]:

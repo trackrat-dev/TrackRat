@@ -139,8 +139,8 @@ def instrument_app(app, engine=None):
     # Instrument FastAPI with detailed configuration
     FastAPIInstrumentor.instrument_app(
         app,
-        # Skip health and metrics endpoints to reduce noise
-        excluded_urls="/health,/metrics,/favicon.ico,/robots.txt",
+        # Skip health, metrics, and notification endpoints to reduce noise and avoid parsing issues
+        excluded_urls="/health,/metrics,/favicon.ico,/robots.txt,/api/notifications",
         tracer_provider=trace.get_tracer_provider(),
         # Capture request/response bodies for debugging (be careful with sensitive data)
         server_request_hook=_server_request_hook,
