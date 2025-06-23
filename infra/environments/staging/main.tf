@@ -92,6 +92,7 @@ module "trackrat_api_service" {
   environment_variables = {
     APP_ENV                  = "staging"
     TRACKCAST_ENV            = "staging"
+    APNS_ENVIRONMENT         = "prod" # Use production APNS for staging testing
     MODEL_PATH               = "/app/models"
     TRACKCAST_SCHEDULER_MODE = "cloud_native"
     GOOGLE_CLOUD_PROJECT     = var.project_id          # Automatically enable GCP Cloud Trace

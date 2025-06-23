@@ -361,7 +361,7 @@ The app provides sophisticated real-time journey visualization through multiple 
 - macOS 14.0+ for development
 
 ### Build Configuration
-- **Bundle Identifier**: `com.andymartin.TrackRat`
+- **Bundle Identifier**: `net.trackrat.TrackRat`
 - **Development Team**: Set in Xcode project settings
 - **Code Signing**: Automatic with development certificate
 - **Capabilities**: 

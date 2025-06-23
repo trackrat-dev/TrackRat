@@ -109,14 +109,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let tokenString = deviceToken.map { String(format: "%02x", $0) }.joined()
         print("📱 Device token received: \(tokenString)")
         
+        // DEBUG: Print actual bundle ID being used
+        if let bundleId = Bundle.main.bundleIdentifier {
+            print("📱 iOS App Bundle ID: \(bundleId)")
+        }
+        
         // Store device token for Live Activity registration
         Task { @MainActor in
             AppDelegate.deviceToken = tokenString
         }
         
-        // Register device token with backend
+        // Register device token with backend - ensure this completes first
         Task {
             await registerDeviceToken(tokenString)
+            print("📱 Device token registration completed - ready for Live Activity registration")
         }
     }
     
@@ -145,9 +151,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     private func registerDeviceToken(_ token: String) async {
         do {
             try await APIService.shared.registerDeviceToken(token)
-            print("✅ Device token registered with backend")
+            print("✅ Device token registered with backend: \(token)")
         } catch {
             print("❌ Failed to register device token with backend: \(error)")
+            print("❌ Device token that failed: \(token)")
             // Continue without registration - app will still work with local updates
         }
     }

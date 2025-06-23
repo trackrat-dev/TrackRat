@@ -194,7 +194,7 @@ class TrainTests: XCTestCase {
                 },
                 "next_arrival": {
                     "station_code": "NY",
-                    "scheduled_time": "2024-01-01T10:15:00-05:00",
+                    "scheduled_arrival": "2024-01-01T10:15:00-05:00",
                     "estimated_time": "2024-01-01T10:15:00-05:00",
                     "minutes_away": 15
                 },

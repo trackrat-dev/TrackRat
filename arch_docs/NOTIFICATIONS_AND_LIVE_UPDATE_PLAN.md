@@ -141,8 +141,8 @@ class APNSPushService:
 ```bash
 # ✅ COMPLETED - Auth Key method configured:
 ✓ Team ID: D5RZZ55J9R
-✓ Key ID: XNFHX5SPQL  
-✓ Auth Key: AuthKey_XNFHX5SPQL.p8
+✓ Key ID: 4WC3F645FR  
+✓ Auth Key: AuthKey_4WC3F645FR.p8
 ✓ Bundle ID: net.trackrat.TrackRat
 ✓ JWT token generation working
 ```
@@ -155,8 +155,8 @@ class APNSPushService:
 
 # Ready to deploy with configured environment:
 APNS_TEAM_ID=D5RZZ55J9R
-APNS_KEY_ID=XNFHX5SPQL
-APNS_AUTH_KEY_PATH=/app/certs/AuthKey_XNFHX5SPQL.p8
+APNS_KEY_ID=4WC3F645FR
+APNS_AUTH_KEY_PATH=/app/certs/AuthKey_4WC3F645FR.p8
 APNS_BUNDLE_ID=net.trackrat.TrackRat
 TRACKCAST_ENV=dev  # or "prod" for production
 ```

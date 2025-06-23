@@ -789,7 +789,7 @@ struct NextArrival: Codable {
     
     enum CodingKeys: String, CodingKey {
         case stationCode = "station_code"
-        case scheduledTime = "scheduled_time"
+        case scheduledTime = "scheduled_arrival"
         case estimatedTime = "estimated_time"
         case minutesAway = "minutes_away"
     }

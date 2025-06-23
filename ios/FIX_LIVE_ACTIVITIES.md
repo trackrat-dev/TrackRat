@@ -34,7 +34,7 @@ Live Activities register successfully but never appear in the Dynamic Island bec
    - This creates separate target with own Info.plist and bundle
 
 2. **Configure Extension Identity**:
-   - Bundle Identifier: `com.andymartin.TrackRat.TrackRatLiveActivity`
+   - Bundle Identifier: `net.trackrat.TrackRat.TrackRatLiveActivity`
    - Deployment Target: iOS 16.1+
    - Code Signing: Same team as main app
 
@@ -123,7 +123,7 @@ The widget extension's `Info.plist` needs these keys:
 
 #### Widget Extension Build Settings:
 - **Product Name**: `TrackRatLiveActivity`
-- **Bundle Identifier**: `com.andymartin.TrackRat.TrackRatLiveActivity`
+- **Bundle Identifier**: `net.trackrat.TrackRat.TrackRatLiveActivity`
 - **Code Signing Entitlements**: `TrackRatLiveActivity.entitlements`
 - **iOS Deployment Target**: 16.1
 

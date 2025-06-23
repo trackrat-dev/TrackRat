@@ -44,8 +44,8 @@ ENV PYTHONUNBUFFERED=1 \
     OTEL_SERVICE_NAME="trackcast-api" \
     OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED="true" \
     APNS_TEAM_ID="D5RZZ55J9R" \
-    APNS_KEY_ID="XNFHX5SPQL" \
-    APNS_AUTH_KEY_PATH="/app/certs/AuthKey_XNFHX5SPQL.p8" \
+    APNS_KEY_ID="4WC3F645FR" \
+    APNS_AUTH_KEY_PATH="/app/certs/AuthKey_4WC3F645FR.p8" \
     APNS_BUNDLE_ID="net.trackrat.TrackRat"
 
 # Install runtime system dependencies (minimal)

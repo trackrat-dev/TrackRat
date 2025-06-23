@@ -43,9 +43,9 @@ class APNSPushService:
 
     def __init__(self):
         """Initialize the APNS push service."""
-        # Determine environment from config or environment variable
-        env = os.getenv("TRACKCAST_ENV", "dev")
-        if env == "prod":
+        # Determine APNS environment - separate from overall app environment
+        apns_env = os.getenv("APNS_ENVIRONMENT", os.getenv("TRACKCAST_ENV", "dev"))
+        if apns_env == "prod":
             self.apns_url = "https://api.push.apple.com"  # Production
         else:
             self.apns_url = "https://api.sandbox.push.apple.com"  # Development/Sandbox
@@ -54,7 +54,7 @@ class APNSPushService:
         self.team_id = os.getenv("APNS_TEAM_ID")
         self.key_id = os.getenv("APNS_KEY_ID")
         self.auth_key_path = os.getenv("APNS_AUTH_KEY_PATH")
-        self.bundle_id = os.getenv("APNS_BUNDLE_ID", "com.andymartin.TrackRat")
+        self.bundle_id = os.getenv("APNS_BUNDLE_ID", "net.trackrat.TrackRat")
 
         # Certificate-based auth (alternative to auth key)
         self.cert_path = os.getenv("APNS_CERT_PATH")
@@ -78,7 +78,7 @@ class APNSPushService:
         else:
             self._use_mock = False
             logger.info(
-                f"APNS service initialized for {'production' if env == 'prod' else 'sandbox'} environment"
+                f"APNS service initialized for {'production' if apns_env == 'prod' else 'sandbox'} environment"
             )
 
     async def send_train_notifications(
@@ -466,12 +466,22 @@ class APNSPushService:
 
         try:
             # Prepare headers
+            # Live Activities require special topic format
+            topic = (
+                f"{self.bundle_id}.push-type.liveactivity" if is_live_activity else self.bundle_id
+            )
+
             headers = {
-                "apns-topic": self.bundle_id,
+                "apns-topic": topic,
                 "apns-push-type": "liveactivity" if is_live_activity else "alert",
                 "apns-priority": "10",  # High priority
                 "content-type": "application/json",
             }
+
+            # Debug logging
+            logger.info(
+                f"APNS Request Debug - Topic: {topic}, Push Type: {'liveactivity' if is_live_activity else 'alert'}, Token: {device_token[:12]}..."
+            )
 
             # Add authentication header
             if self.team_id and self.key_id and self.auth_key_path:

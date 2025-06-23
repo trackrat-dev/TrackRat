@@ -30,7 +30,7 @@ This document outlines the next steps for enhancing TrackRat's comprehensive not
 
 ```bash
 # Verify production APNS configuration
-- [ ] Confirm AuthKey_XNFHX5SPQL.p8 is deployed in production
+- [ ] Confirm AuthKey_4WC3F645FR.p8 is deployed in production
 - [ ] Test device token registration endpoint `/api/device-tokens/`
 - [ ] Verify Live Activity token registration `/api/live-activities/register`
 - [ ] End-to-end push notification testing

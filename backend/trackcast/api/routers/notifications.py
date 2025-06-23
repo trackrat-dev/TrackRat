@@ -154,7 +154,9 @@ async def register_device_token(
                 existing_token.is_active = True
                 existing_token.updated_at = get_eastern_now()
                 db.commit()
-                logger.info(f"Reactivated existing device token {existing_token.id}")
+                logger.info(f"📱 Reactivated existing device token {existing_token.id}")
+            else:
+                logger.info(f"📱 Device token {existing_token.id} already exists and is active")
 
             return DeviceTokenResponse(
                 id=existing_token.id,

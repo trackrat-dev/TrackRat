@@ -23,7 +23,7 @@ xgboost>=1.7.0
 shap>=0.42.0
 
 # API client
-httpx>=0.24.0
+httpx[http2]>=0.24.0
 pydantic>=2.0.0
 requests
 

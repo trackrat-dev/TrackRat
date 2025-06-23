@@ -744,9 +744,9 @@ class AmtrakCollector(BaseCollector):
                     stop_data = {
                         "station_code": mapped_code,
                         "station_name": mapped_name,
-                        "scheduled_time": self._parse_datetime(station.get("schArr"))
-                        or self._parse_datetime(station.get("schDep")),
-                        "departure_time": self._parse_datetime(station.get("dep")),
+                        "scheduled_arrival": self._parse_datetime(station.get("schArr")),
+                        "scheduled_departure": self._parse_datetime(station.get("schDep")),
+                        "actual_departure": self._parse_datetime(station.get("dep")),
                         "pickup_only": False,  # Amtrak doesn't distinguish pickup/dropoff
                         "dropoff_only": False,
                         "departed": station.get("status") == "Departed",
