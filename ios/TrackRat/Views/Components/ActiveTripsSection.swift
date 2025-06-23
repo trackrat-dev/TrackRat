@@ -262,7 +262,7 @@ struct ActiveTripsSection: View {
             predictionData: nil,
             originStationCode: attributes.originStationCode,
             dataSource: nil,
-            statusV2: createStatusV2FromActivity(contentState),
+            statusV2: createStatusV2FromActivity(contentState, attributes),
             progress: createProgressFromActivity(contentState, attributes)
         )
         
@@ -270,7 +270,7 @@ struct ActiveTripsSection: View {
     }
     
     /// Create StatusV2-like data from Live Activity content with human-friendly status
-    private func createStatusV2FromActivity(_ contentState: TrainActivityAttributes.ContentState) -> StatusV2? {
+    private func createStatusV2FromActivity(_ contentState: TrainActivityAttributes.ContentState, _ attributes: TrainActivityAttributes) -> StatusV2? {
         let currentStatus: String
         let location: String
         
@@ -279,7 +279,12 @@ struct ActiveTripsSection: View {
             currentStatus = "SCHEDULED"
             location = "at departure station"
         case .boarding(let station):
-            currentStatus = humanFriendlyStatus("BOARDING", track: contentState.track)
+            // Only show boarding if at origin station
+            if station == attributes.origin {
+                currentStatus = "BOARDING"
+            } else {
+                currentStatus = "EN_ROUTE"
+            }
             location = "at \(station)"
         case .departed(let from, _):
             currentStatus = "EN_ROUTE"
@@ -291,7 +296,12 @@ struct ActiveTripsSection: View {
             currentStatus = "EN_ROUTE"
             location = "between \(from) and \(to)"
         case .atStation(let station):
-            currentStatus = humanFriendlyStatus("BOARDING", track: contentState.track)
+            // Only show boarding if at origin station
+            if station == attributes.origin {
+                currentStatus = "BOARDING"
+            } else {
+                currentStatus = "EN_ROUTE"
+            }
             location = "at \(station)"
         case .arrived:
             currentStatus = "ARRIVED"
@@ -313,11 +323,7 @@ struct ActiveTripsSection: View {
         case "EN_ROUTE":
             return "En Route"
         case "BOARDING":
-            if let track = track {
-                return "Boarding on Track \(track)"
-            } else {
-                return "Boarding"
-            }
+            return "Boarding"  // Never show track info here
         case "SCHEDULED":
             return "Scheduled"
         case "ON_TIME":
@@ -327,7 +333,7 @@ struct ActiveTripsSection: View {
         case "DEPARTED":
             return "Departed"
         case "ARRIVED":
-            return "Arrived"
+            return "Journey Complete!"
         case "CANCELLED":
             return "Cancelled"
         case "ALL_ABOARD":

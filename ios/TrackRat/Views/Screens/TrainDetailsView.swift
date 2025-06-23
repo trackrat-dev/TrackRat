@@ -552,26 +552,102 @@ struct StopRow: View {
     
     @State private var showPulse = false
     
-    private var timeDisplay: (scheduled: String?, actual: String?) {
+    // Helper to determine if this is the origin station (first stop) - check if it's pickup_only
+    private var isOriginStation: Bool {
+        return stop.pickupOnly == true || isDeparture
+    }
+    
+    // Helper to determine if this is final destination (last stop) - check if it's dropoff_only
+    private var isFinalDestination: Bool {
+        return stop.dropoffOnly == true || isDestination
+    }
+    
+    private var enhancedTimeDisplay: (arrival: String?, departure: String?) {
         let formatter = DateFormatter.easternTime(time: .short)
         
-        guard let scheduledTime = stop.scheduledTime else {
-            if let departureTime = stop.departureTime {
-                return (nil, formatter.string(from: departureTime))
+        // For Past Stops (Departed)
+        if stop.departed == true {
+            let arrivalText: String?
+            // Don't show arrival time for origin station
+            if isOriginStation {
+                arrivalText = nil
+            } else {
+                if let actualArrival = stop.actualArrival {
+                    arrivalText = "Arrived: \(formatter.string(from: actualArrival))"
+                } else if let scheduledArrival = stop.scheduledArrival {
+                    arrivalText = "Arrived: \(formatter.string(from: scheduledArrival))"
+                } else {
+                    arrivalText = "Arrived: --:--"
+                }
             }
-            return (nil, "--:--")
+            
+            let departureText: String?
+            // Don't show departure time for final destination
+            if isFinalDestination {
+                departureText = nil
+            } else {
+                if let actualDeparture = stop.actualDeparture {
+                    let delayText = departureDelayText(actual: actualDeparture, scheduled: stop.scheduledDeparture)
+                    departureText = "Departed: \(formatter.string(from: actualDeparture))\(delayText)"
+                } else if let scheduledDeparture = stop.scheduledDeparture {
+                    departureText = "Departed: \(formatter.string(from: scheduledDeparture))"
+                } else {
+                    departureText = "Departed: --:--"
+                }
+            }
+            
+            return (arrivalText, departureText)
         }
         
-        let scheduled = formatter.string(from: scheduledTime)
-        
-        if let departureTime = stop.departureTime {
-            let actual = formatter.string(from: departureTime)
-            if scheduled != actual {
-                return (scheduled, actual)
+        // For Current and Future Stops (Not Yet Departed)
+        let arrivalText: String?
+        // Don't show arrival time for origin station
+        if isOriginStation {
+            arrivalText = nil
+        } else {
+            if let scheduledArrival = stop.scheduledArrival {
+                let delayText = arrivalDelayText(actual: stop.actualArrival, scheduled: scheduledArrival)
+                arrivalText = "Arriving: \(formatter.string(from: scheduledArrival))\(delayText)"
+            } else {
+                arrivalText = "Arriving: --:--"
             }
         }
         
-        return (nil, scheduled)
+        let departureText: String?
+        // Don't show departure time for final destination
+        if isFinalDestination {
+            departureText = nil
+        } else {
+            if let scheduledDeparture = stop.scheduledDeparture {
+                departureText = "Departing: \(formatter.string(from: scheduledDeparture))"
+            } else {
+                departureText = nil
+            }
+        }
+        
+        return (arrivalText, departureText)
+    }
+    
+    private func arrivalDelayText(actual: Date?, scheduled: Date) -> String {
+        guard let actual = actual else { return "" }
+        let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
+        if delayMinutes > 0 {
+            return " (\(delayMinutes) min late)"
+        } else if delayMinutes < 0 {
+            return " (\(abs(delayMinutes)) min early)"
+        }
+        return ""
+    }
+    
+    private func departureDelayText(actual: Date, scheduled: Date?) -> String {
+        guard let scheduled = scheduled else { return "" }
+        let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
+        if delayMinutes > 0 {
+            return " (\(delayMinutes) min late)"
+        } else if delayMinutes < 0 {
+            return " (\(abs(delayMinutes)) min early)"
+        }
+        return ""
     }
     
     var body: some View {
@@ -595,16 +671,15 @@ struct StopRow: View {
                     
                 }
                 
-                HStack(spacing: 4) {
-                    if let scheduledTime = timeDisplay.scheduled {
-                        Text(scheduledTime)
+                VStack(alignment: .leading, spacing: 2) {
+                    if let arrivalText = enhancedTimeDisplay.arrival {
+                        Text(arrivalText)
                             .font(.caption)
-                            .strikethrough()
-                            .foregroundColor(.gray)
+                            .foregroundColor(timeColor)
                     }
                     
-                    if let actualTime = timeDisplay.actual {
-                        Text(actualTime)
+                    if let departureText = enhancedTimeDisplay.departure {
+                        Text(departureText)
                             .font(.caption)
                             .foregroundColor(timeColor)
                     }
@@ -1237,7 +1312,7 @@ struct JourneyStatusView: View {
         case "DEPARTED":
             return "Departed"
         case "ARRIVED":
-            return "Arrived"
+            return "Journey Complete!"
         case "CANCELLED":
             return "Cancelled"
         case "ALL_ABOARD":
@@ -1256,11 +1331,7 @@ struct JourneyStatusView: View {
         case "EN_ROUTE", "DEPARTED":
             return "🚆"
         case "BOARDING":
-            if train.displayTrack != nil {
-                return "🚪" // Boarding with track
-            } else {
-                return "🕐" // Scheduled/OnTime emoji for boarding without track
-            }
+            return "🚪" // Never use train emoji for boarding
         case "DELAYED":
             return "⏰"
         case "SCHEDULED", "ON_TIME":
