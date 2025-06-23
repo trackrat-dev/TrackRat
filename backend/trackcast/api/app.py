@@ -8,6 +8,7 @@ import time
 from typing import Callable
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import or_, text
@@ -44,8 +45,34 @@ async def log_requests(request: Request, call_next: Callable):
     """Middleware to log request details and timing."""
     start_time = time.time()
 
+    # Enhanced logging for notification endpoints
+    if "/api/device-tokens" in str(request.url.path) or "/api/live-activities" in str(
+        request.url.path
+    ):
+        logger.info(f"🔍 NOTIFICATION REQUEST: {request.method} {request.url.path}")
+        logger.info(f"🔍 Headers: {dict(request.headers)}")
+
+        # Try to read body safely
+        try:
+            body = await request.body()
+            logger.info(f"🔍 Body length: {len(body)} bytes")
+            if len(body) < 500:  # Only log small bodies
+                logger.info(f"🔍 Body content: {body.decode('utf-8', errors='ignore')}")
+        except Exception as e:
+            logger.error(f"🔍 Error reading request body: {str(e)}")
+
     # Process the request
     response = await call_next(request)
+
+    # Enhanced logging for notification endpoint responses
+    if "/api/device-tokens" in str(request.url.path) or "/api/live-activities" in str(
+        request.url.path
+    ):
+        logger.info(f"🔍 NOTIFICATION RESPONSE: {response.status_code}")
+        # Log response body for errors
+        if response.status_code >= 400:
+            # Try to read response if possible
+            logger.error(f"🔍 Error response for {request.method} {request.url.path}")
 
     # Update DB pool metrics
     try:
@@ -356,6 +383,22 @@ async def health(db=Depends(get_db)):
 
 
 # Error handlers
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Custom handler for request validation errors."""
+    logger.error(f"Request validation error: {str(exc)}")
+    logger.error(f"Request body: {await request.body()}")
+    logger.error(f"Request headers: {dict(request.headers)}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Request validation failed",
+            "errors": exc.errors(),
+            "body": str(exc.body) if hasattr(exc, "body") else None,
+        },
+    )
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Custom handler for HTTP exceptions."""
