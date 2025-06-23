@@ -264,10 +264,10 @@ class JourneyValidator:
 
         if stops:
             # Find latest scheduled stop
-            last_stop = max(stops, key=lambda s: s.scheduled_time or datetime.min)
-            if last_stop.scheduled_time:
+            last_stop = max(stops, key=lambda s: s.scheduled_arrival or datetime.min)
+            if last_stop.scheduled_arrival:
                 # Check 30 minutes after last scheduled stop
-                estimated_check = last_stop.scheduled_time + timedelta(minutes=30)
+                estimated_check = last_stop.scheduled_arrival + timedelta(minutes=30)
                 # Ensure it's in the future - if not, default to 2 hours from now
                 if estimated_check > now:
                     return estimated_check

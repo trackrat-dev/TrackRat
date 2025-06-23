@@ -191,10 +191,10 @@ module "scheduled_operations" {
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    # Consolidated pipeline scheduler - runs every 5 minutes
+    # Consolidated pipeline scheduler - runs every 4 minutes
     pipeline = {
-      schedule    = "*/5 * * * *" # Every 5 minutes
-      description = "Complete data pipeline: collection -> features -> predictions every 5 minutes"
+      schedule    = "*/4 * * * *" # Every 4 minutes
+      description = "Complete data pipeline: collection -> features -> predictions every 4 minutes"
       job_name    = "pipeline"
     }
   }

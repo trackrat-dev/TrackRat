@@ -51,7 +51,8 @@ struct TrackRatApp: App {
     init() {
         // Register Live Activity widget
         if #available(iOS 16.1, *) {
-            // This will register the Live Activity widget with the system
+            // Force registration of the Live Activity widget bundle
+            _ = TrainLiveActivityBundle()
             WidgetCenter.shared.reloadAllTimelines()
         }
         
@@ -65,7 +66,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     // Store device token for Live Activity registration
     private static var storedDeviceToken: String?
     
-    static var deviceToken: String? {
+    @MainActor static var deviceToken: String? {
         get { storedDeviceToken }
         set { storedDeviceToken = newValue }
     }
@@ -109,7 +110,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         print("📱 Device token received: \(tokenString)")
         
         // Store device token for Live Activity registration
-        AppDelegate.deviceToken = tokenString
+        Task { @MainActor in
+            AppDelegate.deviceToken = tokenString
+        }
         
         // Register device token with backend
         Task {
@@ -117,7 +120,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
     }
     
-    func application(_ application: UIApplication, didFailToRegisterForRemoteNotifications error: Error) {
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         print("❌ Failed to register for remote notifications: \(error)")
         // Continue without push notifications - Live Activities can still work with local updates
     }

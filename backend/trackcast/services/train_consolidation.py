@@ -137,20 +137,20 @@ class TrainConsolidationService:
             train2_schedule = {}
 
             for stop in train1.stops:
-                if stop.station_code and stop.scheduled_time:
+                if stop.station_code and stop.scheduled_arrival:
                     normalized = station_mapper.normalize_amtrak_station(
                         stop.station_code, stop.station_name
                     )
                     station_code = normalized["code"] if normalized["code"] else stop.station_code
-                    train1_schedule[station_code] = stop.scheduled_time
+                    train1_schedule[station_code] = stop.scheduled_arrival
 
             for stop in train2.stops:
-                if stop.station_code and stop.scheduled_time:
+                if stop.station_code and stop.scheduled_arrival:
                     normalized = station_mapper.normalize_amtrak_station(
                         stop.station_code, stop.station_name
                     )
                     station_code = normalized["code"] if normalized["code"] else stop.station_code
-                    train2_schedule[station_code] = stop.scheduled_time
+                    train2_schedule[station_code] = stop.scheduled_arrival
 
             common_stations = set(train1_schedule.keys()) & set(train2_schedule.keys())
 
@@ -622,7 +622,7 @@ class TrainConsolidationService:
             if stop.station_code not in stop_status:
                 stop_status[stop.station_code] = {
                     "station_name": stop.station_name,
-                    "scheduled_time": stop.scheduled_arrival,
+                    "scheduled_arrival": stop.scheduled_arrival,
                     "departed": False,
                 }
             # If any source says departed, mark as departed
@@ -636,7 +636,7 @@ class TrainConsolidationService:
         # Use a very early datetime for None values to sort them first
         min_datetime = datetime(1900, 1, 1)
         sorted_stops = sorted(
-            stop_status.items(), key=lambda x: x[1]["scheduled_time"] or min_datetime
+            stop_status.items(), key=lambda x: x[1]["scheduled_arrival"] or min_datetime
         )
         last_departed = None
         next_station = None
@@ -1209,7 +1209,7 @@ class TrainConsolidationService:
 
             progress["next_arrival"] = {
                 "station_code": stop["station_code"],
-                "scheduled_time": scheduled_arrival or "",
+                "scheduled_arrival": scheduled_arrival or "",
                 "estimated_time": estimated_time or scheduled_arrival or "",
                 "minutes_away": minutes_away,
             }

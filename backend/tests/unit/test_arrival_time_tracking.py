@@ -143,11 +143,11 @@ class TestJourneyValidator:
         train_repo = Mock()
         stop_repo = Mock()
         
-        # Mock stops
+        # Mock stops with scheduled_arrival field (matching the implementation)
         stops = [
-            Mock(scheduled_time=datetime(2024, 5, 30, 10, 0)),
-            Mock(scheduled_time=datetime(2024, 5, 30, 11, 0)),
-            Mock(scheduled_time=datetime(2024, 5, 30, 12, 0))
+            Mock(scheduled_arrival=datetime(2024, 5, 30, 10, 0)),
+            Mock(scheduled_arrival=datetime(2024, 5, 30, 11, 0)),
+            Mock(scheduled_arrival=datetime(2024, 5, 30, 12, 0))
         ]
         stop_repo.get_stops_for_train.return_value = stops
         

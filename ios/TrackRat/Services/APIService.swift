@@ -587,11 +587,21 @@ final class APIService: ObservableObject {
         
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         
+        // Debug logging
+        print("📱 Live Activity registration URL: \(url)")
+        print("📱 Live Activity registration payload: \(payload)")
+        
         do {
-            let (_, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
             
             if let httpResponse = response as? HTTPURLResponse {
                 print("📱 Live Activity token registration response: \(httpResponse.statusCode)")
+                
+                // Log response body for debugging
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("📱 Live Activity registration response body: \(responseString)")
+                }
+                
                 if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
                     throw APIError.invalidParameters
                 }

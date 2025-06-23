@@ -213,10 +213,10 @@ resource "google_project_iam_member" "scheduler_cloud_trace_agent" {
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    # Consolidated pipeline scheduler - runs every hour
+    # Consolidated pipeline scheduler - runs every 10m
     pipeline = {
-      schedule    = "0 * * * *" # Every hour
-      description = "Complete data pipeline: collection -> features -> predictions every hours"
+      schedule    = "*/10 * * * *" # Every 10m
+      description = "Complete data pipeline: collection -> features -> predictions every 10m"
       job_name    = "pipeline"
     }
   }

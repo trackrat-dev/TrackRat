@@ -336,7 +336,7 @@ class NextArrival(BaseModel):
     """Information about the next station arrival."""
 
     station_code: str
-    scheduled_time: str = Field(..., description="ISO timestamp of scheduled arrival")
+    scheduled_arrival: str = Field(..., description="ISO timestamp of scheduled arrival")
     estimated_time: str = Field(..., description="ISO timestamp of estimated arrival")
     minutes_away: int = Field(..., description="Minutes until arrival at next station")
 

@@ -80,7 +80,7 @@ struct LiveActivityControls: View {
                     .padding()
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.white.opacity(0.9))
+                            .fill(Color.clear)
                             .opacity(isStarting ? 0.6 : 1.0)
                     )
                 }

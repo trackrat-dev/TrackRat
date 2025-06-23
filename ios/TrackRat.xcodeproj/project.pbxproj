@@ -32,7 +32,6 @@
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
 		A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */; };
 		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
-		A1976F512DEDE6EC008FA904 /* ExperimentalFeaturesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1976F502DEDE6EC008FA904 /* ExperimentalFeaturesView.swift */; };
 		A1A2391B2E02E38500FE5A7D /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */; };
 		A1A2391C2E02E38500FE5A7D /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */; };
 		A1AA1BB12DEF00AA001FA904 /* LaunchScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB02DEF00AA001FA904 /* LaunchScreenView.swift */; };
@@ -62,6 +61,7 @@
 /* Begin PBXFileReference section */
 		1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrackRat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1A1A1A1A1A1A1A1A1A1A1A20 /* TrackRat.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TrackRat.entitlements; sourceTree = "<group>"; };
 		A10077AF2E01E0C0007C6022 /* AdvancedConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AdvancedConfigurationView.swift; path = TrackRat/Views/Screens/AdvancedConfigurationView.swift; sourceTree = "<group>"; };
 		A10E97EE2DE39EC1002F3214 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentView.swift; path = App/ContentView.swift; sourceTree = "<group>"; };
 		A10E97EF2DE39EC1002F3214 /* TrackRatApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatApp.swift; path = App/TrackRatApp.swift; sourceTree = "<group>"; };
@@ -85,7 +85,6 @@
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
 		A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityDebugView.swift; path = Views/Components/LiveActivityDebugView.swift; sourceTree = "<group>"; };
 		A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveTripsSection.swift; path = Views/Components/ActiveTripsSection.swift; sourceTree = "<group>"; };
-		A1976F502DEDE6EC008FA904 /* ExperimentalFeaturesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ExperimentalFeaturesView.swift; path = Views/Screens/ExperimentalFeaturesView.swift; sourceTree = "<group>"; };
 		A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendWakeupService.swift; path = TrackRat/Services/BackendWakeupService.swift; sourceTree = "<group>"; };
 		A1AA1BB02DEF00AA001FA904 /* LaunchScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LaunchScreenView.swift; path = Views/LaunchScreen/LaunchScreenView.swift; sourceTree = "<group>"; };
 		A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatTheme.swift; path = Theme/TrackRatTheme.swift; sourceTree = "<group>"; };
@@ -154,7 +153,6 @@
 				A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */,
 				A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */,
 				A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */,
-				A1976F502DEDE6EC008FA904 /* ExperimentalFeaturesView.swift */,
 				A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */,
 				A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */,
 				A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */,
@@ -171,6 +169,7 @@
 				A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */,
 				A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */,
 				1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */,
+				1A1A1A1A1A1A1A1A1A1A1A20 /* TrackRat.entitlements */,
 			);
 			path = TrackRat;
 			sourceTree = "<group>";
@@ -325,7 +324,6 @@
 			files = (
 				A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */,
 				A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */,
-				A1976F512DEDE6EC008FA904 /* ExperimentalFeaturesView.swift in Sources */,
 				A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */,
 				A10E97F42DE39EDD002F3214 /* Stations.swift in Sources */,
 				A18E54342DEB88BE00AB2B74 /* LiveActivityModels.swift in Sources */,
@@ -510,6 +508,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ENTITLEMENTS = TrackRat/TrackRat.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";
@@ -545,6 +544,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_ENTITLEMENTS = TrackRat/TrackRat.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = "";

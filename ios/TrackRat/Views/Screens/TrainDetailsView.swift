@@ -46,23 +46,17 @@ struct TrainDetailsView: View {
                             }
                         }
                     } else if let train = viewModel.train {
-                        VStack(spacing: 20) {
-                            CombinedDetailsCard(
-                                train: train,
-                                selectedDestination: appState.selectedDestination,
-                                displayableTrainStops: viewModel.displayableTrainStops,
-                                hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
-                                hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
-                                journeyProgressPercentage: viewModel.journeyProgressPercentage,
-                                journeyStopsCompleted: viewModel.journeyStopsCompleted,
-                                journeyTotalStops: viewModel.journeyTotalStops
-                            )
-                            
-                            // Experimental features section
-                            if #available(iOS 16.0, *) {
-                                ExperimentalFeaturesView(viewModel: viewModel, train: train)
-                            }
-                        }
+                        CombinedDetailsCard(
+                            train: train,
+                            selectedDestination: appState.selectedDestination,
+                            displayableTrainStops: viewModel.displayableTrainStops,
+                            hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
+                            hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
+                            journeyProgressPercentage: viewModel.journeyProgressPercentage,
+                            journeyStopsCompleted: viewModel.journeyStopsCompleted,
+                            journeyTotalStops: viewModel.journeyTotalStops,
+                            onShowHistory: { viewModel.showingHistory = true }
+                        )
                         .padding()
                     }
                 }
@@ -125,11 +119,11 @@ struct TrainDetailsView: View {
                 }
             }
         }
-        // .sheet(isPresented: $showingHistory) { // REMOVE THIS BLOCK
-        //     if let train = viewModel.train {
-        //         HistoricalDataView(train: train)
-        //     }
-        // }
+        .sheet(isPresented: $viewModel.showingHistory) {
+            if let train = viewModel.train {
+                HistoricalDataView(train: train)
+            }
+        }
     }
 }
 
@@ -146,6 +140,9 @@ struct CombinedDetailsCard: View {
     let journeyProgressPercentage: Int
     let journeyStopsCompleted: Int
     let journeyTotalStops: Int
+    
+    // Action closures
+    let onShowHistory: () -> Void
 
     private var departureTime: String {
         let formatter = DateFormatter()
@@ -208,6 +205,17 @@ struct CombinedDetailsCard: View {
                     if let prediction = train.predictionData {
                         TrackRatPredictionView(prediction: prediction)
                     }
+                }
+                
+                // Watch This Train section
+                if #available(iOS 16.1, *) {
+                    LiveActivityControls(
+                        train: train,
+                        origin: appState.selectedDeparture ?? "",
+                        destination: appState.selectedDestination ?? "",
+                        originCode: appState.departureStationCode ?? "",
+                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                    )
                 }
             }
             .padding()
@@ -282,6 +290,28 @@ struct CombinedDetailsCard: View {
                 }
             }
             .padding()
+            
+            // Historical Data section
+            Button {
+                onShowHistory()
+            } label: {
+                HStack {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .foregroundColor(.orange)
+                    Text("View Historical Data (beta)")
+                        .font(.subheadline)
+                        .foregroundColor(.black)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.black.opacity(0.6))
+                }
+                .padding()
+            }
+            .background(Color.clear)
+            .cornerRadius(8)
+            .padding(.horizontal)
+            .padding(.bottom)
         }
         .background(Color.white.opacity(0.9))
         .cornerRadius(16)
@@ -732,6 +762,7 @@ class TrainDetailsViewModel: ObservableObject {
     @Published var error: String?
     @Published var triggerBoardingHaptic = false
     @Published var triggerTrackAssignedHaptic = false
+    @Published var showingHistory = false
     
     // Flexible initialization parameters
     private let databaseId: Int?

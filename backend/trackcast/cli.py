@@ -784,7 +784,7 @@ def backfill_station_codes(dry_run: bool, limit: Optional[int]) -> None:
         query = (
             session.query(TrainStop)
             .filter(TrainStop.station_code == None)
-            .order_by(TrainStop.scheduled_time.desc())
+            .order_by(TrainStop.scheduled_arrival.desc())
         )
 
         if limit:

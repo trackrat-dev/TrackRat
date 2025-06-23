@@ -17,6 +17,44 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/notifications/test", tags=["notifications"])
+async def test_notifications_system(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Test endpoint to verify notification system is working.
+    """
+    logger.info("📝 Testing notification system...")
+    try:
+        # Test database connection
+        db.execute("SELECT 1")
+
+        # Test model imports
+        from trackcast.db.models import DeviceToken, LiveActivityToken
+
+        # Test table queries
+        device_count = db.query(DeviceToken).count()
+        activity_count = db.query(LiveActivityToken).count()
+
+        logger.info(
+            f"📝 Notification system test successful: {device_count} devices, {activity_count} activities"
+        )
+
+        return {
+            "status": "healthy",
+            "message": "Notification system is working",
+            "database_connected": True,
+            "models_imported": True,
+            "device_tokens_count": device_count,
+            "live_activity_tokens_count": activity_count,
+        }
+
+    except Exception as e:
+        logger.error(f"📝 Notification system test failed: {str(e)}")
+        import traceback
+
+        logger.error(f"📝 Full traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Notification system test failed: {str(e)}")
+
+
 # Request/Response Models
 class DeviceTokenRequest(BaseModel):
     """Request model for device token registration."""
@@ -79,7 +117,22 @@ async def register_device_token(
     Raises:
         HTTPException: If registration fails or token is invalid
     """
+    logger.info(
+        f"📱 Device token registration request received: platform={request.platform}, token_preview={request.device_token[:8]}..."
+    )
     try:
+        # Log database session info
+        logger.info(f"📱 Database session active: {db is not None}")
+
+        # Test database connection
+        try:
+            db.execute("SELECT 1")
+            logger.info("📱 Database connection test successful")
+        except Exception as db_test_error:
+            logger.error(f"📱 Database connection test failed: {str(db_test_error)}")
+            raise HTTPException(
+                status_code=500, detail=f"Database connection failed: {str(db_test_error)}"
+            )
         # Validate platform
         if request.platform not in ["ios", "android"]:
             raise HTTPException(status_code=400, detail="Platform must be 'ios' or 'android'")
@@ -128,8 +181,15 @@ async def register_device_token(
             message="Device token registered successfully",
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to register device token: {str(e)}")
+        logger.error(f"📱 CRITICAL ERROR in register_device_token: {str(e)}")
+        logger.error(f"📱 Error type: {type(e).__name__}")
+        logger.error(f"📱 Error details: {repr(e)}")
+        import traceback
+
+        logger.error(f"📱 Full traceback: {traceback.format_exc()}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to register device token: {str(e)}")
 
@@ -157,7 +217,43 @@ async def register_live_activity_token(
     Raises:
         HTTPException: If registration fails or token is invalid
     """
+    logger.info(
+        f"🚆 Live Activity registration request received: train_id={request.train_id}, token_preview={request.push_token[:8]}..., device_token_provided={request.device_token is not None}"
+    )
     try:
+        # Log database session info
+        logger.info(f"🚆 Database session active: {db is not None}")
+
+        # Test database connection
+        try:
+            db.execute("SELECT 1")
+            logger.info("🚆 Database connection test successful")
+        except Exception as db_test_error:
+            logger.error(f"🚆 Database connection test failed: {str(db_test_error)}")
+            raise HTTPException(
+                status_code=500, detail=f"Database connection failed: {str(db_test_error)}"
+            )
+
+        # Test table access
+        try:
+            from trackcast.db.models import DeviceToken, LiveActivityToken
+
+            logger.info("🚆 Model imports successful")
+
+            # Test if tables exist
+            result = db.query(LiveActivityToken).limit(1).all()
+            logger.info(
+                f"🚆 LiveActivityToken table access successful, found {len(result)} records"
+            )
+
+            result = db.query(DeviceToken).limit(1).all()
+            logger.info(f"🚆 DeviceToken table access successful, found {len(result)} records")
+
+        except Exception as table_test_error:
+            logger.error(f"🚆 Table access test failed: {str(table_test_error)}")
+            raise HTTPException(
+                status_code=500, detail=f"Database table access failed: {str(table_test_error)}"
+            )
         # Check if token already exists for this train
         existing_token = (
             db.query(LiveActivityToken)
@@ -230,8 +326,15 @@ async def register_live_activity_token(
             message="Live Activity token registered successfully",
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to register Live Activity token: {str(e)}")
+        logger.error(f"🚆 CRITICAL ERROR in register_live_activity_token: {str(e)}")
+        logger.error(f"🚆 Error type: {type(e).__name__}")
+        logger.error(f"🚆 Error details: {repr(e)}")
+        import traceback
+
+        logger.error(f"🚆 Full traceback: {traceback.format_exc()}")
         db.rollback()
         raise HTTPException(
             status_code=500, detail=f"Failed to register Live Activity token: {str(e)}"
@@ -253,7 +356,29 @@ async def get_active_live_activities(db: Session = Depends(get_db)) -> List[Dict
     Returns:
         List of active Live Activity tokens with metadata
     """
+    logger.info("📱 GET /live-activities/active request received")
     try:
+        # Log database session info
+        logger.info(f"📱 Database session active: {db is not None}")
+
+        # Test database connection
+        try:
+            db.execute("SELECT 1")
+            logger.info("📱 Database connection test successful")
+        except Exception as db_test_error:
+            logger.error(f"📱 Database connection test failed: {str(db_test_error)}")
+            raise HTTPException(
+                status_code=500, detail=f"Database connection failed: {str(db_test_error)}"
+            )
+
+        # Test table import and access
+        try:
+            from trackcast.db.models import LiveActivityToken
+
+            logger.info("📱 LiveActivityToken model import successful")
+        except Exception as import_error:
+            logger.error(f"📱 Model import failed: {str(import_error)}")
+            raise HTTPException(status_code=500, detail=f"Model import failed: {str(import_error)}")
         active_tokens = (
             db.query(LiveActivityToken).filter(LiveActivityToken.is_active == True).all()
         )
@@ -278,8 +403,15 @@ async def get_active_live_activities(db: Session = Depends(get_db)) -> List[Dict
         logger.info(f"Retrieved {len(active_tokens)} active Live Activity tokens")
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to get active Live Activity tokens: {str(e)}")
+        logger.error(f"📱 CRITICAL ERROR in get_active_live_activities: {str(e)}")
+        logger.error(f"📱 Error type: {type(e).__name__}")
+        logger.error(f"📱 Error details: {repr(e)}")
+        import traceback
+
+        logger.error(f"📱 Full traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get active Live Activity tokens: {str(e)}"
         )

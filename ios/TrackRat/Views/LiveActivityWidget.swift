@@ -32,27 +32,11 @@ struct TrainLiveActivity: Widget {
                     )
                 }
             } compactLeading: {
-                // Compact leading (left side of Dynamic Island)
-                // Maximum width: 67pt for Dynamic Island compatibility
-                HStack(spacing: 2) {
-                    Image(systemName: "tram.fill")
-                        .font(.system(size: 8))
-                        .foregroundColor(.white)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(context.attributes.trainNumber)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        Text(getCompactStatusV2(context.state.statusV2))
-                            .font(.system(size: 8, weight: .regular))
-                            .foregroundColor(.gray)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                }
-                .frame(maxWidth: 67, alignment: .leading)
-                .clipped()
+                // Compact leading (left side of Dynamic Island) - just train emoji
+                Image(systemName: "tram.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: 67, alignment: .leading)
             } compactTrailing: {
                 // Compact trailing (right side of Dynamic Island)
                 // Maximum width: 67pt for Dynamic Island compatibility
@@ -60,21 +44,11 @@ struct TrainLiveActivity: Widget {
                     .frame(maxWidth: 67, alignment: .trailing)
                     .clipped()
             } minimal: {
-                // Minimal (when other Dynamic Islands are active)
-                // Maximum width: 32pt for Dynamic Island minimal state
-                HStack(spacing: 1) {
-                    Image(systemName: trainStatusV2Icon(statusV2: context.state.statusV2))
-                        .font(.system(size: 7))
-                        .foregroundColor(.white)
-                    if context.attributes.trainNumber.count <= 4 {
-                        Text(context.attributes.trainNumber)
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: 32, alignment: .center)
-                .clipped()
+                // Minimal (when other Dynamic Islands are active) - just train emoji
+                Image(systemName: "tram.fill")
+                    .font(.system(size: 10))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: 32, alignment: .center)
             }
             .widgetURL(URL(string: "trackrat://train/\(context.attributes.trainId)"))
         }

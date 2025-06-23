@@ -17,44 +17,51 @@ enum TrainAlertType {
         switch self {
         case .trackAssigned(let track):
             return AlertConfiguration(
-                title: .string("Track Assigned! 🚋"),
-                body: .string("Track \(track) - Get Ready to Board"),
+                title: "Track Assigned! 🚋",
+                body: "Track \(track) - Get Ready to Board",
                 sound: .default
             )
             
         case .boarding(let track):
-            let body = track != nil ? "Track \(track!) - All Aboard!" : "Boarding Now!"
-            return AlertConfiguration(
-                title: .string("Time to Board! 🚆"),
-                body: .string(body),
-                sound: .default
-            )
+            if let track = track {
+                return AlertConfiguration(
+                    title: "Time to Board! 🚆",
+                    body: "Track \(track) - All Aboard!",
+                    sound: .default
+                )
+            } else {
+                return AlertConfiguration(
+                    title: "Time to Board! 🚆",
+                    body: "Boarding Now!",
+                    sound: .default
+                )
+            }
             
         case .departed(let fromStation):
             return AlertConfiguration(
-                title: .string("Train Departed 🛤️"),
-                body: .string("Left \(fromStation) - Journey Started"),
+                title: "Train Departed 🛤️",
+                body: "Left \(fromStation) - Journey Started",
                 sound: .default
             )
             
         case .approaching(let station, let minutes):
             return AlertConfiguration(
-                title: .string("Approaching \(station) 🎯"),
-                body: .string("Arriving in \(minutes) minute\(minutes == 1 ? "" : "s")"),
+                title: "Approaching \(station) 🎯",
+                body: "Arriving in \(minutes) minute\(minutes == 1 ? "" : "s")",
                 sound: .default
             )
             
         case .delayUpdate(let minutes):
             return AlertConfiguration(
-                title: .string("Delay Update ⏰"),
-                body: .string("Now \(minutes) minutes behind schedule"),
+                title: "Delay Update ⏰",
+                body: "Now \(minutes) minutes behind schedule",
                 sound: .default
             )
             
         case .statusChange(let newStatus):
             return AlertConfiguration(
-                title: .string("Status Update 📢"),
-                body: .string("Train status: \(newStatus)"),
+                title: "Status Update 📢",
+                body: "Train status: \(newStatus)",
                 sound: .default
             )
         }
@@ -101,7 +108,7 @@ class LiveActivityService: ObservableObject {
         var score = 50.0 // Base score
         
         // Maximum priority for boarding
-        if train.statusV2?.current?.contains("BOARDING") == true || train.status.contains("BOARDING") {
+        if train.statusV2?.current.contains("BOARDING") == true || train.status.rawValue.contains("BOARDING") {
             return 100.0
         }
         
@@ -121,7 +128,7 @@ class LiveActivityService: ObservableObject {
         
         // Boost based on journey progress
         if let progress = train.progress?.journeyPercent {
-            score += (progress * 20) // 0-20 bonus
+            score += (Double(progress) * 20) // 0-20 bonus
         }
         
         // Boost for delays (more urgent)
@@ -154,7 +161,12 @@ class LiveActivityService: ObservableObject {
         }
         
         // Departure detection
-        if oldState.currentLocation != .departed && newState.currentLocation == .departed {
+        let isDeparted = { (location: CurrentLocation) -> Bool in
+            if case .departed = location { return true }
+            return false
+        }
+        
+        if !isDeparted(oldState.currentLocation) && isDeparted(newState.currentLocation) {
             let stationName = newState.statusLocation ?? train.statusV2?.location ?? "station"
             return .departed(fromStation: stationName)
         }
@@ -162,10 +174,9 @@ class LiveActivityService: ObservableObject {
         // Approaching destination (within 5 minutes)
         if let nextStop = newState.nextStop,
            nextStop.isDestination,
-           let minutes = nextStop.minutesAway,
-           minutes <= 5 && minutes > 0,
+           nextStop.minutesAway <= 5 && nextStop.minutesAway > 0,
            (oldState.nextStop?.minutesAway ?? 10) > 5 {
-            return .approaching(station: nextStop.name, minutes: minutes)
+            return .approaching(station: nextStop.name, minutes: nextStop.minutesAway)
         }
         
         // Significant delay change (5+ minutes difference)
@@ -200,11 +211,20 @@ class LiveActivityService: ObservableObject {
         // End any existing activity first
         await endCurrentActivity()
         
+        // Debug Live Activity status first
+        debugLiveActivityStatus()
+        
         // Check and request notification permissions
         try await checkAndRequestNotificationPermissions()
         
         // Validate input data before creating Live Activity
-        try validateLiveActivityData(train: train, originCode: originCode, destinationCode: destinationCode, origin: origin, destination: destination)
+        do {
+            try validateLiveActivityData(train: train, originCode: originCode, destinationCode: destinationCode, origin: origin, destination: destination)
+            print("✅ Live Activity data validation passed")
+        } catch {
+            print("❌ Live Activity data validation failed: \(error)")
+            throw error
+        }
         
         // Create activity attributes with validated data
         let attributes = TrainActivityAttributes(
@@ -216,35 +236,84 @@ class LiveActivityService: ObservableObject {
             originStationCode: originCode,
             destinationStationCode: destinationCode
         )
+        print("✅ Live Activity attributes created")
         
         // Create initial content state with validation
-        let initialState = train.toLiveActivityContentState(
-            from: originCode,
-            to: destinationCode
-        )
+        let initialState: TrainActivityAttributes.ContentState
+        do {
+            initialState = train.toLiveActivityContentState(
+                from: originCode,
+                to: destinationCode
+            )
+            print("✅ Live Activity content state created")
+        } catch {
+            print("❌ Failed to create content state: \(error)")
+            throw LiveActivityError.invalidData("Failed to create content state: \(error)")
+        }
+        
+        // Debug content state
+        print("🔍 Live Activity Content State Debug:")
+        print("  - statusV2: '\(initialState.statusV2)'")
+        print("  - track: '\(initialState.track ?? "nil")'")
+        print("  - journeyProgress: \(initialState.journeyProgress)")
+        print("  - currentLocation: \(initialState.currentLocation)")
+        print("  - hasStatusChanged: \(initialState.hasStatusChanged)")
+        print("  - nextStop: \(initialState.nextStop?.stationName ?? "nil")")
         
         // Final validation of content state
-        try validateContentState(initialState)
+        do {
+            try validateContentState(initialState)
+            print("✅ Live Activity content state validation passed")
+        } catch {
+            print("❌ Live Activity content state validation failed: \(error)")
+            throw error
+        }
         
         // Start the activity with enhanced error handling
         do {
+            // Check ActivityAuthorizationInfo in detail
+            let authInfo = ActivityAuthorizationInfo()
+            print("🔍 Live Activity Authorization Debug:")
+            print("  - areActivitiesEnabled: \(authInfo.areActivitiesEnabled)")
+            print("  - frequentPushesEnabled: \(authInfo.frequentPushesEnabled)")
+            
             // Check if Live Activities are available
-            guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            guard authInfo.areActivitiesEnabled else {
+                print("❌ Live Activities are not enabled")
                 throw LiveActivityError.permissionDenied
             }
             
             // Create activity content with staleDate and relevance scoring
+            let relevanceScore = calculateRelevanceScore(for: train)
             let activityContent = ActivityContent(
                 state: initialState,
                 staleDate: Date().addingTimeInterval(120), // 2 minutes for freshness
-                relevanceScore: calculateRelevanceScore(for: train)
+                relevanceScore: relevanceScore
             )
+            print("✅ Activity content created with relevance score: \(relevanceScore)")
             
-            let activity = try Activity<TrainActivityAttributes>.request(
-                attributes: attributes,
-                content: activityContent,
-                pushType: .token // Enable push notifications for Dynamic Island updates
-            )
+            print("🚀 Attempting to create Live Activity...")
+            print("  - Train ID: \(attributes.trainId)")
+            print("  - Train Number: \(attributes.trainNumber)")
+            print("  - Route: \(attributes.routeDescription)")
+            print("  - Relevance Score: \(relevanceScore)")
+            
+            let activity: Activity<TrainActivityAttributes>
+            do {
+                activity = try Activity<TrainActivityAttributes>.request(
+                    attributes: attributes,
+                    content: activityContent,
+                    pushType: .token // Enable push tokens for Dynamic Island and remote updates
+                )
+                print("✅ Activity.request() completed successfully")
+            } catch {
+                print("❌ Activity.request() failed with error: \(error)")
+                print("❌ Error type: \(type(of: error))")
+                print("❌ Error description: \(error.localizedDescription)")
+                throw error
+            }
+            
+            print("✅ Live Activity created successfully")
             
             await MainActor.run {
                 self.currentActivity = activity
@@ -256,6 +325,12 @@ class LiveActivityService: ObservableObject {
                 self.lastKnownDelayMinutes = train.delayMinutes
             }
             
+            print("🔍 Live Activity Status Check:")
+            print("  - Activity ID: \(activity.id)")
+            print("  - Activity State: \(activity.activityState)")
+            print("  - Content State StatusV2: \(activity.content.state.statusV2)")
+            print("  - Is Active: \(isActivityActive)")
+            
             // Monitor push token for backend registration
             Task {
                 for await pushToken in activity.pushTokenUpdates {
@@ -264,8 +339,8 @@ class LiveActivityService: ObservableObject {
                     
                     do {
                         // Get device token from AppDelegate if available
-                        let deviceToken = await UIApplication.shared.delegate as? AppDelegate
-                        let storedDeviceToken = AppDelegate.deviceToken
+                        _ = await UIApplication.shared.delegate as? AppDelegate
+                        let storedDeviceToken = await AppDelegate.deviceToken
                         
                         try await APIService.shared.registerLiveActivityToken(
                             tokenString, 
@@ -277,8 +352,10 @@ class LiveActivityService: ObservableObject {
                             print("✅ Linked to device token for regular notifications")
                         }
                     } catch {
-                        print("❌ Failed to register Live Activity push token: \(error)")
-                        // Continue without registration - Live Activity will still work with local updates
+                        print("⚠️ Live Activity push token registration failed: \(error)")
+                        print("ℹ️ Live Activity will continue to work with local updates")
+                        // This is non-blocking - Live Activities work fine without backend registration
+                        // The token is still valid for system-level updates
                     }
                 }
             }
@@ -714,16 +791,24 @@ class LiveActivityService: ObservableObject {
     public func checkAndRequestNotificationPermissions() async throws {
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
+        
+        print("🔍 Notification Permission Debug:")
+        print("  - authorizationStatus: \(settings.authorizationStatus.rawValue)")
+        print("  - alertSetting: \(settings.alertSetting.rawValue)")
+        print("  - badgeSetting: \(settings.badgeSetting.rawValue)")
+        print("  - soundSetting: \(settings.soundSetting.rawValue)")
 
         switch settings.authorizationStatus {
         case .notDetermined:
-            print("Notification permission not determined. Requesting authorization...")
+            print("🔔 Notification permission not determined. Requesting authorization...")
             let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+            print("🔔 Notification permission request result: \(granted)")
             if !granted {
                 print("⚠️ Notification permission not granted")
                 // Continue anyway as Live Activities can work without notifications
+            } else {
+                print("✅ Notification permission granted.")
             }
-            print("✅ Notification permission granted.")
         case .denied:
             print("⚠️ Notification permission denied, Live Activities may have limited functionality")
             // Continue anyway as Live Activities don't require notifications
@@ -880,6 +965,20 @@ class LiveActivityService: ObservableObject {
         return false
     }
     
+    /// Debug Live Activity permissions and capabilities
+    func debugLiveActivityStatus() {
+        if #available(iOS 16.1, *) {
+            let authInfo = ActivityAuthorizationInfo()
+            print("🔍 Live Activity Debug Status:")
+            print("  - iOS version: \(UIDevice.current.systemVersion)")
+            print("  - areActivitiesEnabled: \(authInfo.areActivitiesEnabled)")
+            print("  - frequentPushesEnabled: \(authInfo.frequentPushesEnabled)")
+            print("  - Device model: \(UIDevice.current.model)")
+        } else {
+            print("❌ Live Activities not available on iOS < 16.1")
+        }
+    }
+    
     /// Get current activity status for UI
     var activityStatus: String {
         guard let activity = currentActivity else {
@@ -899,7 +998,7 @@ class LiveActivityService: ObservableObject {
             throw LiveActivityError.invalidData("Train ID cannot be empty")
         }
         
-        guard train.id > 0 else {
+        guard train.id != 0 else {
             throw LiveActivityError.invalidData("Invalid train ID: \(train.id)")
         }
         

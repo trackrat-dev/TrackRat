@@ -87,6 +87,13 @@ struct NextStopInfo: Codable, Hashable {
     let scheduledArrival: Date?
     let isDelayed: Bool
     let delayMinutes: Int
+    let isDestination: Bool
+    let minutesAway: Int
+    
+    // Convenience property for accessing station name
+    var name: String {
+        return stationName
+    }
     
     var displayText: String {
         let formatter = DateFormatter()
