@@ -1,10 +1,16 @@
-"""API endpoints for push notification management."""
+"""API endpoints for push notification management.
+
+Note: @trace_operation decorators are temporarily disabled on async endpoints
+due to OpenTelemetry compatibility issues with request body parsing.
+This allows notification endpoints to function correctly while maintaining
+telemetry for other parts of the application.
+"""
 
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -18,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/notifications/test", tags=["notifications"])
+@router.get("/test", tags=["notifications"])
 async def test_notifications_system(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """
     Test endpoint to verify notification system is working.
@@ -97,8 +103,8 @@ class LiveActivityTokenResponse(BaseModel):
     message: str
 
 
-@router.post("/device-tokens/", response_model=DeviceTokenResponse, tags=["notifications"])
-@trace_operation("register_device_token")
+@router.post("/device-tokens", response_model=DeviceTokenResponse, tags=["notifications"])
+# @trace_operation("register_device_token")  # Temporarily disabled
 async def register_device_token(
     request: DeviceTokenRequest, db: Session = Depends(get_db)
 ) -> DeviceTokenResponse:
@@ -198,7 +204,7 @@ async def register_device_token(
 @router.post(
     "/live-activities/register", response_model=LiveActivityTokenResponse, tags=["notifications"]
 )
-@trace_operation("register_live_activity_token")
+# @trace_operation("register_live_activity_token")  # Temporarily disabled
 async def register_live_activity_token(
     request: LiveActivityTokenRequest, db: Session = Depends(get_db)
 ) -> LiveActivityTokenResponse:
@@ -343,7 +349,7 @@ async def register_live_activity_token(
 
 
 @router.get("/live-activities/active", tags=["notifications"])
-@trace_operation("get_active_live_activities")
+# @trace_operation("get_active_live_activities")  # Temporarily disabled
 async def get_active_live_activities(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """
     Get all active Live Activity tokens.
@@ -419,7 +425,7 @@ async def get_active_live_activities(db: Session = Depends(get_db)) -> List[Dict
 
 
 @router.delete("/live-activities/{token_id}", tags=["notifications"])
-@trace_operation("deactivate_live_activity_token")
+# @trace_operation("deactivate_live_activity_token")  # Temporarily disabled
 async def deactivate_live_activity_token(
     token_id: int, db: Session = Depends(get_db)
 ) -> Dict[str, str]:

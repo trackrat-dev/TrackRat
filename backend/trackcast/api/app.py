@@ -45,22 +45,6 @@ async def log_requests(request: Request, call_next: Callable):
     """Middleware to log request details and timing."""
     start_time = time.time()
 
-    # Enhanced logging for notification endpoints
-    if "/api/device-tokens" in str(request.url.path) or "/api/live-activities" in str(
-        request.url.path
-    ):
-        logger.info(f"🔍 NOTIFICATION REQUEST: {request.method} {request.url.path}")
-        logger.info(f"🔍 Headers: {dict(request.headers)}")
-
-        # Try to read body safely
-        try:
-            body = await request.body()
-            logger.info(f"🔍 Body length: {len(body)} bytes")
-            if len(body) < 500:  # Only log small bodies
-                logger.info(f"🔍 Body content: {body.decode('utf-8', errors='ignore')}")
-        except Exception as e:
-            logger.error(f"🔍 Error reading request body: {str(e)}")
-
     # Process the request
     response = await call_next(request)
 
@@ -93,7 +77,7 @@ async def log_requests(request: Request, call_next: Callable):
 
 # Include routers
 app.include_router(trains.router, prefix="/api/trains", tags=["trains"])
-app.include_router(notifications.router, prefix="/api", tags=["notifications"])
+app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 
 
 # Root endpoint
@@ -386,15 +370,16 @@ async def health(db=Depends(get_db)):
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Custom handler for request validation errors."""
-    logger.error(f"Request validation error: {str(exc)}")
-    logger.error(f"Request body: {await request.body()}")
-    logger.error(f"Request headers: {dict(request.headers)}")
+    logger.error(f"🔍 REQUEST VALIDATION ERROR: {str(exc)}")
+    logger.error(f"🔍 Request URL: {request.url}")
+    logger.error(f"🔍 Request method: {request.method}")
+    logger.error(f"🔍 Request headers: {dict(request.headers)}")
+    logger.error(f"🔍 Validation errors: {exc.errors()}")
     return JSONResponse(
         status_code=422,
         content={
             "detail": "Request validation failed",
             "errors": exc.errors(),
-            "body": str(exc.body) if hasattr(exc, "body") else None,
         },
     )
 
