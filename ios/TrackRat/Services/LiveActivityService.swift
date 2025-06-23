@@ -12,6 +12,8 @@ enum TrainAlertType {
     case approaching(station: String, minutes: Int)
     case delayUpdate(minutes: Int)
     case statusChange(newStatus: String)
+    case stopDeparture(station: String, isOrigin: Bool, stopsRemaining: Int)
+    case approachingStop(station: String, minutes: Int, isDestination: Bool)
     
     var alertConfiguration: AlertConfiguration {
         switch self {
@@ -64,6 +66,36 @@ enum TrainAlertType {
                 body: "Train status: \(newStatus)",
                 sound: .default
             )
+            
+        case .stopDeparture(let station, let isOrigin, let stopsRemaining):
+            if isOrigin {
+                return AlertConfiguration(
+                    title: "Train Departed! 🚂",
+                    body: "Left \(station) - Journey Started",
+                    sound: .default
+                )
+            } else {
+                return AlertConfiguration(
+                    title: "Departed \(station) ✅",
+                    body: "\(stopsRemaining) stop\(stopsRemaining == 1 ? "" : "s") to destination",
+                    sound: .default
+                )
+            }
+            
+        case .approachingStop(let station, let minutes, let isDestination):
+            if isDestination {
+                return AlertConfiguration(
+                    title: "Approaching Destination! 📍",
+                    body: "Arriving at \(station) in ~\(minutes) minute\(minutes == 1 ? "" : "s")",
+                    sound: .default
+                )
+            } else {
+                return AlertConfiguration(
+                    title: "Next Stop: \(station) 📍",
+                    body: "Arriving in ~\(minutes) minute\(minutes == 1 ? "" : "s")",
+                    sound: .default
+                )
+            }
         }
     }
     
@@ -78,6 +110,10 @@ enum TrainAlertType {
             return minutes >= 10 // Only high priority for significant delays
         case .statusChange:
             return false
+        case .stopDeparture(_, let isOrigin, _):
+            return isOrigin
+        case .approachingStop(_, _, let isDestination):
+            return isDestination
         }
     }
 }
@@ -385,8 +421,8 @@ class LiveActivityService: ObservableObject {
                 impact.impactOccurred()
             }
             
-            // Send push notification for starting to watch
-            await sendTrackingStartedNotification(train: train, route: "\(sanitizeStationName(origin)) → \(sanitizeStationName(destination))")
+            // REMOVED: Redundant tracking started notification - Live Activity appearing is sufficient
+            // await sendTrackingStartedNotification(train: train, route: "\(sanitizeStationName(origin)) → \(sanitizeStationName(destination))")
             
             print("✅ Live Activity started for train \(train.trainId)")
             
@@ -536,7 +572,8 @@ class LiveActivityService: ObservableObject {
             state: finalState,
             staleDate: Date().addingTimeInterval(60) // 1 minute stale date for ending
         )
-        await activity.end(finalContent, dismissalPolicy: .immediate)
+        // Keep ended activity visible for 30 seconds for user to see final state
+        await activity.end(finalContent, dismissalPolicy: .after(Date().addingTimeInterval(30)))
         
         await MainActor.run {
             self.currentActivity = nil
@@ -623,7 +660,9 @@ class LiveActivityService: ObservableObject {
             if let oldStop = lastKnownStops.first(where: { $0.stationName == stop.stationName }) {
                 // Check if this stop just departed
                 if !(oldStop.departed ?? false) && (stop.departed ?? false) {
-                    // Send departure notification
+                    // REMOVED: Local notification - will be handled by backend push updates
+                    // Keep detection logic for local state tracking
+                    /*
                     await sendStopDepartureNotification(
                         stop: stop,
                         train: train,
@@ -631,6 +670,7 @@ class LiveActivityService: ObservableObject {
                         stopsRemaining: destIndex - index,
                         nextStop: index < destIndex ? newStops[index + 1] : nil
                     )
+                    */
                     
                     // Store the last departed stop index
                     await MainActor.run {
@@ -641,6 +681,8 @@ class LiveActivityService: ObservableObject {
         }
     }
     
+    // REMOVED: Local notification function - will be handled by backend push updates
+    /*
     private func sendStopDepartureNotification(
         stop: Stop,
         train: Train,
@@ -700,6 +742,7 @@ class LiveActivityService: ObservableObject {
             print("❌ Failed to send stop departure notification: \(error)")
         }
     }
+    */
     
     // MARK: - Approaching Stop Detection
     
@@ -735,6 +778,9 @@ class LiveActivityService: ObservableObject {
                     
                     // Only send if we haven't already sent for this stop
                     if !approachingNotificationsSent.contains(notificationKey) {
+                        // REMOVED: Local notification - will be handled by backend push updates
+                        // Keep detection logic for local state tracking
+                        /*
                         await sendApproachingStopNotification(
                             stop: stop,
                             train: train,
@@ -742,6 +788,7 @@ class LiveActivityService: ObservableObject {
                             minutesAway: minutesToArrival,
                             isDestination: stop.stationName == attributes.destination
                         )
+                        */
                         
                         // Mark as sent
                         _ = await MainActor.run {
@@ -753,6 +800,8 @@ class LiveActivityService: ObservableObject {
         }
     }
     
+    // REMOVED: Local notification function - will be handled by backend push updates
+    /*
     private func sendApproachingStopNotification(
         stop: Stop,
         train: Train,
@@ -788,7 +837,7 @@ class LiveActivityService: ObservableObject {
         
         do {
             try await UNUserNotificationCenter.current().add(request)
-            print("📍 Sent approaching notification for \(stop.stationName)")
+            print("📍 Sent approaching notification for \(stop.stationName))"
             
             // Haptic feedback for approaching stops
             await MainActor.run {
@@ -799,6 +848,7 @@ class LiveActivityService: ObservableObject {
             print("❌ Failed to send approaching stop notification: \(error)")
         }
     }
+    */
     
     // MARK: - Permissions and Notifications
     
@@ -837,6 +887,8 @@ class LiveActivityService: ObservableObject {
         }
     }
     
+    // REMOVED: Redundant function - Live Activity appearing is sufficient indication
+    /*
     private func sendTrackingStartedNotification(train: Train, route: String) async {
         let content = UNMutableNotificationContent()
         content.title = "🚆 Now Tracking Train \(train.trainId)"
@@ -856,6 +908,7 @@ class LiveActivityService: ObservableObject {
             print("❌ Failed to send tracking started notification: \(error)")
         }
     }
+    */
     
     private func sendStatusChangeNotification(from oldStatusV2: String?, to newStatusV2: String?) async {
         guard let activity = currentActivity,

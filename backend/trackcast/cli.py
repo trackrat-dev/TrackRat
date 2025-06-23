@@ -21,7 +21,7 @@ from trackcast.services.data_collector import DataCollectorService
 from trackcast.services.data_import import DataImportService
 from trackcast.services.feature_engineering import FeatureEngineeringService
 from trackcast.services.prediction import PredictionService
-from trackcast.services.push_notification import notification_service
+from trackcast.services.push_notification import event_detector, notification_service
 
 # SchedulerService removed - using Cloud Run Jobs for scheduling
 
@@ -159,6 +159,16 @@ def collect_data(validate_journeys: bool) -> None:
                 logger.info(
                     f"Push notification processing completed for {len(recent_trains)} trains"
                 )
+
+                # Process stop departure and approaching stop events
+                logger.info("Processing stop events for Live Activities")
+                for train in recent_trains:
+                    asyncio.run(event_detector.process_train_for_events(train, session))
+
+                # Clean up old notification history
+                event_detector.cleanup_old_notifications()
+
+                logger.info("Stop event processing completed")
 
             except Exception as e:
                 logger.warning(f"Push notification processing failed (continuing anyway): {e}")

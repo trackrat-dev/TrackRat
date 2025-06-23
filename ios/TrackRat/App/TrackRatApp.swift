@@ -162,6 +162,41 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     private func handleLiveActivityPushUpdate(_ userInfo: [AnyHashable: Any]) async {
         print("🔄 Processing Live Activity push update")
         
+        // Validate push token if provided
+        if let pushToken = userInfo["push_token"] as? String {
+            if let currentActivity = LiveActivityService.shared.currentActivity {
+                // Get current activity's push token
+                let currentToken = currentActivity.pushToken?.map { String(format: "%02x", $0) }.joined() ?? ""
+                if !currentToken.isEmpty && pushToken != currentToken {
+                    print("⚠️ Push token mismatch, ignoring update")
+                    print("⚠️ Expected: \(currentToken.prefix(12))...")
+                    print("⚠️ Received: \(pushToken.prefix(12))...")
+                    return
+                }
+            }
+        }
+        
+        // Extract event type and data
+        guard let eventType = userInfo["event_type"] as? String else {
+            // Fallback to existing train data update
+            await handleTrainDataUpdate(userInfo)
+            return
+        }
+        
+        // Handle specific event types
+        switch eventType {
+        case "stop_departure":
+            await handleStopDeparturePush(userInfo)
+        case "approaching_stop":
+            await handleApproachingStopPush(userInfo)
+        case "train_update":
+            await handleTrainDataUpdate(userInfo)
+        default:
+            print("⚠️ Unknown event type: \(eventType)")
+        }
+    }
+    
+    private func handleTrainDataUpdate(_ userInfo: [AnyHashable: Any]) async {
         // Extract train data from push notification
         guard let trainData = userInfo["train_data"] as? [String: Any],
               let trainId = trainData["train_id"] as? String else {
@@ -177,6 +212,33 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         } else {
             print("ℹ️ Push notification for different train, ignoring")
         }
+    }
+    
+    private func handleStopDeparturePush(_ userInfo: [AnyHashable: Any]) async {
+        guard let eventData = userInfo["event_data"] as? [String: Any],
+              let stationName = eventData["station"] as? String,
+              let isOrigin = eventData["is_origin"] as? Bool,
+              let stopsRemaining = eventData["stops_remaining"] as? Int else {
+            print("❌ Invalid stop departure push data")
+            return
+        }
+        
+        // The Live Activity update will trigger the Dynamic Island alert
+        // Just fetch and update the train data
+        await LiveActivityService.shared.fetchAndUpdateTrain()
+    }
+    
+    private func handleApproachingStopPush(_ userInfo: [AnyHashable: Any]) async {
+        guard let eventData = userInfo["event_data"] as? [String: Any],
+              let stationName = eventData["station"] as? String,
+              let minutesAway = eventData["minutes_away"] as? Int,
+              let isDestination = eventData["is_destination"] as? Bool else {
+            print("❌ Invalid approaching stop push data")
+            return
+        }
+        
+        // The Live Activity update will trigger the Dynamic Island alert
+        await LiveActivityService.shared.fetchAndUpdateTrain()
     }
 
     func scheduleAppRefresh() {
