@@ -385,20 +385,40 @@ class TrainConsolidationService:
         if not trains:
             raise ValueError("Cannot consolidate empty train list")
 
-        # Sort trains by their origin departure time
-        trains.sort(key=lambda t: t.departure_time)
+        # Find the true origin station (earliest stop in journey)
+        true_origin_code = self._find_true_origin_station(trains)
 
-        # Use the earliest train as the base
-        base_train = trains[0]
+        # Get the train that has this origin station for base data
+        base_train = self._find_train_with_origin(trains, true_origin_code)
+        if not base_train:
+            # Fallback to earliest departing train if we can't find true origin
+            trains.sort(key=lambda t: t.departure_time)
+            base_train = trains[0]
+            true_origin_code = base_train.origin_station_code
+
+        # Merge stops first so we can use them for origin station details
+        consolidated_stops = self._merge_stops(trains)
+        origin_stop = next(
+            (stop for stop in consolidated_stops if stop.get("station_code") == true_origin_code),
+            None,
+        )
 
         # Merge data from all sources
         consolidated = {
             "train_id": base_train.train_id,
             "consolidated_id": self._get_journey_id(trains),
             "origin_station": {
-                "code": base_train.origin_station_code,
-                "name": base_train.origin_station_name,
-                "departure_time": base_train.departure_time.isoformat(),
+                "code": true_origin_code,
+                "name": (
+                    origin_stop.get("station_name")
+                    if origin_stop
+                    else base_train.origin_station_name
+                ),
+                "departure_time": (
+                    origin_stop.get("scheduled_departure")
+                    if origin_stop and origin_stop.get("scheduled_departure")
+                    else base_train.departure_time.isoformat()
+                ),
             },
             "destination": base_train.destination,
             "line": base_train.line,
@@ -408,8 +428,8 @@ class TrainConsolidationService:
             # Merged fields using priority rules
             "track_assignment": self._merge_track_assignment(trains),
             "status_summary": self._merge_status(trains, from_station_code),
-            # Merged stops with departure status from all sources (must come first)
-            "stops": self._merge_stops(trains),
+            # Use the already merged stops
+            "stops": consolidated_stops,
         }
 
         # Add position tracking using the merged stops
@@ -522,6 +542,10 @@ class TrainConsolidationService:
                             earliest_station = stop.station_code
 
         return earliest_station
+
+    def _find_train_with_origin(self, trains: List[Train], origin_code: str) -> Optional[Train]:
+        """Find the train record that has the specified origin station."""
+        return next((train for train in trains if train.origin_station_code == origin_code), None)
 
     def _merge_status(self, trains: List[Train], from_station_code: str = None) -> Dict:
         """
@@ -757,11 +781,16 @@ class TrainConsolidationService:
                             if stop.scheduled_departure
                             else None
                         ),
+                        # Only set actual times if the stop has actually been departed
                         "actual_arrival": (
-                            stop.actual_arrival.isoformat() if stop.actual_arrival else None
+                            stop.actual_arrival.isoformat()
+                            if stop.actual_arrival and stop.departed
+                            else None
                         ),
                         "actual_departure": (
-                            stop.actual_departure.isoformat() if stop.actual_departure else None
+                            stop.actual_departure.isoformat()
+                            if stop.actual_departure and stop.departed
+                            else None
                         ),
                         "pickup_only": stop.pickup_only,
                         "dropoff_only": stop.dropoff_only,
@@ -860,7 +889,8 @@ class TrainConsolidationService:
                                 )
 
                     # Update actual arrival time using most recent train logic
-                    if stop.actual_arrival:
+                    # Only update if the stop has actually been departed
+                    if stop.actual_arrival and stop.departed:
                         existing_actual_arrival = stop_map[key].get("actual_arrival")
 
                         if not existing_actual_arrival:
@@ -874,7 +904,8 @@ class TrainConsolidationService:
                                 stop_map[key]["actual_arrival"] = stop.actual_arrival.isoformat()
 
                     # Update actual departure time using most recent train logic
-                    if stop.actual_departure:
+                    # Only update if the stop has actually been departed
+                    if stop.actual_departure and stop.departed:
                         existing_actual_departure = stop_map[key].get("actual_departure")
 
                         # If no existing actual departure time, use this one
@@ -909,8 +940,17 @@ class TrainConsolidationService:
                         if not stop_map[key].get("platform"):
                             stop_map[key]["platform"] = train.track
 
-        # Clean up internal tracking fields before returning
+        # Clean up internal tracking fields and validate actual times before returning
         for stop_data in stop_map.values():
+            # Final validation: ensure actual times are only set for departed stops
+            if not stop_data.get("departed"):
+                if stop_data.get("actual_arrival") or stop_data.get("actual_departure"):
+                    logger.warning(
+                        f"Clearing actual times for non-departed stop {stop_data.get('station_code')}"
+                    )
+                    stop_data["actual_arrival"] = None
+                    stop_data["actual_departure"] = None
+
             stop_data.pop("_departed_source_train", None)
             stop_data.pop("_departed_source_timestamp", None)
             stop_data.pop("_scheduled_departure_source_timestamp", None)
