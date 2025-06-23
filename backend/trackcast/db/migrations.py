@@ -1296,6 +1296,51 @@ def create_notification_tables(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": f"Error creating notification tables: {str(e)}"}
 
 
+def increase_push_token_length(session: Session) -> Dict[str, Any]:
+    """
+    Increase push_token column length for Live Activity tokens.
+
+    Live Activity push tokens can be up to 256+ characters, but the current
+    column is limited to 255 characters. This migration increases it to 512.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if column already has the correct length
+        check_query = text(
+            """
+            SELECT character_maximum_length 
+            FROM information_schema.columns 
+            WHERE table_name = 'live_activity_tokens' AND column_name = 'push_token'
+        """
+        )
+        result = session.execute(check_query).fetchone()
+
+        if result and result[0] >= 512:
+            logger.info("push_token column already has sufficient length")
+            return {"status": "skipped", "message": "Column already has sufficient length"}
+
+        # Alter column type to increase length
+        logger.info("Increasing push_token column length from 255 to 512 characters...")
+        alter_query = text(
+            "ALTER TABLE live_activity_tokens ALTER COLUMN push_token TYPE VARCHAR(512)"
+        )
+        session.execute(alter_query)
+        session.commit()
+
+        logger.info("Successfully increased push_token column length")
+        return {"status": "success", "message": "Column length increased to 512 characters"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error increasing push_token column length: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -1331,6 +1376,10 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
         ),  # Rename time fields for clarity
         ("add_performance_indexes", add_performance_indexes),  # Performance improvements
         ("create_notification_tables", create_notification_tables),  # Push notification tables
+        (
+            "increase_push_token_length",
+            increase_push_token_length,
+        ),  # Fix Live Activity token length
     ]
 
     for name, migration_func in migrations:

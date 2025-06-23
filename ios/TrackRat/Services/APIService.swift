@@ -536,7 +536,7 @@ final class APIService: ObservableObject {
     
     /// Register device token for push notifications
     func registerDeviceToken(_ token: String) async throws {
-        let url = URL(string: "\(baseURL)/device-tokens/")!
+        let url = URL(string: "\(baseURL)/notifications/device-tokens")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -568,7 +568,7 @@ final class APIService: ObservableObject {
     
     /// Register Live Activity push token
     func registerLiveActivityToken(_ token: String, for trainId: String, deviceToken: String? = nil) async throws {
-        let url = URL(string: "\(baseURL)/live-activities/register")!
+        let url = URL(string: "\(baseURL)/notifications/live-activities/register")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

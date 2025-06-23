@@ -4,7 +4,7 @@ import Foundation
 enum ServerEnvironment: String, CaseIterable, Codable {
     case production = "production"
     case staging = "staging"
-    case development = "development"
+    case local = "local"
     
     var displayName: String {
         switch self {
@@ -12,8 +12,8 @@ enum ServerEnvironment: String, CaseIterable, Codable {
             return "Production"
         case .staging:
             return "Staging"
-        case .development:
-            return "Development"
+        case .local:
+            return "Local"
         }
     }
     
@@ -23,8 +23,8 @@ enum ServerEnvironment: String, CaseIterable, Codable {
             return "https://prod.api.trackrat.net/api"
         case .staging:
             return "https://staging.api.trackrat.net/api"
-        case .development:
-            return "https://dev.api.trackrat.net/api"
+        case .local:
+            return "http://localhost:8000/api"
         }
     }
 }

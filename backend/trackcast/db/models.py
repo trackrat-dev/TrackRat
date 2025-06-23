@@ -392,7 +392,9 @@ class LiveActivityToken(Base, TimestampMixin):
     id = Column(Integer, primary_key=True)
 
     # Token and train association
-    push_token = Column(String(255), nullable=False, index=True)
+    push_token = Column(
+        String(512), nullable=False, index=True
+    )  # Increased from 255 to 512 for Live Activity tokens
     train_id = Column(String(20), nullable=False, index=True)
 
     # Device association
