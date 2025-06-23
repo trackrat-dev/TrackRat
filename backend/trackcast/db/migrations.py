@@ -1182,6 +1182,120 @@ def rename_train_stop_time_fields(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def create_notification_tables(session: Session) -> Dict[str, Any]:
+    """
+    Create device_tokens and live_activity_tokens tables for push notifications.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if device_tokens table already exists
+        check_device_tokens_query = text(
+            """
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_name = 'device_tokens'
+        """
+        )
+        result = session.execute(check_device_tokens_query).fetchone()
+
+        if result:
+            logger.info("device_tokens table already exists")
+        else:
+            # Create device_tokens table
+            logger.info("Creating device_tokens table")
+            create_device_tokens_query = text(
+                """
+                CREATE TABLE device_tokens (
+                    id SERIAL PRIMARY KEY,
+                    device_token VARCHAR(255) NOT NULL UNIQUE,
+                    platform VARCHAR(20) NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    last_used TIMESTAMP,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            )
+            session.execute(create_device_tokens_query)
+
+            # Create indexes for device_tokens
+            session.execute(
+                text("CREATE INDEX idx_device_tokens_token ON device_tokens(device_token)")
+            )
+            session.execute(
+                text("CREATE INDEX idx_device_tokens_platform ON device_tokens(platform)")
+            )
+            session.execute(
+                text("CREATE INDEX idx_device_tokens_active ON device_tokens(is_active)")
+            )
+
+        # Check if live_activity_tokens table already exists
+        check_live_activity_tokens_query = text(
+            """
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_name = 'live_activity_tokens'
+        """
+        )
+        result = session.execute(check_live_activity_tokens_query).fetchone()
+
+        if result:
+            logger.info("live_activity_tokens table already exists")
+        else:
+            # Create live_activity_tokens table
+            logger.info("Creating live_activity_tokens table")
+            create_live_activity_tokens_query = text(
+                """
+                CREATE TABLE live_activity_tokens (
+                    id SERIAL PRIMARY KEY,
+                    push_token VARCHAR(255) NOT NULL,
+                    train_id VARCHAR(20) NOT NULL,
+                    device_token_id INTEGER REFERENCES device_tokens(id) ON DELETE CASCADE,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    last_notification_sent TIMESTAMP,
+                    last_update_sent TIMESTAMP,
+                    activity_started_at TIMESTAMP,
+                    activity_ended_at TIMESTAMP,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT unique_token_train UNIQUE (push_token, train_id)
+                )
+            """
+            )
+            session.execute(create_live_activity_tokens_query)
+
+            # Create indexes for live_activity_tokens
+            session.execute(
+                text(
+                    "CREATE INDEX idx_live_activity_tokens_token ON live_activity_tokens(push_token)"
+                )
+            )
+            session.execute(
+                text(
+                    "CREATE INDEX idx_live_activity_tokens_train_id ON live_activity_tokens(train_id)"
+                )
+            )
+            session.execute(
+                text(
+                    "CREATE INDEX idx_live_activity_tokens_active ON live_activity_tokens(is_active)"
+                )
+            )
+
+        session.commit()
+        logger.info("Successfully created notification tables")
+        return {"status": "success", "message": "Notification tables created successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error creating notification tables: {str(e)}")
+        return {"status": "error", "message": f"Error creating notification tables: {str(e)}"}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -1215,7 +1329,8 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
             "rename_train_stop_time_fields",
             rename_train_stop_time_fields,
         ),  # Rename time fields for clarity
-        ("add_performance_indexes", add_performance_indexes),  # Performance improvements (last)
+        ("add_performance_indexes", add_performance_indexes),  # Performance improvements
+        ("create_notification_tables", create_notification_tables),  # Push notification tables
     ]
 
     for name, migration_func in migrations:

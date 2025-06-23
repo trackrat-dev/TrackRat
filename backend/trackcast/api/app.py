@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import or_, text
 
-from trackcast.api.routers import trains
+from trackcast.api.routers import notifications, trains
 from trackcast.db.connection import engine, get_db, get_pool_status_metrics
 from trackcast.telemetry import instrument_app, setup_telemetry
 
@@ -66,6 +66,7 @@ async def log_requests(request: Request, call_next: Callable):
 
 # Include routers
 app.include_router(trains.router, prefix="/api/trains", tags=["trains"])
+app.include_router(notifications.router, prefix="/api", tags=["notifications"])
 
 
 # Root endpoint

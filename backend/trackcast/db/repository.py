@@ -11,7 +11,7 @@ from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
+from trackcast.db.models import LiveActivityToken, ModelData, PredictionData, Train, TrainStop
 from trackcast.metrics import DB_QUERY_DURATION_SECONDS, MODEL_PREDICTION_ACCURACY
 from trackcast.telemetry import trace_operation
 from trackcast.utils import get_eastern_now
@@ -1599,6 +1599,42 @@ class TrainRepository(BaseRepository):
         except SQLAlchemyError as e:
             self.session.rollback()
             logger.error(f"Database error in update train: {str(e)}")
+            raise
+
+    def get_trains_with_live_activities(self, since: Optional[datetime] = None) -> List[Train]:
+        """
+        Get trains that have active Live Activity tokens.
+
+        Args:
+            since: Optional datetime to filter trains updated since this time
+
+        Returns:
+            List of Train objects with active Live Activities
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            query = (
+                self.session.query(Train)
+                .join(LiveActivityToken, Train.train_id == LiveActivityToken.train_id)
+                .filter(LiveActivityToken.is_active == True)
+            )
+
+            if since:
+                query = query.filter(Train.updated_at >= since)
+
+            result = query.distinct().order_by(Train.updated_at.desc()).all()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_with_live_activities").observe(
+                duration
+            )
+            return result
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_trains_with_live_activities: {str(e)}")
             raise
 
 

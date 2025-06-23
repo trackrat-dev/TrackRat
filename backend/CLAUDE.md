@@ -80,6 +80,9 @@ trackcast import-data --source data/processed/ --format csv --overwrite
 
 # Backfill missing station codes in the database
 trackcast backfill-station-codes
+
+# Check APNS (Apple Push Notification Service) configuration status
+trackcast check-apns-config
 ```
 
 ### Development and Testing
@@ -160,6 +163,41 @@ gunicorn trackcast.api.app:app --workers 4 --worker-class uvicorn.workers.Uvicor
    - Updates the `model_prediction_accuracy` metric by station
    - Enables real-time monitoring of model performance degradation
    - Supports alerting when accuracy drops below thresholds
+
+### Push Notification System
+
+TrackCast includes an integrated Apple Push Notification Service (APNS) system for iOS Live Activities and push notifications:
+
+1. **Device Token Management**: Stores iOS device tokens for push notification delivery
+2. **Live Activity Integration**: Supports Live Activity push tokens for Dynamic Island updates
+3. **Smart Notification Detection**: Automatically detects significant train changes (track assignments, boarding, departures)
+4. **Dual Notification System**: Sends both Live Activity updates and regular push notifications
+5. **Rate Limiting & Error Handling**: Production-ready APNS client with proper retry logic
+
+Key features:
+- **JWT Authentication**: Preferred APNS auth key method with automatic token refresh
+- **Certificate Support**: Alternative certificate-based authentication
+- **Environment Detection**: Automatic sandbox/production endpoint selection
+- **Mock Mode**: Graceful fallback when APNS is not configured
+- **Change Detection**: Only sends notifications for meaningful train updates
+
+#### APNS Setup
+
+See `APNS_SETUP.md` for complete configuration instructions. Quick setup:
+
+```bash
+# Required environment variables (Auth Key method - recommended)
+export APNS_TEAM_ID="YOUR_TEAM_ID"
+export APNS_KEY_ID="ABC123DEF4"
+export APNS_AUTH_KEY_PATH="/path/to/AuthKey_ABC123DEF4.p8"
+export APNS_BUNDLE_ID="net.trackrat.TrackRat"
+export TRACKCAST_ENV="prod"  # or "dev" for sandbox
+
+# Check configuration
+trackcast check-apns-config
+```
+
+The system automatically integrates with data collection - when trains are updated, the notification service processes changes and sends appropriate alerts to users tracking those trains.
 
 ## Configuration
 

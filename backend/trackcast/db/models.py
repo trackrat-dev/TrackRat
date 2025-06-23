@@ -336,3 +336,108 @@ class PredictionData(Base, TimestampMixin):
         )
 
         return sorted_factors[:limit]
+
+
+class DeviceToken(Base, TimestampMixin):
+    """
+    Device token storage for push notifications.
+    """
+
+    __tablename__ = "device_tokens"
+
+    # Primary key
+    id = Column(Integer, primary_key=True)
+
+    # Device identification
+    device_token = Column(String(255), nullable=False, unique=True, index=True)
+    platform = Column(String(20), nullable=False, index=True)  # 'ios' or 'android'
+
+    # Status tracking
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    last_used = Column(DateTime, nullable=True)
+
+    # Relationships
+    live_activity_tokens = relationship(
+        "LiveActivityToken", back_populates="device", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        """String representation of device token."""
+        token_preview = (
+            f"{self.device_token[:8]}..." if len(self.device_token) > 8 else self.device_token
+        )
+        return f"<DeviceToken(id={self.id}, token={token_preview}, platform='{self.platform}', active={self.is_active})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "device_token": self.device_token,
+            "platform": self.platform,
+            "is_active": self.is_active,
+            "last_used": self.last_used.isoformat() if self.last_used else None,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+
+class LiveActivityToken(Base, TimestampMixin):
+    """
+    Live Activity push token storage for iOS Live Activities.
+    """
+
+    __tablename__ = "live_activity_tokens"
+
+    # Primary key
+    id = Column(Integer, primary_key=True)
+
+    # Token and train association
+    push_token = Column(String(255), nullable=False, index=True)
+    train_id = Column(String(20), nullable=False, index=True)
+
+    # Device association
+    device_token_id = Column(
+        Integer, ForeignKey("device_tokens.id", ondelete="CASCADE"), nullable=True
+    )
+    device = relationship("DeviceToken", back_populates="live_activity_tokens")
+
+    # Status tracking
+    is_active = Column(Boolean, nullable=False, default=True, index=True)
+    last_notification_sent = Column(DateTime, nullable=True)
+    last_update_sent = Column(DateTime, nullable=True)
+
+    # Activity metadata
+    activity_started_at = Column(DateTime, nullable=True)
+    activity_ended_at = Column(DateTime, nullable=True)
+
+    # Unique constraint to prevent duplicate registrations
+    __table_args__ = (UniqueConstraint("push_token", "train_id", name="unique_token_train"),)
+
+    def __repr__(self) -> str:
+        """String representation of Live Activity token."""
+        token_preview = f"{self.push_token[:8]}..." if len(self.push_token) > 8 else self.push_token
+        return f"<LiveActivityToken(id={self.id}, token={token_preview}, train_id='{self.train_id}', active={self.is_active})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "push_token": self.push_token,
+            "train_id": self.train_id,
+            "device_token_id": self.device_token_id,
+            "is_active": self.is_active,
+            "last_notification_sent": (
+                self.last_notification_sent.isoformat() if self.last_notification_sent else None
+            ),
+            "last_update_sent": (
+                self.last_update_sent.isoformat() if self.last_update_sent else None
+            ),
+            "activity_started_at": (
+                self.activity_started_at.isoformat() if self.activity_started_at else None
+            ),
+            "activity_ended_at": (
+                self.activity_ended_at.isoformat() if self.activity_ended_at else None
+            ),
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }

@@ -3,6 +3,78 @@ import ActivityKit
 import UserNotifications
 import UIKit
 
+// MARK: - Alert Configuration Types
+
+enum TrainAlertType {
+    case trackAssigned(track: String)
+    case boarding(track: String?)
+    case departed(fromStation: String)
+    case approaching(station: String, minutes: Int)
+    case delayUpdate(minutes: Int)
+    case statusChange(newStatus: String)
+    
+    var alertConfiguration: AlertConfiguration {
+        switch self {
+        case .trackAssigned(let track):
+            return AlertConfiguration(
+                title: .string("Track Assigned! 🚋"),
+                body: .string("Track \(track) - Get Ready to Board"),
+                sound: .default
+            )
+            
+        case .boarding(let track):
+            let body = track != nil ? "Track \(track!) - All Aboard!" : "Boarding Now!"
+            return AlertConfiguration(
+                title: .string("Time to Board! 🚆"),
+                body: .string(body),
+                sound: .default
+            )
+            
+        case .departed(let fromStation):
+            return AlertConfiguration(
+                title: .string("Train Departed 🛤️"),
+                body: .string("Left \(fromStation) - Journey Started"),
+                sound: .default
+            )
+            
+        case .approaching(let station, let minutes):
+            return AlertConfiguration(
+                title: .string("Approaching \(station) 🎯"),
+                body: .string("Arriving in \(minutes) minute\(minutes == 1 ? "" : "s")"),
+                sound: .default
+            )
+            
+        case .delayUpdate(let minutes):
+            return AlertConfiguration(
+                title: .string("Delay Update ⏰"),
+                body: .string("Now \(minutes) minutes behind schedule"),
+                sound: .default
+            )
+            
+        case .statusChange(let newStatus):
+            return AlertConfiguration(
+                title: .string("Status Update 📢"),
+                body: .string("Train status: \(newStatus)"),
+                sound: .default
+            )
+        }
+    }
+    
+    /// Determine if this alert type should trigger maximum relevance
+    var isHighPriority: Bool {
+        switch self {
+        case .trackAssigned, .boarding:
+            return true
+        case .departed, .approaching:
+            return true
+        case .delayUpdate(let minutes):
+            return minutes >= 10 // Only high priority for significant delays
+        case .statusChange:
+            return false
+        }
+    }
+}
+
 @available(iOS 16.1, *)
 class LiveActivityService: ObservableObject {
     static let shared = LiveActivityService()
@@ -14,9 +86,105 @@ class LiveActivityService: ObservableObject {
     private var lastKnownStops: [Stop] = []
     private var lastDepartedStopIndex: Int?
     private var approachingNotificationsSent: Set<String> = []
+    private var lastKnownState: TrainActivityAttributes.ContentState?
+    private var lastKnownTrack: String?
+    private var lastKnownDelayMinutes: Int?
     
     private init() {
         checkCurrentActivity()
+    }
+    
+    // MARK: - Relevance Scoring
+    
+    /// Calculate relevance score for Live Activity prioritization
+    private func calculateRelevanceScore(for train: Train) -> Double {
+        var score = 50.0 // Base score
+        
+        // Maximum priority for boarding
+        if train.statusV2?.current?.contains("BOARDING") == true || train.status.contains("BOARDING") {
+            return 100.0
+        }
+        
+        // High priority for track assignments
+        if let track = train.track, !track.isEmpty {
+            score = 90.0
+        }
+        
+        // Priority for approaching/departing
+        if let statusV2 = train.statusV2?.current {
+            if statusV2.contains("APPROACHING") {
+                score = 85.0
+            } else if statusV2.contains("DEPARTED") {
+                score = 80.0
+            }
+        }
+        
+        // Boost based on journey progress
+        if let progress = train.progress?.journeyPercent {
+            score += (progress * 20) // 0-20 bonus
+        }
+        
+        // Boost for delays (more urgent)
+        if let delayMinutes = train.delayMinutes, delayMinutes > 0 {
+            score += min(Double(delayMinutes), 15.0) // Up to 15 point boost for delays
+        }
+        
+        return min(score, 100.0)
+    }
+    
+    // MARK: - Alert Detection
+    
+    /// Detect significant changes that warrant Dynamic Island alerts
+    private func detectSignificantChanges(
+        oldState: TrainActivityAttributes.ContentState?,
+        newState: TrainActivityAttributes.ContentState,
+        train: Train
+    ) -> TrainAlertType? {
+        
+        guard let oldState = oldState else { return nil }
+        
+        // Track assignment (highest priority)
+        if (oldState.track?.isEmpty != false) && (newState.track?.isEmpty == false) {
+            return .trackAssigned(track: newState.track!)
+        }
+        
+        // Boarding status change
+        if !oldState.statusV2.contains("BOARDING") && newState.statusV2.contains("BOARDING") {
+            return .boarding(track: newState.track)
+        }
+        
+        // Departure detection
+        if oldState.currentLocation != .departed && newState.currentLocation == .departed {
+            let stationName = newState.statusLocation ?? train.statusV2?.location ?? "station"
+            return .departed(fromStation: stationName)
+        }
+        
+        // Approaching destination (within 5 minutes)
+        if let nextStop = newState.nextStop,
+           nextStop.isDestination,
+           let minutes = nextStop.minutesAway,
+           minutes <= 5 && minutes > 0,
+           (oldState.nextStop?.minutesAway ?? 10) > 5 {
+            return .approaching(station: nextStop.name, minutes: minutes)
+        }
+        
+        // Significant delay change (5+ minutes difference)
+        if let oldDelay = oldState.delayMinutes,
+           let newDelay = newState.delayMinutes,
+           abs(newDelay - oldDelay) >= 5 {
+            return .delayUpdate(minutes: newDelay)
+        }
+        
+        // Important status changes
+        if oldState.statusV2 != newState.statusV2 {
+            // Only alert for significant status changes
+            let significantStatuses = ["BOARDING", "DEPARTED", "DELAYED", "CANCELLED"]
+            if significantStatuses.contains(where: { newState.statusV2.contains($0) }) {
+                return .statusChange(newStatus: newState.statusV2)
+            }
+        }
+        
+        return nil
     }
     
     // MARK: - Activity Management
@@ -65,10 +233,17 @@ class LiveActivityService: ObservableObject {
                 throw LiveActivityError.permissionDenied
             }
             
+            // Create activity content with staleDate and relevance scoring
+            let activityContent = ActivityContent(
+                state: initialState,
+                staleDate: Date().addingTimeInterval(120), // 2 minutes for freshness
+                relevanceScore: calculateRelevanceScore(for: train)
+            )
+            
             let activity = try Activity<TrainActivityAttributes>.request(
                 attributes: attributes,
-                content: .init(state: initialState, staleDate: nil),
-                pushType: nil
+                content: activityContent,
+                pushType: .token // Enable push notifications for Dynamic Island updates
             )
             
             await MainActor.run {
@@ -76,6 +251,36 @@ class LiveActivityService: ObservableObject {
                 self.isActivityActive = true
                 self.lastKnownStatusV2 = train.statusV2?.current
                 self.lastKnownStops = train.stops ?? []
+                self.lastKnownState = initialState
+                self.lastKnownTrack = train.track
+                self.lastKnownDelayMinutes = train.delayMinutes
+            }
+            
+            // Monitor push token for backend registration
+            Task {
+                for await pushToken in activity.pushTokenUpdates {
+                    let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
+                    print("📱 Live Activity push token received: \(tokenString)")
+                    
+                    do {
+                        // Get device token from AppDelegate if available
+                        let deviceToken = await UIApplication.shared.delegate as? AppDelegate
+                        let storedDeviceToken = AppDelegate.deviceToken
+                        
+                        try await APIService.shared.registerLiveActivityToken(
+                            tokenString, 
+                            for: train.trainId,
+                            deviceToken: storedDeviceToken
+                        )
+                        print("✅ Live Activity push token registered with backend")
+                        if storedDeviceToken != nil {
+                            print("✅ Linked to device token for regular notifications")
+                        }
+                    } catch {
+                        print("❌ Failed to register Live Activity push token: \(error)")
+                        // Continue without registration - Live Activity will still work with local updates
+                    }
+                }
             }
             
             // Schedule background refresh
@@ -154,16 +359,61 @@ class LiveActivityService: ObservableObject {
             }
         }
         
-        // Check for status changes that warrant haptic feedback
+        // Check for significant changes that warrant Dynamic Island alerts
+        let alertType = detectSignificantChanges(
+            oldState: lastKnownState,
+            newState: newState,
+            train: train
+        )
+        
+        // Create content with proper relevance scoring
+        var relevanceScore = calculateRelevanceScore(for: train)
+        if let alert = alertType, alert.isHighPriority {
+            relevanceScore = 100.0 // Maximum priority for important alerts
+        }
+        
+        let updatedContent = ActivityContent(
+            state: newState,
+            staleDate: Date().addingTimeInterval(120), // 2 minutes for freshness
+            relevanceScore: relevanceScore
+        )
+        
+        // Update activity with or without alert
+        if let alertType = alertType {
+            // Update with Dynamic Island alert
+            await activity.update(updatedContent, alertConfiguration: alertType.alertConfiguration)
+            
+            // Enhanced haptic feedback for alerts
+            await MainActor.run {
+                let impact: UIImpactFeedbackGenerator.FeedbackStyle
+                switch alertType {
+                case .trackAssigned, .boarding:
+                    impact = .heavy
+                case .departed, .approaching:
+                    impact = .medium
+                default:
+                    impact = .light
+                }
+                let generator = UIImpactFeedbackGenerator(style: impact)
+                generator.impactOccurred()
+            }
+            
+            print("🔔 Dynamic Island alert triggered: \(alertType)")
+        } else {
+            // Regular update without alert
+            await activity.update(updatedContent)
+        }
+        
+        // Check for status changes that warrant additional haptic feedback
         if newState.hasStatusChanged {
             await handleStatusChange(from: lastKnownStatusV2, to: train.statusV2?.current)
         }
         
-        // Update activity
-        await activity.update(.init(state: newState, staleDate: nil))
-        
         await MainActor.run {
             self.lastKnownStatusV2 = train.statusV2?.current
+            self.lastKnownState = newState
+            self.lastKnownTrack = train.track
+            self.lastKnownDelayMinutes = train.delayMinutes
         }
         
         print("🔄 Live Activity updated for train \(train.trainId)")
@@ -191,7 +441,11 @@ class LiveActivityService: ObservableObject {
         }
         
         let finalState = activity.content.state
-        await activity.end(.init(state: finalState, staleDate: nil), dismissalPolicy: .immediate)
+        let finalContent = ActivityContent(
+            state: finalState,
+            staleDate: Date().addingTimeInterval(60) // 1 minute stale date for ending
+        )
+        await activity.end(finalContent, dismissalPolicy: .immediate)
         
         await MainActor.run {
             self.currentActivity = nil
@@ -200,6 +454,9 @@ class LiveActivityService: ObservableObject {
             self.lastKnownStops = []
             self.lastDepartedStopIndex = nil
             self.approachingNotificationsSent.removeAll()
+            self.lastKnownState = nil
+            self.lastKnownTrack = nil
+            self.lastKnownDelayMinutes = nil
         }
         
         print("🛑 Live Activity ended and cleaned up")

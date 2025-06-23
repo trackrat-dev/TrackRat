@@ -531,6 +531,78 @@ final class APIService: ObservableObject {
         
         return TrackStats(tracks: sortedTracks, total: totalTrainsWithTracks)
     }
+    
+    // MARK: - Push Notification Registration
+    
+    /// Register device token for push notifications
+    func registerDeviceToken(_ token: String) async throws {
+        let url = URL(string: "\(baseURL)/device-tokens/")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let payload = [
+            "device_token": token,
+            "platform": "ios",
+            "timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        
+        do {
+            let (_, response) = try await session.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📱 Device token registration response: \(httpResponse.statusCode)")
+                if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+                    throw APIError.invalidParameters
+                }
+            }
+            
+            print("✅ Device token registered successfully")
+        } catch {
+            print("❌ Failed to register device token: \(error)")
+            throw error
+        }
+    }
+    
+    /// Register Live Activity push token
+    func registerLiveActivityToken(_ token: String, for trainId: String, deviceToken: String? = nil) async throws {
+        let url = URL(string: "\(baseURL)/live-activities/register")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        var payload: [String: Any] = [
+            "train_id": trainId,
+            "push_token": token,
+            "platform": "ios",
+            "timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
+        
+        // Include device token if available for linking regular notifications
+        if let deviceToken = deviceToken {
+            payload["device_token"] = deviceToken
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        
+        do {
+            let (_, response) = try await session.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("📱 Live Activity token registration response: \(httpResponse.statusCode)")
+                if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+                    throw APIError.invalidParameters
+                }
+            }
+            
+            print("✅ Live Activity token registered for train \(trainId)")
+        } catch {
+            print("❌ Failed to register Live Activity token: \(error)")
+            throw error
+        }
+    }
 }
 
 // MARK: - API Errors

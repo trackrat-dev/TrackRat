@@ -62,9 +62,19 @@ struct TrackRatApp: App {
 
 // Create a new AppDelegate class to handle notification delegate methods
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    // Store device token for Live Activity registration
+    private static var storedDeviceToken: String?
+    
+    static var deviceToken: String? {
+        get { storedDeviceToken }
+        set { storedDeviceToken = newValue }
+    }
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         registerBackgroundTasks()
+        
+        // Register for remote notifications (push notifications)
+        application.registerForRemoteNotifications()
         
         // Wake up backend on app launch
         print("📱 App Launch: Triggering backend wake-up...")
@@ -90,6 +100,73 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         // Here you can add logic to navigate to a specific part of your app based on the notification
         completionHandler()
+    }
+    
+    // MARK: - Push Notification Delegate Methods
+    
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let tokenString = deviceToken.map { String(format: "%02x", $0) }.joined()
+        print("📱 Device token received: \(tokenString)")
+        
+        // Store device token for Live Activity registration
+        AppDelegate.deviceToken = tokenString
+        
+        // Register device token with backend
+        Task {
+            await registerDeviceToken(tokenString)
+        }
+    }
+    
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotifications error: Error) {
+        print("❌ Failed to register for remote notifications: \(error)")
+        // Continue without push notifications - Live Activities can still work with local updates
+    }
+    
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        print("📥 Received remote notification: \(userInfo)")
+        
+        // Handle silent push notifications for Live Activity updates
+        if userInfo["live_activity_update"] as? Bool == true {
+            Task {
+                await handleLiveActivityPushUpdate(userInfo)
+                completionHandler(.newData)
+            }
+        } else {
+            // Handle other types of push notifications
+            completionHandler(.noData)
+        }
+    }
+    
+    // MARK: - Push Notification Helpers
+    
+    private func registerDeviceToken(_ token: String) async {
+        do {
+            try await APIService.shared.registerDeviceToken(token)
+            print("✅ Device token registered with backend")
+        } catch {
+            print("❌ Failed to register device token with backend: \(error)")
+            // Continue without registration - app will still work with local updates
+        }
+    }
+    
+    private func handleLiveActivityPushUpdate(_ userInfo: [AnyHashable: Any]) async {
+        print("🔄 Processing Live Activity push update")
+        
+        // Extract train data from push notification
+        guard let trainData = userInfo["train_data"] as? [String: Any],
+              let trainId = trainData["train_id"] as? String else {
+            print("❌ Invalid Live Activity push notification data")
+            return
+        }
+        
+        // Update Live Activity if it matches current activity
+        if let currentActivity = LiveActivityService.shared.currentActivity,
+           currentActivity.attributes.trainNumber == trainId {
+            await LiveActivityService.shared.fetchAndUpdateTrain()
+            print("✅ Live Activity updated from push notification")
+        } else {
+            print("ℹ️ Push notification for different train, ignoring")
+        }
     }
 
     func scheduleAppRefresh() {

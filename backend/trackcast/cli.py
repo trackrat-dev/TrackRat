@@ -21,6 +21,7 @@ from trackcast.services.data_collector import DataCollectorService
 from trackcast.services.data_import import DataImportService
 from trackcast.services.feature_engineering import FeatureEngineeringService
 from trackcast.services.prediction import PredictionService
+from trackcast.services.push_notification import notification_service
 
 # SchedulerService removed - using Cloud Run Jobs for scheduling
 
@@ -136,6 +137,31 @@ def collect_data(validate_journeys: bool) -> None:
         success, stats = collector.run_collection()
         if success:
             logger.info(f"Data collection completed: {stats}")
+
+            # Process train updates for push notifications
+            try:
+                from trackcast.db.repository import TrainRepository
+
+                logger.info("Processing train updates for push notifications")
+                train_repo = TrainRepository(session)
+
+                # Get recent trains that might have Live Activities
+                from datetime import datetime, timedelta
+
+                recent_cutoff = datetime.utcnow() - timedelta(hours=6)
+                recent_trains = train_repo.get_trains_with_live_activities(since=recent_cutoff)
+
+                # Process notifications asynchronously
+                import asyncio
+
+                asyncio.run(notification_service.process_train_updates(recent_trains, session))
+
+                logger.info(
+                    f"Push notification processing completed for {len(recent_trains)} trains"
+                )
+
+            except Exception as e:
+                logger.warning(f"Push notification processing failed (continuing anyway): {e}")
 
             # Run post-journey validation if enabled
             if validate_journeys:
@@ -608,6 +634,125 @@ def _execute_generate_predictions(regenerate: bool = False) -> bool:
     except Exception as e:
         logger.error(f"Error in prediction generation: {str(e)}")
         return False
+
+
+@main.command()
+def check_apns_config() -> None:
+    """Check APNS configuration status and validate setup"""
+    try:
+        from trackcast.services.push_notification import APNSPushService
+
+        logger.info("Checking APNS configuration...")
+
+        # Initialize APNS service to check configuration
+        apns_service = APNSPushService()
+
+        # Check configuration status
+        config_status = {
+            "configured": not apns_service._use_mock,
+            "environment": (
+                "production" if apns_service.apns_url == "https://api.push.apple.com" else "sandbox"
+            ),
+            "auth_method": None,
+            "bundle_id": apns_service.bundle_id,
+            "issues": [],
+        }
+
+        # Determine authentication method
+        if apns_service.team_id and apns_service.key_id and apns_service.auth_key_path:
+            config_status["auth_method"] = "auth_key"
+
+            # Validate auth key file
+            import os
+
+            if not os.path.exists(apns_service.auth_key_path):
+                config_status["issues"].append(
+                    f"Auth key file not found: {apns_service.auth_key_path}"
+                )
+            elif not os.access(apns_service.auth_key_path, os.R_OK):
+                config_status["issues"].append(
+                    f"Auth key file not readable: {apns_service.auth_key_path}"
+                )
+
+        elif apns_service.cert_path and apns_service.key_path:
+            config_status["auth_method"] = "certificate"
+
+            # Validate certificate files
+            import os
+
+            if not os.path.exists(apns_service.cert_path):
+                config_status["issues"].append(
+                    f"Certificate file not found: {apns_service.cert_path}"
+                )
+            if not os.path.exists(apns_service.key_path):
+                config_status["issues"].append(
+                    f"Private key file not found: {apns_service.key_path}"
+                )
+
+        else:
+            config_status["issues"].append("No valid authentication method configured")
+
+        # Test JWT generation if using auth key
+        if config_status["auth_method"] == "auth_key" and not config_status["issues"]:
+            try:
+                apns_service._generate_jwt_token()
+                logger.info("✓ JWT token generation successful")
+            except Exception as e:
+                config_status["issues"].append(f"JWT token generation failed: {str(e)}")
+
+        # Print results
+        logger.info(f"APNS Configuration Status:")
+        logger.info(
+            f"  Status: {'✓ Configured' if config_status['configured'] else '✗ Using Mock Mode'}"
+        )
+        logger.info(f"  Environment: {config_status['environment']}")
+        logger.info(f"  Authentication: {config_status['auth_method'] or 'None'}")
+        logger.info(f"  Bundle ID: {config_status['bundle_id']}")
+
+        if config_status["issues"]:
+            logger.error(f"Configuration Issues:")
+            for issue in config_status["issues"]:
+                logger.error(f"  - {issue}")
+        else:
+            logger.info(f"✓ Configuration appears valid")
+
+        # Environment variable summary
+        logger.info(f"Environment Variables:")
+        env_vars = [
+            ("TRACKCAST_ENV", os.getenv("TRACKCAST_ENV")),
+            (
+                "APNS_TEAM_ID",
+                (
+                    os.getenv("APNS_TEAM_ID", "").replace(os.getenv("APNS_TEAM_ID", ""), "***")
+                    if os.getenv("APNS_TEAM_ID")
+                    else None
+                ),
+            ),
+            ("APNS_KEY_ID", os.getenv("APNS_KEY_ID")),
+            ("APNS_AUTH_KEY_PATH", os.getenv("APNS_AUTH_KEY_PATH")),
+            ("APNS_CERT_PATH", os.getenv("APNS_CERT_PATH")),
+            ("APNS_KEY_PATH", os.getenv("APNS_KEY_PATH")),
+            ("APNS_BUNDLE_ID", os.getenv("APNS_BUNDLE_ID")),
+        ]
+
+        for var_name, var_value in env_vars:
+            if var_value:
+                logger.info(f"  {var_name}: {var_value}")
+            else:
+                logger.debug(f"  {var_name}: (not set)")
+
+        if not config_status["configured"]:
+            logger.info(f"")
+            logger.info(f"To configure APNS, see: APNS_SETUP.md")
+            logger.info(f"Required for Auth Key method:")
+            logger.info(f"  APNS_TEAM_ID, APNS_KEY_ID, APNS_AUTH_KEY_PATH")
+            logger.info(f"Required for Certificate method:")
+            logger.info(f"  APNS_CERT_PATH, APNS_KEY_PATH")
+            sys.exit(1)
+
+    except Exception as e:
+        logger.error(f"Error checking APNS configuration: {str(e)}")
+        sys.exit(1)
 
 
 @main.command()

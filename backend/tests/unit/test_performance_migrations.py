@@ -258,11 +258,16 @@ class TestMigrationSystemIntegration:
              patch('trackcast.db.migrations.add_train_stops_lifecycle_fields') as mock8, \
              patch('trackcast.db.migrations.update_train_stop_unique_constraint') as mock9, \
              patch('trackcast.db.migrations.remove_audit_trail_fields') as mock10, \
-             patch('trackcast.db.migrations.add_performance_indexes') as mock_perf:
+             patch('trackcast.db.migrations.add_arrival_time_tracking') as mock11, \
+             patch('trackcast.db.migrations.simplify_train_stop_constraint') as mock12, \
+             patch('trackcast.db.migrations.rename_train_stop_time_fields') as mock13, \
+             patch('trackcast.db.migrations.add_performance_indexes') as mock_perf, \
+             patch('trackcast.db.migrations.create_notification_tables') as mock_notif:
             
             # Configure all mocks to return success
             success_result = {"status": "success", "message": "Migration completed"}
-            for mock_func in [mock1, mock2, mock3, mock4, mock5, mock6, mock7, mock8, mock9, mock10, mock_perf]:
+            for mock_func in [mock1, mock2, mock3, mock4, mock5, mock6, mock7, mock8, mock9, mock10, 
+                             mock11, mock12, mock13, mock_perf, mock_notif]:
                 mock_func.return_value = success_result
             
             # Run migrations
@@ -275,8 +280,10 @@ class TestMigrationSystemIntegration:
             migration_names = [result['name'] for result in results]
             assert 'add_performance_indexes' in migration_names, "Performance migration should be included in migration list"
             
-            # Verify it's at the end (appropriate for performance improvements)
-            assert migration_names[-1] == 'add_performance_indexes', "Performance migration should be last"
+            # Verify performance migration comes before notification tables (appropriate order)
+            performance_index = migration_names.index('add_performance_indexes')
+            notification_index = migration_names.index('create_notification_tables')
+            assert performance_index < notification_index, "Performance migration should come before notification tables"
     
     def test_performance_migration_wrapper_calls_upgrade(self):
         """Test that the migration wrapper correctly calls the upgrade function."""
