@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from trackcast.db.connection import get_db
@@ -25,7 +26,7 @@ async def test_notifications_system(db: Session = Depends(get_db)) -> Dict[str, 
     logger.info("📝 Testing notification system...")
     try:
         # Test database connection
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
 
         # Test model imports
         from trackcast.db.models import DeviceToken, LiveActivityToken
@@ -126,7 +127,7 @@ async def register_device_token(
 
         # Test database connection
         try:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             logger.info("📱 Database connection test successful")
         except Exception as db_test_error:
             logger.error(f"📱 Database connection test failed: {str(db_test_error)}")
@@ -226,7 +227,7 @@ async def register_live_activity_token(
 
         # Test database connection
         try:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             logger.info("🚆 Database connection test successful")
         except Exception as db_test_error:
             logger.error(f"🚆 Database connection test failed: {str(db_test_error)}")
@@ -363,7 +364,7 @@ async def get_active_live_activities(db: Session = Depends(get_db)) -> List[Dict
 
         # Test database connection
         try:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             logger.info("📱 Database connection test successful")
         except Exception as db_test_error:
             logger.error(f"📱 Database connection test failed: {str(db_test_error)}")
