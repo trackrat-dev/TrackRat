@@ -6,6 +6,7 @@ import logging
 
 from trackcast.services.train_consolidation import TrainConsolidationService
 from trackcast.db.models import Train, TrainStop
+from trackcast.utils import get_eastern_now
 
 
 class TestEnhancedConsolidation:
@@ -19,6 +20,9 @@ class TestEnhancedConsolidation:
     @pytest.fixture
     def sample_trains(self):
         """Create sample train records for testing."""
+        # Use Eastern time consistently with the consolidation service
+        now = get_eastern_now()
+        
         # Create a train that has departed from NY
         train1 = MagicMock(spec=Train)
         train1.id = 1
@@ -29,20 +33,20 @@ class TestEnhancedConsolidation:
         train1.line = "REGIONAL"
         train1.line_code = "AM"
         train1.destination = "Washington"
-        train1.departure_time = datetime.now() - timedelta(minutes=10)
+        train1.departure_time = now - timedelta(minutes=10)
         train1.status = "DEPARTED"
         train1.track = "8"
         train1.delay_minutes = 1
-        train1.updated_at = datetime.now() - timedelta(minutes=5)
+        train1.updated_at = now - timedelta(minutes=5)
         
         # Create stops for train1
         stop1_1 = MagicMock(spec=TrainStop)
         stop1_1.station_code = "NY"
         stop1_1.station_name = "New York Penn Station"
-        stop1_1.scheduled_arrival = datetime.now() - timedelta(minutes=11)
-        stop1_1.scheduled_departure = datetime.now() - timedelta(minutes=10)
-        stop1_1.actual_arrival = datetime.now() - timedelta(minutes=10)  # 1 minute late
-        stop1_1.actual_departure = datetime.now() - timedelta(minutes=9)  # 1 minute late
+        stop1_1.scheduled_arrival = now - timedelta(minutes=11)
+        stop1_1.scheduled_departure = now - timedelta(minutes=10)
+        stop1_1.actual_arrival = now - timedelta(minutes=10)  # 1 minute late
+        stop1_1.actual_departure = now - timedelta(minutes=9)  # 1 minute late
         stop1_1.departed = True
         stop1_1.stop_status = "DEPARTED"
         stop1_1.pickup_only = False
@@ -51,8 +55,8 @@ class TestEnhancedConsolidation:
         stop1_2 = MagicMock(spec=TrainStop)
         stop1_2.station_code = "NP"
         stop1_2.station_name = "Newark Penn Station"
-        stop1_2.scheduled_arrival = datetime.now() + timedelta(minutes=10)
-        stop1_2.scheduled_departure = datetime.now() + timedelta(minutes=15)
+        stop1_2.scheduled_arrival = now + timedelta(minutes=10)
+        stop1_2.scheduled_departure = now + timedelta(minutes=15)
         stop1_2.actual_arrival = None
         stop1_2.actual_departure = None
         stop1_2.departed = False
@@ -72,11 +76,11 @@ class TestEnhancedConsolidation:
         train2.line = "REGIONAL"
         train2.line_code = "AM"
         train2.destination = "Washington"
-        train2.departure_time = datetime.now() - timedelta(minutes=10)
+        train2.departure_time = now - timedelta(minutes=10)
         train2.status = "BOARDING"
         train2.track = "8"
         train2.delay_minutes = 0
-        train2.updated_at = datetime.now() - timedelta(minutes=3)  # More recent than train1
+        train2.updated_at = now - timedelta(minutes=3)  # More recent than train1
         train2.stops = [stop1_1, stop1_2]  # Same stops
         
         return [train1, train2]
