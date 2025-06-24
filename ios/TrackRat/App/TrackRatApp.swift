@@ -49,15 +49,8 @@ struct TrackRatApp: App {
     }
     
     init() {
-        // Register Live Activity widget
-        if #available(iOS 16.1, *) {
-            // Force registration of the Live Activity widget bundle
-            _ = TrainLiveActivityBundle()
-            WidgetCenter.shared.reloadAllTimelines()
-        }
-        
-        // Set notification delegate
-        // MOVED TO AppDelegate
+        // Widget registration now handled by Widget Extension target
+        // No need to manually register here
     }
 }
 
@@ -74,6 +67,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         UNUserNotificationCenter.current().delegate = self
         registerBackgroundTasks()
         
+        // Request notification permissions (required for Live Activities)
+        Task {
+            await requestNotificationPermissions()
+        }
+        
         // Register for remote notifications (push notifications)
         application.registerForRemoteNotifications()
         
@@ -84,6 +82,25 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         
         return true
+    }
+    
+    /// Request notification permissions (required for Live Activities)
+    private func requestNotificationPermissions() async {
+        do {
+            let granted = try await UNUserNotificationCenter.current().requestAuthorization(
+                options: [.alert, .sound, .badge, .provisional]
+            )
+            print("🔔 Notification permission granted: \(granted)")
+            
+            if granted {
+                print("✅ Notifications enabled - Live Activities should work")
+            } else {
+                print("❌ Notifications denied - Live Activities will not work")
+                print("💡 User needs to enable notifications in Settings for Live Activities")
+            }
+        } catch {
+            print("❌ Failed to request notification permissions: \(error)")
+        }
     }
 
     func registerBackgroundTasks() {

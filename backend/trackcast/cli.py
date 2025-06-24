@@ -35,6 +35,61 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _process_push_notifications(session) -> None:
+    """
+    Shared push notification processing for both direct and pipeline usage.
+
+    Args:
+        session: Database session
+    """
+    try:
+        import asyncio
+        from datetime import datetime, timedelta
+
+        from trackcast.db.repository import TrainRepository
+
+        logger.info("🔔 Starting push notification processing")
+        train_repo = TrainRepository(session)
+
+        # Get recent trains that might have Live Activities
+        recent_cutoff = datetime.utcnow() - timedelta(hours=6)
+        logger.debug(f"🔍 Querying trains with Live Activities since {recent_cutoff}")
+        recent_trains = train_repo.get_trains_with_live_activities(since=recent_cutoff)
+
+        logger.info(f"🚂 Found {len(recent_trains)} trains with potential Live Activities")
+        if len(recent_trains) == 0:
+            logger.info("ℹ️ No trains with Live Activities found - skipping notification processing")
+        else:
+            # Log train details for debugging
+            train_ids = [t.train_id for t in recent_trains[:5]]  # Show first 5
+            logger.debug(
+                f"📝 Sample train IDs: {train_ids}{'...' if len(recent_trains) > 5 else ''}"
+            )
+
+        # Process notifications asynchronously
+        logger.info("📱 Processing train state changes for Live Activity updates")
+        asyncio.run(notification_service.process_train_updates(recent_trains, session))
+
+        logger.info(f"✅ Push notification processing completed for {len(recent_trains)} trains")
+
+        # Process stop departure and approaching stop events
+        logger.info("🚉 Processing stop events for Live Activities")
+        stop_events_processed = 0
+        for train in recent_trains:
+            logger.debug(f"🔍 Processing stop events for train {train.train_id}")
+            asyncio.run(event_detector.process_train_for_events(train, session))
+            stop_events_processed += 1
+
+        # Clean up old notification history
+        logger.debug("🧹 Cleaning up old notification history")
+        event_detector.cleanup_old_notifications()
+
+        logger.info(f"✅ Stop event processing completed for {stop_events_processed} trains")
+
+    except Exception as e:
+        logger.warning(f"Push notification processing failed (continuing anyway): {e}")
+
+
 @click.group()
 @click.option("--env", "-e", type=str, default="dev", help="Environment (dev, prod)")
 @click.version_option(version=constants.VERSION)
@@ -139,39 +194,7 @@ def collect_data(validate_journeys: bool) -> None:
             logger.info(f"Data collection completed: {stats}")
 
             # Process train updates for push notifications
-            try:
-                from trackcast.db.repository import TrainRepository
-
-                logger.info("Processing train updates for push notifications")
-                train_repo = TrainRepository(session)
-
-                # Get recent trains that might have Live Activities
-                from datetime import datetime, timedelta
-
-                recent_cutoff = datetime.utcnow() - timedelta(hours=6)
-                recent_trains = train_repo.get_trains_with_live_activities(since=recent_cutoff)
-
-                # Process notifications asynchronously
-                import asyncio
-
-                asyncio.run(notification_service.process_train_updates(recent_trains, session))
-
-                logger.info(
-                    f"Push notification processing completed for {len(recent_trains)} trains"
-                )
-
-                # Process stop departure and approaching stop events
-                logger.info("Processing stop events for Live Activities")
-                for train in recent_trains:
-                    asyncio.run(event_detector.process_train_for_events(train, session))
-
-                # Clean up old notification history
-                event_detector.cleanup_old_notifications()
-
-                logger.info("Stop event processing completed")
-
-            except Exception as e:
-                logger.warning(f"Push notification processing failed (continuing anyway): {e}")
+            _process_push_notifications(session)
 
             # Run post-journey validation if enabled
             if validate_journeys:
@@ -555,6 +578,9 @@ def _execute_collect_data() -> bool:
             if success:
                 logger.info(f"Data collection completed: {stats}")
 
+                # Process train updates for push notifications
+                _process_push_notifications(session)
+
                 # Run post-journey validation
                 try:
                     from trackcast.db.repository import TrainRepository, TrainStopRepository
@@ -644,6 +670,47 @@ def _execute_generate_predictions(regenerate: bool = False) -> bool:
     except Exception as e:
         logger.error(f"Error in prediction generation: {str(e)}")
         return False
+
+
+@main.command()
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt")
+def clear_notification_tokens(confirm):
+    """Clear all notification tokens from the database."""
+    if not confirm:
+        click.confirm(
+            "⚠️  This will delete ALL device and Live Activity tokens. Continue?", abort=True
+        )
+
+    logger.info("🧹 Clearing all notification tokens...")
+
+    with get_db_session() as session:
+        try:
+            from trackcast.db.models import DeviceToken, LiveActivityToken
+
+            # Count tokens before deletion
+            device_count = session.query(DeviceToken).count()
+            live_activity_count = session.query(LiveActivityToken).count()
+
+            logger.info(
+                f"Found {device_count} device tokens and {live_activity_count} Live Activity tokens"
+            )
+
+            # Delete all tokens
+            session.query(LiveActivityToken).delete()
+            session.query(DeviceToken).delete()
+
+            session.commit()
+
+            logger.info("✅ Successfully cleared all notification tokens")
+            click.echo(
+                f"Deleted {device_count} device tokens and {live_activity_count} Live Activity tokens"
+            )
+
+        except Exception as e:
+            session.rollback()
+            logger.error(f"❌ Failed to clear tokens: {e}")
+            click.echo(f"Error: {e}", err=True)
+            raise
 
 
 @main.command()

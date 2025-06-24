@@ -91,9 +91,15 @@ struct LiveActivityControls: View {
                     HStack {
                         Image(systemName: "info.circle")
                             .foregroundColor(.orange)
-                        Text("Live Activities require iOS 16.1+ and must be enabled in Settings")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Live Activities Not Available")
+                                .font(.caption.bold())
+                                .foregroundColor(.orange)
+                            Text(liveActivityService.supportStatus)
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        Spacer()
                     }
                     .padding(.horizontal)
                 }

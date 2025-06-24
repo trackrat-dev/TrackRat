@@ -133,7 +133,7 @@ class APNSPushService:
                 db.commit()
 
             logger.info(
-                f"Notifications sent - Live Activity: {results['live_activity']}, Regular: {results['regular_notification']}"
+                f"📬 Notifications sent for train {train_data.get('train_id')} - Live Activity: {results['live_activity']}, Regular: {results['regular_notification']}"
             )
             return results
 
@@ -244,6 +244,16 @@ class APNSPushService:
         """
         # Base Live Activity payload
         current_timestamp = int(time.time())
+
+        # Convert journey percent (0-100) to progress (0.0-1.0)
+        journey_percent = train_data.get("journey_percent", 0)
+        journey_progress = journey_percent / 100.0 if journey_percent else 0.0
+
+        # Extract status location from status_v2 if available
+        status_location = None
+        if isinstance(train_data.get("status_v2"), dict):
+            status_location = train_data["status_v2"].get("location")
+
         payload = {
             "aps": {
                 "timestamp": current_timestamp,
@@ -251,13 +261,19 @@ class APNSPushService:
                 "stale-date": current_timestamp + 900,  # 15 minutes from now
                 "content-state": {
                     "trainNumber": train_data.get("train_id"),
-                    "status": train_data.get("status_v2") or train_data.get("status"),
+                    "statusV2": str(
+                        train_data.get("status_v2") or train_data.get("status", "")
+                    ),  # Changed to camelCase, ensure string
+                    "statusLocation": status_location,  # Added
                     "track": train_data.get("track"),
                     "delayMinutes": train_data.get("delay_minutes", 0),
                     "currentLocation": train_data.get("current_location"),
-                    "nextStop": train_data.get("next_stop_info"),
-                    "journeyProgress": train_data.get("journey_percent", 0),
+                    "nextStop": train_data.get("next_stop_info"),  # Changed to camelCase
+                    "journeyProgress": journey_progress,  # Changed to camelCase and converted to 0-1
+                    "destinationETA": train_data.get("destination_eta"),  # Added
+                    "trackRatPrediction": train_data.get("trackrat_prediction"),  # Added
                     "lastUpdated": current_timestamp,
+                    "hasStatusChanged": train_data.get("has_status_changed", False),  # Added
                 },
             }
         }
@@ -274,6 +290,19 @@ class APNSPushService:
         if alert_type and event_data:
             payload["event_type"] = alert_type.value
             payload["event_data"] = event_data
+
+        # Debug logging for Live Activity payload
+        logger.info(f"🔍 Live Activity Payload Debug:")
+        logger.info(f"  🎯 Event: {payload['aps']['event']}")
+        logger.info(f"  🚨 Alert Type: {alert_type.value if alert_type else 'None'}")
+        logger.info(f"  🗝️  Content State Keys: {list(payload['aps']['content-state'].keys())}")
+        logger.info(f"  📊 Journey Progress: {payload['aps']['content-state']['journeyProgress']}")
+        logger.info(f"  🚂 Status V2: {payload['aps']['content-state']['statusV2']}")
+        logger.info(f"  🎯 Train ID: {payload['aps']['content-state']['trainNumber']}")
+        logger.info(f"  🛤️  Track: {payload['aps']['content-state'].get('track', 'None')}")
+        logger.info(
+            f"  📍 Status Location: {payload['aps']['content-state'].get('statusLocation', 'None')}"
+        )
 
         return payload
 
@@ -521,10 +550,8 @@ class APNSPushService:
                 "content-type": "application/json",
             }
 
-            # Debug logging
-            logger.info(
-                f"APNS Request Debug - Topic: {topic}, Push Type: {'liveactivity' if is_live_activity else 'alert'}, Token: {device_token[:12]}..."
-            )
+            # Construct URL first
+            url = f"{self.apns_url}/3/device/{device_token}"
 
             # Add authentication header
             if self.team_id and self.key_id and self.auth_key_path:
@@ -532,8 +559,16 @@ class APNSPushService:
                 jwt_token = self._generate_jwt_token()
                 headers["authorization"] = f"bearer {jwt_token}"
 
-            # Construct URL
-            url = f"{self.apns_url}/3/device/{device_token}"
+            # Debug logging
+            logger.info(
+                f"🚀 APNS Request Debug - Topic: {topic}, Push Type: {'liveactivity' if is_live_activity else 'alert'}, Token: {device_token[:12]}..."
+            )
+            logger.info(f"📡 APNS URL: {url}")
+            logger.info(f"📋 APNS Headers: {headers}")
+            if is_live_activity:
+                logger.info(f"📦 APNS Live Activity Payload: {json.dumps(payload, indent=2)}")
+            else:
+                logger.info(f"📦 APNS Regular Payload: {json.dumps(payload, indent=2)}")
 
             # Configure HTTP/2 client
             async with httpx.AsyncClient(
@@ -618,12 +653,13 @@ class TrainUpdateNotificationService:
             trains: List of current train data
             db: Database session
         """
+        logger.info(f"🔄 Processing train updates for {len(trains)} trains")
         try:
             for train in trains:
                 await self._check_and_notify_train_changes(train, db)
-
+            logger.info(f"✅ Successfully processed {len(trains)} train updates")
         except Exception as e:
-            logger.error(f"Error processing train updates: {str(e)}")
+            logger.error(f"❌ Error processing train updates: {str(e)}")
 
     async def _check_and_notify_train_changes(self, train: Train, db: Session):
         """
@@ -638,8 +674,17 @@ class TrainUpdateNotificationService:
             current_state = self._extract_train_state(train)
             last_state = self.last_train_states.get(train_key)
 
+            logger.debug(
+                f"🔍 Checking train {train.train_id} - Last state: {bool(last_state)}, Current: {current_state.get('status')}"
+            )
+
             # Detect significant changes
             alert_type = self._detect_alert_worthy_changes(last_state, current_state)
+
+            if alert_type:
+                logger.info(f"🚨 Alert detected for train {train.train_id}: {alert_type.value}")
+            else:
+                logger.debug(f"📊 No alert for train {train.train_id}, sending silent update")
 
             if alert_type:
                 # Get active Live Activity tokens for this train with device relationships
@@ -655,6 +700,10 @@ class TrainUpdateNotificationService:
                     .all()
                 )
 
+                logger.info(
+                    f"📱 Found {len(active_tokens)} active Live Activity tokens for train {train.train_id}"
+                )
+
                 # Send both Live Activity updates and regular notifications
                 for token in active_tokens:
                     results = await self.push_service.send_train_notifications(
@@ -666,8 +715,12 @@ class TrainUpdateNotificationService:
 
                     if results["live_activity"] or results["regular_notification"]:
                         logger.info(
-                            f"Notifications sent for train {train.train_id}: {alert_type.value} "
-                            f"(Live Activity: {results['live_activity']}, Regular: {results['regular_notification']})"
+                            f"✅ Notifications sent for train {train.train_id}: {alert_type.value} "
+                            f"(Live Activity: {results['live_activity']}, Regular: {results['regular_notification']}) to token {token.push_token[:12]}..."
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ Failed to send notifications for train {train.train_id}: {alert_type.value} to token {token.push_token[:12]}..."
                         )
             else:
                 # No alert, but send silent Live Activity updates to keep data fresh
@@ -683,6 +736,9 @@ class TrainUpdateNotificationService:
                     .all()
                 )
 
+                logger.debug(
+                    f"📤 Sending silent Live Activity updates to {len(active_tokens)} tokens"
+                )
                 for token in active_tokens:
                     # Send silent Live Activity update (no regular notification)
                     results = await self.push_service.send_train_notifications(
@@ -693,13 +749,23 @@ class TrainUpdateNotificationService:
                     )
 
                     if results["live_activity"]:
-                        logger.debug(f"Silent Live Activity update sent for train {train.train_id}")
+                        logger.debug(
+                            f"🔕 Silent Live Activity update sent for train {train.train_id} to token {token.push_token[:12]}..."
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️ Silent Live Activity update failed for train {train.train_id} to token {token.push_token[:12]}..."
+                        )
 
             # Update last known state
             self.last_train_states[train_key] = current_state
+            logger.debug(f"💾 Updated last known state for train {train.train_id}")
 
         except Exception as e:
-            logger.error(f"Error checking train changes for {train.train_id}: {str(e)}")
+            logger.error(f"❌ Error checking train changes for {train.train_id}: {str(e)}")
+            import traceback
+
+            logger.error(f"📋 Traceback: {traceback.format_exc()}")
 
     def _extract_train_state(self, train: Train) -> Dict[str, Any]:
         """
@@ -711,7 +777,7 @@ class TrainUpdateNotificationService:
         Returns:
             State dictionary
         """
-        return {
+        state = {
             "train_id": train.train_id,
             "track": train.track,
             "status": train.status,
@@ -720,6 +786,10 @@ class TrainUpdateNotificationService:
             "current_location": getattr(train, "current_location", None),
             "journey_percent": getattr(train, "journey_percent", 0),
         }
+        logger.debug(
+            f"📊 Extracted state for train {train.train_id}: track={state['track']}, status={state['status']}"
+        )
+        return state
 
     def _detect_alert_worthy_changes(
         self, old_state: Optional[Dict[str, Any]], new_state: Dict[str, Any]
@@ -738,7 +808,10 @@ class TrainUpdateNotificationService:
             return None
 
         # Track assignment (highest priority)
-        if not old_state.get("track") and new_state.get("track"):
+        old_track = old_state.get("track")
+        new_track = new_state.get("track")
+        if not old_track and new_track:
+            logger.info(f"🛤️ Track assigned for train {new_state.get('train_id')}: {new_track}")
             return AlertType.TRACK_ASSIGNED
 
         # Boarding status change
@@ -746,10 +819,12 @@ class TrainUpdateNotificationService:
         new_status = new_state.get("status", "")
 
         if "BOARDING" not in old_status and "BOARDING" in new_status:
+            logger.info(f"🚆 Boarding started for train {new_state.get('train_id')}")
             return AlertType.BOARDING
 
         # Departure detection
         if old_status != "DEPARTED" and new_status == "DEPARTED":
+            logger.info(f"🛤️ Train {new_state.get('train_id')} departed")
             return AlertType.DEPARTED
 
         # Significant delay change (5+ minutes)
@@ -757,11 +832,22 @@ class TrainUpdateNotificationService:
         new_delay = new_state.get("delay_minutes", 0)
 
         if abs(new_delay - old_delay) >= 5:
+            logger.info(
+                f"⏰ Significant delay change for train {new_state.get('train_id')}: {old_delay} -> {new_delay} minutes"
+            )
             return AlertType.DELAY_UPDATE
 
         # Other significant status changes
         if old_status != new_status and new_status in ["DELAYED", "CANCELLED"]:
+            logger.info(
+                f"📢 Status change for train {new_state.get('train_id')}: {old_status} -> {new_status}"
+            )
             return AlertType.STATUS_CHANGE
+
+        if old_status != new_status:
+            logger.debug(
+                f"🔄 Status change (no alert) for train {new_state.get('train_id')}: {old_status} -> {new_status}"
+            )
 
         return None
 
@@ -895,11 +981,30 @@ class LiveActivityEventDetector:
             # Calculate time to arrival
             scheduled_time = stop.get("scheduled_time")
             if scheduled_time:
-                if isinstance(scheduled_time, str):
-                    scheduled_time = datetime.fromisoformat(scheduled_time.replace("Z", "+00:00"))
+                try:
+                    if isinstance(scheduled_time, str):
+                        # Handle various datetime formats safely
+                        if scheduled_time.endswith("Z"):
+                            scheduled_time = datetime.fromisoformat(
+                                scheduled_time.replace("Z", "+00:00")
+                            )
+                        elif "+" in scheduled_time or scheduled_time.endswith("00:00"):
+                            scheduled_time = datetime.fromisoformat(scheduled_time)
+                        else:
+                            # Assume Eastern time if no timezone info
+                            from dateutil import tz
 
-                time_to_arrival = scheduled_time - current_time
-                minutes_away = int(time_to_arrival.total_seconds() / 60)
+                            scheduled_time = datetime.fromisoformat(scheduled_time).replace(
+                                tzinfo=tz.gettz("US/Eastern")
+                            )
+
+                    time_to_arrival = scheduled_time - current_time
+                    minutes_away = int(time_to_arrival.total_seconds() / 60)
+                except Exception as dt_error:
+                    logger.error(
+                        f"⚠️ Error parsing scheduled_time '{scheduled_time}' for stop: {dt_error}"
+                    )
+                    continue
 
                 # Check if within notification window (2-3 minutes)
                 if 0 < minutes_away <= 3:
@@ -949,6 +1054,7 @@ class LiveActivityEventDetector:
         """
         try:
             train_key = f"{train.train_id}_{train.origin_station_code}"
+            logger.debug(f"🔍 Processing events for train {train.train_id}")
 
             # Extract current stops
             current_stops = []
@@ -963,6 +1069,9 @@ class LiveActivityEventDetector:
                             "departed": stop.departed,
                         }
                     )
+                logger.debug(f"📍 Extracted {len(current_stops)} stops for train {train.train_id}")
+            else:
+                logger.debug(f"📍 No stops data available for train {train.train_id}")
 
             # Get previous stops
             previous_stops = self.last_train_stops.get(train_key, [])
@@ -976,7 +1085,12 @@ class LiveActivityEventDetector:
             approaching_events = await self.detect_approaching_stops(train, current_stops, db)
 
             # Send notifications for all events
-            for event in departure_events + approaching_events:
+            all_events = departure_events + approaching_events
+            logger.info(
+                f"📬 Sending {len(all_events)} event notifications for train {train.train_id}"
+            )
+
+            for event in all_events:
                 token = event["token"]
                 train_data = self._extract_train_data(event["train"])
 
@@ -984,6 +1098,10 @@ class LiveActivityEventDetector:
                     AlertType.STOP_DEPARTURE
                     if event["type"] == "stop_departure"
                     else AlertType.APPROACHING_STOP
+                )
+
+                logger.info(
+                    f"🎯 Sending {event['type']} notification for train {train.train_id} at {event['event_data']['station']}"
                 )
 
                 results = await self.push_service.send_train_notifications(
@@ -996,7 +1114,12 @@ class LiveActivityEventDetector:
 
                 if results["live_activity"]:
                     logger.info(
-                        f"Sent {event['type']} notification for train {train.train_id} "
+                        f"✅ Sent {event['type']} notification for train {train.train_id} "
+                        f"stop {event['event_data']['station']}"
+                    )
+                else:
+                    logger.error(
+                        f"❌ Failed to send {event['type']} notification for train {train.train_id} "
                         f"stop {event['event_data']['station']}"
                     )
 
@@ -1050,15 +1173,71 @@ class LiveActivityEventDetector:
 
     def _extract_train_data(self, train: Train) -> Dict[str, Any]:
         """Extract train data for notifications."""
+        # Extract status_v2 data if available
+        status_v2 = getattr(train, "status_v2", None)
+        status_v2_str = train.status
+        status_location = None
+
+        if status_v2 and isinstance(status_v2, dict):
+            status_v2_str = status_v2.get("current", train.status)
+            status_location = status_v2.get("location")
+        elif isinstance(status_v2, str):
+            status_v2_str = status_v2
+
+        # Extract next stop info
+        next_stop_info = None
+        progress = getattr(train, "progress", None)
+        if progress and isinstance(progress, dict):
+            next_arrival = progress.get("next_arrival")
+            if next_arrival:
+                next_stop_info = {
+                    "stationCode": next_arrival.get("station_code"),
+                    "stationName": next_arrival.get("station_name"),
+                    "scheduledTime": next_arrival.get("scheduled_time"),
+                    "minutesAway": next_arrival.get("minutes_away", 0),
+                }
+
+        # Extract destination ETA
+        destination_eta = None
+        if hasattr(train, "stops") and train.stops:
+            # Find destination stop and get its scheduled time
+            for stop in train.stops:
+                if hasattr(stop, "station_code") and hasattr(train, "destination_station_code"):
+                    if stop.station_code == train.destination_station_code:
+                        destination_eta = (
+                            stop.scheduled_time.isoformat() if stop.scheduled_time else None
+                        )
+                        break
+
+        # Extract prediction data if available
+        trackrat_prediction = None
+        if hasattr(train, "prediction_data") and train.prediction_data:
+            pred = train.prediction_data
+            trackrat_prediction = {
+                "predictedTrack": (
+                    pred.predicted_track if hasattr(pred, "predicted_track") else None
+                ),
+                "confidence": pred.confidence if hasattr(pred, "confidence") else 0.0,
+                "trackProbabilities": (
+                    pred.track_probabilities if hasattr(pred, "track_probabilities") else {}
+                ),
+            }
+
         return {
             "train_id": train.train_id,
             "track": train.track,
             "status": train.status,
-            "status_v2": getattr(train, "status_v2", train.status),
+            "status_v2": status_v2_str,
+            "status_location": status_location,
             "delay_minutes": train.delay_minutes or 0,
             "current_location": getattr(train, "current_location", None),
             "journey_percent": getattr(train, "journey_percent", 0),
-            "next_stop_info": getattr(train, "next_stop_info", None),
+            "next_stop_info": next_stop_info,
+            "destination_eta": destination_eta,
+            "trackrat_prediction": trackrat_prediction,
+            "has_status_changed": getattr(
+                train, "has_status_changed", False
+            ),  # Use train attribute if available
         }
 
     def cleanup_old_notifications(self, hours: int = 24):

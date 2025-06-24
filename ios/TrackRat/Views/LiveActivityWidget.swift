@@ -32,22 +32,65 @@ struct TrainLiveActivity: Widget {
                     )
                 }
             } compactLeading: {
-                // Compact leading (left side of Dynamic Island) - just train emoji
-                Image(systemName: "tram.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: 67, alignment: .leading)
+                // Compact leading (left side of Dynamic Island) - maximum visibility with animation
+                HStack(spacing: 3) {
+                    Image(systemName: "tram.fill")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.orange, .red],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .shadow(color: .black, radius: 1)
+                        .scaleEffect(context.state.statusV2 == "BOARDING" ? 1.2 : 1.0)
+                        .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: context.state.statusV2)
+                    Text("\(context.attributes.trainNumber)")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundColor(.white)
+                        .shadow(color: .black, radius: 1)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 2)
+                .frame(maxWidth: 67, alignment: .leading)
             } compactTrailing: {
-                // Compact trailing (right side of Dynamic Island)
-                // Maximum width: 67pt for Dynamic Island compatibility
-                DynamicIslandCompactTrailing(context: context)
-                    .frame(maxWidth: 67, alignment: .trailing)
-                    .clipped()
+                // Compact trailing (right side of Dynamic Island) - maximum visibility with colors
+                HStack(spacing: 2) {
+                    // Show track if available, otherwise status
+                    if let track = context.state.track, !track.isEmpty {
+                        Text("T\(track)")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.orange, .yellow],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .shadow(color: .black, radius: 1)
+                    } else {
+                        Text(getCompactStatusV2(context.state.statusV2))
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundColor(.white)
+                            .shadow(color: .black, radius: 1)
+                    }
+                }
+                .padding(.horizontal, 2)
+                .frame(maxWidth: 67, alignment: .trailing)
             } minimal: {
-                // Minimal (when other Dynamic Islands are active) - just train emoji
+                // Minimal (when other Dynamic Islands are active) - maximum visibility with animation
                 Image(systemName: "tram.fill")
-                    .font(.system(size: 10))
-                    .foregroundColor(.white)
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.orange, .red, .orange],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .shadow(color: .black, radius: 2)
+                    .scaleEffect(1.2)
                     .frame(maxWidth: 32, alignment: .center)
             }
             .widgetURL(URL(string: "trackrat://train/\(context.attributes.trainId)"))

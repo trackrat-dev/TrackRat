@@ -141,7 +141,7 @@ class LiveActivityService: ObservableObject {
     
     /// Calculate relevance score for Live Activity prioritization
     private func calculateRelevanceScore(for train: Train) -> Double {
-        var score = 50.0 // Base score
+        var score = 95.0 // Maximum base score for best Dynamic Island visibility
         
         // Maximum priority for boarding
         if train.statusV2?.current.contains("BOARDING") == true || train.status.rawValue.contains("BOARDING") {
@@ -150,21 +150,21 @@ class LiveActivityService: ObservableObject {
         
         // High priority for track assignments
         if let track = train.track, !track.isEmpty {
-            score = 90.0
+            score = 95.0
         }
         
         // Priority for approaching/departing
         if let statusV2 = train.statusV2?.current {
             if statusV2.contains("APPROACHING") {
-                score = 85.0
+                score = 92.0
             } else if statusV2.contains("DEPARTED") {
-                score = 80.0
+                score = 88.0
             }
         }
         
         // Boost based on journey progress
         if let progress = train.progress?.journeyPercent {
-            score += (Double(progress) * 20) // 0-20 bonus
+            score += (Double(progress) * 10) // 0-10 bonus
         }
         
         // Boost for delays (more urgent)
@@ -312,10 +312,26 @@ class LiveActivityService: ObservableObject {
             print("🔍 Live Activity Authorization Debug:")
             print("  - areActivitiesEnabled: \(authInfo.areActivitiesEnabled)")
             print("  - frequentPushesEnabled: \(authInfo.frequentPushesEnabled)")
+            print("  - iOS Version: \(UIDevice.current.systemVersion)")
+            print("  - Device Model: \(UIDevice.current.model)")
+            
+            // Check notification permissions too
+            let notificationSettings = await UNUserNotificationCenter.current().notificationSettings()
+            print("🔍 Notification Authorization:")
+            print("  - authorizationStatus: \(notificationSettings.authorizationStatus.rawValue)")
+            print("  - alertSetting: \(notificationSettings.alertSetting.rawValue)")
             
             // Check if Live Activities are available
             guard authInfo.areActivitiesEnabled else {
                 print("❌ Live Activities are not enabled")
+                print("💡 User needs to enable Live Activities in Settings > Face ID & Passcode > Live Activities")
+                throw LiveActivityError.permissionDenied
+            }
+            
+            // Check notification permissions
+            guard notificationSettings.authorizationStatus == .authorized || notificationSettings.authorizationStatus == .provisional else {
+                print("❌ Notification permissions not granted")
+                print("💡 User needs to allow notifications for Live Activities to work")
                 throw LiveActivityError.permissionDenied
             }
             
@@ -1027,9 +1043,28 @@ class LiveActivityService: ObservableObject {
     /// Check if Live Activities are supported and available
     var isSupported: Bool {
         if #available(iOS 16.1, *) {
-            return ActivityAuthorizationInfo().areActivitiesEnabled
+            let authInfo = ActivityAuthorizationInfo()
+            let notificationSettings = UNUserNotificationCenter.current()
+            
+            // Check both Live Activities and notification permissions
+            return authInfo.areActivitiesEnabled
         }
         return false
+    }
+    
+    /// Get detailed status about Live Activity availability
+    var supportStatus: String {
+        if #available(iOS 16.1, *) {
+            let authInfo = ActivityAuthorizationInfo()
+            
+            if !authInfo.areActivitiesEnabled {
+                return "Live Activities are disabled. Enable them in Settings > Face ID & Passcode > Live Activities."
+            }
+            
+            return "Live Activities are enabled and ready."
+        } else {
+            return "Live Activities require iOS 16.1 or later."
+        }
     }
     
     /// Debug Live Activity permissions and capabilities

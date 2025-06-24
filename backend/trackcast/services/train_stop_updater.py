@@ -69,7 +69,7 @@ class TrainStopUpdater:
             # Fetch stop data from API once for the train_id
             stop_data = self.nj_collector.get_train_stops(train_id)
 
-            if not stop_data or "STOPS" not in stop_data:
+            if not stop_data or "STOPS" not in stop_data or stop_data["STOPS"] is None:
                 logger.warning(f"No stop data returned for train {train_id}")
                 return {str(train.id): False for train in nj_trains}
 
@@ -128,7 +128,7 @@ class TrainStopUpdater:
             # Fetch stop data from API
             stop_data = self.nj_collector.get_train_stops(train.train_id)
 
-            if not stop_data or "STOPS" not in stop_data:
+            if not stop_data or "STOPS" not in stop_data or stop_data["STOPS"] is None:
                 logger.warning(f"No stop data returned for train {train.train_id}")
                 return False
 
@@ -160,6 +160,11 @@ class TrainStopUpdater:
             True if all stops have departed (journey complete)
         """
         journey_complete = True
+
+        # Handle case where stops_data is None or not a list
+        if not stops_data:
+            logger.warning(f"No stops data to process for train {train.train_id}")
+            return False
 
         for stop_data in stops_data:
             # Find matching TrainStop record
