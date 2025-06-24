@@ -107,3 +107,23 @@ timezone:
   storage_timezone: "US/Eastern"
   api_response_timezone: "US/Eastern"
 
+# Google Cloud Monitoring metrics export configuration
+gcp_metrics:
+  # Enable/disable GCP metrics export (auto-detected if not specified)
+  enabled: true
+  
+  # GCP project ID (auto-detected from environment if not specified)
+  project_id: ""  # Set via GOOGLE_CLOUD_PROJECT env var
+  
+  # Path to service account JSON file (optional)
+  service_account_path: ""  # Set via GOOGLE_APPLICATION_CREDENTIALS env var
+  
+  # Prefix for all metric names in GCP Monitoring
+  metric_prefix: "trackcast"
+  
+  # How often to export metrics to GCP (in seconds)
+  export_interval_seconds: 60
+  
+  # Maximum number of metrics per batch request
+  max_batch_size: 200
+

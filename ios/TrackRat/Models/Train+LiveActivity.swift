@@ -253,7 +253,12 @@ extension Train {
             destinationETA: destinationETA,
             trackRatPrediction: trackRatPrediction,
             lastUpdated: Date(),
-            hasStatusChanged: hasStatusChanged
+            hasStatusChanged: hasStatusChanged,
+            // Enhanced alert metadata (populated by backend push updates)
+            alertMetadata: nil,
+            dynamicIslandPriority: nil,
+            requiresHapticFeedback: nil,
+            pushTimestamp: nil
         )
     }
     

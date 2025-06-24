@@ -93,3 +93,28 @@ DB_CONNECTION_POOL_UTILIZATION = Gauge(
     "db_connection_pool_utilization_ratio",
     "Ratio of active DB connections to max connections",
 )
+
+# Push notification metrics
+NOTIFICATION_ATTEMPTS_TOTAL = Counter(
+    "notification_attempts_total",
+    "Total number of notification attempts by type and result",
+    ["notification_type", "station", "result"],
+)
+
+NOTIFICATION_SUCCESSES_TOTAL = Counter(
+    "notification_successes_total",
+    "Total number of successful notifications by type and station",
+    ["notification_type", "station"],
+)
+
+LIVE_ACTIVITY_UPDATES_TOTAL = Counter(
+    "live_activity_updates_total",
+    "Total number of Live Activity updates sent by station and result",
+    ["station", "result"],
+)
+
+NOTIFICATION_LATENCY_SECONDS = Histogram(
+    "notification_latency_seconds",
+    "Time taken to send notifications by type",
+    ["notification_type"],
+)

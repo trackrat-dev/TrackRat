@@ -53,4 +53,12 @@ resource "google_project_iam_member" "cloud_trace_agent" {
   member  = "serviceAccount:${local.effective_service_account_email}"
 }
 
+# Grant Monitoring Metric Writer role for GCP metrics export
+resource "google_project_iam_member" "monitoring_metric_writer" {
+  count   = var.service_account_email == null ? 1 : 0 # Only if SA is created by this module
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${local.effective_service_account_email}"
+}
+
 # Add other necessary IAM bindings here, for example, Pub/Sub subscriber if triggered by Pub/Sub, etc.

@@ -625,9 +625,17 @@ class TrainConsolidationService:
                     "scheduled_arrival": stop.scheduled_arrival,
                     "departed": False,
                 }
-            # If any source says departed, mark as departed
+            # If any source says departed, validate the departure time is in the past
             if stop.departed:
-                stop_status[stop.station_code]["departed"] = True
+                # Check if the departure actually happened (time is in the past)
+                departure_time = stop.actual_departure or stop.scheduled_departure
+                if departure_time and self._is_departure_in_past(departure_time.isoformat()):
+                    stop_status[stop.station_code]["departed"] = True
+                else:
+                    # Departure time is in the future - this stop hasn't actually departed
+                    logger.warning(
+                        f"Stop {stop.station_code} marked as departed but departure time {departure_time} is in the future"
+                    )
 
         # Find last departed and next station
         if not stop_status:
@@ -819,18 +827,33 @@ class TrainConsolidationService:
                             train.updated_at if stop.actual_departure else None
                         ),
                     }
-                    # Add to confirmed_by if this source says departed
+                    # Add to confirmed_by if this source says departed AND it's a valid confirmation
                     if stop.departed:
-                        stop_map[key]["departed_confirmed_by"].append(train.origin_station_code)
+                        # Only confirm departure if the departure time is actually in the past
+                        departure_time = stop.actual_departure or stop.scheduled_departure
+                        if departure_time and self._is_departure_in_past(
+                            departure_time.isoformat()
+                        ):
+                            stop_map[key]["departed_confirmed_by"].append(train.origin_station_code)
                 else:
                     # Station already exists - resolve conflicts using most recent train wins
                     existing_departed = stop_map[key]["departed"]
                     current_departed = stop.departed
 
-                    # Always add this source to confirmed_by if it says departed
+                    # Add this source to confirmed_by if it says departed AND it's a valid confirmation
                     if current_departed:
-                        if train.origin_station_code not in stop_map[key]["departed_confirmed_by"]:
-                            stop_map[key]["departed_confirmed_by"].append(train.origin_station_code)
+                        # Validate the departure time is in the past
+                        departure_time = stop.actual_departure or stop.scheduled_departure
+                        if departure_time and self._is_departure_in_past(
+                            departure_time.isoformat()
+                        ):
+                            if (
+                                train.origin_station_code
+                                not in stop_map[key]["departed_confirmed_by"]
+                            ):
+                                stop_map[key]["departed_confirmed_by"].append(
+                                    train.origin_station_code
+                                )
 
                     # If there's a conflict about departure status, use most recent train
                     if existing_departed != current_departed:
@@ -966,6 +989,41 @@ class TrainConsolidationService:
                 else datetime.min
             ),
         )
+
+        # Post-process: if we find a departed stop, mark previous stops as departed
+        # BUT only up to the first non-departed stop (don't assume all future stops are departed)
+        last_confirmed_departed_index = -1
+        for i, stop in enumerate(sorted_stops):
+            if stop.get("departed"):
+                # Validate that this departure actually happened (time is in the past)
+                departure_time = stop.get("actual_departure") or stop.get("scheduled_departure")
+                if departure_time and self._is_departure_in_past(departure_time):
+                    last_confirmed_departed_index = i
+                else:
+                    # Departure time is in the future - this stop hasn't actually departed
+                    logger.warning(
+                        f"Stop {stop.get('station_code')} marked as departed but departure time {departure_time} is in the future"
+                    )
+                    stop["departed"] = False
+                    # Clear the departed_confirmed_by list for this stop
+                    stop["departed_confirmed_by"] = []
+            else:
+                # Found a non-departed stop - stop inferring departures beyond this point
+                break
+
+        # Mark all stops before the last confirmed departed stop as departed
+        # This handles cases where upstream stations don't report departed status
+        if last_confirmed_departed_index > 0:
+            for i in range(last_confirmed_departed_index):
+                if not sorted_stops[i].get("departed"):
+                    # Only mark as departed if the scheduled time is in the past
+                    scheduled_departure = sorted_stops[i].get("scheduled_departure")
+                    if scheduled_departure and self._is_departure_in_past(scheduled_departure):
+                        logger.info(
+                            f"Marking stop {sorted_stops[i].get('station_code')} as departed based on train position"
+                        )
+                        sorted_stops[i]["departed"] = True
+
         return sorted_stops
 
     def _get_best_prediction(self, trains: List[Train]) -> Optional[Dict]:
@@ -1150,8 +1208,15 @@ class TrainConsolidationService:
 
         for i, stop in enumerate(stops):
             if stop.get("departed"):
-                progress["stops_completed"] += 1
-                last_departed_stop = (i, stop)
+                # Verify the departure actually happened (time is in the past)
+                departure_time = stop.get("actual_departure") or stop.get("scheduled_departure")
+                if departure_time and self._is_departure_in_past(departure_time):
+                    progress["stops_completed"] += 1
+                    last_departed_stop = (i, stop)
+                else:
+                    # If departure is in the future, this is our next stop
+                    if not next_arrival_stop and not last_departed_stop:
+                        next_arrival_stop = (i, stop)
             elif last_departed_stop and not next_arrival_stop:
                 next_arrival_stop = (i, stop)
 
@@ -1221,3 +1286,24 @@ class TrainConsolidationService:
             )
 
         return progress
+
+    def _is_departure_in_past(self, departure_time_str: str) -> bool:
+        """
+        Check if a departure time is in the past.
+
+        Args:
+            departure_time_str: ISO format departure time string
+
+        Returns:
+            True if the departure time is in the past, False otherwise
+        """
+        if not departure_time_str:
+            return False
+
+        try:
+            departure_time = datetime.fromisoformat(departure_time_str)
+            now = get_eastern_now()
+            return departure_time <= now
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid departure time format: {departure_time_str}")
+            return False

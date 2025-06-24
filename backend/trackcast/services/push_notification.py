@@ -20,6 +20,12 @@ from sqlalchemy.orm import Session
 from trackcast.config import settings
 from trackcast.db.connection import get_db
 from trackcast.db.models import DeviceToken, LiveActivityToken, Train
+from trackcast.metrics import (
+    LIVE_ACTIVITY_UPDATES_TOTAL,
+    NOTIFICATION_ATTEMPTS_TOTAL,
+    NOTIFICATION_LATENCY_SECONDS,
+    NOTIFICATION_SUCCESSES_TOTAL,
+)
 from trackcast.utils import get_eastern_now
 
 logger = logging.getLogger(__name__)
@@ -92,39 +98,51 @@ class APNSPushService:
         db: Optional[Session] = None,
     ) -> Dict[str, bool]:
         """
-        Send both Live Activity update and regular push notification for train changes.
+        Send Live Activity update with enhanced alert metadata for Dynamic Island prominence.
 
         Args:
             live_activity_token: LiveActivityToken object with device relationship
             train_data: Current train data for the update
-            alert_type: Optional alert type for notifications
+            alert_type: Optional alert type for Dynamic Island prominence
+            event_data: Optional event-specific data
             db: Database session for logging
 
         Returns:
-            Dict with success status for each notification type
+            Dict with success status (only live_activity now)
         """
-        results = {"live_activity": False, "regular_notification": False}
+        results = {"live_activity": False}
+        station = (
+            train_data.get("train_id", "unknown")[:2] if train_data.get("train_id") else "unknown"
+        )  # Extract station from train ID
+        start_time = time.time()
 
         try:
-            # Send Live Activity update
+            # Send Live Activity update with enhanced alert metadata
             await self._rate_limit()
             live_activity_payload = self._create_live_activity_payload(
                 train_data, alert_type, event_data
             )
+
+            # Track Live Activity attempt
+            NOTIFICATION_ATTEMPTS_TOTAL.labels(
+                notification_type="live_activity", station=station, result="attempted"
+            ).inc()
+
             results["live_activity"] = await self._send_apns_request(
                 live_activity_token.push_token, live_activity_payload, is_live_activity=True
             )
 
-            # Send regular push notification if there's an alert and device token
-            if alert_type and live_activity_token.device:
-                await self._rate_limit()
-                regular_payload = self._create_regular_notification_payload(train_data, alert_type)
-                results["regular_notification"] = await self._send_apns_request(
-                    live_activity_token.device.device_token, regular_payload, is_live_activity=False
-                )
+            # Track Live Activity result
+            if results["live_activity"]:
+                LIVE_ACTIVITY_UPDATES_TOTAL.labels(station=station, result="success").inc()
+                NOTIFICATION_SUCCESSES_TOTAL.labels(
+                    notification_type="live_activity", station=station
+                ).inc()
+            else:
+                LIVE_ACTIVITY_UPDATES_TOTAL.labels(station=station, result="failure").inc()
 
             # Update database timestamps
-            if db and (results["live_activity"] or results["regular_notification"]):
+            if db and results["live_activity"]:
                 live_activity_token.last_update_sent = get_eastern_now()
                 if alert_type:
                     live_activity_token.last_notification_sent = get_eastern_now()
@@ -132,13 +150,25 @@ class APNSPushService:
                         live_activity_token.device.last_used = get_eastern_now()
                 db.commit()
 
+            # Track overall notification latency
+            total_latency = time.time() - start_time
+            if results["live_activity"]:
+                NOTIFICATION_LATENCY_SECONDS.labels(notification_type="live_activity").observe(
+                    total_latency
+                )
+
+            alert_info = f" with {alert_type.value} alert" if alert_type else ""
             logger.info(
-                f"📬 Notifications sent for train {train_data.get('train_id')} - Live Activity: {results['live_activity']}, Regular: {results['regular_notification']}"
+                f"📬 Live Activity update sent for train {train_data.get('train_id')}{alert_info} - Success: {results['live_activity']}"
             )
             return results
 
         except Exception as e:
-            logger.error(f"Failed to send train notifications: {str(e)}")
+            logger.error(f"Failed to send Live Activity update: {str(e)}")
+            # Track failed attempts due to exceptions
+            NOTIFICATION_ATTEMPTS_TOTAL.labels(
+                notification_type="live_activity", station=station, result="error"
+            ).inc()
             return results
 
     async def send_live_activity_update(
@@ -204,7 +234,15 @@ class APNSPushService:
         Returns:
             True if successful, False otherwise
         """
+        station = "unknown"  # Default since we don't have train context here
+        start_time = time.time()
+
         try:
+            # Track notification attempt
+            NOTIFICATION_ATTEMPTS_TOTAL.labels(
+                notification_type="device_push", station=station, result="attempted"
+            ).inc()
+
             # Rate limiting
             await self._rate_limit()
 
@@ -218,10 +256,31 @@ class APNSPushService:
 
             # Send the notification
             success = await self._send_apns_request(device_token, payload, is_live_activity=False)
-            logger.info(f"Device notification sent successfully to {device_token[:8]}...")
+
+            # Track result and latency
+            latency = time.time() - start_time
+            NOTIFICATION_LATENCY_SECONDS.labels(notification_type="device_push").observe(latency)
+
+            if success:
+                NOTIFICATION_SUCCESSES_TOTAL.labels(
+                    notification_type="device_push", station=station
+                ).inc()
+                NOTIFICATION_ATTEMPTS_TOTAL.labels(
+                    notification_type="device_push", station=station, result="success"
+                ).inc()
+                logger.info(f"Device notification sent successfully to {device_token[:8]}...")
+            else:
+                NOTIFICATION_ATTEMPTS_TOTAL.labels(
+                    notification_type="device_push", station=station, result="failure"
+                ).inc()
+
             return success
 
         except Exception as e:
+            # Track error
+            NOTIFICATION_ATTEMPTS_TOTAL.labels(
+                notification_type="device_push", station=station, result="error"
+            ).inc()
             logger.error(f"Failed to send device notification: {str(e)}")
             return False
 
@@ -278,23 +337,39 @@ class APNSPushService:
             }
         }
 
-        # Add alert for Dynamic Island expansion
+        # Add enhanced alert configuration for Dynamic Island prominence
         if alert_type:
             alert_config = self._get_alert_config(train_data, alert_type)
             if alert_config:
+                # Core APNS alert fields
                 payload["aps"]["alert"] = alert_config["alert"]
                 payload["aps"]["sound"] = alert_config.get("sound", "default")
                 payload["aps"]["relevance-score"] = alert_config.get("relevance_score", 1.0)
+
+                # Enhanced metadata for Live Activity processing
+                payload["aps"]["content-state"]["alertMetadata"] = alert_config.get(
+                    "alert_metadata", {}
+                )
+                payload["aps"]["content-state"]["dynamicIslandPriority"] = alert_config.get(
+                    "priority", "medium"
+                )
+                payload["aps"]["content-state"]["requiresHapticFeedback"] = alert_config.get(
+                    "requires_attention", False
+                )
 
         # Add event-specific data if provided
         if alert_type and event_data:
             payload["event_type"] = alert_type.value
             payload["event_data"] = event_data
 
-        # Debug logging for Live Activity payload
-        logger.info(f"🔍 Live Activity Payload Debug:")
+        # Always include a timestamp for Live Activity freshness
+        payload["aps"]["content-state"]["pushTimestamp"] = current_timestamp
+
+        # Debug logging for enhanced Live Activity payload
+        logger.info(f"🔍 Enhanced Live Activity Payload Debug:")
         logger.info(f"  🎯 Event: {payload['aps']['event']}")
         logger.info(f"  🚨 Alert Type: {alert_type.value if alert_type else 'None'}")
+        logger.info(f"  ⭐ Relevance Score: {payload['aps'].get('relevance-score', 'None')}")
         logger.info(f"  🗝️  Content State Keys: {list(payload['aps']['content-state'].keys())}")
         logger.info(f"  📊 Journey Progress: {payload['aps']['content-state']['journeyProgress']}")
         logger.info(f"  🚂 Status V2: {payload['aps']['content-state']['statusV2']}")
@@ -304,93 +379,47 @@ class APNSPushService:
             f"  📍 Status Location: {payload['aps']['content-state'].get('statusLocation', 'None')}"
         )
 
-        return payload
+        # Log enhanced metadata if present
+        if alert_type:
+            logger.info(
+                f"  🔥 Dynamic Island Priority: {payload['aps']['content-state'].get('dynamicIslandPriority', 'None')}"
+            )
+            logger.info(
+                f"  📳 Requires Haptic: {payload['aps']['content-state'].get('requiresHapticFeedback', 'None')}"
+            )
+            logger.info(
+                f"  📋 Alert Metadata: {payload['aps']['content-state'].get('alertMetadata', {})}"
+            )
 
-    def _create_regular_notification_payload(
-        self, train_data: Dict[str, Any], alert_type: AlertType
-    ) -> Dict[str, Any]:
-        """
-        Create APNS payload for regular push notification.
-
-        Args:
-            train_data: Current train data
-            alert_type: Alert type for notification
-
-        Returns:
-            APNS payload dictionary for regular notification
-        """
-        train_id = train_data.get("train_id", "")
-        track = train_data.get("track", "")
-
-        # Get alert text based on type
-        alert_configs = {
-            AlertType.TRACK_ASSIGNED: {
-                "title": "Track Assigned! 🚋",
-                "body": (
-                    f"Train {train_id} → Track {track}"
-                    if track
-                    else f"Train {train_id} track assigned"
-                ),
-            },
-            AlertType.BOARDING: {
-                "title": "Time to Board! 🚆",
-                "body": f"Train {train_id} is boarding" + (f" on Track {track}" if track else ""),
-            },
-            AlertType.DEPARTED: {
-                "title": "Train Departed 🛤️",
-                "body": f"Train {train_id} has left the station",
-            },
-            AlertType.APPROACHING: {
-                "title": "Approaching Stop 🎯",
-                "body": f"Train {train_id} is approaching your destination",
-            },
-            AlertType.DELAY_UPDATE: {
-                "title": "Delay Update ⏰",
-                "body": f"Train {train_id} is running behind schedule",
-            },
-            AlertType.STATUS_CHANGE: {
-                "title": "Status Update 📢",
-                "body": f"Train {train_id} status has changed",
-            },
-            AlertType.STOP_DEPARTURE: {
-                "title": "Stop Departure 🚂",
-                "body": f"Train {train_id} has departed",
-            },
-            AlertType.APPROACHING_STOP: {
-                "title": "Approaching Stop 📍",
-                "body": f"Train {train_id} is approaching your stop",
-            },
-        }
-
-        alert_config = alert_configs.get(
-            alert_type, {"title": "Train Update", "body": f"Train {train_id} has been updated"}
+        logger.info(
+            f"  ⏰ Push Timestamp: {payload['aps']['content-state'].get('pushTimestamp', 'None')}"
         )
 
-        return {
-            "aps": {
-                "alert": alert_config,
-                "sound": "default",
-                "badge": 1,
-                "category": "TRAIN_UPDATE",
-            },
-            "train_data": {"train_id": train_id, "alert_type": alert_type.value, "track": track},
-        }
+        return payload
 
     def _get_alert_config(
         self, train_data: Dict[str, Any], alert_type: AlertType
     ) -> Optional[Dict[str, Any]]:
         """
-        Get alert configuration for Dynamic Island notifications.
+        Get enhanced alert configuration for Live Activity Dynamic Island prominence.
+
+        These configurations replace traditional push notifications with Live Activity
+        alerts that trigger Dynamic Island expansion with maximum visibility.
 
         Args:
             train_data: Current train data
             alert_type: Type of alert
 
         Returns:
-            Alert configuration dictionary
+            Enhanced alert configuration dictionary with high relevance scores
         """
         train_id = train_data.get("train_id", "")
         track = train_data.get("track", "")
+        delay_minutes = train_data.get("delay_minutes", 0)
+
+        # Get station and destination for contextual messages
+        status_v2 = train_data.get("status_v2", {})
+        location = status_v2.get("location") if isinstance(status_v2, dict) else None
 
         configs = {
             AlertType.TRACK_ASSIGNED: {
@@ -399,7 +428,9 @@ class APNSPushService:
                     "body": f"Track {track} - Get Ready to Board",
                 },
                 "sound": "default",
-                "relevance_score": 1.0,
+                "relevance_score": 95.0,  # Maximum prominence for track assignments
+                "priority": "high",
+                "requires_attention": True,
             },
             AlertType.BOARDING: {
                 "alert": {
@@ -407,56 +438,88 @@ class APNSPushService:
                     "body": f"Track {track} - All Aboard!" if track else "Boarding Now!",
                 },
                 "sound": "default",
-                "relevance_score": 1.0,
+                "relevance_score": 100.0,  # Maximum possible prominence for boarding
+                "priority": "urgent",
+                "requires_attention": True,
             },
             AlertType.DEPARTED: {
                 "alert": {
-                    "title": "Train Departed 🛤️",
-                    "body": "Journey Started - Live Updates Active",
+                    "title": "Journey Started 🛤️",
+                    "body": f"Train {train_id} has departed{f' from {location}' if location else ''}",
                 },
                 "sound": "default",
-                "relevance_score": 0.8,
+                "relevance_score": 88.0,  # High prominence for departures
+                "priority": "high",
+                "requires_attention": True,
             },
             AlertType.APPROACHING: {
                 "alert": {
-                    "title": f"Approaching Destination 🎯",
-                    "body": "Your stop is coming up!",
+                    "title": "Approaching Destination! 🎯",
+                    "body": "Your stop is coming up - Get ready!",
                 },
                 "sound": "default",
-                "relevance_score": 0.9,
+                "relevance_score": 92.0,  # Very high prominence for approaching destination
+                "priority": "high",
+                "requires_attention": True,
             },
             AlertType.DELAY_UPDATE: {
                 "alert": {
                     "title": "Delay Update ⏰",
-                    "body": f"Train {train_id} is running behind schedule",
+                    "body": f"Train {train_id} now {delay_minutes} minutes delayed",
                 },
                 "sound": "default",
-                "relevance_score": 0.6,
+                "relevance_score": (
+                    75.0 if delay_minutes >= 10 else 60.0
+                ),  # Higher for significant delays
+                "priority": "medium" if delay_minutes >= 10 else "low",
+                "requires_attention": delay_minutes
+                >= 15,  # Only require attention for major delays
             },
             AlertType.STATUS_CHANGE: {
-                "alert": {"title": "Status Update 📢", "body": f"Train {train_id} status changed"},
+                "alert": {
+                    "title": "Status Update 📢",
+                    "body": f"Train {train_id} status has changed",
+                },
                 "sound": "default",
-                "relevance_score": 0.5,
+                "relevance_score": 70.0,  # Moderate prominence for status changes
+                "priority": "medium",
+                "requires_attention": False,
             },
             AlertType.STOP_DEPARTURE: {
                 "alert": {
                     "title": "Stop Departure 🚂",
-                    "body": "Train has departed from stop",
+                    "body": f"Train {train_id} departed{f' {location}' if location else ''}",
                 },
                 "sound": "default",
-                "relevance_score": 0.8,
+                "relevance_score": 85.0,  # High prominence for stop departures
+                "priority": "high",
+                "requires_attention": True,
             },
             AlertType.APPROACHING_STOP: {
                 "alert": {
                     "title": "Approaching Stop 📍",
-                    "body": "Your stop is coming up!",
+                    "body": f"Next stop coming up{f': {location}' if location else ''}",
                 },
                 "sound": "default",
-                "relevance_score": 0.9,
+                "relevance_score": 90.0,  # Very high prominence for approaching stops
+                "priority": "high",
+                "requires_attention": True,
             },
         }
 
-        return configs.get(alert_type)
+        config = configs.get(alert_type)
+        if config:
+            # Add metadata for Live Activity processing
+            config["alert_metadata"] = {
+                "alert_type": alert_type.value,
+                "train_id": train_id,
+                "track": track,
+                "dynamic_island_priority": config["priority"],
+                "requires_haptic_feedback": config["requires_attention"],
+                "timestamp": int(time.time()),
+            }
+
+        return config
 
     def _validate_config(self) -> bool:
         """Validate APNS configuration."""

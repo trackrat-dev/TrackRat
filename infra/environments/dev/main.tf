@@ -100,13 +100,14 @@ module "trackrat_api_service" {
 
   # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV                  = "development"
-    TRACKCAST_ENV            = "dev"
-    MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native"      # Enable cloud-native mode to disable internal scheduler
-    GOOGLE_CLOUD_PROJECT     = var.project_id      # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "1"                 # 100% sampling for development debugging
-    OTEL_SERVICE_NAME        = "trackcast-api-dev" # Environment-specific service name
+    APP_ENV                     = "development"
+    TRACKCAST_ENV               = "dev"
+    MODEL_PATH                  = "/app/models"
+    TRACKCAST_SCHEDULER_MODE    = "cloud_native"      # Enable cloud-native mode to disable internal scheduler
+    GOOGLE_CLOUD_PROJECT        = var.project_id      # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE            = "1"                 # 100% sampling for development debugging
+    OTEL_SERVICE_NAME           = "trackcast-api-dev" # Environment-specific service name
+    GCP_METRICS_EXPORT_INTERVAL = "60"                # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -157,13 +158,14 @@ module "scheduled_operations" {
 
   # Global environment variables for all jobs
   environment_variables = {
-    APP_ENV                  = "development"
-    TRACKCAST_ENV            = "dev"
-    MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native"
-    GOOGLE_CLOUD_PROJECT     = var.project_id      # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "1"                 # 100% sampling for development debugging
-    OTEL_SERVICE_NAME        = "trackcast-ops-dev" # Environment-specific service name for jobs
+    APP_ENV                     = "development"
+    TRACKCAST_ENV               = "dev"
+    MODEL_PATH                  = "/app/models"
+    TRACKCAST_SCHEDULER_MODE    = "cloud_native"
+    GOOGLE_CLOUD_PROJECT        = var.project_id      # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE            = "1"                 # 100% sampling for development debugging
+    OTEL_SERVICE_NAME           = "trackcast-ops-dev" # Environment-specific service name for jobs
+    GCP_METRICS_EXPORT_INTERVAL = "60"                # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables from Secret Manager
@@ -204,6 +206,13 @@ module "scheduled_operations" {
 resource "google_project_iam_member" "scheduler_cloud_trace_agent" {
   project = var.project_id
   role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
+# Grant Monitoring Metric Writer role to the scheduler service account for GCP metrics export
+resource "google_project_iam_member" "scheduler_monitoring_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
   member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
 }
 

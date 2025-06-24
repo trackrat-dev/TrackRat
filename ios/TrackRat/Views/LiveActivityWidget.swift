@@ -149,17 +149,8 @@ struct TrainLiveActivityView: View {
             // Header with train info
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text("🚂")
-                        Text("Train \(context.attributes.trainNumber)")
-                            .font(.headline.bold())
-                        
-                        Spacer()
-                        
-                        if let track = context.state.track {
-                            TrackBadgeV2(track: track, statusV2: context.state.statusV2)
-                        }
-                    }
+                    Text("Train \(context.attributes.trainNumber)")
+                        .font(.headline.bold())
                     
                     Text("\(Stations.displayName(for: context.attributes.origin)) → \(Stations.displayName(for: context.attributes.destination))")
                         .font(.subheadline)
@@ -167,8 +158,6 @@ struct TrainLiveActivityView: View {
                 }
                 
                 Spacer()
-                
-                LiveActivityStatusBadgeV2(statusV2: context.state.statusV2)
             }
             
             // Journey progress bar
@@ -219,16 +208,6 @@ struct TrainLiveActivityView: View {
                 }
             }
             
-            // TrackRat prediction (if available)
-            if let trackRatPrediction = context.state.trackRatPrediction {
-                HStack {
-                    Text(trackRatPrediction.displayText)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                    Spacer()
-                }
-            }
         }
         .padding(16)
         .background(

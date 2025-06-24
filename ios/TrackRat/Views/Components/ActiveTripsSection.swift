@@ -54,19 +54,9 @@ struct ActiveTripsSection: View {
             headerRow(for: activity)
             routeRow(for: activity)
             
-            // Use new journey status view if train data is available
-            if let trainData = getTrainDataFromActivity(activity) {
-                JourneyStatusView(
-                    train: trainData, 
-                    displayMode: JourneyDisplayMode.compact,
-                    showTrainHeader: false
-                )
-            } else {
-                // Fallback to legacy display
-                statusAndTrackRow(for: activity)
-                progressBar(for: activity)
-                bottomInfoRow(for: activity)
-            }
+            // Show only progress and info, no status display
+            progressBar(for: activity)
+            bottomInfoRow(for: activity)
         }
         .padding(16)
         .background(
@@ -83,8 +73,6 @@ struct ActiveTripsSection: View {
     private func headerRow(for activity: Activity<TrainActivityAttributes>) -> some View {
         HStack {
             HStack(spacing: 6) {
-                Text("🚂")
-                    .font(.title2)
                 Text("Train \(activity.attributes.trainNumber)")
                     .font(.headline.bold())
                     .foregroundColor(.white)
@@ -105,6 +93,7 @@ struct ActiveTripsSection: View {
             Text(activity.attributes.routeDescription)
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.8))
+                .lineLimit(2)
             Spacer()
         }
     }

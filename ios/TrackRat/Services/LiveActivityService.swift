@@ -139,10 +139,35 @@ class LiveActivityService: ObservableObject {
     
     // MARK: - Relevance Scoring
     
-    /// Calculate relevance score for Live Activity prioritization
-    private func calculateRelevanceScore(for train: Train) -> Double {
+    /// Calculate relevance score for Live Activity prioritization with enhanced metadata
+    private func calculateRelevanceScore(for train: Train, alertMetadata: AlertMetadata? = nil) -> Double {
         var score = 95.0 // Maximum base score for best Dynamic Island visibility
         
+        // Use backend-provided priority if available
+        if let metadata = alertMetadata {
+            switch metadata.dynamicIslandPriority {
+            case "urgent":
+                return 100.0 // Maximum possible priority
+            case "high":
+                score = 95.0
+            case "medium":
+                score = 80.0
+            case "low":
+                score = 60.0
+            default:
+                score = 70.0 // Default fallback
+            }
+            
+            // Small boost for very recent alerts
+            let now = Date().timeIntervalSince1970
+            if now - metadata.timestamp < 30 { // Within 30 seconds
+                score += 5.0
+            }
+            
+            return min(score, 100.0)
+        }
+        
+        // Fallback to local scoring logic if no metadata available
         // Maximum priority for boarding
         if train.statusV2?.current.contains("BOARDING") == true || train.status.rawValue.contains("BOARDING") {
             return 100.0
@@ -336,7 +361,7 @@ class LiveActivityService: ObservableObject {
             }
             
             // Create activity content with staleDate and relevance scoring
-            let relevanceScore = calculateRelevanceScore(for: train)
+            let relevanceScore = calculateRelevanceScore(for: train, alertMetadata: initialState.alertMetadata)
             let activityContent = ActivityContent(
                 state: initialState,
                 staleDate: Date().addingTimeInterval(120), // 2 minutes for freshness
@@ -509,8 +534,8 @@ class LiveActivityService: ObservableObject {
             train: train
         )
         
-        // Create content with proper relevance scoring
-        var relevanceScore = calculateRelevanceScore(for: train)
+        // Create content with enhanced relevance scoring using backend metadata
+        var relevanceScore = calculateRelevanceScore(for: train, alertMetadata: newState.alertMetadata)
         if let alert = alertType, alert.isHighPriority {
             relevanceScore = 100.0 // Maximum priority for important alerts
         }
@@ -552,6 +577,11 @@ class LiveActivityService: ObservableObject {
             await handleStatusChange(from: lastKnownStatusV2, to: train.statusV2?.current)
         }
         
+        // Handle backend-requested haptic feedback
+        if let metadata = newState.alertMetadata, metadata.requiresHapticFeedback {
+            await handleEnhancedHapticFeedback(metadata: metadata)
+        }
+        
         await MainActor.run {
             self.lastKnownStatusV2 = train.statusV2?.current
             self.lastKnownState = newState
@@ -562,7 +592,11 @@ class LiveActivityService: ObservableObject {
         print("🔄 Live Activity updated for train \(train.trainId)")
         
         // Check if we should auto-end the activity
-        if shouldAutoEndActivity(train: train, state: newState) {
+        let shouldEnd = shouldAutoEndActivity(train: train, state: newState)
+        print("🔍 Auto-end check: shouldEnd=\(shouldEnd), progress=\(newState.journeyProgress), location=\(newState.currentLocation)")
+        
+        if shouldEnd {
+            print("🛑 Auto-ending Live Activity for train \(train.trainId)")
             await endCurrentActivity()
         }
     }
@@ -966,6 +1000,32 @@ class LiveActivityService: ObservableObject {
         }
     }
     
+    /// Handle enhanced haptic feedback based on backend metadata
+    private func handleEnhancedHapticFeedback(metadata: AlertMetadata) async {
+        await MainActor.run {
+            let feedbackStyle: UIImpactFeedbackGenerator.FeedbackStyle
+            
+            // Map backend priority to haptic intensity
+            switch metadata.dynamicIslandPriority {
+            case "urgent":
+                feedbackStyle = .heavy
+            case "high":
+                feedbackStyle = .medium
+            case "medium":
+                feedbackStyle = .light
+            case "low":
+                feedbackStyle = .soft
+            default:
+                feedbackStyle = .medium
+            }
+            
+            let generator = UIImpactFeedbackGenerator(style: feedbackStyle)
+            generator.impactOccurred()
+            
+            print("📳 Enhanced haptic feedback triggered for \(metadata.alertType) with \(metadata.dynamicIslandPriority) priority")
+        }
+    }
+    
     private func handleStatusChange(from oldStatusV2: String?, to newStatusV2: String?) async {
         guard let oldStatus = oldStatusV2, 
               let newStatus = newStatusV2, 
@@ -1001,14 +1061,22 @@ class LiveActivityService: ObservableObject {
     // MARK: - Auto-End Conditions
     
     private func shouldAutoEndActivity(train: Train, state: TrainActivityAttributes.ContentState) -> Bool {
-        // End if arrived
+        // End if arrived at final destination
         if case .arrived = state.currentLocation {
             return true
         }
         
-        // End if journey is complete (100% progress)
+        // Only end if journey is complete AND the train is actually arrived/departed
+        // Don't end just based on progress percentage alone, as this can be inaccurate
         if state.journeyProgress >= 1.0 {
-            return true
+            switch state.currentLocation {
+            case .arrived:
+                return true // Actually arrived
+            case .departed(_, let minutesAgo):
+                return minutesAgo > 60 // Departed over an hour ago
+            default:
+                return false // Don't end if still boarding or en route
+            }
         }
         
         // End if train has been departed for a while and we're past the destination ETA
@@ -1159,8 +1227,8 @@ class LiveActivityService: ObservableObject {
     
     /// Sanitize station names for display
     private func sanitizeStationName(_ stationName: String) -> String {
-        // Limit to 20 characters for display
-        let sanitized = String(stationName.prefix(20))
+        // No character limit - use full station names
+        let sanitized = stationName.trimmingCharacters(in: .whitespacesAndNewlines)
         return sanitized.isEmpty ? "Unknown" : sanitized
     }
 }

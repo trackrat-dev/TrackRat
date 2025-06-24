@@ -15,6 +15,7 @@ from sqlalchemy import or_, text
 
 from trackcast.api.routers import notifications, trains
 from trackcast.db.connection import engine, get_db, get_pool_status_metrics
+from trackcast.services.gcp_metrics import initialize_gcp_exporter, start_gcp_export
 from trackcast.telemetry import instrument_app, setup_telemetry
 
 # Configure logging
@@ -35,6 +36,19 @@ app = FastAPI(
 # Instrument app with OpenTelemetry and Prometheus
 instrument_app(app, engine)
 Instrumentator().instrument(app).expose(app)
+
+# Initialize GCP Metrics Exporter
+try:
+    gcp_exporter = initialize_gcp_exporter(
+        export_interval_seconds=int(os.getenv("GCP_METRICS_EXPORT_INTERVAL", "60"))
+    )
+    if gcp_exporter.is_enabled():
+        start_gcp_export()
+        logger.info("GCP Metrics Exporter initialized and started")
+    else:
+        logger.info("GCP Metrics Exporter disabled (no GCP project detected)")
+except Exception as e:
+    logger.warning(f"Failed to initialize GCP Metrics Exporter: {e}")
 
 # CORS middleware removed - no web clients to serve
 
@@ -343,6 +357,39 @@ async def health(db=Depends(get_db)):
             health_status["checks"]["environment"] = {
                 "status": "healthy",
                 "message": "All required environment variables configured",
+            }
+
+        # Check GCP Metrics Exporter status
+        try:
+            from trackcast.services.gcp_metrics import get_gcp_exporter
+
+            gcp_exporter = get_gcp_exporter()
+            if gcp_exporter:
+                export_stats = gcp_exporter.get_export_stats()
+                is_enabled = gcp_exporter.is_enabled()
+
+                health_status["checks"]["gcp_metrics"] = {
+                    "status": "healthy" if is_enabled else "disabled",
+                    "enabled": is_enabled,
+                    "export_stats": export_stats,
+                    "message": (
+                        "GCP metrics export configured"
+                        if is_enabled
+                        else "GCP metrics export disabled"
+                    ),
+                }
+            else:
+                health_status["checks"]["gcp_metrics"] = {
+                    "status": "disabled",
+                    "enabled": False,
+                    "message": "GCP metrics exporter not initialized",
+                }
+        except Exception as e:
+            logger.warning(f"Failed to check GCP metrics status: {e}")
+            health_status["checks"]["gcp_metrics"] = {
+                "status": "error",
+                "enabled": False,
+                "message": f"Error checking GCP metrics: {str(e)}",
             }
 
         # Set overall status

@@ -22,6 +22,12 @@ struct TrainActivityAttributes: ActivityAttributes {
         // Metadata
         let lastUpdated: Date
         let hasStatusChanged: Bool
+        
+        // Enhanced alert metadata for Dynamic Island prominence
+        let alertMetadata: AlertMetadata?
+        let dynamicIslandPriority: String?
+        let requiresHapticFeedback: Bool?
+        let pushTimestamp: TimeInterval?
     }
     
     // Static attributes that don't change during activity
@@ -130,5 +136,16 @@ struct TrackRatPredictionInfo: Codable, Hashable {
             return "🤷 TrackRat guesses tracks \(tracksText)"
         }
     }
+}
+
+// MARK: - Alert Metadata for Enhanced Dynamic Island Handling
+
+struct AlertMetadata: Codable, Hashable {
+    let alertType: String
+    let trainId: String
+    let track: String?
+    let dynamicIslandPriority: String
+    let requiresHapticFeedback: Bool
+    let timestamp: TimeInterval
 }
 

@@ -90,14 +90,15 @@ module "trackrat_api_service" {
 
   # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV                  = "production"
-    TRACKCAST_ENV            = "production"
-    APNS_ENVIRONMENT         = "prod" # Use production APNS for App Store
-    MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native"
-    GOOGLE_CLOUD_PROJECT     = var.project_id       # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "0.05"               # Lower sampling for production cost optimization
-    OTEL_SERVICE_NAME        = "trackcast-api-prod" # Environment-specific service name
+    APP_ENV                     = "production"
+    TRACKCAST_ENV               = "production"
+    APNS_ENVIRONMENT            = "prod" # Use production APNS for App Store
+    MODEL_PATH                  = "/app/models"
+    TRACKCAST_SCHEDULER_MODE    = "cloud_native"
+    GOOGLE_CLOUD_PROJECT        = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE            = "0.05"               # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME           = "trackcast-api-prod" # Environment-specific service name
+    GCP_METRICS_EXPORT_INTERVAL = "60"                 # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -145,13 +146,14 @@ module "scheduled_operations" {
 
   # Global environment variables for all jobs
   environment_variables = {
-    APP_ENV                  = "production"
-    TRACKCAST_ENV            = "production"
-    MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native"
-    GOOGLE_CLOUD_PROJECT     = var.project_id       # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "0.05"               # Lower sampling for production cost optimization
-    OTEL_SERVICE_NAME        = "trackcast-ops-prod" # Environment-specific service name for jobs
+    APP_ENV                     = "production"
+    TRACKCAST_ENV               = "production"
+    MODEL_PATH                  = "/app/models"
+    TRACKCAST_SCHEDULER_MODE    = "cloud_native"
+    GOOGLE_CLOUD_PROJECT        = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE            = "0.05"               # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME           = "trackcast-ops-prod" # Environment-specific service name for jobs
+    GCP_METRICS_EXPORT_INTERVAL = "60"                 # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables from Secret Manager
@@ -189,13 +191,27 @@ module "scheduled_operations" {
   ]
 }
 
+# Grant Cloud Trace Agent role to the scheduler service account for tracing
+resource "google_project_iam_member" "scheduler_cloud_trace_agent" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
+# Grant Monitoring Metric Writer role to the scheduler service account for GCP metrics export
+resource "google_project_iam_member" "scheduler_monitoring_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
     # Consolidated pipeline scheduler - runs every 4 minutes
     pipeline = {
-      schedule    = "*/4 * * * *" # Every 4 minutes
-      description = "Complete data pipeline: collection -> features -> predictions every 4 minutes"
+      schedule    = "*/3 * * * *" # Every 3 minutes
+      description = "Complete data pipeline: collection -> features -> predictions every 3 minutes"
       job_name    = "pipeline"
     }
   }
