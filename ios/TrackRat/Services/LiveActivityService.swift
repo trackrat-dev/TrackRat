@@ -1069,16 +1069,12 @@ class LiveActivityService: ObservableObject {
     
     /// Debug Live Activity permissions and capabilities
     func debugLiveActivityStatus() {
-        if #available(iOS 16.1, *) {
-            let authInfo = ActivityAuthorizationInfo()
-            print("🔍 Live Activity Debug Status:")
-            print("  - iOS version: \(UIDevice.current.systemVersion)")
-            print("  - areActivitiesEnabled: \(authInfo.areActivitiesEnabled)")
-            print("  - frequentPushesEnabled: \(authInfo.frequentPushesEnabled)")
-            print("  - Device model: \(UIDevice.current.model)")
-        } else {
-            print("❌ Live Activities not available on iOS < 16.1")
-        }
+        let authInfo = ActivityAuthorizationInfo()
+        print("🔍 Live Activity Debug Status:")
+        print("  - iOS version: \(UIDevice.current.systemVersion)")
+        print("  - areActivitiesEnabled: \(authInfo.areActivitiesEnabled)")
+        print("  - frequentPushesEnabled: \(authInfo.frequentPushesEnabled)")
+        print("  - Device model: \(UIDevice.current.model)")
     }
     
     /// Get current activity status for UI

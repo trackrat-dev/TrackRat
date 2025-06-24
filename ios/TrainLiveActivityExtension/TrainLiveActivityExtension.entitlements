@@ -6,7 +6,5 @@
 	<array>
 		<string>group.net.trackrat.TrackRat</string>
 	</array>
-	<key>com.apple.developer.activity-kit</key>
-	<true/>
 </dict>
 </plist>

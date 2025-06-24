@@ -26,9 +26,7 @@
 		A10E98DBA82DE39F23002F3214 /* TripSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */; };
 		A18E54342DEB88BE00AB2B74 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54332DEB88BE00AB2B74 /* LiveActivityModels.swift */; };
 		A18E54362DEB88C900AB2B74 /* Train+LiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54352DEB88C900AB2B74 /* Train+LiveActivity.swift */; };
-		A18E54382DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54372DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift */; };
 		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
-		A18E543C2DEB88F800AB2B74 /* LiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E543B2DEB88F800AB2B74 /* LiveActivityWidget.swift */; };
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
 		A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */; };
 		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
@@ -54,7 +52,7 @@
 		A1WIDGET092DFC73650002FB39 /* TrainLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54372DEB88DB00AB2B74 /* TrainLiveActivityBundle.swift */; };
 		A1WIDGET102DFC73650002FB39 /* LiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E543B2DEB88F800AB2B74 /* LiveActivityWidget.swift */; };
 		A1WIDGET112DFC73650002FB39 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1WIDGET122DFC73650002FB39 /* Assets.xcassets */; };
-		A1WIDGET132DFC73650002FB39 /* TrainLiveActivityExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A1WIDGET142DFC73650002FB39 /* TrainLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A1WIDGET132DFC73650002FB39 /* TrainLiveActivityExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1WIDGET142DFC73650002FB39 /* TrainLiveActivityExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A1WIDGET152DFC73650002FB39 /* Train.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F32DE39EDD002F3214 /* Train.swift */; };
 		A1WIDGET162DFC73650002FB39 /* Stations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F22DE39EDD002F3214 /* Stations.swift */; };
 		A1WIDGET172DFC73650002FB39 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FA2DE39F0F002F3214 /* Extensions.swift */; };
@@ -76,6 +74,20 @@
 			remoteInfo = TrainLiveActivityExtension;
 		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A1WIDGET312DFC73650002FB39 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1WIDGET132DFC73650002FB39 /* TrainLiveActivityExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrackRat.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -290,7 +302,7 @@
 				1A1A1A1A1A1A1A1A1A1A1A0C /* Sources */,
 				1A1A1A1A1A1A1A1A1A1A1A0D /* Frameworks */,
 				1A1A1A1A1A1A1A1A1A1A1A0E /* Resources */,
-				A1WIDGET312DFC73650002FB39 /* Embed App Extensions */,
+				A1WIDGET312DFC73650002FB39 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
@@ -347,7 +359,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1640;
-				LastUpgradeCheck = 1630;
+				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					1A1A1A1A1A1A1A1A1A1A1A0F = {
 						CreatedOnToolsVersion = 15.0;
@@ -403,20 +415,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		A1WIDGET312DFC73650002FB39 /* Embed App Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				A1WIDGET132DFC73650002FB39 /* TrainLiveActivityExtension.appex in Embed App Extensions */,
-			);
-			name = "Embed App Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		1A1A1A1A1A1A1A1A1A1A1A0C /* Sources */ = {
@@ -625,12 +623,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TrackRat/TrackRat.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = D5RZZ55J9R;
+				DEVELOPMENT_TEAM = D5RZZ55J9R;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrackRat/Info.plist;
@@ -647,7 +643,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = net.trackrat.TrackRat;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "TrackRat w/ Notifications";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -661,12 +656,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TrackRat/TrackRat.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = D5RZZ55J9R;
+				DEVELOPMENT_TEAM = D5RZZ55J9R;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrackRat/Info.plist;
@@ -683,7 +676,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = net.trackrat.TrackRat;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "TrackRat w/ Notifications";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -735,11 +727,9 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TrainLiveActivityExtension/TrainLiveActivityExtension.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = D5RZZ55J9R;
+				DEVELOPMENT_TEAM = D5RZZ55J9R;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrainLiveActivityExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TrainLiveActivityExtension;
@@ -754,7 +744,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = net.trackrat.TrackRat.TrainLiveActivityExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "TrackRat Live Activity Extension";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -769,11 +758,9 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TrainLiveActivityExtension/TrainLiveActivityExtension.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = D5RZZ55J9R;
+				DEVELOPMENT_TEAM = D5RZZ55J9R;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrainLiveActivityExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TrainLiveActivityExtension;
@@ -788,7 +775,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = net.trackrat.TrackRat.TrainLiveActivityExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "TrackRat Live Activity Extension";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
