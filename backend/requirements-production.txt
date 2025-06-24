@@ -51,3 +51,6 @@ opentelemetry-instrumentation-logging>=0.42b0
 opentelemetry-exporter-gcp-trace>=1.6.0
 opentelemetry-resourcedetector-gcp>=1.6.0a0
 opentelemetry-propagator-gcp>=1.6.0
+
+# Google Cloud Monitoring for metrics export
+google-cloud-monitoring>=2.16.0
