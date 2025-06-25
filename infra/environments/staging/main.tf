@@ -208,10 +208,10 @@ resource "google_project_iam_member" "scheduler_monitoring_metric_writer" {
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    # Consolidated pipeline scheduler - runs every 15 minutes
+    # Consolidated pipeline scheduler - runs every 5 minutes
     pipeline = {
-      schedule    = "*/10 * * * *" # Every 10 minutes
-      description = "Complete data pipeline: collection -> features -> predictions every 10 minutes"
+      schedule    = "*/5 * * * *" # Every 5 minutes
+      description = "Complete data pipeline: collection -> features -> predictions every 5 minutes"
       job_name    = "pipeline"
     }
   }

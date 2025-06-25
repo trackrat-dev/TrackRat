@@ -643,119 +643,78 @@ struct StopRow: View {
     
     private var enhancedTimeDisplay: (arrival: String?, departure: String?, details: [String]) {
         let formatter = DateFormatter.easternTime(time: .short)
-        var details: [String] = []
         
-        // For Past Stops (Departed)
+        // For departed stops: Show only "Departed X:XX PM" with delay indicator
         if stop.departed == true {
-            let arrivalText: String?
-            // Don't show arrival time for origin station
-            if isOriginStation {
-                arrivalText = nil
+            if let actualDeparture = stop.actualDeparture {
+                let delayText = departureDelayText(actual: actualDeparture, scheduled: stop.scheduledDeparture)
+                let departureText = "Departed: \(formatter.string(from: actualDeparture))" + (delayText.isEmpty ? "" : " (\(delayText))")
+                return (nil, departureText, [])
+            } else if let scheduledDeparture = stop.scheduledDeparture {
+                return (nil, "Departed: \(formatter.string(from: scheduledDeparture))", [])
             } else {
-                if let actualArrival = stop.actualArrival {
-                    let scheduledText = stop.scheduledArrival.map { "Scheduled Arrival: \(formatter.string(from: $0))" } ?? ""
-                    let delayText = arrivalDelayText(actual: actualArrival, scheduled: stop.scheduledArrival)
-                    arrivalText = "Arrived: \(formatter.string(from: actualArrival))"
-                    if !scheduledText.isEmpty && !delayText.isEmpty {
-                        details.append("\(scheduledText) • \(delayText)")
-                    }
-                } else if let scheduledArrival = stop.scheduledArrival {
-                    arrivalText = "Arrived: \(formatter.string(from: scheduledArrival))"
-                } else {
-                    arrivalText = "Arrived: --:--"
-                }
+                return (nil, "Departed: --:--", [])
             }
-            
-            let departureText: String?
-            // Don't show departure time for final destination
-            if isFinalDestination {
-                departureText = nil
-            } else {
-                if let actualDeparture = stop.actualDeparture {
-                    let scheduledText = stop.scheduledDeparture.map { "Scheduled Departure: \(formatter.string(from: $0))" } ?? ""
-                    let delayText = departureDelayText(actual: actualDeparture, scheduled: stop.scheduledDeparture)
-                    departureText = "Departed: \(formatter.string(from: actualDeparture))"
-                    if !scheduledText.isEmpty && !delayText.isEmpty {
-                        details.append("\(scheduledText) • \(delayText)")
-                    }
-                } else if let scheduledDeparture = stop.scheduledDeparture {
-                    departureText = "Departed: \(formatter.string(from: scheduledDeparture))"
-                } else {
-                    departureText = "Departed: --:--"
-                }
-            }
-            
-            return (arrivalText, departureText, details)
         }
         
-        // For Current and Future Stops (Not Yet Departed)
-        let arrivalText: String?
-        // Don't show arrival time for origin station
+        // For origin station: Show only departure time
         if isOriginStation {
-            arrivalText = nil
-        } else {
-            if let scheduledArrival = stop.scheduledArrival {
-                arrivalText = "Scheduled Arrival: \(formatter.string(from: scheduledArrival))"
-                // Show estimated time if different from scheduled
-                if let actualArrival = stop.actualArrival {
-                    let delayText = arrivalDelayText(actual: actualArrival, scheduled: scheduledArrival)
-                    details.append("Estimated Arrival: \(formatter.string(from: actualArrival)) • \(delayText)")
-                }
+            if let actualDeparture = stop.actualDeparture {
+                let delayText = departureDelayText(actual: actualDeparture, scheduled: stop.scheduledDeparture)
+                let departureText = "Departure: \(formatter.string(from: actualDeparture))" + (delayText.isEmpty ? "" : " (\(delayText))")
+                return (nil, departureText, [])
+            } else if let scheduledDeparture = stop.scheduledDeparture {
+                return (nil, "Departure: \(formatter.string(from: scheduledDeparture))", [])
             } else {
-                arrivalText = "Arrival: --:--"
+                return (nil, "Departure: --:--", [])
             }
         }
         
-        let departureText: String?
-        // Don't show departure time for final destination
+        // For destination station: Show only arrival time
         if isFinalDestination {
-            departureText = nil
-        } else {
-            if let scheduledDeparture = stop.scheduledDeparture {
-                departureText = "Scheduled Departure: \(formatter.string(from: scheduledDeparture))"
-                // Show estimated departure if different from scheduled
-                if let actualDeparture = stop.actualDeparture {
-                    let delayText = departureDelayText(actual: actualDeparture, scheduled: scheduledDeparture)
-                    details.append("Estimated Departure: \(formatter.string(from: actualDeparture)) • \(delayText)")
-                }
+            if let actualArrival = stop.actualArrival {
+                let delayText = arrivalDelayText(actual: actualArrival, scheduled: stop.scheduledArrival)
+                let arrivalText = "Arrival: \(formatter.string(from: actualArrival))" + (delayText.isEmpty ? "" : " (\(delayText))")
+                return (arrivalText, nil, [])
+            } else if let scheduledArrival = stop.scheduledArrival {
+                return ("Arrival: \(formatter.string(from: scheduledArrival))", nil, [])
             } else {
-                departureText = nil
+                return ("Arrival: --:--", nil, [])
             }
         }
         
-        // Add platform info if available
-        if let platform = stop.platform {
-            details.append("Platform: \(platform)")
+        // For upcoming stops: Show only arrival time
+        if let actualArrival = stop.actualArrival {
+            let delayText = arrivalDelayText(actual: actualArrival, scheduled: stop.scheduledArrival)
+            let arrivalText = "Arrival: \(formatter.string(from: actualArrival))" + (delayText.isEmpty ? "" : " (\(delayText))")
+            return (arrivalText, nil, [])
+        } else if let scheduledArrival = stop.scheduledArrival {
+            return ("Arrival: \(formatter.string(from: scheduledArrival))", nil, [])
+        } else {
+            return ("Arrival: --:--", nil, [])
         }
-        
-        // Add data source confirmation if available
-        if let confirmedBy = stop.departedConfirmedBy, !confirmedBy.isEmpty {
-            details.append("Confirmed by: \(confirmedBy.joined(separator: ", "))")
-        }
-        
-        return (arrivalText, departureText, details)
     }
     
     private func arrivalDelayText(actual: Date?, scheduled: Date?) -> String {
         guard let actual = actual, let scheduled = scheduled else { return "" }
         let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
         if delayMinutes > 0 {
-            return "\(delayMinutes) min late"
+            return "+\(delayMinutes)m delay"
         } else if delayMinutes < 0 {
-            return "\(abs(delayMinutes)) min early"
+            return "-\(abs(delayMinutes))m early"
         }
-        return "On time"
+        return "" // Don't show anything for on-time
     }
     
     private func departureDelayText(actual: Date, scheduled: Date?) -> String {
         guard let scheduled = scheduled else { return "" }
         let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
         if delayMinutes > 0 {
-            return "\(delayMinutes) min late"
+            return "+\(delayMinutes)m delay"
         } else if delayMinutes < 0 {
-            return "\(abs(delayMinutes)) min early"
+            return "-\(abs(delayMinutes))m early"
         }
-        return "On time"
+        return "" // Don't show anything for on-time
     }
     
     var body: some View {
@@ -792,26 +751,6 @@ struct StopRow: View {
                             .font(.caption)
                             .fontWeight(.medium)
                             .foregroundColor(timeColor)
-                    }
-                    
-                    // Show enhanced details
-                    ForEach(enhancedTimeDisplay.details, id: \.self) { detail in
-                        Text(detail)
-                            .font(.caption2)
-                            .foregroundColor(.black.opacity(0.5))
-                            .italic()
-                    }
-                    
-                    // Show stop status if available
-                    if let stopStatus = stop.stopStatus, !stopStatus.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "info.circle.fill")
-                                .foregroundColor(.blue)
-                                .font(.caption2)
-                            Text(stopStatus)
-                                .font(.caption2)
-                                .foregroundColor(.blue)
-                        }
                     }
                 }
             }

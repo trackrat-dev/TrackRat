@@ -50,7 +50,11 @@ struct LiveActivityControls: View {
                 .padding()
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.blue.opacity(0.7))
+                        .fill(Color.black)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.orange, lineWidth: 2)
+                        )
                 )
             } else {
                 // Start Live Activity button

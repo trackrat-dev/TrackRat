@@ -191,7 +191,11 @@ def collect_data(validate_journeys: bool) -> None:
 
         success, stats = collector.run_collection()
         if success:
-            logger.info(f"Data collection completed: {stats}")
+            # Log appropriate message based on whether there were any failures
+            if stats.get("stations_failed", 0) > 0:
+                logger.warning(f"Data collection completed with partial success: {stats}")
+            else:
+                logger.info(f"Data collection completed successfully: {stats}")
 
             # Process train updates for push notifications
             _process_push_notifications(session)
@@ -215,7 +219,7 @@ def collect_data(validate_journeys: bool) -> None:
                 except Exception as e:
                     logger.warning(f"Journey validation failed (continuing anyway): {e}")
         else:
-            logger.error(f"Data collection failed: {stats}")
+            logger.error(f"Data collection failed: all stations failed: {stats}")
             sys.exit(1)
     except Exception as e:
         logger.error(f"Error in collect_data command: {str(e)}")
@@ -576,7 +580,11 @@ def _execute_collect_data() -> bool:
             collector = DataCollectorService(session)
             success, stats = collector.run_collection()
             if success:
-                logger.info(f"Data collection completed: {stats}")
+                # Log appropriate message based on whether there were any failures
+                if stats.get("stations_failed", 0) > 0:
+                    logger.warning(f"Data collection completed with partial success: {stats}")
+                else:
+                    logger.info(f"Data collection completed successfully: {stats}")
 
                 # Process train updates for push notifications
                 _process_push_notifications(session)
@@ -601,7 +609,7 @@ def _execute_collect_data() -> bool:
 
                 return True
             else:
-                logger.error(f"Data collection failed: {stats}")
+                logger.error(f"Data collection failed: all stations failed: {stats}")
                 return False
         finally:
             session.close()

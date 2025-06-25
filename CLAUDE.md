@@ -4,17 +4,17 @@ This file provides comprehensive guidance to Claude Code (claude.ai/code) when w
 
 ## Project Overview
 
-TrackRat is a full-stack train tracking system that combines a sophisticated Python backend (TrackCast) with multiple frontend clients: a native iOS app with Live Activity support and a responsive web application for cross-platform access to real-time track predictions for NJ Transit and Amtrak trains.
+TrackRat is a full-stack train tracking system that combines a sophisticated Python backend (TrackCast) with a native iOS app featuring Live Activity support for real-time track predictions for NJ Transit and Amtrak trains.
 
 ### System Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Data Sources  │     │   Cloud Run     │     │   Frontends     │
+│   Data Sources  │     │   Cloud Run     │     │   iOS Frontend  │
 ├─────────────────┤     ├─────────────────┤     ├─────────────────┤
 │ • NJ Transit    │────▶│ • API Service   │────▶│ • iOS App       │
 │ • Amtrak APIs   │     │ • Scheduler     │     │ • Live Activity │
-│                 │     │ • ML Models     │     │ • Web App       │
+│                 │     │ • ML Models     │     │ • Widgets       │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                 │
                         ┌───────▼────────┐
@@ -30,18 +30,20 @@ TrackRat is a full-stack train tracking system that combines a sophisticated Pyt
                         └────────────────┘
 ```
 
-### Key Features Across Platforms
+### Key Features
 
-1. **Multi-Station Support**: Backend, iOS, and web app support NY Penn, Newark Penn, Trenton, Princeton Junction, and Metropark
-2. **Train Consolidation**: Backend merges duplicate trains; all frontends display unified journey data
-3. **Track Predictions**: Backend ML models (Owl system) predict tracks; frontends display predictions with confidence levels
-4. **Real-Time Updates**: Backend polls APIs every 60-120 seconds; frontends refresh every 30 seconds
-5. **Journey Planning**: Backend provides smart filtering; frontends enable origin-destination trip selection
+1. **Multi-Station Support**: Backend and iOS app support NY Penn, Newark Penn, Trenton, Princeton Junction, and Metropark
+2. **Train Consolidation**: Backend merges duplicate trains; iOS app displays unified journey data
+3. **Track Predictions**: Backend ML models (Owl system) predict tracks; iOS app displays predictions with confidence levels
+4. **Real-Time Updates**: Backend polls APIs every 60-120 seconds; iOS app refreshes every 30 seconds
+5. **Journey Planning**: Backend provides smart filtering; iOS app enables origin-destination trip selection
+6. **Live Activities**: Real-time train tracking on Lock Screen and Dynamic Island
+7. **Push Notifications**: Background updates for Live Activities with status changes
 
-## Cross-Platform Conventions
+## iOS Integration Conventions
 
 ### Station Codes
-Both platforms use consistent station codes:
+The iOS app uses these station codes:
 - `NY` - New York Penn Station
 - `NP` - Newark Penn Station  
 - `TR` - Trenton Transit Center
@@ -52,25 +54,22 @@ Both platforms use consistent station codes:
 ### Time Handling
 - **Backend**: Stores in Eastern Time, converts to/from UTC as needed
 - **iOS**: Displays in Eastern Time, handles fractional seconds in ISO8601
-- **Web App**: Displays in Eastern Time with proper timezone handling
 - **API**: All timestamps in Eastern Time Zone
 
-### Data Models Alignment
+### Data Models
 
 #### Train Model
 - Backend: `Train` table with comprehensive fields
 - iOS: `Train` struct matching API response
-- Web App: JavaScript objects matching API response
 - Key shared fields: `train_id`, `line`, `destination`, `status`, `status_v2`, `track`, `stops`, `progress`
 
 #### Predictions
 - Backend: `PredictionData` with track probabilities
 - iOS: `PredictionData` struct with Owl display logic
-- Web App: Owl message generation with confidence levels
 - Confidence thresholds: ≥80% (high), 50-79% (medium), <50% (low)
 
 #### Status Values
-All platforms recognize: `ALL ABOARD`, `BOARDING`, `DEPARTED`, `CANCELLED`, `DELAYED`, etc.
+The system recognizes: `ALL ABOARD`, `BOARDING`, `DEPARTED`, `CANCELLED`, `DELAYED`, etc.
 - New `status_v2` field provides enhanced status resolution
 
 ## Development Workflow
@@ -155,24 +154,12 @@ The system uses GitHub Actions for fully automated CI/CD:
    - Handle all train statuses appropriately
    - Ensure auto-end logic works correctly
 
-### When Making Web App Changes
+4. **Testing**:
+   - Test on both simulator and physical devices
+   - Verify Live Activity functionality
+   - Check push notification behavior
 
-1. **API Integration**:
-   - Use consistent API patterns with iOS app
-   - Handle all date formats with Eastern Time zone
-   - Always specify `from_station_code` and `consolidate=true`
-
-2. **UI Updates**:
-   - Maintain responsive design principles
-   - Ensure mobile-first approach
-   - Test across different screen sizes
-
-3. **Feature Parity**:
-   - Core functionality should mirror iOS app
-   - Simplified feature set appropriate for web
-   - No Live Activities or push notifications
-
-## Testing Across Platforms
+## Testing
 
 ### Backend Testing
 ```bash
@@ -195,34 +182,23 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 # Use LiveActivityDebugView in the app
 ```
 
-### Web App Testing
-```bash
-# Start backend API
-trackcast start-api
-
-# Start web proxy server
-cd webpage && python proxy.py
-
-# Test in browser at http://localhost:9998
-# Test mobile responsiveness with browser dev tools
-```
-
 ### End-to-End Testing
 
 1. **Data Flow Verification**:
    - Start backend services: `trackcast start-scheduler`
    - Verify data collection: `trackcast collect-data`
    - Check predictions: `trackcast generate-predictions`
-   - Test iOS app and web app against live API
+   - Test iOS app against live API
 
 2. **Consolidation Testing**:
    - Enable consolidation in API: `?consolidate=true`
-   - Verify all frontends handle merged trains correctly
+   - Verify iOS app handles merged trains correctly
    - Check track confidence display
+   - Test Live Activity updates with consolidated data
 
-## Common Integration Points
+## API Integration Points
 
-### API Endpoints Used by Frontends
+### API Endpoints Used by iOS App
 
 1. **Train Search**:
    ```
@@ -256,17 +232,14 @@ cd webpage && python proxy.py
 1. **Polling Intervals**:
    - Backend: 60s (NJ Transit), 120s (Amtrak)
    - iOS: 30s (active view), 30s (Live Activity background)
-   - Web App: 30s (train details view)
 
 2. **Cache Considerations**:
    - Backend: Database serves as cache
    - iOS: No persistent cache, real-time fetching
-   - Web App: LocalStorage for recent destinations only
 
 3. **State Management**:
    - Backend: Stateless API, database for persistence
    - iOS: @StateObject for app state, UserDefaults for preferences
-   - Web App: JavaScript state management, LocalStorage for preferences
 
 ## Deployment Considerations
 
@@ -284,12 +257,6 @@ cd webpage && python proxy.py
 - Test on physical devices for Live Activities
 - Verify push notification certificates
 - Archive and upload to App Store Connect
-
-### Web App Deployment
-- Static files can be served by any web server
-- Proxy server (proxy.py) for local development only
-- Production deployment should proxy API directly
-- Test responsive design on multiple devices
 
 ### Operational Requirements
 
@@ -318,12 +285,8 @@ cd webpage && python proxy.py
 - Background refresh only when needed
 - Efficient Live Activity updates
 - Minimal network requests
-
-### Web App
-- 30-second refresh interval for real-time updates
-- LocalStorage caching for station data
-- Minimal DOM manipulation for performance
-- Mobile-first responsive design
+- SwiftUI view composition for performance
+- Haptic feedback optimization
 
 ## Security Best Practices
 
@@ -338,12 +301,8 @@ cd webpage && python proxy.py
 - Local storage only for preferences
 - No third-party SDKs
 - Secure API communication
-
-### Web App
-- No user tracking or analytics
-- LocalStorage only for recent destinations
-- No third-party dependencies
-- Secure API communication via HTTPS
+- Privacy-first Live Activities
+- Local-only trip history
 
 ## Troubleshooting Guide
 
@@ -356,16 +315,14 @@ cd webpage && python proxy.py
 1. **Live Activities not appearing**: Verify Info.plist configuration
 2. **API connection errors**: Check backend URL and network
 3. **Push notifications failing**: Verify APNS setup
-
-### Common Web App Issues
-1. **API connection errors**: Check proxy server is running (proxy.py)
-2. **Cross-origin issues**: Ensure proper CORS headers in production
-3. **Mobile layout issues**: Test responsive design on actual devices
+4. **Background updates failing**: Check background modes configuration
+5. **Live Activity updates not appearing**: Verify push notification certificates
 
 ### Integration Issues
 1. **Time mismatches**: Ensure Eastern Time Zone handling
 2. **Missing trains**: Check consolidation logic
 3. **Wrong predictions**: Verify correct station model is loaded
+4. **Live Activity data inconsistencies**: Check API response format
 
 ## Code Style Guidelines
 
@@ -380,29 +337,25 @@ cd webpage && python proxy.py
 - Use SwiftUI best practices
 - Explicit access control
 - Meaningful variable names
-
-### JavaScript (Web App)
-- Modern ES6+ syntax
-- Consistent naming conventions
-- Minimal DOM manipulation
-- No external dependencies
+- Async/await for API calls
+- Combine for reactive programming
 
 ## Feature Development Checklist
 
-When adding new features that span multiple platforms:
+When adding new features:
 
 - [ ] Design API contract first
 - [ ] Implement backend functionality
 - [ ] Add comprehensive tests
 - [ ] Update API documentation
 - [ ] Implement iOS UI/functionality
-- [ ] Implement web app functionality
-- [ ] Test end-to-end flow on all platforms
+- [ ] Test end-to-end flow
 - [ ] Update all CLAUDE.md files with new features
 - [ ] Consider Live Activity implications
 - [ ] Verify performance impact
 - [ ] Check error handling
-- [ ] Test mobile responsiveness
+- [ ] Test on physical devices
+- [ ] Verify push notification behavior
 - [ ] Add monitoring dashboards if needed
 - [ ] Update metrics collection
 - [ ] Document in Recent Enhancements section
@@ -410,17 +363,15 @@ When adding new features that span multiple platforms:
 ## Recent Enhancements
 
 ### Enhanced Status Resolution (StatusV2)
-All platforms now support intelligent status conflict resolution:
+The system now supports intelligent status conflict resolution:
 - **Backend**: New `status_v2` field with DEPARTED > BOARDING priority
 - **iOS**: Enhanced display using `statusV2` with fallback to legacy
-- **Web App**: Uses `status_v2` with fallback to `status` for backward compatibility
 - **Benefits**: Solves the "stuck BOARDING" issue when trains depart
 
 ### Real-time Progress Tracking
 New `progress` field provides detailed journey information:
 - **Backend**: Calculates stops completed, minutes to arrival, journey percentage
 - **iOS**: Enhanced Live Activities and progress bars using this data
-- **Web App**: Progress visualization with journey completion bars
 - **Benefits**: Accurate progress visualization and time-to-arrival
 
 ### API Changes Summary
@@ -455,6 +406,8 @@ Real-time tracking of ML model performance:
 5. **No User Accounts**: Privacy-first approach
 6. **StatusV2 Design**: Resolves conflicts while maintaining compatibility
 7. **Progress Tracking**: Provides real-time journey visualization
+8. **Live Activities**: Native iOS integration for real-time updates
+9. **SwiftUI Architecture**: Modern declarative UI framework
 
 ### Future Considerations
 
@@ -463,18 +416,15 @@ Real-time tracking of ML model performance:
    - WebSocket support for real-time updates
    - Additional ML model types
    - More data sources
+   - Enhanced prediction algorithms
 
 2. **iOS**:
    - Widget Extension
    - Apple Watch app
    - Offline mode with caching
    - iPad optimization
-
-3. **Web App**:
-   - Progressive Web App (PWA) support
-   - Service worker for offline caching
-   - Push notifications via web standards
-   - Desktop app packaging
+   - Siri Shortcuts integration
+   - CarPlay support
 
 ## Deployment Tools
 
@@ -545,14 +495,6 @@ TrackRat/Models/Train.swift          # Core data model
 TrackRat/Views/                      # All UI components
 ```
 
-### Web App Key Files
-```
-webpage/index.html                   # Main HTML structure
-webpage/script.js                    # Core application logic
-webpage/styles.css                   # Responsive styling
-webpage/proxy.py                     # Development proxy server
-webpage/CLAUDE.md                    # Web app specific guidance
-```
 
 ### API Base URLs
 - Development: `http://localhost:8000/api`
@@ -564,16 +506,15 @@ When working on this project, refer to:
 - **Operations**: `/OPERATORS_GUIDE.md` - Comprehensive operational procedures for deployed system
 - **Backend details**: `backend/CLAUDE.md` - Development and deployment guidance
 - **iOS details**: `ios/CLAUDE.md` - iOS app development
-- **Web app details**: `webpage/CLAUDE.md` - Web application development
 - **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP infrastructure
-- **Cross-platform guidance**: This file for integration between components
+- **Integration guidance**: This file for backend-iOS integration
 
 ### Quick Reference
 
 **For Operators**: Start with `/OPERATORS_GUIDE.md` for comprehensive operational procedures, monitoring, and troubleshooting.
 
-**For Developers**: Each component has detailed CLAUDE.md files with development workflows and deployment procedures.
+**For Developers**: Backend and iOS components have detailed CLAUDE.md files with development workflows and deployment procedures.
 
 **For Infrastructure**: Use `infra/CLAUDE.md` for Terraform operations and `backend/DEPLOYMENT.md` for Cloud Run deployment details.
 
-Remember: The goal is seamless integration between a powerful prediction backend and intuitive frontend experiences across iOS (with Live Activities) and web platforms, all running on a fully automated Cloud Run infrastructure.
+Remember: The goal is seamless integration between a powerful prediction backend and an intuitive iOS frontend experience with Live Activities, all running on a fully automated Cloud Run infrastructure.

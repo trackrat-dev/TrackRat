@@ -107,7 +107,7 @@ class DataCollectorService:
             "station_details": {},
         }
 
-        all_success = True
+        successful_stations = 0
 
         # Collect data from each station
         for station_info in self.station_collectors:
@@ -146,26 +146,31 @@ class DataCollectorService:
 
                     # Update overall stats
                     stats["stations_processed"] += 1
+                    successful_stations += 1
                     stats["trains_total"] += station_stats["trains_total"]
                     stats["trains_new"] += station_stats["trains_new"]
                     stats["trains_updated"] += station_stats["trains_updated"]
+                    logger.info(f"Successfully collected data for station {station_name}")
                 else:
                     station_stats["error"] = "Failed to process train data"
                     stats["stations_failed"] += 1
-                    all_success = False
-                    logger.error(f"Failed to process train data for station {station_name}")
+                    logger.warning(
+                        f"Failed to process train data for station {station_name} (continuing with other stations)"
+                    )
 
             except APIError as e:
                 station_stats["error"] = f"API error: {str(e)}"
                 stats["stations_failed"] += 1
-                all_success = False
-                logger.error(f"API error for station {station_name}: {str(e)}")
+                logger.warning(
+                    f"API error for station {station_name}: {str(e)} (continuing with other stations)"
+                )
 
             except Exception as e:
                 station_stats["error"] = f"Error: {str(e)}"
                 stats["stations_failed"] += 1
-                all_success = False
-                logger.error(f"Error collecting data for station {station_name}: {str(e)}")
+                logger.warning(
+                    f"Error collecting data for station {station_name}: {str(e)} (continuing with other stations)"
+                )
 
             # Add station details to stats
             stats["station_details"][station_code] = station_stats
@@ -176,12 +181,28 @@ class DataCollectorService:
         # Final statistics
         stats["duration_ms"] = int((time.time() - start_time) * 1000)
 
-        logger.info(
-            f"Data collection completed: {stats['stations_processed']} stations processed, "
-            f"{stats['stations_failed']} failed, {stats['trains_total']} total trains in {stats['duration_ms']}ms"
-        )
+        # Determine overall success: succeed if at least one station succeeded
+        overall_success = successful_stations > 0
+        total_stations = len(self.station_collectors)
 
-        return all_success, stats
+        if overall_success:
+            if stats["stations_failed"] > 0:
+                logger.warning(
+                    f"Data collection completed with partial success: {successful_stations}/{total_stations} stations succeeded, "
+                    f"{stats['stations_failed']} failed, {stats['trains_total']} total trains in {stats['duration_ms']}ms"
+                )
+            else:
+                logger.info(
+                    f"Data collection completed successfully: {stats['stations_processed']} stations processed, "
+                    f"{stats['trains_total']} total trains in {stats['duration_ms']}ms"
+                )
+        else:
+            logger.error(
+                f"Data collection failed: all {total_stations} stations failed, "
+                f"0 trains collected in {stats['duration_ms']}ms"
+            )
+
+        return overall_success, stats
 
     def _process_train_data_for_station(
         self, train_data: List[Dict[str, Any]], station_code: str, station_name: str
