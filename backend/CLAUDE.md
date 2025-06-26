@@ -183,6 +183,8 @@ Key features:
 
 #### APNS Setup
 
+**Important**: iOS Live Activities use a separate extension bundle ID. The backend now supports different bundle IDs for regular push notifications vs Live Activities. Live Activities use the extension bundle ID (e.g., `net.trackrat.TrackRat.TrainLiveActivityExtension`) while regular notifications use the main app bundle ID.
+
 See `APNS_SETUP.md` for complete configuration instructions. Quick setup:
 
 ```bash
@@ -191,6 +193,7 @@ export APNS_TEAM_ID="YOUR_TEAM_ID"
 export APNS_KEY_ID="ABC123DEF4"
 export APNS_AUTH_KEY_PATH="/path/to/AuthKey_ABC123DEF4.p8"
 export APNS_BUNDLE_ID="net.trackrat.TrackRat"
+export APNS_LIVE_ACTIVITY_BUNDLE_ID="net.trackrat.TrackRat.TrainLiveActivityExtension"  # Optional, defaults to main bundle + .TrainLiveActivityExtension
 export TRACKCAST_ENV="prod"  # or "dev" for sandbox
 
 # Check configuration

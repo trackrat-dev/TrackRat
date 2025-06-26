@@ -1,6 +1,6 @@
 # TrackCast: Train Track Prediction System
 
-TrackCast is a real-time track prediction system for trains departing from NY Penn Station. It collects data from the NJ Transit API, processes this information into a structured database, and employs machine learning to predict which track a train will depart from before the official announcement.
+TrackCast is a real-time track prediction system for trains departing from multiple stations. It collects data from both NJ Transit and Amtrak APIs, processes information into a structured database, and employs station-specific machine learning models to predict which track a train will depart from before the official announcement. The system currently supports NY Penn Station, Trenton Transit Center, Princeton Junction, Metropark, Newark Penn Station, and nationwide Amtrak routes.
 
 ## CI/CD Pipeline
 
@@ -51,7 +51,7 @@ mypy trackcast/ --config-file mypy.ini
 
 ## 1. Purpose and Value
 
-Penn Station often announces track assignments only 10-15 minutes before departure, causing passenger congestion and stress. TrackCast aims to predict track assignments with high accuracy up to 30 minutes in advance, allowing passengers to position themselves strategically and reducing platform crowding.
+Major train stations often announce track assignments only 10-15 minutes before departure, causing passenger congestion and stress. TrackCast aims to predict track assignments with high accuracy up to 30 minutes in advance, allowing passengers to position themselves strategically and reducing platform crowding across multiple stations in the NJ Transit and Amtrak network.
 
 ## 2. System Overview
 
@@ -62,9 +62,11 @@ The system consists of three main components:
 
 ## 3. Backend Data Collection Pipeline
 
-### 3.1 NJ Transit API Integration
+### 3.1 Multi-Source API Integration
 
-- We periodically query the NJ Transit API to get the next 19 trains departing NY Penn Station.
+- We periodically query both NJ Transit and Amtrak APIs:
+  - NJ Transit: Station-specific departures from configured stations (NY, TR, PJ, MP, NP)
+  - Amtrak: Nationwide train tracking data from the Amtraker API
 - Error handling is implemented to retry failed API calls and alert administrators of persistent failures.
 - Each API response is timestamped and logged to allow us to re-run all past data through new versions of the pipeline.
 
@@ -463,9 +465,12 @@ trackcast/
         ├── __init__.py
         ├── data_collector.py   # Data collection service
         ├── data_import.py      # Data import service
+        ├── estimated_arrival_service.py  # Arrival time estimation
         ├── feature_engineering.py  # Feature engineering service
+        ├── gcp_metrics.py      # Google Cloud metrics integration
+        ├── journey_validator.py  # Journey validation service
         ├── prediction.py       # Prediction service
-        └── scheduler.py        # Scheduling service
+        └── push_notification.py  # Apple Push Notification service
 ```
 
 ## 8. Future Enhancements

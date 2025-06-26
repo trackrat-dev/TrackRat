@@ -23,12 +23,9 @@ struct LiveActivityControls: View {
                         .foregroundColor(.white)
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Live Activity Active")
+                        Text("Live Updates (beta)")
                             .font(.subheadline.bold())
                             .foregroundColor(.white)
-                        Text("Train tracking on Lock Screen")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
                     }
                     
                     Spacer()
@@ -71,7 +68,7 @@ struct LiveActivityControls: View {
                                 .font(.title2)
                         }
                         
-                        Text("📍 Watch This Train")
+                        Text("Watch This Train")
                             .font(.subheadline.bold())
                         
                         Spacer()

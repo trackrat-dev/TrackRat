@@ -780,6 +780,7 @@ def check_apns_config() -> None:
             ),
             "auth_method": None,
             "bundle_id": apns_service.bundle_id,
+            "live_activity_bundle_id": apns_service.live_activity_bundle_id,
             "issues": [],
         }
 
@@ -832,7 +833,8 @@ def check_apns_config() -> None:
         )
         logger.info(f"  Environment: {config_status['environment']}")
         logger.info(f"  Authentication: {config_status['auth_method'] or 'None'}")
-        logger.info(f"  Bundle ID: {config_status['bundle_id']}")
+        logger.info(f"  Main App Bundle ID: {config_status['bundle_id']}")
+        logger.info(f"  Live Activity Bundle ID: {config_status['live_activity_bundle_id']}")
 
         if config_status["issues"]:
             logger.error(f"Configuration Issues:")
@@ -858,6 +860,7 @@ def check_apns_config() -> None:
             ("APNS_CERT_PATH", os.getenv("APNS_CERT_PATH")),
             ("APNS_KEY_PATH", os.getenv("APNS_KEY_PATH")),
             ("APNS_BUNDLE_ID", os.getenv("APNS_BUNDLE_ID")),
+            ("APNS_LIVE_ACTIVITY_BUNDLE_ID", os.getenv("APNS_LIVE_ACTIVITY_BUNDLE_ID")),
         ]
 
         for var_name, var_value in env_vars:

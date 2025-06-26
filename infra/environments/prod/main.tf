@@ -90,15 +90,17 @@ module "trackrat_api_service" {
 
   # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV                     = "production"
-    TRACKCAST_ENV               = "production"
-    APNS_ENVIRONMENT            = "prod" # Use production APNS for App Store
-    MODEL_PATH                  = "/app/models"
-    TRACKCAST_SCHEDULER_MODE    = "cloud_native"
-    GOOGLE_CLOUD_PROJECT        = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
-    OTEL_SAMPLE_RATE            = "0.05"               # Lower sampling for production cost optimization
-    OTEL_SERVICE_NAME           = "trackcast-api-prod" # Environment-specific service name
-    GCP_METRICS_EXPORT_INTERVAL = "60"                 # Export metrics to GCP every 60 seconds
+    APP_ENV                      = "production"
+    TRACKCAST_ENV                = "production"
+    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for App Store
+    APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
+    APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
+    MODEL_PATH                   = "/app/models"
+    TRACKCAST_SCHEDULER_MODE     = "cloud_native"
+    GOOGLE_CLOUD_PROJECT         = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE             = "0.05"               # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME            = "trackcast-api-prod" # Environment-specific service name
+    GCP_METRICS_EXPORT_INTERVAL  = "60"                 # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -146,14 +148,17 @@ module "scheduled_operations" {
 
   # Global environment variables for all jobs
   environment_variables = {
-    APP_ENV                     = "production"
-    TRACKCAST_ENV               = "production"
-    MODEL_PATH                  = "/app/models"
-    TRACKCAST_SCHEDULER_MODE    = "cloud_native"
-    GOOGLE_CLOUD_PROJECT        = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
-    OTEL_SAMPLE_RATE            = "0.05"               # Lower sampling for production cost optimization
-    OTEL_SERVICE_NAME           = "trackcast-ops-prod" # Environment-specific service name for jobs
-    GCP_METRICS_EXPORT_INTERVAL = "60"                 # Export metrics to GCP every 60 seconds
+    APP_ENV                      = "production"
+    TRACKCAST_ENV                = "production"
+    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for App Store
+    APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
+    APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
+    MODEL_PATH                   = "/app/models"
+    TRACKCAST_SCHEDULER_MODE     = "cloud_native"
+    GOOGLE_CLOUD_PROJECT         = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE             = "0.05"               # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME            = "trackcast-ops-prod" # Environment-specific service name for jobs
+    GCP_METRICS_EXPORT_INTERVAL  = "60"                 # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables from Secret Manager

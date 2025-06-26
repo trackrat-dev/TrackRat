@@ -960,45 +960,6 @@ class LiveActivityService: ObservableObject {
     }
     */
     
-    private func sendStatusChangeNotification(from oldStatusV2: String?, to newStatusV2: String?) async {
-        guard let activity = currentActivity,
-              let newStatus = newStatusV2,
-              let oldStatus = oldStatusV2,
-              oldStatus != newStatus else { return }
-        
-        let content = UNMutableNotificationContent()
-        let attributes = activity.attributes
-        
-        switch newStatus {
-        case "BOARDING":
-            content.title = "🚪 Train \(attributes.trainNumber) is Boarding!"
-            content.body = "Your train to \(attributes.destination) is now boarding"
-            content.sound = .default
-        case "DELAYED":
-            content.title = "⏰ Train \(attributes.trainNumber) Delayed"
-            content.body = "Your train to \(attributes.destination) has been delayed"
-            content.sound = .default
-        case "EN_ROUTE", "DEPARTED":
-            content.title = "🚆 Train \(attributes.trainNumber) Departed"
-            content.body = "Your train to \(attributes.destination) has left the station"
-            content.sound = .default
-        default:
-            return // Don't send notifications for other status changes
-        }
-        
-        let request = UNNotificationRequest(
-            identifier: "status-change-\(attributes.trainNumber)-\(Date().timeIntervalSince1970)",
-            content: content,
-            trigger: nil // Immediate notification
-        )
-        
-        do {
-            try await UNUserNotificationCenter.current().add(request)
-            print("📱 Sent status change notification: \(oldStatus) → \(newStatus)")
-        } catch {
-            print("❌ Failed to send status change notification: \(error)")
-        }
-    }
     
     /// Handle enhanced haptic feedback based on backend metadata
     private func handleEnhancedHapticFeedback(metadata: AlertMetadata) async {
@@ -1052,8 +1013,7 @@ class LiveActivityService: ObservableObject {
             }
         }
         
-        // Send push notification for status changes
-        await sendStatusChangeNotification(from: oldStatusV2, to: newStatusV2)
+        // REMOVED: Local notification - will be handled by backend push updates
         
         print("📱 Status changed from \(oldStatus) to \(newStatus)")
     }

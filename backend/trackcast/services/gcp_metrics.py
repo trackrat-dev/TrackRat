@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Union
 
 from google.cloud import monitoring_v3
 from google.oauth2 import service_account
+from google.protobuf.timestamp_pb2 import Timestamp
 from prometheus_client import REGISTRY
 from prometheus_client.samples import Sample
 
@@ -265,6 +266,7 @@ class GCPMetricsExporter:
 
             # Add the data point
             point = monitoring_v3.Point()
+            point.interval.end_time = Timestamp()
             point.interval.end_time.FromDatetime(timestamp)
 
             # Set value based on metric type
@@ -375,6 +377,7 @@ class GCPMetricsExporter:
 
             # Add data point
             point = monitoring_v3.Point()
+            point.interval.end_time = Timestamp()
             point.interval.end_time.FromDatetime(timestamp)
             point.value.double_value = float(value)
             series.points.append(point)

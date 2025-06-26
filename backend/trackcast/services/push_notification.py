@@ -64,6 +64,11 @@ class APNSPushService:
         self.auth_key_path = os.getenv("APNS_AUTH_KEY_PATH")
         self.bundle_id = os.getenv("APNS_BUNDLE_ID", "net.trackrat.TrackRat")
 
+        # Live Activity extension bundle ID (defaults to main bundle ID + extension if not specified)
+        self.live_activity_bundle_id = os.getenv(
+            "APNS_LIVE_ACTIVITY_BUNDLE_ID", f"{self.bundle_id}.TrainLiveActivityExtension"
+        )
+
         # Certificate-based auth (alternative to auth key)
         self.cert_path = os.getenv("APNS_CERT_PATH")
         self.key_path = os.getenv("APNS_KEY_PATH")
@@ -601,10 +606,13 @@ class APNSPushService:
 
         try:
             # Prepare headers
-            # Live Activities require special topic format
-            topic = (
-                f"{self.bundle_id}.push-type.liveactivity" if is_live_activity else self.bundle_id
-            )
+            # Live Activities require special topic format with the extension bundle ID
+            if is_live_activity:
+                # Use the Live Activity extension bundle ID for Live Activities
+                topic = f"{self.live_activity_bundle_id}.push-type.liveactivity"
+            else:
+                # Use the main app bundle ID for regular notifications
+                topic = self.bundle_id
 
             headers = {
                 "apns-topic": topic,
@@ -628,6 +636,10 @@ class APNSPushService:
             )
             logger.info(f"📡 APNS URL: {url}")
             logger.info(f"📋 APNS Headers: {headers}")
+            if is_live_activity:
+                logger.info(f"🎯 Using Live Activity Bundle ID: {self.live_activity_bundle_id}")
+            else:
+                logger.info(f"📱 Using Main App Bundle ID: {self.bundle_id}")
             if is_live_activity:
                 logger.info(f"📦 APNS Live Activity Payload: {json.dumps(payload, indent=2)}")
             else:

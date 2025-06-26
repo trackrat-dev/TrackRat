@@ -498,7 +498,7 @@ TrackRat/Views/                      # All UI components
 
 ### API Base URLs
 - Development: `http://localhost:8000/api`
-- Production: `https://trackcast.andymartin.cc/api`
+- Production: `https://prod.api.trackrat.net/api`
 
 ## Contact for Questions
 

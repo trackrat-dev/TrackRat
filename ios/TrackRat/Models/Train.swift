@@ -750,11 +750,6 @@ struct JourneyProgress {
     )
 }
 
-// MARK: - Journey Status Display
-enum JourneyDisplayMode {
-    case full
-    case compact
-}
 
 // MARK: - New Enhanced Status and Progress Models
 struct StatusV2: Codable {

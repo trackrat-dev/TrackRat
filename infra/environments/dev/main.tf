@@ -108,6 +108,9 @@ module "trackrat_api_service" {
     OTEL_SAMPLE_RATE            = "1"                 # 100% sampling for development debugging
     OTEL_SERVICE_NAME           = "trackcast-api-dev" # Environment-specific service name
     GCP_METRICS_EXPORT_INTERVAL = "60"                # Export metrics to GCP every 60 seconds
+    # APNS configuration
+    APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
+    APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -166,6 +169,9 @@ module "scheduled_operations" {
     OTEL_SAMPLE_RATE            = "1"                 # 100% sampling for development debugging
     OTEL_SERVICE_NAME           = "trackcast-ops-dev" # Environment-specific service name for jobs
     GCP_METRICS_EXPORT_INTERVAL = "60"                # Export metrics to GCP every 60 seconds
+    # APNS configuration
+    APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
+    APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
   }
 
   # Secret environment variables from Secret Manager
