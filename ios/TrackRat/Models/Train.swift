@@ -230,6 +230,7 @@ struct Stop: Identifiable, Codable {
     let scheduledDeparture: Date?
     let actualArrival: Date?
     let actualDeparture: Date?
+    let estimatedArrival: Date?
     let pickupOnly: Bool?
     let dropoffOnly: Bool?
     let departed: Bool?
@@ -248,6 +249,7 @@ struct Stop: Identifiable, Codable {
         case scheduledDeparture = "scheduled_departure"
         case actualArrival = "actual_arrival"
         case actualDeparture = "actual_departure"
+        case estimatedArrival = "estimated_arrival"
         case pickupOnly = "pickup_only"
         case dropoffOnly = "dropoff_only"
         case departed
@@ -265,6 +267,7 @@ struct Stop: Identifiable, Codable {
         scheduledDeparture = try container.decodeIfPresent(Date.self, forKey: .scheduledDeparture)
         actualArrival = try container.decodeIfPresent(Date.self, forKey: .actualArrival)
         actualDeparture = try container.decodeIfPresent(Date.self, forKey: .actualDeparture)
+        estimatedArrival = try container.decodeIfPresent(Date.self, forKey: .estimatedArrival)
         pickupOnly = try container.decodeIfPresent(Bool.self, forKey: .pickupOnly)
         dropoffOnly = try container.decodeIfPresent(Bool.self, forKey: .dropoffOnly)
         departed = try container.decodeIfPresent(Bool.self, forKey: .departed) ?? false
@@ -273,13 +276,14 @@ struct Stop: Identifiable, Codable {
         platform = try container.decodeIfPresent(String.self, forKey: .platform)
     }
     
-    init(stationCode: String?, stationName: String, scheduledArrival: Date?, scheduledDeparture: Date?, actualArrival: Date?, actualDeparture: Date?, pickupOnly: Bool?, dropoffOnly: Bool?, departed: Bool?, departedConfirmedBy: [String]?, stopStatus: String?, platform: String?) {
+    init(stationCode: String?, stationName: String, scheduledArrival: Date?, scheduledDeparture: Date?, actualArrival: Date?, actualDeparture: Date?, estimatedArrival: Date?, pickupOnly: Bool?, dropoffOnly: Bool?, departed: Bool?, departedConfirmedBy: [String]?, stopStatus: String?, platform: String?) {
         self.stationCode = stationCode
         self.stationName = stationName
         self.scheduledArrival = scheduledArrival
         self.scheduledDeparture = scheduledDeparture
         self.actualArrival = actualArrival
         self.actualDeparture = actualDeparture
+        self.estimatedArrival = estimatedArrival
         self.pickupOnly = pickupOnly
         self.dropoffOnly = dropoffOnly
         self.departed = departed ?? false

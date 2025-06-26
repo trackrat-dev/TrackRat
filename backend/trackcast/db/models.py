@@ -159,6 +159,7 @@ class TrainStop(Base, TimestampMixin):
     scheduled_departure = Column(DateTime, nullable=True)  # When train should depart from platform
     actual_arrival = Column(DateTime, nullable=True)  # When train actually arrived at platform
     actual_departure = Column(DateTime, nullable=True)  # When train actually departed from platform
+    estimated_arrival = Column(DateTime, nullable=True)  # Estimated arrival based on current delays
 
     # Stop characteristics
     pickup_only = Column(Boolean, default=False, nullable=False)

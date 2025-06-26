@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from trackcast.db.models import LiveActivityToken, ModelData, PredictionData, Train, TrainStop
 from trackcast.metrics import DB_QUERY_DURATION_SECONDS, MODEL_PREDICTION_ACCURACY
@@ -1635,6 +1635,63 @@ class TrainRepository(BaseRepository):
 
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_trains_with_live_activities: {str(e)}")
+            raise
+
+    def get_active_trains_with_stops(
+        self,
+        statuses: List[str] = None,
+        limit: Optional[int] = None,
+        data_source: Optional[str] = None,
+    ) -> List[Train]:
+        """
+        Get active trains with their stops loaded, filtered by status.
+
+        Args:
+            statuses: List of train statuses to filter by (e.g., ['BOARDING', 'DEPARTED'])
+            limit: Maximum number of trains to return
+            data_source: Filter by data source (e.g., 'njtransit', 'amtrak')
+
+        Returns:
+            List of Train objects with their stops loaded
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Base query with stops eagerly loaded
+            query = (
+                self.session.query(Train)
+                .options(joinedload(Train.stops))
+                .filter(
+                    Train.departure_time >= datetime.now() - timedelta(hours=12)
+                )  # Recent trains only
+                .order_by(Train.departure_time.desc())
+            )
+
+            # Apply status filter if provided
+            if statuses:
+                query = query.filter(Train.status.in_(statuses))
+
+            # Apply data source filter if provided
+            if data_source:
+                query = query.filter(Train.data_source == data_source)
+
+            # Apply limit if provided
+            if limit:
+                query = query.limit(limit)
+
+            result = query.all()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_active_trains_with_stops").observe(
+                duration
+            )
+            logger.debug(f"Retrieved {len(result)} active trains with stops in {duration:.3f}s")
+            return result
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_active_trains_with_stops: {str(e)}")
             raise
 
 

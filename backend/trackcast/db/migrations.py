@@ -1341,6 +1341,62 @@ def increase_push_token_length(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def add_estimated_arrival_field(session: Session) -> Dict[str, Any]:
+    """
+    Add estimated_arrival field to the train_stops table for real-time arrival estimates.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if column already exists
+        check_query = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' AND column_name = 'estimated_arrival'
+        """
+        )
+        result = session.execute(check_query).fetchone()
+
+        if result:
+            logger.info("Column estimated_arrival already exists in train_stops table")
+            return {"status": "skipped", "message": "Column already exists"}
+
+        # Add the column
+        logger.info("Adding estimated_arrival column to train_stops table")
+        add_column_query = text(
+            """
+            ALTER TABLE train_stops 
+            ADD COLUMN estimated_arrival TIMESTAMP
+        """
+        )
+        session.execute(add_column_query)
+
+        # Create index for query performance
+        logger.info("Creating index on estimated_arrival column")
+        create_index_query = text(
+            """
+            CREATE INDEX ix_train_stops_estimated_arrival ON train_stops (estimated_arrival)
+        """
+        )
+        session.execute(create_index_query)
+
+        # Commit the changes
+        session.commit()
+
+        logger.info("Successfully added estimated_arrival column to train_stops table")
+        return {"status": "success", "message": "Column added successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding estimated_arrival column: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -1380,6 +1436,10 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
             "increase_push_token_length",
             increase_push_token_length,
         ),  # Fix Live Activity token length
+        (
+            "add_estimated_arrival_field",
+            add_estimated_arrival_field,
+        ),  # Add estimated_arrival for real-time arrival estimates
     ]
 
     for name, migration_func in migrations:

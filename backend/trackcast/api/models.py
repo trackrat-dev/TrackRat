@@ -23,6 +23,9 @@ class TrainStop(BaseModel):
     actual_departure: Optional[datetime] = Field(
         None, description="Actual departure time from platform in Eastern timezone"
     )
+    estimated_arrival: Optional[datetime] = Field(
+        None, description="Estimated arrival time based on current delays in Eastern timezone"
+    )
     pickup_only: bool = False
     dropoff_only: bool = False
     departed: bool = False

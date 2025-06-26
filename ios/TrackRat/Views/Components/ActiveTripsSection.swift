@@ -54,8 +54,7 @@ struct ActiveTripsSection: View {
             headerRow(for: activity)
             routeRow(for: activity)
             
-            // Show only progress and info, no status display
-            progressBar(for: activity)
+            // Show only info, no status display
             bottomInfoRow(for: activity)
         }
         .padding(16)
@@ -132,20 +131,6 @@ struct ActiveTripsSection: View {
         }
     }
     
-    private func progressBar(for activity: Activity<TrainActivityAttributes>) -> some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(.white.opacity(0.3))
-                    .frame(height: 6)
-                
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(.white.opacity(0.9))
-                    .frame(width: geometry.size.width * activity.content.state.journeyProgress, height: 6)
-            }
-        }
-        .frame(height: 6)
-    }
     
     private func bottomInfoRow(for activity: Activity<TrainActivityAttributes>) -> some View {
         HStack {
@@ -165,12 +150,12 @@ struct ActiveTripsSection: View {
             
             
             VStack(alignment: .trailing, spacing: 2) {
-                Text("Updated")
+                Text("Last Updated")
                     .font(.caption2)
                     .foregroundColor(.white.opacity(0.7))
                 Text(formatTimeAgo(activity.content.state.lastUpdated))
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(isUpdateStale(activity.content.state.lastUpdated) ? Color.red.opacity(0.7) : .white.opacity(0.8))
             }
         }
     }
@@ -222,6 +207,12 @@ struct ActiveTripsSection: View {
             formatter.timeStyle = .short
             return formatter.string(from: date)
         }
+    }
+    
+    private func isUpdateStale(_ date: Date) -> Bool {
+        let now = Date()
+        let timeInterval = now.timeIntervalSince(date)
+        return timeInterval >= 300 // 5 minutes = 300 seconds
     }
     
     private func formatTime(_ date: Date) -> String {

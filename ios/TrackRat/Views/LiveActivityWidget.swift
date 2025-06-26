@@ -14,70 +14,107 @@ struct TrainLiveActivity: Widget {
             DynamicIsland {
                 // Expanded UI (when tapped)
                 DynamicIslandExpandedRegion(.leading) {
-                    TrainStatusV2View(
-                        trainNumber: context.attributes.trainNumber,
-                        statusV2: context.state.statusV2,
-                        track: context.state.track
-                    )
+                    NextStopView(nextStop: context.state.nextStop)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    NextStopView(nextStop: context.state.nextStop)
+                    DestinationView(
+                        destination: context.attributes.destination,
+                        destinationETA: context.state.destinationETA,
+                        delayMinutes: context.state.delayMinutes
+                    )
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     JourneyProgressView(
                         progress: context.state.journeyProgress,
                         currentLocation: context.state.currentLocation,
                         destinationETA: context.state.destinationETA,
-                        destination: context.attributes.destination
+                        destination: context.attributes.destination,
+                        track: context.state.track,
+                        statusV2: context.state.statusV2
                     )
                 }
             } compactLeading: {
-                // Compact leading (left side of Dynamic Island) - maximum visibility with animation
-                HStack(spacing: 3) {
-                    Image(systemName: "tram.fill")
-                        .font(.system(size: 16, weight: .black))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.orange, .red],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .shadow(color: .black, radius: 1)
-                        .scaleEffect(context.state.statusV2 == "BOARDING" ? 1.2 : 1.0)
-                        .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: context.state.statusV2)
-                    Text("\(context.attributes.trainNumber)")
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundColor(.white)
-                        .shadow(color: .black, radius: 1)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 2)
-                .frame(maxWidth: 67, alignment: .leading)
-            } compactTrailing: {
-                // Compact trailing (right side of Dynamic Island) - maximum visibility with colors
-                HStack(spacing: 2) {
-                    // Show track if available, otherwise status
-                    if let track = context.state.track, !track.isEmpty {
-                        Text("T\(track)")
-                            .font(.system(size: 14, weight: .black))
+                // Compact leading (left side of Dynamic Island) - conditional display based on departure status
+                if hasDepartedOrigin(context: context) {
+                    // After departure: Show arrival time at destination
+                    HStack(spacing: 2) {
+                        Text(formatArrivalTime(context.state.destinationETA))
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundColor(.white)
+                            .shadow(color: .black, radius: 1)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 2)
+                    .frame(maxWidth: 67, alignment: .leading)
+                } else {
+                    // Before departure: Show train icon and number (current behavior)
+                    HStack(spacing: 3) {
+                        Image(systemName: "tram.fill")
+                            .font(.system(size: 16, weight: .black))
                             .foregroundStyle(
                                 LinearGradient(
-                                    colors: [.orange, .yellow],
+                                    colors: [.orange, .red],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 )
                             )
                             .shadow(color: .black, radius: 1)
-                    } else {
-                        Text(getCompactStatusV2(context.state.statusV2))
+                            .scaleEffect(context.state.statusV2 == "BOARDING" ? 1.2 : 1.0)
+                            .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: context.state.statusV2)
+                        Text("\(context.attributes.trainNumber)")
                             .font(.system(size: 12, weight: .black))
                             .foregroundColor(.white)
                             .shadow(color: .black, radius: 1)
+                            .lineLimit(1)
                     }
+                    .padding(.horizontal, 2)
+                    .frame(maxWidth: 67, alignment: .leading)
                 }
-                .padding(.horizontal, 2)
-                .frame(maxWidth: 67, alignment: .trailing)
+            } compactTrailing: {
+                // Compact trailing (right side of Dynamic Island) - conditional display based on departure status
+                if hasDepartedOrigin(context: context) {
+                    // After departure: Show train icon (moved from left side)
+                    HStack(spacing: 2) {
+                        Image(systemName: "tram.fill")
+                            .font(.system(size: 16, weight: .black))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.orange, .red],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .shadow(color: .black, radius: 1)
+                            .scaleEffect(context.state.statusV2 == "BOARDING" ? 1.2 : 1.0)
+                            .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: context.state.statusV2)
+                    }
+                    .padding(.horizontal, 2)
+                    .frame(maxWidth: 67, alignment: .trailing)
+                } else {
+                    // Before departure: Show track or status (current behavior)
+                    HStack(spacing: 2) {
+                        // Show track if available, otherwise status
+                        if let track = context.state.track, !track.isEmpty {
+                            Text("T\(track)")
+                                .font(.system(size: 14, weight: .black))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.orange, .yellow],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .shadow(color: .black, radius: 1)
+                        } else {
+                            Text(getCompactStatusV2(context.state.statusV2))
+                                .font(.system(size: 12, weight: .black))
+                                .foregroundColor(.white)
+                                .shadow(color: .black, radius: 1)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                    .frame(maxWidth: 67, alignment: .trailing)
+                }
             } minimal: {
                 // Minimal (when other Dynamic Islands are active) - maximum visibility with animation
                 Image(systemName: "tram.fill")
@@ -138,6 +175,44 @@ struct TrainLiveActivity: Widget {
             return "UNK"
         }
     }
+    
+    // Helper function to determine if train has departed origin station
+    private func hasDepartedOrigin(context: ActivityViewContext<TrainActivityAttributes>) -> Bool {
+        // Check StatusV2 for departure indicators
+        if context.state.statusV2 == "EN_ROUTE" || context.state.statusV2 == "ARRIVED" || context.state.statusV2 == "DEPARTED" {
+            return true
+        }
+        
+        // Check CurrentLocation enum for departure states
+        switch context.state.currentLocation {
+        case .departed, .enRoute, .approaching, .atStation, .arrived:
+            return true
+        case .notDeparted, .boarding:
+            return false
+        }
+    }
+    
+    // Helper function to format arrival time for Dynamic Island display
+    private func formatArrivalTime(_ date: Date?) -> String {
+        guard let date = date else {
+            return "~? min"
+        }
+        
+        let now = Date()
+        let timeInterval = date.timeIntervalSince(now)
+        
+        // If within an hour, show minutes
+        if timeInterval > 0 && timeInterval < 3600 {
+            let minutes = Int(timeInterval / 60)
+            return "~\(minutes) min"
+        }
+        
+        // Otherwise show time
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: date)
+    }
 }
 
 @available(iOS 16.1, *)
@@ -160,37 +235,15 @@ struct TrainLiveActivityView: View {
                 Spacer()
             }
             
-            // Journey progress bar
-            JourneyProgressBar(
-                progress: context.state.journeyProgress,
-                currentLocation: context.state.currentLocation
-            )
-            
-            // Bottom info row
+            // Bottom info row - Next Stop (left) and Final Stop (right)
             HStack {
-                // Current location with stops countdown
+                // Next stop info
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Current")
+                    Text("Next Stop")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Text(context.state.currentLocation.displayText)
-                        .font(.caption.bold())
-                        .lineLimit(1)
-                    if let progress = getStopProgress() {
-                        Text(progress)
-                            .font(.caption2)
-                            .foregroundColor(.orange)
-                    }
-                }
-                
-                Spacer()
-                
-                // Next stop info with time
-                if let nextStop = context.state.nextStop {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Next Stop")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    
+                    if let nextStop = context.state.nextStop {
                         Text(Stations.displayName(for: nextStop.stationName))
                             .font(.caption.bold())
                             .lineLimit(1)
@@ -204,7 +257,26 @@ struct TrainLiveActivityView: View {
                                 .font(.caption2)
                                 .foregroundColor(nextStop.isDelayed ? .red : .secondary)
                         }
+                    } else {
+                        Text("—")
+                            .font(.caption.bold())
+                            .foregroundColor(.secondary)
                     }
+                }
+                
+                Spacer()
+                
+                // Final stop info with countdown
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Final Stop")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(Stations.displayName(for: context.attributes.destination))
+                        .font(.caption.bold())
+                        .lineLimit(1)
+                    Text(getRemainingStopsText())
+                        .font(.caption2)
+                        .foregroundColor(.orange)
                 }
             }
             
@@ -213,28 +285,24 @@ struct TrainLiveActivityView: View {
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
         )
         .widgetURL(URL(string: "trackrat://train/\(context.attributes.trainId)"))
     }
     
-    private func getStopProgress() -> String? {
-        // We need to calculate stops remaining based on journey progress
-        // Since we don't have direct access to the journey progress struct, we'll estimate
-        let percentage = Int(context.state.journeyProgress * 100)
-        if percentage > 0 && percentage < 100 {
-            // Estimate stops based on progress
-            let totalStops = 5 // This is an estimate, ideally we'd have this data
-            let completedStops = Int(Double(totalStops) * context.state.journeyProgress)
-            let remainingStops = totalStops - completedStops
-            if remainingStops > 0 {
-                return "\(remainingStops) stop\(remainingStops == 1 ? "" : "s") to go"
-            }
+    private func getRemainingStopsText() -> String {
+        // Calculate remaining stops based on journey progress
+        let percentage = context.state.journeyProgress
+        if percentage >= 1.0 {
+            return "Arrived"
+        } else if percentage > 0 {
+            // Estimate remaining stops based on progress (rough approximation)
+            let estimatedTotalStops = 5 // Default estimate for typical journey
+            let estimatedCompletedStops = Int(Double(estimatedTotalStops) * percentage)
+            let remainingStops = max(1, estimatedTotalStops - estimatedCompletedStops)
+            return "\(remainingStops) stop\(remainingStops == 1 ? "" : "s") to go"
+        } else {
+            return "— stops to go"
         }
-        return nil
     }
     
     private func formatTimeWithMinutes(_ date: Date) -> String {
@@ -361,7 +429,7 @@ struct NextStopView: View {
     let nextStop: NextStopInfo?
     
     var body: some View {
-        VStack(alignment: .trailing, spacing: 2) {
+        VStack(alignment: .leading, spacing: 2) {
             Text("Next Stop")
                 .font(.caption2)
                 .foregroundColor(.secondary)
@@ -372,21 +440,31 @@ struct NextStopView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 
-                Text(formatTime(nextStop.estimatedArrival))
-                    .font(.caption2)
-                    .foregroundColor(nextStop.isDelayed ? .red : .primary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if nextStop.isDelayed {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
+                    Text(formatTime(nextStop.estimatedArrival))
+                        .font(.caption2)
+                        .foregroundColor(nextStop.isDelayed ? .red : .primary)
+                        .lineLimit(1)
+                }
             } else {
                 Text("—")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
         }
+        .padding(.leading, 8)
+        .padding(.vertical, 4)
     }
     
     private func formatTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
         return formatter.string(from: date)
     }
 }
@@ -397,39 +475,30 @@ struct JourneyProgressView: View {
     let currentLocation: CurrentLocation
     let destinationETA: Date?
     let destination: String
+    let track: String?
+    let statusV2: String
     
     var body: some View {
         VStack(spacing: 4) {
-            // Progress bar
-            ProgressView(value: progress)
-                .progressViewStyle(LinearProgressViewStyle(tint: .blue))
-                .scaleEffect(y: 1.5)
-            
-            // ETA info
-            HStack {
-                Text(currentLocation.displayText)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                
-                Spacer()
-                
-                if let eta = destinationETA {
-                    Text("Arrives \(destination) ~\(formatTime(eta))")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+            // Show track when boarding, otherwise show progress bar
+            if statusV2 == "BOARDING", let track = track {
+                // Track display when boarding
+                HStack {
+                    Text("Track \(track)")
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.orange)
                 }
+                .frame(maxWidth: .infinity)
+            } else {
+                // Progress bar for all other states
+                ProgressView(value: progress)
+                    .progressViewStyle(LinearProgressViewStyle(tint: .blue))
+                    .scaleEffect(y: 1.5)
             }
         }
-    }
-    
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 }
 
@@ -560,6 +629,53 @@ struct LiveActivityStatusBadgeV2: View {
         case "CANCELLED": return "Cancelled"
         default: return statusV2.capitalized
         }
+    }
+}
+
+@available(iOS 16.1, *)
+struct DestinationView: View {
+    let destination: String
+    let destinationETA: Date?
+    let delayMinutes: Int?
+    
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text("Destination")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            
+            Text(Stations.displayName(for: destination))
+                .font(.caption.bold())
+                .lineLimit(1)
+                .truncationMode(.tail)
+            
+            if let eta = destinationETA {
+                HStack(spacing: 4) {
+                    if let delay = delayMinutes, delay > 0 {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
+                    Text(formatTime(eta))
+                        .font(.caption2)
+                        .foregroundColor(delayMinutes != nil && delayMinutes! > 0 ? .red : .primary)
+                        .lineLimit(1)
+                }
+            } else {
+                Text("—")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(.trailing, 8)
+        .padding(.vertical, 4)
+    }
+    
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: date)
     }
 }
 

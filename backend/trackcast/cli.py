@@ -352,6 +352,46 @@ def generate_predictions(
 
 
 @main.command()
+@click.option("--limit", "-l", type=int, default=None, help="Limit number of trains to process")
+@click.option("--clear-old", is_flag=True, help="Clear outdated estimated arrival times")
+def update_estimated_arrivals(limit: Optional[int], clear_old: bool) -> None:
+    """Update estimated arrival times for active trains with delays"""
+    try:
+        from trackcast.services.estimated_arrival_service import EstimatedArrivalService
+
+        logger.info("Starting estimated arrival time updates")
+        session = get_db_session()
+
+        try:
+            service = EstimatedArrivalService(session)
+
+            # Clear old estimates if requested
+            if clear_old:
+                cleared_count = service.clear_outdated_estimates()
+                logger.info(f"Cleared {cleared_count} outdated estimated arrival times")
+
+            # Update estimates for active trains
+            updated_count = service.update_estimated_arrivals_for_active_trains(limit=limit)
+
+            if updated_count > 0:
+                logger.info(
+                    f"Successfully updated {updated_count} stops with estimated arrival times"
+                )
+            else:
+                logger.info("No stops required estimated arrival time updates")
+
+        except Exception as e:
+            logger.error(f"Error updating estimated arrivals: {str(e)}")
+            sys.exit(1)
+        finally:
+            session.close()
+
+    except ImportError as e:
+        logger.error(f"EstimatedArrivalService not available: {e}")
+        sys.exit(1)
+
+
+@main.command()
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="API host")
 @click.option("--port", "-p", type=int, default=8000, help="API port")
 def start_api(host: str, port: int) -> None:
