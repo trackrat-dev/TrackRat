@@ -581,6 +581,36 @@ extension Train {
         return track
     }
     
+    /// Get track assignment for a specific origin station
+    func getTrackForStation(_ stationCode: String) -> String? {
+        // For consolidated trains, check if the track assignment is from the requested station
+        if let trackAssignment = trackAssignment,
+           let assignedBy = trackAssignment.assignedBy,
+           assignedBy == stationCode,
+           let track = trackAssignment.track {
+            return track
+        }
+        
+        // Check data sources for station-specific track
+        if let dataSources = dataSources {
+            for source in dataSources {
+                if source.origin == stationCode,
+                   let track = source.track,
+                   !track.isEmpty {
+                    return track
+                }
+            }
+        }
+        
+        // Fall back to legacy track field only if no consolidated data
+        if dataSources == nil || dataSources?.isEmpty == true {
+            return track
+        }
+        
+        // No track found for this station
+        return nil
+    }
+    
     /// StatusV2-only status display (no fallbacks)
     var statusV2Display: String {
         guard let statusV2 = statusV2 else {

@@ -206,8 +206,9 @@ struct CombinedDetailsCard: View {
             return false
         }
         
-        // Don't show if track is definitively assigned
-        if let track = train.displayTrack, !track.isEmpty {
+        // Don't show if track is definitively assigned for the departure station
+        if let departureCode = appState.departureStationCode,
+           let track = train.getTrackForStation(departureCode), !track.isEmpty {
             return false
         }
         
@@ -259,7 +260,8 @@ struct CombinedDetailsCard: View {
                                     .font(.title2)
                                     .symbolEffect(.pulse)
                                 
-                                if let track = train.displayTrack {
+                                if let departureCode = appState.departureStationCode,
+                                   let track = train.getTrackForStation(departureCode) {
                                     Text("Boarding on Track \(track)")
                                         .font(.title2)
                                         .fontWeight(.bold)
@@ -321,7 +323,7 @@ struct CombinedDetailsCard: View {
                                          stop.stationName.lowercased() == selectedDestination!.lowercased(),
                             isDeparture: checkIfDepartureStop(stop.stationName),
                             isBoarding: stop.stopStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName),
-                            boardingTrack: stop.stopStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName) ? train.displayTrack : nil,
+                            boardingTrack: stop.stopStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName) ? (appState.departureStationCode != nil ? train.getTrackForStation(appState.departureStationCode!) : nil) : nil,
                             train: train,
                             departureStationCode: appState.departureStationCode
                         )
@@ -414,8 +416,9 @@ struct StatusCard: View {
             return false
         }
         
-        // Don't show if track is definitively assigned
-        if let track = train.displayTrack, !track.isEmpty {
+        // Don't show if track is definitively assigned for the departure station
+        if let departureCode = appState.departureStationCode,
+           let track = train.getTrackForStation(departureCode), !track.isEmpty {
             return false
         }
         
@@ -462,7 +465,9 @@ struct StatusCard: View {
                             .foregroundColor(.white)
                         
                         // Show track for boarding trains
-                        if train.isActuallyBoarding, let track = train.displayTrack {
+                        if train.isActuallyBoarding,
+                           let departureCode = appState.departureStationCode,
+                           let track = train.getTrackForStation(departureCode) {
                             Text("Track \(track)")
                                 .font(.title2)
                                 .fontWeight(.bold)
@@ -532,7 +537,8 @@ struct StatusCard: View {
             }
             
             // Track or prediction with enhanced logic
-            if let track = train.displayTrack, !track.isEmpty {
+            if let departureCode = appState.departureStationCode,
+               let track = train.getTrackForStation(departureCode), !track.isEmpty {
                 Label("Track \(track)", systemImage: "tram.fill")
                     .font(.title3)
                     .fontWeight(.semibold)
@@ -1102,7 +1108,8 @@ class TrainDetailsViewModel: ObservableObject {
                 }
                 
                 // Check for track assignment using consolidated display track
-                if currentTrain.displayTrack == nil && newTrain.displayTrack != nil {
+                if let departureCode = currentOriginStationCode,
+                   currentTrain.getTrackForStation(departureCode) == nil && newTrain.getTrackForStation(departureCode) != nil {
                     triggerTrackAssignedHaptic = true
                 }
             }

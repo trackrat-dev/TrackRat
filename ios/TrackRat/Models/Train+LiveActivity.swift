@@ -245,7 +245,7 @@ extension Train {
         return TrainActivityAttributes.ContentState(
             statusV2: statusV2?.current ?? "UNKNOWN",
             statusLocation: statusV2?.location,
-            track: displayTrack,  // Use displayTrack instead of track for consolidated data
+            track: getTrackForStation(originCode),  // Get track specific to origin station
             delayMinutes: displayDelayMinutes,  // Use displayDelayMinutes for consolidated data
             currentLocation: currentLocation,
             nextStop: nextStop,
