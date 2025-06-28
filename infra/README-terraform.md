@@ -30,6 +30,8 @@ No resources.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_amtrak_api_key"></a> [amtrak\_api\_key](#input\_amtrak\_api\_key) | Amtrak API key (optional) | `string` | `""` | no |
+| <a name="input_apns_key_id"></a> [apns\_key\_id](#input\_apns\_key\_id) | APNS Auth Key ID | `string` | `""` | no |
+| <a name="input_apns_team_id"></a> [apns\_team\_id](#input\_apns\_team\_id) | Apple Developer Team ID for APNS | `string` | `""` | no |
 | <a name="input_app_name"></a> [app\_name](#input\_app\_name) | Application name | `string` | `"trackrat"` | no |
 | <a name="input_artifact_registry_repository_name"></a> [artifact\_registry\_repository\_name](#input\_artifact\_registry\_repository\_name) | Custom Artifact Registry repository name (optional). If not provided, defaults to {app\_name}-{environment} | `string` | `""` | no |
 | <a name="input_environment"></a> [environment](#input\_environment) | Environment name (dev, staging, prod) | `string` | n/a | yes |
@@ -48,6 +50,8 @@ No resources.
 | Name | Description |
 |------|-------------|
 | <a name="output_amtrak_api_key_secret_name"></a> [amtrak\_api\_key\_secret\_name](#output\_amtrak\_api\_key\_secret\_name) | Name of the Amtrak API key secret |
+| <a name="output_apns_key_id_secret_name"></a> [apns\_key\_id\_secret\_name](#output\_apns\_key\_id\_secret\_name) | Name of the APNS Key ID secret |
+| <a name="output_apns_team_id_secret_name"></a> [apns\_team\_id\_secret\_name](#output\_apns\_team\_id\_secret\_name) | Name of the APNS Team ID secret |
 | <a name="output_artifact_registry_repository"></a> [artifact\_registry\_repository](#output\_artifact\_registry\_repository) | Artifact Registry repository for Docker images |
 | <a name="output_network_self_link"></a> [network\_self\_link](#output\_network\_self\_link) | The self-link of the VPC network. |
 | <a name="output_njt_password_secret_name"></a> [njt\_password\_secret\_name](#output\_njt\_password\_secret\_name) | Name of the NJ Transit password secret |
