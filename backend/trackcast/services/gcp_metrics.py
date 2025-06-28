@@ -35,8 +35,8 @@ class GCPMetricsExporter:
         project_id: Optional[str] = None,
         service_account_path: Optional[str] = None,
         metric_prefix: str = "trackcast",
-        export_interval_seconds: int = 60,
-        max_batch_size: int = 200,
+        export_interval_seconds: int = 120,
+        max_batch_size: int = 50,
         enabled: bool = None,
     ):
         """
@@ -267,10 +267,10 @@ class GCPMetricsExporter:
             # Add the data point
             point = monitoring_v3.Point()
             ts = Timestamp()
+            # Round timestamp to seconds to avoid ordering issues
             seconds = int(timestamp.timestamp())
-            nanos = int((timestamp.timestamp() - int(timestamp.timestamp())) * 1e9)
             ts.seconds = seconds
-            ts.nanos = nanos
+            ts.nanos = 0  # Always use 0 nanos to ensure consistent ordering
             point.interval.end_time = ts
 
             # Set value based on metric type

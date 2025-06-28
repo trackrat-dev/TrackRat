@@ -445,10 +445,6 @@ async def list_trains(
         # Apply consolidation if requested
         if consolidate:
             logger.info(f"Starting consolidation for {len(enriched_trains)} trains")
-            for i, train in enumerate(enriched_trains):
-                logger.info(
-                    f"  Train {i + 1}: {train.train_id} from {train.origin_station_code} ({train.data_source}) - {len(getattr(train, 'stops', []))} stops"
-                )
 
             with trace_operation(
                 "api.consolidate_trains",
