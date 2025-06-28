@@ -75,10 +75,10 @@ module "trackrat_api_service" {
   container_port  = 8000
 
   cpu_limit               = "1"
-  memory_limit            = "1Gi"
+  memory_limit            = "512Mi"
   concurrency             = 100
   min_instances           = 0 # Scale to 0 for cost efficiency
-  max_instances           = 2
+  max_instances           = 1
   request_timeout_seconds = 60
 
   startup_probe_path            = "/health"
@@ -177,7 +177,7 @@ module "scheduled_operations" {
     pipeline = {
       command      = ["/bin/bash", "-c", "trackcast check-apns-config && trackcast run-pipeline --regenerate"]
       cpu_limit    = "1"
-      memory_limit = "1Gi"
+      memory_limit = "512Mi"
       max_retries  = 1
       task_timeout = "300s"
       environment_variables = {
@@ -215,10 +215,9 @@ resource "google_project_iam_member" "scheduler_monitoring_metric_writer" {
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    # Consolidated pipeline scheduler - runs every 5 minutes
     pipeline = {
-      schedule    = "*/5 * * * *" # Every 5 minutes
-      description = "Complete data pipeline: collection -> features -> predictions every 5 minutes"
+      schedule    = "*/3 * * * *" # Every 3 minutes
+      description = "Complete data pipeline: collection -> features -> predictions every 3 minutes"
       job_name    = "pipeline"
     }
   }
