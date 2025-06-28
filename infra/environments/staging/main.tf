@@ -92,7 +92,7 @@ module "trackrat_api_service" {
   environment_variables = {
     APP_ENV                      = "staging"
     TRACKCAST_ENV                = "staging"
-    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for staging testing
+    APNS_ENVIRONMENT             = "dev"                                              # Use sandbox APNS to match iOS development entitlements
     APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
     APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
     MODEL_PATH                   = "/app/models"
@@ -109,6 +109,8 @@ module "trackrat_api_service" {
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
     NJT_TOKEN    = "${module.infrastructure.njt_token_secret_name}:latest"
+    APNS_TEAM_ID = "${module.infrastructure.apns_team_id_secret_name}:latest"
+    APNS_KEY_ID  = "${module.infrastructure.apns_key_id_secret_name}:latest"
   }
 
   # Custom domain configuration
@@ -150,7 +152,7 @@ module "scheduled_operations" {
   environment_variables = {
     APP_ENV                      = "staging"
     TRACKCAST_ENV                = "staging"
-    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for staging testing
+    APNS_ENVIRONMENT             = "dev"                                              # Use sandbox APNS to match iOS development entitlements
     APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
     APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
     MODEL_PATH                   = "/app/models"
@@ -173,7 +175,7 @@ module "scheduled_operations" {
   jobs = {
     # Consolidated pipeline job - runs all steps sequentially
     pipeline = {
-      command      = ["trackcast", "run-pipeline", "--regenerate"]
+      command      = ["/bin/bash", "-c", "trackcast check-apns-config && trackcast run-pipeline --regenerate"]
       cpu_limit    = "1"
       memory_limit = "1Gi"
       max_retries  = 1

@@ -45,6 +45,17 @@ output "amtrak_api_key_secret_name" {
   value       = module.secrets.amtrak_api_key_secret_name
 }
 
+output "apns_team_id_secret_name" {
+  description = "Name of the APNS Team ID secret"
+  value       = module.secrets.apns_team_id_secret_name
+}
+
+output "apns_key_id_secret_name" {
+  description = "Name of the APNS Key ID secret"
+  value       = module.secrets.apns_key_id_secret_name
+}
+
+
 output "network_self_link" {
   description = "The self-link of the VPC network."
   value       = module.vpc.network_self_link

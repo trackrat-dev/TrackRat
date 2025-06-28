@@ -197,16 +197,13 @@ def collect_data(validate_journeys: bool) -> None:
             else:
                 logger.info(f"Data collection completed successfully: {stats}")
 
-            # Process train updates for push notifications
-            _process_push_notifications(session)
-
-            # Run post-journey validation if enabled
+            # Run journey validation BEFORE notifications to ensure fresh data
             if validate_journeys:
                 try:
                     from trackcast.db.repository import TrainRepository, TrainStopRepository
                     from trackcast.services.journey_validator import JourneyValidator
 
-                    logger.info("Running post-journey validation")
+                    logger.info("Running journey validation to ensure data freshness")
                     train_repo = TrainRepository(session)
                     stop_repo = TrainStopRepository(session)
                     validator = JourneyValidator(train_repo, stop_repo)
@@ -218,6 +215,9 @@ def collect_data(validate_journeys: bool) -> None:
 
                 except Exception as e:
                     logger.warning(f"Journey validation failed (continuing anyway): {e}")
+
+            # Process train updates for push notifications with fresh data
+            _process_push_notifications(session)
         else:
             logger.error(f"Data collection failed: all stations failed: {stats}")
             sys.exit(1)
@@ -626,15 +626,12 @@ def _execute_collect_data() -> bool:
                 else:
                     logger.info(f"Data collection completed successfully: {stats}")
 
-                # Process train updates for push notifications
-                _process_push_notifications(session)
-
-                # Run post-journey validation
+                # Run journey validation BEFORE notifications to ensure fresh data
                 try:
                     from trackcast.db.repository import TrainRepository, TrainStopRepository
                     from trackcast.services.journey_validator import JourneyValidator
 
-                    logger.info("Running post-journey validation")
+                    logger.info("Running journey validation to ensure data freshness")
                     train_repo = TrainRepository(session)
                     stop_repo = TrainStopRepository(session)
                     validator = JourneyValidator(train_repo, stop_repo)
@@ -646,6 +643,9 @@ def _execute_collect_data() -> bool:
 
                 except Exception as e:
                     logger.warning(f"Journey validation failed (continuing anyway): {e}")
+
+                # Process train updates for push notifications with fresh data
+                _process_push_notifications(session)
 
                 return True
             else:
@@ -789,8 +789,6 @@ def check_apns_config() -> None:
             config_status["auth_method"] = "auth_key"
 
             # Validate auth key file
-            import os
-
             if not os.path.exists(apns_service.auth_key_path):
                 config_status["issues"].append(
                     f"Auth key file not found: {apns_service.auth_key_path}"
@@ -804,8 +802,6 @@ def check_apns_config() -> None:
             config_status["auth_method"] = "certificate"
 
             # Validate certificate files
-            import os
-
             if not os.path.exists(apns_service.cert_path):
                 config_status["issues"].append(
                     f"Certificate file not found: {apns_service.cert_path}"

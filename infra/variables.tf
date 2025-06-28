@@ -81,3 +81,18 @@ variable "amtrak_api_key" {
   sensitive   = true
   default     = ""
 }
+
+variable "apns_team_id" {
+  description = "Apple Developer Team ID for APNS"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "apns_key_id" {
+  description = "APNS Auth Key ID"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+

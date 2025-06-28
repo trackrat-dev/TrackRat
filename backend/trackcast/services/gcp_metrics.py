@@ -266,8 +266,12 @@ class GCPMetricsExporter:
 
             # Add the data point
             point = monitoring_v3.Point()
-            point.interval.end_time = Timestamp()
-            point.interval.end_time.FromDatetime(timestamp)
+            ts = Timestamp()
+            seconds = int(timestamp.timestamp())
+            nanos = int((timestamp.timestamp() - int(timestamp.timestamp())) * 1e9)
+            ts.seconds = seconds
+            ts.nanos = nanos
+            point.interval.end_time = ts
 
             # Set value based on metric type
             if family.type == "counter":
@@ -377,8 +381,12 @@ class GCPMetricsExporter:
 
             # Add data point
             point = monitoring_v3.Point()
-            point.interval.end_time = Timestamp()
-            point.interval.end_time.FromDatetime(timestamp)
+            ts = Timestamp()
+            seconds = int(timestamp.timestamp())
+            nanos = int((timestamp.timestamp() - int(timestamp.timestamp())) * 1e9)
+            ts.seconds = seconds
+            ts.nanos = nanos
+            point.interval.end_time = ts
             point.value.double_value = float(value)
             series.points.append(point)
 

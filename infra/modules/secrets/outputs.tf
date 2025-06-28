@@ -20,4 +20,14 @@ output "amtrak_api_key_secret_name" {
   value       = google_secret_manager_secret.amtrak_api_key.secret_id
 }
 
+output "apns_team_id_secret_name" {
+  description = "Name of the APNS Team ID secret"
+  value       = google_secret_manager_secret.apns_team_id.secret_id
+}
+
+output "apns_key_id_secret_name" {
+  description = "Name of the APNS Key ID secret"
+  value       = google_secret_manager_secret.apns_key_id.secret_id
+}
+
 # Database password outputs moved to database module

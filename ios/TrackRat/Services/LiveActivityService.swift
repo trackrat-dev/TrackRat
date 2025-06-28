@@ -3,120 +3,7 @@ import ActivityKit
 import UserNotifications
 import UIKit
 
-// MARK: - Alert Configuration Types
 
-enum TrainAlertType {
-    case trackAssigned(track: String)
-    case boarding(track: String?)
-    case departed(fromStation: String)
-    case approaching(station: String, minutes: Int)
-    case delayUpdate(minutes: Int)
-    case statusChange(newStatus: String)
-    case stopDeparture(station: String, isOrigin: Bool, stopsRemaining: Int)
-    case approachingStop(station: String, minutes: Int, isDestination: Bool)
-    
-    var alertConfiguration: AlertConfiguration {
-        switch self {
-        case .trackAssigned(let track):
-            return AlertConfiguration(
-                title: "Track Assigned! 🚋",
-                body: "Track \(track) - Get Ready to Board",
-                sound: .default
-            )
-            
-        case .boarding(let track):
-            if let track = track {
-                return AlertConfiguration(
-                    title: "Time to Board! 🚆",
-                    body: "Track \(track) - All Aboard!",
-                    sound: .default
-                )
-            } else {
-                return AlertConfiguration(
-                    title: "Time to Board! 🚆",
-                    body: "Boarding Now!",
-                    sound: .default
-                )
-            }
-            
-        case .departed(let fromStation):
-            return AlertConfiguration(
-                title: "Train Departed 🛤️",
-                body: "Left \(fromStation) - Journey Started",
-                sound: .default
-            )
-            
-        case .approaching(let station, let minutes):
-            return AlertConfiguration(
-                title: "Approaching \(station) 🎯",
-                body: "Arriving in \(minutes) minute\(minutes == 1 ? "" : "s")",
-                sound: .default
-            )
-            
-        case .delayUpdate(let minutes):
-            return AlertConfiguration(
-                title: "Delay Update ⏰",
-                body: "Now \(minutes) minutes behind schedule",
-                sound: .default
-            )
-            
-        case .statusChange(let newStatus):
-            return AlertConfiguration(
-                title: "Status Update 📢",
-                body: "Train status: \(newStatus)",
-                sound: .default
-            )
-            
-        case .stopDeparture(let station, let isOrigin, let stopsRemaining):
-            if isOrigin {
-                return AlertConfiguration(
-                    title: "Train Departed! 🚂",
-                    body: "Left \(station) - Journey Started",
-                    sound: .default
-                )
-            } else {
-                return AlertConfiguration(
-                    title: "Departed \(station) ✅",
-                    body: "\(stopsRemaining) stop\(stopsRemaining == 1 ? "" : "s") to destination",
-                    sound: .default
-                )
-            }
-            
-        case .approachingStop(let station, let minutes, let isDestination):
-            if isDestination {
-                return AlertConfiguration(
-                    title: "Approaching Destination! 📍",
-                    body: "Arriving at \(station) in ~\(minutes) minute\(minutes == 1 ? "" : "s")",
-                    sound: .default
-                )
-            } else {
-                return AlertConfiguration(
-                    title: "Next Stop: \(station) 📍",
-                    body: "Arriving in ~\(minutes) minute\(minutes == 1 ? "" : "s")",
-                    sound: .default
-                )
-            }
-        }
-    }
-    
-    /// Determine if this alert type should trigger maximum relevance
-    var isHighPriority: Bool {
-        switch self {
-        case .trackAssigned, .boarding:
-            return true
-        case .departed, .approaching:
-            return true
-        case .delayUpdate(let minutes):
-            return minutes >= 10 // Only high priority for significant delays
-        case .statusChange:
-            return false
-        case .stopDeparture(_, let isOrigin, _):
-            return isOrigin
-        case .approachingStop(_, _, let isDestination):
-            return isDestination
-        }
-    }
-}
 
 @available(iOS 16.1, *)
 class LiveActivityService: ObservableObject {
@@ -200,64 +87,7 @@ class LiveActivityService: ObservableObject {
         return min(score, 100.0)
     }
     
-    // MARK: - Alert Detection
     
-    /// Detect significant changes that warrant Dynamic Island alerts
-    private func detectSignificantChanges(
-        oldState: TrainActivityAttributes.ContentState?,
-        newState: TrainActivityAttributes.ContentState,
-        train: Train
-    ) -> TrainAlertType? {
-        
-        guard let oldState = oldState else { return nil }
-        
-        // Track assignment (highest priority)
-        if (oldState.track?.isEmpty != false) && (newState.track?.isEmpty == false) {
-            return .trackAssigned(track: newState.track!)
-        }
-        
-        // Boarding status change
-        if !oldState.statusV2.contains("BOARDING") && newState.statusV2.contains("BOARDING") {
-            return .boarding(track: newState.track)
-        }
-        
-        // Departure detection
-        let isDeparted = { (location: CurrentLocation) -> Bool in
-            if case .departed = location { return true }
-            return false
-        }
-        
-        if !isDeparted(oldState.currentLocation) && isDeparted(newState.currentLocation) {
-            let stationName = newState.statusLocation ?? train.statusV2?.location ?? "station"
-            return .departed(fromStation: stationName)
-        }
-        
-        // Approaching destination (within 5 minutes)
-        if let nextStop = newState.nextStop,
-           nextStop.isDestination,
-           nextStop.minutesAway <= 5 && nextStop.minutesAway > 0,
-           (oldState.nextStop?.minutesAway ?? 10) > 5 {
-            return .approaching(station: nextStop.name, minutes: nextStop.minutesAway)
-        }
-        
-        // Significant delay change (5+ minutes difference)
-        if let oldDelay = oldState.delayMinutes,
-           let newDelay = newState.delayMinutes,
-           abs(newDelay - oldDelay) >= 5 {
-            return .delayUpdate(minutes: newDelay)
-        }
-        
-        // Important status changes
-        if oldState.statusV2 != newState.statusV2 {
-            // Only alert for significant status changes
-            let significantStatuses = ["BOARDING", "DEPARTED", "DELAYED", "CANCELLED"]
-            if significantStatuses.contains(where: { newState.statusV2.contains($0) }) {
-                return .statusChange(newStatus: newState.statusV2)
-            }
-        }
-        
-        return nil
-    }
     
     // MARK: - Activity Management
     
@@ -505,40 +335,15 @@ class LiveActivityService: ObservableObject {
             return
         }
         
-        // Check for stop departures and approaching stops
+        // Update stored stops state if available
         if let stops = train.stops {
-            await detectAndNotifyStopDepartures(
-                newStops: stops,
-                train: train,
-                originCode: attributes.originStationCode,
-                destinationCode: attributes.destinationStationCode
-            )
-            
-            await detectAndNotifyApproachingStops(
-                stops: stops,
-                train: train,
-                originCode: attributes.originStationCode,
-                destinationCode: attributes.destinationStationCode
-            )
-            
-            // Update stored stops state
             await MainActor.run {
                 self.lastKnownStops = stops
             }
         }
         
-        // Check for significant changes that warrant Dynamic Island alerts
-        let alertType = detectSignificantChanges(
-            oldState: lastKnownState,
-            newState: newState,
-            train: train
-        )
-        
         // Create content with enhanced relevance scoring using backend metadata
-        var relevanceScore = calculateRelevanceScore(for: train, alertMetadata: newState.alertMetadata)
-        if let alert = alertType, alert.isHighPriority {
-            relevanceScore = 100.0 // Maximum priority for important alerts
-        }
+        let relevanceScore = calculateRelevanceScore(for: train, alertMetadata: newState.alertMetadata)
         
         let updatedContent = ActivityContent(
             state: newState,
@@ -546,31 +351,8 @@ class LiveActivityService: ObservableObject {
             relevanceScore: relevanceScore
         )
         
-        // Update activity with or without alert
-        if let alertType = alertType {
-            // Update with Dynamic Island alert
-            await activity.update(updatedContent, alertConfiguration: alertType.alertConfiguration)
-            
-            // Enhanced haptic feedback for alerts
-            await MainActor.run {
-                let impact: UIImpactFeedbackGenerator.FeedbackStyle
-                switch alertType {
-                case .trackAssigned, .boarding:
-                    impact = .heavy
-                case .departed, .approaching:
-                    impact = .medium
-                default:
-                    impact = .light
-                }
-                let generator = UIImpactFeedbackGenerator(style: impact)
-                generator.impactOccurred()
-            }
-            
-            print("🔔 Dynamic Island alert triggered: \(alertType)")
-        } else {
-            // Regular update without alert
-            await activity.update(updatedContent)
-        }
+        // Regular update without alert
+        await activity.update(updatedContent)
         
         // Check for status changes that warrant additional haptic feedback
         if newState.hasStatusChanged {

@@ -119,6 +119,8 @@ module "trackrat_api_service" {
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
     NJT_TOKEN    = "${module.infrastructure.njt_token_secret_name}:latest"
+    APNS_TEAM_ID = "${module.infrastructure.apns_team_id_secret_name}:latest"
+    APNS_KEY_ID  = "${module.infrastructure.apns_key_id_secret_name}:latest"
   }
 
   # If a specific service account is already created for the API for this env:
@@ -180,12 +182,14 @@ module "scheduled_operations" {
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
     NJT_TOKEN    = "${module.infrastructure.njt_token_secret_name}:latest"
+    APNS_TEAM_ID = "${module.infrastructure.apns_team_id_secret_name}:latest"
+    APNS_KEY_ID  = "${module.infrastructure.apns_key_id_secret_name}:latest"
   }
 
   # Job configurations
   jobs = {
     pipeline = {
-      command      = ["trackcast", "run-pipeline", "--regenerate"]
+      command      = ["/bin/bash", "-c", "trackcast check-apns-config && trackcast run-pipeline --regenerate"]
       cpu_limit    = "1"
       memory_limit = "1Gi"
       max_retries  = 1
