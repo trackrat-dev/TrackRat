@@ -64,7 +64,9 @@ class APNSPushService:
         self.auth_key_path = os.getenv("APNS_AUTH_KEY_PATH")
         self.bundle_id = os.getenv("APNS_BUNDLE_ID", "net.trackrat.TrackRat")
 
-        # Live Activity extension bundle ID (defaults to main bundle ID + extension if not specified)
+        # Live Activity extension bundle ID (for reference only - not used in APNS topic)
+        # Note: Live Activities use the main app bundle ID with .push-type.liveactivity suffix
+        # The extension bundle ID is stored here for logging/debugging purposes only
         self.live_activity_bundle_id = os.getenv(
             "APNS_LIVE_ACTIVITY_BUNDLE_ID", f"{self.bundle_id}.TrainLiveActivityExtension"
         )
@@ -606,10 +608,12 @@ class APNSPushService:
 
         try:
             # Prepare headers
-            # Live Activities require special topic format with the extension bundle ID
+            # IMPORTANT: Per Apple docs, Live Activities use the format:
+            # <your bundleID>.push-type.liveactivity
+            # This uses the MAIN APP bundle ID, not the extension bundle ID
             if is_live_activity:
-                # Use the Live Activity extension bundle ID for Live Activities
-                topic = f"{self.live_activity_bundle_id}.push-type.liveactivity"
+                # Live Activities must use main app bundle ID + .push-type.liveactivity
+                topic = f"{self.bundle_id}.push-type.liveactivity"
             else:
                 # Use the main app bundle ID for regular notifications
                 topic = self.bundle_id
@@ -630,6 +634,12 @@ class APNSPushService:
                 jwt_token = self._generate_jwt_token()
                 headers["authorization"] = f"bearer {jwt_token}"
 
+            # Validate topic format for Live Activities
+            if is_live_activity and not topic.endswith(".push-type.liveactivity"):
+                logger.error(f"❌ Invalid Live Activity topic format: {topic}")
+                logger.error("Live Activity topics must end with '.push-type.liveactivity'")
+                return False
+
             # Debug logging
             logger.info(
                 f"🚀 APNS Request Debug - Topic: {topic}, Push Type: {'liveactivity' if is_live_activity else 'alert'}, Token: {device_token[:12]}..."
@@ -637,7 +647,12 @@ class APNSPushService:
             logger.info(f"📡 APNS URL: {url}")
             logger.info(f"📋 APNS Headers: {headers}")
             if is_live_activity:
-                logger.info(f"🎯 Using Live Activity Bundle ID: {self.live_activity_bundle_id}")
+                logger.info(
+                    f"🎯 Using Live Activity Topic: {topic} (Main app bundle + .push-type.liveactivity)"
+                )
+                logger.info(
+                    f"📌 Extension Bundle ID (for reference): {self.live_activity_bundle_id}"
+                )
             else:
                 logger.info(f"📱 Using Main App Bundle ID: {self.bundle_id}")
             if is_live_activity:
@@ -669,6 +684,25 @@ class APNSPushService:
                             f"APNS request failed with 400 Bad Request: {reason} "
                             f"for token {device_token[:8]}..."
                         )
+
+                        # Special handling for DeviceTokenNotForTopic
+                        if reason == "DeviceTokenNotForTopic":
+                            logger.error(
+                                f"❌ DeviceTokenNotForTopic: The token was not issued for topic '{topic}'. "
+                                f"This usually means:\n"
+                                f"  1. The iOS app is using a different bundle ID than expected\n"
+                                f"  2. The token is from a development build but being sent to production APNS (or vice versa)\n"
+                                f"  3. For Live Activities, ensure the iOS app is sending the Live Activity push token, "
+                                f"not the regular device token"
+                            )
+                            if is_live_activity:
+                                logger.error(
+                                    f"🔍 Live Activity Debug Info:\n"
+                                    f"  - Expected topic: {topic}\n"
+                                    f"  - Main app bundle ID: {self.bundle_id}\n"
+                                    f"  - Extension bundle ID (reference): {self.live_activity_bundle_id}\n"
+                                    f"  - APNS environment: {'Production' if 'sandbox' not in self.apns_url else 'Sandbox'}"
+                                )
                     except Exception:
                         logger.error(
                             f"APNS request failed with 400 Bad Request for token {device_token[:8]}..."
