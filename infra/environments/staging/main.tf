@@ -92,7 +92,7 @@ module "trackrat_api_service" {
   environment_variables = {
     APP_ENV                      = "staging"
     TRACKCAST_ENV                = "staging"
-    APNS_ENVIRONMENT             = "dev"                                              # Use sandbox APNS to match iOS development entitlements
+    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for TestFlight/production-signed iOS apps
     APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
     APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
     MODEL_PATH                   = "/app/models"
@@ -152,7 +152,7 @@ module "scheduled_operations" {
   environment_variables = {
     APP_ENV                      = "staging"
     TRACKCAST_ENV                = "staging"
-    APNS_ENVIRONMENT             = "dev"                                              # Use sandbox APNS to match iOS development entitlements
+    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for TestFlight/production-signed iOS apps
     APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
     APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
     MODEL_PATH                   = "/app/models"

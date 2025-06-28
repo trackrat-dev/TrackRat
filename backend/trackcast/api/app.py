@@ -40,7 +40,7 @@ Instrumentator().instrument(app).expose(app)
 # Initialize GCP Metrics Exporter
 try:
     gcp_exporter = initialize_gcp_exporter(
-        export_interval_seconds=int(os.getenv("GCP_METRICS_EXPORT_INTERVAL", "60"))
+        export_interval_seconds=int(os.getenv("GCP_METRICS_EXPORT_INTERVAL", "180"))
     )
     if gcp_exporter.is_enabled():
         start_gcp_export()

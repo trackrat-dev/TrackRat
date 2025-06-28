@@ -8,6 +8,7 @@ allowing TrackCast metrics to be exported to GCP's Metrics Explorer for monitori
 import asyncio
 import logging
 import os
+import random
 import time
 from datetime import datetime, timezone
 from threading import Lock, Thread
@@ -35,7 +36,7 @@ class GCPMetricsExporter:
         project_id: Optional[str] = None,
         service_account_path: Optional[str] = None,
         metric_prefix: str = "trackcast",
-        export_interval_seconds: int = 120,
+        export_interval_seconds: int = 180,
         max_batch_size: int = 50,
         enabled: bool = None,
     ):
@@ -82,6 +83,13 @@ class GCPMetricsExporter:
 
         # Metric type cache to avoid repeated creation
         self._metric_type_cache: Dict[str, str] = {}
+
+        # Backoff state for rate limiting
+        self._consecutive_failures = 0
+        self._last_failure_time = 0
+
+        # Timestamp tracking for deduplication
+        self._last_export_timestamp = 0
 
         if self.enabled:
             try:
@@ -175,7 +183,17 @@ class GCPMetricsExporter:
         metric_families = list(REGISTRY.collect())
         time_series = []
 
-        current_time = datetime.now(timezone.utc)
+        base_time = datetime.now(timezone.utc)
+
+        # Ensure this export timestamp is after the last one
+        base_timestamp = base_time.timestamp()
+        if base_timestamp <= self._last_export_timestamp:
+            # Add 1 second to ensure monotonic progression
+            base_timestamp = self._last_export_timestamp + 1
+            base_time = datetime.fromtimestamp(base_timestamp, timezone.utc)
+
+        self._last_export_timestamp = base_timestamp
+        nanos_offset = 0  # Offset to ensure unique timestamps
 
         for family in metric_families:
             # Skip internal Prometheus metrics
@@ -184,6 +202,17 @@ class GCPMetricsExporter:
 
             for sample in family.samples:
                 try:
+                    # Create unique timestamp for each metric to avoid GCP collisions
+                    microsecond_offset = nanos_offset % 1000000  # Keep within microsecond range
+                    current_time = base_time.replace(
+                        microsecond=min(base_time.microsecond + microsecond_offset, 999999)
+                    )
+                    nanos_offset += 100  # 100 microsecond increment per metric
+
+                    # Validate timestamp is not in the future (GCP requirement)
+                    if current_time > datetime.now(timezone.utc):
+                        current_time = datetime.now(timezone.utc)
+
                     # Create time series for this metric
                     ts = self._create_time_series(sample, family, current_time)
                     if ts:
@@ -210,10 +239,35 @@ class GCPMetricsExporter:
                 self._client.create_time_series(request=request)
                 total_exported += len(batch)
                 logger.debug(f"Exported batch of {len(batch)} metrics to GCP")
+
+                # Reset backoff on success
+                self._consecutive_failures = 0
+
             except Exception as e:
-                logger.error(f"Failed to export metrics batch: {e}")
+                error_msg = str(e)
+                logger.error(f"Failed to export metrics batch: {error_msg}")
                 success = False
-                last_error = str(e)
+                last_error = error_msg
+
+                # Implement exponential backoff for rate limiting errors
+                if (
+                    "more frequently than the maximum sampling period" in error_msg
+                    or "RESOURCE_EXHAUSTED" in error_msg
+                    or "400" in error_msg
+                ):
+                    self._consecutive_failures += 1
+                    self._last_failure_time = time.time()
+
+                    # Calculate backoff delay: 2^failures seconds with jitter, max 300s
+                    backoff_delay = min(2**self._consecutive_failures, 300)
+                    jitter = random.uniform(0.5, 1.5)  # Add jitter to prevent thundering herd
+                    actual_delay = backoff_delay * jitter
+
+                    logger.warning(
+                        f"Rate limited by GCP, backing off for {actual_delay:.1f}s "
+                        f"(failure #{self._consecutive_failures})"
+                    )
+                    time.sleep(actual_delay)
 
         # Update export stats
         export_time = time.time() - start_time
@@ -267,10 +321,11 @@ class GCPMetricsExporter:
             # Add the data point
             point = monitoring_v3.Point()
             ts = Timestamp()
-            # Round timestamp to seconds to avoid ordering issues
+            # Use full timestamp precision to ensure uniqueness
             seconds = int(timestamp.timestamp())
+            nanos = int((timestamp.timestamp() - seconds) * 1e9)
             ts.seconds = seconds
-            ts.nanos = 0  # Always use 0 nanos to ensure consistent ordering
+            ts.nanos = nanos
             point.interval.end_time = ts
 
             # Set value based on metric type
@@ -417,7 +472,7 @@ def initialize_gcp_exporter(
     project_id: Optional[str] = None,
     service_account_path: Optional[str] = None,
     metric_prefix: str = "trackcast",
-    export_interval_seconds: int = 60,
+    export_interval_seconds: int = 180,
     enabled: bool = None,
 ) -> GCPMetricsExporter:
     """
