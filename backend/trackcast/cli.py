@@ -51,31 +51,49 @@ def _process_push_notifications(session) -> None:
         logger.info("🔔 Starting push notification processing")
         train_repo = TrainRepository(session)
 
-        # Get recent trains that might have Live Activities
+        # Get unique train IDs that have Live Activities (prevents duplicates)
         recent_cutoff = datetime.utcnow() - timedelta(hours=6)
-        logger.debug(f"🔍 Querying trains with Live Activities since {recent_cutoff}")
-        recent_trains = train_repo.get_trains_with_live_activities(since=recent_cutoff)
+        logger.debug(f"🔍 Querying unique train IDs with Live Activities since {recent_cutoff}")
+        unique_train_ids = train_repo.get_unique_train_ids_with_live_activities(since=recent_cutoff)
 
-        logger.info(f"🚂 Found {len(recent_trains)} trains with potential Live Activities")
-        if len(recent_trains) == 0:
+        logger.info(
+            f"🚂 Found {len(unique_train_ids)} unique trains with potential Live Activities"
+        )
+        if len(unique_train_ids) == 0:
             logger.info("ℹ️ No trains with Live Activities found - skipping notification processing")
         else:
             # Log train details for debugging
-            train_ids = [t.train_id for t in recent_trains[:5]]  # Show first 5
+            sample_ids = unique_train_ids[:5]  # Show first 5
             logger.debug(
-                f"📝 Sample train IDs: {train_ids}{'...' if len(recent_trains) > 5 else ''}"
+                f"📝 Sample train IDs: {sample_ids}{'...' if len(unique_train_ids) > 5 else ''}"
             )
 
-        # Process notifications asynchronously
-        logger.info("📱 Processing train state changes for Live Activity updates")
-        asyncio.run(notification_service.process_train_updates(recent_trains, session))
+        # Process notifications with consolidation
+        logger.info(
+            "📱 Processing train state changes for Live Activity updates (with consolidation)"
+        )
+        asyncio.run(
+            notification_service.process_consolidated_train_updates(
+                unique_train_ids, session, since=recent_cutoff
+            )
+        )
 
-        logger.info(f"✅ Push notification processing completed for {len(recent_trains)} trains")
+        logger.info(
+            f"✅ Push notification processing completed for {len(unique_train_ids)} unique trains"
+        )
 
         # Process stop departure and approaching stop events
         logger.info("🚉 Processing stop events for Live Activities")
         stop_events_processed = 0
-        for train in recent_trains:
+        # Need to fetch full train objects for stop event processing
+        all_trains = []
+        for train_id in unique_train_ids:
+            trains_for_id = train_repo.get_all_trains_for_train_id(train_id, since=recent_cutoff)
+            if trains_for_id:
+                # Use the most recently updated train record for stop events
+                all_trains.append(trains_for_id[0])
+
+        for train in all_trains:
             logger.debug(f"🔍 Processing stop events for train {train.train_id}")
             asyncio.run(event_detector.process_train_for_events(train, session))
             stop_events_processed += 1

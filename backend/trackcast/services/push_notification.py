@@ -770,6 +770,70 @@ class TrainUpdateNotificationService:
         except Exception as e:
             logger.error(f"❌ Error processing train updates: {str(e)}")
 
+    async def process_consolidated_train_updates(
+        self, train_ids: List[str], db: Session, since: Optional[datetime] = None
+    ):
+        """
+        Process train updates using consolidation to eliminate duplicates and enhance data.
+
+        This method replaces process_train_updates with a consolidation-aware approach:
+        1. For each unique train_id, fetch all Train records from different origin stations
+        2. Apply consolidation to get unified journey data with enhanced fields
+        3. Send notifications using the consolidated data (with status_v2, progress, etc.)
+
+        Args:
+            train_ids: List of unique train IDs to process
+            db: Database session
+            since: Optional datetime to filter train records updated since this time
+        """
+        logger.info(f"🔄 Processing consolidated train updates for {len(train_ids)} unique trains")
+
+        try:
+            from trackcast.db.repository import TrainRepository
+            from trackcast.services.train_consolidation import TrainConsolidationService
+
+            train_repo = TrainRepository(db)
+            consolidation_service = TrainConsolidationService()
+
+            for train_id in train_ids:
+                try:
+                    # Get all Train records for this train_id (from all origin stations)
+                    train_records = train_repo.get_all_trains_for_train_id(train_id, since=since)
+
+                    if not train_records:
+                        logger.warning(f"⚠️ No train records found for train_id {train_id}")
+                        continue
+
+                    logger.debug(f"📊 Found {len(train_records)} records for train {train_id}")
+
+                    # Apply consolidation (without station context for now)
+                    consolidated_trains = consolidation_service.consolidate_trains(
+                        train_records, from_station_code=None
+                    )
+
+                    if not consolidated_trains:
+                        logger.warning(f"⚠️ Consolidation produced no results for train {train_id}")
+                        continue
+
+                    # Should get exactly one consolidated train per unique train_id
+                    consolidated_train = consolidated_trains[0]
+
+                    logger.debug(
+                        f"✅ Consolidated train {train_id}: status_v2='{consolidated_train.get('status_v2', {}).get('current', 'None')}', progress={consolidated_train.get('progress', {}).get('journey_percent', 0)}%"
+                    )
+
+                    # Process notifications using consolidated data
+                    await self._check_and_notify_consolidated_train_changes(consolidated_train, db)
+
+                except Exception as e:
+                    logger.error(f"❌ Error processing train {train_id}: {str(e)}")
+                    continue
+
+            logger.info(f"✅ Successfully processed {len(train_ids)} consolidated train updates")
+
+        except Exception as e:
+            logger.error(f"❌ Error in consolidated train processing: {str(e)}")
+
     async def _check_and_notify_train_changes(self, train: Train, db: Session):
         """
         Check for significant changes in a train and send notifications.
@@ -876,6 +940,121 @@ class TrainUpdateNotificationService:
 
             logger.error(f"📋 Traceback: {traceback.format_exc()}")
 
+    async def _check_and_notify_consolidated_train_changes(
+        self, consolidated_train: Dict, db: Session
+    ):
+        """
+        Check for significant changes in a consolidated train and send notifications.
+
+        This method handles consolidated train data (dict) instead of Train objects,
+        allowing for enhanced fields like status_v2 and progress from consolidation.
+
+        Args:
+            consolidated_train: Consolidated train dictionary from TrainConsolidationService
+            db: Database session
+        """
+        try:
+            train_id = consolidated_train.get("train_id")
+            if not train_id:
+                logger.error("❌ No train_id found in consolidated train data")
+                return
+
+            # Use consolidated_id for state tracking (includes journey info)
+            train_key = consolidated_train.get("consolidated_id", train_id)
+            current_state = self._extract_consolidated_train_state(consolidated_train)
+            last_state = self.last_train_states.get(train_key)
+
+            logger.debug(
+                f"🔍 Checking consolidated train {train_id} - Last state: {bool(last_state)}, Current status_v2: {current_state.get('status_v2')}"
+            )
+
+            # Detect significant changes
+            alert_type = self._detect_alert_worthy_changes(last_state, current_state)
+
+            if alert_type:
+                logger.info(
+                    f"🚨 Alert detected for consolidated train {train_id}: {alert_type.value}"
+                )
+            else:
+                logger.debug(
+                    f"📊 No alert for consolidated train {train_id}, sending silent update"
+                )
+
+            # Get active Live Activity tokens for this train
+            from sqlalchemy.orm import joinedload
+
+            active_tokens = (
+                db.query(LiveActivityToken)
+                .options(joinedload(LiveActivityToken.device))
+                .filter(
+                    LiveActivityToken.train_id == train_id,
+                    LiveActivityToken.is_active == True,
+                )
+                .all()
+            )
+
+            if not active_tokens:
+                logger.debug(f"📭 No active Live Activity tokens found for train {train_id}")
+                return
+
+            logger.info(
+                f"📱 Found {len(active_tokens)} active Live Activity tokens for consolidated train {train_id}"
+            )
+
+            # Send notifications to all active tokens
+            for token in active_tokens:
+                try:
+                    if alert_type:
+                        # Send alert notification
+                        results = await self.push_service.send_train_notifications(
+                            live_activity_token=token,
+                            train_data=current_state,
+                            alert_type=alert_type,
+                            db=db,
+                        )
+
+                        if results["live_activity"] or results["regular_notification"]:
+                            logger.info(
+                                f"✅ Alert sent for train {train_id}: {alert_type.value} "
+                                f"(Live Activity: {results['live_activity']}, Regular: {results['regular_notification']}) to token {token.push_token[:12]}..."
+                            )
+                        else:
+                            logger.warning(
+                                f"⚠️ Failed to send alert for train {train_id}: {alert_type.value} to token {token.push_token[:12]}..."
+                            )
+                    else:
+                        # Send silent Live Activity update only
+                        results = await self.push_service.send_train_notifications(
+                            live_activity_token=token,
+                            train_data=current_state,
+                            alert_type=None,  # Silent update
+                            db=db,
+                        )
+
+                        if results["live_activity"]:
+                            logger.debug(
+                                f"🔕 Silent update sent for train {train_id} to token {token.push_token[:12]}..."
+                            )
+                        else:
+                            logger.warning(
+                                f"⚠️ Silent update failed for train {train_id} to token {token.push_token[:12]}..."
+                            )
+
+                except Exception as e:
+                    logger.error(
+                        f"❌ Error sending notification for train {train_id} to token {token.push_token[:12]}...: {str(e)}"
+                    )
+
+            # Update last known state
+            self.last_train_states[train_key] = current_state
+            logger.debug(f"💾 Updated last known state for consolidated train {train_id}")
+
+        except Exception as e:
+            logger.error(f"❌ Error checking consolidated train changes: {str(e)}")
+            import traceback
+
+            logger.error(f"📋 Traceback: {traceback.format_exc()}")
+
     def _extract_train_state(self, train: Train) -> Dict[str, Any]:
         """
         Extract relevant state from train for comparison.
@@ -897,6 +1076,77 @@ class TrainUpdateNotificationService:
         }
         logger.debug(
             f"📊 Extracted state for train {train.train_id}: track={state['track']}, status={state['status']}"
+        )
+        return state
+
+    def _extract_consolidated_train_state(self, consolidated_train: Dict) -> Dict[str, Any]:
+        """
+        Extract relevant state from consolidated train data for comparison.
+
+        This method extracts state from consolidated train dictionaries,
+        utilizing enhanced fields like status_v2 and progress that are only
+        available after consolidation.
+
+        Args:
+            consolidated_train: Consolidated train dictionary from TrainConsolidationService
+
+        Returns:
+            State dictionary with enhanced fields
+        """
+        # Extract basic fields
+        state = {
+            "train_id": consolidated_train.get("train_id"),
+            "track": consolidated_train.get("track_assignment", {}).get("track"),
+            "status": consolidated_train.get("status"),  # Legacy status
+            "delay_minutes": consolidated_train.get("delay_minutes", 0),
+            "departure_time": consolidated_train.get("origin_station", {}).get("departure_time"),
+        }
+
+        # Extract enhanced fields from consolidation
+        status_v2 = consolidated_train.get("status_v2", {})
+        progress = consolidated_train.get("progress", {})
+
+        # Add enhanced status information
+        state["status_v2"] = status_v2.get("current") if status_v2 else None
+        state["status_location"] = status_v2.get("location") if status_v2 else None
+
+        # Add journey progress information
+        state["journey_percent"] = progress.get("journey_percent", 0) if progress else 0
+
+        # Handle last_departed - it might be None
+        last_departed = progress.get("last_departed") if progress else None
+        state["current_location"] = (
+            last_departed.get("station_code")
+            if last_departed and isinstance(last_departed, dict)
+            else None
+        )
+
+        # Handle next_arrival - it might be None
+        next_arrival = progress.get("next_arrival") if progress else None
+        state["next_stop"] = (
+            next_arrival.get("station_code")
+            if next_arrival and isinstance(next_arrival, dict)
+            else None
+        )
+        state["destination_eta"] = (
+            next_arrival.get("estimated_time")
+            if next_arrival and isinstance(next_arrival, dict)
+            else None
+        )
+
+        # Add prediction data
+        prediction = consolidated_train.get("prediction_data", {})
+        state["track_prediction"] = prediction if prediction else None
+
+        # Add consolidation metadata for richer notifications
+        state["consolidated_id"] = consolidated_train.get("consolidated_id")
+        state["consolidation_confidence"] = consolidated_train.get(
+            "consolidation_metadata", {}
+        ).get("confidence_score", 0)
+
+        logger.debug(
+            f"📊 Extracted consolidated state for train {state['train_id']}: "
+            f"track={state['track']}, status_v2={state['status_v2']}, progress={state['journey_percent']}%"
         )
         return state
 
@@ -1019,36 +1269,30 @@ class LiveActivityEventDetector:
                 if not prev_stop.get("departed", False) and stop.get("departed", False):
                     # Check each active Live Activity
                     for token in active_tokens:
-                        # Only notify if this stop is in user's journey
-                        if self._is_stop_in_journey(
-                            stop,
-                            token.origin_station_code,
-                            token.destination_station_code,
-                            current_stops,
-                        ):
-                            # Calculate stops remaining
-                            stops_remaining = self._count_remaining_stops(
-                                current_stops,
-                                stop.get("station_code"),
-                                token.destination_station_code,
-                            )
+                        # Note: LiveActivityToken doesn't store origin/destination station codes
+                        # So we'll send notifications for all significant stop events
+                        # The iOS app can filter based on user's actual journey
 
-                            events.append(
-                                {
-                                    "type": "stop_departure",
-                                    "token": token,
-                                    "train": train,
-                                    "event_data": {
-                                        "station": stop.get("station_name"),
-                                        "is_origin": stop.get("station_code")
-                                        == token.origin_station_code,
-                                        "stops_remaining": stops_remaining,
-                                        "departed_at": stop.get(
-                                            "actual_departure_time", datetime.now()
-                                        ).isoformat(),
-                                    },
-                                }
-                            )
+                        # Calculate total stops remaining (simplified without journey context)
+                        stops_remaining = (
+                            len([s for s in current_stops if not s.get("departed", False)]) - 1
+                        )
+
+                        events.append(
+                            {
+                                "type": "stop_departure",
+                                "token": token,
+                                "train": train,
+                                "event_data": {
+                                    "station": stop.get("station_name"),
+                                    "is_origin": False,  # Can't determine without station context
+                                    "stops_remaining": stops_remaining,
+                                    "departed_at": stop.get(
+                                        "actual_departure_time", datetime.now()
+                                    ).isoformat(),
+                                },
+                            }
+                        )
 
         return events
 
@@ -1126,30 +1370,24 @@ class LiveActivityEventDetector:
 
                         # Only send once per stop
                         if not last_sent:
-                            # Only notify if this stop is in user's journey
-                            if self._is_stop_in_journey(
-                                stop,
-                                token.origin_station_code,
-                                token.destination_station_code,
-                                current_stops,
-                            ):
-                                events.append(
-                                    {
-                                        "type": "approaching_stop",
-                                        "token": token,
-                                        "train": train,
-                                        "event_data": {
-                                            "station": stop.get("station_name"),
-                                            "minutes_away": minutes_away,
-                                            "is_destination": stop.get("station_code")
-                                            == token.destination_station_code,
-                                            "estimated_arrival": scheduled_time.isoformat(),
-                                        },
-                                    }
-                                )
+                            # Send approaching notifications for all stops
+                            # (iOS app can filter based on user's journey)
+                            events.append(
+                                {
+                                    "type": "approaching_stop",
+                                    "token": token,
+                                    "train": train,
+                                    "event_data": {
+                                        "station": stop.get("station_name"),
+                                        "minutes_away": minutes_away,
+                                        "is_destination": False,  # Can't determine without station context
+                                        "estimated_arrival": scheduled_time.isoformat(),
+                                    },
+                                }
+                            )
 
-                                # Mark as sent
-                                self.notification_history[notification_key] = current_time
+                            # Mark as sent
+                            self.notification_history[notification_key] = current_time
 
         return events
 
@@ -1173,8 +1411,8 @@ class LiveActivityEventDetector:
                         {
                             "station_code": stop.station_code,
                             "station_name": stop.station_name,
-                            "scheduled_time": stop.scheduled_time,
-                            "actual_departure_time": stop.actual_departure_time,
+                            "scheduled_time": stop.scheduled_arrival,  # Use scheduled_arrival instead
+                            "actual_departure_time": stop.actual_departure,
                             "departed": stop.departed,
                         }
                     )
@@ -1314,7 +1552,7 @@ class LiveActivityEventDetector:
                 if hasattr(stop, "station_code") and hasattr(train, "destination_station_code"):
                     if stop.station_code == train.destination_station_code:
                         destination_eta = (
-                            stop.scheduled_time.isoformat() if stop.scheduled_time else None
+                            stop.scheduled_arrival.isoformat() if stop.scheduled_arrival else None
                         )
                         break
 

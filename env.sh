@@ -1,0 +1,5 @@
+export APNS_TEAM_ID="D5RZZ55J9R"
+export APNS_KEY_ID="4WC3F645FR"
+export APNS_AUTH_KEY_PATH="certs/AuthKey_4WC3F645FR.p8"
+export APNS_BUNDLE_ID="net.trackrat.TrackRat"
+export APNS_ENVIRONMENT="dev"

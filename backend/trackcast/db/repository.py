@@ -1637,6 +1637,102 @@ class TrainRepository(BaseRepository):
             logger.error(f"Database error in get_trains_with_live_activities: {str(e)}")
             raise
 
+    def get_unique_train_ids_with_live_activities(
+        self, since: Optional[datetime] = None
+    ) -> List[str]:
+        """
+        Get unique train IDs that have active Live Activity tokens.
+
+        This method returns only unique train_id values, preventing duplicate
+        processing when the same train appears in multiple origin stations.
+
+        Args:
+            since: Optional datetime to filter trains updated since this time
+
+        Returns:
+            List of unique train_id strings with active Live Activities
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            query = (
+                self.session.query(Train.train_id.distinct())
+                .join(LiveActivityToken, Train.train_id == LiveActivityToken.train_id)
+                .filter(LiveActivityToken.is_active == True)
+            )
+
+            if since:
+                query = query.filter(Train.updated_at >= since)
+
+            # Get unique train IDs only
+            result = [row[0] for row in query.all()]
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(
+                query_type="get_unique_train_ids_with_live_activities"
+            ).observe(duration)
+            return result
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_unique_train_ids_with_live_activities: {str(e)}")
+            raise
+
+    def get_all_trains_for_train_id(
+        self, train_id: str, since: Optional[datetime] = None
+    ) -> List[Train]:
+        """
+        Get all Train records for a specific train_id from all origin stations.
+
+        This is used with consolidation to get all variants of the same train
+        (from different origin stations) for merging into a unified journey.
+
+        Args:
+            train_id: The train ID to fetch all records for
+            since: Optional datetime to filter trains updated since this time
+
+        Returns:
+            List of Train objects for the given train_id
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Query trains with prediction_data (stops relationship doesn't exist due to composite key)
+            query = (
+                self.session.query(Train)
+                .filter(Train.train_id == train_id)
+                .options(joinedload(Train.prediction_data))
+                .order_by(Train.updated_at.desc())
+            )
+
+            if since:
+                query = query.filter(Train.updated_at >= since)
+
+            trains = query.all()
+
+            # Manually load stops for each train since there's no direct relationship
+            for train in trains:
+                stops_query = (
+                    self.session.query(TrainStop)
+                    .filter(TrainStop.train_id == train_id)
+                    .order_by(TrainStop.scheduled_arrival.asc().nullslast())
+                )
+                # Attach stops as a dynamic property
+                train.stops = stops_query.all()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_all_trains_for_train_id").observe(
+                duration
+            )
+            return trains
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_all_trains_for_train_id: {str(e)}")
+            raise
+
     def get_active_trains_with_stops(
         self,
         statuses: List[str] = None,

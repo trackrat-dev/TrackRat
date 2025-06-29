@@ -58,6 +58,8 @@ struct TrainDetailsView: View {
                             onShowHistory: { viewModel.showingHistory = true }
                         )
                         .padding()
+                        // Force view update by using a composite ID that includes changing data
+                        .id("\(train.id)-\(train.statusV2?.current ?? "")-\(train.progress?.journeyPercent ?? 0)-\(train.displayTrack ?? "")")
                     }
                 }
                 .refreshable {
@@ -937,11 +939,14 @@ class TrainDetailsViewModel: ObservableObject {
     }
     
     // Display properties
-    var displayableTrainStops: [Stop] {
+    @Published var displayableTrainStops: [Stop] = []
+    
+    private func updateDisplayableTrainStops() {
         guard let stops = train?.stops,
               let originStationCode = currentOriginStationCode,
               let destinationName = currentDestinationName else {
-            return train?.stops ?? []
+            displayableTrainStops = train?.stops ?? []
+            return
         }
         
         // Find indices of origin and destination stops
@@ -967,18 +972,32 @@ class TrainDetailsViewModel: ObservableObject {
         // If we found both indices, return the slice
         if let startIdx = originIndex, let endIdx = destinationIndex, startIdx <= endIdx {
             // Include both origin and destination (endIdx inclusive)
-            return Array(stops[startIdx...endIdx])
+            displayableTrainStops = Array(stops[startIdx...endIdx])
+        } else {
+            // Fallback to all stops if we can't find the stations or if indices are invalid
+            displayableTrainStops = stops
         }
-        
-        // Fallback to all stops if we can't find the stations or if indices are invalid
-        return stops
     }
     
-    var hasPreviousDisplayStops: Bool {
+    @Published var hasPreviousDisplayStops: Bool = false
+    @Published var hasMoreDisplayStops: Bool = false
+    @Published var journeyProgressPercentage: Int = 0
+    @Published var journeyStopsCompleted: Int = 0
+    @Published var journeyTotalStops: Int = 0
+    
+    private func updateComputedProperties() {
+        updateDisplayableTrainStops()
+        updateJourneyProgress()
+        updateDisplayStopFlags()
+    }
+    
+    private func updateDisplayStopFlags() {
         guard let stops = train?.stops,
               let originStationCode = currentOriginStationCode,
               currentDestinationName != nil else {
-            return false
+            hasPreviousDisplayStops = false
+            hasMoreDisplayStops = false
+            return
         }
         
         // Find the origin index
@@ -997,55 +1016,26 @@ class TrainDetailsViewModel: ObservableObject {
             return false
         }
         
-        // Return true if there are stops before the origin
-        return originIndex != nil && originIndex! > 0
-    }
-    
-    var hasMoreDisplayStops: Bool {
-        guard let stops = train?.stops,
-              let originStationCode = currentOriginStationCode,
-              let destinationName = currentDestinationName else {
-            return false
-        }
+        // Update hasPreviousDisplayStops
+        hasPreviousDisplayStops = originIndex != nil && originIndex! > 0
         
-        // Find indices of origin and destination stops
-        let originIndex = stops.firstIndex { stop in
-            // First try to match by station code
-            if let stopCode = stop.stationCode {
-                return stopCode.uppercased() == originStationCode.uppercased()
-            }
-            
-            // If no station code, find the expected station name for the origin code
-            let expectedStationName = Stations.departureStations.first { $0.code == originStationCode.uppercased() }?.name
-            if let expectedName = expectedStationName {
-                return stop.stationName.lowercased() == expectedName.lowercased()
-            }
-            
-            return false
-        }
+        // Find destination index
+        let destinationIndex = currentDestinationName != nil ? stops.firstIndex { stop in
+            stop.stationName.lowercased() == currentDestinationName!.lowercased()
+        } : nil
         
-        let destinationIndex = stops.firstIndex { stop in
-            stop.stationName.lowercased() == destinationName.lowercased()
-        }
-        
-        // Return true if there are stops after the destination
+        // Update hasMoreDisplayStops
         if let endIdx = destinationIndex, let startIdx = originIndex, startIdx <= endIdx {
-            return endIdx < stops.count - 1
+            hasMoreDisplayStops = endIdx < stops.count - 1
+        } else {
+            hasMoreDisplayStops = false
         }
-        
-        return false
     }
     
-    var journeyProgressPercentage: Int {
-        return train?.progress?.journeyPercent ?? 0
-    }
-    
-    var journeyStopsCompleted: Int {
-        return train?.progress?.stopsCompleted ?? 0
-    }
-    
-    var journeyTotalStops: Int {
-        return train?.progress?.totalStops ?? 0
+    private func updateJourneyProgress() {
+        journeyProgressPercentage = train?.progress?.journeyPercent ?? 0
+        journeyStopsCompleted = train?.progress?.stopsCompleted ?? 0
+        journeyTotalStops = train?.progress?.totalStops ?? 0
     }
     
     func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
@@ -1063,6 +1053,9 @@ class TrainDetailsViewModel: ObservableObject {
                 trainId: trainNumber,
                 fromStationCode: fromStationCode ?? preferredStationCode
             )
+            
+            // Update all computed properties after setting train
+            updateComputedProperties()
         } catch {
             // Handle APIError.noData specifically
             if let apiError = error as? APIError {
@@ -1114,7 +1107,12 @@ class TrainDetailsViewModel: ObservableObject {
                 }
             }
             
+            // Force UI update by explicitly triggering objectWillChange
+            objectWillChange.send()
             train = newTrain
+            
+            // Update all computed properties after setting new train
+            updateComputedProperties()
             
             // Update Live Activity if active
             if #available(iOS 16.1, *) {
