@@ -203,8 +203,13 @@ struct TrainLiveActivity: Widget {
         
         // If within an hour, show minutes
         if timeInterval > 0 && timeInterval < 3600 {
-            let minutes = Int(timeInterval / 60)
+            let minutes = max(1, Int(timeInterval / 60)) // Ensure at least 1 minute
             return "~\(minutes) min"
+        }
+        
+        // Handle overdue arrivals (negative time)
+        if timeInterval < 0 && timeInterval > -3600 {
+            return "Due now"
         }
         
         // Otherwise show time

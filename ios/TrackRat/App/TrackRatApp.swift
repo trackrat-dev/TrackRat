@@ -151,14 +151,35 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
         print("📥 Received remote notification: \(userInfo)")
         
-        // Handle silent push notifications for Live Activity updates
+        // Handle Live Activity push notifications (standard Apple format)
+        if let aps = userInfo["aps"] as? [String: Any] {
+            print("🔄 Processing Live Activity push notification with aps payload")
+            print("📋 APS Keys: \(Array(aps.keys))")
+            
+            // Check if this is a Live Activity update (has content-state or event field)
+            if aps["content-state"] != nil || aps["event"] != nil {
+                print("✅ Detected Live Activity update in push notification")
+                print("⏰ Timestamp: \(aps["timestamp"] ?? "none")")
+                print("🎯 Event: \(aps["event"] ?? "none")")
+                Task {
+                    await handleLiveActivityPushUpdate(userInfo)
+                    completionHandler(.newData)
+                }
+                return
+            } else {
+                print("ℹ️ APS payload doesn't contain Live Activity fields")
+            }
+        }
+        
+        // Handle legacy format (custom live_activity_update flag)
         if userInfo["live_activity_update"] as? Bool == true {
+            print("🔄 Processing legacy Live Activity push notification")
             Task {
                 await handleLiveActivityPushUpdate(userInfo)
                 completionHandler(.newData)
             }
         } else {
-            // Handle other types of push notifications
+            print("ℹ️ Push notification is not a Live Activity update")
             completionHandler(.noData)
         }
     }
@@ -178,39 +199,60 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     
     private func handleLiveActivityPushUpdate(_ userInfo: [AnyHashable: Any]) async {
         print("🔄 Processing Live Activity push update")
+        print("📦 Full payload: \(userInfo)")
         
-        // Validate push token if provided
-        if let pushToken = userInfo["push_token"] as? String {
-            if let currentActivity = LiveActivityService.shared.currentActivity {
-                // Get current activity's push token
-                let currentToken = currentActivity.pushToken?.map { String(format: "%02x", $0) }.joined() ?? ""
-                if !currentToken.isEmpty && pushToken != currentToken {
-                    print("⚠️ Push token mismatch, ignoring update")
-                    print("⚠️ Expected: \(currentToken.prefix(12))...")
-                    print("⚠️ Received: \(pushToken.prefix(12))...")
-                    return
-                }
-            }
-        }
-        
-        // Extract event type and data
-        guard let eventType = userInfo["event_type"] as? String else {
-            // Fallback to existing train data update
-            await handleTrainDataUpdate(userInfo)
+        // Extract the aps payload
+        guard let aps = userInfo["aps"] as? [String: Any] else {
+            print("❌ No aps payload found in Live Activity push notification")
             return
         }
         
-        // Handle specific event types
-        switch eventType {
-        case "stop_departure":
-            await handleStopDeparturePush(userInfo)
-        case "approaching_stop":
-            await handleApproachingStopPush(userInfo)
-        case "train_update":
-            await handleTrainDataUpdate(userInfo)
-        default:
-            print("⚠️ Unknown event type: \(eventType)")
+        // Log the content-state for debugging
+        if let contentState = aps["content-state"] as? [String: Any] {
+            print("📊 Content State Keys: \(Array(contentState.keys))")
+            if let trainNumber = contentState["trainNumber"] as? String {
+                print("🚂 Train Number: \(trainNumber)")
+            }
+            if let statusV2 = contentState["statusV2"] as? String {
+                print("📍 Status V2: \(statusV2)")
+            }
+            if let track = contentState["track"] as? String {
+                print("🛤️ Track: \(track)")
+            }
         }
+        
+        // Check if we have an active Live Activity
+        guard let currentActivity = LiveActivityService.shared.currentActivity else {
+            print("⚠️ No active Live Activity found, ignoring push update")
+            return
+        }
+        
+        // Extract event type from top level or aps.alert
+        let eventType = userInfo["event_type"] as? String
+        
+        print("🎯 Event Type: \(eventType ?? "none")")
+        
+        // Handle specific event types
+        if let eventType = eventType {
+            switch eventType {
+            case "stop_departure":
+                await handleStopDeparturePush(userInfo)
+            case "approaching_stop":
+                await handleApproachingStopPush(userInfo)
+            case "train_update":
+                await handleTrainDataUpdate(userInfo)
+            default:
+                print("⚠️ Unknown event type: \(eventType)")
+                // Still update the Live Activity with new content-state
+                await LiveActivityService.shared.fetchAndUpdateTrain()
+            }
+        } else {
+            // No specific event type, just update the Live Activity with new data
+            print("ℹ️ No event type, updating Live Activity with new content-state")
+            await LiveActivityService.shared.fetchAndUpdateTrain()
+        }
+        
+        print("✅ Live Activity push update processing complete")
     }
     
     private func handleTrainDataUpdate(_ userInfo: [AnyHashable: Any]) async {
@@ -223,11 +265,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         // Update Live Activity if it matches current activity
         if let currentActivity = LiveActivityService.shared.currentActivity,
-           currentActivity.attributes.trainNumber == trainId {
+           currentActivity.attributes.trainId == trainId || currentActivity.attributes.trainNumber == trainId {
             await LiveActivityService.shared.fetchAndUpdateTrain()
             print("✅ Live Activity updated from push notification")
         } else {
             print("ℹ️ Push notification for different train, ignoring")
+            print("ℹ️ Expected trainId: \(LiveActivityService.shared.currentActivity?.attributes.trainId ?? "none")")
+            print("ℹ️ Expected trainNumber: \(LiveActivityService.shared.currentActivity?.attributes.trainNumber ?? "none")")
+            print("ℹ️ Received trainId: \(trainId)")
         }
     }
     
@@ -246,16 +291,26 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
     
     private func handleApproachingStopPush(_ userInfo: [AnyHashable: Any]) async {
+        print("🚂 Processing approaching_stop event")
+        
         guard let eventData = userInfo["event_data"] as? [String: Any],
               let stationName = eventData["station"] as? String,
               let minutesAway = eventData["minutes_away"] as? Int,
               let isDestination = eventData["is_destination"] as? Bool else {
             print("❌ Invalid approaching stop push data")
+            print("📦 Available userInfo keys: \(Array(userInfo.keys))")
+            if let eventData = userInfo["event_data"] as? [String: Any] {
+                print("📦 Available event_data keys: \(Array(eventData.keys))")
+            }
             return
         }
         
+        print("📍 Approaching \(stationName) in \(minutesAway) minutes (destination: \(isDestination))")
+        
         // The Live Activity update will trigger the Dynamic Island alert
         await LiveActivityService.shared.fetchAndUpdateTrain()
+        
+        print("✅ Approaching stop event processing complete")
     }
 
     func scheduleAppRefresh() {

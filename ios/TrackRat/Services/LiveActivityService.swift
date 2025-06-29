@@ -430,15 +430,12 @@ class LiveActivityService: ObservableObject {
             return
         }
         let attributes = activity.attributes
-        guard let _ = Int(attributes.trainId) else { // trainId is String, but APIService expects Int for trainNumber
-            print("❌ Invalid trainId in current activity attributes: \(attributes.trainId)")
-            return
-        }
+        // trainId can be alphanumeric (e.g., "P625", "A671") - no need to validate as Int
 
         do {
             print("🔄 Making API request for train \(attributes.trainNumber) from \(attributes.originStationCode) (background)")
             let train = try await APIService.shared.fetchTrainDetailsFlexible(
-                trainId: attributes.trainNumber, // This is the train number (e.g., "P625")
+                trainId: attributes.trainId, // Use trainId instead of trainNumber for consistency
                 fromStationCode: attributes.originStationCode
             )
             print("✅ API request successful for train \(attributes.trainNumber) (background)")
