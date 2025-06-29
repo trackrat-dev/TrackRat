@@ -135,9 +135,14 @@ class TestUnifiedEventDetection:
         # Current state has track assigned
         sample_consolidated_train_with_stops["track_assignment"] = {"track": "1"}
         
+        # Extract current state for comparison
+        current_state = notification_service._extract_consolidated_train_state(
+            sample_consolidated_train_with_stops
+        )
+        
         # Detect all events
         events = await notification_service._detect_all_events(
-            sample_consolidated_train_with_stops, previous_state_before_departure
+            sample_consolidated_train_with_stops, previous_state_before_departure, current_state
         )
         
         # Should detect multiple events

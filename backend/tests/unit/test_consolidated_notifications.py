@@ -261,7 +261,7 @@ class TestConsolidatedNotifications:
                     sample_consolidated_train, mock_db_session
                 )
 
-                # Verify state extraction
+                # Verify state extraction (should be called once now with the fix)
                 mock_extract.assert_called_once_with(sample_consolidated_train)
 
                 # Verify alert detection
@@ -414,7 +414,7 @@ class TestConsolidatedNotifications:
                 sample_consolidated_train, mock_db_session
             )
 
-            # Verify state was extracted but no notifications sent
+            # Verify state was extracted but no notifications sent (should be called once now with the fix)
             mock_extract.assert_called_once()
 
     def test_consolidated_train_without_train_id(self, notification_service, mock_db_session):

@@ -976,7 +976,9 @@ class TrainUpdateNotificationService:
             )
 
             # Detect ALL events (status changes + stop events) using unified approach
-            all_events = await self._detect_all_events(consolidated_train, last_state)
+            all_events = await self._detect_all_events(
+                consolidated_train, last_state, current_state
+            )
 
             # Prioritize events - get the most important one
             alert_type, event_data = self._prioritize_events(all_events)
@@ -1178,8 +1180,8 @@ class TrainUpdateNotificationService:
             return AlertType.TRACK_ASSIGNED
 
         # Boarding status change
-        old_status = old_state.get("status", "")
-        new_status = new_state.get("status", "")
+        old_status = old_state.get("status", "") or ""
+        new_status = new_state.get("status", "") or ""
 
         if "BOARDING" not in old_status and "BOARDING" in new_status:
             logger.info(f"🚆 Boarding started for train {new_state.get('train_id')}")
@@ -1215,7 +1217,10 @@ class TrainUpdateNotificationService:
         return None
 
     async def _detect_all_events(
-        self, consolidated_train: Dict, last_state: Optional[Dict[str, Any]]
+        self,
+        consolidated_train: Dict,
+        last_state: Optional[Dict[str, Any]],
+        current_state: Dict[str, Any],
     ) -> List[Tuple[AlertType, Optional[Dict[str, Any]]]]:
         """
         Detect ALL events for a train (status changes + stop events).
@@ -1223,14 +1228,12 @@ class TrainUpdateNotificationService:
         Args:
             consolidated_train: Consolidated train data dictionary
             last_state: Previous train state for comparison
+            current_state: Current train state (already extracted)
 
         Returns:
             List of (AlertType, event_data) tuples
         """
         events = []
-
-        # Extract current state for comparison
-        current_state = self._extract_consolidated_train_state(consolidated_train)
 
         # Detect status change events using existing logic
         status_alert = self._detect_alert_worthy_changes(last_state, current_state)
