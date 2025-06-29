@@ -11,11 +11,20 @@ class TrainStop(BaseModel):
 
     station_code: Optional[str] = None
     station_name: str
-    scheduled_time: Optional[datetime] = Field(
-        None, description="Scheduled time in Eastern timezone"
+    scheduled_arrival: Optional[datetime] = Field(
+        None, description="Scheduled arrival time at platform in Eastern timezone"
     )
-    departure_time: Optional[datetime] = Field(
-        None, description="Actual departure time in Eastern timezone"
+    scheduled_departure: Optional[datetime] = Field(
+        None, description="Scheduled departure time from platform in Eastern timezone"
+    )
+    actual_arrival: Optional[datetime] = Field(
+        None, description="Actual arrival time at platform in Eastern timezone"
+    )
+    actual_departure: Optional[datetime] = Field(
+        None, description="Actual departure time from platform in Eastern timezone"
+    )
+    estimated_arrival: Optional[datetime] = Field(
+        None, description="Estimated arrival time based on current delays in Eastern timezone"
     )
     pickup_only: bool = False
     dropoff_only: bool = False
@@ -137,6 +146,18 @@ class TrainResponse(TrainBase):
     delay_minutes: Optional[int] = None
     train_split: Optional[str] = None
 
+    # Journey tracking fields
+    journey_completion_status: Optional[str] = Field(
+        None,
+        description="Journey status: 'in_progress', 'completed', 'terminated_early', 'lost_tracking'",
+    )
+    stops_last_updated: Optional[datetime] = Field(
+        None, description="When stop data was last refreshed from NJ Transit getTrainStopList API"
+    )
+    journey_validated_at: Optional[datetime] = Field(
+        None, description="When this train's complete journey was last validated"
+    )
+
 
 class Metadata(BaseModel):
     """Metadata for API responses."""
@@ -224,8 +245,12 @@ class ConsolidatedStop(BaseModel):
 
     station_code: Optional[str] = None
     station_name: str
-    scheduled_time: Optional[str] = Field(None, description="ISO timestamp")
-    departure_time: Optional[str] = Field(None, description="ISO timestamp")
+    scheduled_arrival: Optional[str] = Field(None, description="ISO timestamp of scheduled arrival")
+    scheduled_departure: Optional[str] = Field(
+        None, description="ISO timestamp of scheduled departure"
+    )
+    actual_arrival: Optional[str] = Field(None, description="ISO timestamp of actual arrival")
+    actual_departure: Optional[str] = Field(None, description="ISO timestamp of actual departure")
     pickup_only: bool = False
     dropoff_only: bool = False
     departed: bool = False
@@ -314,7 +339,7 @@ class NextArrival(BaseModel):
     """Information about the next station arrival."""
 
     station_code: str
-    scheduled_time: str = Field(..., description="ISO timestamp of scheduled arrival")
+    scheduled_arrival: str = Field(..., description="ISO timestamp of scheduled arrival")
     estimated_time: str = Field(..., description="ISO timestamp of estimated arrival")
     minutes_away: int = Field(..., description="Minutes until arrival at next station")
 

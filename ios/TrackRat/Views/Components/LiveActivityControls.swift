@@ -23,12 +23,9 @@ struct LiveActivityControls: View {
                         .foregroundColor(.white)
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Live Activity Active")
+                        Text("Live Updates (beta)")
                             .font(.subheadline.bold())
                             .foregroundColor(.white)
-                        Text("Train tracking on Lock Screen")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
                     }
                     
                     Spacer()
@@ -50,7 +47,11 @@ struct LiveActivityControls: View {
                 .padding()
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.blue.opacity(0.7))
+                        .fill(Color.black)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.orange, lineWidth: 2)
+                        )
                 )
             } else {
                 // Start Live Activity button
@@ -67,7 +68,7 @@ struct LiveActivityControls: View {
                                 .font(.title2)
                         }
                         
-                        Text("📍 Watch This Train")
+                        Text("Watch This Train")
                             .font(.subheadline.bold())
                         
                         Spacer()
@@ -80,7 +81,7 @@ struct LiveActivityControls: View {
                     .padding()
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.white.opacity(0.9))
+                            .fill(Color.clear)
                             .opacity(isStarting ? 0.6 : 1.0)
                     )
                 }
@@ -91,9 +92,15 @@ struct LiveActivityControls: View {
                     HStack {
                         Image(systemName: "info.circle")
                             .foregroundColor(.orange)
-                        Text("Live Activities require iOS 16.1+ and must be enabled in Settings")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Live Activities Not Available")
+                                .font(.caption.bold())
+                                .foregroundColor(.orange)
+                            Text(liveActivityService.supportStatus)
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        Spacer()
                     }
                     .padding(.horizontal)
                 }

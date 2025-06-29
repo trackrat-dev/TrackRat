@@ -9,11 +9,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from trackcast.db.models import ModelData, PredictionData, Train, TrainStop
+from trackcast.db.models import LiveActivityToken, ModelData, PredictionData, Train, TrainStop
 from trackcast.metrics import DB_QUERY_DURATION_SECONDS, MODEL_PREDICTION_ACCURACY
 from trackcast.telemetry import trace_operation
+from trackcast.utils import get_eastern_now
 
 logger = logging.getLogger(__name__)
 
@@ -294,10 +295,10 @@ class TrainRepository(BaseRepository):
             # WARNING: track_released_at is only valid when status=DEPARTED (see "Handle train departure" section below)
             if not train.delay_minutes and train.track_released_at and train.status == "DEPARTED":
                 # Calculate delay as the difference between scheduled and actual departure
-                scheduled_time = train.departure_time
+                scheduled_departure = train.departure_time
                 departure_time = train.track_released_at
                 # Calculate delay in minutes (can be negative if early)
-                delay_in_minutes = int((departure_time - scheduled_time).total_seconds() // 60)
+                delay_in_minutes = int((departure_time - scheduled_departure).total_seconds() // 60)
 
                 # Only set delay_minutes if there's an actual delay (> 0 minutes)
                 if delay_in_minutes > 0:
@@ -513,9 +514,9 @@ class TrainRepository(BaseRepository):
                             Train.departure_time == to_stop.train_departure_time,
                             to_stop.station_code == to_station_code,
                             # Ensure from_stop happens before to_stop
-                            from_stop.scheduled_time.isnot(None),
-                            to_stop.scheduled_time.isnot(None),
-                            from_stop.scheduled_time < to_stop.scheduled_time,
+                            from_stop.scheduled_arrival.isnot(None),
+                            to_stop.scheduled_arrival.isnot(None),
+                            from_stop.scheduled_arrival < to_stop.scheduled_arrival,
                         ),
                     )
                     .distinct()
@@ -532,15 +533,15 @@ class TrainRepository(BaseRepository):
                 if departure_time_after:
                     query = query.filter(
                         and_(
-                            from_stop.scheduled_time.isnot(None),
-                            from_stop.scheduled_time >= departure_time_after,
+                            from_stop.scheduled_arrival.isnot(None),
+                            from_stop.scheduled_arrival >= departure_time_after,
                         )
                     )
                 if departure_time_before:
                     query = query.filter(
                         and_(
-                            from_stop.scheduled_time.isnot(None),
-                            from_stop.scheduled_time <= departure_time_before,
+                            from_stop.scheduled_arrival.isnot(None),
+                            from_stop.scheduled_arrival <= departure_time_before,
                         )
                     )
                 if track:
@@ -668,7 +669,7 @@ class TrainRepository(BaseRepository):
             all_stops = (
                 self.session.query(TrainStop)
                 .filter(or_(*conditions))
-                .order_by(TrainStop.train_id, TrainStop.scheduled_time.asc())
+                .order_by(TrainStop.train_id, TrainStop.scheduled_arrival.asc())
                 .all()
             )
 
@@ -760,7 +761,7 @@ class TrainRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = get_eastern_now() - timedelta(hours=hours)
             result = (
                 self.session.query(Train)
                 .filter(Train.departure_time >= cutoff_time)
@@ -790,7 +791,7 @@ class TrainRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            now = datetime.utcnow()
+            now = get_eastern_now()
             four_hours_ahead = now + timedelta(hours=4)
             thirty_minutes_ago = now - timedelta(minutes=30)
 
@@ -890,7 +891,7 @@ class TrainRepository(BaseRepository):
                 )
 
             if future_only:
-                query = query.filter(Train.departure_time >= datetime.utcnow())
+                query = query.filter(Train.departure_time >= get_eastern_now())
 
             result = query.order_by(Train.departure_time.asc()).all()
             duration = time.time() - start_time
@@ -916,7 +917,7 @@ class TrainRepository(BaseRepository):
             SQLAlchemyError: Database error
         """
         try:
-            query = self.session.query(Train).filter(Train.departure_time >= datetime.utcnow())
+            query = self.session.query(Train).filter(Train.departure_time >= get_eastern_now())
 
             if not include_predictions:
                 # Only get trains that need predictions
@@ -1410,7 +1411,7 @@ class TrainRepository(BaseRepository):
             self.session.begin_nested()
 
             # Get current time
-            now = datetime.utcnow()
+            now = get_eastern_now()
 
             # Get prediction_data_ids from trains with future departure times
             prediction_data_ids = [
@@ -1532,7 +1533,7 @@ class TrainRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = get_eastern_now() - timedelta(hours=hours)
 
             # Get all trains with tracks assigned in the time period
             trains = (
@@ -1556,7 +1557,7 @@ class TrainRepository(BaseRepository):
                     "line": train.line,
                     "destination": train.destination,
                     "assigned_at": train.track_assigned_at,
-                    "released_at": train.track_released_at or datetime.utcnow(),
+                    "released_at": train.track_released_at or get_eastern_now(),
                 }
 
                 track_usage[train.track].append(usage_period)
@@ -1567,6 +1568,226 @@ class TrainRepository(BaseRepository):
 
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_track_usage_history: {str(e)}")
+            raise
+
+    def update(self, train: Train) -> Train:
+        """
+        Update a train record.
+
+        Args:
+            train: Train object to update
+
+        Returns:
+            Updated Train object
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Mark the object as modified
+            train.updated_at = get_eastern_now()
+
+            # Commit the changes
+            self.session.commit()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="update_train").observe(duration)
+            logger.debug(f"Updated train {train.train_id} (ID: {train.id})")
+            return train
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Database error in update train: {str(e)}")
+            raise
+
+    def get_trains_with_live_activities(self, since: Optional[datetime] = None) -> List[Train]:
+        """
+        Get trains that have active Live Activity tokens.
+
+        Args:
+            since: Optional datetime to filter trains updated since this time
+
+        Returns:
+            List of Train objects with active Live Activities
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            query = (
+                self.session.query(Train)
+                .join(LiveActivityToken, Train.train_id == LiveActivityToken.train_id)
+                .filter(LiveActivityToken.is_active == True)
+            )
+
+            if since:
+                query = query.filter(Train.updated_at >= since)
+
+            result = query.distinct().order_by(Train.updated_at.desc()).all()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_trains_with_live_activities").observe(
+                duration
+            )
+            return result
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_trains_with_live_activities: {str(e)}")
+            raise
+
+    def get_unique_train_ids_with_live_activities(
+        self, since: Optional[datetime] = None
+    ) -> List[str]:
+        """
+        Get unique train IDs that have active Live Activity tokens.
+
+        This method returns only unique train_id values, preventing duplicate
+        processing when the same train appears in multiple origin stations.
+
+        Args:
+            since: Optional datetime to filter trains updated since this time
+
+        Returns:
+            List of unique train_id strings with active Live Activities
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            query = (
+                self.session.query(Train.train_id.distinct())
+                .join(LiveActivityToken, Train.train_id == LiveActivityToken.train_id)
+                .filter(LiveActivityToken.is_active == True)
+            )
+
+            if since:
+                query = query.filter(Train.updated_at >= since)
+
+            # Get unique train IDs only
+            result = [row[0] for row in query.all()]
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(
+                query_type="get_unique_train_ids_with_live_activities"
+            ).observe(duration)
+            return result
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_unique_train_ids_with_live_activities: {str(e)}")
+            raise
+
+    def get_all_trains_for_train_id(
+        self, train_id: str, since: Optional[datetime] = None
+    ) -> List[Train]:
+        """
+        Get all Train records for a specific train_id from all origin stations.
+
+        This is used with consolidation to get all variants of the same train
+        (from different origin stations) for merging into a unified journey.
+
+        Args:
+            train_id: The train ID to fetch all records for
+            since: Optional datetime to filter trains updated since this time
+
+        Returns:
+            List of Train objects for the given train_id
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Query trains with prediction_data (stops relationship doesn't exist due to composite key)
+            query = (
+                self.session.query(Train)
+                .filter(Train.train_id == train_id)
+                .options(joinedload(Train.prediction_data))
+                .order_by(Train.updated_at.desc())
+            )
+
+            if since:
+                query = query.filter(Train.updated_at >= since)
+
+            trains = query.all()
+
+            # Manually load stops for each train since there's no direct relationship
+            for train in trains:
+                stops_query = (
+                    self.session.query(TrainStop)
+                    .filter(TrainStop.train_id == train_id)
+                    .order_by(TrainStop.scheduled_arrival.asc().nullslast())
+                )
+                # Attach stops as a dynamic property
+                train.stops = stops_query.all()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_all_trains_for_train_id").observe(
+                duration
+            )
+            return trains
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_all_trains_for_train_id: {str(e)}")
+            raise
+
+    def get_active_trains_with_stops(
+        self,
+        statuses: List[str] = None,
+        limit: Optional[int] = None,
+        data_source: Optional[str] = None,
+    ) -> List[Train]:
+        """
+        Get active trains with their stops loaded, filtered by status.
+
+        Args:
+            statuses: List of train statuses to filter by (e.g., ['BOARDING', 'DEPARTED'])
+            limit: Maximum number of trains to return
+            data_source: Filter by data source (e.g., 'njtransit', 'amtrak')
+
+        Returns:
+            List of Train objects with their stops loaded
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Base query with stops eagerly loaded
+            query = (
+                self.session.query(Train)
+                .options(joinedload(Train.stops))
+                .filter(
+                    Train.departure_time >= datetime.now() - timedelta(hours=12)
+                )  # Recent trains only
+                .order_by(Train.departure_time.desc())
+            )
+
+            # Apply status filter if provided
+            if statuses:
+                query = query.filter(Train.status.in_(statuses))
+
+            # Apply data source filter if provided
+            if data_source:
+                query = query.filter(Train.data_source == data_source)
+
+            # Apply limit if provided
+            if limit:
+                query = query.limit(limit)
+
+            result = query.all()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_active_trains_with_stops").observe(
+                duration
+            )
+            logger.debug(f"Retrieved {len(result)} active trains with stops in {duration:.3f}s")
+            return result
+
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_active_trains_with_stops: {str(e)}")
             raise
 
 
@@ -1593,7 +1814,7 @@ class ModelDataRepository(BaseRepository):
             self.session.commit()
             duration = time.time() - start_time
             DB_QUERY_DURATION_SECONDS.labels(query_type="create_model_data").observe(duration)
-            logger.info(f"Created model data with ID {model_data_obj.id}")
+            logger.debug(f"Created model data with ID {model_data_obj.id}")
             return model_data_obj
         except SQLAlchemyError as e:
             self.session.rollback()
@@ -1830,7 +2051,7 @@ class TrainStopRepository(BaseRepository):
         Raises:
             SQLAlchemyError: Database error
         """
-        current_time = datetime.utcnow()
+        current_time = get_eastern_now()
         updated_stops = []
 
         # Import StationMapper for station code derivation
@@ -1871,10 +2092,10 @@ class TrainStopRepository(BaseRepository):
                     "station_name"
                 ) and stop.station_code == stop_data.get("station_code"):
 
-                    # Use fuzzy time matching for scheduled_time (5-minute tolerance)
+                    # Use fuzzy time matching for scheduled_arrival (60-minute tolerance)
                     if station_mapper.times_match_within_tolerance(
-                        stop.scheduled_time,
-                        stop_data.get("scheduled_time"),
+                        stop.scheduled_arrival,
+                        stop_data.get("scheduled_arrival"),
                         tolerance_seconds=3600,  # 60 minutes
                     ):
                         matched_stop = stop
@@ -1886,43 +2107,47 @@ class TrainStopRepository(BaseRepository):
                 matched_stops.add(stop)
 
                 # Update fields directly without tracking changes
-                if stop_data.get("departure_time"):
-                    if isinstance(stop_data["departure_time"], str):
+                if stop_data.get("scheduled_departure"):
+                    if isinstance(stop_data["scheduled_departure"], str):
                         try:
-                            stop.departure_time = datetime.fromisoformat(
-                                stop_data["departure_time"]
+                            stop.scheduled_departure = datetime.fromisoformat(
+                                stop_data["scheduled_departure"]
                             )
                         except ValueError:
-                            stop.departure_time = stop_data["departure_time"]
+                            stop.scheduled_departure = stop_data["scheduled_departure"]
                     else:
-                        stop.departure_time = stop_data["departure_time"]
+                        stop.scheduled_departure = stop_data["scheduled_departure"]
 
                 stop.stop_status = stop_data.get("stop_status", stop.stop_status)
                 stop.departed = stop_data.get("departed", stop.departed)
 
-                # Handle scheduled_time updates (allowing drift)
-                if stop_data.get("scheduled_time"):
-                    if isinstance(stop_data["scheduled_time"], str):
+                # Handle scheduled_arrival updates (allowing drift)
+                if stop_data.get("scheduled_arrival"):
+                    if isinstance(stop_data["scheduled_arrival"], str):
                         try:
-                            new_scheduled_time = datetime.fromisoformat(stop_data["scheduled_time"])
+                            new_scheduled_arrival = datetime.fromisoformat(
+                                stop_data["scheduled_arrival"]
+                            )
                         except ValueError:
-                            new_scheduled_time = stop_data["scheduled_time"]
+                            new_scheduled_arrival = stop_data["scheduled_arrival"]
                     else:
-                        new_scheduled_time = stop_data["scheduled_time"]
+                        new_scheduled_arrival = stop_data["scheduled_arrival"]
 
                     # Log significant time changes for monitoring
-                    if isinstance(stop.scheduled_time, datetime) and isinstance(
-                        new_scheduled_time, datetime
+                    if isinstance(stop.scheduled_arrival, datetime) and isinstance(
+                        new_scheduled_arrival, datetime
                     ):
-                        time_diff = abs((stop.scheduled_time - new_scheduled_time).total_seconds())
+                        time_diff = abs(
+                            (stop.scheduled_arrival - new_scheduled_arrival).total_seconds()
+                        )
                         if time_diff > 3600:  # More than 1 hour difference
                             logger.info(
                                 f"Time drift detected for {stop.station_name} on train {train_id}: "
-                                f"{stop.scheduled_time.isoformat()} → {new_scheduled_time.isoformat()} "
+                                f"{stop.scheduled_arrival.isoformat()} → {new_scheduled_arrival.isoformat()} "
                                 f"({time_diff}s difference)"
                             )
 
-                    stop.scheduled_time = new_scheduled_time
+                    stop.scheduled_arrival = new_scheduled_arrival
 
                 stop.pickup_only = stop_data.get("pickup_only", stop.pickup_only)
                 stop.dropoff_only = stop_data.get("dropoff_only", stop.dropoff_only)
@@ -1942,7 +2167,12 @@ class TrainStopRepository(BaseRepository):
                 stop_data["is_active"] = True
 
                 # Convert string datetime fields to datetime objects for SQLite compatibility
-                for time_field in ["scheduled_time", "departure_time"]:
+                for time_field in [
+                    "scheduled_arrival",
+                    "scheduled_departure",
+                    "actual_arrival",
+                    "actual_departure",
+                ]:
                     if time_field in stop_data and isinstance(stop_data[time_field], str):
                         try:
                             stop_data[time_field] = datetime.fromisoformat(stop_data[time_field])
@@ -1967,10 +2197,17 @@ class TrainStopRepository(BaseRepository):
             return updated_stops
         except IntegrityError as e:
             self.session.rollback()
-            logger.warning(
-                f"Unique constraint violation for train {train_id} during upsert_train_stops: {e}"
-            )
-            raise e
+            if "uix_train_stop_unique_without_time" in str(e):
+                logger.warning(
+                    f"Duplicate train stop for train {train_id} - stops may already exist, skipping insert"
+                )
+                # Return empty list to indicate no new stops were created
+                return []
+            else:
+                logger.warning(
+                    f"Unique constraint violation for train {train_id} during upsert_train_stops: {e}"
+                )
+                raise e
         except SQLAlchemyError as e:  # Catch other SQLAlchemy errors that are not IntegrityError
             self.session.rollback()
             logger.error(f"Database error in upsert_train_stops: {str(e)}")
@@ -1998,7 +2235,7 @@ class TrainStopRepository(BaseRepository):
                     TrainStop.train_id == train_id,
                     TrainStop.train_departure_time == train_departure_time,
                 )
-                .order_by(TrainStop.scheduled_time.asc())
+                .order_by(TrainStop.scheduled_arrival.asc())
                 .all()
             )
             duration = time.time() - start_time
@@ -2024,13 +2261,14 @@ class TrainStopRepository(BaseRepository):
         """
         start_time = time.time()
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+            cutoff_time = get_eastern_now() - timedelta(hours=hours)
             result = (
                 self.session.query(TrainStop)
                 .filter(
-                    TrainStop.station_code == station_code, TrainStop.scheduled_time >= cutoff_time
+                    TrainStop.station_code == station_code,
+                    TrainStop.scheduled_arrival >= cutoff_time,
                 )
-                .order_by(TrainStop.scheduled_time.asc())
+                .order_by(TrainStop.scheduled_arrival.asc())
                 .all()
             )
             duration = time.time() - start_time
@@ -2038,6 +2276,49 @@ class TrainStopRepository(BaseRepository):
             return result
         except SQLAlchemyError as e:
             logger.error(f"Database error in get_stops_by_station: {str(e)}")
+            raise
+
+    def get_stop_by_train_and_station(
+        self,
+        train_id: str,
+        train_departure_time: datetime,
+        station_name: str,
+        data_source: str = "njtransit",
+    ) -> Optional[TrainStop]:
+        """
+        Get a specific train stop by train and station.
+
+        Args:
+            train_id: Train identifier
+            train_departure_time: Train departure time
+            station_name: Station name
+            data_source: Data source identifier
+
+        Returns:
+            TrainStop object or None if not found
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            result = (
+                self.session.query(TrainStop)
+                .filter(
+                    TrainStop.train_id == train_id,
+                    TrainStop.train_departure_time == train_departure_time,
+                    TrainStop.station_name == station_name,
+                    TrainStop.data_source == data_source,
+                )
+                .first()
+            )
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="get_stop_by_train_and_station").observe(
+                duration
+            )
+            return result
+        except SQLAlchemyError as e:
+            logger.error(f"Database error in get_stop_by_train_and_station: {str(e)}")
             raise
 
     def get_all_stations(self) -> List[Dict[str, str]]:
@@ -2172,4 +2453,37 @@ class TrainStopRepository(BaseRepository):
 
         except SQLAlchemyError as e:
             logger.error(f"Database error in search_stations: {str(e)}")
+            raise
+
+    def update(self, train_stop: TrainStop) -> TrainStop:
+        """
+        Update a train stop record.
+
+        Args:
+            train_stop: TrainStop object to update
+
+        Returns:
+            Updated TrainStop object
+
+        Raises:
+            SQLAlchemyError: Database error
+        """
+        start_time = time.time()
+        try:
+            # Mark the object as modified
+            train_stop.updated_at = get_eastern_now()
+
+            # Commit the changes
+            self.session.commit()
+
+            duration = time.time() - start_time
+            DB_QUERY_DURATION_SECONDS.labels(query_type="update_train_stop").observe(duration)
+            logger.debug(
+                f"Updated train stop {train_stop.id} for train {train_stop.train_id} at {train_stop.station_name}"
+            )
+            return train_stop
+
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Database error in update train_stop: {str(e)}")
             raise

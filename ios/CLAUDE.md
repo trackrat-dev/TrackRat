@@ -120,7 +120,7 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 
 ### Service Layer
 - **APIService**: Singleton with shared instance
-- **Base URL**: `https://trackcast.andymartin.cc/api`
+- **Base URL**: `https://prod.api.trackrat.net/api`
 - **JSONDecoder**: Multiple ISO8601 date format support with fractional seconds
 - **URLSession**: Native networking with proper timeout handling
 - **Error handling**: Typed errors with recovery
@@ -361,7 +361,7 @@ The app provides sophisticated real-time journey visualization through multiple 
 - macOS 14.0+ for development
 
 ### Build Configuration
-- **Bundle Identifier**: `com.andymartin.TrackRat`
+- **Bundle Identifier**: `net.trackrat.TrackRat`
 - **Development Team**: Set in Xcode project settings
 - **Code Signing**: Automatic with development certificate
 - **Capabilities**: 

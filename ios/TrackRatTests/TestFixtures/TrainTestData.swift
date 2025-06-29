@@ -582,7 +582,7 @@ struct TrainTestData {
             },
             "next_arrival": {
                 "station_code": "STM",
-                "scheduled_time": "2024-01-01T10:10:00-05:00",
+                "scheduled_arrival": "2024-01-01T10:10:00-05:00",
                 "estimated_time": "2024-01-01T10:15:00-05:00",
                 "minutes_away": 15
             },
@@ -603,7 +603,7 @@ struct TrainTestData {
             {
                 "station_code": "STM",
                 "station_name": "Stamford",
-                "scheduled_time": "2024-01-01T10:10:00-05:00",
+                "scheduled_arrival": "2024-01-01T10:10:00-05:00",
                 "departure_time": null,
                 "departed": false,
                 "stop_status": "APPROACHING",

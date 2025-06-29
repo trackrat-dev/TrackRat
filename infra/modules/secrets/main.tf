@@ -108,4 +108,52 @@ resource "google_secret_manager_secret_version" "amtrak_api_key_version" {
   }
 }
 
+# APNS secrets
+resource "google_secret_manager_secret" "apns_team_id" {
+  secret_id = "${var.app_name}-${var.environment}-apns-team-id"
+
+  labels = {
+    app         = var.app_name
+    environment = var.environment
+    type        = "apns-credentials"
+  }
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret" "apns_key_id" {
+  secret_id = "${var.app_name}-${var.environment}-apns-key-id"
+
+  labels = {
+    app         = var.app_name
+    environment = var.environment
+    type        = "apns-credentials"
+  }
+
+  replication {
+    auto {}
+  }
+}
+
+
+resource "google_secret_manager_secret_version" "apns_team_id_version" {
+  secret      = google_secret_manager_secret.apns_team_id.id
+  secret_data = var.apns_team_id != "" ? var.apns_team_id : "placeholder"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_version" "apns_key_id_version" {
+  secret      = google_secret_manager_secret.apns_key_id.id
+  secret_data = var.apns_key_id != "" ? var.apns_key_id : "placeholder"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
 # Database password is now auto-generated and stored in the database module

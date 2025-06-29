@@ -36,8 +36,6 @@ dependencies = [
     "torch>=2.0.0",
     "xgboost>=1.7.0",
     "shap>=0.42.0",
-    "schedule>=1.2.0",
-    "apscheduler>=3.10.0",
 ]
 
 [project.optional-dependencies]

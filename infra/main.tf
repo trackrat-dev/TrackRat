@@ -58,6 +58,8 @@ module "secrets" {
   nj_transit_password = var.nj_transit_password
   nj_transit_token    = var.nj_transit_token
   amtrak_api_key      = var.amtrak_api_key
+  apns_team_id        = var.apns_team_id
+  apns_key_id         = var.apns_key_id
 
   depends_on = [module.apis]
 }

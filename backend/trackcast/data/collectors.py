@@ -3,7 +3,8 @@ Data collection modules for TrackCast.
 """
 
 import abc
-import csv
+
+# csv import removed - not needed for iOS app
 import json
 import logging
 import os
@@ -22,7 +23,7 @@ from trackcast.metrics import (
     NJ_TRANSIT_FETCH_FAILURES,
     NJ_TRANSIT_FETCH_SUCCESS,
 )
-from trackcast.utils import clean_destination, parse_iso_datetime_to_eastern
+from trackcast.utils import clean_destination, get_eastern_now, parse_iso_datetime_to_eastern
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ class BaseCollector(abc.ABC):
         """
         start_time = time.time()
         stats = {
-            "collected_at": datetime.now().isoformat(),
+            "collected_at": get_eastern_now().isoformat(),
             "record_count": 0,
             "new_records": 0,
             "updated_records": 0,
@@ -83,6 +84,7 @@ class NJTransitCollector(BaseCollector):
     # API endpoint constants
     TOKEN_ENDPOINT = "getToken"
     TRAIN_SCHEDULE_ENDPOINT = "getTrainSchedule"
+    TRAIN_STOP_LIST_ENDPOINT = "getTrainStopList"
 
     def __init__(
         self,
@@ -278,7 +280,7 @@ class NJTransitCollector(BaseCollector):
             response: API response or data dictionary
             endpoint_name: Name of the API endpoint for the filename
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = get_eastern_now().strftime("%Y%m%d_%H%M%S")
         filename = self.debug_dir / f"{endpoint_name}_{timestamp}.json"
 
         try:
@@ -301,7 +303,7 @@ class NJTransitCollector(BaseCollector):
         Raises:
             APIError: If the API request fails after all retry attempts
         """
-        collection_time = datetime.now()
+        collection_time = get_eastern_now()
 
         # Ensure we have a valid token
         if not self.token:
@@ -461,8 +463,10 @@ class NJTransitCollector(BaseCollector):
                                 {
                                     "station_code": station_code,
                                     "station_name": stop.get("STATIONNAME", ""),
-                                    "scheduled_time": stop_time,
-                                    "departure_time": dep_time,
+                                    "scheduled_arrival": stop_time,
+                                    "scheduled_departure": dep_time,
+                                    "actual_arrival": None,  # Not available from getTrainSchedule
+                                    "actual_departure": None,  # Not available from getTrainSchedule
                                     "pickup_only": pickup_val.strip() == "Pick Up Only",
                                     "dropoff_only": dropoff_val.strip() == "Drop Off Only",
                                     "departed": departed_val.strip() == "YES",
@@ -488,8 +492,7 @@ class NJTransitCollector(BaseCollector):
                     }
                 )
 
-            # Save processed data to CSV for easy inspection
-            self._save_to_csv(processed_data, timestamp)
+            # CSV export removed - not needed for iOS app
 
             logger.info(f"Processed {len(processed_data)} train records successfully")
             return processed_data
@@ -499,54 +502,63 @@ class NJTransitCollector(BaseCollector):
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-    def _save_to_csv(self, data: List[Dict[str, Any]], timestamp: str) -> None:
+    # CSV saving method removed - not needed for iOS app
+
+    def get_train_stops(self, train_id: str) -> Dict[str, Any]:
         """
-        Save processed data to CSV file.
+        Get detailed stop information for a specific train using getTrainStopList API.
 
         Args:
-            data: List of processed train records
-            timestamp: Collection timestamp
+            train_id: NJ Transit train ID
+
+        Returns:
+            Dict containing train details and stop list
+
+        Raises:
+            APIError: If the API request fails
         """
-        # Format timestamp for filename
-        file_timestamp = timestamp.replace(":", "-").replace(".", "-")
-        filename = self.processed_dir / f"trains_{file_timestamp}.csv"
+        # Ensure we have a valid token
+        if not self.token:
+            logger.info("No token available, authenticating")
+            self.token = self._get_token()
+            if not self.token:
+                raise APIError("Failed to obtain authentication token")
 
-        fieldnames = [
-            "Timestamp",
-            "Train_ID",
-            "Origin_Station_Code",
-            "Origin_Station_Name",
-            "Destination",
-            "Track",
-            "Departure_Time",
-            "Status",
-            "Line",
-            "Line_Code",
-            "Last_Modified",
-        ]
+        url = f"{self.base_url}/{self.TRAIN_STOP_LIST_ENDPOINT}"
+        files = {"token": (None, self.token), "train": (None, str(train_id))}
 
-        with open(filename, "w", newline="") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
+        try:
+            logger.debug(f"Fetching stop list for train {train_id}")
+            response = requests.post(url, files=files, timeout=self.timeout)
+            response.raise_for_status()
 
-            for item in data:
-                writer.writerow(
-                    {
-                        "Timestamp": item["timestamp"],
-                        "Train_ID": item["train_id"],
-                        "Origin_Station_Code": item["origin_station_code"],
-                        "Origin_Station_Name": item["origin_station_name"],
-                        "Destination": item["destination"],
-                        "Track": item["track"],
-                        "Departure_Time": item["departure_time"],
-                        "Status": item["status"],
-                        "Line": item["line"],
-                        "Line_Code": item["line_code"],
-                        "Last_Modified": item["last_modified"],
-                    }
-                )
+            data = response.json()
 
-            logger.debug(f"Saved processed data to {filename}")
+            # Archive raw response if debug mode is enabled
+            if self.debug_mode:
+                self._archive_response(data, f"{self.TRAIN_STOP_LIST_ENDPOINT}_{train_id}")
+
+            logger.info(f"Successfully fetched stop list for train {train_id}")
+            return data
+
+        except requests.RequestException as e:
+            error_msg = f"Failed to fetch stops for train {train_id}: {str(e)}"
+            logger.error(error_msg)
+
+            # If unauthorized, try to refresh token once
+            if hasattr(e, "response") and e.response and e.response.status_code == 401:
+                if not self._direct_token_provided:
+                    logger.info("Token may be expired, attempting to refresh")
+                    try:
+                        self.token = self._get_token()
+                        # Retry once with new token
+                        response = requests.post(url, files=files, timeout=self.timeout)
+                        response.raise_for_status()
+                        return response.json()
+                    except Exception:
+                        pass
+
+            raise APIError(error_msg)
 
 
 class AmtrakCollector(BaseCollector):
@@ -598,7 +610,7 @@ class AmtrakCollector(BaseCollector):
             response: API response
             endpoint_name: Name of the API endpoint for the filename
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = get_eastern_now().strftime("%Y%m%d_%H%M%S")
         filename = self.debug_dir / f"{endpoint_name}_{timestamp}.json"
 
         try:
@@ -618,7 +630,7 @@ class AmtrakCollector(BaseCollector):
         Raises:
             APIError: If the API request fails after all retry attempts
         """
-        collection_time = datetime.now()
+        collection_time = get_eastern_now()
         attempts = 0
         last_error = None
 
@@ -732,9 +744,9 @@ class AmtrakCollector(BaseCollector):
                     stop_data = {
                         "station_code": mapped_code,
                         "station_name": mapped_name,
-                        "scheduled_time": self._parse_datetime(station.get("schArr"))
-                        or self._parse_datetime(station.get("schDep")),
-                        "departure_time": self._parse_datetime(station.get("dep")),
+                        "scheduled_arrival": self._parse_datetime(station.get("schArr")),
+                        "scheduled_departure": self._parse_datetime(station.get("schDep")),
+                        "actual_departure": self._parse_datetime(station.get("dep")),
                         "pickup_only": False,  # Amtrak doesn't distinguish pickup/dropoff
                         "dropoff_only": False,
                         "departed": station.get("status") == "Departed",
@@ -804,8 +816,7 @@ class AmtrakCollector(BaseCollector):
                     }
                 )
 
-            # Save processed data to CSV for easy inspection
-            self._save_to_csv(processed_data, timestamp)
+            # CSV export removed - not needed for iOS app
 
             logger.info(f"Processed {len(processed_data)} Amtrak train records successfully")
             return processed_data
@@ -895,53 +906,4 @@ class AmtrakCollector(BaseCollector):
 
         return mapped_code, mapped_name
 
-    def _save_to_csv(self, data: List[Dict[str, Any]], timestamp: str) -> None:
-        """
-        Save processed Amtrak data to CSV file.
-
-        Args:
-            data: List of processed train records
-            timestamp: Collection timestamp
-        """
-        # Format timestamp for filename
-        file_timestamp = timestamp.replace(":", "-").replace(".", "-")
-        filename = self.processed_dir / f"amtrak_trains_{file_timestamp}.csv"
-
-        fieldnames = [
-            "Timestamp",
-            "Train_ID",
-            "Origin_Station_Code",
-            "Origin_Station_Name",
-            "Destination",
-            "Track",
-            "Departure_Time",
-            "Status",
-            "Line",
-            "Line_Code",
-            "Data_Source",
-            "Delay_Minutes",
-        ]
-
-        with open(filename, "w", newline="") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            writer.writeheader()
-
-            for item in data:
-                writer.writerow(
-                    {
-                        "Timestamp": item["timestamp"],
-                        "Train_ID": item["train_id"],
-                        "Origin_Station_Code": item["origin_station_code"],
-                        "Origin_Station_Name": item["origin_station_name"],
-                        "Destination": item["destination"],
-                        "Track": item["track"],
-                        "Departure_Time": item["departure_time"],
-                        "Status": item["status"],
-                        "Line": item["line"],
-                        "Line_Code": item["line_code"],
-                        "Data_Source": item["data_source"],
-                        "Delay_Minutes": item["delay_minutes"],
-                    }
-                )
-
-        logger.debug(f"Saved processed Amtrak data to {filename}")
+    # CSV saving method removed - not needed for iOS app

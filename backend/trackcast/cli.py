@@ -21,7 +21,9 @@ from trackcast.services.data_collector import DataCollectorService
 from trackcast.services.data_import import DataImportService
 from trackcast.services.feature_engineering import FeatureEngineeringService
 from trackcast.services.prediction import PredictionService
-from trackcast.services.scheduler import SchedulerService
+from trackcast.services.push_notification import notification_service
+
+# SchedulerService removed - using Cloud Run Jobs for scheduling
 
 # Configure logging
 logging.basicConfig(
@@ -31,6 +33,64 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _process_push_notifications(session) -> None:
+    """
+    Shared push notification processing for both direct and pipeline usage.
+
+    Args:
+        session: Database session
+    """
+    try:
+        import asyncio
+        from datetime import datetime, timedelta
+
+        from trackcast.db.repository import TrainRepository
+
+        logger.info("🔔 Starting push notification processing")
+        train_repo = TrainRepository(session)
+
+        # Get unique train IDs that have Live Activities (prevents duplicates)
+        recent_cutoff = datetime.utcnow() - timedelta(hours=6)
+        logger.debug(f"🔍 Querying unique train IDs with Live Activities since {recent_cutoff}")
+        unique_train_ids = train_repo.get_unique_train_ids_with_live_activities(since=recent_cutoff)
+
+        logger.info(
+            f"🚂 Found {len(unique_train_ids)} unique trains with potential Live Activities"
+        )
+        if len(unique_train_ids) == 0:
+            logger.info("ℹ️ No trains with Live Activities found - skipping notification processing")
+        else:
+            # Log train details for debugging
+            sample_ids = unique_train_ids[:5]  # Show first 5
+            logger.debug(
+                f"📝 Sample train IDs: {sample_ids}{'...' if len(unique_train_ids) > 5 else ''}"
+            )
+
+        # Process ALL notifications (status changes + stop events) through consolidated pipeline
+        # This now handles everything in one unified flow
+        logger.info(
+            "📱 Processing train updates for Live Activities (unified status + stop events)"
+        )
+        asyncio.run(
+            notification_service.process_consolidated_train_updates(
+                unique_train_ids, session, since=recent_cutoff
+            )
+        )
+
+        logger.info(
+            f"✅ Push notification processing completed for {len(unique_train_ids)} unique trains"
+        )
+
+        # REMOVED: Separate stop event processing - now integrated into consolidated flow
+        # The consolidated flow now detects and handles ALL events:
+        # - Status changes (track assignment, boarding, delays, etc.)
+        # - Stop events (approaching stops, departures)
+        # This ensures consistent data quality and prevents duplicate notifications
+
+    except Exception as e:
+        logger.warning(f"Push notification processing failed (continuing anyway): {e}")
 
 
 @click.group()
@@ -45,7 +105,7 @@ def main(env: str) -> None:
 
 @main.command()
 def init_db() -> None:
-    """Initialize the database schema"""
+    """Initialize the database schema and run migrations"""
     try:
         # Get database URL from settings
         db_url = settings.database.url
@@ -56,23 +116,113 @@ def init_db() -> None:
         Base.metadata.create_all(engine)
 
         logger.info("Database initialized successfully")
+
+        # Run migrations
+        session = get_db_session()
+        try:
+            logger.info("Running database migrations...")
+            results = run_migrations(session)
+            for result in results:
+                if result["status"] == "success":
+                    logger.info(f"✓ {result['name']}: {result['message']}")
+                elif result["status"] == "skipped":
+                    logger.debug(f"- {result['name']}: {result['message']}")
+                else:
+                    logger.warning(f"✗ {result['name']}: {result['message']}")
+            logger.info("Migrations completed")
+        finally:
+            session.close()
+
     except Exception as e:
         logger.error(f"Error initializing database: {str(e)}")
         sys.exit(1)
 
 
 @main.command()
-def collect_data() -> None:
-    """Run a one-time data collection from NJ Transit API"""
+def update_schema() -> None:
+    """Update database schema by running pending migrations"""
+    try:
+        logger.info("Running database migrations...")
+
+        session = get_db_session()
+        try:
+            results = run_migrations(session)
+
+            success_count = 0
+            skipped_count = 0
+            error_count = 0
+
+            for result in results:
+                if result["status"] == "success":
+                    logger.info(f"✓ {result['name']}: {result['message']}")
+                    success_count += 1
+                elif result["status"] == "skipped":
+                    logger.debug(f"- {result['name']}: {result['message']}")
+                    skipped_count += 1
+                else:
+                    logger.error(f"✗ {result['name']}: {result['message']}")
+                    error_count += 1
+
+            logger.info(
+                f"Migrations completed: {success_count} applied, "
+                f"{skipped_count} skipped, {error_count} errors"
+            )
+
+            if error_count > 0:
+                sys.exit(1)
+
+        finally:
+            session.close()
+
+    except Exception as e:
+        logger.error(f"Error updating schema: {str(e)}")
+        sys.exit(1)
+
+
+@main.command()
+@click.option(
+    "--validate-journeys",
+    is_flag=True,
+    default=True,
+    help="Run post-journey validation (default: enabled)",
+)
+def collect_data(validate_journeys: bool) -> None:
+    """Run a one-time data collection from NJ Transit API with optional journey validation"""
     try:
         session = get_db_session()
         collector = DataCollectorService(session)
 
         success, stats = collector.run_collection()
         if success:
-            logger.info(f"Data collection completed: {stats}")
+            # Log appropriate message based on whether there were any failures
+            if stats.get("stations_failed", 0) > 0:
+                logger.warning(f"Data collection completed with partial success: {stats}")
+            else:
+                logger.info(f"Data collection completed successfully: {stats}")
+
+            # Run journey validation BEFORE notifications to ensure fresh data
+            if validate_journeys:
+                try:
+                    from trackcast.db.repository import TrainRepository, TrainStopRepository
+                    from trackcast.services.journey_validator import JourneyValidator
+
+                    logger.info("Running journey validation to ensure data freshness")
+                    train_repo = TrainRepository(session)
+                    stop_repo = TrainStopRepository(session)
+                    validator = JourneyValidator(train_repo, stop_repo)
+
+                    validated_trains = validator.validate_completed_journeys(batch_size=10)
+                    logger.info(
+                        f"Journey validation completed: {len(validated_trains)} trains validated"
+                    )
+
+                except Exception as e:
+                    logger.warning(f"Journey validation failed (continuing anyway): {e}")
+
+            # Process train updates for push notifications with fresh data
+            _process_push_notifications(session)
         else:
-            logger.error(f"Data collection failed: {stats}")
+            logger.error(f"Data collection failed: all stations failed: {stats}")
             sys.exit(1)
     except Exception as e:
         logger.error(f"Error in collect_data command: {str(e)}")
@@ -205,6 +355,46 @@ def generate_predictions(
 
 
 @main.command()
+@click.option("--limit", "-l", type=int, default=None, help="Limit number of trains to process")
+@click.option("--clear-old", is_flag=True, help="Clear outdated estimated arrival times")
+def update_estimated_arrivals(limit: Optional[int], clear_old: bool) -> None:
+    """Update estimated arrival times for active trains with delays"""
+    try:
+        from trackcast.services.estimated_arrival_service import EstimatedArrivalService
+
+        logger.info("Starting estimated arrival time updates")
+        session = get_db_session()
+
+        try:
+            service = EstimatedArrivalService(session)
+
+            # Clear old estimates if requested
+            if clear_old:
+                cleared_count = service.clear_outdated_estimates()
+                logger.info(f"Cleared {cleared_count} outdated estimated arrival times")
+
+            # Update estimates for active trains
+            updated_count = service.update_estimated_arrivals_for_active_trains(limit=limit)
+
+            if updated_count > 0:
+                logger.info(
+                    f"Successfully updated {updated_count} stops with estimated arrival times"
+                )
+            else:
+                logger.info("No stops required estimated arrival time updates")
+
+        except Exception as e:
+            logger.error(f"Error updating estimated arrivals: {str(e)}")
+            sys.exit(1)
+        finally:
+            session.close()
+
+    except ImportError as e:
+        logger.error(f"EstimatedArrivalService not available: {e}")
+        sys.exit(1)
+
+
+@main.command()
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="API host")
 @click.option("--port", "-p", type=int, default=8000, help="API port")
 def start_api(host: str, port: int) -> None:
@@ -219,56 +409,7 @@ def start_api(host: str, port: int) -> None:
         sys.exit(1)
 
 
-@main.command()
-def start_scheduler() -> None:
-    """Start the scheduler for automatic periodic execution (DEPRECATED: Use Cloud Run Jobs instead)"""
-    try:
-        logger.warning(
-            "DEPRECATED: The internal scheduler is deprecated. Use Cloud Run Jobs for scheduled operations."
-        )
-        logger.warning("This command is kept for backward compatibility only.")
-        logger.info("Starting internal scheduler")
-        scheduler = SchedulerService()
-        scheduler.start()
-
-        # Keep the main thread alive while scheduler runs
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("Keyboard interrupt received, shutting down scheduler")
-            scheduler.stop()
-    except Exception as e:
-        logger.error(f"Error in scheduler: {str(e)}")
-        sys.exit(1)
-
-
-@main.command()
-def update_schema() -> None:
-    """Update the database schema with migrations"""
-    try:
-        logger.info("Running database schema migrations")
-        session = get_db_session()
-
-        try:
-            results = run_migrations(session)
-
-            # Log results
-            for result in results:
-                if result["status"] == "success":
-                    logger.info(f"Migration {result['name']} completed: {result['message']}")
-                elif result["status"] == "skipped":
-                    logger.info(f"Migration {result['name']} skipped: {result['message']}")
-                else:
-                    logger.error(f"Migration {result['name']} failed: {result['message']}")
-                    sys.exit(1)
-
-            logger.info("Database schema update completed successfully")
-        finally:
-            session.close()
-    except Exception as e:
-        logger.error(f"Error updating database schema: {str(e)}")
-        sys.exit(1)
+# start_scheduler command removed - use Cloud Run Jobs for scheduling
 
 
 @main.command()
@@ -475,17 +616,43 @@ def run_pipeline(
 
 
 def _execute_collect_data() -> bool:
-    """Execute data collection step"""
+    """Execute data collection step with journey validation"""
     try:
         session = get_db_session()
         try:
             collector = DataCollectorService(session)
             success, stats = collector.run_collection()
             if success:
-                logger.info(f"Data collection completed: {stats}")
+                # Log appropriate message based on whether there were any failures
+                if stats.get("stations_failed", 0) > 0:
+                    logger.warning(f"Data collection completed with partial success: {stats}")
+                else:
+                    logger.info(f"Data collection completed successfully: {stats}")
+
+                # Run journey validation BEFORE notifications to ensure fresh data
+                try:
+                    from trackcast.db.repository import TrainRepository, TrainStopRepository
+                    from trackcast.services.journey_validator import JourneyValidator
+
+                    logger.info("Running journey validation to ensure data freshness")
+                    train_repo = TrainRepository(session)
+                    stop_repo = TrainStopRepository(session)
+                    validator = JourneyValidator(train_repo, stop_repo)
+
+                    validated_trains = validator.validate_completed_journeys(batch_size=10)
+                    logger.info(
+                        f"Journey validation completed: {len(validated_trains)} trains validated"
+                    )
+
+                except Exception as e:
+                    logger.warning(f"Journey validation failed (continuing anyway): {e}")
+
+                # Process train updates for push notifications with fresh data
+                _process_push_notifications(session)
+
                 return True
             else:
-                logger.error(f"Data collection failed: {stats}")
+                logger.error(f"Data collection failed: all stations failed: {stats}")
                 return False
         finally:
             session.close()
@@ -557,6 +724,165 @@ def _execute_generate_predictions(regenerate: bool = False) -> bool:
 
 
 @main.command()
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt")
+def clear_notification_tokens(confirm):
+    """Clear all notification tokens from the database."""
+    if not confirm:
+        click.confirm(
+            "⚠️  This will delete ALL device and Live Activity tokens. Continue?", abort=True
+        )
+
+    logger.info("🧹 Clearing all notification tokens...")
+
+    with get_db_session() as session:
+        try:
+            from trackcast.db.models import DeviceToken, LiveActivityToken
+
+            # Count tokens before deletion
+            device_count = session.query(DeviceToken).count()
+            live_activity_count = session.query(LiveActivityToken).count()
+
+            logger.info(
+                f"Found {device_count} device tokens and {live_activity_count} Live Activity tokens"
+            )
+
+            # Delete all tokens
+            session.query(LiveActivityToken).delete()
+            session.query(DeviceToken).delete()
+
+            session.commit()
+
+            logger.info("✅ Successfully cleared all notification tokens")
+            click.echo(
+                f"Deleted {device_count} device tokens and {live_activity_count} Live Activity tokens"
+            )
+
+        except Exception as e:
+            session.rollback()
+            logger.error(f"❌ Failed to clear tokens: {e}")
+            click.echo(f"Error: {e}", err=True)
+            raise
+
+
+@main.command()
+def check_apns_config() -> None:
+    """Check APNS configuration status and validate setup"""
+    try:
+        from trackcast.services.push_notification import APNSPushService
+
+        logger.info("Checking APNS configuration...")
+
+        # Initialize APNS service to check configuration
+        apns_service = APNSPushService()
+
+        # Check configuration status
+        config_status = {
+            "configured": not apns_service._use_mock,
+            "environment": (
+                "production" if apns_service.apns_url == "https://api.push.apple.com" else "sandbox"
+            ),
+            "auth_method": None,
+            "bundle_id": apns_service.bundle_id,
+            "live_activity_bundle_id": apns_service.live_activity_bundle_id,
+            "issues": [],
+        }
+
+        # Determine authentication method
+        if apns_service.team_id and apns_service.key_id and apns_service.auth_key_path:
+            config_status["auth_method"] = "auth_key"
+
+            # Validate auth key file
+            if not os.path.exists(apns_service.auth_key_path):
+                config_status["issues"].append(
+                    f"Auth key file not found: {apns_service.auth_key_path}"
+                )
+            elif not os.access(apns_service.auth_key_path, os.R_OK):
+                config_status["issues"].append(
+                    f"Auth key file not readable: {apns_service.auth_key_path}"
+                )
+
+        elif apns_service.cert_path and apns_service.key_path:
+            config_status["auth_method"] = "certificate"
+
+            # Validate certificate files
+            if not os.path.exists(apns_service.cert_path):
+                config_status["issues"].append(
+                    f"Certificate file not found: {apns_service.cert_path}"
+                )
+            if not os.path.exists(apns_service.key_path):
+                config_status["issues"].append(
+                    f"Private key file not found: {apns_service.key_path}"
+                )
+
+        else:
+            config_status["issues"].append("No valid authentication method configured")
+
+        # Test JWT generation if using auth key
+        if config_status["auth_method"] == "auth_key" and not config_status["issues"]:
+            try:
+                apns_service._generate_jwt_token()
+                logger.info("✓ JWT token generation successful")
+            except Exception as e:
+                config_status["issues"].append(f"JWT token generation failed: {str(e)}")
+
+        # Print results
+        logger.info(f"APNS Configuration Status:")
+        logger.info(
+            f"  Status: {'✓ Configured' if config_status['configured'] else '✗ Using Mock Mode'}"
+        )
+        logger.info(f"  Environment: {config_status['environment']}")
+        logger.info(f"  Authentication: {config_status['auth_method'] or 'None'}")
+        logger.info(f"  Main App Bundle ID: {config_status['bundle_id']}")
+        logger.info(f"  Live Activity Bundle ID: {config_status['live_activity_bundle_id']}")
+
+        if config_status["issues"]:
+            logger.error(f"Configuration Issues:")
+            for issue in config_status["issues"]:
+                logger.error(f"  - {issue}")
+        else:
+            logger.info(f"✓ Configuration appears valid")
+
+        # Environment variable summary
+        logger.info(f"Environment Variables:")
+        env_vars = [
+            ("TRACKCAST_ENV", os.getenv("TRACKCAST_ENV")),
+            (
+                "APNS_TEAM_ID",
+                (
+                    os.getenv("APNS_TEAM_ID", "").replace(os.getenv("APNS_TEAM_ID", ""), "***")
+                    if os.getenv("APNS_TEAM_ID")
+                    else None
+                ),
+            ),
+            ("APNS_KEY_ID", os.getenv("APNS_KEY_ID")),
+            ("APNS_AUTH_KEY_PATH", os.getenv("APNS_AUTH_KEY_PATH")),
+            ("APNS_CERT_PATH", os.getenv("APNS_CERT_PATH")),
+            ("APNS_KEY_PATH", os.getenv("APNS_KEY_PATH")),
+            ("APNS_BUNDLE_ID", os.getenv("APNS_BUNDLE_ID")),
+            ("APNS_LIVE_ACTIVITY_BUNDLE_ID", os.getenv("APNS_LIVE_ACTIVITY_BUNDLE_ID")),
+        ]
+
+        for var_name, var_value in env_vars:
+            if var_value:
+                logger.info(f"  {var_name}: {var_value}")
+            else:
+                logger.debug(f"  {var_name}: (not set)")
+
+        if not config_status["configured"]:
+            logger.info(f"")
+            logger.info(f"To configure APNS, see: APNS_SETUP.md")
+            logger.info(f"Required for Auth Key method:")
+            logger.info(f"  APNS_TEAM_ID, APNS_KEY_ID, APNS_AUTH_KEY_PATH")
+            logger.info(f"Required for Certificate method:")
+            logger.info(f"  APNS_CERT_PATH, APNS_KEY_PATH")
+            sys.exit(1)
+
+    except Exception as e:
+        logger.error(f"Error checking APNS configuration: {str(e)}")
+        sys.exit(1)
+
+
+@main.command()
 @click.option("--dry-run", is_flag=True, help="Show what would be updated without making changes")
 @click.option("--limit", type=int, help="Limit the number of stops to process")
 def backfill_station_codes(dry_run: bool, limit: Optional[int]) -> None:
@@ -585,7 +911,7 @@ def backfill_station_codes(dry_run: bool, limit: Optional[int]) -> None:
         query = (
             session.query(TrainStop)
             .filter(TrainStop.station_code == None)
-            .order_by(TrainStop.scheduled_time.desc())
+            .order_by(TrainStop.scheduled_arrival.desc())
         )
 
         if limit:

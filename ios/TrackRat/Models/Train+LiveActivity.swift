@@ -129,12 +129,20 @@ extension Train {
         
         let delayMinutes = isDelayed ? calculateStopDelay(next) : 0
         
+        // Calculate minutes away
+        let minutesAway = max(0, Int(eta.timeIntervalSince(Date()) / 60))
+        
+        // Check if this is the destination (this logic should be refined based on your needs)
+        let isDestination = false // You'll need to pass destination info to determine this
+        
         return NextStopInfo(
             stationName: next.stationName,
             estimatedArrival: eta,
             scheduledArrival: next.scheduledTime,
             isDelayed: isDelayed,
-            delayMinutes: delayMinutes
+            delayMinutes: delayMinutes,
+            isDestination: isDestination,
+            minutesAway: minutesAway
         )
     }
     
@@ -212,7 +220,9 @@ extension Train {
                 estimatedArrival: nextArrival.estimatedTime,
                 scheduledArrival: nextArrival.scheduledTime,
                 isDelayed: nextArrival.estimatedTime > nextArrival.scheduledTime,
-                delayMinutes: Int((nextArrival.estimatedTime.timeIntervalSince(nextArrival.scheduledTime)) / 60)
+                delayMinutes: Int((nextArrival.estimatedTime.timeIntervalSince(nextArrival.scheduledTime)) / 60),
+                isDestination: nextArrival.stationCode == destinationCode,
+                minutesAway: nextArrival.minutesAway
             )
         }
         
@@ -235,7 +245,7 @@ extension Train {
         return TrainActivityAttributes.ContentState(
             statusV2: statusV2?.current ?? "UNKNOWN",
             statusLocation: statusV2?.location,
-            track: displayTrack,  // Use displayTrack instead of track for consolidated data
+            track: getTrackForStation(originCode),  // Get track specific to origin station
             delayMinutes: displayDelayMinutes,  // Use displayDelayMinutes for consolidated data
             currentLocation: currentLocation,
             nextStop: nextStop,
@@ -243,7 +253,12 @@ extension Train {
             destinationETA: destinationETA,
             trackRatPrediction: trackRatPrediction,
             lastUpdated: Date(),
-            hasStatusChanged: hasStatusChanged
+            hasStatusChanged: hasStatusChanged,
+            // Enhanced alert metadata (populated by backend push updates)
+            alertMetadata: nil,
+            dynamicIslandPriority: nil,
+            requiresHapticFeedback: nil,
+            pushTimestamp: nil
         )
     }
     

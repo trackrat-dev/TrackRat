@@ -22,12 +22,12 @@ A minimalistic iOS app for tracking train departures from New York Penn Station 
 
 - iOS 17.0+
 - Xcode 15.0+
-- API server accessible at `http://100.85.76.112:8000`
+- API server accessible at `https://prod.api.trackrat.net/api`
 
 ## Setup
 
 1. Open `TrackRat.xcodeproj` in Xcode
-2. Ensure the API server is accessible at `http://100.85.76.112:8000`
+2. Ensure the API server is accessible at `https://prod.api.trackrat.net/api`
 3. Build and run on simulator or device
 
 ## Project Structure
@@ -45,6 +45,9 @@ TrackRat/
 │   └── StorageService.swift   # Local persistence
 ├── Views/
 │   └── Screens/
+│       ├── TripSelectionView.swift
+│       ├── AdvancedConfigurationView.swift
+│       ├── DeparturePickerView.swift
 │       ├── DestinationPickerView.swift
 │       ├── TrainListView.swift
 │       ├── TrainDetailsView.swift

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from trackcast.services.prediction import PredictionService
+from trackcast.utils import get_eastern_now
 from trackcast.db.models import Train, ModelData, PredictionData
 
 
@@ -75,7 +76,7 @@ class TestPredictionServiceFiltering:
         mock_pipeline.predict.return_value = [{"1": 0.8, "2": 0.2}]
         mock_pipeline.get_prediction_factors.return_value = []
         
-        now = datetime.utcnow()
+        now = get_eastern_now()
         
         # Create test trains at different times
         trains_data = [
@@ -131,7 +132,7 @@ class TestPredictionServiceFiltering:
         mock_pipeline.predict.return_value = [{"1": 0.8, "2": 0.2}]
         mock_pipeline.get_prediction_factors.return_value = []
         
-        now = datetime.utcnow()
+        now = get_eastern_now()
         
         # Create test trains - past and future
         trains_data = [
@@ -207,7 +208,7 @@ class TestPredictionServiceClearing:
 
     def test_clear_predictions_with_time_range(self, db_session):
         """Test clearing predictions for time range."""
-        now = datetime.utcnow()
+        now = get_eastern_now()
         
         # Create trains with predictions at different times
         trains_data = [
@@ -257,7 +258,7 @@ class TestPredictionServiceClearing:
 
     def test_clear_predictions_with_future_only(self, db_session):
         """Test clearing predictions for future trains only."""
-        now = datetime.utcnow()
+        now = get_eastern_now()
         
         # Create trains with predictions - past and future
         trains_data = [

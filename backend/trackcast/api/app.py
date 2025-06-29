@@ -8,13 +8,14 @@ import time
 from typing import Callable
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import or_, text
 
-from trackcast.api.routers import stops, trains
+from trackcast.api.routers import notifications, trains
 from trackcast.db.connection import engine, get_db, get_pool_status_metrics
+from trackcast.services.gcp_metrics import initialize_gcp_exporter, start_gcp_export
 from trackcast.telemetry import instrument_app, setup_telemetry
 
 # Configure logging
@@ -36,14 +37,20 @@ app = FastAPI(
 instrument_app(app, engine)
 Instrumentator().instrument(app).expose(app)
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Initialize GCP Metrics Exporter
+try:
+    gcp_exporter = initialize_gcp_exporter(
+        export_interval_seconds=int(os.getenv("GCP_METRICS_EXPORT_INTERVAL", "180"))
+    )
+    if gcp_exporter.is_enabled():
+        start_gcp_export()
+        logger.info("GCP Metrics Exporter initialized and started")
+    else:
+        logger.info("GCP Metrics Exporter disabled (no GCP project detected)")
+except Exception as e:
+    logger.warning(f"Failed to initialize GCP Metrics Exporter: {e}")
+
+# CORS middleware removed - no web clients to serve
 
 
 # Add middleware for request logging
@@ -54,6 +61,16 @@ async def log_requests(request: Request, call_next: Callable):
 
     # Process the request
     response = await call_next(request)
+
+    # Enhanced logging for notification endpoint responses
+    if "/api/device-tokens" in str(request.url.path) or "/api/live-activities" in str(
+        request.url.path
+    ):
+        logger.info(f"🔍 NOTIFICATION RESPONSE: {response.status_code}")
+        # Log response body for errors
+        if response.status_code >= 400:
+            # Try to read response if possible
+            logger.error(f"🔍 Error response for {request.method} {request.url.path}")
 
     # Update DB pool metrics
     try:
@@ -74,7 +91,7 @@ async def log_requests(request: Request, call_next: Callable):
 
 # Include routers
 app.include_router(trains.router, prefix="/api/trains", tags=["trains"])
-app.include_router(stops.router, prefix="/api/stops", tags=["stops"])
+app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 
 
 # Root endpoint
@@ -106,7 +123,7 @@ async def health(db=Depends(get_db)):
         # Get current time in Eastern timezone for database queries
         current_time = datetime.utcnow()
 
-        logger.info("Starting health check")
+        logger.debug("Starting health check")
 
         # Check database connection
         try:
@@ -116,7 +133,7 @@ async def health(db=Depends(get_db)):
                 "status": "healthy",
                 "message": "Database connection successful",
             }
-            logger.info("Database connection check passed")
+            logger.debug("Database connection check passed")
         except Exception as e:
             logger.error(f"Database health check failed: {str(e)}", exc_info=True)
             health_status["checks"]["database"] = {
@@ -342,13 +359,46 @@ async def health(db=Depends(get_db)):
                 "message": "All required environment variables configured",
             }
 
+        # Check GCP Metrics Exporter status
+        try:
+            from trackcast.services.gcp_metrics import get_gcp_exporter
+
+            gcp_exporter = get_gcp_exporter()
+            if gcp_exporter:
+                export_stats = gcp_exporter.get_export_stats()
+                is_enabled = gcp_exporter.is_enabled()
+
+                health_status["checks"]["gcp_metrics"] = {
+                    "status": "healthy" if is_enabled else "disabled",
+                    "enabled": is_enabled,
+                    "export_stats": export_stats,
+                    "message": (
+                        "GCP metrics export configured"
+                        if is_enabled
+                        else "GCP metrics export disabled"
+                    ),
+                }
+            else:
+                health_status["checks"]["gcp_metrics"] = {
+                    "status": "disabled",
+                    "enabled": False,
+                    "message": "GCP metrics exporter not initialized",
+                }
+        except Exception as e:
+            logger.warning(f"Failed to check GCP metrics status: {e}")
+            health_status["checks"]["gcp_metrics"] = {
+                "status": "error",
+                "enabled": False,
+                "message": f"Error checking GCP metrics: {str(e)}",
+            }
+
         # Set overall status
         if not overall_healthy:
             health_status["status"] = "unhealthy"
             logger.warning(f"Health check returning unhealthy status: {health_status}")
             return JSONResponse(status_code=503, content=health_status)
 
-        logger.info("Health check completed successfully")
+        logger.debug("Health check completed successfully")
         return health_status
 
     except Exception as e:
@@ -364,6 +414,23 @@ async def health(db=Depends(get_db)):
 
 
 # Error handlers
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Custom handler for request validation errors."""
+    logger.error(f"🔍 REQUEST VALIDATION ERROR: {str(exc)}")
+    logger.error(f"🔍 Request URL: {request.url}")
+    logger.error(f"🔍 Request method: {request.method}")
+    logger.error(f"🔍 Request headers: {dict(request.headers)}")
+    logger.error(f"🔍 Validation errors: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Request validation failed",
+            "errors": exc.errors(),
+        },
+    )
+
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Custom handler for HTTP exceptions."""

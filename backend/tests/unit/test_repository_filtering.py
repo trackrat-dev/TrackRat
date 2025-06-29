@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from trackcast.db.models import Train, ModelData, PredictionData
+from trackcast.utils import get_eastern_now
 from trackcast.db.repository import TrainRepository
 
 
@@ -85,7 +86,7 @@ class TestTrainRepositoryFiltering:
         """Test filtering by time range."""
         repo = TrainRepository(db_session)
         
-        now = datetime.utcnow()
+        now = get_eastern_now()
         
         # Create test trains at different times
         times = [
@@ -128,7 +129,7 @@ class TestTrainRepositoryFiltering:
         """Test filtering for future trains only."""
         repo = TrainRepository(db_session)
         
-        now = datetime.utcnow()
+        now = get_eastern_now()
         
         # Create test trains - past and future
         times = [
@@ -167,7 +168,7 @@ class TestTrainRepositoryFiltering:
         """Test getting all future trains."""
         repo = TrainRepository(db_session)
         
-        now = datetime.utcnow()
+        now = get_eastern_now()
         
         # Create test trains - past and future
         times = [
@@ -202,7 +203,7 @@ class TestTrainRepositoryFiltering:
         """Test getting future trains that need predictions only."""
         repo = TrainRepository(db_session)
         
-        now = datetime.utcnow()
+        now = get_eastern_now()
         
         # Create future trains - some with features, some with predictions
         train1 = Train(
@@ -337,7 +338,7 @@ class TestTrainRepositoryClearingMethods:
         """Test clearing predictions for future trains."""
         repo = TrainRepository(db_session)
         
-        now = datetime.utcnow()
+        now = get_eastern_now()
         
         # Create trains - past and future with predictions
         trains_data = [

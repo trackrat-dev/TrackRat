@@ -42,7 +42,11 @@ ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     OTEL_SAMPLE_RATE="0.1" \
     OTEL_SERVICE_NAME="trackcast-api" \
-    OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED="true"
+    OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED="true" \
+    APNS_TEAM_ID="D5RZZ55J9R" \
+    APNS_KEY_ID="4WC3F645FR" \
+    APNS_AUTH_KEY_PATH="/app/certs/AuthKey_4WC3F645FR.p8" \
+    APNS_BUNDLE_ID="net.trackrat.TrackRat"
 
 # Install runtime system dependencies (minimal)
 RUN apt-get update && apt-get install -y \
@@ -53,9 +57,9 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && apt-get autoremove -y
 
-# Create non-root user for security
+# Create non-root user for security and create directories
 RUN useradd --create-home --shell /bin/bash trackcast \
-    && mkdir -p /app /app/models /app/config /app/logs \
+    && mkdir -p /app /app/models /app/config /app/logs /app/certs \
     && chown -R trackcast:trackcast /app
 
 # Copy virtual environment from builder stage
@@ -69,6 +73,9 @@ COPY --chown=trackcast:trackcast trackcast/ ./trackcast/
 COPY --chown=trackcast:trackcast pyproject.toml ./
 COPY --chown=trackcast:trackcast config/ ./config/
 COPY --chown=trackcast:trackcast models/ ./models/
+
+# Copy APNS certificates (ensure this directory exists in your project)
+COPY --chown=trackcast:trackcast certs/ ./certs/
 
 # Copy entrypoint script
 COPY --chown=trackcast:trackcast entrypoint.sh ./entrypoint.sh

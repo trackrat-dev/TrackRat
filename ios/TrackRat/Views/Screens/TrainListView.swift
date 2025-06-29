@@ -203,7 +203,9 @@ struct TrainCard: View {
                 }
                 
                 // Track and status - only show for boarding trains at origin
-                if isBoardingAtOrigin, let track = train.track {
+                if isBoardingAtOrigin,
+                   let departureCode = appState.departureStationCode,
+                   let track = train.getTrackForStation(departureCode) {
                     Label("Boarding on Track \(track)", systemImage: "tram.fill")
                         .font(.subheadline)
                         .foregroundColor(.white)
@@ -222,6 +224,7 @@ struct TrainCard: View {
 // MARK: - StatusV2 Badge
 struct StatusV2Badge: View {
     let train: Train
+    let departureStationCode: String?
     
     var body: some View {
         HStack(spacing: 4) {
@@ -246,7 +249,8 @@ struct StatusV2Badge: View {
         
         switch statusV2.current {
         case "BOARDING":
-            return train.displayTrack != nil ? .orange : .gray
+            let hasTrack = departureStationCode != nil ? train.getTrackForStation(departureStationCode!) != nil : train.track != nil
+            return hasTrack ? .orange : .gray
         case "EN_ROUTE":
             return .blue
         case "ARRIVED":
@@ -267,7 +271,8 @@ struct StatusV2Badge: View {
         
         switch statusV2.current {
         case "BOARDING":
-            return train.displayTrack != nil ? "Boarding" : "Scheduled"
+            let hasTrack = departureStationCode != nil ? train.getTrackForStation(departureStationCode!) != nil : train.track != nil
+            return hasTrack ? "Boarding" : "Scheduled"
         case "EN_ROUTE":
             return "En Route"
         case "ARRIVED":

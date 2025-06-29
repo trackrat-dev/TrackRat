@@ -54,19 +54,8 @@ struct ActiveTripsSection: View {
             headerRow(for: activity)
             routeRow(for: activity)
             
-            // Use new journey status view if train data is available
-            if let trainData = getTrainDataFromActivity(activity) {
-                JourneyStatusView(
-                    train: trainData, 
-                    displayMode: JourneyDisplayMode.compact,
-                    showTrainHeader: false
-                )
-            } else {
-                // Fallback to legacy display
-                statusAndTrackRow(for: activity)
-                progressBar(for: activity)
-                bottomInfoRow(for: activity)
-            }
+            // Show only info, no status display
+            bottomInfoRow(for: activity)
         }
         .padding(16)
         .background(
@@ -83,8 +72,6 @@ struct ActiveTripsSection: View {
     private func headerRow(for activity: Activity<TrainActivityAttributes>) -> some View {
         HStack {
             HStack(spacing: 6) {
-                Text("🚂")
-                    .font(.title2)
                 Text("Train \(activity.attributes.trainNumber)")
                     .font(.headline.bold())
                     .foregroundColor(.white)
@@ -105,6 +92,7 @@ struct ActiveTripsSection: View {
             Text(activity.attributes.routeDescription)
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.8))
+                .lineLimit(2)
             Spacer()
         }
     }
@@ -143,20 +131,6 @@ struct ActiveTripsSection: View {
         }
     }
     
-    private func progressBar(for activity: Activity<TrainActivityAttributes>) -> some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(.white.opacity(0.3))
-                    .frame(height: 6)
-                
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(.white.opacity(0.9))
-                    .frame(width: geometry.size.width * activity.content.state.journeyProgress, height: 6)
-            }
-        }
-        .frame(height: 6)
-    }
     
     private func bottomInfoRow(for activity: Activity<TrainActivityAttributes>) -> some View {
         HStack {
@@ -176,12 +150,12 @@ struct ActiveTripsSection: View {
             
             
             VStack(alignment: .trailing, spacing: 2) {
-                Text("Updated")
+                Text("Last Updated")
                     .font(.caption2)
                     .foregroundColor(.white.opacity(0.7))
                 Text(formatTimeAgo(activity.content.state.lastUpdated))
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(isUpdateStale(activity.content.state.lastUpdated) ? Color.red.opacity(0.7) : .white.opacity(0.8))
             }
         }
     }
@@ -235,6 +209,12 @@ struct ActiveTripsSection: View {
         }
     }
     
+    private func isUpdateStale(_ date: Date) -> Bool {
+        let now = Date()
+        let timeInterval = now.timeIntervalSince(date)
+        return timeInterval >= 300 // 5 minutes = 300 seconds
+    }
+    
     private func formatTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
@@ -262,7 +242,7 @@ struct ActiveTripsSection: View {
             predictionData: nil,
             originStationCode: attributes.originStationCode,
             dataSource: nil,
-            statusV2: createStatusV2FromActivity(contentState),
+            statusV2: createStatusV2FromActivity(contentState, attributes),
             progress: createProgressFromActivity(contentState, attributes)
         )
         
@@ -270,7 +250,7 @@ struct ActiveTripsSection: View {
     }
     
     /// Create StatusV2-like data from Live Activity content with human-friendly status
-    private func createStatusV2FromActivity(_ contentState: TrainActivityAttributes.ContentState) -> StatusV2? {
+    private func createStatusV2FromActivity(_ contentState: TrainActivityAttributes.ContentState, _ attributes: TrainActivityAttributes) -> StatusV2? {
         let currentStatus: String
         let location: String
         
@@ -279,7 +259,12 @@ struct ActiveTripsSection: View {
             currentStatus = "SCHEDULED"
             location = "at departure station"
         case .boarding(let station):
-            currentStatus = humanFriendlyStatus("BOARDING", track: contentState.track)
+            // Only show boarding if at origin station
+            if station == attributes.origin {
+                currentStatus = "BOARDING"
+            } else {
+                currentStatus = "EN_ROUTE"
+            }
             location = "at \(station)"
         case .departed(let from, _):
             currentStatus = "EN_ROUTE"
@@ -291,7 +276,12 @@ struct ActiveTripsSection: View {
             currentStatus = "EN_ROUTE"
             location = "between \(from) and \(to)"
         case .atStation(let station):
-            currentStatus = humanFriendlyStatus("BOARDING", track: contentState.track)
+            // Only show boarding if at origin station
+            if station == attributes.origin {
+                currentStatus = "BOARDING"
+            } else {
+                currentStatus = "EN_ROUTE"
+            }
             location = "at \(station)"
         case .arrived:
             currentStatus = "ARRIVED"
@@ -313,11 +303,7 @@ struct ActiveTripsSection: View {
         case "EN_ROUTE":
             return "En Route"
         case "BOARDING":
-            if let track = track {
-                return "Boarding on Track \(track)"
-            } else {
-                return "Boarding"
-            }
+            return "Boarding"  // Never show track info here
         case "SCHEDULED":
             return "Scheduled"
         case "ON_TIME":
@@ -327,7 +313,7 @@ struct ActiveTripsSection: View {
         case "DEPARTED":
             return "Departed"
         case "ARRIVED":
-            return "Arrived"
+            return "Journey Complete!"
         case "CANCELLED":
             return "Cancelled"
         case "ALL_ABOARD":

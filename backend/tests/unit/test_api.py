@@ -64,6 +64,11 @@ class TestTrainsAPI:
         mock_train.delay_minutes = None
         mock_train.train_split = None
         
+        # Add new API response fields
+        mock_train.journey_completion_status = "in_progress"
+        mock_train.stops_last_updated = None
+        mock_train.journey_validated_at = None
+        
         # Mock prediction data
         mock_prediction = MagicMock()
         mock_prediction.track_probabilities = {"1": 0.1, "2": 0.7, "3": 0.2}
@@ -120,6 +125,11 @@ class TestTrainsAPI:
         mock_train.delay_minutes = None
         mock_train.train_split = None
         mock_train.prediction_data = None
+        
+        # Add new API response fields
+        mock_train.journey_completion_status = "in_progress"
+        mock_train.stops_last_updated = None
+        mock_train.journey_validated_at = None
 
         # Configure the mock to return the same data for any query
         mock_train_repository.get_trains.return_value = ([mock_train], 1)
@@ -173,6 +183,11 @@ class TestContextPredictionAPI:
         mock_train.delay_minutes = None
         mock_train.train_split = None
         
+        # Add new API response fields
+        mock_train.journey_completion_status = "in_progress"
+        mock_train.stops_last_updated = None
+        mock_train.journey_validated_at = None
+        
         # Mock prediction data for MP origin train
         mock_prediction = MagicMock()
         mock_prediction.track_probabilities = {"4": 0.85, "3": 0.15}  # MP tracks
@@ -184,9 +199,9 @@ class TestContextPredictionAPI:
         # Mock train stops including MP
         from trackcast.api.models import TrainStop
         mock_stops = [
-            TrainStop(station_code="MP", station_name="Metropark", scheduled_time=datetime.fromisoformat("2025-05-09T14:30:00"), departed=False),
-            TrainStop(station_code="NP", station_name="Newark Penn Station", scheduled_time=datetime.fromisoformat("2025-05-09T14:45:00"), departed=False),
-            TrainStop(station_code="NY", station_name="New York Penn Station", scheduled_time=datetime.fromisoformat("2025-05-09T15:00:00"), departed=False)
+            TrainStop(station_code="MP", station_name="Metropark", scheduled_time="2025-05-09T14:30:00", departed=False),
+            TrainStop(station_code="NP", station_name="Newark Penn Station", scheduled_time="2025-05-09T14:45:00", departed=False),
+            TrainStop(station_code="NY", station_name="New York Penn Station", scheduled_time="2025-05-09T15:00:00", departed=False)
         ]
 
         # Configure mocks
@@ -244,6 +259,11 @@ class TestContextPredictionAPI:
         mock_train.delay_minutes = None
         mock_train.train_split = None
         mock_train.prediction_data = None
+        
+        # Add new API response fields
+        mock_train.journey_completion_status = "in_progress"
+        mock_train.stops_last_updated = None
+        mock_train.journey_validated_at = None
 
         # Configure mocks
         mock_train_repository.get_trains.return_value = ([mock_train], 1)
@@ -291,6 +311,11 @@ class TestContextPredictionAPI:
         mock_train.track_released_at = None
         mock_train.delay_minutes = None
         mock_train.train_split = None
+        
+        # Add new API response fields
+        mock_train.journey_completion_status = "in_progress"
+        mock_train.stops_last_updated = None
+        mock_train.journey_validated_at = None
         
         # Mock original prediction data (NY model)
         mock_prediction = MagicMock()
@@ -341,6 +366,11 @@ class TestContextPredictionAPI:
         mock_train.delay_minutes = None
         mock_train.train_split = None
         mock_train.prediction_data = None
+        
+        # Add new API response fields
+        mock_train.journey_completion_status = "in_progress"
+        mock_train.stops_last_updated = None
+        mock_train.journey_validated_at = None
 
         # Configure mocks
         mock_train_repository.get_trains.return_value = ([mock_train], 1)
@@ -380,6 +410,11 @@ class TestContextPredictionAPI:
         mock_train.delay_minutes = None
         mock_train.train_split = None
         mock_train.prediction_data = None
+        
+        # Add new API response fields
+        mock_train.journey_completion_status = "in_progress"
+        mock_train.stops_last_updated = None
+        mock_train.journey_validated_at = None
 
         # Configure mocks
         mock_train_repository.get_trains.return_value = ([mock_train], 1)
@@ -414,6 +449,11 @@ class TestContextPredictionAPI:
         mock_train.delay_minutes = None
         mock_train.train_split = None
         
+        # Add new API response fields
+        mock_train.journey_completion_status = "in_progress"
+        mock_train.stops_last_updated = None
+        mock_train.journey_validated_at = None
+        
         # Mock NY prediction data (will be filtered out for MP context)
         mock_prediction = MagicMock()
         mock_prediction.track_probabilities = {"13": 0.8, "14": 0.2}  # NY tracks
@@ -425,9 +465,9 @@ class TestContextPredictionAPI:
         # Mock train stops - train doesn't actually stop at MP in this case
         from trackcast.api.models import TrainStop  
         mock_stops = [
-            TrainStop(station_code="NY", station_name="New York Penn Station", scheduled_time=datetime.fromisoformat("2025-05-09T14:30:00"), departed=False),
-            TrainStop(station_code="NP", station_name="Newark Penn Station", scheduled_time=datetime.fromisoformat("2025-05-09T14:45:00"), departed=False),
-            TrainStop(station_code="TR", station_name="Trenton", scheduled_time=datetime.fromisoformat("2025-05-09T15:15:00"), departed=False)
+            TrainStop(station_code="NY", station_name="New York Penn Station", scheduled_time="2025-05-09T14:30:00", departed=False),
+            TrainStop(station_code="NP", station_name="Newark Penn Station", scheduled_time="2025-05-09T14:45:00", departed=False),
+            TrainStop(station_code="TR", station_name="Trenton", scheduled_time="2025-05-09T15:15:00", departed=False)
         ]
 
         # Configure mocks
@@ -479,6 +519,11 @@ class TestContextPredictionAPI:
         mock_train.delay_minutes = None
         mock_train.train_split = None
         
+        # Add new API response fields
+        mock_train.journey_completion_status = "in_progress"
+        mock_train.stops_last_updated = None
+        mock_train.journey_validated_at = None
+        
         # Mock NY prediction data (should be shown for NY context)
         mock_prediction = MagicMock()
         mock_prediction.track_probabilities = {"13": 0.8, "14": 0.2}  # NY tracks
@@ -490,9 +535,9 @@ class TestContextPredictionAPI:
         # Mock train stops including NY
         from trackcast.api.models import TrainStop  
         mock_stops = [
-            TrainStop(station_code="NY", station_name="New York Penn Station", scheduled_time=datetime.fromisoformat("2025-05-09T14:30:00"), departed=False),
-            TrainStop(station_code="NP", station_name="Newark Penn Station", scheduled_time=datetime.fromisoformat("2025-05-09T14:45:00"), departed=False),
-            TrainStop(station_code="TR", station_name="Trenton", scheduled_time=datetime.fromisoformat("2025-05-09T15:15:00"), departed=False)
+            TrainStop(station_code="NY", station_name="New York Penn Station", scheduled_time="2025-05-09T14:30:00", departed=False),
+            TrainStop(station_code="NP", station_name="Newark Penn Station", scheduled_time="2025-05-09T14:45:00", departed=False),
+            TrainStop(station_code="TR", station_name="Trenton", scheduled_time="2025-05-09T15:15:00", departed=False)
         ]
 
         # Configure mocks

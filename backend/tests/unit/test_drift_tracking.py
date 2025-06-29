@@ -41,7 +41,10 @@ class TestDriftTracking:
             data_source="njtransit",
             station_code="NP",
             station_name="Newark Penn Station",
-            scheduled_time=datetime(2025, 6, 18, 18, 36, 0),  # Initial time
+            scheduled_arrival=datetime(2025, 6, 18, 18, 36, 0),  # Initial time
+            scheduled_departure=None,
+            actual_arrival=None,
+            actual_departure=None,
             is_active=True,
             
             
@@ -76,7 +79,7 @@ class TestDriftTracking:
                     {
                         "station_code": "NP",
                         "station_name": "Newark Penn Station",
-                        "scheduled_time": new_time_str,
+                        "scheduled_arrival": new_time_str,
                         "departed": False,
                     }
                 ]
@@ -90,7 +93,7 @@ class TestDriftTracking:
 
                 # Verify the DB time was updated to the new time
                 new_datetime = datetime.fromisoformat(new_time_str)
-                assert existing_stop.scheduled_time == new_datetime, \
+                assert existing_stop.scheduled_arrival == new_datetime, \
                     f"DB time should be updated to {new_time_str}"
 
 
@@ -102,7 +105,10 @@ class TestDriftTracking:
             data_source="njtransit",
             station_code="NP",
             station_name="Newark Penn Station",
-            scheduled_time=datetime(2025, 6, 18, 18, 36, 0),
+            scheduled_arrival=datetime(2025, 6, 18, 18, 36, 0),
+            scheduled_departure=None,
+            actual_arrival=None,
+            actual_departure=None,
             is_active=True,
             
             
@@ -125,7 +131,7 @@ class TestDriftTracking:
                 {
                     "station_code": "NP",
                     "station_name": "Newark Penn Station",
-                    "scheduled_time": "2025-06-18T18:38:00",  # +2 minutes
+                    "scheduled_arrival": "2025-06-18T18:38:00",  # +2 minutes
                     "departed": False,
                 }
             ]
@@ -151,7 +157,10 @@ class TestDriftTracking:
             data_source="njtransit",
             station_code="NP",
             station_name="Newark Penn Station",
-            scheduled_time=datetime(2025, 6, 18, 18, 36, 0),
+            scheduled_arrival=datetime(2025, 6, 18, 18, 36, 0),
+            scheduled_departure=None,
+            actual_arrival=None,
+            actual_departure=None,
             is_active=True,
             
             
@@ -181,7 +190,7 @@ class TestDriftTracking:
                 {
                     "station_code": "NP",
                     "station_name": "Newark Penn Station",
-                    "scheduled_time": "2025-06-18T18:38:00",
+                    "scheduled_arrival": "2025-06-18T18:38:00",
                     "departed": False,
                 }
             ]
@@ -194,14 +203,14 @@ class TestDriftTracking:
             )
 
             # DB should now be at 18:38:00
-            assert existing_stop.scheduled_time == datetime(2025, 6, 18, 18, 38, 0)
+            assert existing_stop.scheduled_arrival == datetime(2025, 6, 18, 18, 38, 0)
 
             # Step 2: Another drift (+2 more minutes from new baseline)
             incoming_stops_2 = [
                 {
                     "station_code": "NP",
                     "station_name": "Newark Penn Station",
-                    "scheduled_time": "2025-06-18T18:40:00",
+                    "scheduled_arrival": "2025-06-18T18:40:00",
                     "departed": False,
                 }
             ]
@@ -214,7 +223,7 @@ class TestDriftTracking:
             )
 
             # DB should now be at 18:40:00
-            assert existing_stop.scheduled_time == datetime(2025, 6, 18, 18, 40, 0)
+            assert existing_stop.scheduled_arrival == datetime(2025, 6, 18, 18, 40, 0)
 
             # Step 3: Another drift (+4 more minutes from new baseline)
             # This would have failed if we stayed at original 18:36:00 (total 8 minutes)
@@ -223,7 +232,7 @@ class TestDriftTracking:
                 {
                     "station_code": "NP",
                     "station_name": "Newark Penn Station",
-                    "scheduled_time": "2025-06-18T18:44:00",
+                    "scheduled_arrival": "2025-06-18T18:44:00",
                     "departed": False,
                 }
             ]
@@ -237,7 +246,7 @@ class TestDriftTracking:
 
             # Should succeed - stop should remain active and be updated
             assert existing_stop.is_active is True
-            assert existing_stop.scheduled_time == datetime(2025, 6, 18, 18, 44, 0)
+            assert existing_stop.scheduled_arrival == datetime(2025, 6, 18, 18, 44, 0)
 
             # Note: Total drift from original is 8 minutes, but because we tracked
             # each step, the stop was never marked inactive
@@ -250,7 +259,10 @@ class TestDriftTracking:
             data_source="njtransit",
             station_code="NP",
             station_name="Newark Penn Station",
-            scheduled_time=datetime(2025, 6, 18, 18, 36, 0),
+            scheduled_arrival=datetime(2025, 6, 18, 18, 36, 0),
+            scheduled_departure=None,
+            actual_arrival=None,
+            actual_departure=None,
             is_active=True,
             
             
@@ -273,7 +285,7 @@ class TestDriftTracking:
                 {
                     "station_code": "NP",
                     "station_name": "Newark Penn Station",
-                    "scheduled_time": "2025-06-18T18:36:30",  # +30 seconds
+                    "scheduled_arrival": "2025-06-18T18:36:30",  # +30 seconds
                     "departed": False,
                 }
             ]
@@ -290,7 +302,7 @@ class TestDriftTracking:
                 {
                     "station_code": "NP",
                     "station_name": "Newark Penn Station",
-                    "scheduled_time": "2025-06-18T18:39:30",  # +3 minutes from current
+                    "scheduled_arrival": "2025-06-18T18:39:30",  # +3 minutes from current
                     "departed": False,
                 }
             ]

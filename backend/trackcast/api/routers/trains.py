@@ -10,7 +10,6 @@ from trackcast.api.models import (
     ConsolidatedTrainListResponse,
     ConsolidatedTrainResponse,
     Metadata,
-    PredictionResponse,
     TrainListResponse,
     TrainResponse,
 )
@@ -19,6 +18,7 @@ from trackcast.db.connection import get_db
 from trackcast.db.repository import TrainRepository, TrainStopRepository
 from trackcast.services.train_consolidation import TrainConsolidationService
 from trackcast.telemetry import trace_operation
+from trackcast.utils import get_eastern_now
 
 
 def get_train_repository() -> TrainRepository:
@@ -118,8 +118,10 @@ def _enrich_train_with_stops(train: Any, stop_repo: TrainStopRepository) -> Any:
                 TrainStop(
                     station_code=getattr(stop, "station_code", None),
                     station_name=getattr(stop, "station_name", ""),
-                    scheduled_time=getattr(stop, "scheduled_time", None),
-                    departure_time=getattr(stop, "departure_time", None),
+                    scheduled_arrival=getattr(stop, "scheduled_arrival", None),
+                    scheduled_departure=getattr(stop, "scheduled_departure", None),
+                    actual_arrival=getattr(stop, "actual_arrival", None),
+                    actual_departure=getattr(stop, "actual_departure", None),
                     pickup_only=bool(getattr(stop, "pickup_only", False)),
                     dropoff_only=bool(getattr(stop, "dropoff_only", False)),
                     departed=bool(getattr(stop, "departed", False)),
@@ -339,6 +341,84 @@ async def list_trains(
                 data_source=data_source,
             )
 
+        # Check if we should fetch fresh stop data for a specific NJ Transit train
+        if train_id:
+            # Find NJ Transit trains that need stop updates
+            nj_trains_to_update = [t for t in trains if t.data_source == "njtransit"]
+
+            if nj_trains_to_update:
+                from trackcast.data.collectors import NJTransitCollector
+                from trackcast.services.train_stop_updater import TrainStopUpdater
+
+                # Group trains by train_id for efficient API calls (train stop API is not station-specific)
+                trains_by_id = {}
+                for train in nj_trains_to_update:
+                    if train.train_id not in trains_by_id:
+                        trains_by_id[train.train_id] = []
+                    trains_by_id[train.train_id].append(train)
+
+                # Update stops for each train_id's trains using batch processing
+                for train_id_key, trains_with_same_id in trains_by_id.items():
+                    # Find trains that need updating
+                    updater = TrainStopUpdater(train_repo, stop_repo)
+                    trains_needing_update = [
+                        train
+                        for train in trains_with_same_id
+                        if updater.should_refresh_stops(train)
+                    ]
+
+                    if trains_needing_update:
+                        try:
+                            # Use any available station config for authentication (train stop API doesn't need specific station)
+                            station_config = next(
+                                (s for s in settings.njtransit_api.stations if s.enabled),
+                                None,
+                            )
+
+                            if station_config:
+                                nj_collector = NJTransitCollector(
+                                    station_code=station_config.code,
+                                    station_name=station_config.name,
+                                )
+                                updater.nj_collector = nj_collector
+
+                                # Update stops for all trains with single API call
+                                completion_results = updater.update_multiple_trains_stops(
+                                    trains_needing_update
+                                )
+
+                                # Update completion status for trains that are complete
+                                for train_db_id, is_complete in completion_results.items():
+                                    if is_complete:
+                                        # Find the train object by database ID
+                                        train_to_complete = next(
+                                            (
+                                                t
+                                                for t in trains_needing_update
+                                                if str(t.id) == train_db_id
+                                            ),
+                                            None,
+                                        )
+                                        if (
+                                            train_to_complete
+                                            and train_to_complete.journey_completion_status
+                                            != "completed"
+                                        ):
+                                            train_to_complete.journey_completion_status = (
+                                                "completed"
+                                            )
+                                            train_to_complete.journey_validated_at = (
+                                                get_eastern_now()
+                                            )
+                                            train_repo.update(train_to_complete)
+
+                                logger.info(
+                                    f"Updated stops for {len(trains_needing_update)} trains with train_id {train_id_key}"
+                                )
+
+                        except Exception as e:
+                            logger.warning(f"Failed to refresh stops for train {train_id_key}: {e}")
+
         # Enrich trains with stop data
         enriched_trains = []
         for train in trains:
@@ -365,10 +445,6 @@ async def list_trains(
         # Apply consolidation if requested
         if consolidate:
             logger.info(f"Starting consolidation for {len(enriched_trains)} trains")
-            for i, train in enumerate(enriched_trains):
-                logger.info(
-                    f"  Train {i + 1}: {train.train_id} from {train.origin_station_code} ({train.data_source}) - {len(getattr(train, 'stops', []))} stops"
-                )
 
             with trace_operation(
                 "api.consolidate_trains",
@@ -395,7 +471,7 @@ async def list_trains(
 
             return ConsolidatedTrainListResponse(
                 metadata=Metadata(
-                    timestamp=datetime.now().isoformat(),
+                    timestamp=get_eastern_now().isoformat(),
                     model_version=settings.model.version,
                     train_count=len(consolidated_trains),
                     page=1,  # Consolidation affects pagination
@@ -406,7 +482,7 @@ async def list_trains(
         else:
             return {
                 "metadata": {
-                    "timestamp": datetime.now().isoformat(),
+                    "timestamp": get_eastern_now().isoformat(),
                     "model_version": settings.model.version,
                     "train_count": filtered_count,
                     "page": offset // limit + 1,
@@ -431,7 +507,7 @@ async def get_train(
     stop_repo: TrainStopRepository = Depends(get_train_stop_repository),
 ):
     """
-    Get a specific train by its ID.
+    Get a specific train by its ID with fresh stop data if needed.
 
     If train_id is numeric, it's treated as a database ID (primary key).
     If train_id is not numeric, it's treated as an external train identifier.
@@ -439,6 +515,11 @@ async def get_train(
     When from_station_code is provided:
     - Track predictions use the boarding station model
     - Departure times show boarding station context
+
+    For NJ Transit trains, stop data is automatically refreshed if:
+    - Never fetched before
+    - Data is more than 5 minutes old
+    - Journey is not yet complete
     """
     try:
         # Validate from_station_code if provided
@@ -465,6 +546,9 @@ async def get_train(
             train = train_repo.get_train_by_id(train_id)
             if not train:
                 raise HTTPException(status_code=404, detail=f"Train with ID {train_id} not found")
+
+        # Note: Fresh stop data updates are now handled in the /api/trains/ list endpoint
+        # when a specific train_id is requested. This reduces API calls for individual lookups.
 
         # Enrich train with stop data
         enriched_train = _enrich_train_with_stops(train, stop_repo)
@@ -483,74 +567,7 @@ async def get_train(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@router.get("/{train_id}/prediction", response_model=PredictionResponse)
-async def get_train_prediction(
-    train_id: str,
-    from_station_code: Optional[str] = Query(
-        None, description="Context station for journey-specific data (predictions, times)"
-    ),
-    train_repo: TrainRepository = Depends(get_train_repository),
-):
-    """
-    Get prediction data for a specific train by ID.
-
-    If train_id is numeric, it's treated as a database ID (primary key).
-    If train_id is not numeric, it's treated as an external train identifier.
-
-    When from_station_code is provided, generates context-aware prediction using the boarding station model.
-    """
-    try:
-        # Validate from_station_code if provided
-        if from_station_code:
-            from trackcast.services.station_mapping import StationMapper
-
-            station_mapper = StationMapper()
-            if not station_mapper.is_valid_code(from_station_code):
-                raise HTTPException(
-                    status_code=400, detail=f"Invalid from_station_code: '{from_station_code}'"
-                )
-            from_station_code = station_mapper.translate_frontend_to_db_code(from_station_code)
-
-        # Check if train_id is a numeric database ID
-        if train_id.isdigit():
-            db_id = int(train_id)
-            train = train_repo.get_train_by_db_id(db_id)
-            if not train:
-                raise HTTPException(
-                    status_code=404, detail=f"Train with database ID {db_id} not found"
-                )
-        else:
-            # Use original lookup by train_id
-            train = train_repo.get_train_by_id(train_id)
-            if not train:
-                raise HTTPException(status_code=404, detail=f"Train with ID {train_id} not found")
-
-        # Filter prediction by station context if from_station_code provided
-        if from_station_code:
-            # Apply the same filtering logic as other endpoints
-            filtered_train = _filter_prediction_by_station_context(train, from_station_code)
-            if filtered_train.prediction_data:
-                return filtered_train.prediction_data
-            else:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No relevant prediction data available for train ID {train.train_id} at station {from_station_code}",
-                )
-
-        # Return existing prediction without context filtering
-        if not train.prediction_data:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No prediction data available for train ID {train.train_id} (DB ID: {train.id})",
-            )
-
-        return train.prediction_data
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching prediction for train {train_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+# Prediction endpoint removed - iOS app gets predictions inline with train data
 
 
 def _train_stops_at_station(train, station_code: str) -> bool:

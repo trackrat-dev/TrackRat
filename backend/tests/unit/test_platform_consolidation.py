@@ -46,7 +46,10 @@ class TestPlatformConsolidation:
                 train_id=train.id,
                 station_code=station_code,
                 station_name=f"{station_code} Station",
-                scheduled_time=stop_time,
+                scheduled_arrival=stop_time,
+                scheduled_departure=stop_time + timedelta(minutes=1),
+                actual_arrival=None,
+                actual_departure=None,
                 departed=False,  # Use consistent departure status for consolidation
                 created_at=base_time
             )
@@ -242,7 +245,10 @@ class TestPlatformConsolidation:
             train_id=train.id,
             station_code=None,  # Missing station code
             station_name="Unknown Station",
-            scheduled_time=base_time + timedelta(hours=1),
+            scheduled_arrival=base_time + timedelta(hours=1),
+            scheduled_departure=base_time + timedelta(hours=1, minutes=1),
+            actual_arrival=None,
+            actual_departure=None,
             departed=False,
             created_at=base_time
         )

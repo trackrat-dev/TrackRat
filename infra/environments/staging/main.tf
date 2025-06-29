@@ -75,10 +75,10 @@ module "trackrat_api_service" {
   container_port  = 8000
 
   cpu_limit               = "1"
-  memory_limit            = "1Gi"
+  memory_limit            = "512Mi"
   concurrency             = 100
   min_instances           = 0 # Scale to 0 for cost efficiency
-  max_instances           = 2
+  max_instances           = 1
   request_timeout_seconds = 60
 
   startup_probe_path            = "/health"
@@ -90,13 +90,17 @@ module "trackrat_api_service" {
 
   # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV                  = "staging"
-    TRACKCAST_ENV            = "staging"
-    MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native"
-    GOOGLE_CLOUD_PROJECT     = var.project_id          # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "0.2"                   # Higher sampling for staging environment testing
-    OTEL_SERVICE_NAME        = "trackcast-api-staging" # Environment-specific service name
+    APP_ENV                      = "staging"
+    TRACKCAST_ENV                = "staging"
+    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for TestFlight/production-signed iOS apps
+    APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
+    APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
+    MODEL_PATH                   = "/app/models"
+    TRACKCAST_SCHEDULER_MODE     = "cloud_native"
+    GOOGLE_CLOUD_PROJECT         = var.project_id          # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE             = "0.2"                   # Higher sampling for staging environment testing
+    OTEL_SERVICE_NAME            = "trackcast-api-staging" # Environment-specific service name
+    GCP_METRICS_EXPORT_INTERVAL  = "60"                    # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -104,6 +108,9 @@ module "trackrat_api_service" {
     DATABASE_URL = "${module.database.database_url_secret_name}:latest"
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
+    NJT_TOKEN    = "${module.infrastructure.njt_token_secret_name}:latest"
+    APNS_TEAM_ID = "${module.infrastructure.apns_team_id_secret_name}:latest"
+    APNS_KEY_ID  = "${module.infrastructure.apns_key_id_secret_name}:latest"
   }
 
   # Custom domain configuration
@@ -143,13 +150,17 @@ module "scheduled_operations" {
 
   # Global environment variables for all jobs
   environment_variables = {
-    APP_ENV                  = "staging"
-    TRACKCAST_ENV            = "staging"
-    MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native"
-    GOOGLE_CLOUD_PROJECT     = var.project_id          # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "0.2"                   # Higher sampling for staging environment testing
-    OTEL_SERVICE_NAME        = "trackcast-ops-staging" # Environment-specific service name for jobs
+    APP_ENV                      = "staging"
+    TRACKCAST_ENV                = "staging"
+    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for TestFlight/production-signed iOS apps
+    APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
+    APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
+    MODEL_PATH                   = "/app/models"
+    TRACKCAST_SCHEDULER_MODE     = "cloud_native"
+    GOOGLE_CLOUD_PROJECT         = var.project_id          # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE             = "0.2"                   # Higher sampling for staging environment testing
+    OTEL_SERVICE_NAME            = "trackcast-ops-staging" # Environment-specific service name for jobs
+    GCP_METRICS_EXPORT_INTERVAL  = "60"                    # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables from Secret Manager
@@ -164,9 +175,9 @@ module "scheduled_operations" {
   jobs = {
     # Consolidated pipeline job - runs all steps sequentially
     pipeline = {
-      command      = ["trackcast", "run-pipeline", "--regenerate"]
+      command      = ["/bin/bash", "-c", "trackcast check-apns-config && trackcast run-pipeline --regenerate"]
       cpu_limit    = "1"
-      memory_limit = "1Gi"
+      memory_limit = "512Mi"
       max_retries  = 1
       task_timeout = "300s"
       environment_variables = {
@@ -187,13 +198,26 @@ module "scheduled_operations" {
   ]
 }
 
+# Grant Cloud Trace Agent role to the scheduler service account for tracing
+resource "google_project_iam_member" "scheduler_cloud_trace_agent" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
+# Grant Monitoring Metric Writer role to the scheduler service account for GCP metrics export
+resource "google_project_iam_member" "scheduler_monitoring_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    # Consolidated pipeline scheduler - runs every 15 minutes
     pipeline = {
-      schedule    = "*/15 * * * *" # Every 15 minutes
-      description = "Complete data pipeline: collection -> features -> predictions every 15 minutes"
+      schedule    = "*/3 * * * *" # Every 3 minutes
+      description = "Complete data pipeline: collection -> features -> predictions every 3 minutes"
       job_name    = "pipeline"
     }
   }

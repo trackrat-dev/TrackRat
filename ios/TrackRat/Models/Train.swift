@@ -223,11 +223,19 @@ enum TrainStatus: String, Codable {
 
 // MARK: - Stop Model
 struct Stop: Identifiable, Codable {
-    let id = UUID()
+    // Stable ID based on station and scheduled time to ensure SwiftUI updates properly
+    var id: String {
+        let stationId = stationCode ?? stationName.lowercased().replacingOccurrences(of: " ", with: "_")
+        let timeId = scheduledArrival?.timeIntervalSince1970 ?? scheduledDeparture?.timeIntervalSince1970 ?? 0
+        return "\(stationId)_\(Int(timeId))"
+    }
     let stationCode: String?
     let stationName: String
-    let scheduledTime: Date?
-    let departureTime: Date?
+    let scheduledArrival: Date?
+    let scheduledDeparture: Date?
+    let actualArrival: Date?
+    let actualDeparture: Date?
+    let estimatedArrival: Date?
     let pickupOnly: Bool?
     let dropoffOnly: Bool?
     let departed: Bool?
@@ -235,11 +243,18 @@ struct Stop: Identifiable, Codable {
     let stopStatus: String?
     let platform: String?
     
+    // Legacy computed properties for backward compatibility
+    var scheduledTime: Date? { scheduledArrival }
+    var departureTime: Date? { actualDeparture ?? scheduledDeparture }
+    
     enum CodingKeys: String, CodingKey {
         case stationCode = "station_code"
         case stationName = "station_name"
-        case scheduledTime = "scheduled_time"
-        case departureTime = "departure_time"
+        case scheduledArrival = "scheduled_arrival"
+        case scheduledDeparture = "scheduled_departure"
+        case actualArrival = "actual_arrival"
+        case actualDeparture = "actual_departure"
+        case estimatedArrival = "estimated_arrival"
         case pickupOnly = "pickup_only"
         case dropoffOnly = "dropoff_only"
         case departed
@@ -253,8 +268,11 @@ struct Stop: Identifiable, Codable {
         
         stationCode = try container.decodeIfPresent(String.self, forKey: .stationCode)
         stationName = try container.decode(String.self, forKey: .stationName)
-        scheduledTime = try container.decodeIfPresent(Date.self, forKey: .scheduledTime)
-        departureTime = try container.decodeIfPresent(Date.self, forKey: .departureTime)
+        scheduledArrival = try container.decodeIfPresent(Date.self, forKey: .scheduledArrival)
+        scheduledDeparture = try container.decodeIfPresent(Date.self, forKey: .scheduledDeparture)
+        actualArrival = try container.decodeIfPresent(Date.self, forKey: .actualArrival)
+        actualDeparture = try container.decodeIfPresent(Date.self, forKey: .actualDeparture)
+        estimatedArrival = try container.decodeIfPresent(Date.self, forKey: .estimatedArrival)
         pickupOnly = try container.decodeIfPresent(Bool.self, forKey: .pickupOnly)
         dropoffOnly = try container.decodeIfPresent(Bool.self, forKey: .dropoffOnly)
         departed = try container.decodeIfPresent(Bool.self, forKey: .departed) ?? false
@@ -263,11 +281,14 @@ struct Stop: Identifiable, Codable {
         platform = try container.decodeIfPresent(String.self, forKey: .platform)
     }
     
-    init(stationCode: String?, stationName: String, scheduledTime: Date?, departureTime: Date?, pickupOnly: Bool?, dropoffOnly: Bool?, departed: Bool?, departedConfirmedBy: [String]?, stopStatus: String?, platform: String?) {
+    init(stationCode: String?, stationName: String, scheduledArrival: Date?, scheduledDeparture: Date?, actualArrival: Date?, actualDeparture: Date?, estimatedArrival: Date?, pickupOnly: Bool?, dropoffOnly: Bool?, departed: Bool?, departedConfirmedBy: [String]?, stopStatus: String?, platform: String?) {
         self.stationCode = stationCode
         self.stationName = stationName
-        self.scheduledTime = scheduledTime
-        self.departureTime = departureTime
+        self.scheduledArrival = scheduledArrival
+        self.scheduledDeparture = scheduledDeparture
+        self.actualArrival = actualArrival
+        self.actualDeparture = actualDeparture
+        self.estimatedArrival = estimatedArrival
         self.pickupOnly = pickupOnly
         self.dropoffOnly = dropoffOnly
         self.departed = departed ?? false
@@ -565,6 +586,36 @@ extension Train {
         return track
     }
     
+    /// Get track assignment for a specific origin station
+    func getTrackForStation(_ stationCode: String) -> String? {
+        // For consolidated trains, check if the track assignment is from the requested station
+        if let trackAssignment = trackAssignment,
+           let assignedBy = trackAssignment.assignedBy,
+           assignedBy == stationCode,
+           let track = trackAssignment.track {
+            return track
+        }
+        
+        // Check data sources for station-specific track
+        if let dataSources = dataSources {
+            for source in dataSources {
+                if source.origin == stationCode,
+                   let track = source.track,
+                   !track.isEmpty {
+                    return track
+                }
+            }
+        }
+        
+        // Fall back to legacy track field only if no consolidated data
+        if dataSources == nil || dataSources?.isEmpty == true {
+            return track
+        }
+        
+        // No track found for this station
+        return nil
+    }
+    
     /// StatusV2-only status display (no fallbacks)
     var statusV2Display: String {
         guard let statusV2 = statusV2 else {
@@ -734,11 +785,6 @@ struct JourneyProgress {
     )
 }
 
-// MARK: - Journey Status Display
-enum JourneyDisplayMode {
-    case full
-    case compact
-}
 
 // MARK: - New Enhanced Status and Progress Models
 struct StatusV2: Codable {
@@ -777,7 +823,7 @@ struct NextArrival: Codable {
     
     enum CodingKeys: String, CodingKey {
         case stationCode = "station_code"
-        case scheduledTime = "scheduled_time"
+        case scheduledTime = "scheduled_arrival"
         case estimatedTime = "estimated_time"
         case minutesAway = "minutes_away"
     }

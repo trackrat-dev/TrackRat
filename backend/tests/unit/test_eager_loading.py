@@ -44,7 +44,10 @@ class TestEagerLoading:
                 train_departure_time=now,
                 station_code="NY",
                 station_name="New York Penn Station",
-                scheduled_time=now,
+                scheduled_arrival=now,
+                scheduled_departure=now,
+                actual_arrival=None,
+                actual_departure=None,
                 departed=True,
                 pickup_only=False,
                 dropoff_only=False,
@@ -55,7 +58,10 @@ class TestEagerLoading:
                 train_departure_time=now,
                 station_code="NP",
                 station_name="Newark Penn Station",
-                scheduled_time=now + timedelta(minutes=30),
+                scheduled_arrival=now + timedelta(minutes=30),
+                scheduled_departure=now + timedelta(minutes=30),
+                actual_arrival=None,
+                actual_departure=None,
                 departed=False,
                 pickup_only=False,
                 dropoff_only=False,
@@ -67,7 +73,10 @@ class TestEagerLoading:
                 train_departure_time=now + timedelta(hours=1),
                 station_code="NY",
                 station_name="New York Penn Station", 
-                scheduled_time=now + timedelta(hours=1),
+                scheduled_arrival=now + timedelta(hours=1),
+                scheduled_departure=now + timedelta(hours=1),
+                actual_arrival=None,
+                actual_departure=None,
                 departed=False,
                 pickup_only=False,
                 dropoff_only=False,
@@ -234,7 +243,7 @@ class TestEagerLoading:
         
         train_repo.get_trains_with_stops([1, 2, 3])
         
-        # Verify stops are ordered by train_id and scheduled_time
+        # Verify stops are ordered by train_id and scheduled_arrival
         stops_query.filter.return_value.order_by.assert_called_once()
 
 

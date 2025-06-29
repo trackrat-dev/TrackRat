@@ -102,14 +102,19 @@ def create_train_stops_table(session: Session) -> Dict[str, Any]:
                 id SERIAL PRIMARY KEY,
                 train_id VARCHAR(20) NOT NULL,
                 train_departure_time TIMESTAMP NOT NULL,
-                station_code VARCHAR(10) NOT NULL,
+                station_code VARCHAR(10),
                 station_name VARCHAR(100) NOT NULL,
-                scheduled_time TIMESTAMP,
-                departure_time TIMESTAMP,
+                scheduled_arrival TIMESTAMP,
+                scheduled_departure TIMESTAMP,
+                actual_arrival TIMESTAMP,
+                actual_departure TIMESTAMP,
                 pickup_only BOOLEAN NOT NULL DEFAULT FALSE,
                 dropoff_only BOOLEAN NOT NULL DEFAULT FALSE,
                 departed BOOLEAN NOT NULL DEFAULT FALSE,
                 stop_status VARCHAR(20),
+                data_source VARCHAR(20) NOT NULL DEFAULT 'njtransit',
+                last_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
@@ -124,7 +129,10 @@ def create_train_stops_table(session: Session) -> Dict[str, Any]:
             CREATE INDEX ix_train_stops_train_id ON train_stops (train_id);
             CREATE INDEX ix_train_stops_train_departure_time ON train_stops (train_departure_time);
             CREATE INDEX ix_train_stops_station_code ON train_stops (station_code);
-            CREATE UNIQUE INDEX uix_train_stop_unique ON train_stops (train_id, train_departure_time, station_code);
+            CREATE INDEX ix_train_stops_data_source ON train_stops (data_source);
+            CREATE INDEX ix_train_stops_last_seen_at ON train_stops (last_seen_at);
+            CREATE INDEX ix_train_stops_is_active ON train_stops (is_active);
+            CREATE UNIQUE INDEX uix_train_stop_unique_without_time ON train_stops (train_id, train_departure_time, station_name, data_source);
         """
         )
         session.execute(create_indexes_query)
@@ -517,19 +525,18 @@ def add_train_stops_lifecycle_fields(session: Session) -> Dict[str, Any]:
         Dictionary with migration results
     """
     try:
-        # Check if columns already exist
+        # Check if essential lifecycle columns already exist
         check_query = text(
             """
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'train_stops' 
-            AND column_name IN ('last_seen_at', 'is_active', 'api_removed_at', 
-                               'data_version', 'original_scheduled_time', 'audit_trail')
+            AND column_name IN ('last_seen_at', 'is_active')
         """
         )
         result = session.execute(check_query).fetchall()
 
-        if len(result) == 6:
+        if len(result) == 2:
             logger.info("Lifecycle tracking columns already exist in train_stops table")
             return {"status": "skipped", "message": "Columns already exist"}
 
@@ -599,23 +606,53 @@ def add_train_stops_lifecycle_fields(session: Session) -> Dict[str, Any]:
         )
         session.execute(create_indexes_query)
 
-        # Update existing records
+        # Update existing records - check if scheduled_time column exists first
         logger.info("Updating existing train_stops records with initial values")
-        update_existing_query = text(
+
+        # Check if scheduled_time column exists
+        check_scheduled_time_query = text(
             """
-            UPDATE train_stops 
-            SET last_seen_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP),
-                original_scheduled_time = scheduled_time,
-                audit_trail = jsonb_build_array(
-                    jsonb_build_object(
-                        'timestamp', COALESCE(created_at, CURRENT_TIMESTAMP)::text,
-                        'action', 'migrated',
-                        'note', 'Existing stop migrated to new schema'
-                    )
-                )
-            WHERE audit_trail = '[]'::jsonb
-        """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' AND column_name = 'scheduled_time'
+            """
         )
+        scheduled_time_exists = session.execute(check_scheduled_time_query).fetchone()
+
+        if scheduled_time_exists:
+            # Update with scheduled_time if it exists
+            update_existing_query = text(
+                """
+                UPDATE train_stops 
+                SET last_seen_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP),
+                    original_scheduled_time = scheduled_time,
+                    audit_trail = jsonb_build_array(
+                        jsonb_build_object(
+                            'timestamp', COALESCE(created_at, CURRENT_TIMESTAMP)::text,
+                            'action', 'migrated',
+                            'note', 'Existing stop migrated to new schema'
+                        )
+                    )
+                WHERE audit_trail = '[]'::jsonb
+                """
+            )
+        else:
+            # Update without scheduled_time if it doesn't exist
+            update_existing_query = text(
+                """
+                UPDATE train_stops 
+                SET last_seen_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP),
+                    audit_trail = jsonb_build_array(
+                        jsonb_build_object(
+                            'timestamp', COALESCE(created_at, CURRENT_TIMESTAMP)::text,
+                            'action', 'migrated',
+                            'note', 'Existing stop migrated to new schema'
+                        )
+                    )
+                WHERE audit_trail = '[]'::jsonb
+                """
+            )
+
         session.execute(update_existing_query)
 
         # Commit the changes
@@ -634,6 +671,7 @@ def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
     """
     Update the unique constraint on train_stops to include scheduled_time,
     allowing multiple stops at the same station if they occur at different times.
+    Falls back to a simpler constraint if scheduled_time column doesn't exist.
 
     Args:
         session: SQLAlchemy database session
@@ -648,7 +686,7 @@ def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
             SELECT indexname 
             FROM pg_indexes 
             WHERE tablename = 'train_stops' 
-            AND indexname = 'uix_train_stop_unique_with_time'
+            AND indexname IN ('uix_train_stop_unique_with_time', 'uix_train_stop_unique_without_time')
         """
         )
         result = session.execute(check_constraint_query).fetchone()
@@ -657,7 +695,7 @@ def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
             logger.info("Updated unique constraint already exists")
             return {"status": "skipped", "message": "Updated constraint already exists"}
 
-        logger.info("Updating train_stops unique constraint to include scheduled_time")
+        logger.info("Updating train_stops unique constraint")
 
         # Drop the old unique constraint
         logger.info("Dropping old unique constraint")
@@ -668,14 +706,35 @@ def update_train_stop_unique_constraint(session: Session) -> Dict[str, Any]:
         )
         session.execute(drop_constraint_query)
 
-        # Create new unique constraint including scheduled_time
-        logger.info("Creating new unique constraint with scheduled_time")
-        create_constraint_query = text(
+        # Check if scheduled_time column exists
+        check_scheduled_time_query = text(
             """
-            CREATE UNIQUE INDEX uix_train_stop_unique_with_time 
-            ON train_stops (train_id, train_departure_time, station_name, data_source, scheduled_time)
-        """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' AND column_name = 'scheduled_time'
+            """
         )
+        scheduled_time_exists = session.execute(check_scheduled_time_query).fetchone()
+
+        if scheduled_time_exists:
+            # Create new unique constraint including scheduled_time
+            logger.info("Creating new unique constraint with scheduled_time")
+            create_constraint_query = text(
+                """
+                CREATE UNIQUE INDEX uix_train_stop_unique_with_time 
+                ON train_stops (train_id, train_departure_time, station_name, data_source, scheduled_time)
+                """
+            )
+        else:
+            # Create simpler constraint without scheduled_time
+            logger.info("Creating new unique constraint without scheduled_time")
+            create_constraint_query = text(
+                """
+                CREATE UNIQUE INDEX uix_train_stop_unique_without_time 
+                ON train_stops (train_id, train_departure_time, station_name, data_source)
+                """
+            )
+
         session.execute(create_constraint_query)
 
         # Commit the changes
@@ -761,6 +820,642 @@ def add_performance_indexes(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def add_arrival_time_tracking(session: Session) -> Dict[str, Any]:
+    """
+    Add arrival time tracking fields for journey validation.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        logger.info("Adding arrival time tracking fields")
+
+        # Check if actual_arrival_time already exists in train_stops
+        check_arrival_query = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' AND column_name = 'actual_arrival_time'
+            """
+        )
+        result = session.execute(check_arrival_query).fetchone()
+
+        if not result:
+            # Add actual arrival time to train stops
+            logger.info("Adding actual_arrival_time column to train_stops table")
+            add_arrival_query = text(
+                """
+                ALTER TABLE train_stops 
+                ADD COLUMN actual_arrival_time TIMESTAMP
+                """
+            )
+            session.execute(add_arrival_query)
+
+        # Check if journey tracking columns exist in trains
+        check_journey_query = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'trains' 
+            AND column_name IN ('journey_completion_status', 'journey_validated_at', 
+                               'next_validation_check', 'stops_last_updated')
+            """
+        )
+        existing_columns = session.execute(check_journey_query).fetchall()
+        existing_column_names = [row[0] for row in existing_columns]
+
+        if len(existing_column_names) < 4:
+            # Add missing journey tracking fields to trains
+            if "journey_completion_status" not in existing_column_names:
+                logger.info("Adding journey_completion_status column to trains table")
+                add_status_query = text(
+                    """
+                    ALTER TABLE trains 
+                    ADD COLUMN journey_completion_status VARCHAR(20)
+                    """
+                )
+                session.execute(add_status_query)
+
+            if "journey_validated_at" not in existing_column_names:
+                logger.info("Adding journey_validated_at column to trains table")
+                add_validated_query = text(
+                    """
+                    ALTER TABLE trains 
+                    ADD COLUMN journey_validated_at TIMESTAMP
+                    """
+                )
+                session.execute(add_validated_query)
+
+            if "next_validation_check" not in existing_column_names:
+                logger.info("Adding next_validation_check column to trains table")
+                add_next_check_query = text(
+                    """
+                    ALTER TABLE trains 
+                    ADD COLUMN next_validation_check TIMESTAMP
+                    """
+                )
+                session.execute(add_next_check_query)
+
+            if "stops_last_updated" not in existing_column_names:
+                logger.info("Adding stops_last_updated column to trains table")
+                add_stops_updated_query = text(
+                    """
+                    ALTER TABLE trains 
+                    ADD COLUMN stops_last_updated TIMESTAMP
+                    """
+                )
+                session.execute(add_stops_updated_query)
+
+        # Check if indexes exist
+        check_validation_index = text(
+            """
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'trains' 
+            AND indexname = 'idx_trains_journey_validation'
+            """
+        )
+        validation_index_exists = session.execute(check_validation_index).fetchone()
+
+        if not validation_index_exists:
+            # Create journey validation index
+            logger.info("Creating journey validation index")
+            create_validation_index = text(
+                """
+                CREATE INDEX idx_trains_journey_validation 
+                ON trains(data_source, journey_completion_status, next_validation_check)
+                WHERE data_source = 'njtransit'
+                """
+            )
+            session.execute(create_validation_index)
+
+        check_freshness_index = text(
+            """
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'trains' 
+            AND indexname = 'idx_trains_stop_freshness'
+            """
+        )
+        freshness_index_exists = session.execute(check_freshness_index).fetchone()
+
+        if not freshness_index_exists:
+            # Create stop freshness index
+            logger.info("Creating stop freshness index")
+            create_freshness_index = text(
+                """
+                CREATE INDEX idx_trains_stop_freshness 
+                ON trains(data_source, status, stops_last_updated)
+                WHERE data_source = 'njtransit' AND status IN ('BOARDING', 'DEPARTED')
+                """
+            )
+            session.execute(create_freshness_index)
+
+        # Commit the changes
+        session.commit()
+
+        logger.info("Successfully added arrival time tracking fields")
+        return {"status": "success", "message": "Arrival time tracking fields added successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding arrival time tracking fields: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+def simplify_train_stop_constraint(session: Session) -> Dict[str, Any]:
+    """
+    Simplify the train_stops unique constraint by removing scheduled_time.
+    This is the final state we want - allowing duplicate stops at same station
+    only if they have different train_id, departure_time, or data_source.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check which constraint currently exists
+        check_with_time = text(
+            """
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'train_stops' 
+            AND indexname = 'uix_train_stop_unique_with_time'
+            """
+        )
+        with_time_exists = session.execute(check_with_time).fetchone()
+
+        check_without_time = text(
+            """
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'train_stops' 
+            AND indexname = 'uix_train_stop_unique_without_time'
+            """
+        )
+        without_time_exists = session.execute(check_without_time).fetchone()
+
+        if without_time_exists and not with_time_exists:
+            logger.info("Simplified constraint already exists")
+            return {"status": "skipped", "message": "Simplified constraint already in place"}
+
+        # Drop any existing constraints
+        if with_time_exists:
+            logger.info("Dropping constraint with scheduled_time")
+            drop_with_time = text(
+                """
+                DROP INDEX IF EXISTS uix_train_stop_unique_with_time
+                """
+            )
+            session.execute(drop_with_time)
+
+        # Also drop the old unnamed constraint if it exists
+        drop_old_constraint = text(
+            """
+            DROP INDEX IF EXISTS uix_train_stop_unique
+            """
+        )
+        session.execute(drop_old_constraint)
+
+        # Create the simplified constraint if it doesn't exist
+        if not without_time_exists:
+            logger.info("Creating simplified unique constraint without scheduled_time")
+            create_constraint = text(
+                """
+                CREATE UNIQUE INDEX uix_train_stop_unique_without_time 
+                ON train_stops (train_id, train_departure_time, station_name, data_source)
+                """
+            )
+            session.execute(create_constraint)
+
+        # Commit the changes
+        session.commit()
+
+        logger.info("Successfully simplified train_stops unique constraint")
+        return {"status": "success", "message": "Constraint simplified successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error simplifying train_stop constraint: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+def rename_train_stop_time_fields(session: Session) -> Dict[str, Any]:
+    """
+    Rename train stop time fields for clarity and add actual_departure field.
+
+    This migration:
+    1. Renames scheduled_time to scheduled_arrival
+    2. Renames departure_time to scheduled_departure
+    3. Renames actual_arrival_time to actual_arrival
+    4. Adds actual_departure field
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if new columns already exist
+        check_new_columns = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' 
+            AND column_name IN ('scheduled_arrival', 'scheduled_departure', 
+                               'actual_arrival', 'actual_departure')
+            """
+        )
+        existing_new_columns = session.execute(check_new_columns).fetchall()
+        existing_new_names = [row[0] for row in existing_new_columns]
+
+        if len(existing_new_names) == 4:
+            logger.info("Train stop time fields already renamed")
+            return {"status": "skipped", "message": "Fields already renamed"}
+
+        # Check if old columns exist
+        check_old_columns = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' 
+            AND column_name IN ('scheduled_time', 'departure_time', 'actual_arrival_time')
+            """
+        )
+        existing_old_columns = session.execute(check_old_columns).fetchall()
+        existing_old_names = [row[0] for row in existing_old_columns]
+
+        if not existing_old_names:
+            logger.warning("Old columns not found - may need manual intervention")
+            return {"status": "warning", "message": "Old columns not found"}
+
+        # Rename columns
+        if "scheduled_time" in existing_old_names and "scheduled_arrival" not in existing_new_names:
+            logger.info("Renaming scheduled_time to scheduled_arrival")
+            rename_scheduled_time = text(
+                """
+                ALTER TABLE train_stops 
+                RENAME COLUMN scheduled_time TO scheduled_arrival
+                """
+            )
+            session.execute(rename_scheduled_time)
+
+        if (
+            "departure_time" in existing_old_names
+            and "scheduled_departure" not in existing_new_names
+        ):
+            logger.info("Renaming departure_time to scheduled_departure")
+            rename_departure_time = text(
+                """
+                ALTER TABLE train_stops 
+                RENAME COLUMN departure_time TO scheduled_departure
+                """
+            )
+            session.execute(rename_departure_time)
+
+        if (
+            "actual_arrival_time" in existing_old_names
+            and "actual_arrival" not in existing_new_names
+        ):
+            logger.info("Renaming actual_arrival_time to actual_arrival")
+            rename_actual_arrival = text(
+                """
+                ALTER TABLE train_stops 
+                RENAME COLUMN actual_arrival_time TO actual_arrival
+                """
+            )
+            session.execute(rename_actual_arrival)
+
+        # Add actual_departure if it doesn't exist
+        if "actual_departure" not in existing_new_names:
+            logger.info("Adding actual_departure column to train_stops table")
+            add_actual_departure = text(
+                """
+                ALTER TABLE train_stops 
+                ADD COLUMN actual_departure TIMESTAMP
+                """
+            )
+            session.execute(add_actual_departure)
+
+        # Create indexes on new time columns for performance
+        index_names = [
+            ("idx_train_stops_scheduled_arrival", "scheduled_arrival"),
+            ("idx_train_stops_actual_arrival", "actual_arrival"),
+        ]
+
+        for index_name, column_name in index_names:
+            check_index = text(
+                f"""
+                SELECT indexname 
+                FROM pg_indexes 
+                WHERE tablename = 'train_stops' 
+                AND indexname = '{index_name}'
+                """
+            )
+            index_exists = session.execute(check_index).fetchone()
+
+            if not index_exists:
+                logger.info(f"Creating index {index_name}")
+                create_index = text(
+                    f"""
+                    CREATE INDEX {index_name} 
+                    ON train_stops({column_name})
+                    """
+                )
+                session.execute(create_index)
+
+        # Commit the changes
+        session.commit()
+
+        logger.info("Successfully renamed train stop time fields")
+        return {"status": "success", "message": "Time fields renamed successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error renaming train stop time fields: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+def create_notification_tables(session: Session) -> Dict[str, Any]:
+    """
+    Create device_tokens and live_activity_tokens tables for push notifications.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if device_tokens table already exists
+        check_device_tokens_query = text(
+            """
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_name = 'device_tokens'
+        """
+        )
+        result = session.execute(check_device_tokens_query).fetchone()
+
+        if result:
+            logger.info("device_tokens table already exists")
+        else:
+            # Create device_tokens table
+            logger.info("Creating device_tokens table")
+            create_device_tokens_query = text(
+                """
+                CREATE TABLE device_tokens (
+                    id SERIAL PRIMARY KEY,
+                    device_token VARCHAR(255) NOT NULL UNIQUE,
+                    platform VARCHAR(20) NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    last_used TIMESTAMP,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            )
+            session.execute(create_device_tokens_query)
+
+            # Create indexes for device_tokens
+            session.execute(
+                text("CREATE INDEX idx_device_tokens_token ON device_tokens(device_token)")
+            )
+            session.execute(
+                text("CREATE INDEX idx_device_tokens_platform ON device_tokens(platform)")
+            )
+            session.execute(
+                text("CREATE INDEX idx_device_tokens_active ON device_tokens(is_active)")
+            )
+
+        # Check if live_activity_tokens table already exists
+        check_live_activity_tokens_query = text(
+            """
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_name = 'live_activity_tokens'
+        """
+        )
+        result = session.execute(check_live_activity_tokens_query).fetchone()
+
+        if result:
+            logger.info("live_activity_tokens table already exists")
+        else:
+            # Create live_activity_tokens table
+            logger.info("Creating live_activity_tokens table")
+            create_live_activity_tokens_query = text(
+                """
+                CREATE TABLE live_activity_tokens (
+                    id SERIAL PRIMARY KEY,
+                    push_token VARCHAR(255) NOT NULL,
+                    train_id VARCHAR(20) NOT NULL,
+                    device_token_id INTEGER REFERENCES device_tokens(id) ON DELETE CASCADE,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    last_notification_sent TIMESTAMP,
+                    last_update_sent TIMESTAMP,
+                    activity_started_at TIMESTAMP,
+                    activity_ended_at TIMESTAMP,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT unique_token_train UNIQUE (push_token, train_id)
+                )
+            """
+            )
+            session.execute(create_live_activity_tokens_query)
+
+            # Create indexes for live_activity_tokens
+            session.execute(
+                text(
+                    "CREATE INDEX idx_live_activity_tokens_token ON live_activity_tokens(push_token)"
+                )
+            )
+            session.execute(
+                text(
+                    "CREATE INDEX idx_live_activity_tokens_train_id ON live_activity_tokens(train_id)"
+                )
+            )
+            session.execute(
+                text(
+                    "CREATE INDEX idx_live_activity_tokens_active ON live_activity_tokens(is_active)"
+                )
+            )
+
+        session.commit()
+        logger.info("Successfully created notification tables")
+        return {"status": "success", "message": "Notification tables created successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error creating notification tables: {str(e)}")
+        return {"status": "error", "message": f"Error creating notification tables: {str(e)}"}
+
+
+def increase_push_token_length(session: Session) -> Dict[str, Any]:
+    """
+    Increase push_token column length for Live Activity tokens.
+
+    Live Activity push tokens can be up to 256+ characters, but the current
+    column is limited to 255 characters. This migration increases it to 512.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if column already has the correct length
+        check_query = text(
+            """
+            SELECT character_maximum_length 
+            FROM information_schema.columns 
+            WHERE table_name = 'live_activity_tokens' AND column_name = 'push_token'
+        """
+        )
+        result = session.execute(check_query).fetchone()
+
+        if result and result[0] >= 512:
+            logger.info("push_token column already has sufficient length")
+            return {"status": "skipped", "message": "Column already has sufficient length"}
+
+        # Alter column type to increase length
+        logger.info("Increasing push_token column length from 255 to 512 characters...")
+        alter_query = text(
+            "ALTER TABLE live_activity_tokens ALTER COLUMN push_token TYPE VARCHAR(512)"
+        )
+        session.execute(alter_query)
+        session.commit()
+
+        logger.info("Successfully increased push_token column length")
+        return {"status": "success", "message": "Column length increased to 512 characters"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error increasing push_token column length: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+def add_estimated_arrival_field(session: Session) -> Dict[str, Any]:
+    """
+    Add estimated_arrival field to the train_stops table for real-time arrival estimates.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check if column already exists
+        check_query = text(
+            """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'train_stops' AND column_name = 'estimated_arrival'
+        """
+        )
+        result = session.execute(check_query).fetchone()
+
+        if result:
+            logger.info("Column estimated_arrival already exists in train_stops table")
+            return {"status": "skipped", "message": "Column already exists"}
+
+        # Add the column
+        logger.info("Adding estimated_arrival column to train_stops table")
+        add_column_query = text(
+            """
+            ALTER TABLE train_stops 
+            ADD COLUMN estimated_arrival TIMESTAMP
+        """
+        )
+        session.execute(add_column_query)
+
+        # Create index for query performance
+        logger.info("Creating index on estimated_arrival column")
+        create_index_query = text(
+            """
+            CREATE INDEX ix_train_stops_estimated_arrival ON train_stops (estimated_arrival)
+        """
+        )
+        session.execute(create_index_query)
+
+        # Commit the changes
+        session.commit()
+
+        logger.info("Successfully added estimated_arrival column to train_stops table")
+        return {"status": "success", "message": "Column added successfully"}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding estimated_arrival column: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
+def add_user_journey_to_live_activities(session: Session) -> Dict[str, Any]:
+    """
+    Add user_origin_station_code and user_destination_station_code to live_activity_tokens.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check for user_origin_station_code
+        check_origin_query = text(
+            """
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'live_activity_tokens' AND column_name = 'user_origin_station_code'
+            """
+        )
+        origin_exists = session.execute(check_origin_query).fetchone()
+
+        if not origin_exists:
+            logger.info("Adding user_origin_station_code to live_activity_tokens table")
+            add_origin_query = text(
+                "ALTER TABLE live_activity_tokens ADD COLUMN user_origin_station_code VARCHAR(10)"
+            )
+            session.execute(add_origin_query)
+        else:
+            logger.info("user_origin_station_code already exists.")
+
+        # Check for user_destination_station_code
+        check_dest_query = text(
+            """
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'live_activity_tokens' AND column_name = 'user_destination_station_code'
+            """
+        )
+        dest_exists = session.execute(check_dest_query).fetchone()
+
+        if not dest_exists:
+            logger.info("Adding user_destination_station_code to live_activity_tokens table")
+            add_dest_query = text(
+                "ALTER TABLE live_activity_tokens ADD COLUMN user_destination_station_code VARCHAR(10)"
+            )
+            session.execute(add_dest_query)
+        else:
+            logger.info("user_destination_station_code already exists.")
+
+        if origin_exists and dest_exists:
+            return {"status": "skipped", "message": "Columns already exist"}
+
+        session.commit()
+        return {"status": "success", "message": "User journey columns added successfully."}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding user journey columns to live_activity_tokens: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -785,7 +1480,26 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
         ("add_train_stops_lifecycle_fields", add_train_stops_lifecycle_fields),
         ("update_train_stop_unique_constraint", update_train_stop_unique_constraint),
         ("remove_audit_trail_fields", remove_audit_trail_fields),
+        ("add_arrival_time_tracking", add_arrival_time_tracking),  # Arrival time tracking
+        (
+            "simplify_train_stop_constraint",
+            simplify_train_stop_constraint,
+        ),  # Final constraint state
+        (
+            "rename_train_stop_time_fields",
+            rename_train_stop_time_fields,
+        ),  # Rename time fields for clarity
         ("add_performance_indexes", add_performance_indexes),  # Performance improvements
+        ("create_notification_tables", create_notification_tables),  # Push notification tables
+        (
+            "increase_push_token_length",
+            increase_push_token_length,
+        ),  # Fix Live Activity token length
+        (
+            "add_estimated_arrival_field",
+            add_estimated_arrival_field,
+        ),  # Add estimated_arrival for real-time arrival estimates
+        ("add_user_journey_to_live_activities", add_user_journey_to_live_activities),
     ]
 
     for name, migration_func in migrations:

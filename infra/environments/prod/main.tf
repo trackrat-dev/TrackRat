@@ -90,13 +90,17 @@ module "trackrat_api_service" {
 
   # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV                  = "production"
-    TRACKCAST_ENV            = "production"
-    MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native"
-    GOOGLE_CLOUD_PROJECT     = var.project_id       # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "0.05"               # Lower sampling for production cost optimization
-    OTEL_SERVICE_NAME        = "trackcast-api-prod" # Environment-specific service name
+    APP_ENV                      = "production"
+    TRACKCAST_ENV                = "production"
+    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for App Store
+    APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
+    APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
+    MODEL_PATH                   = "/app/models"
+    TRACKCAST_SCHEDULER_MODE     = "cloud_native"
+    GOOGLE_CLOUD_PROJECT         = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE             = "0.05"               # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME            = "trackcast-api-prod" # Environment-specific service name
+    GCP_METRICS_EXPORT_INTERVAL  = "60"                 # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
@@ -104,6 +108,9 @@ module "trackrat_api_service" {
     DATABASE_URL = "${module.database.database_url_secret_name}:latest"
     NJT_USERNAME = "${module.infrastructure.njt_username_secret_name}:latest"
     NJT_PASSWORD = "${module.infrastructure.njt_password_secret_name}:latest"
+    NJT_TOKEN    = "${module.infrastructure.njt_token_secret_name}:latest"
+    APNS_TEAM_ID = "${module.infrastructure.apns_team_id_secret_name}:latest"
+    APNS_KEY_ID  = "${module.infrastructure.apns_key_id_secret_name}:latest"
   }
 
   # Custom domain configuration
@@ -143,13 +150,17 @@ module "scheduled_operations" {
 
   # Global environment variables for all jobs
   environment_variables = {
-    APP_ENV                  = "production"
-    TRACKCAST_ENV            = "production"
-    MODEL_PATH               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE = "cloud_native"
-    GOOGLE_CLOUD_PROJECT     = var.project_id       # Automatically enable GCP Cloud Trace
-    OTEL_SAMPLE_RATE         = "0.05"               # Lower sampling for production cost optimization
-    OTEL_SERVICE_NAME        = "trackcast-ops-prod" # Environment-specific service name for jobs
+    APP_ENV                      = "production"
+    TRACKCAST_ENV                = "production"
+    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for App Store
+    APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
+    APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
+    MODEL_PATH                   = "/app/models"
+    TRACKCAST_SCHEDULER_MODE     = "cloud_native"
+    GOOGLE_CLOUD_PROJECT         = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE             = "0.05"               # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME            = "trackcast-ops-prod" # Environment-specific service name for jobs
+    GCP_METRICS_EXPORT_INTERVAL  = "60"                 # Export metrics to GCP every 60 seconds
   }
 
   # Secret environment variables from Secret Manager
@@ -164,7 +175,7 @@ module "scheduled_operations" {
   jobs = {
     # Consolidated pipeline job - runs all steps sequentially
     pipeline = {
-      command      = ["trackcast", "run-pipeline", "--regenerate"]
+      command      = ["/bin/bash", "-c", "trackcast check-apns-config && trackcast run-pipeline --regenerate"]
       cpu_limit    = "1"
       memory_limit = "1Gi"
       max_retries  = 1
@@ -187,13 +198,27 @@ module "scheduled_operations" {
   ]
 }
 
+# Grant Cloud Trace Agent role to the scheduler service account for tracing
+resource "google_project_iam_member" "scheduler_cloud_trace_agent" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
+# Grant Monitoring Metric Writer role to the scheduler service account for GCP metrics export
+resource "google_project_iam_member" "scheduler_monitoring_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.scheduler_sa.email}"
+}
+
 # Cloud Scheduler jobs targeting Cloud Run Jobs
 resource "google_cloud_scheduler_job" "operations" {
   for_each = {
-    # Consolidated pipeline scheduler - runs every 5 minutes
+    # Consolidated pipeline scheduler - runs every 4 minutes
     pipeline = {
-      schedule    = "*/5 * * * *" # Every 5 minutes
-      description = "Complete data pipeline: collection -> features -> predictions every 5 minutes"
+      schedule    = "*/3 * * * *" # Every 3 minutes
+      description = "Complete data pipeline: collection -> features -> predictions every 3 minutes"
       job_name    = "pipeline"
     }
   }
