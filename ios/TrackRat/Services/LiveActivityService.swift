@@ -120,7 +120,7 @@ class LiveActivityService: ObservableObject {
         // Create activity attributes with validated data
         let attributes = TrainActivityAttributes(
             trainNumber: sanitizeTrainNumber(train.trainId),
-            trainId: String(train.id),
+            trainId: train.trainId,
             routeDescription: "\(sanitizeStationName(origin)) → \(sanitizeStationName(destination))",
             origin: sanitizeStationName(origin),
             destination: sanitizeStationName(destination),
