@@ -331,7 +331,7 @@ class APNSPushService:
                     ),  # Changed to camelCase, ensure string
                     "statusLocation": status_location,  # Added
                     "track": train_data.get("track"),
-                    "delayMinutes": train_data.get("delay_minutes", 0),
+                    "delayMinutes": train_data.get("delay_minutes"),
                     "currentLocation": train_data.get("current_location"),
                     "nextStop": train_data.get("next_stop_info"),  # Changed to camelCase
                     "journeyProgress": journey_progress,  # Changed to camelCase and converted to 0-1
@@ -496,11 +496,11 @@ class APNSPushService:
                 },
                 "sound": "default",
                 "relevance_score": (
-                    75.0 if delay_minutes >= 10 else 60.0
+                    75.0 if delay_minutes and delay_minutes >= 10 else 60.0
                 ),  # Higher for significant delays
-                "priority": "medium" if delay_minutes >= 10 else "low",
+                "priority": "medium" if delay_minutes and delay_minutes >= 10 else "low",
                 "requires_attention": delay_minutes
-                >= 15,  # Only require attention for major delays
+                and delay_minutes >= 15,  # Only require attention for major delays
             },
             AlertType.STATUS_CHANGE: {
                 "alert": {
@@ -1204,9 +1204,15 @@ class TrainUpdateNotificationService:
             "train_id": consolidated_train.get("train_id"),
             "track": consolidated_train.get("track_assignment", {}).get("track"),
             "status": consolidated_train.get("status"),  # Legacy status
-            "delay_minutes": consolidated_train.get("delay_minutes", 0),
             "departure_time": consolidated_train.get("origin_station", {}).get("departure_time"),
         }
+
+        # Extract delay_minutes from nested progress data or fallback to root level
+        progress = consolidated_train.get("progress", {})
+        if progress and "last_departed" in progress:
+            state["delay_minutes"] = progress["last_departed"].get("delay_minutes", 0)
+        else:
+            state["delay_minutes"] = consolidated_train.get("delay_minutes", 0)
 
         # Extract enhanced fields from consolidation
         status_v2 = consolidated_train.get("status_v2", {})
@@ -1241,7 +1247,7 @@ class TrainUpdateNotificationService:
         )
 
         # Add prediction data
-        prediction = consolidated_train.get("prediction_data", {})
+        prediction = consolidated_train.get("prediction_data")
         state["track_prediction"] = prediction if prediction else None
 
         # Add consolidation metadata for richer notifications
@@ -1369,21 +1375,27 @@ class TrainUpdateNotificationService:
 
                 return {"departed": {"from": station_name, "minutesAgo": minutes_ago}}
 
-        # Check for arrived status
-        elif status_v2 == "ARRIVED":
-            return "arrived"
-
         # Check for approaching status
-        next_arrival = progress.get("next_arrival")
-        if next_arrival and isinstance(next_arrival, dict):
-            minutes_away = next_arrival.get("minutes_away", 999)
-            if 0 < minutes_away <= 5:  # Within 5 minutes = approaching
-                station_name = self._get_station_name_from_code(next_arrival.get("station_code"))
-                return {"approaching": {"station": station_name, "minutesAway": minutes_away}}
+        if status_v2 == "EN_ROUTE":
+            next_arrival = progress.get("next_arrival")
+            if next_arrival and isinstance(next_arrival, dict):
+                minutes_away = next_arrival.get("minutes_away", 999)
+                if 0 < minutes_away <= 5:  # Within 5 minutes = approaching
+                    station_name = self._get_station_name_from_code(
+                        next_arrival.get("station_code")
+                    )
+                    return {"approaching": {"station": station_name, "minutesAway": minutes_away}}
 
         # Default: not departed
         departure_time = consolidated_train.get("origin_station", {}).get("departure_time")
-        return {"notDeparted": {"departureTime": departure_time}}
+        if departure_time:
+            return {"notDeparted": {"departureTime": departure_time}}
+        else:
+            # Fallback if departure time is missing to prevent a client crash
+            station_name = self._get_station_name_from_code(
+                consolidated_train.get("origin_station", {}).get("station_code")
+            )
+            return {"atStation": station_name or "Unknown Station"}
 
     def _create_next_stop_dict(self, consolidated_train: Dict) -> Optional[Dict[str, Any]]:
         """
@@ -1407,7 +1419,11 @@ class TrainUpdateNotificationService:
         progress = consolidated_train.get("progress", {})
         next_arrival = progress.get("next_arrival")
 
-        if not next_arrival or not isinstance(next_arrival, dict):
+        if (
+            not next_arrival
+            or not isinstance(next_arrival, dict)
+            or not next_arrival.get("estimated_time")
+        ):
             return None
 
         station_code = next_arrival.get("station_code")
@@ -1579,8 +1595,8 @@ class TrainUpdateNotificationService:
             return AlertType.DEPARTED
 
         # Significant delay change (5+ minutes)
-        old_delay = old_state.get("delay_minutes", 0)
-        new_delay = new_state.get("delay_minutes", 0)
+        old_delay = old_state.get("delay_minutes") or 0
+        new_delay = new_state.get("delay_minutes") or 0
 
         if abs(new_delay - old_delay) >= 5:
             logger.info(

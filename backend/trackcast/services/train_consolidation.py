@@ -787,16 +787,12 @@ class TrainConsolidationService:
                             if stop.scheduled_departure
                             else None
                         ),
-                        # Only set actual times if the stop has actually been departed
+                        # Set actual times regardless of departed status
                         "actual_arrival": (
-                            stop.actual_arrival.isoformat()
-                            if stop.actual_arrival and stop.departed
-                            else None
+                            stop.actual_arrival.isoformat() if stop.actual_arrival else None
                         ),
                         "actual_departure": (
-                            stop.actual_departure.isoformat()
-                            if stop.actual_departure and stop.departed
-                            else None
+                            stop.actual_departure.isoformat() if stop.actual_departure else None
                         ),
                         # Estimated arrival based on current delays
                         "estimated_arrival": (
@@ -914,8 +910,8 @@ class TrainConsolidationService:
                                 )
 
                     # Update actual arrival time using most recent train logic
-                    # Only update if the stop has actually been departed
-                    if stop.actual_arrival and stop.departed:
+                    # Update regardless of departed status
+                    if stop.actual_arrival:
                         existing_actual_arrival = stop_map[key].get("actual_arrival")
 
                         if not existing_actual_arrival:
@@ -929,8 +925,8 @@ class TrainConsolidationService:
                                 stop_map[key]["actual_arrival"] = stop.actual_arrival.isoformat()
 
                     # Update actual departure time using most recent train logic
-                    # Only update if the stop has actually been departed
-                    if stop.actual_departure and stop.departed:
+                    # Update regardless of departed status
+                    if stop.actual_departure:
                         existing_actual_departure = stop_map[key].get("actual_departure")
 
                         # If no existing actual departure time, use this one
@@ -965,17 +961,10 @@ class TrainConsolidationService:
                         if not stop_map[key].get("platform"):
                             stop_map[key]["platform"] = train.track
 
-        # Clean up internal tracking fields and validate actual times before returning
+        # Clean up internal tracking fields before returning
         for stop_data in stop_map.values():
-            # Final validation: ensure actual times are only set for departed stops
-            if not stop_data.get("departed"):
-                if stop_data.get("actual_arrival") or stop_data.get("actual_departure"):
-                    logger.warning(
-                        f"Clearing actual times for non-departed stop {stop_data.get('station_code')}"
-                    )
-                    stop_data["actual_arrival"] = None
-                    stop_data["actual_departure"] = None
-
+            # No longer clearing actual times for non-departed stops
+            # to match non-consolidated API behavior
             stop_data.pop("_departed_source_train", None)
             stop_data.pop("_departed_source_timestamp", None)
             stop_data.pop("_scheduled_departure_source_timestamp", None)
