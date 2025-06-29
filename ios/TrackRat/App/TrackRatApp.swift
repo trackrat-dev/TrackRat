@@ -65,6 +65,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        setupNotificationCategories()
         registerBackgroundTasks()
         
         // Request notification permissions (required for Live Activities)
@@ -232,6 +233,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         print("🎯 Event Type: \(eventType ?? "none")")
         
+        // Check for critical events that should trigger banner notifications
+        await handleCriticalEventNotification(userInfo)
+        
         // Handle specific event types
         if let eventType = eventType {
             switch eventType {
@@ -311,6 +315,84 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         await LiveActivityService.shared.fetchAndUpdateTrain()
         
         print("✅ Approaching stop event processing complete")
+    }
+    
+    /// Handle critical events that should trigger banner notifications alongside Live Activity updates
+    private func handleCriticalEventNotification(_ userInfo: [AnyHashable: Any]) async {
+        guard let aps = userInfo["aps"] as? [String: Any],
+              let contentState = aps["content-state"] as? [String: Any],
+              let alertMetadata = contentState["alertMetadata"] as? [String: Any] else {
+            return
+        }
+        
+        // Extract alert metadata
+        guard let alertType = alertMetadata["alert_type"] as? String,
+              let trainId = alertMetadata["train_id"] as? String,
+              let priority = alertMetadata["dynamic_island_priority"] as? String else {
+            return
+        }
+        
+        // Only send banner notifications for high-priority events
+        guard priority == "urgent" || priority == "high" else { return }
+        
+        // Get alert content from aps.alert if available
+        if let alert = aps["alert"] as? [String: Any],
+           let title = alert["title"] as? String,
+           let body = alert["body"] as? String {
+            
+            // Use the existing LiveActivityService function to send banner notification
+            await LiveActivityService.shared.sendCriticalBannerNotification(
+                title: title,
+                body: body,
+                priority: priority,
+                trainId: trainId
+            )
+        } else {
+            // Fallback: create notification based on alert type
+            let (title, body) = createFallbackNotification(alertType: alertType, contentState: contentState)
+            
+            await LiveActivityService.shared.sendCriticalBannerNotification(
+                title: title,
+                body: body,
+                priority: priority, 
+                trainId: trainId
+            )  
+        }
+    }
+    
+    /// Create fallback notification content when aps.alert is not available
+    private func createFallbackNotification(alertType: String, contentState: [String: Any]) -> (String, String) {
+        let trainNumber = contentState["trainNumber"] as? String ?? "Train"
+        
+        switch alertType {
+        case "track_assigned":
+            let track = contentState["track"] as? String ?? "TBD"
+            return ("Track Assigned! 🚂", "Track \(track) - Get Ready to Board")
+        case "boarding":
+            return ("Time to Board! 🚆", "\(trainNumber) is now boarding")
+        case "departure":
+            return ("Train Departed 🚄", "\(trainNumber) has left the station")
+        case "approaching":
+            return ("Approaching Stop 📍", "\(trainNumber) approaching next station")
+        case "delay":
+            let delayMinutes = contentState["delayMinutes"] as? Int ?? 0
+            return ("Delay Alert ⏰", "\(trainNumber) delayed by \(delayMinutes) minutes")
+        default:
+            return ("Train Update 🚂", "\(trainNumber) status updated")
+        }
+    }
+    
+    /// Setup notification categories for critical train updates
+    private func setupNotificationCategories() {
+        let criticalCategory = UNNotificationCategory(
+            identifier: "CRITICAL_TRAIN_UPDATE",
+            actions: [],
+            intentIdentifiers: [],
+            options: [.customDismissAction, .allowInCarPlay]
+        )
+        
+        UNUserNotificationCenter.current().setNotificationCategories([criticalCategory])
+        print("📱 Notification categories configured")
     }
 
     func scheduleAppRefresh() {

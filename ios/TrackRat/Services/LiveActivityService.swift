@@ -343,6 +343,9 @@ class LiveActivityService: ObservableObject {
         // Handle backend-requested haptic feedback
         if let metadata = newState.alertMetadata, metadata.requiresHapticFeedback {
             await handleEnhancedHapticFeedback(metadata: metadata)
+            
+            // Also send banner notification for critical local updates
+            await sendCriticalBannerNotificationIfNeeded(metadata: metadata, train: train)
         }
         
         await MainActor.run {
@@ -744,6 +747,86 @@ class LiveActivityService: ObservableObject {
             generator.impactOccurred()
             
             print("📳 Enhanced haptic feedback triggered for \(metadata.alertType) with \(metadata.dynamicIslandPriority) priority")
+        }
+    }
+    
+    /// Send critical banner notification alongside Live Activity updates for high-priority events
+    func sendCriticalBannerNotification(title: String, body: String, priority: String, trainId: String) async {
+        // Only send banner notifications for urgent and high priority events
+        guard priority == "urgent" || priority == "high" else { return }
+        
+        // Check if notifications are authorized
+        let notificationCenter = UNUserNotificationCenter.current()
+        let authorizationStatus = await notificationCenter.notificationSettings().authorizationStatus
+        
+        guard authorizationStatus == .authorized || authorizationStatus == .provisional else {
+            print("❌ Cannot send banner notification - not authorized")
+            return
+        }
+        
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.categoryIdentifier = "CRITICAL_TRAIN_UPDATE"
+        
+        // Set interruption level for time-sensitive notifications (iOS 15+)
+        if #available(iOS 15.0, *) {
+            content.interruptionLevel = priority == "urgent" ? .timeSensitive : .active
+            content.relevanceScore = priority == "urgent" ? 1.0 : 0.8
+        }
+        
+        // Add train-specific identifier to avoid duplicates
+        let identifier = "critical-\(trainId)-\(priority)-\(Date().timeIntervalSince1970)"
+        
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil // Immediate delivery
+        )
+        
+        do {
+            try await notificationCenter.add(request)
+            print("📱 Critical banner notification sent: \(title)")
+        } catch {
+            print("❌ Failed to send banner notification: \(error)")
+        }
+    }
+    
+    /// Send banner notification for critical local updates (non-push)
+    private func sendCriticalBannerNotificationIfNeeded(metadata: AlertMetadata, train: Train) async {
+        // Only send for urgent/high priority events
+        guard metadata.dynamicIslandPriority == "urgent" || metadata.dynamicIslandPriority == "high" else { return }
+        
+        let (title, body) = createLocalNotificationContent(alertType: metadata.alertType, train: train)
+        
+        await sendCriticalBannerNotification(
+            title: title,
+            body: body,
+            priority: metadata.dynamicIslandPriority,
+            trainId: metadata.trainId
+        )
+    }
+    
+    /// Create notification content for local updates
+    private func createLocalNotificationContent(alertType: String, train: Train) -> (String, String) {
+        let trainNumber = train.trainId
+        
+        switch alertType {
+        case "track_assigned":
+            let track = train.track ?? "TBD"
+            return ("Track Assigned! 🚂", "Track \(track) - Get Ready to Board")
+        case "boarding":
+            return ("Time to Board! 🚆", "\(trainNumber) is now boarding")
+        case "departure":
+            return ("Train Departed 🚄", "\(trainNumber) has left the station")
+        case "approaching":
+            return ("Approaching Stop 📍", "\(trainNumber) approaching next station")
+        case "delay":
+            let delayMinutes = train.delayMinutes ?? 0
+            return ("Delay Alert ⏰", "\(trainNumber) delayed by \(delayMinutes) minutes")
+        default:
+            return ("Train Update 🚂", "\(trainNumber) status updated")
         }
     }
     
