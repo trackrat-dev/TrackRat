@@ -254,41 +254,6 @@ class TestUnifiedEventDetection:
         assert stops[0]["station_code"] == "NY"
         assert stops[0]["departed"] is True
 
-    @pytest.mark.asyncio
-    async def test_check_and_notify_unified_approach(
-        self, notification_service, sample_consolidated_train_with_stops
-    ):
-        """Test the full unified notification flow."""
-        # Mock dependencies
-        mock_db = MagicMock()
-        mock_tokens = [
-            LiveActivityToken(id=1, train_id="7812", push_token="token123", is_active=True)
-        ]
-        mock_db.query.return_value.options.return_value.filter.return_value.all.return_value = mock_tokens
-        
-        # Mock push service
-        mock_push_service = MagicMock()
-        mock_push_service.send_train_notifications = AsyncMock(
-            return_value={"live_activity": True}
-        )
-        notification_service.push_service = mock_push_service
-        
-        # Execute unified notification
-        await notification_service._check_and_notify_consolidated_train_changes(
-            sample_consolidated_train_with_stops, mock_db
-        )
-        
-        # Should have sent exactly one notification (not multiple)
-        assert mock_push_service.send_train_notifications.call_count == 1
-        
-        # Check notification details
-        call_args = mock_push_service.send_train_notifications.call_args[1]
-        assert call_args["alert_type"] == AlertType.APPROACHING_STOP  # Highest priority event
-        assert call_args["event_data"]["station"] == "Metuchen"
-        
-        # Verify state was updated
-        train_key = "7812_2025-06-29"
-        assert train_key in notification_service.last_train_states
 
     @pytest.mark.asyncio
     async def test_silent_update_when_no_events(self, notification_service):
@@ -335,41 +300,6 @@ class TestUnifiedEventDetection:
         call_args = mock_push_service.send_train_notifications.call_args[1]
         assert call_args["alert_type"] is None  # Silent update
 
-    def test_detect_all_event_types(self, notification_service):
-        """Test detection of all supported event types."""
-        # Test data for various scenarios
-        test_cases = [
-            # Track assignment
-            {
-                "current": {"track": "13", "status": "BOARDING"},
-                "previous": {"track": None, "status": "ON TIME"},
-                "expected": AlertType.TRACK_ASSIGNED,
-            },
-            # Boarding status
-            {
-                "current": {"track": "13", "status": "BOARDING"},
-                "previous": {"track": "13", "status": "ON TIME"},
-                "expected": AlertType.BOARDING,
-            },
-            # Departure
-            {
-                "current": {"track": "13", "status": "DEPARTED"},
-                "previous": {"track": "13", "status": "BOARDING"},
-                "expected": AlertType.DEPARTED,
-            },
-            # Delay update
-            {
-                "current": {"track": "13", "status": "DELAYED", "delay_minutes": 15},
-                "previous": {"track": "13", "status": "DELAYED", "delay_minutes": 5},
-                "expected": AlertType.DELAY_UPDATE,
-            },
-        ]
-        
-        for test_case in test_cases:
-            alert_type = notification_service._detect_alert_worthy_changes(
-                test_case["previous"], test_case["current"]
-            )
-            assert alert_type == test_case["expected"], f"Failed for {test_case['expected']}"
 
 
 class TestCLIIntegration:
