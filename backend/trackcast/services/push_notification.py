@@ -949,6 +949,8 @@ class TrainUpdateNotificationService:
         This method handles consolidated train data (dict) instead of Train objects,
         allowing for enhanced fields like status_v2 and progress from consolidation.
 
+        Now unified to handle ALL events (status changes + stop events) in a single notification.
+
         Args:
             consolidated_train: Consolidated train dictionary from TrainConsolidationService
             db: Database session
@@ -961,24 +963,31 @@ class TrainUpdateNotificationService:
 
             # Use consolidated_id for state tracking (includes journey info)
             train_key = consolidated_train.get("consolidated_id", train_id)
+
+            # Extract current state including stops for comparison
             current_state = self._extract_consolidated_train_state(consolidated_train)
+            # Add stops to state for stop event detection
+            current_state["stops"] = consolidated_train.get("stops", [])
+
             last_state = self.last_train_states.get(train_key)
 
             logger.debug(
                 f"🔍 Checking consolidated train {train_id} - Last state: {bool(last_state)}, Current status_v2: {current_state.get('status_v2')}"
             )
 
-            # Detect significant changes
-            alert_type = self._detect_alert_worthy_changes(last_state, current_state)
+            # Detect ALL events (status changes + stop events) using unified approach
+            all_events = await self._detect_all_events(consolidated_train, last_state)
+
+            # Prioritize events - get the most important one
+            alert_type, event_data = self._prioritize_events(all_events)
 
             if alert_type:
                 logger.info(
-                    f"🚨 Alert detected for consolidated train {train_id}: {alert_type.value}"
+                    f"🚨 Highest priority alert for train {train_id}: {alert_type.value} "
+                    f"(detected {len(all_events)} total events)"
                 )
             else:
-                logger.debug(
-                    f"📊 No alert for consolidated train {train_id}, sending silent update"
-                )
+                logger.debug(f"📊 No alerts for train {train_id}, sending silent update")
 
             # Get active Live Activity tokens for this train
             from sqlalchemy.orm import joinedload
@@ -995,59 +1004,54 @@ class TrainUpdateNotificationService:
 
             if not active_tokens:
                 logger.debug(f"📭 No active Live Activity tokens found for train {train_id}")
+                # Still update state tracking even without active tokens
+                self.last_train_states[train_key] = current_state
+                self._update_stop_event_history(consolidated_train)
                 return
 
             logger.info(
                 f"📱 Found {len(active_tokens)} active Live Activity tokens for consolidated train {train_id}"
             )
 
-            # Send notifications to all active tokens
+            # Send ONE notification per token with complete data
             for token in active_tokens:
                 try:
-                    if alert_type:
-                        # Send alert notification
-                        results = await self.push_service.send_train_notifications(
-                            live_activity_token=token,
-                            train_data=current_state,
-                            alert_type=alert_type,
-                            db=db,
-                        )
+                    # Always send with full consolidated data
+                    results = await self.push_service.send_train_notifications(
+                        live_activity_token=token,
+                        train_data=current_state,  # Always use full consolidated data
+                        alert_type=alert_type,  # May be None for silent updates
+                        event_data=event_data,  # Additional context if needed
+                        db=db,
+                    )
 
-                        if results["live_activity"] or results["regular_notification"]:
+                    if results["live_activity"]:
+                        if alert_type:
                             logger.info(
                                 f"✅ Alert sent for train {train_id}: {alert_type.value} "
-                                f"(Live Activity: {results['live_activity']}, Regular: {results['regular_notification']}) to token {token.push_token[:12]}..."
+                                f"to token {token.push_token[:12]}..."
                             )
                         else:
-                            logger.warning(
-                                f"⚠️ Failed to send alert for train {train_id}: {alert_type.value} to token {token.push_token[:12]}..."
+                            logger.debug(
+                                f"🔕 Silent update sent for train {train_id} "
+                                f"to token {token.push_token[:12]}..."
                             )
                     else:
-                        # Send silent Live Activity update only
-                        results = await self.push_service.send_train_notifications(
-                            live_activity_token=token,
-                            train_data=current_state,
-                            alert_type=None,  # Silent update
-                            db=db,
+                        logger.warning(
+                            f"⚠️ Failed to send {'alert' if alert_type else 'silent update'} "
+                            f"for train {train_id} to token {token.push_token[:12]}..."
                         )
-
-                        if results["live_activity"]:
-                            logger.debug(
-                                f"🔕 Silent update sent for train {train_id} to token {token.push_token[:12]}..."
-                            )
-                        else:
-                            logger.warning(
-                                f"⚠️ Silent update failed for train {train_id} to token {token.push_token[:12]}..."
-                            )
 
                 except Exception as e:
                     logger.error(
-                        f"❌ Error sending notification for train {train_id} to token {token.push_token[:12]}...: {str(e)}"
+                        f"❌ Error sending notification for train {train_id} "
+                        f"to token {token.push_token[:12]}...: {str(e)}"
                     )
 
-            # Update last known state
+            # Update state tracking (including stop history)
             self.last_train_states[train_key] = current_state
-            logger.debug(f"💾 Updated last known state for consolidated train {train_id}")
+            self._update_stop_event_history(consolidated_train)
+            logger.debug(f"💾 Updated all state tracking for consolidated train {train_id}")
 
         except Exception as e:
             logger.error(f"❌ Error checking consolidated train changes: {str(e)}")
@@ -1210,399 +1214,244 @@ class TrainUpdateNotificationService:
 
         return None
 
-
-class LiveActivityEventDetector:
-    """
-    Service for detecting stop departure and approaching stop events for Live Activities.
-    """
-
-    def __init__(self):
-        """Initialize the event detector."""
-        self.push_service = APNSPushService()
-        self.last_train_stops: Dict[str, List[Dict[str, Any]]] = {}
-        self.notification_history: Dict[str, datetime] = {}
-
-    async def detect_stop_departures(
-        self,
-        train: Train,
-        previous_stops: List[Dict[str, Any]],
-        current_stops: List[Dict[str, Any]],
-        db: Session,
-    ) -> List[Dict[str, Any]]:
+    async def _detect_all_events(
+        self, consolidated_train: Dict, last_state: Optional[Dict[str, Any]]
+    ) -> List[Tuple[AlertType, Optional[Dict[str, Any]]]]:
         """
-        Detect when a train departs from a stop.
+        Detect ALL events for a train (status changes + stop events).
 
         Args:
-            train: Train object
-            previous_stops: Previous state of stops
-            current_stops: Current state of stops
-            db: Database session
+            consolidated_train: Consolidated train data dictionary
+            last_state: Previous train state for comparison
 
         Returns:
-            List of stop departure events
+            List of (AlertType, event_data) tuples
         """
         events = []
 
-        # Get active Live Activity tokens for this train
-        active_tokens = (
-            db.query(LiveActivityToken)
-            .filter(
-                LiveActivityToken.train_id == train.train_id, LiveActivityToken.is_active == True
-            )
-            .all()
+        # Extract current state for comparison
+        current_state = self._extract_consolidated_train_state(consolidated_train)
+
+        # Detect status change events using existing logic
+        status_alert = self._detect_alert_worthy_changes(last_state, current_state)
+        if status_alert:
+            events.append((status_alert, None))
+            logger.debug(f"🚨 Detected status change event: {status_alert.value}")
+
+        # Detect stop events from consolidated data
+        stop_events = self._detect_stop_events_from_consolidated(consolidated_train, last_state)
+        events.extend(stop_events)
+
+        logger.info(
+            f"📊 Detected {len(events)} total events for train {consolidated_train.get('train_id')}"
         )
-
-        if not active_tokens:
-            return events
-
-        # Check each stop for departure changes
-        for i, stop in enumerate(current_stops):
-            # Find corresponding previous stop
-            prev_stop = None
-            for ps in previous_stops:
-                if ps.get("station_code") == stop.get("station_code"):
-                    prev_stop = ps
-                    break
-
-            if prev_stop:
-                # Check if stop just departed
-                if not prev_stop.get("departed", False) and stop.get("departed", False):
-                    # Check each active Live Activity
-                    for token in active_tokens:
-                        # Note: LiveActivityToken doesn't store origin/destination station codes
-                        # So we'll send notifications for all significant stop events
-                        # The iOS app can filter based on user's actual journey
-
-                        # Calculate total stops remaining (simplified without journey context)
-                        stops_remaining = (
-                            len([s for s in current_stops if not s.get("departed", False)]) - 1
-                        )
-
-                        events.append(
-                            {
-                                "type": "stop_departure",
-                                "token": token,
-                                "train": train,
-                                "event_data": {
-                                    "station": stop.get("station_name"),
-                                    "is_origin": False,  # Can't determine without station context
-                                    "stops_remaining": stops_remaining,
-                                    "departed_at": stop.get(
-                                        "actual_departure_time", datetime.now()
-                                    ).isoformat(),
-                                },
-                            }
-                        )
 
         return events
 
-    async def detect_approaching_stops(
-        self, train: Train, current_stops: List[Dict[str, Any]], db: Session
-    ) -> List[Dict[str, Any]]:
+    def _detect_stop_events_from_consolidated(
+        self, consolidated_train: Dict, last_state: Optional[Dict[str, Any]]
+    ) -> List[Tuple[AlertType, Dict[str, Any]]]:
         """
-        Detect when train is approaching stops.
+        Detect approaching stops and departures from consolidated data.
 
         Args:
-            train: Train object
-            current_stops: Current state of stops
-            db: Database session
+            consolidated_train: Consolidated train data with enhanced fields
+            last_state: Previous state for comparison (used for departure detection)
 
         Returns:
-            List of approaching stop events
+            List of (AlertType, event_data) tuples for stop events
         """
         events = []
-        current_time = get_eastern_now()
+        train_id = consolidated_train.get("train_id")
 
-        # Get active Live Activity tokens for this train
-        active_tokens = (
-            db.query(LiveActivityToken)
-            .filter(
-                LiveActivityToken.train_id == train.train_id, LiveActivityToken.is_active == True
-            )
-            .all()
-        )
+        # Get progress data for enhanced detection
+        progress = consolidated_train.get("progress", {})
 
-        if not active_tokens:
-            return events
+        # Detect approaching stop using enhanced progress data
+        next_arrival = progress.get("next_arrival")
+        if next_arrival and isinstance(next_arrival, dict):
+            minutes_away = next_arrival.get("minutes_away", 999)
 
-        # Check each stop for approaching notifications
-        for stop in current_stops:
-            # Skip departed stops
-            if stop.get("departed", False):
-                continue
-
-            # Calculate time to arrival
-            scheduled_time = stop.get("scheduled_time")
-            if scheduled_time:
-                try:
-                    if isinstance(scheduled_time, str):
-                        # Handle various datetime formats safely
-                        if scheduled_time.endswith("Z"):
-                            scheduled_time = datetime.fromisoformat(
-                                scheduled_time.replace("Z", "+00:00")
-                            )
-                        elif "+" in scheduled_time or scheduled_time.endswith("00:00"):
-                            scheduled_time = datetime.fromisoformat(scheduled_time)
-                        else:
-                            # Assume Eastern time if no timezone info
-                            from dateutil import tz
-
-                            scheduled_time = datetime.fromisoformat(scheduled_time).replace(
-                                tzinfo=tz.gettz("US/Eastern")
-                            )
-
-                    time_to_arrival = scheduled_time - current_time
-                    minutes_away = int(time_to_arrival.total_seconds() / 60)
-                except Exception as dt_error:
-                    logger.error(
-                        f"⚠️ Error parsing scheduled_time '{scheduled_time}' for stop: {dt_error}"
+            # Check if within notification window (0-3 minutes)
+            if 0 < minutes_away <= 3:
+                # Check notification history to avoid duplicates
+                notification_key = f"{train_id}-{next_arrival.get('station_code')}-approaching"
+                if not self._was_recently_notified(notification_key):
+                    events.append(
+                        (
+                            AlertType.APPROACHING_STOP,
+                            {
+                                "station": next_arrival.get("station_name"),
+                                "minutes_away": minutes_away,
+                                "is_destination": False,  # Could be enhanced with journey context
+                                "estimated_arrival": next_arrival.get("estimated_time"),
+                            },
+                        )
                     )
+                    self._mark_notified(notification_key)
+                    logger.info(
+                        f"📍 Detected approaching stop: {next_arrival.get('station_name')} "
+                        f"in {minutes_away} minutes"
+                    )
+
+        # Detect stop departures using consolidated stops data
+        stops = consolidated_train.get("stops", [])
+        if stops and last_state:
+            # Get last known stops for comparison
+            last_stops = last_state.get("stops", [])
+
+            for stop in stops:
+                if not isinstance(stop, dict):
                     continue
 
-                # Check if within notification window (2-3 minutes)
-                if 0 < minutes_away <= 3:
-                    for token in active_tokens:
-                        # Check if notification already sent
-                        notification_key = (
-                            f"{train.train_id}-{stop.get('station_code')}-approaching"
-                        )
-                        last_sent = self.notification_history.get(notification_key)
+                station_code = stop.get("station_code")
+                station_name = stop.get("station_name")
 
-                        # Only send once per stop
-                        if not last_sent:
-                            # Send approaching notifications for all stops
-                            # (iOS app can filter based on user's journey)
-                            events.append(
-                                {
-                                    "type": "approaching_stop",
-                                    "token": token,
-                                    "train": train,
-                                    "event_data": {
-                                        "station": stop.get("station_name"),
-                                        "minutes_away": minutes_away,
-                                        "is_destination": False,  # Can't determine without station context
-                                        "estimated_arrival": scheduled_time.isoformat(),
-                                    },
-                                }
+                # Check if this stop just departed
+                if stop.get("departed", False):
+                    # Find corresponding stop in last state
+                    last_stop = next(
+                        (s for s in last_stops if s.get("station_code") == station_code), None
+                    )
+
+                    # If stop wasn't departed before, it's a new departure
+                    if last_stop and not last_stop.get("departed", False):
+                        notification_key = f"{train_id}-{station_code}-departed"
+                        if not self._was_recently_notified(notification_key):
+                            # Count remaining stops
+                            remaining_stops = len(
+                                [
+                                    s
+                                    for s in stops[stops.index(stop) + 1 :]
+                                    if not s.get("departed", False)
+                                ]
                             )
 
-                            # Mark as sent
-                            self.notification_history[notification_key] = current_time
+                            events.append(
+                                (
+                                    AlertType.STOP_DEPARTURE,
+                                    {
+                                        "station": station_name,
+                                        "is_origin": stops.index(stop) == 0,
+                                        "stops_remaining": remaining_stops,
+                                        "departed_at": stop.get(
+                                            "actual_departure_time", stop.get("departure_time")
+                                        ),
+                                    },
+                                )
+                            )
+                            self._mark_notified(notification_key)
+                            logger.info(
+                                f"🚂 Detected stop departure: {station_name} "
+                                f"({remaining_stops} stops remaining)"
+                            )
 
         return events
 
-    async def process_train_for_events(self, train: Train, db: Session):
+    def _prioritize_events(
+        self, events: List[Tuple[AlertType, Optional[Dict[str, Any]]]]
+    ) -> Tuple[Optional[AlertType], Optional[Dict[str, Any]]]:
         """
-        Process a train for stop departure and approaching stop events.
+        Select the highest priority event from all detected events.
+
+        Priority order (highest to lowest):
+        1. BOARDING - User needs to board immediately
+        2. TRACK_ASSIGNED - Critical information for finding train
+        3. APPROACHING_STOP - User needs to prepare to disembark
+        4. APPROACHING - General approaching alert
+        5. DEPARTED - Confirmation of journey start
+        6. STOP_DEPARTURE - Intermediate stop updates
+        7. DELAY_UPDATE - Important but not immediately actionable
+        8. STATUS_CHANGE - General status updates
 
         Args:
-            train: Train object with stops data
-            db: Database session
+            events: List of (AlertType, event_data) tuples
+
+        Returns:
+            Tuple of (AlertType, event_data) for highest priority event, or (None, None)
         """
-        try:
-            train_key = f"{train.train_id}_{train.origin_station_code}"
-            logger.debug(f"🔍 Processing events for train {train.train_id}")
+        if not events:
+            return None, None
 
-            # Extract current stops
-            current_stops = []
-            if hasattr(train, "stops") and train.stops:
-                for stop in train.stops:
-                    current_stops.append(
-                        {
-                            "station_code": stop.station_code,
-                            "station_name": stop.station_name,
-                            "scheduled_time": stop.scheduled_arrival,  # Use scheduled_arrival instead
-                            "actual_departure_time": stop.actual_departure,
-                            "departed": stop.departed,
-                        }
-                    )
-                logger.debug(f"📍 Extracted {len(current_stops)} stops for train {train.train_id}")
-            else:
-                logger.debug(f"📍 No stops data available for train {train.train_id}")
+        # Define priority order
+        priority_order = [
+            AlertType.BOARDING,
+            AlertType.TRACK_ASSIGNED,
+            AlertType.APPROACHING_STOP,
+            AlertType.APPROACHING,
+            AlertType.DEPARTED,
+            AlertType.STOP_DEPARTURE,
+            AlertType.DELAY_UPDATE,
+            AlertType.STATUS_CHANGE,
+        ]
 
-            # Get previous stops
-            previous_stops = self.last_train_stops.get(train_key, [])
+        # Sort events by priority
+        for priority_alert in priority_order:
+            for event_alert, event_data in events:
+                if event_alert == priority_alert:
+                    logger.info(f"🎯 Selected highest priority event: {event_alert.value}")
+                    return event_alert, event_data
 
-            # Detect stop departures
-            departure_events = await self.detect_stop_departures(
-                train, previous_stops, current_stops, db
-            )
+        # Return first event if no priority match (shouldn't happen)
+        logger.warning(f"⚠️ No priority match found, returning first event: {events[0][0].value}")
+        return events[0]
 
-            # Detect approaching stops
-            approaching_events = await self.detect_approaching_stops(train, current_stops, db)
+    def _was_recently_notified(self, notification_key: str, window_minutes: int = 10) -> bool:
+        """
+        Check if a notification was recently sent for this key.
 
-            # Send notifications for all events
-            all_events = departure_events + approaching_events
-            logger.info(
-                f"📬 Sending {len(all_events)} event notifications for train {train.train_id}"
-            )
+        Args:
+            notification_key: Unique key for the notification
+            window_minutes: Time window in minutes
 
-            for event in all_events:
-                token = event["token"]
-                train_data = self._extract_train_data(event["train"])
+        Returns:
+            True if notification was sent within the window
+        """
+        if not hasattr(self, "_notification_history"):
+            self._notification_history = {}
 
-                alert_type = (
-                    AlertType.STOP_DEPARTURE
-                    if event["type"] == "stop_departure"
-                    else AlertType.APPROACHING_STOP
+        last_sent = self._notification_history.get(notification_key)
+        if not last_sent:
+            return False
+
+        time_since = datetime.now() - last_sent
+        return time_since.total_seconds() < (window_minutes * 60)
+
+    def _mark_notified(self, notification_key: str):
+        """Mark a notification as sent."""
+        if not hasattr(self, "_notification_history"):
+            self._notification_history = {}
+        self._notification_history[notification_key] = datetime.now()
+
+    def _update_stop_event_history(self, consolidated_train: Dict):
+        """
+        Update stop event tracking history from consolidated train data.
+
+        Args:
+            consolidated_train: Consolidated train data
+        """
+        # Store stops for future comparison
+        train_key = consolidated_train.get("consolidated_id", consolidated_train.get("train_id"))
+
+        # Extract stops in a format suitable for comparison
+        stops = []
+        for stop in consolidated_train.get("stops", []):
+            if isinstance(stop, dict):
+                stops.append(
+                    {
+                        "station_code": stop.get("station_code"),
+                        "station_name": stop.get("station_name"),
+                        "departed": stop.get("departed", False),
+                        "departure_time": stop.get("departure_time"),
+                        "actual_departure_time": stop.get("actual_departure_time"),
+                    }
                 )
 
-                logger.info(
-                    f"🎯 Sending {event['type']} notification for train {train.train_id} at {event['event_data']['station']}"
-                )
-
-                results = await self.push_service.send_train_notifications(
-                    live_activity_token=token,
-                    train_data=train_data,
-                    alert_type=alert_type,
-                    event_data=event["event_data"],
-                    db=db,
-                )
-
-                if results["live_activity"]:
-                    logger.info(
-                        f"✅ Sent {event['type']} notification for train {train.train_id} "
-                        f"stop {event['event_data']['station']}"
-                    )
-                else:
-                    logger.error(
-                        f"❌ Failed to send {event['type']} notification for train {train.train_id} "
-                        f"stop {event['event_data']['station']}"
-                    )
-
-            # Update last known stops
-            self.last_train_stops[train_key] = current_stops
-
-        except Exception as e:
-            logger.error(f"Error processing train events for {train.train_id}: {str(e)}")
-
-    def _is_stop_in_journey(
-        self,
-        stop: Dict[str, Any],
-        origin_code: str,
-        destination_code: str,
-        all_stops: List[Dict[str, Any]],
-    ) -> bool:
-        """Check if a stop is within user's journey."""
-        # Find indices
-        origin_idx = destination_idx = stop_idx = None
-
-        for i, s in enumerate(all_stops):
-            if s.get("station_code") == origin_code:
-                origin_idx = i
-            if s.get("station_code") == destination_code:
-                destination_idx = i
-            if s.get("station_code") == stop.get("station_code"):
-                stop_idx = i
-
-        # Check if stop is between origin and destination
-        if origin_idx is not None and destination_idx is not None and stop_idx is not None:
-            return origin_idx <= stop_idx <= destination_idx
-
-        return False
-
-    def _count_remaining_stops(
-        self, all_stops: List[Dict[str, Any]], current_stop_code: str, destination_code: str
-    ) -> int:
-        """Count remaining stops to destination."""
-        current_idx = destination_idx = None
-
-        for i, s in enumerate(all_stops):
-            if s.get("station_code") == current_stop_code:
-                current_idx = i
-            if s.get("station_code") == destination_code:
-                destination_idx = i
-
-        if current_idx is not None and destination_idx is not None:
-            return destination_idx - current_idx
-
-        return 0
-
-    def _extract_train_data(self, train: Train) -> Dict[str, Any]:
-        """Extract train data for notifications."""
-        # Extract status_v2 data if available
-        status_v2 = getattr(train, "status_v2", None)
-        status_v2_str = train.status
-        status_location = None
-
-        if status_v2 and isinstance(status_v2, dict):
-            status_v2_str = status_v2.get("current", train.status)
-            status_location = status_v2.get("location")
-        elif isinstance(status_v2, str):
-            status_v2_str = status_v2
-
-        # Extract next stop info
-        next_stop_info = None
-        progress = getattr(train, "progress", None)
-        if progress and isinstance(progress, dict):
-            next_arrival = progress.get("next_arrival")
-            if next_arrival:
-                next_stop_info = {
-                    "stationCode": next_arrival.get("station_code"),
-                    "stationName": next_arrival.get("station_name"),
-                    "scheduledTime": next_arrival.get("scheduled_time"),
-                    "minutesAway": next_arrival.get("minutes_away", 0),
-                }
-
-        # Extract destination ETA
-        destination_eta = None
-        if hasattr(train, "stops") and train.stops:
-            # Find destination stop and get its scheduled time
-            for stop in train.stops:
-                if hasattr(stop, "station_code") and hasattr(train, "destination_station_code"):
-                    if stop.station_code == train.destination_station_code:
-                        destination_eta = (
-                            stop.scheduled_arrival.isoformat() if stop.scheduled_arrival else None
-                        )
-                        break
-
-        # Extract prediction data if available
-        trackrat_prediction = None
-        if hasattr(train, "prediction_data") and train.prediction_data:
-            pred = train.prediction_data
-            trackrat_prediction = {
-                "predictedTrack": (
-                    pred.predicted_track if hasattr(pred, "predicted_track") else None
-                ),
-                "confidence": pred.confidence if hasattr(pred, "confidence") else 0.0,
-                "trackProbabilities": (
-                    pred.track_probabilities if hasattr(pred, "track_probabilities") else {}
-                ),
-            }
-
-        return {
-            "train_id": train.train_id,
-            "track": train.track,
-            "status": train.status,
-            "status_v2": status_v2_str,
-            "status_location": status_location,
-            "delay_minutes": train.delay_minutes or 0,
-            "current_location": getattr(train, "current_location", None),
-            "journey_percent": getattr(train, "journey_percent", 0),
-            "next_stop_info": next_stop_info,
-            "destination_eta": destination_eta,
-            "trackrat_prediction": trackrat_prediction,
-            "has_status_changed": getattr(
-                train, "has_status_changed", False
-            ),  # Use train attribute if available
-        }
-
-    def cleanup_old_notifications(self, hours: int = 24):
-        """Remove old notification history entries."""
-        cutoff_time = get_eastern_now() - timedelta(hours=hours)
-        keys_to_remove = []
-
-        for key, timestamp in self.notification_history.items():
-            if timestamp < cutoff_time:
-                keys_to_remove.append(key)
-
-        for key in keys_to_remove:
-            del self.notification_history[key]
-
-        if keys_to_remove:
-            logger.info(f"Cleaned up {len(keys_to_remove)} old notification history entries")
+        # Store for next comparison
+        if not hasattr(self, "_last_train_stops"):
+            self._last_train_stops = {}
+        self._last_train_stops[train_key] = stops
 
 
 # Global instances for use in schedulers and services
 notification_service = TrainUpdateNotificationService()
-event_detector = LiveActivityEventDetector()

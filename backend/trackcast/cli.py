@@ -21,7 +21,7 @@ from trackcast.services.data_collector import DataCollectorService
 from trackcast.services.data_import import DataImportService
 from trackcast.services.feature_engineering import FeatureEngineeringService
 from trackcast.services.prediction import PredictionService
-from trackcast.services.push_notification import event_detector, notification_service
+from trackcast.services.push_notification import notification_service
 
 # SchedulerService removed - using Cloud Run Jobs for scheduling
 
@@ -68,9 +68,10 @@ def _process_push_notifications(session) -> None:
                 f"📝 Sample train IDs: {sample_ids}{'...' if len(unique_train_ids) > 5 else ''}"
             )
 
-        # Process notifications with consolidation
+        # Process ALL notifications (status changes + stop events) through consolidated pipeline
+        # This now handles everything in one unified flow
         logger.info(
-            "📱 Processing train state changes for Live Activity updates (with consolidation)"
+            "📱 Processing train updates for Live Activities (unified status + stop events)"
         )
         asyncio.run(
             notification_service.process_consolidated_train_updates(
@@ -82,27 +83,11 @@ def _process_push_notifications(session) -> None:
             f"✅ Push notification processing completed for {len(unique_train_ids)} unique trains"
         )
 
-        # Process stop departure and approaching stop events
-        logger.info("🚉 Processing stop events for Live Activities")
-        stop_events_processed = 0
-        # Need to fetch full train objects for stop event processing
-        all_trains = []
-        for train_id in unique_train_ids:
-            trains_for_id = train_repo.get_all_trains_for_train_id(train_id, since=recent_cutoff)
-            if trains_for_id:
-                # Use the most recently updated train record for stop events
-                all_trains.append(trains_for_id[0])
-
-        for train in all_trains:
-            logger.debug(f"🔍 Processing stop events for train {train.train_id}")
-            asyncio.run(event_detector.process_train_for_events(train, session))
-            stop_events_processed += 1
-
-        # Clean up old notification history
-        logger.debug("🧹 Cleaning up old notification history")
-        event_detector.cleanup_old_notifications()
-
-        logger.info(f"✅ Stop event processing completed for {stop_events_processed} trains")
+        # REMOVED: Separate stop event processing - now integrated into consolidated flow
+        # The consolidated flow now detects and handles ALL events:
+        # - Status changes (track assignment, boarding, delays, etc.)
+        # - Stop events (approaching stops, departures)
+        # This ensures consistent data quality and prevents duplicate notifications
 
     except Exception as e:
         logger.warning(f"Push notification processing failed (continuing anyway): {e}")
