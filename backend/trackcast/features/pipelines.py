@@ -186,7 +186,7 @@ class FeaturePipeline:
                 # Commit changes
                 self.session.commit()
 
-                logger.info(f"Created model data (id={model_data.id}) for train {train.train_id}")
+                logger.debug(f"Created model data (id={model_data.id}) for train {train.train_id}")
 
             return model_data
 

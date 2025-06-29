@@ -123,7 +123,7 @@ async def health(db=Depends(get_db)):
         # Get current time in Eastern timezone for database queries
         current_time = datetime.utcnow()
 
-        logger.info("Starting health check")
+        logger.debug("Starting health check")
 
         # Check database connection
         try:
@@ -133,7 +133,7 @@ async def health(db=Depends(get_db)):
                 "status": "healthy",
                 "message": "Database connection successful",
             }
-            logger.info("Database connection check passed")
+            logger.debug("Database connection check passed")
         except Exception as e:
             logger.error(f"Database health check failed: {str(e)}", exc_info=True)
             health_status["checks"]["database"] = {
@@ -398,7 +398,7 @@ async def health(db=Depends(get_db)):
             logger.warning(f"Health check returning unhealthy status: {health_status}")
             return JSONResponse(status_code=503, content=health_status)
 
-        logger.info("Health check completed successfully")
+        logger.debug("Health check completed successfully")
         return health_status
 
     except Exception as e:

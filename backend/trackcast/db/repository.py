@@ -1814,7 +1814,7 @@ class ModelDataRepository(BaseRepository):
             self.session.commit()
             duration = time.time() - start_time
             DB_QUERY_DURATION_SECONDS.labels(query_type="create_model_data").observe(duration)
-            logger.info(f"Created model data with ID {model_data_obj.id}")
+            logger.debug(f"Created model data with ID {model_data_obj.id}")
             return model_data_obj
         except SQLAlchemyError as e:
             self.session.rollback()

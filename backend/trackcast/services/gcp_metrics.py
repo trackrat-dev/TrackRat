@@ -94,12 +94,12 @@ class GCPMetricsExporter:
         if self.enabled:
             try:
                 self._initialize_client()
-                logger.info(f"GCP Metrics Exporter initialized for project: {self.project_id}")
+                logger.debug(f"GCP Metrics Exporter initialized for project: {self.project_id}")
             except Exception as e:
                 logger.warning(f"Failed to initialize GCP Metrics Exporter: {e}")
                 self.enabled = False
         else:
-            logger.info("GCP Metrics Exporter disabled (no project ID or explicitly disabled)")
+            logger.debug("GCP Metrics Exporter disabled (no project ID or explicitly disabled)")
 
     def _initialize_client(self):
         """Initialize the Google Cloud Monitoring client."""
@@ -117,12 +117,12 @@ class GCPMetricsExporter:
         self._client = monitoring_v3.MetricServiceClient(credentials=credentials)
         self._project_name = f"projects/{self.project_id}"
 
-        logger.info(f"GCP Monitoring client initialized for project: {self.project_id}")
+        logger.debug(f"GCP Monitoring client initialized for project: {self.project_id}")
 
     def start_background_export(self):
         """Start background thread for periodic metric export."""
         if not self.enabled:
-            logger.info("GCP metrics export disabled, not starting background export")
+            logger.debug("GCP metrics export disabled, not starting background export")
             return
 
         if self._export_thread and self._export_thread.is_alive():
@@ -132,14 +132,14 @@ class GCPMetricsExporter:
         self._stop_export = False
         self._export_thread = Thread(target=self._export_loop, daemon=True)
         self._export_thread.start()
-        logger.info(f"Started background metrics export (interval: {self.export_interval}s)")
+        logger.debug(f"Started background metrics export (interval: {self.export_interval}s)")
 
     def stop_background_export(self):
         """Stop background metric export thread."""
         self._stop_export = True
         if self._export_thread and self._export_thread.is_alive():
             self._export_thread.join(timeout=5.0)
-            logger.info("Stopped background metrics export")
+            logger.debug("Stopped background metrics export")
 
     def _export_loop(self):
         """Background export loop."""
@@ -281,7 +281,7 @@ class GCPMetricsExporter:
         )
 
         if success:
-            logger.info(
+            logger.debug(
                 f"Successfully exported {total_exported} metrics to GCP in {export_time:.2f}s"
             )
 
