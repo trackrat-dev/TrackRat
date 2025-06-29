@@ -398,6 +398,10 @@ class LiveActivityToken(Base, TimestampMixin):
     )  # Increased from 255 to 512 for Live Activity tokens
     train_id = Column(String(20), nullable=False, index=True)
 
+    # User's journey details
+    user_origin_station_code = Column(String(10), nullable=True)
+    user_destination_station_code = Column(String(10), nullable=True)
+
     # Device association
     device_token_id = Column(
         Integer, ForeignKey("device_tokens.id", ondelete="CASCADE"), nullable=True

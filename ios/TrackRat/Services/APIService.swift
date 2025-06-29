@@ -32,6 +32,73 @@ final class APIService: ObservableObject {
         return decoder
     }()
     
+    // MARK: - Notification Registration
+    
+    struct LiveActivityTokenRequest: Codable {
+        let trainId: String
+        let pushToken: String
+        let deviceToken: String?
+        let userOriginStationCode: String?
+        let userDestinationStationCode: String?
+        
+        enum CodingKeys: String, CodingKey {
+            case trainId = "train_id"
+            case pushToken = "push_token"
+            case deviceToken = "device_token"
+            case userOriginStationCode = "user_origin_station_code"
+            case userDestinationStationCode = "user_destination_station_code"
+        }
+    }
+    
+    struct LiveActivityTokenResponse: Codable {
+        // Add necessary properties for the response
+    }
+    
+    func registerLiveActivity(
+        trainId: String,
+        pushToken: String,
+        deviceToken: String?,
+        userOrigin: String?,
+        userDestination: String?
+    ) async throws {
+        let url = URL(string: "\(baseURL)/notifications/live-activities/register")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let requestBody = LiveActivityTokenRequest(
+            trainId: trainId,
+            pushToken: pushToken,
+            deviceToken: deviceToken,
+            userOriginStationCode: userOrigin,
+            userDestinationStationCode: userDestination
+        )
+        
+        do {
+            request.httpBody = try JSONEncoder().encode(requestBody)
+        } catch {
+            print("Failed to encode request body: \(error)")
+            throw APIError.encodingError
+        }
+        
+        let (data, response) = try await session.data(for: request)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            print("📱 Live Activity token registration response: \(httpResponse.statusCode)")
+            
+            // Log response body for debugging
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📱 Live Activity registration response body: \(responseString)")
+            }
+            
+            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+                throw APIError.invalidParameters
+            }
+        }
+        
+        print("✅ Live Activity token registered for train \(trainId)")
+    }
+    
     // MARK: - Train Search
     func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [Train] {
         // Format current time as Eastern Time without timezone suffix
@@ -545,6 +612,7 @@ enum APIError: LocalizedError {
     case noData
     case decodingError
     case invalidParameters
+    case encodingError
     
     var errorDescription: String? {
         switch self {
@@ -552,6 +620,7 @@ enum APIError: LocalizedError {
         case .noData: return "No data received"
         case .decodingError: return "Failed to decode response"
         case .invalidParameters: return "Invalid parameters provided"
+        case .encodingError: return "Failed to encode request body"
         }
     }
 }

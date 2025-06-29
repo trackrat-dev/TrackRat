@@ -299,14 +299,8 @@ struct TrainLiveActivityView: View {
         let percentage = context.state.journeyProgress
         if percentage >= 1.0 {
             return "Arrived"
-        } else if percentage > 0 {
-            // Estimate remaining stops based on progress (rough approximation)
-            let estimatedTotalStops = 5 // Default estimate for typical journey
-            let estimatedCompletedStops = Int(Double(estimatedTotalStops) * percentage)
-            let remainingStops = max(1, estimatedTotalStops - estimatedCompletedStops)
-            return "\(remainingStops) stop\(remainingStops == 1 ? "" : "s") to go"
         } else {
-            return "— stops to go"
+            return ""
         }
     }
     

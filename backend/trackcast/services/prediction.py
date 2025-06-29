@@ -477,9 +477,6 @@ class PredictionService:
                 TRACK_PREDICTION_CONFIDENCE.labels(station=station_code).observe(
                     top_tracks[0][1]  # Observe confidence of the top predicted track
                 )
-            logger.info(
-                f"Top 3 predicted tracks for train {train.train_id} from {station_code}: {top_tracks}"
-            )
 
             # Generate explanation factors
             try:
@@ -567,9 +564,6 @@ class PredictionService:
                 TRACK_PREDICTION_CONFIDENCE.labels(station=station_code).observe(
                     top_tracks[0][1]  # Observe confidence of the top predicted track
                 )
-            logger.info(
-                f"Top 3 predicted tracks for train {train.train_id} using {station_code} model: {top_tracks}"
-            )
 
             # Generate explanation factors
             try:

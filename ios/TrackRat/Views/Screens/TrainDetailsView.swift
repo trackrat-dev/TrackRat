@@ -59,7 +59,7 @@ struct TrainDetailsView: View {
                         )
                         .padding()
                         // Force view update by using a composite ID that includes changing data
-                        .id("\(train.id)-\(train.statusV2?.current ?? "")-\(train.progress?.journeyPercent ?? 0)-\(train.displayTrack ?? "")")
+                        .id("\(train.id)-\(train.statusV2?.current ?? "")-\(train.progress?.journeyPercent ?? 0)-\(train.displayTrack ?? "")-\(viewModel.stopStatesHash)")
                     }
                 }
                 .refreshable {
@@ -985,6 +985,12 @@ class TrainDetailsViewModel: ObservableObject {
     @Published var journeyStopsCompleted: Int = 0
     @Published var journeyTotalStops: Int = 0
     
+    /// Hash of stop departure states for SwiftUI view update detection
+    var stopStatesHash: String {
+        let departedStates = displayableTrainStops.map { $0.departed ?? false }
+        return String(departedStates.hashValue)
+    }
+    
     private func updateComputedProperties() {
         updateDisplayableTrainStops()
         updateJourneyProgress()
@@ -1107,12 +1113,12 @@ class TrainDetailsViewModel: ObservableObject {
                 }
             }
             
-            // Force UI update by explicitly triggering objectWillChange
-            objectWillChange.send()
-            train = newTrain
-            
-            // Update all computed properties after setting new train
-            updateComputedProperties()
+            // Ensure UI updates properly on main queue
+            DispatchQueue.main.async { [weak self] in
+                self?.objectWillChange.send()
+                self?.train = newTrain
+                self?.updateComputedProperties()
+            }
             
             // Update Live Activity if active
             if #available(iOS 16.1, *) {

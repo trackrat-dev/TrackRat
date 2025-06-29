@@ -326,7 +326,6 @@ class APNSPushService:
                 "event": "update",
                 "stale-date": current_timestamp + 900,  # 15 minutes from now
                 "content-state": {
-                    "trainNumber": train_data.get("train_id"),
                     "statusV2": str(
                         train_data.get("status_v2") or train_data.get("status", "")
                     ),  # Changed to camelCase, ensure string
@@ -380,11 +379,32 @@ class APNSPushService:
         logger.info(f"  🗝️  Content State Keys: {list(payload['aps']['content-state'].keys())}")
         logger.info(f"  📊 Journey Progress: {payload['aps']['content-state']['journeyProgress']}")
         logger.info(f"  🚂 Status V2: {payload['aps']['content-state']['statusV2']}")
-        logger.info(f"  🎯 Train ID: {payload['aps']['content-state']['trainNumber']}")
+        logger.info(f"  🎯 Train ID: {train_data.get('train_id')}")
         logger.info(f"  🛤️  Track: {payload['aps']['content-state'].get('track', 'None')}")
         logger.info(
             f"  📍 Status Location: {payload['aps']['content-state'].get('statusLocation', 'None')}"
         )
+
+        # Enhanced logging for new rich data structures
+        current_location = payload["aps"]["content-state"].get("currentLocation")
+        if current_location:
+            logger.info(f"  📍 Current Location: {current_location}")
+        else:
+            logger.info(f"  📍 Current Location: None")
+
+        next_stop = payload["aps"]["content-state"].get("nextStop")
+        if next_stop:
+            logger.info(
+                f"  🚉 Next Stop: {next_stop.get('stationName', 'Unknown')} in {next_stop.get('minutesAway', '?')} min"
+            )
+        else:
+            logger.info(f"  🚉 Next Stop: None")
+
+        destination_eta = payload["aps"]["content-state"].get("destinationETA")
+        if destination_eta:
+            logger.info(f"  🏁 Destination ETA: {destination_eta}")
+        else:
+            logger.info(f"  🏁 Destination ETA: None")
 
         # Log enhanced metadata if present
         if alert_type:
@@ -1018,10 +1038,27 @@ class TrainUpdateNotificationService:
             # Send ONE notification per token with complete data
             for token in active_tokens:
                 try:
+                    # Create a user-specific state for the payload by copying the generic state
+                    payload_state = current_state.copy()
+                    user_journey_progress = self._calculate_user_journey_progress(
+                        consolidated_train, token
+                    )
+                    if user_journey_progress is not None:
+                        payload_state["journey_percent"] = user_journey_progress
+                        logger.debug(
+                            f"Overriding journey progress for user: {user_journey_progress:.1f}%"
+                        )
+
+                    # Set hasStatusChanged flag based on status_v2 change
+                    if last_state and last_state.get("status_v2") != current_state.get("status_v2"):
+                        payload_state["has_status_changed"] = True
+                    else:
+                        payload_state["has_status_changed"] = False
+
                     # Always send with full consolidated data
                     results = await self.push_service.send_train_notifications(
                         live_activity_token=token,
-                        train_data=current_state,  # Always use full consolidated data
+                        train_data=payload_state,  # Use the potentially modified state
                         alert_type=alert_type,  # May be None for silent updates
                         event_data=event_data,  # Additional context if needed
                         db=db,
@@ -1060,6 +1097,69 @@ class TrainUpdateNotificationService:
             import traceback
 
             logger.error(f"📋 Traceback: {traceback.format_exc()}")
+
+    def _calculate_user_journey_progress(
+        self, consolidated_train: Dict, live_activity_token: LiveActivityToken
+    ) -> Optional[float]:
+        """
+        Calculate journey progress based on the user's specific origin and destination.
+
+        Args:
+            consolidated_train: Consolidated train data with stops list.
+            live_activity_token: The user's live activity token with journey details.
+
+        Returns:
+            User-specific journey progress percentage (0-100), or None if not possible.
+        """
+        user_origin = live_activity_token.user_origin_station_code
+        user_dest = live_activity_token.user_destination_station_code
+        stops = consolidated_train.get("stops", [])
+
+        if not user_origin or not user_dest or not stops:
+            return None
+
+        try:
+            # Find indices of user's stops
+            origin_idx = -1
+            dest_idx = -1
+            for i, stop in enumerate(stops):
+                if stop.get("station_code") == user_origin:
+                    origin_idx = i
+                if stop.get("station_code") == user_dest:
+                    dest_idx = i
+
+            if origin_idx == -1 or dest_idx == -1 or origin_idx >= dest_idx:
+                return None
+
+            # Find index of last departed stop
+            last_departed_idx = -1
+            for i in range(len(stops)):
+                if stops[i].get("departed", False):
+                    last_departed_idx = i
+                else:  # Assumes stops are ordered and departed flag is sequential
+                    break
+
+            # If train hasn't passed user's origin yet, progress is 0
+            if last_departed_idx < origin_idx:
+                return 0.0
+
+            # If train has passed user's destination, progress is 100
+            if last_departed_idx >= dest_idx:
+                return 100.0
+
+            # Calculate progress within the user's journey segment
+            total_user_stops = dest_idx - origin_idx
+            completed_user_stops = last_departed_idx - origin_idx
+
+            if total_user_stops == 0:
+                return 100.0 if completed_user_stops > 0 else 0.0
+
+            progress = (completed_user_stops / total_user_stops) * 100.0
+            return progress
+
+        except Exception as e:
+            logger.error(f"Error calculating user journey progress: {e}")
+            return None
 
     def _extract_train_state(self, train: Train) -> Dict[str, Any]:
         """
@@ -1150,11 +1250,288 @@ class TrainUpdateNotificationService:
             "consolidation_metadata", {}
         ).get("confidence_score", 0)
 
+        # Enrich state with properly formatted Live Activity data
+        state = self._enrich_state_for_live_activity(state, consolidated_train)
+
         logger.debug(
             f"📊 Extracted consolidated state for train {state['train_id']}: "
             f"track={state['track']}, status_v2={state['status_v2']}, progress={state['journey_percent']}%"
         )
         return state
+
+    def _enrich_state_for_live_activity(
+        self, state: Dict[str, Any], consolidated_train: Dict
+    ) -> Dict[str, Any]:
+        """
+        Enrich the train state with properly formatted data for Live Activity payloads.
+
+        This method transforms the consolidated train data into the exact format expected
+        by the iOS Live Activity widgets, ensuring proper dictionary structures and
+        field names that match the iOS model definitions.
+
+        Args:
+            state: Basic train state dictionary
+            consolidated_train: Full consolidated train data
+
+        Returns:
+            Enhanced state dictionary with Live Activity-compatible fields
+        """
+        # Create proper currentLocation dictionary based on status and progress
+        state["current_location"] = self._create_current_location_dict(state, consolidated_train)
+
+        # Create proper nextStop dictionary (note: iOS expects 'nextStop' not 'next_stop_info')
+        state["next_stop_info"] = self._create_next_stop_dict(consolidated_train)
+
+        # Fix field name mismatch for predictions
+        if state.get("track_prediction"):
+            state["trackrat_prediction"] = state.pop("track_prediction")
+
+        # Ensure destination_eta is properly formatted
+        state["destination_eta"] = self._format_destination_eta(consolidated_train)
+
+        return state
+
+    def _create_current_location_dict(
+        self, state: Dict[str, Any], consolidated_train: Dict
+    ) -> Dict[str, Any]:
+        """
+        Create a properly formatted currentLocation dictionary for Live Activity.
+
+        This matches Swift's automatic Codable format for the CurrentLocation enum:
+        - {"boarding": {"station": "string"}}
+        - {"departed": {"from": "string", "minutesAgo": int}}
+        - {"approaching": {"station": "string", "minutesAway": int}}
+        - {"enRoute": {"between": "string", "and": "string"}}
+        - {"atStation": "string"}
+        - {"notDeparted": {"departureTime": "string"}}
+        - "arrived"
+
+        Args:
+            state: Basic train state
+            consolidated_train: Full consolidated train data
+
+        Returns:
+            Dictionary representing the current location state in Swift enum format
+        """
+        status_v2 = state.get("status_v2")
+        status_location = state.get("status_location")
+        progress = consolidated_train.get("progress", {})
+
+        # Check for boarding status
+        if status_v2 == "BOARDING":
+            station_name = status_location.replace("at ", "") if status_location else "Station"
+            return {"boarding": {"station": station_name}}
+
+        # Check for departed status
+        elif status_v2 == "DEPARTED" or status_v2 == "EN_ROUTE":
+            last_departed = progress.get("last_departed")
+            if last_departed and isinstance(last_departed, dict):
+                station_code = last_departed.get("station_code")
+                departed_at = last_departed.get("departed_at")
+
+                # Calculate minutes ago if we have departure time
+                minutes_ago = 0
+                if departed_at:
+                    try:
+                        from datetime import datetime
+
+                        if isinstance(departed_at, str):
+                            departed_time = datetime.fromisoformat(
+                                departed_at.replace("Z", "+00:00")
+                            )
+                        else:
+                            departed_time = departed_at
+                        minutes_ago = max(
+                            0,
+                            int(
+                                (
+                                    datetime.now(departed_time.tzinfo).timestamp()
+                                    - departed_time.timestamp()
+                                )
+                                / 60
+                            ),
+                        )
+                    except (ValueError, TypeError):
+                        minutes_ago = 0
+
+                # Get station name from code
+                station_name = self._get_station_name_from_code(station_code)
+
+                # If we're en route, try to get the next station for location description
+                if status_v2 == "EN_ROUTE" and status_location and "between" in status_location:
+                    # Parse "between X and Y" format
+                    if " and " in status_location:
+                        parts = status_location.replace("between ", "").split(" and ")
+                        if len(parts) == 2:
+                            return {
+                                "enRoute": {"between": parts[0].strip(), "and": parts[1].strip()}
+                            }
+
+                return {"departed": {"from": station_name, "minutesAgo": minutes_ago}}
+
+        # Check for arrived status
+        elif status_v2 == "ARRIVED":
+            return "arrived"
+
+        # Check for approaching status
+        next_arrival = progress.get("next_arrival")
+        if next_arrival and isinstance(next_arrival, dict):
+            minutes_away = next_arrival.get("minutes_away", 999)
+            if 0 < minutes_away <= 5:  # Within 5 minutes = approaching
+                station_name = self._get_station_name_from_code(next_arrival.get("station_code"))
+                return {"approaching": {"station": station_name, "minutesAway": minutes_away}}
+
+        # Default: not departed
+        departure_time = consolidated_train.get("origin_station", {}).get("departure_time")
+        return {"notDeparted": {"departureTime": departure_time}}
+
+    def _create_next_stop_dict(self, consolidated_train: Dict) -> Optional[Dict[str, Any]]:
+        """
+        Create a properly formatted nextStop dictionary for Live Activity.
+
+        This matches the NextStopInfo structure expected by iOS:
+        - stationName: String
+        - estimatedArrival: Date
+        - scheduledArrival: Date?
+        - isDelayed: Bool
+        - delayMinutes: Int
+        - isDestination: Bool
+        - minutesAway: Int
+
+        Args:
+            consolidated_train: Full consolidated train data
+
+        Returns:
+            Dictionary representing the next stop info, or None if no next stop
+        """
+        progress = consolidated_train.get("progress", {})
+        next_arrival = progress.get("next_arrival")
+
+        if not next_arrival or not isinstance(next_arrival, dict):
+            return None
+
+        station_code = next_arrival.get("station_code")
+        station_name = self._get_station_name_from_code(station_code)
+        estimated_time = next_arrival.get("estimated_time")
+        scheduled_time = next_arrival.get("scheduled_time")
+        minutes_away = next_arrival.get("minutes_away", 0)
+
+        # Calculate delay
+        is_delayed = False
+        delay_minutes = 0
+        if estimated_time and scheduled_time:
+            try:
+                from datetime import datetime
+
+                if isinstance(estimated_time, str):
+                    est_dt = datetime.fromisoformat(estimated_time.replace("Z", "+00:00"))
+                else:
+                    est_dt = estimated_time
+
+                if isinstance(scheduled_time, str):
+                    sched_dt = datetime.fromisoformat(scheduled_time.replace("Z", "+00:00"))
+                else:
+                    sched_dt = scheduled_time
+
+                delay_seconds = (est_dt - sched_dt).total_seconds()
+                if delay_seconds > 60:  # More than 1 minute late
+                    is_delayed = True
+                    delay_minutes = int(delay_seconds / 60)
+            except (ValueError, TypeError):
+                pass
+
+        # Determine if this is the destination (simplified - could be enhanced with journey context)
+        # For now, assume it's the destination if it's the last stop
+        stops = consolidated_train.get("stops", [])
+        is_destination = False
+        if stops:
+            # Find this stop in the stops list and check if it's the last one
+            for i, stop in enumerate(stops):
+                if isinstance(stop, dict) and stop.get("station_code") == station_code:
+                    is_destination = i == len(stops) - 1
+                    break
+
+        return {
+            "stationName": station_name,
+            "estimatedArrival": estimated_time,
+            "scheduledArrival": scheduled_time,
+            "isDelayed": is_delayed,
+            "delayMinutes": delay_minutes,
+            "isDestination": is_destination,
+            "minutesAway": minutes_away,
+        }
+
+    def _format_destination_eta(self, consolidated_train: Dict) -> Optional[str]:
+        """
+        Format the destination ETA properly for Live Activity.
+
+        Args:
+            consolidated_train: Full consolidated train data
+
+        Returns:
+            ISO8601 formatted destination ETA string, or None
+        """
+        # Look for the final destination in stops
+        stops = consolidated_train.get("stops", [])
+        if not stops:
+            return None
+
+        # Get the last stop as destination
+        last_stop = stops[-1] if stops else None
+        if not last_stop or not isinstance(last_stop, dict):
+            return None
+
+        # Use estimated arrival time if available, otherwise scheduled time
+        eta = last_stop.get("estimated_arrival") or last_stop.get("scheduled_arrival")
+
+        if eta:
+            # Ensure it's in ISO8601 format
+            if isinstance(eta, str):
+                return eta
+            else:
+                # Convert datetime object to ISO8601 string
+                try:
+                    return eta.isoformat()
+                except AttributeError:
+                    return None
+
+        return None
+
+    def _get_station_name_from_code(self, station_code: str) -> str:
+        """
+        Convert a station code to a human-readable station name.
+
+        Args:
+            station_code: Station code (e.g., "NY", "WAS", "BAL")
+
+        Returns:
+            Human-readable station name
+        """
+        if not station_code:
+            return "Unknown Station"
+
+        # Common station code mappings
+        station_names = {
+            "NY": "New York Penn Station",
+            "NP": "Newark Penn Station",
+            "TR": "Trenton Transit Center",
+            "PJ": "Princeton Junction",
+            "MP": "Metropark",
+            "WAS": "Washington Union Station",
+            "BAL": "Baltimore Penn Station",
+            "BWI": "BWI Airport",
+            "PHL": "Philadelphia 30th Street",
+            "WIL": "Wilmington",
+            "NHV": "New Haven Union Station",
+            "BOS": "Boston South Station",
+            "BBY": "Boston Back Bay",
+            "RTE": "Route 128",
+            "STM": "Stamford",
+            "NRO": "New Rochelle",
+            "NYP": "New York Penn Station",
+        }
+
+        return station_names.get(station_code.upper(), f"{station_code} Station")
 
     def _detect_alert_worthy_changes(
         self, old_state: Optional[Dict[str, Any]], new_state: Dict[str, Any]
@@ -1169,20 +1546,29 @@ class TrainUpdateNotificationService:
         Returns:
             AlertType if alert warranted, None otherwise
         """
+        new_track = new_state.get("track")
+        new_status = new_state.get("status_v2", "") or ""
+
         if not old_state:
+            # First time seeing this train. Is the current state already alert-worthy?
+            if new_track:
+                logger.info(
+                    f"🛤️ Track assigned on first check for train {new_state.get('train_id')}: {new_track}"
+                )
+                return AlertType.TRACK_ASSIGNED
+            if new_status == "BOARDING":
+                logger.info(f"🚆 Boarding on first check for train {new_state.get('train_id')}")
+                return AlertType.BOARDING
             return None
 
         # Track assignment (highest priority)
         old_track = old_state.get("track")
-        new_track = new_state.get("track")
         if not old_track and new_track:
             logger.info(f"🛤️ Track assigned for train {new_state.get('train_id')}: {new_track}")
             return AlertType.TRACK_ASSIGNED
 
         # Boarding status change
-        old_status = old_state.get("status", "") or ""
-        new_status = new_state.get("status", "") or ""
-
+        old_status = old_state.get("status_v2", "") or ""
         if "BOARDING" not in old_status and "BOARDING" in new_status:
             logger.info(f"🚆 Boarding started for train {new_state.get('train_id')}")
             return AlertType.BOARDING

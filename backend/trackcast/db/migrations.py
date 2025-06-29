@@ -1397,6 +1397,65 @@ def add_estimated_arrival_field(session: Session) -> Dict[str, Any]:
         return {"status": "error", "message": str(e)}
 
 
+def add_user_journey_to_live_activities(session: Session) -> Dict[str, Any]:
+    """
+    Add user_origin_station_code and user_destination_station_code to live_activity_tokens.
+
+    Args:
+        session: SQLAlchemy database session
+
+    Returns:
+        Dictionary with migration results
+    """
+    try:
+        # Check for user_origin_station_code
+        check_origin_query = text(
+            """
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'live_activity_tokens' AND column_name = 'user_origin_station_code'
+            """
+        )
+        origin_exists = session.execute(check_origin_query).fetchone()
+
+        if not origin_exists:
+            logger.info("Adding user_origin_station_code to live_activity_tokens table")
+            add_origin_query = text(
+                "ALTER TABLE live_activity_tokens ADD COLUMN user_origin_station_code VARCHAR(10)"
+            )
+            session.execute(add_origin_query)
+        else:
+            logger.info("user_origin_station_code already exists.")
+
+        # Check for user_destination_station_code
+        check_dest_query = text(
+            """
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'live_activity_tokens' AND column_name = 'user_destination_station_code'
+            """
+        )
+        dest_exists = session.execute(check_dest_query).fetchone()
+
+        if not dest_exists:
+            logger.info("Adding user_destination_station_code to live_activity_tokens table")
+            add_dest_query = text(
+                "ALTER TABLE live_activity_tokens ADD COLUMN user_destination_station_code VARCHAR(10)"
+            )
+            session.execute(add_dest_query)
+        else:
+            logger.info("user_destination_station_code already exists.")
+
+        if origin_exists and dest_exists:
+            return {"status": "skipped", "message": "Columns already exist"}
+
+        session.commit()
+        return {"status": "success", "message": "User journey columns added successfully."}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error adding user journey columns to live_activity_tokens: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 def run_migrations(session: Session) -> List[Dict[str, Any]]:
     """
     Run all pending migrations.
@@ -1440,6 +1499,7 @@ def run_migrations(session: Session) -> List[Dict[str, Any]]:
             "add_estimated_arrival_field",
             add_estimated_arrival_field,
         ),  # Add estimated_arrival for real-time arrival estimates
+        ("add_user_journey_to_live_activities", add_user_journey_to_live_activities),
     ]
 
     for name, migration_func in migrations:

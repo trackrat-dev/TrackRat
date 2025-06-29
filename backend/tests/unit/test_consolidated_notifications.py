@@ -286,12 +286,20 @@ class TestConsolidatedNotifications:
         assert state["status_v2"] == "BOARDING"
         assert state["status_location"] == "New York Penn Station"
         assert state["journey_percent"] == 20
-        assert state["current_location"] == "NY"
-        assert state["next_stop"] == "NP"
+        
+        # Verify enhanced current_location structure (now a rich dict for Live Activity)
+        assert isinstance(state["current_location"], dict)
+        assert "boarding" in state["current_location"]
+        assert state["current_location"]["boarding"]["station"] == "New York Penn Station"
+        
+        # Verify next_stop_info structure (renamed from next_stop)
+        assert state["next_stop_info"] is not None
+        assert isinstance(state["next_stop_info"], dict)
+        assert "stationName" in state["next_stop_info"]
 
-        # Verify prediction data
-        assert state["track_prediction"] is not None
-        assert "track_probabilities" in state["track_prediction"]
+        # Verify prediction data (renamed from track_prediction to trackrat_prediction)
+        assert state["trackrat_prediction"] is not None
+        assert "track_probabilities" in state["trackrat_prediction"]
 
         # Verify consolidation metadata
         assert state["consolidated_id"] == "7860_2025-06-28"

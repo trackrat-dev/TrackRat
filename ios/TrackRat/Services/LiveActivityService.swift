@@ -240,43 +240,24 @@ class LiveActivityService: ObservableObject {
             
             // Monitor push token for backend registration
             Task {
-                for await pushToken in activity.pushTokenUpdates {
-                    let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
-                    print("📱 Live Activity push token received: \(tokenString)")
+                for await pushTokenData in activity.pushTokenUpdates {
+                    let pushToken = pushTokenData.reduce("") { $0 + String(format: "%02x", $1) }
+                    print("✅ Received new push token: \(pushToken)")
+                    
+                    // Register with your server
+                    let apiService = APIService.shared
+                    let deviceToken = UserDefaults.standard.string(forKey: "deviceToken")
                     
                     do {
-                        // Get device token from AppDelegate if available
-                        _ = await UIApplication.shared.delegate as? AppDelegate
-                        var storedDeviceToken = await AppDelegate.deviceToken
-                        
-                        // If no device token is available yet, wait a moment for device registration to complete
-                        if storedDeviceToken == nil {
-                            print("📱 No device token available yet, waiting 1 second for device registration...")
-                            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-                            storedDeviceToken = await AppDelegate.deviceToken
-                        }
-                        
-                        print("📱 Registering Live Activity token for train \(train.trainId)")
-                        if let deviceToken = storedDeviceToken {
-                            print("📱 Using device token: \(deviceToken)")
-                        } else {
-                            print("⚠️ No device token available - will register Live Activity token only")
-                        }
-                        
-                        try await APIService.shared.registerLiveActivityToken(
-                            tokenString, 
-                            for: train.trainId,
-                            deviceToken: storedDeviceToken
+                        try await apiService.registerLiveActivity(
+                            trainId: train.trainId,
+                            pushToken: pushToken,
+                            deviceToken: deviceToken,
+                            userOrigin: originCode,
+                            userDestination: destinationCode
                         )
-                        print("✅ Live Activity push token registered with backend")
-                        if storedDeviceToken != nil {
-                            print("✅ Linked to device token for regular notifications")
-                        }
                     } catch {
-                        print("⚠️ Live Activity push token registration failed: \(error)")
-                        print("ℹ️ Live Activity will continue to work with local updates")
-                        // This is non-blocking - Live Activities work fine without backend registration
-                        // The token is still valid for system-level updates
+                        print("❌ Failed to register push token: \(error)")
                     }
                 }
             }

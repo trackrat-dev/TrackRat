@@ -90,6 +90,12 @@ class LiveActivityTokenRequest(BaseModel):
     device_token: Optional[str] = Field(None, description="Device token for regular notifications")
     platform: str = Field(default="ios", description="Platform")
     timestamp: Optional[str] = Field(None, description="Registration timestamp")
+    user_origin_station_code: Optional[str] = Field(
+        None, description="User's origin station code for the journey"
+    )
+    user_destination_station_code: Optional[str] = Field(
+        None, description="User's destination station code for the journey"
+    )
 
 
 class LiveActivityTokenResponse(BaseModel):
@@ -261,38 +267,45 @@ async def register_live_activity_token(
             raise HTTPException(
                 status_code=500, detail=f"Database table access failed: {str(table_test_error)}"
             )
-        # Check if token already exists for this train
+        # Check if the Live Activity token already exists
         existing_token = (
             db.query(LiveActivityToken)
-            .filter(
-                LiveActivityToken.push_token == request.push_token,
-                LiveActivityToken.train_id == request.train_id,
-            )
+            .filter(LiveActivityToken.push_token == request.push_token)
             .first()
         )
 
         if existing_token:
-            # Update existing token to active if inactive
+            # Update existing token if needed
             if not existing_token.is_active:
                 existing_token.is_active = True
                 existing_token.updated_at = get_eastern_now()
-                existing_token.activity_started_at = get_eastern_now()
-                db.commit()
-                logger.info(f"Reactivated existing Live Activity token {existing_token.id}")
+                message = "Live Activity token reactivated successfully"
+            else:
+                message = "Live Activity token already exists and is active"
 
+            # Update user journey info if provided
+            if request.user_origin_station_code:
+                existing_token.user_origin_station_code = request.user_origin_station_code
+            if request.user_destination_station_code:
+                existing_token.user_destination_station_code = request.user_destination_station_code
+
+            db.commit()
+            logger.info(
+                f"Updated Live Activity token {existing_token.id} for train {request.train_id}"
+            )
             return LiveActivityTokenResponse(
                 id=existing_token.id,
                 train_id=existing_token.train_id,
                 push_token=existing_token.push_token,
                 is_active=existing_token.is_active,
                 created_at=existing_token.created_at.isoformat(),
-                message="Live Activity token updated successfully",
+                message=message,
             )
 
-        # Find associated device token if provided
-        device_token_id = None
+        # Find or create the associated device token
+        device = None
         if request.device_token:
-            device_token = (
+            device = (
                 db.query(DeviceToken)
                 .filter(
                     DeviceToken.device_token == request.device_token, DeviceToken.is_active == True
@@ -300,20 +313,21 @@ async def register_live_activity_token(
                 .first()
             )
 
-            if device_token:
-                device_token_id = device_token.id
-                device_token.last_used = get_eastern_now()
-                logger.info(f"Linked Live Activity to device token {device_token.id}")
+            if device:
+                device.last_used = get_eastern_now()
+                logger.info(f"Linked Live Activity to device token {device.id}")
             else:
                 logger.warning(f"Device token not found: {request.device_token[:8]}...")
 
         # Create new Live Activity token
         live_activity_token = LiveActivityToken(
-            push_token=request.push_token,
             train_id=request.train_id,
-            device_token_id=device_token_id,
+            push_token=request.push_token,
+            device_token_id=device.id if device else None,
             is_active=True,
             activity_started_at=get_eastern_now(),
+            user_origin_station_code=request.user_origin_station_code,
+            user_destination_station_code=request.user_destination_station_code,
         )
 
         db.add(live_activity_token)

@@ -223,7 +223,12 @@ enum TrainStatus: String, Codable {
 
 // MARK: - Stop Model
 struct Stop: Identifiable, Codable {
-    let id = UUID()
+    // Stable ID based on station and scheduled time to ensure SwiftUI updates properly
+    var id: String {
+        let stationId = stationCode ?? stationName.lowercased().replacingOccurrences(of: " ", with: "_")
+        let timeId = scheduledArrival?.timeIntervalSince1970 ?? scheduledDeparture?.timeIntervalSince1970 ?? 0
+        return "\(stationId)_\(Int(timeId))"
+    }
     let stationCode: String?
     let stationName: String
     let scheduledArrival: Date?

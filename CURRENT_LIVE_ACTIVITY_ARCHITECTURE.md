@@ -69,7 +69,10 @@ Status changes + Stop events detected together → Priority algorithm selects to
 
 ## Payload Structure
 
-### Backend-Generated Payload (Example from logs)
+### Enhanced Live Activity Payload (Fixed Format)
+
+The backend now generates enriched payloads with properly structured data that matches iOS expectations exactly:
+
 ```json
 {
   "aps": {
@@ -77,16 +80,33 @@ Status changes + Stop events detected together → Priority algorithm selects to
     "event": "update",
     "stale-date": 1751159647,
     "content-state": {
-      "trainNumber": "7875",
+      "trainNumber": "A2205",
       "statusV2": "EN_ROUTE",
-      "statusLocation": null,
-      "track": "7",
+      "statusLocation": "between Baltimore Penn Station and Wilmington",
+      "track": "13",
       "delayMinutes": 0,
-      "currentLocation": "NY",
-      "nextStop": null,
-      "journeyProgress": 0.1,
-      "destinationETA": "2025-06-28T21:09:24",
-      "trackRatPrediction": null,
+      "currentLocation": {
+        "departed": {
+          "from": "Baltimore Penn Station",
+          "minutesAgo": 5
+        }
+      },
+      "nextStop": {
+        "stationName": "Wilmington",
+        "estimatedArrival": "2025-06-29T13:15:00",
+        "scheduledArrival": "2025-06-29T13:15:00",
+        "isDelayed": false,
+        "delayMinutes": 0,
+        "isDestination": false,
+        "minutesAway": 19
+      },
+      "journeyProgress": 0.43,
+      "destinationETA": "2025-06-29T14:30:00",
+      "trackRatPrediction": {
+        "topTrack": "13",
+        "confidence": 0.85,
+        "alternativeTracks": ["4", "7"]
+      },
       "lastUpdated": 1751158747,
       "hasStatusChanged": false,
       "pushTimestamp": 1751158747
@@ -95,24 +115,149 @@ Status changes + Stop events detected together → Priority algorithm selects to
 }
 ```
 
-### Key Payload Fields
+### Fixed Payload Issues
 
-1. **Core Status Information**
-   - `statusV2`: Enhanced status with conflict resolution (e.g., "EN_ROUTE", "BOARDING", "DEPARTED")
-   - `statusLocation`: Human-readable location (e.g., "between New York and Newark")
-   - `track`: Assigned track number
-   - `delayMinutes`: Current delay in minutes
+**Previous Issues (Causing Frozen Progress Wheel):**
+- ❌ `currentLocation` was a simple string ("BA") 
+- ❌ `nextStop` was frequently null
+- ❌ `destinationETA` had incorrect dates
+- ❌ Missing rich data structures for UI rendering
 
-2. **Journey Progress**
-   - `currentLocation`: Station code of last departed stop
-   - `nextStop`: Next stop information (currently null in example)
-   - `journeyProgress`: 0.0-1.0 progress (0.1 = 10%)
-   - `destinationETA`: Estimated arrival time
+**Current Fixes (2025-06-29):**
+- ✅ `currentLocation` is now a properly structured Swift enum dictionary
+- ✅ `nextStop` contains complete station information with timing
+- ✅ `destinationETA` uses correct dates from final stop
+- ✅ All fields match iOS model expectations exactly
 
-3. **Metadata**
-   - `hasStatusChanged`: Boolean flag for iOS haptic feedback
-   - `pushTimestamp`: Unix timestamp for freshness checking
-   - `alertMetadata`: Enhanced alert information (when alerts are triggered)
+### Field-by-Field Analysis
+
+| Field | Format | iOS Usage | Backend Source | Notes |
+|-------|---------|-----------|---------------|-------|
+| `trainNumber` | `string` | Train identification in UI | `train_id` | ✅ Working |
+| `statusV2` | `string` | Status display and color | `status_v2.current` | ✅ Working |
+| `statusLocation` | `string?` | Enhanced status description | `status_v2.location` | ✅ Working |
+| `track` | `string?` | Track display | `track_assignment.track` | ✅ Working |
+| `delayMinutes` | `int` | Delay indicator | `delay_minutes` | ✅ Working |
+| **`currentLocation`** | `enum dict` | Location display text | **Enhanced from progress** | ✅ **FIXED** |
+| **`nextStop`** | `object?` | Next stop display | **Enhanced from progress** | ✅ **FIXED** |
+| `journeyProgress` | `double` (0-1) | Progress bar | `progress.journey_percent / 100` | ✅ Working |
+| **`destinationETA`** | `ISO8601 string` | Arrival countdown | **Final stop estimated_arrival** | ✅ **FIXED** |
+| `trackRatPrediction` | `object?` | Track predictions | `prediction_data` | ✅ Working |
+
+### CurrentLocation Structure
+
+The `currentLocation` field now uses Swift's automatic enum Codable format:
+
+```json
+// Boarding at station
+{
+  "boarding": {
+    "station": "New York Penn Station"
+  }
+}
+
+// Departed from station
+{
+  "departed": {
+    "from": "Baltimore Penn Station", 
+    "minutesAgo": 5
+  }
+}
+
+// En route between stations
+{
+  "enRoute": {
+    "between": "Baltimore Penn Station",
+    "and": "Wilmington"
+  }
+}
+
+// Approaching station
+{
+  "approaching": {
+    "station": "Wilmington",
+    "minutesAway": 3
+  }
+}
+
+// Not departed yet
+{
+  "notDeparted": {
+    "departureTime": "2025-06-29T12:00:00"
+  }
+}
+
+// Arrived (simple string)
+"arrived"
+```
+
+### NextStop Structure
+
+The `nextStop` field provides complete station information:
+
+```json
+{
+  "stationName": "Wilmington",
+  "estimatedArrival": "2025-06-29T13:15:00",
+  "scheduledArrival": "2025-06-29T13:15:00", 
+  "isDelayed": false,
+  "delayMinutes": 0,
+  "isDestination": false,
+  "minutesAway": 19
+}
+```
+
+### Data Enrichment Process
+
+The backend now includes a comprehensive data enrichment pipeline in `_enrich_state_for_live_activity()`:
+
+1. **`_create_current_location_dict()`**: Transforms status_v2 and progress data into Swift-compatible enum format
+2. **`_create_next_stop_dict()`**: Builds complete next stop information from progress.next_arrival
+3. **`_format_destination_eta()`**: Extracts final destination ETA from consolidated stops
+4. **`_get_station_name_from_code()`**: Converts station codes to human-readable names
+
+## Root Cause Analysis: Frozen Progress Wheel Issue
+
+### Problem Identified (June 29, 2025)
+
+**Symptom**: Live Activities would sometimes show a frozen progress wheel with hidden text, resolved only by opening the main iOS app.
+
+**Root Cause**: Backend was sending incomplete/incorrectly formatted data in APNS notifications that didn't match iOS Live Activity model expectations.
+
+### Specific Issues Found
+
+1. **Data Structure Mismatch**:
+   - Backend sent `currentLocation` as simple string ("BA") 
+   - iOS expected complex enum dictionary with type and associated values
+   - Caused Live Activity UI components to fail rendering
+
+2. **Missing Critical Fields**:
+   - `nextStop` frequently null due to incorrect field extraction
+   - `destinationETA` had wrong dates (2025-06-22 vs 2025-06-29)
+   - Progress wheel couldn't display without next stop information
+
+3. **Field Name Mismatches**:
+   - Backend created `next_stop` but iOS expected `next_stop_info`  
+   - Backend created `track_prediction` but iOS expected `trackrat_prediction`
+   - Field mismatches caused silent failures in Live Activity updates
+
+### Fix Implementation
+
+**Backend Changes** (`push_notification.py`):
+- Added `_enrich_state_for_live_activity()` method for proper data transformation
+- Fixed `_create_current_location_dict()` to generate Swift-compatible enum format
+- Enhanced `_create_next_stop_dict()` to build complete station information
+- Corrected field naming to match iOS expectations exactly
+
+**Result**: Live Activities now receive complete, properly formatted data that matches iOS model definitions, eliminating frozen progress wheels and enabling full UI functionality.
+
+### Key Lessons Learned
+
+1. **Data Format Synchronization is Critical**: Backend and frontend must agree on exact data structures, especially for real-time updates
+2. **Swift Enum Codable Format**: When working with Swift enums, backend must send data in the specific format Swift's automatic Codable implementation expects
+3. **Field Naming Consistency**: Even small naming differences (`next_stop` vs `next_stop_info`) can cause silent failures
+4. **Comprehensive Testing**: Live Activity payloads need thorough testing with actual iOS decoding, not just JSON validation
+5. **Rich Data is Essential**: UI components fail gracefully but poorly when missing expected data structures
 
 ## Alert Conditions & Event Prioritization
 
@@ -191,53 +336,7 @@ Live Activities automatically end when:
 - No updates for extended period (stale data)
 - User manually ends tracking
 
-## Recent Architecture Improvements (2025-06-29)
-
-### Issues Resolved
-
-1. **✅ Duplicate Live Activity Updates**
-   - **Problem**: System was sending two separate notifications within milliseconds
-   - **Root Cause**: Parallel processing pipelines (status changes + stop events)
-   - **Solution**: Unified event detection with single notification per update cycle
-
-2. **✅ Data Quality Degradation**
-   - **Problem**: Second notification overwrote good data with null/empty values
-   - **Root Cause**: Stop events used raw Train objects instead of consolidated data
-   - **Solution**: All notifications now use enhanced consolidated data exclusively
-
-3. **✅ Architectural Redundancy**
-   - **Problem**: Two separate processing flows with duplicate logic
-   - **Root Cause**: LiveActivityEventDetector class operating independently
-   - **Solution**: Integrated all event detection into TrainUpdateNotificationService
-
-4. **✅ Inefficient Resource Usage**
-   - **Problem**: Duplicate APNS calls and API requests
-   - **Root Cause**: Separate processing of same train data
-   - **Solution**: ~50% reduction in APNS calls through unified processing
-
-### Key Architecture Changes
-
-1. **Unified Event Detection Pipeline**
-   - Single `_detect_all_events()` method handles both status and stop events
-   - Uses consolidated train data with enhanced statusV2 and progress fields
-   - Intelligent event prioritization ensures most important alert is sent
-
-2. **Event Priority System**
-   - BOARDING takes highest priority (urgent user action required)
-   - Track assignment and approaching stops get high prominence
-   - System prevents notification spam while ensuring critical alerts reach users
-
-3. **Enhanced Stop Event Detection**
-   - Uses consolidated progress data for accurate approaching stop detection
-   - Leverages enhanced stop information for better departure detection
-   - Built-in duplicate prevention with notification history tracking
-
-4. **Simplified CLI Processing**
-   - Removed separate stop event processing loop
-   - All notifications flow through consolidated pipeline
-   - Reduced code complexity and potential for inconsistencies
-
-### Remaining Improvement Opportunities
+## Remaining Improvement Opportunities
 
 1. **Enhanced Alert Context**
    - Add station names and specific timing to alert messages
