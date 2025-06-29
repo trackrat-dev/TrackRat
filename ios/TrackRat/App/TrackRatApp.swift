@@ -496,34 +496,17 @@ final class AppState: ObservableObject {
     private let apiService = APIService()
     private let storageService = StorageService()
     
-    // Recent destinations
-    @Published var recentDestinations: [String] = []
+    // Recent trips
     @Published var recentTrips: [TripPair] = []
-    @Published var recentDepartures: [RecentDeparture] = []
     
     init() {
-        loadRecentDestinations()
         loadRecentTrips()
-        loadRecentDepartures()
         
         // Migrate existing data
         storageService.migrateRecentDestinations()
         loadRecentTrips() // Reload after migration
     }
     
-    func loadRecentDestinations() {
-        recentDestinations = storageService.loadRecentDestinations()
-    }
-    
-    func saveDestination(_ destination: String) {
-        storageService.saveDestination(destination)
-        loadRecentDestinations()
-    }
-    
-    func removeDestination(_ destination: String) {
-        storageService.removeDestination(destination)
-        loadRecentDestinations()
-    }
     
     func resetSelections() {
         selectedDestination = nil
@@ -567,27 +550,4 @@ final class AppState: ObservableObject {
         return recentTrips.filter { $0.isFavorite }
     }
     
-    // MARK: - Departure Management
-    func loadRecentDepartures() {
-        recentDepartures = storageService.loadRecentDepartures()
-    }
-    
-    func saveDeparture() {
-        guard let departure = selectedDeparture,
-              let departureCode = departureStationCode else { return }
-        
-        storageService.saveDeparture(code: departureCode, name: departure)
-        loadRecentDepartures()
-    }
-    
-    func removeDeparture(_ departure: RecentDeparture) {
-        var departures = recentDepartures
-        departures.removeAll { $0.code == departure.code }
-        
-        if let encoded = try? JSONEncoder().encode(departures) {
-            UserDefaults.standard.set(encoded, forKey: "trackrat.recentDepartures")
-        }
-        
-        loadRecentDepartures()
-    }
 }

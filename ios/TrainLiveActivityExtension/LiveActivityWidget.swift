@@ -271,7 +271,7 @@ struct TrainLiveActivityView: View {
                 
                 Spacer()
                 
-                // Final stop info with countdown
+                // Final stop info with arrival time
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("Final Stop")
                         .font(.caption)
@@ -279,9 +279,16 @@ struct TrainLiveActivityView: View {
                     Text(Stations.displayName(for: context.attributes.destination))
                         .font(.caption.bold())
                         .lineLimit(1)
-                    Text(getRemainingStopsText())
-                        .font(.caption2)
-                        .foregroundColor(.orange)
+                    HStack(spacing: 4) {
+                        if hasDelay() {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption2)
+                                .foregroundColor(.red)
+                        }
+                        Text(getFinalStopTimeText())
+                            .font(.caption2)
+                            .foregroundColor(hasDelay() ? .red : .secondary)
+                    }
                 }
             }
             
@@ -294,14 +301,21 @@ struct TrainLiveActivityView: View {
         .widgetURL(URL(string: "trackrat://train/\(context.attributes.trainId)"))
     }
     
-    private func getRemainingStopsText() -> String {
-        // Calculate remaining stops based on journey progress
-        let percentage = context.state.journeyProgress
-        if percentage >= 1.0 {
+    private func getFinalStopTimeText() -> String {
+        if let destinationETA = context.state.destinationETA {
+            return formatTimeWithMinutes(destinationETA)
+        } else if context.state.journeyProgress >= 1.0 {
             return "Arrived"
         } else {
-            return ""
+            return "—"
         }
+    }
+    
+    private func hasDelay() -> Bool {
+        if let delayMinutes = context.state.delayMinutes {
+            return delayMinutes > 0
+        }
+        return false
     }
     
     private func formatTimeWithMinutes(_ date: Date) -> String {

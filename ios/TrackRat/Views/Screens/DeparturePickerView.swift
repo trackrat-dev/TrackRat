@@ -118,31 +118,6 @@ struct DeparturePickerView: View {
                             .padding(.bottom, 50) // Add bottom padding for better scrolling
                         }
                     } else {
-                        // Recent departures - only show when not searching
-                        if !appState.recentDepartures.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("RECENT DEPARTURES")
-                                    .font(TrackRatTheme.Typography.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
-                                    .padding(.horizontal)
-                                
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 12) {
-                                        ForEach(appState.recentDepartures, id: \.code) { departure in
-                                            RecentDeparturePill(
-                                                departure: departure,
-                                                onTap: {
-                                                    selectDeparture(name: departure.name, code: departure.code)
-                                                }
-                                            )
-                                        }
-                                    }
-                                    .padding(.horizontal)
-                                }
-                            }
-                        }
-                        
                         // Popular stations - only show when not searching
                         VStack(alignment: .leading, spacing: 12) {
                             Text("POPULAR STATIONS")
@@ -179,7 +154,6 @@ struct DeparturePickerView: View {
     private func selectDeparture(name: String, code: String) {
         appState.selectedDeparture = name
         appState.departureStationCode = code
-        appState.saveDeparture() // Save to recent departures
         appState.navigationPath.append(NavigationDestination.destinationPicker)
         
         // Reset search with animation
@@ -199,7 +173,6 @@ struct DepartureButton: View {
     let name: String
     let code: String
     let onTap: () -> Void
-    
     
     var body: some View {
         Button {
@@ -222,51 +195,6 @@ struct DepartureButton: View {
             .background(.white.opacity(0.2))
             .cornerRadius(12)
         }
-    }
-}
-
-// MARK: - Recent Departure Pill
-struct RecentDeparturePill: View {
-    let departure: RecentDeparture
-    let onTap: () -> Void
-    @EnvironmentObject private var appState: AppState
-    
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Button {
-                onTap()
-            } label: {
-                Text(Stations.displayName(for: departure.name))
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-            }
-            
-            Button {
-                withAnimation {
-                    removeDeparture()
-                }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(.white.opacity(0.6))
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(.white.opacity(0.2))
-                .background(
-                    Capsule()
-                        .stroke(.white.opacity(0.3), lineWidth: 1)
-                )
-        )
-    }
-    
-    private func removeDeparture() {
-        appState.removeDeparture(departure)
     }
 }
 
