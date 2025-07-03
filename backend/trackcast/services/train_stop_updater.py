@@ -3,7 +3,7 @@ Service for updating train stop data from NJ Transit API.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from trackcast.data.collectors import NJTransitCollector
@@ -184,11 +184,21 @@ class TrainStopUpdater:
                 continue
 
             # Update actual times - NEVER modify scheduled times!
-            if stop_data.get("TIME"):  # Actual arrival time at platform
+            if stop_data.get(
+                "TIME"
+            ):  # Actual arrival time at platform (or estimated for future stops)
                 existing_stop.actual_arrival = self._parse_nj_datetime(stop_data["TIME"])
 
             if stop_data.get("DEP_TIME"):  # Actual departure time from platform
                 existing_stop.actual_departure = self._parse_nj_datetime(stop_data["DEP_TIME"])
+            elif existing_stop.actual_arrival and not existing_stop.departed:
+                # For future stops without DEP_TIME, estimate departure as arrival + 1 minute
+                # This provides a reasonable estimate for the iOS app to display
+                existing_stop.actual_departure = existing_stop.actual_arrival + timedelta(minutes=1)
+                logger.debug(
+                    f"Estimated departure time for {existing_stop.station_name}: "
+                    f"{existing_stop.actual_departure} (arrival + 1 min)"
+                )
 
             # Update status fields
             existing_stop.departed = stop_data.get("DEPARTED") == "YES"

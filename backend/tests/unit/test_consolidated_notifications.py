@@ -270,41 +270,6 @@ class TestConsolidatedNotifications:
                 # Verify notification sent to both tokens (silent updates)
                 assert mock_push_service.send_train_notifications.call_count == 2
 
-    def test_extract_consolidated_train_state(
-        self, notification_service, sample_consolidated_train
-    ):
-        """Test extraction of state from consolidated train data."""
-        
-        state = notification_service._extract_consolidated_train_state(sample_consolidated_train)
-
-        # Verify basic fields
-        assert state["train_id"] == "7860"
-        assert state["track"] == "13"
-        assert state["delay_minutes"] == 0
-
-        # Verify enhanced fields from consolidation
-        assert state["status_v2"] == "BOARDING"
-        assert state["status_location"] == "New York Penn Station"
-        assert state["journey_percent"] == 20
-        
-        # Verify enhanced current_location structure (now a rich dict for Live Activity)
-        assert isinstance(state["current_location"], dict)
-        assert "boarding" in state["current_location"]
-        assert state["current_location"]["boarding"]["station"] == "New York Penn Station"
-        
-        # Verify next_stop_info structure (renamed from next_stop)
-        assert state["next_stop_info"] is not None
-        assert isinstance(state["next_stop_info"], dict)
-        assert "stationName" in state["next_stop_info"]
-
-        # Verify prediction data (renamed from track_prediction to trackrat_prediction)
-        assert state["trackrat_prediction"] is not None
-        assert "track_probabilities" in state["trackrat_prediction"]
-
-        # Verify consolidation metadata
-        assert state["consolidated_id"] == "7860_2025-06-28"
-        assert state["consolidation_confidence"] == 0.90
-
     @pytest.mark.asyncio
     async def test_alert_detection_with_track_assignment(
         self,

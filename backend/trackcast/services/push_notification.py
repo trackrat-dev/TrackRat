@@ -333,10 +333,12 @@ class APNSPushService:
                     "track": train_data.get("track"),
                     "delayMinutes": train_data.get("delay_minutes"),
                     "currentLocation": train_data.get("current_location"),
-                    "nextStop": train_data.get("next_stop_info"),  # Changed to camelCase
+                    "nextStop": train_data.get("nextStop"),  # Fixed to match enriched field name
                     "journeyProgress": journey_progress,  # Changed to camelCase and converted to 0-1
                     "destinationETA": train_data.get("destination_eta"),  # Added
-                    "trackRatPrediction": train_data.get("trackrat_prediction"),  # Added
+                    "trackRatPrediction": train_data.get(
+                        "trackRatPrediction"
+                    ),  # Fixed to match enriched field name
                     "lastUpdated": current_timestamp,
                     "hasStatusChanged": train_data.get("has_status_changed", False),  # Added
                 },
@@ -1285,12 +1287,12 @@ class TrainUpdateNotificationService:
         # Create proper currentLocation dictionary based on status and progress
         state["current_location"] = self._create_current_location_dict(state, consolidated_train)
 
-        # Create proper nextStop dictionary (note: iOS expects 'nextStop' not 'next_stop_info')
-        state["next_stop_info"] = self._create_next_stop_dict(consolidated_train)
+        # Create proper nextStop dictionary (iOS expects 'nextStop' in camelCase)
+        state["nextStop"] = self._create_next_stop_dict(consolidated_train)
 
-        # Fix field name mismatch for predictions
+        # Fix field name mismatch for predictions (iOS expects 'trackRatPrediction' in camelCase)
         if state.get("track_prediction"):
-            state["trackrat_prediction"] = state.pop("track_prediction")
+            state["trackRatPrediction"] = state.pop("track_prediction")
 
         # Ensure destination_eta is properly formatted
         state["destination_eta"] = self._format_destination_eta(consolidated_train)

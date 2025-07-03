@@ -245,7 +245,19 @@ struct Stop: Identifiable, Codable {
     
     // Legacy computed properties for backward compatibility
     var scheduledTime: Date? { scheduledArrival }
-    var departureTime: Date? { actualDeparture ?? scheduledDeparture }
+    var departureTime: Date? { 
+        let baseDeparture = actualDeparture ?? scheduledDeparture
+        let baseArrival = actualArrival ?? scheduledArrival
+        
+        // Temporal consistency check: departure must be >= arrival
+        if let departure = baseDeparture,
+           let arrival = baseArrival,
+           departure < arrival {
+            return arrival.addingTimeInterval(60) // 1 minute minimum dwell
+        }
+        
+        return baseDeparture
+    }
     
     enum CodingKeys: String, CodingKey {
         case stationCode = "station_code"

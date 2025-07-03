@@ -86,21 +86,12 @@ struct TrainDetailsView: View {
             )
         }
         .onReceive(viewModel.timer) { _ in
-            // Only refresh if there's no active Live Activity to avoid dual timers
-            if #available(iOS 16.1, *), !LiveActivityService.shared.isActivityActive {
-                Task {
-                    await viewModel.refreshTrainDetails(
-                        fromStationCode: appState.departureStationCode,
-                        selectedDestinationName: appState.selectedDestination
-                    )
-                }
-            } else if #unavailable(iOS 16.1) {
-                Task {
-                    await viewModel.refreshTrainDetails(
-                        fromStationCode: appState.departureStationCode,
-                        selectedDestinationName: appState.selectedDestination
-                    )
-                }
+            // Always refresh when the view is visible
+            Task {
+                await viewModel.refreshTrainDetails(
+                    fromStationCode: appState.departureStationCode,
+                    selectedDestinationName: appState.selectedDestination
+                )
             }
         }
         .onChange(of: viewModel.triggerBoardingHaptic) { oldValue, newValue in
