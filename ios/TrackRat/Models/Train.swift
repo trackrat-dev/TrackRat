@@ -772,14 +772,26 @@ extension Train {
         if let actualDep = originStop.actualDeparture,
            let scheduledDep = originStop.scheduledDeparture {
             
-            // Check for invalid data: arrival after departure is impossible
+            // Check for stale departure data: if arrival is significantly later than departure
+            // at the same station, it indicates departure time wasn't updated
             if let actualArr = originStop.actualArrival,
-               actualArr > actualDep {
-                // Data is invalid, use arrival delay instead
+               actualArr.timeIntervalSince(actualDep) > 300 { // More than 5 minutes difference
+                // Use arrival time vs scheduled departure for more accurate delay
+                let arrivalDelaySeconds = actualArr.timeIntervalSince(scheduledDep)
+                let arrivalDelayMinutes = Int(arrivalDelaySeconds / 60)
+                
+                // Also check traditional arrival delay as fallback
                 if let scheduledArr = originStop.scheduledArrival {
-                    let arrivalDelaySeconds = actualArr.timeIntervalSince(scheduledArr)
-                    return Int(arrivalDelaySeconds / 60)
+                    let traditionalArrivalDelay = Int(actualArr.timeIntervalSince(scheduledArr) / 60)
+                    // Use whichever shows a delay (prefer the larger positive delay)
+                    if arrivalDelayMinutes > 0 && arrivalDelayMinutes > traditionalArrivalDelay {
+                        return arrivalDelayMinutes
+                    } else if traditionalArrivalDelay > 0 {
+                        return traditionalArrivalDelay
+                    }
                 }
+                
+                return max(0, arrivalDelayMinutes)
             }
             
             // Normal case: calculate departure delay
@@ -792,7 +804,7 @@ extension Train {
                let scheduledArr = originStop.scheduledArrival {
                 let arrivalDelaySeconds = actualArr.timeIntervalSince(scheduledArr)
                 let arrivalDelayMinutes = Int(arrivalDelaySeconds / 60)
-                if arrivalDelayMinutes != 0 {
+                if arrivalDelayMinutes > 0 {
                     return arrivalDelayMinutes
                 }
             }
@@ -843,6 +855,38 @@ extension Train {
            let scheduledArr = destStop.scheduledArrival {
             let delaySeconds = actualArr.timeIntervalSince(scheduledArr)
             return Int(delaySeconds / 60)
+        }
+        
+        return nil
+    }
+    
+    /// Find the last departed stop for cancelled trains
+    func getLastDepartedStop() -> Stop? {
+        guard let stops = stops else { return nil }
+        
+        // Find the last stop that departed
+        return stops.reversed().first { stop in
+            stop.departed == true
+        }
+    }
+    
+    /// Get cancellation location description
+    var cancellationLocation: String? {
+        // Check if train is actually cancelled
+        guard statusV2?.current == "CANCELLED" else { return nil }
+        
+        // Try to get location from statusV2
+        if let location = statusV2?.location, !location.isEmpty {
+            // Extract station name from location string like "at Newark Penn Station"
+            if location.contains("at ") {
+                return location.replacingOccurrences(of: "at ", with: "")
+            }
+            return location
+        }
+        
+        // Otherwise find last departed stop
+        if let lastStop = getLastDepartedStop() {
+            return lastStop.stationName
         }
         
         return nil

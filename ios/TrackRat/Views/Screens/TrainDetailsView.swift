@@ -263,8 +263,8 @@ struct CombinedDetailsCard: View {
         VStack(spacing: 0) {
             // Top section with status info
             VStack(spacing: 0) {
-                // Watch This Train section
-                if #available(iOS 16.1, *) {
+                // Watch This Train section - only show for non-cancelled trains
+                if #available(iOS 16.1, *), train.statusV2?.current != "CANCELLED" {
                     LiveActivityControls(
                         train: train,
                         origin: appState.selectedDeparture ?? "",
@@ -277,8 +277,28 @@ struct CombinedDetailsCard: View {
                 // Enhanced Status Display with StatusV2 context
                 if train.statusV2 != nil {
                     VStack(spacing: 12) {
+                        // Show CANCELLED banner if train is cancelled
+                        if train.statusV2?.current == "CANCELLED" {
+                            VStack(spacing: 8) {
+                                Text("CANCELLED")
+                                    .font(.largeTitle)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                
+                                if let location = train.cancellationLocation {
+                                    Text("Service ended at \(location)")
+                                        .font(.headline)
+                                        .foregroundColor(.white.opacity(0.9))
+                                }
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.red.opacity(0.9))
+                            .cornerRadius(12)
+                            .padding(.top, 8)
+                        }
                         // Main status with boarding indication
-                        if isBoardingAtOrigin {
+                        else if isBoardingAtOrigin {
                             HStack {
                                 Image(systemName: "circle.fill")
                                     .foregroundColor(.white)
@@ -706,6 +726,11 @@ struct StopRow: View {
     
     @State private var showPulse = false
     
+    // Helper to check if this stop is cancelled
+    private var isCancelled: Bool {
+        return stop.stopStatus == "CANCELLED"
+    }
+    
     // Helper to determine if this is the origin station (first stop) - check if it's pickup_only
     private var isOriginStation: Bool {
         return stop.pickupOnly == true || isDeparture
@@ -767,6 +792,11 @@ struct StopRow: View {
     }
     
     private var enhancedTimeDisplay: (arrival: String?, departure: String?, details: [String]) {
+        // For cancelled stops: Don't show any times
+        if isCancelled {
+            return (nil, nil, [])
+        }
+        
         let formatter = DateFormatter.easternTime(time: .short)
         
         // For departed stops: Show only "Departed X:XX PM" with delay indicator
@@ -867,6 +897,10 @@ struct StopRow: View {
                         .fontWeight((isDestination || isDeparture) ? .semibold : .regular)
                         .foregroundColor(textColor)
                     
+                    if isCancelled {
+                        Text("🚫")
+                            .font(.subheadline)
+                    }
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
@@ -895,24 +929,28 @@ struct StopRow: View {
     }
     
     private var stopColor: Color {
+        if isCancelled { return .gray }
         if isNextImportantStation { return .orange }
         if stop.departed ?? false { return .gray }
         return .blue
     }
     
     private var textColor: Color {
+        if isCancelled { return .gray }
         if isNextImportantStation { return .orange }
         if stop.departed ?? false { return .gray }
         return .black
     }
     
     private var timeColor: Color {
+        if isCancelled { return .gray }
         if isNextImportantStation { return .orange }
         if stop.departed ?? false { return .gray }
         return .black.opacity(0.6)
     }
     
     private var backgroundColor: Color {
+        if isCancelled { return .clear }
         if isNextImportantStation { return .orange.opacity(0.1) }
         return .clear
     }
