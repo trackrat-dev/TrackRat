@@ -1242,7 +1242,7 @@ class TrainUpdateNotificationService:
 
         # Extract delay_minutes from nested progress data or fallback to root level
         progress = consolidated_train.get("progress", {})
-        if progress and "last_departed" in progress:
+        if progress and "last_departed" in progress and progress["last_departed"]:
             state["delay_minutes"] = progress["last_departed"].get("delay_minutes", 0)
         else:
             state["delay_minutes"] = consolidated_train.get("delay_minutes", 0)
@@ -2084,9 +2084,7 @@ class TrainUpdateNotificationService:
             if tokens_to_delete:
                 logger.debug(f"📱 Affected tokens: {len(tokens_to_delete)} active tokens")
                 for token in tokens_to_delete[:3]:  # Log first 3 for debugging
-                    logger.debug(
-                        f"  - Token: {token.push_token[:12]}... (activity: {token.activity_id[:12]}...)"
-                    )
+                    logger.debug(f"  - Token: {token.push_token[:12]}... (train: {token.train_id})")
 
             # Delete all Live Activity tokens for this train
             deleted_count = (
