@@ -1975,10 +1975,11 @@ class TrainUpdateNotificationService:
 
                         if eta_time < current_time:
                             hours_past = (current_time - eta_time).total_seconds() / 3600
-                            logger.info(
-                                f"🏁 Train {train_id} destination ETA is {hours_past:.1f} hours in the past - skipping Live Activity"
-                            )
-                            return False
+                            if hours_past > 5:
+                                logger.info(
+                                    f"🏁 Train {train_id} destination ETA is {hours_past:.1f} hours in the past - skipping Live Activity"
+                                )
+                                return False
 
                     except (ValueError, TypeError, AttributeError):
                         pass
