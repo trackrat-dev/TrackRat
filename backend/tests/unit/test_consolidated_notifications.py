@@ -72,6 +72,12 @@ class TestConsolidatedNotifications:
     @pytest.fixture
     def sample_consolidated_train(self):
         """Create a sample consolidated train dictionary."""
+        from datetime import datetime, timedelta
+        
+        # Use current time to avoid validation failures
+        current_time = datetime.now()
+        departure_time = current_time - timedelta(hours=1)  # Departed 1 hour ago
+        
         return {
             "train_id": "7860",
             "consolidated_id": "7860_2025-06-28",
@@ -80,7 +86,7 @@ class TestConsolidatedNotifications:
             "origin_station": {
                 "code": "NY",
                 "name": "New York Penn Station",
-                "departure_time": "2025-06-28T20:00:00",
+                "departure_time": departure_time.isoformat(),
             },
             "track_assignment": {
                 "track": "13",
@@ -545,3 +551,108 @@ class TestCLIIntegration:
                 mock_service.process_consolidated_train_updates.assert_called_once_with(
                     [], mock_session, since=ANY
                 )
+
+
+class TestAutoCleanup:
+    """Test suite for auto-cleanup functionality."""
+
+    @pytest.fixture
+    def notification_service(self):
+        """Create notification service with auto-cleanup enabled."""
+        service = TrainUpdateNotificationService()
+        service.auto_cleanup_stale_tokens = True
+        return service
+
+    @pytest.fixture
+    def stale_train_data(self):
+        """Create train data that should trigger cleanup."""
+        from datetime import datetime, timedelta
+        
+        old_time = datetime.now() - timedelta(days=2)  # 2 days ago
+        return {
+            "train_id": "3847",
+            "origin_station": {
+                "departure_time": old_time.isoformat(),
+            },
+            "progress": {
+                "journey_percent": 100,  # Completed journey
+            },
+            "delay_minutes": 1440,  # 24 hour delay
+        }
+
+    @pytest.mark.asyncio
+    async def test_cleanup_stale_tokens_extreme_delay(self, notification_service, stale_train_data):
+        """Test that tokens are cleaned up for trains with extreme delays."""
+        mock_db = MagicMock()
+        
+        # Mock the token query to return some tokens
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = []  # No tokens to query
+        mock_query.delete.return_value = 2  # Mock deletion count
+        
+        # Execute cleanup
+        cleanup_count = await notification_service._cleanup_stale_live_activity_tokens(
+            "3847", stale_train_data, mock_db
+        )
+        
+        # Verify cleanup was attempted
+        assert cleanup_count == 2
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_handles_mock_delete_count(self, notification_service, stale_train_data):
+        """Test that cleanup handles mock objects gracefully."""
+        mock_db = MagicMock()
+        
+        # Mock the delete operation to return a MagicMock (simulating test scenario)
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = []
+        mock_query.delete.return_value = MagicMock()  # This should be handled gracefully
+        
+        # Execute cleanup
+        cleanup_count = await notification_service._cleanup_stale_live_activity_tokens(
+            "3847", stale_train_data, mock_db
+        )
+        
+        # Should handle the mock gracefully and return 0
+        assert cleanup_count == 0
+
+    @pytest.mark.asyncio  
+    async def test_auto_cleanup_integration(self, notification_service):
+        """Test that auto-cleanup is triggered during validation failure."""
+        from datetime import datetime, timedelta
+        
+        # Create stale train data
+        old_time = datetime.now() - timedelta(days=2)
+        stale_train = {
+            "train_id": "3847",
+            "origin_station": {
+                "departure_time": old_time.isoformat(),
+            },
+            "progress": {
+                "journey_percent": 100,
+            }
+        }
+        
+        mock_db = MagicMock()
+        mock_query = MagicMock()
+        mock_db.query.return_value = mock_query
+        mock_query.filter.return_value = mock_query
+        mock_query.all.return_value = []
+        mock_query.delete.return_value = 1
+        
+        # Mock the cleanup method to verify it's called
+        with patch.object(notification_service, '_cleanup_stale_live_activity_tokens') as mock_cleanup:
+            mock_cleanup.return_value = 1
+            
+            # Execute the main method with stale data
+            await notification_service._check_and_notify_consolidated_train_changes(
+                stale_train, mock_db
+            )
+            
+            # Verify cleanup was called
+            mock_cleanup.assert_called_once_with("3847", stale_train, mock_db)

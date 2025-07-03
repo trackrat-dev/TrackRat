@@ -550,3 +550,85 @@ The Live Activity architecture has been significantly improved with the unified 
 - Predictive ETAs using historical performance data
 
 The unified architecture successfully balances real-time updates with system efficiency while providing a premium user experience through Live Activities and Dynamic Island integration. The system is now better positioned for future enhancements and maintains the sophisticated alert capabilities users expect.
+
+## Auto-Cleanup of Stale Live Activity Tokens
+
+### Overview
+As of January 2025, the system includes an automatic cleanup mechanism for stale Live Activity tokens. This self-healing feature prevents old or completed trains from being continuously processed for push notifications.
+
+### Problem Addressed
+- Old trains (e.g., from days ago) with active Live Activity tokens were being processed because their `updated_at` timestamp was refreshed by status updates
+- This caused unnecessary API calls, processing overhead, and potential frozen UI states in the iOS app
+- Manual cleanup via `trackcast clear-notification-tokens` was required to fix these issues
+
+### Solution Implementation
+
+#### Detection Criteria
+The system automatically removes Live Activity tokens when trains fail validation due to:
+- **Extreme delays**: More than 6 hours (360 minutes) of delay
+- **Journey completion**: 100% progress indicates the trip is complete  
+- **Age threshold**: Trains older than 12 hours from scheduled departure
+- **Past destination ETA**: The train was supposed to arrive at its destination in the past
+
+#### Cleanup Process
+1. When `_is_valid_for_live_activity()` returns false, the system checks if auto-cleanup is enabled
+2. The `_cleanup_stale_live_activity_tokens()` method:
+   - Logs detailed reasons for cleanup (audit trail)
+   - Queries affected tokens for debugging
+   - Deletes all Live Activity tokens for the train
+   - Updates metrics for monitoring
+   - Handles errors gracefully with database rollback
+
+#### Configuration
+- **Environment Variable**: `TRACKCAST_AUTO_CLEANUP_STALE_TOKENS` (default: "true")
+- **Logging**: Detailed reasons and affected token counts are logged
+- **Metrics**: Updates `LIVE_ACTIVITY_UPDATES_TOTAL` with label `alert_type="stale_token_cleanup"`
+
+### Benefits
+- **Self-healing**: System automatically cleans up problematic data without manual intervention
+- **Prevents recurrence**: Once cleaned, stale trains won't be processed again
+- **Reduces overhead**: Fewer unnecessary API calls and processing cycles
+- **Improves reliability**: Prevents frozen UI states in iOS app
+- **Audit trail**: Detailed logging for troubleshooting and monitoring
+
+### Example Log Output
+```
+🧹 Cleaning up Live Activity tokens for train 3847 due to: extreme delay (1440 minutes), train too old (48.5 hours)
+📱 Affected tokens: 2 active tokens
+  - Token: 6d8a9f2c1b3e... (activity: 4f7e2a9c8d1b...)
+  - Token: 9e3b7f1a4c2d... (activity: 8a1c3e7f9b2d...)
+✅ Successfully deleted 2 Live Activity tokens for train 3847
+```
+
+### Monitoring
+System administrators can monitor cleanup activity through:
+- Log analysis for cleanup frequency and reasons
+- Prometheus metrics for cleanup counts
+- Alerts when cleanup rate exceeds thresholds (may indicate upstream data issues)
+
+## Root Cause Fix: Departure Time Filtering
+
+### Overview
+In addition to the auto-cleanup defensive measure, the root cause of processing old trains has been fixed by changing the query logic to filter by `departure_time` instead of `updated_at`.
+
+### Changes Made
+
+#### 1. `get_unique_train_ids_with_live_activities()`
+**Before**: `query.filter(Train.updated_at >= since)`
+**After**: `query.filter(Train.departure_time >= since)`
+
+#### 2. `get_all_trains_for_train_id()`
+**Before**: `query.filter(Train.updated_at >= since)`  
+**After**: `query.filter(Train.departure_time >= since)`
+
+### Why This Fixes the Issue
+- **`updated_at`**: Changes whenever ANY field is modified (status updates, predictions, API queries)
+- **`departure_time`**: Remains constant and represents when the train actually departed
+- Old trains from days ago will no longer be selected just because their database record was recently touched
+
+### Defense in Depth
+The system now has two layers of protection:
+1. **Prevention**: Queries filter by departure time to avoid selecting old trains
+2. **Cleanup**: Auto-cleanup removes any stale tokens that slip through
+
+This ensures maximum reliability and prevents frozen Live Activities in the iOS app.

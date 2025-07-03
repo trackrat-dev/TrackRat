@@ -1646,8 +1646,11 @@ class TrainRepository(BaseRepository):
         This method returns only unique train_id values, preventing duplicate
         processing when the same train appears in multiple origin stations.
 
+        IMPORTANT: As of Jan 2025, this filters by departure_time (not updated_at) to avoid
+        processing old trains that were recently updated in the database.
+
         Args:
-            since: Optional datetime to filter trains updated since this time
+            since: Optional datetime to filter trains that departed after this time
 
         Returns:
             List of unique train_id strings with active Live Activities
@@ -1664,10 +1667,15 @@ class TrainRepository(BaseRepository):
             )
 
             if since:
-                query = query.filter(Train.updated_at >= since)
+                # FIXED: Filter by departure time instead of updated_at to avoid old trains
+                # that have been recently updated (e.g., status changes, predictions)
+                query = query.filter(Train.departure_time >= since)
+                logger.debug(f"Filtering trains with departure_time >= {since} (not updated_at)")
 
             # Get unique train IDs only
             result = [row[0] for row in query.all()]
+
+            logger.debug(f"Found {len(result)} unique train IDs with active Live Activities")
 
             duration = time.time() - start_time
             DB_QUERY_DURATION_SECONDS.labels(
@@ -1688,9 +1696,12 @@ class TrainRepository(BaseRepository):
         This is used with consolidation to get all variants of the same train
         (from different origin stations) for merging into a unified journey.
 
+        IMPORTANT: As of Jan 2025, this filters by departure_time (not updated_at) to avoid
+        processing old trains that were recently updated in the database.
+
         Args:
             train_id: The train ID to fetch all records for
-            since: Optional datetime to filter trains updated since this time
+            since: Optional datetime to filter trains that departed after this time
 
         Returns:
             List of Train objects for the given train_id
@@ -1709,7 +1720,10 @@ class TrainRepository(BaseRepository):
             )
 
             if since:
-                query = query.filter(Train.updated_at >= since)
+                # FIXED: Filter by departure time instead of updated_at to avoid old trains
+                # that have been recently updated (e.g., status changes, predictions)
+                query = query.filter(Train.departure_time >= since)
+                logger.debug(f"Filtering train {train_id} records with departure_time >= {since}")
 
             trains = query.all()
 
