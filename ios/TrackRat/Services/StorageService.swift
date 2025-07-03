@@ -27,6 +27,15 @@ enum ServerEnvironment: String, CaseIterable, Codable {
             return "http://localhost:8000/api"
         }
     }
+    
+    var supportsHistoricalData: Bool {
+        switch self {
+        case .production:
+            return false
+        case .staging, .local:
+            return true
+        }
+    }
 }
 
 // MARK: - Trip Pair Model

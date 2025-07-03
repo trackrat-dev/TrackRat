@@ -49,15 +49,9 @@ struct TrainLiveActivity: Widget {
                 } else {
                     // Before departure: Show train icon and number (current behavior)
                     HStack(spacing: 3) {
-                        Image(systemName: "tram.fill")
-                            .font(.system(size: 16, weight: .black))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.orange, .red],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                        Image("rat-train-icon")
+                            .resizable()
+                            .frame(width: 16, height: 16)
                             .shadow(color: .black, radius: 1)
                             .scaleEffect(context.state.statusV2 == "BOARDING" ? 1.2 : 1.0)
                             .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: context.state.statusV2)
@@ -75,15 +69,9 @@ struct TrainLiveActivity: Widget {
                 if hasDepartedOrigin(context: context) {
                     // After departure: Show train icon (moved from left side)
                     HStack(spacing: 2) {
-                        Image(systemName: "tram.fill")
-                            .font(.system(size: 16, weight: .black))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.orange, .red],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
+                        Image("rat-train-icon")
+                            .resizable()
+                            .frame(width: 16, height: 16)
                             .shadow(color: .black, radius: 1)
                             .scaleEffect(context.state.statusV2 == "BOARDING" ? 1.2 : 1.0)
                             .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: context.state.statusV2)
@@ -117,15 +105,9 @@ struct TrainLiveActivity: Widget {
                 }
             } minimal: {
                 // Minimal (when other Dynamic Islands are active) - maximum visibility with animation
-                Image(systemName: "tram.fill")
-                    .font(.system(size: 16, weight: .black))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.orange, .red, .orange],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                Image("rat-train-icon")
+                    .resizable()
+                    .frame(width: 16, height: 16)
                     .shadow(color: .black, radius: 2)
                     .scaleEffect(1.2)
                     .frame(maxWidth: 32, alignment: .center)
@@ -537,9 +519,9 @@ struct JourneyProgressBar: View {
                     
                     // Train icon as position indicator
                     if progress > 0 && progress < 1 {
-                        Image(systemName: "tram.fill")
-                            .font(.caption2)
-                            .foregroundColor(.white)
+                        Image("rat-train-icon")
+                            .resizable()
+                            .frame(width: 10, height: 10)
                             .background(
                                 Circle()
                                     .fill(progressColor())

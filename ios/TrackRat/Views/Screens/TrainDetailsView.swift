@@ -26,6 +26,10 @@ struct TrainDetailsView: View {
         self._viewModel = StateObject(wrappedValue: VModel)
     }
     
+    private var shouldShowHistoricalData: Bool {
+        StorageService().loadServerEnvironment().supportsHistoricalData
+    }
+    
     var body: some View {
         ZStack {
             // Black gradient background
@@ -55,6 +59,7 @@ struct TrainDetailsView: View {
                             journeyProgressPercentage: viewModel.journeyProgressPercentage,
                             journeyStopsCompleted: viewModel.journeyStopsCompleted,
                             journeyTotalStops: viewModel.journeyTotalStops,
+                            shouldShowHistoricalData: shouldShowHistoricalData,
                             onShowHistory: { viewModel.showingHistory = true }
                         )
                         .padding()
@@ -133,6 +138,7 @@ struct CombinedDetailsCard: View {
     let journeyProgressPercentage: Int
     let journeyStopsCompleted: Int
     let journeyTotalStops: Int
+    let shouldShowHistoricalData: Bool
     
     // Action closures
     let onShowHistory: () -> Void
@@ -398,26 +404,28 @@ struct CombinedDetailsCard: View {
             .padding()
             
             // Historical Data section
-            Button {
-                onShowHistory()
-            } label: {
-                HStack {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundColor(.orange)
-                    Text("View Historical Data (beta)")
-                        .font(.subheadline)
-                        .foregroundColor(.black)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.black.opacity(0.6))
+            if shouldShowHistoricalData {
+                Button {
+                    onShowHistory()
+                } label: {
+                    HStack {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundColor(.orange)
+                        Text("View Historical Data (beta)")
+                            .font(.subheadline)
+                            .foregroundColor(.black)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.black.opacity(0.6))
+                    }
+                    .padding()
                 }
-                .padding()
+                .background(Color.clear)
+                .cornerRadius(8)
+                .padding(.horizontal)
+                .padding(.bottom)
             }
-            .background(Color.clear)
-            .cornerRadius(8)
-            .padding(.horizontal)
-            .padding(.bottom)
         }
         .background(Color.white.opacity(0.9))
         .cornerRadius(16)
