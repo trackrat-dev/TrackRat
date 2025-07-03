@@ -206,10 +206,6 @@ struct TrainCard: View {
                             .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
                             .strikethrough(isCancelled)
                         
-                        if isCancelled {
-                            Text("🚫")
-                                .font(.headline)
-                        }
                     }
                     
                     Spacer()
@@ -219,15 +215,6 @@ struct TrainCard: View {
                             .font(.subheadline)
                             .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
                         
-                        // Departure delay
-                        if !isCancelled,
-                           let depDelay = train.getDepartureDelay(fromStationCode: appState.departureStationCode ?? ""),
-                           depDelay >= 2 {
-                            Text("+\(depDelay)")
-                                .font(.caption)
-                                .foregroundColor(isBoardingAtOrigin ? .white : .red)
-                                .fontWeight(.medium)
-                        }
                         
                         Text(" → ")
                             .font(.subheadline)
@@ -237,15 +224,6 @@ struct TrainCard: View {
                             .font(.subheadline)
                             .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
                         
-                        // Arrival delay
-                        if !isCancelled,
-                           let arrDelay = train.getArrivalDelay(toStationName: destination),
-                           arrDelay >= 2 {
-                            Text("+\(arrDelay)")
-                                .font(.caption)
-                                .foregroundColor(isBoardingAtOrigin ? .white : .red)
-                                .fontWeight(.medium)
-                        }
                     }
                 }
                 
@@ -255,6 +233,19 @@ struct TrainCard: View {
                         .font(.caption)
                         .foregroundColor(.red.opacity(0.8))
                         .fontWeight(.medium)
+                }
+                
+                // Show delay status
+                if !isCancelled {
+                    let hasDepDelay = train.getDepartureDelay(fromStationCode: appState.departureStationCode ?? "") ?? 0 >= 2
+                    let hasArrDelay = train.getArrivalDelay(toStationName: destination) ?? 0 >= 2
+                    
+                    if hasDepDelay || hasArrDelay {
+                        Text("Operating with Delays")
+                            .font(.caption)
+                            .foregroundColor(.red.opacity(0.8))
+                            .fontWeight(.medium)
+                    }
                 }
                 
                 // Track and status - only show for boarding trains at origin
