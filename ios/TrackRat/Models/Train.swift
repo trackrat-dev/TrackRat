@@ -734,6 +734,119 @@ extension Train {
     var estimatedSpeed: Double? {
         return currentPosition?.estimatedSpeedMph
     }
+    
+    /// Get the scheduled departure time from a specific origin station
+    func getScheduledDepartureTime(fromStationCode: String) -> Date {
+        // Find the stop that matches our departure station using robust matching
+        if let stops = stops,
+           let originStop = stops.first(where: { stop in
+               Stations.stationMatches(stop, stationCode: fromStationCode)
+           }),
+           let scheduledDeparture = originStop.scheduledDeparture {
+            return scheduledDeparture
+        }
+        
+        // Fall back to the train's overall departure time
+        return departureTime
+    }
+    
+    /// Get formatted scheduled departure time from a specific origin station
+    func getFormattedScheduledDepartureTime(fromStationCode: String) -> String {
+        let time = getScheduledDepartureTime(fromStationCode: fromStationCode)
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: time)
+    }
+    
+    /// Get departure delay in minutes for a specific origin station
+    func getDepartureDelay(fromStationCode: String) -> Int? {
+        guard let stops = stops,
+              let originStop = stops.first(where: { stop in
+                  Stations.stationMatches(stop, stationCode: fromStationCode)
+              }) else {
+            return nil
+        }
+        
+        // Check if we have actual and scheduled departure times
+        if let actualDep = originStop.actualDeparture,
+           let scheduledDep = originStop.scheduledDeparture {
+            
+            // Check for invalid data: arrival after departure is impossible
+            if let actualArr = originStop.actualArrival,
+               actualArr > actualDep {
+                // Data is invalid, use arrival delay instead
+                if let scheduledArr = originStop.scheduledArrival {
+                    let arrivalDelaySeconds = actualArr.timeIntervalSince(scheduledArr)
+                    return Int(arrivalDelaySeconds / 60)
+                }
+            }
+            
+            // Normal case: calculate departure delay
+            let delaySeconds = actualDep.timeIntervalSince(scheduledDep)
+            let delayMinutes = Int(delaySeconds / 60)
+            
+            // If departure delay is 0 but we have arrival delay, use arrival delay
+            if delayMinutes == 0,
+               let actualArr = originStop.actualArrival,
+               let scheduledArr = originStop.scheduledArrival {
+                let arrivalDelaySeconds = actualArr.timeIntervalSince(scheduledArr)
+                let arrivalDelayMinutes = Int(arrivalDelaySeconds / 60)
+                if arrivalDelayMinutes != 0 {
+                    return arrivalDelayMinutes
+                }
+            }
+            
+            return delayMinutes
+        }
+        
+        return nil
+    }
+    
+    /// Get the scheduled arrival time for a specific destination
+    func getScheduledArrivalTime(toStationName: String) -> Date? {
+        // Find the stop that matches the destination
+        guard let stops = stops,
+              let destStop = stops.first(where: { 
+                  $0.stationName.lowercased().contains(toStationName.lowercased()) 
+              }),
+              let scheduledArrival = destStop.scheduledArrival else {
+            return nil
+        }
+        
+        return scheduledArrival
+    }
+    
+    /// Get formatted scheduled arrival time for a specific destination
+    func getFormattedScheduledArrivalTime(toStationName: String) -> String {
+        guard let time = getScheduledArrivalTime(toStationName: toStationName) else {
+            return "—"
+        }
+        
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: time)
+    }
+    
+    /// Get arrival delay in minutes for a specific destination
+    func getArrivalDelay(toStationName: String) -> Int? {
+        guard let stops = stops,
+              let destStop = stops.first(where: { 
+                  $0.stationName.lowercased().contains(toStationName.lowercased()) 
+              }) else {
+            return nil
+        }
+        
+        // Calculate delay between actual and scheduled arrival
+        if let actualArr = destStop.actualArrival,
+           let scheduledArr = destStop.scheduledArrival {
+            let delaySeconds = actualArr.timeIntervalSince(scheduledArr)
+            return Int(delaySeconds / 60)
+        }
+        
+        return nil
+    }
 }
 
 // MARK: - API Response

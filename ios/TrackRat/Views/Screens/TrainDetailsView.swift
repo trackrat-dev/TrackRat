@@ -194,8 +194,8 @@ struct CombinedDetailsCard: View {
     
     /// Enhanced logic to determine if track predictions should be shown
     private var shouldShowPredictions: Bool {
-        // Don't show if train is boarding or has departed
-        if train.isActuallyBoarding || train.hasDeparted {
+        // Don't show if train is boarding at origin or has departed
+        if isBoardingAtOrigin || train.hasDeparted {
             return false
         }
         
@@ -227,6 +227,38 @@ struct CombinedDetailsCard: View {
         return originStop?.departed ?? false
     }
     
+    /// Check if train is boarding specifically at the user's origin station (StatusV2 only)
+    private var isBoardingAtOrigin: Bool {
+        guard let statusV2 = train.statusV2,
+              let departureCode = appState.departureStationCode else {
+            return false
+        }
+        
+        // Only show boarding if the train is actually boarding
+        guard statusV2.current == "BOARDING" else {
+            return false
+        }
+        
+        // Check if the boarding is happening at the user's origin station
+        // Method 1: Check if StatusV2 source starts with user's station code
+        if statusV2.source.hasPrefix(departureCode) {
+            // Verify we have a track for this station
+            return train.getTrackForStation(departureCode) != nil
+        }
+        
+        // Method 2: Check if StatusV2 location mentions user's station
+        if let selectedDeparture = appState.selectedDeparture {
+            let userStationName = Stations.displayName(for: selectedDeparture)
+            if statusV2.location.lowercased().contains(userStationName.lowercased()) {
+                // Verify we have a track for this station
+                return train.getTrackForStation(departureCode) != nil
+            }
+        }
+        
+        // If StatusV2 indicates boarding elsewhere, don't show boarding status
+        return false
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Top section with status info
@@ -246,7 +278,7 @@ struct CombinedDetailsCard: View {
                 if train.statusV2 != nil {
                     VStack(spacing: 12) {
                         // Main status with boarding indication
-                        if train.isActuallyBoarding {
+                        if isBoardingAtOrigin {
                             HStack {
                                 Image(systemName: "circle.fill")
                                     .foregroundColor(.white)
@@ -739,9 +771,9 @@ struct StopRow: View {
         
         // For departed stops: Show only "Departed X:XX PM" with delay indicator
         if stop.departed == true {
-            if let actualDeparture = stop.actualDeparture {
-                let delayText = departureDelayText(actual: actualDeparture, scheduled: stop.scheduledDeparture)
-                let departureText = "Departed: \(formatter.string(from: actualDeparture))" + (delayText.isEmpty ? "" : " (\(delayText))")
+            if let correctedDepartureTime = stop.departureTime {
+                let delayText = departureDelayText(actual: correctedDepartureTime, scheduled: stop.scheduledDeparture)
+                let departureText = "Departed: \(formatter.string(from: correctedDepartureTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (nil, departureText, [])
             } else if let scheduledDeparture = stop.scheduledDeparture {
                 return (nil, "Departed: \(formatter.string(from: scheduledDeparture))", [])
@@ -752,9 +784,9 @@ struct StopRow: View {
         
         // For origin station: Show only departure time
         if isOriginStation {
-            if let actualDeparture = stop.actualDeparture {
-                let delayText = departureDelayText(actual: actualDeparture, scheduled: stop.scheduledDeparture)
-                let departureText = "Departure: \(formatter.string(from: actualDeparture))" + (delayText.isEmpty ? "" : " (\(delayText))")
+            if let correctedDepartureTime = stop.departureTime {
+                let delayText = departureDelayText(actual: correctedDepartureTime, scheduled: stop.scheduledDeparture)
+                let departureText = "Departure: \(formatter.string(from: correctedDepartureTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (nil, departureText, [])
             } else if let scheduledDeparture = stop.scheduledDeparture {
                 return (nil, "Departure: \(formatter.string(from: scheduledDeparture))", [])

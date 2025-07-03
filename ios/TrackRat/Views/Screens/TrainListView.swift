@@ -142,42 +142,46 @@ struct TrainCard: View {
     
     /// Check if train is boarding specifically at the user's origin station (StatusV2 only)
     private var isBoardingAtOrigin: Bool {
-        guard train.isActuallyBoarding,
-              let departureCode = appState.departureStationCode,
-              let stops = train.stops else {
+        guard let statusV2 = train.statusV2,
+              let departureCode = appState.departureStationCode else {
             return false
         }
         
-        // Find the stop that matches the user's departure station using robust matching
-        let originStop = stops.first { stop in
-            return Stations.stationMatches(stop, stationCode: departureCode)
+        // Only show boarding if the train is actually boarding
+        guard statusV2.current == "BOARDING" else {
+            return false
         }
         
-        // Train is boarding at origin if it hasn't departed from that station yet
-        return !(originStop?.departed ?? true)
+        // Check if the boarding is happening at the user's origin station
+        // Method 1: Check if StatusV2 source starts with user's station code
+        if statusV2.source.hasPrefix(departureCode) {
+            // Verify we have a track for this station
+            return train.getTrackForStation(departureCode) != nil
+        }
+        
+        // Method 2: Check if StatusV2 location mentions user's station
+        if let selectedDeparture = appState.selectedDeparture {
+            let userStationName = Stations.displayName(for: selectedDeparture)
+            if statusV2.location.lowercased().contains(userStationName.lowercased()) {
+                // Verify we have a track for this station
+                return train.getTrackForStation(departureCode) != nil
+            }
+        }
+        
+        // If StatusV2 indicates boarding elsewhere, don't show boarding status
+        return false
     }
     
     private var departureTime: String {
         if let departureCode = appState.departureStationCode {
-            return train.getFormattedDepartureTime(fromStationCode: departureCode)
+            return train.getFormattedScheduledDepartureTime(fromStationCode: departureCode)
         }
         let formatter = DateFormatter.easternTime(time: .short)
         return formatter.string(from: train.departureTime)
     }
     
     private var arrivalTime: String {
-        // Find the stop that matches the destination the user searched for
-        if let destinationStop = train.stops?.first(where: { 
-            $0.stationName.lowercased().contains(destination.lowercased()) 
-        }) {
-            let formatter = DateFormatter.easternTime(time: .short)
-            if let scheduledTime = destinationStop.scheduledTime {
-                return formatter.string(from: scheduledTime)
-            } else if let departureTime = destinationStop.departureTime {
-                return formatter.string(from: departureTime)
-            }
-        }
-        return "—"
+        return train.getFormattedScheduledArrivalTime(toStationName: destination)
     }
     
     var body: some View {
@@ -197,9 +201,37 @@ struct TrainCard: View {
                     
                     Spacer()
                     
-                    Text("\(departureTime) → \(arrivalTime)")
-                        .font(.subheadline)
-                        .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7))
+                    HStack(spacing: 2) {
+                        Text(departureTime)
+                            .font(.subheadline)
+                            .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7))
+                        
+                        // Departure delay
+                        if let depDelay = train.getDepartureDelay(fromStationCode: appState.departureStationCode ?? ""),
+                           depDelay >= 2 {
+                            Text("+\(depDelay)")
+                                .font(.caption)
+                                .foregroundColor(isBoardingAtOrigin ? .white : .red)
+                                .fontWeight(.medium)
+                        }
+                        
+                        Text(" → ")
+                            .font(.subheadline)
+                            .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7))
+                        
+                        Text(arrivalTime)
+                            .font(.subheadline)
+                            .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7))
+                        
+                        // Arrival delay
+                        if let arrDelay = train.getArrivalDelay(toStationName: destination),
+                           arrDelay >= 2 {
+                            Text("+\(arrDelay)")
+                                .font(.caption)
+                                .foregroundColor(isBoardingAtOrigin ? .white : .red)
+                                .fontWeight(.medium)
+                        }
+                    }
                 }
                 
                 // Track and status - only show for boarding trains at origin
