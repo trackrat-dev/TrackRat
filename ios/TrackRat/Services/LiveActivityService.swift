@@ -948,6 +948,12 @@ class LiveActivityService: ObservableObject {
         print("  - Device model: \(UIDevice.current.model)")
     }
     
+    /// Check if a specific train is currently being watched
+    func isWatchingTrain(trainNumber: String) -> Bool {
+        guard let activity = currentActivity else { return false }
+        return activity.attributes.trainNumber == trainNumber
+    }
+    
     /// Get current activity status for UI
     var activityStatus: String {
         guard let activity = currentActivity else {

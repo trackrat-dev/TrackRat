@@ -4,6 +4,7 @@ import Combine
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
+    @ObservedObject private var liveActivityService = LiveActivityService.shared
     // @State private var showingHistory = false // REMOVE THIS LINE
     
     let trainId: Int  // Keep for backwards compatibility
@@ -78,7 +79,19 @@ struct TrainDetailsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .trackRatNavigationBarStyle()
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if #available(iOS 16.1, *) {
+                    if let train = viewModel.train, train.statusV2?.current != "CANCELLED" {
+                        Button {
+                            toggleLiveActivity(for: train)
+                        } label: {
+                            Image(systemName: "eye.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(liveActivityService.isWatchingTrain(trainNumber: train.trainId) ? .orange : .white.opacity(0.7))
+                        }
+                    }
+                }
+                
                 Button("Close") {
                     appState.navigationPath.removeLast(appState.navigationPath.count)
                 }
@@ -120,6 +133,31 @@ struct TrainDetailsView: View {
         .sheet(isPresented: $viewModel.showingHistory) {
             if let train = viewModel.train {
                 HistoricalDataView(train: train)
+            }
+        }
+    }
+    
+    @available(iOS 16.1, *)
+    private func toggleLiveActivity(for train: Train) {
+        Task {
+            if liveActivityService.isWatchingTrain(trainNumber: train.trainId) {
+                // Stop the Live Activity
+                await liveActivityService.endCurrentActivity()
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } else {
+                // Start the Live Activity
+                do {
+                    try await liveActivityService.startTrackingTrain(
+                        train,
+                        from: appState.departureStationCode ?? "",
+                        to: Stations.getStationCode(appState.selectedDestination ?? "") ?? "",
+                        origin: appState.selectedDeparture ?? "",
+                        destination: appState.selectedDestination ?? ""
+                    )
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } catch {
+                    print("Failed to start Live Activity: \(error)")
+                }
             }
         }
     }
@@ -269,17 +307,6 @@ struct CombinedDetailsCard: View {
         VStack(spacing: 0) {
             // Top section with status info
             VStack(spacing: 0) {
-                // Watch This Train section - only show for non-cancelled trains
-                if #available(iOS 16.1, *), train.statusV2?.current != "CANCELLED" {
-                    LiveActivityControls(
-                        train: train,
-                        origin: appState.selectedDeparture ?? "",
-                        destination: appState.selectedDestination ?? "",
-                        originCode: appState.departureStationCode ?? "",
-                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
-                    )
-                }
-                
                 // Enhanced Status Display with StatusV2 context
                 if train.statusV2 != nil {
                     VStack(spacing: 12) {
