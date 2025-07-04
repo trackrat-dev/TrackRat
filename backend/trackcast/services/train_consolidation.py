@@ -1238,21 +1238,43 @@ class TrainConsolidationService:
         # Set next arrival info
         if next_arrival_stop:
             idx, stop = next_arrival_stop
-            scheduled_arrival = stop.get("scheduled_arrival")
 
-            # Estimate arrival time based on delay pattern
-            estimated_time = scheduled_arrival
-            if (
+            # Priority order: actual_arrival > estimated_arrival > calculated > scheduled
+            nj_transit_prediction = stop.get("actual_arrival")  # NJ Transit's real-time prediction
+            api_estimate = stop.get("estimated_arrival")  # API-provided estimate
+            scheduled_arrival = stop.get("scheduled_arrival")  # Original schedule
+
+            # Use best available time data
+            if nj_transit_prediction:
+                # Use NJ Transit's real-time prediction (best data)
+                estimated_time = nj_transit_prediction
+                logger.debug(
+                    f"Using NJ Transit real-time prediction for {stop['station_code']}: {nj_transit_prediction}"
+                )
+            elif api_estimate:
+                # Use API-provided estimate
+                estimated_time = api_estimate
+                logger.debug(f"Using API estimate for {stop['station_code']}: {api_estimate}")
+            elif (
                 scheduled_arrival
                 and progress["last_departed"]
                 and progress["last_departed"]["delay_minutes"] > 0
             ):
-                # Apply the delay to the scheduled arrival time
+                # Calculate estimate from delay propagation
                 scheduled_dt = datetime.fromisoformat(scheduled_arrival)
                 estimated_dt = scheduled_dt + timedelta(
                     minutes=progress["last_departed"]["delay_minutes"]
                 )
                 estimated_time = estimated_dt.isoformat()
+                logger.debug(
+                    f"Using calculated estimate for {stop['station_code']}: {estimated_time}"
+                )
+            else:
+                # Last resort: scheduled time
+                estimated_time = scheduled_arrival
+                logger.debug(
+                    f"Using scheduled time for {stop['station_code']}: {scheduled_arrival}"
+                )
 
             # Calculate minutes to arrival
             minutes_away = 0

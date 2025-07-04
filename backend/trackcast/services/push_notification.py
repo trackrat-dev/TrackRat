@@ -136,7 +136,7 @@ class APNSPushService:
             ).inc()
 
             results["live_activity"] = await self._send_apns_request(
-                live_activity_token.push_token, live_activity_payload, is_live_activity=True
+                live_activity_token.push_token, live_activity_payload, is_live_activity=True, db=db
             )
 
             # Track Live Activity result
@@ -221,7 +221,7 @@ class APNSPushService:
         try:
             await self._rate_limit()
             payload = self._create_live_activity_payload(train_data, alert_type, event_data)
-            return await self._send_apns_request(push_token, payload, is_live_activity=True)
+            return await self._send_apns_request(push_token, payload, is_live_activity=True, db=db)
         except Exception as e:
             logger.error(f"Failed to send Live Activity update: {str(e)}")
             return False
@@ -611,7 +611,11 @@ class APNSPushService:
             raise
 
     async def _send_apns_request(
-        self, device_token: str, payload: Dict[str, Any], is_live_activity: bool = False
+        self,
+        device_token: str,
+        payload: Dict[str, Any],
+        is_live_activity: bool = False,
+        db: Optional[Session] = None,
     ) -> bool:
         """
         Send APNS HTTP/2 request.
@@ -620,6 +624,7 @@ class APNSPushService:
             device_token: Device or Live Activity token
             payload: APNS payload
             is_live_activity: Whether this is a Live Activity update
+            db: Optional database session for handling token cleanup on 410 errors
 
         Returns:
             True if successful, False otherwise
@@ -729,6 +734,21 @@ class APNSPushService:
                                     f"  - Extension bundle ID (reference): {self.live_activity_bundle_id}\n"
                                     f"  - APNS environment: {'Production' if 'sandbox' not in self.apns_url else 'Sandbox'}"
                                 )
+
+                        # Handle other token-related errors that indicate invalid/expired tokens
+                        elif reason in [
+                            "BadDeviceToken",
+                            "Unregistered",
+                            "InvalidProviderToken",
+                            "ExpiredProviderToken",
+                        ]:
+                            logger.error(
+                                f"❌ Invalid token error: {reason} for token {device_token[:8]}..."
+                            )
+                            # These errors indicate the token should be removed
+                            await self._handle_invalid_token(
+                                device_token, is_live_activity, db, reason
+                            )
                     except Exception:
                         logger.error(
                             f"APNS request failed with 400 Bad Request for token {device_token[:8]}..."
@@ -743,6 +763,8 @@ class APNSPushService:
                     logger.warning(
                         f"APNS token is no longer valid (410) - token should be removed: {device_token[:8]}..."
                     )
+                    # Handle 410 Gone - token is invalid and should be removed
+                    await self._handle_invalid_token(device_token, is_live_activity, db, "410_Gone")
                     return False
                 else:
                     logger.error(
@@ -768,6 +790,213 @@ class APNSPushService:
             await asyncio.sleep(sleep_time)
 
         self.last_request_time = time.time()
+
+    async def _handle_invalid_token(
+        self,
+        token: str,
+        is_live_activity: bool,
+        db: Optional[Session] = None,
+        failure_reason: str = "unknown",
+    ):
+        """
+        Handle invalid APNS tokens with enhanced failure tracking and batch cleanup.
+
+        This method is called when APNS returns an error indicating the token is no longer valid
+        (410 Gone, BadDeviceToken, Unregistered, etc.). Enhanced to track failure patterns
+        and perform related token cleanup.
+
+        Args:
+            token: The invalid push token
+            is_live_activity: Whether this is a Live Activity token
+            db: Database session (if available)
+            failure_reason: Specific reason for token invalidity (e.g., "410_Gone", "BadDeviceToken")
+        """
+        try:
+            if not db:
+                # Create a new database session if not provided
+                db_gen = get_db()
+                db = next(db_gen)
+                should_close_db = True
+            else:
+                should_close_db = False
+
+            # 1. Log failure details for pattern analysis
+            logger.info(
+                f"🔍 Token failure analysis - Token: {token[:12]}..., Type: {'Live Activity' if is_live_activity else 'Device'}, Reason: {failure_reason}"
+            )
+
+            # Track the failure in memory for pattern detection (simple approach)
+            if not hasattr(self, "_token_failure_counts"):
+                self._token_failure_counts = {}
+
+            token_key = f"{token[:16]}_{is_live_activity}"  # Use partial token + type as key
+            self._token_failure_counts[token_key] = self._token_failure_counts.get(token_key, 0) + 1
+            failure_count = self._token_failure_counts[token_key]
+
+            # 2. Check for consecutive failures before removal (for non-critical errors)
+            should_remove = True
+            if failure_reason in ["DeviceTokenNotForTopic", "PayloadTooLarge"]:
+                # These might be temporary configuration issues
+                if failure_count < 3:
+                    should_remove = False
+                    logger.warning(
+                        f"⚠️ Temporary token issue ({failure_count}/3): {failure_reason} for token {token[:8]}... - not removing yet"
+                    )
+
+            if not should_remove:
+                return  # Don't remove token yet, wait for more failures
+
+            # 3. Get device relationship before deletion for batch cleanup
+            device_id = None
+            device_tokens_to_cleanup = []
+
+            if is_live_activity:
+                # Get device relationship from Live Activity token
+                live_activity_token = (
+                    db.query(LiveActivityToken)
+                    .filter(LiveActivityToken.push_token == token)
+                    .first()
+                )
+                if live_activity_token and live_activity_token.device_id:
+                    device_id = live_activity_token.device_id
+
+                # Remove Live Activity token
+                deleted_count = (
+                    db.query(LiveActivityToken)
+                    .filter(LiveActivityToken.push_token == token)
+                    .delete(synchronize_session=False)
+                )
+
+                if deleted_count > 0:
+                    logger.info(
+                        f"🗑️ Removed {deleted_count} invalid Live Activity token(s) for token {token[:8]}... (reason: {failure_reason})"
+                    )
+                    # Update metrics with failure reason
+                    LIVE_ACTIVITY_UPDATES_TOTAL.labels(
+                        station="unknown", result=f"token_removed_{failure_reason}"
+                    ).inc(deleted_count)
+                else:
+                    logger.warning(
+                        f"⚠️ Invalid Live Activity token not found in database: {token[:8]}..."
+                    )
+            else:
+                # Get device ID from device token
+                device_token_obj = (
+                    db.query(DeviceToken).filter(DeviceToken.device_token == token).first()
+                )
+                if device_token_obj:
+                    device_id = device_token_obj.id
+
+                # Remove regular device token
+                deleted_count = (
+                    db.query(DeviceToken)
+                    .filter(DeviceToken.device_token == token)
+                    .delete(synchronize_session=False)
+                )
+
+                if deleted_count > 0:
+                    logger.info(
+                        f"🗑️ Removed {deleted_count} invalid device token(s) for token {token[:8]}... (reason: {failure_reason})"
+                    )
+                    NOTIFICATION_ATTEMPTS_TOTAL.labels(
+                        notification_type="device_push",
+                        station="unknown",
+                        result=f"token_removed_{failure_reason}",
+                    ).inc(deleted_count)
+                else:
+                    logger.warning(f"⚠️ Invalid device token not found in database: {token[:8]}...")
+
+            # 4. Trigger related token cleanup (same device) for severe failures
+            if device_id and failure_reason in ["410_Gone", "BadDeviceToken", "Unregistered"]:
+                try:
+                    # Clean up related tokens from the same device
+                    related_cleanup_count = await self._cleanup_related_device_tokens(
+                        device_id, db, failure_reason
+                    )
+                    if related_cleanup_count > 0:
+                        logger.info(
+                            f"🧹 Cleaned up {related_cleanup_count} related tokens from same device (reason: {failure_reason})"
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"❌ Failed to cleanup related tokens for device {device_id}: {str(e)}"
+                    )
+
+            # Clear failure count after successful removal
+            if token_key in self._token_failure_counts:
+                del self._token_failure_counts[token_key]
+
+            # Commit all changes
+            db.commit()
+
+            if should_close_db:
+                try:
+                    next(db_gen)  # Clean up the generator
+                except StopIteration:
+                    pass
+
+        except Exception as e:
+            logger.error(
+                f"❌ Failed to remove invalid {'Live Activity' if is_live_activity else 'device'} "
+                f"token {token[:8]}...: {str(e)}"
+            )
+            if db:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+
+    async def _cleanup_related_device_tokens(
+        self, device_id: int, db: Session, failure_reason: str
+    ) -> int:
+        """
+        Clean up related tokens from the same device when a severe failure occurs.
+
+        When a device token fails with 410 Gone, BadDeviceToken, or Unregistered,
+        it often indicates the app was uninstalled or the device was reset.
+        In these cases, other tokens from the same device are likely also invalid.
+
+        Args:
+            device_id: The device ID to clean up tokens for
+            db: Database session
+            failure_reason: The original failure reason
+
+        Returns:
+            Number of additional tokens cleaned up
+        """
+        cleanup_count = 0
+
+        try:
+            # For severe failures, clean up all tokens from the same device
+            if failure_reason in ["410_Gone", "BadDeviceToken", "Unregistered"]:
+
+                # Clean up other Live Activity tokens from the same device
+                live_activity_cleanup = (
+                    db.query(LiveActivityToken)
+                    .filter(
+                        LiveActivityToken.device_id == device_id,
+                        LiveActivityToken.is_active == True,
+                    )
+                    .delete(synchronize_session=False)
+                )
+
+                if live_activity_cleanup > 0:
+                    cleanup_count += live_activity_cleanup
+                    logger.info(
+                        f"🧹 Removed {live_activity_cleanup} related Live Activity tokens from device {device_id}"
+                    )
+                    # Update metrics
+                    LIVE_ACTIVITY_UPDATES_TOTAL.labels(
+                        station="unknown", result=f"related_cleanup_{failure_reason}"
+                    ).inc(live_activity_cleanup)
+
+                # Note: We don't clean up the main DeviceToken here as it was already handled
+                # in the main method. This focuses on Live Activity tokens associated with the device.
+
+        except Exception as e:
+            logger.error(f"❌ Error during related token cleanup for device {device_id}: {str(e)}")
+
+        return cleanup_count
 
 
 class TrainUpdateNotificationService:
@@ -914,6 +1143,13 @@ class TrainUpdateNotificationService:
 
                 # Send both Live Activity updates and regular notifications
                 for token in active_tokens:
+                    # Capture token info before processing to handle deletion scenarios
+                    token_id = (
+                        token.push_token[:12]
+                        if hasattr(token, "push_token") and token.push_token
+                        else "unknown"
+                    )
+
                     results = await self.push_service.send_train_notifications(
                         live_activity_token=token,
                         train_data=current_state,
@@ -924,11 +1160,11 @@ class TrainUpdateNotificationService:
                     if results["live_activity"] or results["regular_notification"]:
                         logger.info(
                             f"✅ Notifications sent for train {train.train_id}: {alert_type.value} "
-                            f"(Live Activity: {results['live_activity']}, Regular: {results['regular_notification']}) to token {token.push_token[:12]}..."
+                            f"(Live Activity: {results['live_activity']}, Regular: {results['regular_notification']}) to token {token_id}..."
                         )
                     else:
                         logger.warning(
-                            f"⚠️ Failed to send notifications for train {train.train_id}: {alert_type.value} to token {token.push_token[:12]}..."
+                            f"⚠️ Failed to send notifications for train {train.train_id}: {alert_type.value} to token {token_id}..."
                         )
             else:
                 # No alert, but send silent Live Activity updates to keep data fresh
@@ -948,6 +1184,13 @@ class TrainUpdateNotificationService:
                     f"📤 Sending silent Live Activity updates to {len(active_tokens)} tokens"
                 )
                 for token in active_tokens:
+                    # Capture token info before processing to handle deletion scenarios
+                    token_id = (
+                        token.push_token[:12]
+                        if hasattr(token, "push_token") and token.push_token
+                        else "unknown"
+                    )
+
                     # Send silent Live Activity update (no regular notification)
                     results = await self.push_service.send_train_notifications(
                         live_activity_token=token,
@@ -958,11 +1201,11 @@ class TrainUpdateNotificationService:
 
                     if results["live_activity"]:
                         logger.debug(
-                            f"🔕 Silent Live Activity update sent for train {train.train_id} to token {token.push_token[:12]}..."
+                            f"🔕 Silent Live Activity update sent for train {train.train_id} to token {token_id}..."
                         )
                     else:
                         logger.warning(
-                            f"⚠️ Silent Live Activity update failed for train {train.train_id} to token {token.push_token[:12]}..."
+                            f"⚠️ Silent Live Activity update failed for train {train.train_id} to token {token_id}..."
                         )
 
             # Update last known state
@@ -1070,6 +1313,13 @@ class TrainUpdateNotificationService:
 
             # Send ONE notification per token with complete data
             for token in active_tokens:
+                # Capture token info before processing to handle deletion scenarios
+                token_id = (
+                    token.push_token[:12]
+                    if hasattr(token, "push_token") and token.push_token
+                    else "unknown"
+                )
+
                 try:
                     # Create a user-specific state for the payload by copying the generic state
                     payload_state = current_state.copy()
@@ -1101,23 +1351,23 @@ class TrainUpdateNotificationService:
                         if alert_type:
                             logger.info(
                                 f"✅ Alert sent for train {train_id}: {alert_type.value} "
-                                f"to token {token.push_token[:12]}..."
+                                f"to token {token_id}..."
                             )
                         else:
                             logger.debug(
                                 f"🔕 Silent update sent for train {train_id} "
-                                f"to token {token.push_token[:12]}..."
+                                f"to token {token_id}..."
                             )
                     else:
                         logger.warning(
                             f"⚠️ Failed to send {'alert' if alert_type else 'silent update'} "
-                            f"for train {train_id} to token {token.push_token[:12]}..."
+                            f"for train {train_id} to token {token_id}..."
                         )
 
                 except Exception as e:
                     logger.error(
                         f"❌ Error sending notification for train {train_id} "
-                        f"to token {token.push_token[:12]}...: {str(e)}"
+                        f"to token {token_id}...: {str(e)}"
                     )
 
             # Update state tracking (including stop history)
@@ -1535,8 +1785,18 @@ class TrainUpdateNotificationService:
         if not last_stop or not isinstance(last_stop, dict):
             return None
 
-        # Use estimated arrival time if available, otherwise scheduled time
-        eta = last_stop.get("estimated_arrival") or last_stop.get("scheduled_arrival")
+        # Priority order: actual_arrival > estimated_arrival > scheduled_arrival
+        if last_stop.get("actual_arrival"):
+            eta = last_stop.get("actual_arrival")
+            logger.debug(f"Using actual_arrival for destination ETA: {eta}")
+        elif last_stop.get("estimated_arrival"):
+            eta = last_stop.get("estimated_arrival")
+            logger.debug(f"Using estimated_arrival for destination ETA: {eta}")
+        elif last_stop.get("scheduled_arrival"):
+            eta = last_stop.get("scheduled_arrival")
+            logger.debug(f"Using scheduled_arrival for destination ETA: {eta}")
+        else:
+            eta = None
 
         if eta:
             # Ensure it's in ISO8601 format
