@@ -896,10 +896,10 @@ struct StopRow: View {
         let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
         if delayMinutes > 0 {
             return "+\(delayMinutes)m delay"
-        } else if delayMinutes < 0 {
-            return "-\(abs(delayMinutes))m early"
+        } else if delayMinutes < -1 {
+            return "\(abs(delayMinutes))m early"
         }
-        return "" // Don't show anything for on-time
+        return "" // Don't show anything for on-time or 1 minute early
     }
     
     private func departureDelayText(actual: Date, scheduled: Date?) -> String {
@@ -907,10 +907,10 @@ struct StopRow: View {
         let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
         if delayMinutes > 0 {
             return "+\(delayMinutes)m delay"
-        } else if delayMinutes < 0 {
-            return "-\(abs(delayMinutes))m early"
+        } else if delayMinutes < -1 {
+            return "\(abs(delayMinutes))m early"
         }
-        return "" // Don't show anything for on-time
+        return "" // Don't show anything for on-time or 1 minute early
     }
     
     var body: some View {
