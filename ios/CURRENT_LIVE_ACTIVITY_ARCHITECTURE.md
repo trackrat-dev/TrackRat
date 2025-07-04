@@ -216,193 +216,48 @@ The backend now includes a comprehensive data enrichment pipeline in `_enrich_st
 3. **`_format_destination_eta()`**: Extracts final destination ETA from consolidated stops
 4. **`_get_station_name_from_code()`**: Converts station codes to human-readable names
 
-## Critical Issues Analysis: Live Activity Data Flow Problems
+## Root Cause Analysis: Frozen Progress Wheel Issue
 
-### Problem Summary
+### Problem Identified (June 29, 2025)
 
-After thorough analysis of the backend push notification service and iOS Live Activity implementation, I've identified **significant field naming mismatches and data structure incompatibilities** that could cause incomplete or broken Live Activity notifications.
+**Symptom**: Live Activities would sometimes show a frozen progress wheel with hidden text, resolved only by opening the main iOS app.
 
-### Field Naming Status (Post-Fix)
+**Root Cause**: Backend was sending incomplete/incorrectly formatted data in APNS notifications that didn't match iOS Live Activity model expectations.
 
-| Backend Field | iOS Expected Field | Current Status | Impact |
-|--------------|-------------------|----------------|---------|
-| `nextStop` | `nextStop` | **FIXED** ✅ | Next stop data now displayed |
-| `trackRatPrediction` | `trackRatPrediction` | **FIXED** ✅ | Track predictions now shown |
-| `statusV2` | `statusV2` | **WORKING** ✅ | Working correctly |
-| `currentLocation` | `currentLocation` | **WORKING** ✅ | Working correctly |
-| `journeyProgress` | `journeyProgress` | **WORKING** ✅ | Working correctly |
-| `destinationETA` | `destinationETA` | **WORKING** ✅ | Working correctly |
+### Specific Issues Found
 
-### Data Structure Issues (Resolved)
+1. **Data Structure Mismatch**:
+   - Backend sent `currentLocation` as simple string ("BA") 
+   - iOS expected complex enum dictionary with type and associated values
+   - Caused Live Activity UI components to fail rendering
 
-1. **✅ trainNumber Field Handling**: 
-   - Verified that `trainNumber` belongs in `ActivityAttributes` (static), not `ContentState` (dynamic)
-   - Live Activity payloads only update `content-state` portion  
-   - **Resolution**: No backend changes needed - architecture is correct
+2. **Missing Critical Fields**:
+   - `nextStop` frequently null due to incorrect field extraction
+   - `destinationETA` had wrong dates (2025-06-22 vs 2025-06-29)
+   - Progress wheel couldn't display without next stop information
 
-2. **CurrentLocation Enum Compatibility**:
-   - Backend correctly creates Swift enum-compatible format ✅
-   - Supports all expected cases: `boarding`, `departed`, `approaching`, `enRoute`, `notDeparted`, `arrived`
+3. **Field Name Mismatches**:
+   - Backend created `next_stop` but iOS expected `next_stop_info`  
+   - Backend created `track_prediction` but iOS expected `trackrat_prediction`
+   - Field mismatches caused silent failures in Live Activity updates
 
-3. **NextStop Structure**:
-   - Backend creates correct structure but uses wrong field name
-   - Contains all required fields: `stationName`, `estimatedArrival`, `scheduledArrival`, `isDelayed`, etc.
+### Fix Implementation
 
-### Method-Level Analysis
+**Backend Changes** (`push_notification.py`):
+- Added `_enrich_state_for_live_activity()` method for proper data transformation
+- Fixed `_create_current_location_dict()` to generate Swift-compatible enum format
+- Enhanced `_create_next_stop_dict()` to build complete station information
+- Corrected field naming to match iOS expectations exactly
 
-#### Backend `_create_live_activity_payload()` Issues:
-
-```python
-# Line 336: WRONG FIELD NAME
-"nextStop": train_data.get("next_stop_info"),  # Should be "nextStop" not "nextStop"
-
-# Line 339: WRONG FIELD NAME  
-"trackRatPrediction": train_data.get("trackrat_prediction"),  # Field name inconsistency
-
-# MISSING FIELD
-# Should add: "trainNumber": train_data.get("train_id")
-```
-
-#### Backend `_enrich_state_for_live_activity()` Issues:
-
-```python
-# Line 1289: Creates wrong field name
-state["next_stop_info"] = self._create_next_stop_dict(consolidated_train)
-# Should be: state["nextStop"] = self._create_next_stop_dict(consolidated_train)
-
-# Line 1293: Field name transformation issue
-state["trackrat_prediction"] = state.pop("track_prediction")
-# Should be: state["trackRatPrediction"] = state.pop("track_prediction")
-```
-
-### iOS Model Expectations (from LiveActivityModels.swift)
-
-The iOS `TrainActivityAttributes.ContentState` expects:
-```swift
-let nextStop: NextStopInfo?           // ❌ Backend sends "next_stop_info"
-let trackRatPrediction: TrackRatPredictionInfo?  // ❌ Backend sends "trackrat_prediction"
-let statusV2: String                  // ✅ Working
-let currentLocation: CurrentLocation  // ✅ Working
-let journeyProgress: Double          // ✅ Working
-```
-
-### Data Flow Problems (Resolved)
-
-1. **✅ Next Stop Information Now Working**: 
-   - Fixed: Backend now sends `nextStop` field to match iOS expectations
-   - Result: `nextStop` is properly populated in iOS, enabling progress wheel display
-   - **Impact**: Users now see next stop information and working progress wheels
-
-2. **✅ Track Predictions Now Displaying**:
-   - Fixed: Backend now sends `trackRatPrediction` field in correct camelCase
-   - Result: Prediction data is properly received by iOS widgets
-   - **Impact**: Owl predictions now appear in Live Activities
-
-3. **✅ Train Number Architecture Verified**:
-   - Confirmed: `trainNumber` is correctly handled in ActivityAttributes (static data)
-   - Result: Train numbers continue to display properly in Dynamic Island
-   - **Impact**: No change needed - already working correctly
-
-### Root Cause Analysis: Data Transformation Pipeline (Resolved)
-
-The issue stemmed from inconsistent field naming in the data transformation pipeline:
-
-1. **`_extract_consolidated_train_state()`** created Python snake_case names
-2. **`_enrich_state_for_live_activity()`** inconsistently converted some to camelCase  
-3. **`_create_live_activity_payload()`** mixed both conventions
-4. **iOS models** expect strict camelCase Swift naming conventions
-
-**✅ Resolution**: Fixed field name consistency throughout the pipeline to use camelCase for iOS compatibility.
-
-### Performance Impact (Resolved)
-
-- **✅ Silent Failures Eliminated**: iOS now receives all expected data structures
-- **✅ Improved User Experience**: Next stop and prediction data now displayed
-- **✅ Error Prevention**: Field names now match exactly, preventing Codable mismatches
-- **✅ Efficient Data Usage**: Backend-calculated rich data is now fully accessible to iOS
-
-### Resolution Status
-
-✅ **RESOLVED CRITICAL ISSUES** (January 3, 2025):
-1. Fixed field name mismatches for `nextStop` and `trackRatPrediction`
-2. Corrected camelCase/snake_case transformation pipeline
-3. Verified `trainNumber` is properly handled in ActivityAttributes (not ContentState)
-
-### Implemented Fixes
-
-#### Backend Changes Completed (push_notification.py):
-
-1. **✅ Fixed field naming in `_enrich_state_for_live_activity()` (line 1289)**:
-```python
-# Before (INCORRECT):
-state["next_stop_info"] = self._create_next_stop_dict(consolidated_train)
-state["trackrat_prediction"] = state.pop("track_prediction") 
-
-# After (FIXED):
-state["nextStop"] = self._create_next_stop_dict(consolidated_train)
-state["trackRatPrediction"] = state.pop("track_prediction")
-```
-
-2. **✅ Fixed field mapping in `_create_live_activity_payload()` (line 336)**:
-```python
-# Before (INCORRECT):
-"nextStop": train_data.get("next_stop_info"),
-"trackRatPrediction": train_data.get("trackrat_prediction"),
-
-# After (FIXED):
-"nextStop": train_data.get("nextStop"),
-"trackRatPrediction": train_data.get("trackRatPrediction"),
-```
-
-3. **✅ Verified trainNumber handling**:
-   - `trainNumber` belongs in `ActivityAttributes` (static), not `ContentState` (dynamic)
-   - Live Activity payloads only update `content-state`, not attributes
-   - No changes needed - architecture is correct as-is
-
-#### Testing Recommendations:
-
-1. **Create backend unit tests** to verify payload field names match iOS expectations exactly
-2. **Add iOS integration tests** to decode actual backend payloads
-3. **Implement payload validation** in backend before sending to APNS
-4. **Create shared field name constants** between backend and iOS (consider JSON schema)
+**Result**: Live Activities now receive complete, properly formatted data that matches iOS model definitions, eliminating frozen progress wheels and enabling full UI functionality.
 
 ### Key Lessons Learned
 
-1. **Field Naming is Critical**: Even small naming differences (`nextStop` vs `next_stop_info`) cause silent failures
-2. **Swift Codable is Strict**: Mismatched field names are silently ignored, causing degraded functionality
-3. **Data Structure Validation**: Need comprehensive testing of actual payload decoding, not just JSON structure
-4. **Naming Convention Consistency**: Backend must use consistent camelCase for Swift compatibility
-5. **Cross-Platform Testing**: Regular validation that backend changes don't break iOS functionality
-
-## Expected User Experience Improvements
-
-With the field naming fixes implemented, users should now experience:
-
-### ✅ Enhanced Live Activity Functionality:
-- **Next Stop Information**: Progress wheels will display actual next stop data instead of being frozen
-- **Station Names**: Real station names (e.g., "Wilmington") instead of missing data  
-- **Accurate Timing**: Minutes away calculations and estimated arrival times
-- **Journey Progress**: Working progress indicators showing position between stops
-
-### ✅ Owl Prediction Display:
-- **Track Predictions**: "🦉 Owl thinks it will be track 13" messages in Live Activities
-- **Confidence Levels**: High/medium/low confidence indicators  
-- **Alternative Tracks**: Multiple track possibilities when confidence is low
-- **Real-time Updates**: Prediction changes reflected immediately in Dynamic Island
-
-### ✅ Dynamic Island Enhancements:
-- **Complete Data**: All rich information now available for expanded view
-- **Status Location**: "between Baltimore and Wilmington" location descriptions
-- **Next Stop Countdown**: Real-time countdown to approaching stations
-- **Destination ETA**: Accurate arrival time estimates
-
-### ✅ Eliminated Issues:
-- **No More Frozen Progress**: Wheels will animate properly with next stop data
-- **No Missing Predictions**: Owl predictions will consistently appear
-- **No Silent Data Loss**: All backend-calculated data reaches iOS successfully
-- **No Field Mismatches**: Swift Codable decoding works correctly
-
-These improvements should significantly enhance the real-time train tracking experience, providing users with the rich, detailed information that the backend has been calculating but iOS couldn't access due to field naming mismatches.
+1. **Data Format Synchronization is Critical**: Backend and frontend must agree on exact data structures, especially for real-time updates
+2. **Swift Enum Codable Format**: When working with Swift enums, backend must send data in the specific format Swift's automatic Codable implementation expects
+3. **Field Naming Consistency**: Even small naming differences (`next_stop` vs `next_stop_info`) can cause silent failures
+4. **Comprehensive Testing**: Live Activity payloads need thorough testing with actual iOS decoding, not just JSON validation
+5. **Rich Data is Essential**: UI components fail gracefully but poorly when missing expected data structures
 
 ## Alert Conditions & Event Prioritization
 
@@ -550,85 +405,3 @@ The Live Activity architecture has been significantly improved with the unified 
 - Predictive ETAs using historical performance data
 
 The unified architecture successfully balances real-time updates with system efficiency while providing a premium user experience through Live Activities and Dynamic Island integration. The system is now better positioned for future enhancements and maintains the sophisticated alert capabilities users expect.
-
-## Auto-Cleanup of Stale Live Activity Tokens
-
-### Overview
-As of January 2025, the system includes an automatic cleanup mechanism for stale Live Activity tokens. This self-healing feature prevents old or completed trains from being continuously processed for push notifications.
-
-### Problem Addressed
-- Old trains (e.g., from days ago) with active Live Activity tokens were being processed because their `updated_at` timestamp was refreshed by status updates
-- This caused unnecessary API calls, processing overhead, and potential frozen UI states in the iOS app
-- Manual cleanup via `trackcast clear-notification-tokens` was required to fix these issues
-
-### Solution Implementation
-
-#### Detection Criteria
-The system automatically removes Live Activity tokens when trains fail validation due to:
-- **Extreme delays**: More than 6 hours (360 minutes) of delay
-- **Journey completion**: 100% progress indicates the trip is complete  
-- **Age threshold**: Trains older than 12 hours from scheduled departure
-- **Past destination ETA**: The train was supposed to arrive at its destination in the past
-
-#### Cleanup Process
-1. When `_is_valid_for_live_activity()` returns false, the system checks if auto-cleanup is enabled
-2. The `_cleanup_stale_live_activity_tokens()` method:
-   - Logs detailed reasons for cleanup (audit trail)
-   - Queries affected tokens for debugging
-   - Deletes all Live Activity tokens for the train
-   - Updates metrics for monitoring
-   - Handles errors gracefully with database rollback
-
-#### Configuration
-- **Environment Variable**: `TRACKCAST_AUTO_CLEANUP_STALE_TOKENS` (default: "true")
-- **Logging**: Detailed reasons and affected token counts are logged
-- **Metrics**: Updates `LIVE_ACTIVITY_UPDATES_TOTAL` with label `alert_type="stale_token_cleanup"`
-
-### Benefits
-- **Self-healing**: System automatically cleans up problematic data without manual intervention
-- **Prevents recurrence**: Once cleaned, stale trains won't be processed again
-- **Reduces overhead**: Fewer unnecessary API calls and processing cycles
-- **Improves reliability**: Prevents frozen UI states in iOS app
-- **Audit trail**: Detailed logging for troubleshooting and monitoring
-
-### Example Log Output
-```
-🧹 Cleaning up Live Activity tokens for train 3847 due to: extreme delay (1440 minutes), train too old (48.5 hours)
-📱 Affected tokens: 2 active tokens
-  - Token: 6d8a9f2c1b3e... (activity: 4f7e2a9c8d1b...)
-  - Token: 9e3b7f1a4c2d... (activity: 8a1c3e7f9b2d...)
-✅ Successfully deleted 2 Live Activity tokens for train 3847
-```
-
-### Monitoring
-System administrators can monitor cleanup activity through:
-- Log analysis for cleanup frequency and reasons
-- Prometheus metrics for cleanup counts
-- Alerts when cleanup rate exceeds thresholds (may indicate upstream data issues)
-
-## Root Cause Fix: Departure Time Filtering
-
-### Overview
-In addition to the auto-cleanup defensive measure, the root cause of processing old trains has been fixed by changing the query logic to filter by `departure_time` instead of `updated_at`.
-
-### Changes Made
-
-#### 1. `get_unique_train_ids_with_live_activities()`
-**Before**: `query.filter(Train.updated_at >= since)`
-**After**: `query.filter(Train.departure_time >= since)`
-
-#### 2. `get_all_trains_for_train_id()`
-**Before**: `query.filter(Train.updated_at >= since)`  
-**After**: `query.filter(Train.departure_time >= since)`
-
-### Why This Fixes the Issue
-- **`updated_at`**: Changes whenever ANY field is modified (status updates, predictions, API queries)
-- **`departure_time`**: Remains constant and represents when the train actually departed
-- Old trains from days ago will no longer be selected just because their database record was recently touched
-
-### Defense in Depth
-The system now has two layers of protection:
-1. **Prevention**: Queries filter by departure time to avoid selecting old trains
-2. **Cleanup**: Auto-cleanup removes any stale tokens that slip through
-
-This ensures maximum reliability and prevents frozen Live Activities in the iOS app.

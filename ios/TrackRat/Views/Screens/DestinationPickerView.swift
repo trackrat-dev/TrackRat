@@ -13,9 +13,12 @@ struct DestinationPickerView: View {
         return results.filter { $0 != appState.selectedDeparture }
     }
     
-    private var filteredRecentDestinations: [String] {
-        // Filter out the current departure station from recent destinations
-        appState.recentDestinations.filter { $0 != appState.selectedDeparture }
+    
+    private var filteredPopularDestinations: [(name: String, code: String)] {
+        // Filter out popular destinations that are the same as departure station
+        Stations.popularDestinations.filter { destination in
+            destination.code != appState.departureStationCode
+        }
     }
     
     // Computed property for dynamic spacing
@@ -130,33 +133,40 @@ struct DestinationPickerView: View {
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     } else {
-                        // Recent destinations - only show when not searching
-                        if !filteredRecentDestinations.isEmpty {
+                        // Popular destinations - only show when not searching
+                        if !filteredPopularDestinations.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
-                                Text("RECENT DESTINATIONS")
+                                Text("POPULAR DESTINATIONS")
                                     .font(TrackRatTheme.Typography.caption)
                                     .fontWeight(.semibold)
                                     .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
                                     .padding(.horizontal)
                                 
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 12) {
-                                        ForEach(filteredRecentDestinations.sorted(), id: \.self) { destination in
-                                            RecentDestinationPill(
-                                                destination: destination,
-                                                onTap: {
-                                                    selectDestination(destination)
-                                                },
-                                                onRemove: {
-                                                    withAnimation {
-                                                        appState.removeDestination(destination)
-                                                    }
-                                                }
-                                            )
+                                VStack(spacing: 12) {
+                                    ForEach(filteredPopularDestinations, id: \.code) { destination in
+                                        Button {
+                                            selectDestination(destination.name)
+                                        } label: {
+                                            HStack {
+                                                Text(Stations.displayName(for: destination.name))
+                                                    .font(.headline)
+                                                    .foregroundColor(.white)
+                                                
+                                                Spacer()
+                                                
+                                                Image(systemName: "chevron.right")
+                                                    .foregroundColor(.white.opacity(0.7))
+                                                    .font(.caption)
+                                            }
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.horizontal, 20)
+                                            .padding(.vertical, 16)
+                                            .background(.white.opacity(0.2))
+                                            .cornerRadius(12)
                                         }
                                     }
-                                    .padding(.horizontal)
                                 }
+                                .padding(.horizontal, 24)
                             }
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
@@ -180,14 +190,13 @@ struct DestinationPickerView: View {
             }
         }
         .onAppear {
-            appState.loadRecentDestinations()
+            // Initialize any view state if needed
         }
     }
     
     private func selectDestination(_ destination: String) {
         appState.selectedDestination = destination
         appState.destinationStationCode = Stations.getStationCode(destination)
-        appState.saveDestination(destination)
         appState.navigationPath.append(NavigationDestination.trainList(destination: destination))
         
         // Reset search with animation
@@ -202,35 +211,6 @@ struct DestinationPickerView: View {
     }
 }
 
-// MARK: - Recent Destination Pill
-struct RecentDestinationPill: View {
-    let destination: String
-    let onTap: () -> Void
-    let onRemove: () -> Void
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(Stations.displayName(for: destination))
-                .font(.subheadline)
-                .foregroundColor(.white)
-            
-            Button {
-                onRemove()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.8))
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.white.opacity(0.2))
-        .cornerRadius(20)
-        .onTapGesture {
-            onTap()
-        }
-    }
-}
 
 #Preview {
     DestinationPickerView()

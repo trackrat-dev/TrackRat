@@ -787,16 +787,12 @@ class TrainConsolidationService:
                             if stop.scheduled_departure
                             else None
                         ),
-                        # Only set actual times if the stop has actually been departed
+                        # Set actual times regardless of departed status
                         "actual_arrival": (
-                            stop.actual_arrival.isoformat()
-                            if stop.actual_arrival and stop.departed
-                            else None
+                            stop.actual_arrival.isoformat() if stop.actual_arrival else None
                         ),
                         "actual_departure": (
-                            stop.actual_departure.isoformat()
-                            if stop.actual_departure and stop.departed
-                            else None
+                            stop.actual_departure.isoformat() if stop.actual_departure else None
                         ),
                         # Estimated arrival based on current delays
                         "estimated_arrival": (
@@ -914,8 +910,8 @@ class TrainConsolidationService:
                                 )
 
                     # Update actual arrival time using most recent train logic
-                    # Only update if the stop has actually been departed
-                    if stop.actual_arrival and stop.departed:
+                    # Update regardless of departed status
+                    if stop.actual_arrival:
                         existing_actual_arrival = stop_map[key].get("actual_arrival")
 
                         if not existing_actual_arrival:
@@ -929,8 +925,8 @@ class TrainConsolidationService:
                                 stop_map[key]["actual_arrival"] = stop.actual_arrival.isoformat()
 
                     # Update actual departure time using most recent train logic
-                    # Only update if the stop has actually been departed
-                    if stop.actual_departure and stop.departed:
+                    # Update regardless of departed status
+                    if stop.actual_departure:
                         existing_actual_departure = stop_map[key].get("actual_departure")
 
                         # If no existing actual departure time, use this one
@@ -965,17 +961,10 @@ class TrainConsolidationService:
                         if not stop_map[key].get("platform"):
                             stop_map[key]["platform"] = train.track
 
-        # Clean up internal tracking fields and validate actual times before returning
+        # Clean up internal tracking fields before returning
         for stop_data in stop_map.values():
-            # Final validation: ensure actual times are only set for departed stops
-            if not stop_data.get("departed"):
-                if stop_data.get("actual_arrival") or stop_data.get("actual_departure"):
-                    logger.warning(
-                        f"Clearing actual times for non-departed stop {stop_data.get('station_code')}"
-                    )
-                    stop_data["actual_arrival"] = None
-                    stop_data["actual_departure"] = None
-
+            # No longer clearing actual times for non-departed stops
+            # to match non-consolidated API behavior
             stop_data.pop("_departed_source_train", None)
             stop_data.pop("_departed_source_timestamp", None)
             stop_data.pop("_scheduled_departure_source_timestamp", None)
@@ -1249,21 +1238,43 @@ class TrainConsolidationService:
         # Set next arrival info
         if next_arrival_stop:
             idx, stop = next_arrival_stop
-            scheduled_arrival = stop.get("scheduled_arrival")
 
-            # Estimate arrival time based on delay pattern
-            estimated_time = scheduled_arrival
-            if (
+            # Priority order: actual_arrival > estimated_arrival > calculated > scheduled
+            nj_transit_prediction = stop.get("actual_arrival")  # NJ Transit's real-time prediction
+            api_estimate = stop.get("estimated_arrival")  # API-provided estimate
+            scheduled_arrival = stop.get("scheduled_arrival")  # Original schedule
+
+            # Use best available time data
+            if nj_transit_prediction:
+                # Use NJ Transit's real-time prediction (best data)
+                estimated_time = nj_transit_prediction
+                logger.debug(
+                    f"Using NJ Transit real-time prediction for {stop['station_code']}: {nj_transit_prediction}"
+                )
+            elif api_estimate:
+                # Use API-provided estimate
+                estimated_time = api_estimate
+                logger.debug(f"Using API estimate for {stop['station_code']}: {api_estimate}")
+            elif (
                 scheduled_arrival
                 and progress["last_departed"]
                 and progress["last_departed"]["delay_minutes"] > 0
             ):
-                # Apply the delay to the scheduled arrival time
+                # Calculate estimate from delay propagation
                 scheduled_dt = datetime.fromisoformat(scheduled_arrival)
                 estimated_dt = scheduled_dt + timedelta(
                     minutes=progress["last_departed"]["delay_minutes"]
                 )
                 estimated_time = estimated_dt.isoformat()
+                logger.debug(
+                    f"Using calculated estimate for {stop['station_code']}: {estimated_time}"
+                )
+            else:
+                # Last resort: scheduled time
+                estimated_time = scheduled_arrival
+                logger.debug(
+                    f"Using scheduled time for {stop['station_code']}: {scheduled_arrival}"
+                )
 
             # Calculate minutes to arrival
             minutes_away = 0

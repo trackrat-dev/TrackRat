@@ -52,7 +52,7 @@ def _process_push_notifications(session) -> None:
         train_repo = TrainRepository(session)
 
         # Get unique train IDs that have Live Activities (prevents duplicates)
-        recent_cutoff = datetime.utcnow() - timedelta(hours=6)
+        recent_cutoff = datetime.utcnow() - timedelta(hours=12)
         logger.debug(f"🔍 Querying unique train IDs with Live Activities since {recent_cutoff}")
         unique_train_ids = train_repo.get_unique_train_ids_with_live_activities(since=recent_cutoff)
 

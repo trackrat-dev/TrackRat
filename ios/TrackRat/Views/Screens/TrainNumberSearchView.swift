@@ -54,22 +54,27 @@ struct TrainNumberSearchView: View {
                     Button {
                         searchTrain()
                     } label: {
-                        if isLoading {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        } else {
-                            Text("Find my train")
-                                .fontWeight(.semibold)
+                        HStack {
+                            Spacer()
+                            if isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
+                                Text("Find my train")
+                                    .fontWeight(.semibold)
+                            }
+                            Spacer()
                         }
+                        .frame(height: 50)
+                        .frame(maxWidth: .infinity)
                     }
                     .font(.headline)
                     .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
                     .background(isValidInput ? Color.green : Color.gray)
                     .cornerRadius(12)
                     .padding(.horizontal)
                     .disabled(!isValidInput || isLoading)
+                    .contentShape(Rectangle())
                 }
                 
                 Spacer()

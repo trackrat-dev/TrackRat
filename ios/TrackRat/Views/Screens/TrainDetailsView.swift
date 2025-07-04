@@ -4,6 +4,7 @@ import Combine
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
+    @ObservedObject private var liveActivityService = LiveActivityService.shared
     // @State private var showingHistory = false // REMOVE THIS LINE
     
     let trainId: Int  // Keep for backwards compatibility
@@ -24,6 +25,10 @@ struct TrainDetailsView: View {
             fromStationCode: fromStation
         )
         self._viewModel = StateObject(wrappedValue: VModel)
+    }
+    
+    private var shouldShowHistoricalData: Bool {
+        StorageService().loadServerEnvironment().supportsHistoricalData
     }
     
     var body: some View {
@@ -55,6 +60,7 @@ struct TrainDetailsView: View {
                             journeyProgressPercentage: viewModel.journeyProgressPercentage,
                             journeyStopsCompleted: viewModel.journeyStopsCompleted,
                             journeyTotalStops: viewModel.journeyTotalStops,
+                            shouldShowHistoricalData: shouldShowHistoricalData,
                             onShowHistory: { viewModel.showingHistory = true }
                         )
                         .padding()
@@ -73,7 +79,19 @@ struct TrainDetailsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .trackRatNavigationBarStyle()
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if #available(iOS 16.1, *) {
+                    if let train = viewModel.train, train.statusV2?.current != "CANCELLED" {
+                        Button {
+                            toggleLiveActivity(for: train)
+                        } label: {
+                            Image(systemName: "eye.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(liveActivityService.isWatchingTrain(trainNumber: train.trainId) ? .orange : .white.opacity(0.7))
+                        }
+                    }
+                }
+                
                 Button("Close") {
                     appState.navigationPath.removeLast(appState.navigationPath.count)
                 }
@@ -86,21 +104,12 @@ struct TrainDetailsView: View {
             )
         }
         .onReceive(viewModel.timer) { _ in
-            // Only refresh if there's no active Live Activity to avoid dual timers
-            if #available(iOS 16.1, *), !LiveActivityService.shared.isActivityActive {
-                Task {
-                    await viewModel.refreshTrainDetails(
-                        fromStationCode: appState.departureStationCode,
-                        selectedDestinationName: appState.selectedDestination
-                    )
-                }
-            } else if #unavailable(iOS 16.1) {
-                Task {
-                    await viewModel.refreshTrainDetails(
-                        fromStationCode: appState.departureStationCode,
-                        selectedDestinationName: appState.selectedDestination
-                    )
-                }
+            // Always refresh when the view is visible
+            Task {
+                await viewModel.refreshTrainDetails(
+                    fromStationCode: appState.departureStationCode,
+                    selectedDestinationName: appState.selectedDestination
+                )
             }
         }
         .onChange(of: viewModel.triggerBoardingHaptic) { oldValue, newValue in
@@ -127,6 +136,31 @@ struct TrainDetailsView: View {
             }
         }
     }
+    
+    @available(iOS 16.1, *)
+    private func toggleLiveActivity(for train: Train) {
+        Task {
+            if liveActivityService.isWatchingTrain(trainNumber: train.trainId) {
+                // Stop the Live Activity
+                await liveActivityService.endCurrentActivity()
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } else {
+                // Start the Live Activity
+                do {
+                    try await liveActivityService.startTrackingTrain(
+                        train,
+                        from: appState.departureStationCode ?? "",
+                        to: Stations.getStationCode(appState.selectedDestination ?? "") ?? "",
+                        origin: appState.selectedDeparture ?? "",
+                        destination: appState.selectedDestination ?? ""
+                    )
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } catch {
+                    print("Failed to start Live Activity: \(error)")
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Combined Details Card
@@ -142,6 +176,7 @@ struct CombinedDetailsCard: View {
     let journeyProgressPercentage: Int
     let journeyStopsCompleted: Int
     let journeyTotalStops: Int
+    let shouldShowHistoricalData: Bool
     
     // Action closures
     let onShowHistory: () -> Void
@@ -203,8 +238,8 @@ struct CombinedDetailsCard: View {
     
     /// Enhanced logic to determine if track predictions should be shown
     private var shouldShowPredictions: Bool {
-        // Don't show if train is boarding or has departed
-        if train.isActuallyBoarding || train.hasDeparted {
+        // Don't show if train is boarding at origin or has departed
+        if isBoardingAtOrigin || train.hasDeparted {
             return false
         }
         
@@ -236,26 +271,67 @@ struct CombinedDetailsCard: View {
         return originStop?.departed ?? false
     }
     
+    /// Check if train is boarding specifically at the user's origin station (StatusV2 only)
+    private var isBoardingAtOrigin: Bool {
+        guard let statusV2 = train.statusV2,
+              let departureCode = appState.departureStationCode else {
+            return false
+        }
+        
+        // Only show boarding if the train is actually boarding
+        guard statusV2.current == "BOARDING" else {
+            return false
+        }
+        
+        // Check if the boarding is happening at the user's origin station
+        // Method 1: Check if StatusV2 source starts with user's station code
+        if statusV2.source.hasPrefix(departureCode) {
+            // Verify we have a track for this station
+            return train.getTrackForStation(departureCode) != nil
+        }
+        
+        // Method 2: Check if StatusV2 location mentions user's station
+        if let selectedDeparture = appState.selectedDeparture {
+            let userStationName = Stations.displayName(for: selectedDeparture)
+            if statusV2.location.lowercased().contains(userStationName.lowercased()) {
+                // Verify we have a track for this station
+                return train.getTrackForStation(departureCode) != nil
+            }
+        }
+        
+        // If StatusV2 indicates boarding elsewhere, don't show boarding status
+        return false
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Top section with status info
             VStack(spacing: 0) {
-                // Watch This Train section
-                if #available(iOS 16.1, *) {
-                    LiveActivityControls(
-                        train: train,
-                        origin: appState.selectedDeparture ?? "",
-                        destination: appState.selectedDestination ?? "",
-                        originCode: appState.departureStationCode ?? "",
-                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
-                    )
-                }
-                
                 // Enhanced Status Display with StatusV2 context
                 if train.statusV2 != nil {
                     VStack(spacing: 12) {
+                        // Show CANCELLED banner if train is cancelled
+                        if train.statusV2?.current == "CANCELLED" {
+                            VStack(spacing: 8) {
+                                Text("CANCELLED")
+                                    .font(.largeTitle)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                
+                                if let location = train.cancellationLocation {
+                                    Text("Service ended at \(location)")
+                                        .font(.headline)
+                                        .foregroundColor(.white.opacity(0.9))
+                                }
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.red.opacity(0.9))
+                            .cornerRadius(12)
+                            .padding(.top, 8)
+                        }
                         // Main status with boarding indication
-                        if train.isActuallyBoarding {
+                        else if isBoardingAtOrigin {
                             HStack {
                                 Image(systemName: "circle.fill")
                                     .foregroundColor(.white)
@@ -355,26 +431,28 @@ struct CombinedDetailsCard: View {
             .padding()
             
             // Historical Data section
-            Button {
-                onShowHistory()
-            } label: {
-                HStack {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundColor(.orange)
-                    Text("View Historical Data (beta)")
-                        .font(.subheadline)
-                        .foregroundColor(.black)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.black.opacity(0.6))
+            if shouldShowHistoricalData {
+                Button {
+                    onShowHistory()
+                } label: {
+                    HStack {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundColor(.orange)
+                        Text("View Historical Data (beta)")
+                            .font(.subheadline)
+                            .foregroundColor(.black)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.black.opacity(0.6))
+                    }
+                    .padding()
                 }
-                .padding()
+                .background(Color.clear)
+                .cornerRadius(8)
+                .padding(.horizontal)
+                .padding(.bottom)
             }
-            .background(Color.clear)
-            .cornerRadius(8)
-            .padding(.horizontal)
-            .padding(.bottom)
         }
         .background(Color.white.opacity(0.9))
         .cornerRadius(16)
@@ -683,6 +761,11 @@ struct StopRow: View {
     
     @State private var showPulse = false
     
+    // Helper to check if this stop is cancelled
+    private var isCancelled: Bool {
+        return stop.stopStatus == "CANCELLED"
+    }
+    
     // Helper to determine if this is the origin station (first stop) - check if it's pickup_only
     private var isOriginStation: Bool {
         return stop.pickupOnly == true || isDeparture
@@ -744,13 +827,18 @@ struct StopRow: View {
     }
     
     private var enhancedTimeDisplay: (arrival: String?, departure: String?, details: [String]) {
+        // For cancelled stops: Don't show any times
+        if isCancelled {
+            return (nil, nil, [])
+        }
+        
         let formatter = DateFormatter.easternTime(time: .short)
         
         // For departed stops: Show only "Departed X:XX PM" with delay indicator
         if stop.departed == true {
-            if let actualDeparture = stop.actualDeparture {
-                let delayText = departureDelayText(actual: actualDeparture, scheduled: stop.scheduledDeparture)
-                let departureText = "Departed: \(formatter.string(from: actualDeparture))" + (delayText.isEmpty ? "" : " (\(delayText))")
+            if let correctedDepartureTime = stop.departureTime {
+                let delayText = departureDelayText(actual: correctedDepartureTime, scheduled: stop.scheduledDeparture)
+                let departureText = "Departed: \(formatter.string(from: correctedDepartureTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (nil, departureText, [])
             } else if let scheduledDeparture = stop.scheduledDeparture {
                 return (nil, "Departed: \(formatter.string(from: scheduledDeparture))", [])
@@ -761,9 +849,9 @@ struct StopRow: View {
         
         // For origin station: Show only departure time
         if isOriginStation {
-            if let actualDeparture = stop.actualDeparture {
-                let delayText = departureDelayText(actual: actualDeparture, scheduled: stop.scheduledDeparture)
-                let departureText = "Departure: \(formatter.string(from: actualDeparture))" + (delayText.isEmpty ? "" : " (\(delayText))")
+            if let correctedDepartureTime = stop.departureTime {
+                let delayText = departureDelayText(actual: correctedDepartureTime, scheduled: stop.scheduledDeparture)
+                let departureText = "Departure: \(formatter.string(from: correctedDepartureTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (nil, departureText, [])
             } else if let scheduledDeparture = stop.scheduledDeparture {
                 return (nil, "Departure: \(formatter.string(from: scheduledDeparture))", [])
@@ -808,10 +896,10 @@ struct StopRow: View {
         let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
         if delayMinutes > 0 {
             return "+\(delayMinutes)m delay"
-        } else if delayMinutes < 0 {
-            return "-\(abs(delayMinutes))m early"
+        } else if delayMinutes < -1 {
+            return "\(abs(delayMinutes))m early"
         }
-        return "" // Don't show anything for on-time
+        return "" // Don't show anything for on-time or 1 minute early
     }
     
     private func departureDelayText(actual: Date, scheduled: Date?) -> String {
@@ -819,10 +907,10 @@ struct StopRow: View {
         let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
         if delayMinutes > 0 {
             return "+\(delayMinutes)m delay"
-        } else if delayMinutes < 0 {
-            return "-\(abs(delayMinutes))m early"
+        } else if delayMinutes < -1 {
+            return "\(abs(delayMinutes))m early"
         }
-        return "" // Don't show anything for on-time
+        return "" // Don't show anything for on-time or 1 minute early
     }
     
     var body: some View {
@@ -844,6 +932,10 @@ struct StopRow: View {
                         .fontWeight((isDestination || isDeparture) ? .semibold : .regular)
                         .foregroundColor(textColor)
                     
+                    if isCancelled {
+                        Text("🚫")
+                            .font(.subheadline)
+                    }
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
@@ -872,24 +964,28 @@ struct StopRow: View {
     }
     
     private var stopColor: Color {
+        if isCancelled { return .gray }
         if isNextImportantStation { return .orange }
         if stop.departed ?? false { return .gray }
         return .blue
     }
     
     private var textColor: Color {
+        if isCancelled { return .gray }
         if isNextImportantStation { return .orange }
         if stop.departed ?? false { return .gray }
         return .black
     }
     
     private var timeColor: Color {
+        if isCancelled { return .gray }
         if isNextImportantStation { return .orange }
         if stop.departed ?? false { return .gray }
         return .black.opacity(0.6)
     }
     
     private var backgroundColor: Color {
+        if isCancelled { return .clear }
         if isNextImportantStation { return .orange.opacity(0.1) }
         return .clear
     }

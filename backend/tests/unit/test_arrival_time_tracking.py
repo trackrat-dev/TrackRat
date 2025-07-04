@@ -133,6 +133,59 @@ class TestTrainStopUpdater:
         
         # Verify repository was called
         stop_repo.update.assert_called_once_with(existing_stop)
+    
+    @patch('trackcast.services.train_stop_updater.logger')
+    def test_process_stop_updates_future_stop_with_estimated_departure(self, mock_logger):
+        """Test that future stops without DEP_TIME get estimated departure times."""
+        # Mock repository
+        stop_repo = Mock()
+        train_repo = Mock()
+        
+        # Create test stop for future station
+        existing_stop = TrainStop(
+            train_id="1234",
+            train_departure_time=datetime(2024, 5, 30, 10, 0),
+            station_name="Secaucus Upper Lvl",
+            data_source="njtransit",
+            scheduled_arrival=datetime(2024, 5, 30, 11, 20),
+            departed=False
+        )
+        
+        stop_repo.get_stop_by_train_and_station.return_value = existing_stop
+        stop_repo.update.return_value = existing_stop
+        
+        # Create updater
+        updater = TrainStopUpdater(train_repo, stop_repo)
+        
+        # Test data from API for future stop (has TIME but no DEP_TIME)
+        train = Train(
+            train_id="1234",
+            departure_time=datetime(2024, 5, 30, 10, 0),
+            data_source="njtransit"
+        )
+        
+        stops_data = [
+            {
+                "STATIONNAME": "Secaucus Upper Lvl",
+                "TIME": "30-May-2024 11:25:30 AM",  # Updated arrival time due to delays
+                # No DEP_TIME for future stop
+                "DEPARTED": "NO",
+                "STOP_STATUS": "Late"
+            }
+        ]
+        
+        # Process updates
+        is_complete = updater._process_stop_updates(train, stops_data)
+        
+        # Verify the stop was updated with estimated departure
+        assert existing_stop.actual_arrival == datetime(2024, 5, 30, 11, 25, 30)
+        assert existing_stop.actual_departure == datetime(2024, 5, 30, 11, 26, 30)  # arrival + 1 min
+        assert existing_stop.departed is False
+        assert existing_stop.stop_status == "Late"
+        assert is_complete is False  # Journey not complete since this stop hasn't departed
+        
+        # Verify repository was called
+        stop_repo.update.assert_called_once_with(existing_stop)
 
 
 class TestJourneyValidator:

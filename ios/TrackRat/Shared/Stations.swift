@@ -252,11 +252,16 @@ struct Stations {
     // Supported departure stations
     static let departureStations: [(name: String, code: String)] = [
         ("New York Penn Station", "NY"),
-        ("Newark Penn Station", "NP"),
         ("Metropark", "MP"),
         ("Princeton Junction", "PJ"),
+        ("Hamilton", "HL"),
         ("Trenton", "TR")
     ]
+    
+    // Popular destination stations - kept in sync with departure stations
+    static var popularDestinations: [(name: String, code: String)] {
+        return departureStations
+    }
     
     static func search(_ query: String) -> [String] {
         guard !query.isEmpty else { return [] }

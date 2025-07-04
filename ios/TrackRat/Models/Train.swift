@@ -245,7 +245,19 @@ struct Stop: Identifiable, Codable {
     
     // Legacy computed properties for backward compatibility
     var scheduledTime: Date? { scheduledArrival }
-    var departureTime: Date? { actualDeparture ?? scheduledDeparture }
+    var departureTime: Date? { 
+        let baseDeparture = actualDeparture ?? scheduledDeparture
+        let baseArrival = actualArrival ?? scheduledArrival
+        
+        // Temporal consistency check: departure must be >= arrival
+        if let departure = baseDeparture,
+           let arrival = baseArrival,
+           departure < arrival {
+            return arrival.addingTimeInterval(60) // 1 minute minimum dwell
+        }
+        
+        return baseDeparture
+    }
     
     enum CodingKeys: String, CodingKey {
         case stationCode = "station_code"
@@ -721,6 +733,163 @@ extension Train {
     /// Get estimated speed if available
     var estimatedSpeed: Double? {
         return currentPosition?.estimatedSpeedMph
+    }
+    
+    /// Get the scheduled departure time from a specific origin station
+    func getScheduledDepartureTime(fromStationCode: String) -> Date {
+        // Find the stop that matches our departure station using robust matching
+        if let stops = stops,
+           let originStop = stops.first(where: { stop in
+               Stations.stationMatches(stop, stationCode: fromStationCode)
+           }),
+           let scheduledDeparture = originStop.scheduledDeparture {
+            return scheduledDeparture
+        }
+        
+        // Fall back to the train's overall departure time
+        return departureTime
+    }
+    
+    /// Get formatted scheduled departure time from a specific origin station
+    func getFormattedScheduledDepartureTime(fromStationCode: String) -> String {
+        let time = getScheduledDepartureTime(fromStationCode: fromStationCode)
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: time)
+    }
+    
+    /// Get departure delay in minutes for a specific origin station
+    func getDepartureDelay(fromStationCode: String) -> Int? {
+        guard let stops = stops,
+              let originStop = stops.first(where: { stop in
+                  Stations.stationMatches(stop, stationCode: fromStationCode)
+              }) else {
+            return nil
+        }
+        
+        // Check if we have actual and scheduled departure times
+        if let actualDep = originStop.actualDeparture,
+           let scheduledDep = originStop.scheduledDeparture {
+            
+            // Check for stale departure data: if arrival is significantly later than departure
+            // at the same station, it indicates departure time wasn't updated
+            if let actualArr = originStop.actualArrival,
+               actualArr.timeIntervalSince(actualDep) > 300 { // More than 5 minutes difference
+                // Use arrival time vs scheduled departure for more accurate delay
+                let arrivalDelaySeconds = actualArr.timeIntervalSince(scheduledDep)
+                let arrivalDelayMinutes = Int(arrivalDelaySeconds / 60)
+                
+                // Also check traditional arrival delay as fallback
+                if let scheduledArr = originStop.scheduledArrival {
+                    let traditionalArrivalDelay = Int(actualArr.timeIntervalSince(scheduledArr) / 60)
+                    // Use whichever shows a delay (prefer the larger positive delay)
+                    if arrivalDelayMinutes > 0 && arrivalDelayMinutes > traditionalArrivalDelay {
+                        return arrivalDelayMinutes
+                    } else if traditionalArrivalDelay > 0 {
+                        return traditionalArrivalDelay
+                    }
+                }
+                
+                return max(0, arrivalDelayMinutes)
+            }
+            
+            // Normal case: calculate departure delay
+            let delaySeconds = actualDep.timeIntervalSince(scheduledDep)
+            let delayMinutes = Int(delaySeconds / 60)
+            
+            // If departure delay is 0 but we have arrival delay, use arrival delay
+            if delayMinutes == 0,
+               let actualArr = originStop.actualArrival,
+               let scheduledArr = originStop.scheduledArrival {
+                let arrivalDelaySeconds = actualArr.timeIntervalSince(scheduledArr)
+                let arrivalDelayMinutes = Int(arrivalDelaySeconds / 60)
+                if arrivalDelayMinutes > 0 {
+                    return arrivalDelayMinutes
+                }
+            }
+            
+            return delayMinutes
+        }
+        
+        return nil
+    }
+    
+    /// Get the scheduled arrival time for a specific destination
+    func getScheduledArrivalTime(toStationName: String) -> Date? {
+        // Find the stop that matches the destination
+        guard let stops = stops,
+              let destStop = stops.first(where: { 
+                  $0.stationName.lowercased().contains(toStationName.lowercased()) 
+              }),
+              let scheduledArrival = destStop.scheduledArrival else {
+            return nil
+        }
+        
+        return scheduledArrival
+    }
+    
+    /// Get formatted scheduled arrival time for a specific destination
+    func getFormattedScheduledArrivalTime(toStationName: String) -> String {
+        guard let time = getScheduledArrivalTime(toStationName: toStationName) else {
+            return "—"
+        }
+        
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: time)
+    }
+    
+    /// Get arrival delay in minutes for a specific destination
+    func getArrivalDelay(toStationName: String) -> Int? {
+        guard let stops = stops,
+              let destStop = stops.first(where: { 
+                  $0.stationName.lowercased().contains(toStationName.lowercased()) 
+              }) else {
+            return nil
+        }
+        
+        // Calculate delay between actual and scheduled arrival
+        if let actualArr = destStop.actualArrival,
+           let scheduledArr = destStop.scheduledArrival {
+            let delaySeconds = actualArr.timeIntervalSince(scheduledArr)
+            return Int(delaySeconds / 60)
+        }
+        
+        return nil
+    }
+    
+    /// Find the last departed stop for cancelled trains
+    func getLastDepartedStop() -> Stop? {
+        guard let stops = stops else { return nil }
+        
+        // Find the last stop that departed
+        return stops.reversed().first { stop in
+            stop.departed == true
+        }
+    }
+    
+    /// Get cancellation location description
+    var cancellationLocation: String? {
+        // Check if train is actually cancelled
+        guard statusV2?.current == "CANCELLED" else { return nil }
+        
+        // Try to get location from statusV2
+        if let location = statusV2?.location, !location.isEmpty {
+            // Extract station name from location string like "at Newark Penn Station"
+            if location.contains("at ") {
+                return location.replacingOccurrences(of: "at ", with: "")
+            }
+            return location
+        }
+        
+        // Otherwise find last departed stop
+        if let lastStop = getLastDepartedStop() {
+            return lastStop.stationName
+        }
+        
+        return nil
     }
 }
 
