@@ -17,7 +17,7 @@ struct TrackRatApp: App {
         WindowGroup {
             ZStack {
                 if showLaunchScreen {
-                    LaunchScreenView {
+                    VideoSplashScreenView {
                         withAnimation(.easeInOut(duration: 0.5)) {
                             showLaunchScreen = false
                         }

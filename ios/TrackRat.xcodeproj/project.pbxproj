@@ -31,6 +31,12 @@
 		A16D6EF12E1703C7008C6996 /* rat-train-icon@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */; };
 		A16D6EF22E1703C7008C6996 /* Contents.json in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE72E1703C7008C6996 /* Contents.json */; };
 		A16D6EF32E1703C7008C6996 /* rat-train-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE82E1703C7008C6996 /* rat-train-icon.png */; };
+		A17B9F392E17FD0A00B370A6 /* RatRaceLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F362E17FD0A00B370A6 /* RatRaceLoadingView.swift */; };
+		A17B9F3A2E17FD0A00B370A6 /* VideoPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F382E17FD0A00B370A6 /* VideoPlayerView.swift */; };
+		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
+		A17B9F3F2E17FD5F00B370A6 /* VideoSplashScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F3E2E17FD5F00B370A6 /* VideoSplashScreenView.swift */; };
+		A17B9F412E17FE2F00B370A6 /* intro_animation.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A17B9F402E17FE2F00B370A6 /* intro_animation.mp4 */; };
+		A17B9F432E17FF2300B370A6 /* intro_animation.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A17B9F422E17FF2300B370A6 /* intro_animation.mp4 */; };
 		A18E54362DEB88C900AB2B74 /* Train+LiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54352DEB88C900AB2B74 /* Train+LiveActivity.swift */; };
 		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
@@ -119,6 +125,12 @@
 		A16D6EE82E1703C7008C6996 /* rat-train-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon.png"; sourceTree = "<group>"; };
 		A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon@2x.png"; sourceTree = "<group>"; };
 		A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon@3x.png"; sourceTree = "<group>"; };
+		A17B9F362E17FD0A00B370A6 /* RatRaceLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RatRaceLoadingView.swift; path = Views/Components/RatRaceLoadingView.swift; sourceTree = "<group>"; };
+		A17B9F372E17FD0A00B370A6 /* StationButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationButton.swift; path = Views/Components/StationButton.swift; sourceTree = "<group>"; };
+		A17B9F382E17FD0A00B370A6 /* VideoPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VideoPlayerView.swift; path = Views/Components/VideoPlayerView.swift; sourceTree = "<group>"; };
+		A17B9F3E2E17FD5F00B370A6 /* VideoSplashScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VideoSplashScreenView.swift; path = TrackRat/Views/LaunchScreen/VideoSplashScreenView.swift; sourceTree = "<group>"; };
+		A17B9F402E17FE2F00B370A6 /* intro_animation.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro_animation.mp4; sourceTree = "<group>"; };
+		A17B9F422E17FF2300B370A6 /* intro_animation.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro_animation.mp4; sourceTree = "<group>"; };
 		A18E54352DEB88C900AB2B74 /* Train+LiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Train+LiveActivity.swift"; path = "Models/Train+LiveActivity.swift"; sourceTree = "<group>"; };
 		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
@@ -182,6 +194,7 @@
 		1A1A1A1A1A1A1A1A1A1A1A07 = {
 			isa = PBXGroup;
 			children = (
+				A17B9F3E2E17FD5F00B370A6 /* VideoSplashScreenView.swift */,
 				1A1A1A1A1A1A1A1A1A1A1A12 /* TrackRat */,
 				A1BA60DC2DFC73650002FB39 /* TrackRatTests */,
 				A1WIDGET232DFC73650002FB39 /* TrainLiveActivityExtension */,
@@ -204,6 +217,10 @@
 		1A1A1A1A1A1A1A1A1A1A1A12 /* TrackRat */ = {
 			isa = PBXGroup;
 			children = (
+				A17B9F402E17FE2F00B370A6 /* intro_animation.mp4 */,
+				A17B9F362E17FD0A00B370A6 /* RatRaceLoadingView.swift */,
+				A17B9F372E17FD0A00B370A6 /* StationButton.swift */,
+				A17B9F382E17FD0A00B370A6 /* VideoPlayerView.swift */,
 				A1SHARED012E106D1B003DA39F /* Shared */,
 				A10E97F32DE39EDD002F3214 /* Train.swift */,
 				A10E97EE2DE39EC1002F3214 /* ContentView.swift */,
@@ -227,6 +244,7 @@
 				A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */,
 				1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */,
 				1A1A1A1A1A1A1A1A1A1A1A20 /* TrackRat.entitlements */,
+				A17B9F422E17FF2300B370A6 /* intro_animation.mp4 */,
 			);
 			path = TrackRat;
 			sourceTree = "<group>";
@@ -436,11 +454,13 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A17B9F432E17FF2300B370A6 /* intro_animation.mp4 in Resources */,
 				1A1A1A1A1A1A1A1A1A1A1A1E /* Assets.xcassets in Resources */,
 				A16D6EF02E1703C7008C6996 /* rat-train-icon@2x.png in Resources */,
 				A16D6EF12E1703C7008C6996 /* rat-train-icon@3x.png in Resources */,
 				A16D6EF22E1703C7008C6996 /* Contents.json in Resources */,
 				A16D6EF32E1703C7008C6996 /* rat-train-icon.png in Resources */,
+				A17B9F412E17FE2F00B370A6 /* intro_animation.mp4 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -477,11 +497,15 @@
 				A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */,
 				A10E97F52DE39EDD002F3214 /* Train.swift in Sources */,
 				A10E97F02DE39EC1002F3214 /* TrackRatApp.swift in Sources */,
+				A17B9F3F2E17FD5F00B370A6 /* VideoSplashScreenView.swift in Sources */,
 				A10E97F82DE39EF9002F3214 /* StorageService.swift in Sources */,
 				A10E98012DE39F23002F3214 /* TrainNumberSearchView.swift in Sources */,
 				A10E98022DE39F23002F3214 /* DestinationPickerView.swift in Sources */,
 				A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */,
 				A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */,
+				A17B9F392E17FD0A00B370A6 /* RatRaceLoadingView.swift in Sources */,
+				A17B9F3A2E17FD0A00B370A6 /* VideoPlayerView.swift in Sources */,
+				A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */,
 				A1AD0D092E106D1B003DA39F /* Stations.swift in Sources */,
 				A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */,
 				A10E97F92DE39EF9002F3214 /* APIService.swift in Sources */,
