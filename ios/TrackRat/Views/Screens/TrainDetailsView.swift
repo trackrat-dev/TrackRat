@@ -670,8 +670,8 @@ struct TrackRatPredictionView: View {
         let platformProbs = PredictionData.groupTracksByPlatform(probs)
         
         return platformProbs.sorted { $0.value > $1.value }
-            .filter { $0.value > 0.05 }
-            .prefix(5)
+            .filter { $0.value > 0.03 }
+            .prefix(10)
             .map { ($0.key, $0.value) }
     }
     
@@ -680,11 +680,11 @@ struct TrackRatPredictionView: View {
             // Probability bars only
             ForEach(topTracks, id: \.0) { track, probability in
                 HStack {
-                    Text("Platform \(track)")
+                    Text("Tracks \(track)")
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundColor(.black)
-                        .frame(width: 80, alignment: .leading)
+                        .frame(width: 110, alignment: .leading)
                     
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {

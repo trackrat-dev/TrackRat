@@ -127,13 +127,13 @@ struct TrackRatPredictionInfo: Codable, Hashable {
         }
         
         if confidence >= 0.8 {
-            return "🐀 TrackRat predicts platform \(topTrack)"
+            return "🐀 TrackRat predicts tracks \(topTrack)"
         } else if confidence >= 0.5 {
-            return "🤔 TrackRat thinks it may be platform \(topTrack)"
+            return "🤔 TrackRat thinks it may be tracks \(topTrack)"
         } else {
             let validTracks = ([topTrack] + alternativeTracks.prefix(2)).filter { !$0.isEmpty }
             let tracksText = validTracks.isEmpty ? "unknown" : validTracks.joined(separator: ", ")
-            return "🤷 TrackRat guesses platforms \(tracksText)"
+            return "🤷 TrackRat guesses tracks \(tracksText)"
         }
     }
 }
