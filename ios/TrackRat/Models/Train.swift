@@ -325,6 +325,35 @@ struct PredictionData: Codable {
     enum CodingKeys: String, CodingKey {
         case trackProbabilities = "track_probabilities"
     }
+    
+    /// Groups individual track probabilities by shared platforms
+    /// Platforms that share the same physical location are combined
+    static func groupTracksByPlatform(_ trackProbabilities: [String: Double]) -> [String: Double] {
+        let platformGroups = [
+            "1 & 2": ["1", "2"],
+            "3 & 4": ["3", "4"],
+            "5 & 6": ["5", "6"],
+            "7 & 8": ["7", "8"],
+            "9 & 10": ["9", "10"],
+            "11 & 12": ["11", "12"],
+            "13 & 14": ["13", "14"],
+            "15 & 16": ["15", "16"],
+            "17": ["17"],
+            "18 & 19": ["18", "19"],
+            "20 & 21": ["20", "21"]
+        ]
+        
+        var platformProbabilities: [String: Double] = [:]
+        
+        for (platformName, tracks) in platformGroups {
+            let totalProbability = tracks.compactMap { trackProbabilities[$0] }.reduce(0, +)
+            if totalProbability > 0 {
+                platformProbabilities[platformName] = totalProbability
+            }
+        }
+        
+        return platformProbabilities
+    }
 }
 
 // MARK: - Consolidated Data Structures

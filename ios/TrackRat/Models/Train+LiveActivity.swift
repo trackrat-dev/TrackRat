@@ -168,15 +168,18 @@ extension Train {
               let trackProbs = predictionData.trackProbabilities,
               !trackProbs.isEmpty else { return nil }
         
-        // Sort tracks by probability
-        let sortedTracks = trackProbs.sorted { $0.value > $1.value }
-        guard let topTrack = sortedTracks.first else { return nil }
+        // Group by platform instead of individual tracks
+        let platformProbs = PredictionData.groupTracksByPlatform(trackProbs)
         
-        let alternatives = sortedTracks.dropFirst().prefix(2).map { $0.key }
+        // Sort platforms by probability
+        let sortedPlatforms = platformProbs.sorted { $0.value > $1.value }
+        guard let topPlatform = sortedPlatforms.first else { return nil }
+        
+        let alternatives = sortedPlatforms.dropFirst().prefix(2).map { $0.key }
         
         return TrackRatPredictionInfo(
-            topTrack: topTrack.key,
-            confidence: topTrack.value,
+            topTrack: topPlatform.key,
+            confidence: topPlatform.value,
             alternativeTracks: Array(alternatives)
         )
     }

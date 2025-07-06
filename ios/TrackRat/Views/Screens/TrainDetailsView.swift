@@ -666,7 +666,10 @@ struct TrackRatPredictionView: View {
             return []
         }
         
-        return probs.sorted { $0.value > $1.value }
+        // Group by platform instead of individual tracks
+        let platformProbs = PredictionData.groupTracksByPlatform(probs)
+        
+        return platformProbs.sorted { $0.value > $1.value }
             .filter { $0.value > 0.05 }
             .prefix(5)
             .map { ($0.key, $0.value) }
@@ -677,7 +680,7 @@ struct TrackRatPredictionView: View {
             // Probability bars only
             ForEach(topTracks, id: \.0) { track, probability in
                 HStack {
-                    Text("Track \(track)")
+                    Text("Platform \(track)")
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundColor(.black)
