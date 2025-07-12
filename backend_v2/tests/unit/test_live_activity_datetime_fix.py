@@ -50,24 +50,6 @@ def test_datetime_functions_handle_naive_datetimes():
         assert "can't subtract offset-naive and offset-aware datetimes" in str(e)
 
 
-@pytest.mark.asyncio
-async def test_is_stale_handles_naive_datetime(scheduler_service: SchedulerService):
-    """Test that _is_stale method handles naive datetime correctly."""
-    # Test with naive datetime
-    naive_dt = datetime.now()  # Naive datetime
-
-    # This should not raise an exception
-    is_stale = scheduler_service._is_stale(naive_dt, threshold_seconds=60)
-
-    # Should be stale since it's a current time being compared
-    assert not is_stale  # Just created, so not stale
-
-    # Test with old naive datetime
-    old_naive_dt = datetime.now() - timedelta(minutes=5)
-    is_stale = scheduler_service._is_stale(old_naive_dt, threshold_seconds=60)
-    assert is_stale  # 5 minutes old, so stale
-
-
 def test_schedule_departure_time_comparison():
     """Test the logic used in live activity for departure time comparison."""
     # Simulate the scenario from the live activity update

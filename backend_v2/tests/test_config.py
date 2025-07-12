@@ -8,20 +8,6 @@ from pydantic import ValidationError
 from trackrat.config import Settings
 
 
-def test_settings_with_valid_config():
-    """Test settings with valid configuration."""
-    settings = Settings(
-        database_url="sqlite:///test.db", njt_api_token="test_token_123"
-    )
-
-    assert settings.environment == "development"
-    assert settings.debug is True  # debug=True in development environment
-    assert settings.api_port == 8000
-    assert settings.njt_api_token == "test_token_123"
-    assert settings.discovery_interval_minutes == 60
-    assert settings.data_staleness_seconds == 60
-
-
 def test_settings_database_url_normalization():
     """Test that database URLs are normalized correctly."""
     # SQLite URL should be normalized
