@@ -31,7 +31,7 @@ variable "cpu_limit" {
 }
 
 variable "memory_limit" {
-  description = "Memory limit for the container (e.g., '512Mi', '1Gi') - hardcoded to 512Mi for SQLite backend"
+  description = "Memory limit for the container (e.g., '512Mi', '1Gi')"
   type        = string
   default     = "512Mi"
 }
@@ -43,13 +43,13 @@ variable "concurrency" {
 }
 
 variable "min_instances" {
-  description = "Minimum number of instances - hardcoded to 1 for SQLite backend"
+  description = "Minimum number of instances"
   type        = number
   default     = 1
 }
 
 variable "max_instances" {
-  description = "Maximum number of instances - hardcoded to 1 for SQLite backend"
+  description = "Maximum number of instances"
   type        = number
   default     = 1
 }

@@ -32,11 +32,17 @@ resource "google_cloud_run_v2_service" "default" {
 
   template {
     scaling {
-      min_instance_count = 1
-      max_instance_count = 1
+      min_instance_count = var.min_instances
+      max_instance_count = var.max_instances
     }
 
-    # VPC access removed - not needed with SQLite backend
+    dynamic "vpc_access" {
+      for_each = var.vpc_connector_id != null ? [1] : []
+      content {
+        connector = var.vpc_connector_id
+        egress    = "PRIVATE_RANGES_ONLY"
+      }
+    }
 
     timeout                          = "${var.request_timeout_seconds}s"
     service_account                  = local.effective_service_account_email
@@ -70,7 +76,7 @@ resource "google_cloud_run_v2_service" "default" {
       resources {
         limits = {
           cpu    = var.cpu_limit
-          memory = "512Mi"
+          memory = var.memory_limit
         }
         startup_cpu_boost = true # Enable CPU boost at startup
       }
