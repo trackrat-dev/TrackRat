@@ -70,13 +70,12 @@ struct TrainActivityAttributes: ActivityAttributes {
         /// Display text for compact leading area
         var compactLeadingText: String {
             if hasTrainDeparted {
-                return " Arriving"
-
+                return "Arriving in"
             } else if trackDisplay != nil {
-                return " Boarding"
+                return "Boarding on"
             }
             else {
-                return " Departing"
+                return "Departing in"
             }
         }
         
@@ -90,7 +89,7 @@ struct TrainActivityAttributes: ActivityAttributes {
                 return trackDisplay!
             } else {
                 if let minutes = minutesUntilDeparture {
-                    return "~\(minutes) min"
+                    return minutes >= 0 ? "~\(minutes) min" : "Overdue"
                 }
             }
             return ""
