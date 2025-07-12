@@ -83,21 +83,12 @@ jobs:
           echo "📦 Installing dependencies with Poetry..."
           poetry install --no-interaction --no-ansi
 
-      - name: Run backend code quality checks
+      - name: Run backend tests and checks
         working-directory: ./backend_v2
         run: |
-          echo "🎨 Checking code formatting..."
-          poetry run black --check src/ tests/
-          echo "🔍 Running type checks..."
-          poetry run mypy src/
-          echo "🔍 Running linting checks..."
-          poetry run ruff check src/
-
-      - name: Run backend tests
-        working-directory: ./backend_v2
-        run: |
-          echo "🧪 Running tests..."
-          poetry run pytest tests/ -v --tb=short
+          echo "🧪 Running tests and code quality checks..."
+          chmod +x run_tests.sh
+          ./run_tests.sh
 
       - name: Clean up Python environment
         working-directory: ./backend_v2
