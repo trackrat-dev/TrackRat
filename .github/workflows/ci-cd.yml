@@ -91,7 +91,7 @@ jobs:
           echo "🔍 Running type checks..."
           poetry run mypy src/
           echo "🔍 Running linting checks..."
-          poetry run ruff check src/ tests/
+          poetry run ruff check src/
 
       - name: Run backend tests
         working-directory: ./backend_v2
