@@ -48,18 +48,6 @@ output "trackrat_api_custom_domain_mapping_status" {
   value       = module.trackrat_api_service.custom_domain_mapping_status
 }
 
-output "scheduler_job_names" {
-  description = "Names of the Cloud Scheduler jobs in production"
-  value       = [for job in google_cloud_scheduler_job.operations : job.name]
-}
-
-output "scheduler_service_account_email" {
-  description = "Email of the service account used by scheduler jobs"
-  value       = google_service_account.scheduler_sa.email
-}
-
-# Database outputs removed - using SQLite in backend_v2
-
 output "app_secrets_name" {
   description = "Name of the main application secrets"
   value       = "trackrat-prod-secrets"

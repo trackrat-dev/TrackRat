@@ -136,7 +136,6 @@ test_structure() {
         "modules/secrets"
         "modules/artifact-registry"
         "modules/apis"
-        "environments/dev"
         "environments/staging"
         "environments/prod"
     )
