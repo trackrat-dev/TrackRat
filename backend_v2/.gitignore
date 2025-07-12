@@ -23,7 +23,6 @@ share/python-wheels/
 MANIFEST
 
 # Virtual Environment
-.env
 venv/
 ENV/
 env/
@@ -57,8 +56,6 @@ coverage.xml
 *.sqlite3
 
 # Environment files
-.env
-.env.*
 !.env.example
 
 # Alembic
