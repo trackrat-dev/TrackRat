@@ -4,30 +4,119 @@ import ActivityKit
 // MARK: - Live Activity Attributes
 struct TrainActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
-        // Core train info (StatusV2 only)
-        let statusV2: String  // StatusV2.current value
-        let statusLocation: String?  // StatusV2.location value
+        // Simplified fields matching backend exactly
+        let status: String
         let track: String?
-        let delayMinutes: Int?
-        
-        // Journey progress
-        let currentLocation: CurrentLocation
-        let nextStop: NextStopInfo?
+        let currentStopName: String
+        let nextStopName: String?
+        let delayMinutes: Int
         let journeyProgress: Double
-        let destinationETA: Date?
+        let dataTimestamp: TimeInterval  // Unix timestamp for data freshness
         
-        // TrackRat predictions
-        let trackRatPrediction: TrackRatPredictionInfo?
+        // Additional fields for enhanced time display - using String to handle APNS JSON decoding
+        let scheduledDepartureTime: String?
+        let scheduledArrivalTime: String?
+        let nextStopArrivalTime: String?
+        let hasTrainDeparted: Bool
         
-        // Metadata
-        let lastUpdated: Date
-        let hasStatusChanged: Bool
+        // Computed property for data freshness
+        var freshnessText: String {
+            let now = Date().timeIntervalSince1970
+            let secondsAgo = Int(now - dataTimestamp)
+            
+            if secondsAgo < 60 {
+                return "\(secondsAgo) sec ago"
+            } else {
+                let minutesAgo = secondsAgo / 60
+                return "\(minutesAgo) min ago"
+            }
+        }
         
-        // Enhanced alert metadata for Dynamic Island prominence
-        let alertMetadata: AlertMetadata?
-        let dynamicIslandPriority: String?
-        let requiresHapticFeedback: Bool?
-        let pushTimestamp: TimeInterval?
+        // Check if data is stale (older than 3 minutes)
+        var isDataStale: Bool {
+            let now = Date().timeIntervalSince1970
+            return (now - dataTimestamp) > 180  // 3 minutes
+        }
+        
+        // MARK: - New Computed Properties for Time-Based Display
+        
+        /// Minutes until train departs from user's origin station
+        var minutesUntilDeparture: Int? {
+            guard !hasTrainDeparted,
+                  let departureTimeString = scheduledDepartureTime,
+                  let departureTime = Date.fromISO8601(departureTimeString) else { return nil }
+            
+            let now = Date()
+            let interval = departureTime.timeIntervalSince(now)
+            
+            // If departure is in the past, return nil
+            if interval < 0 { return nil }
+            
+            return Int(interval / 60)
+        }
+        
+        /// Minutes until train arrives at user's destination station
+        var minutesUntilArrival: Int? {
+            guard let arrivalTimeString = scheduledArrivalTime,
+                  let arrivalTime = Date.fromISO8601(arrivalTimeString) else { return nil }
+            
+            let now = Date()
+            let interval = arrivalTime.timeIntervalSince(now)
+            
+            // Can be negative if arrival is overdue
+            return Int(interval / 60)
+        }
+        
+        /// Display text for compact leading area
+        var compactLeadingText: String {
+            if hasTrainDeparted {
+                return " Arriving"
+
+            } else if trackDisplay != nil {
+                return " Boarding"
+            }
+            else {
+                return " Departing"
+            }
+        }
+        
+        /// Display text for compact trailing area
+        var compactTrailingText: String {
+            if hasTrainDeparted {
+                if let minutes = minutesUntilArrival {
+                    return minutes >= 0 ? "~\(minutes) min" : "Overdue"
+                }
+            } else if trackDisplay != nil {
+                return trackDisplay!
+            } else {
+                if let minutes = minutesUntilDeparture {
+                    return "~\(minutes) min"
+                }
+            }
+            return ""
+        }
+        
+        /// Track display with "T" prefix
+        var trackDisplay: String? {
+            guard let track = track else { return nil }
+            return "T\(track)"
+        }
+        
+        /// Destination arrival time for expanded view
+        var destinationArrivalTime: Date? {
+            guard let arrivalTimeString = scheduledArrivalTime else { return nil }
+            return Date.fromISO8601(arrivalTimeString)
+        }
+        
+        /// Next stop arrival time as Date for display
+        var nextStopArrivalTimeAsDate: Date? {
+            guard let arrivalTimeString = nextStopArrivalTime else { return nil }
+            return Date.fromISO8601(arrivalTimeString)
+        }
+        
+        // Reference to parent attributes for access to static data
+        var originStationCode: String?
+        var destinationStationCode: String?
     }
     
     // Static attributes that don't change during activity
@@ -38,6 +127,8 @@ struct TrainActivityAttributes: ActivityAttributes {
     let destination: String
     let originStationCode: String
     let destinationStationCode: String
+    let departureTime: Date
+    let scheduledArrivalTime: Date?
 }
 
 // MARK: - Supporting Data Models
@@ -148,4 +239,3 @@ struct AlertMetadata: Codable, Hashable {
     let requiresHapticFeedback: Bool
     let timestamp: TimeInterval
 }
-

@@ -97,7 +97,7 @@ struct TrainNumberSearchView: View {
     }
     
     /// Attempt to search for a train with the given train number
-    private func attemptTrainSearch(trainNumber: String) async throws -> Train {
+    private func attemptTrainSearch(trainNumber: String) async throws -> TrainV2 {
         let train = try await APIService.shared.fetchTrainByNumber(
             trainNumber,
             fromStationCode: appState.departureStationCode
@@ -136,7 +136,7 @@ struct TrainNumberSearchView: View {
         Task {
             let trimmedInput = trainNumber.trimmingCharacters(in: .whitespaces)
             var lastError: Error?
-            var foundTrain: Train?
+            var foundTrain: TrainV2?
             var successfulTrainNumber: String?
             
             // First attempt: Try user's exact input

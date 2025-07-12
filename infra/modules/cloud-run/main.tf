@@ -32,25 +32,11 @@ resource "google_cloud_run_v2_service" "default" {
 
   template {
     scaling {
-      min_instance_count = var.min_instances
-      max_instance_count = var.max_instances
+      min_instance_count = 1
+      max_instance_count = 1
     }
 
-    # Remove volumes block - Cloud SQL connection will be handled via VPC connector
-    # volumes {
-    #   name = "cloudsql"
-    #   cloud_sql_instance {
-    #     instances = [] # To be populated if Cloud SQL direct connection is used without proxy
-    #   }
-    # }
-
-    dynamic "vpc_access" {
-      for_each = var.vpc_connector_id != null ? [1] : []
-      content {
-        connector = var.vpc_connector_id
-        egress    = "ALL_TRAFFIC"
-      }
-    }
+    # VPC access removed - not needed with SQLite backend
 
     timeout                          = "${var.request_timeout_seconds}s"
     service_account                  = local.effective_service_account_email
@@ -84,7 +70,7 @@ resource "google_cloud_run_v2_service" "default" {
       resources {
         limits = {
           cpu    = var.cpu_limit
-          memory = var.memory_limit
+          memory = "512Mi"
         }
         startup_cpu_boost = true # Enable CPU boost at startup
       }

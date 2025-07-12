@@ -137,11 +137,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             AppDelegate.deviceToken = tokenString
         }
         
-        // Register device token with backend - ensure this completes first
-        Task {
-            await registerDeviceToken(tokenString)
-            print("📱 Device token registration completed - ready for Live Activity registration")
-        }
+        // Device token received - Live Activities will handle their own registration
+        print("📱 Device token received: \(tokenString) - Live Activities ready")
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
@@ -186,17 +183,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
     
     // MARK: - Push Notification Helpers
-    
-    private func registerDeviceToken(_ token: String) async {
-        do {
-            try await APIService.shared.registerDeviceToken(token)
-            print("✅ Device token registered with backend: \(token)")
-        } catch {
-            print("❌ Failed to register device token with backend: \(error)")
-            print("❌ Device token that failed: \(token)")
-            // Continue without registration - app will still work with local updates
-        }
-    }
     
     private func handleLiveActivityPushUpdate(_ userInfo: [AnyHashable: Any]) async {
         print("🔄 Processing Live Activity push update")

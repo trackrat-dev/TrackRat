@@ -1,4 +1,6 @@
 backend/data
+backend_v2/trackrat_v2.db-shm
+backend_v2/trackrat_v2.db-wal
 
 # Terraform
 **/.terraform/

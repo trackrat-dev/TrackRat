@@ -5,9 +5,9 @@ struct HistoricalDataView: View {
     @StateObject private var viewModel: HistoricalDataViewModel
     @Environment(\.dismiss) private var dismiss
     
-    let train: Train
+    let train: TrainV2
     
-    init(train: Train) {
+    init(train: TrainV2) {
         self.train = train
         self._viewModel = StateObject(wrappedValue: HistoricalDataViewModel(train: train))
     }
@@ -127,7 +127,7 @@ struct PerformanceSection: View {
     let trainStats: DelayStats?
     let lineStats: DelayStats?
     let destinationStats: DelayStats?
-    let train: Train
+    let train: TrainV2
     
     var hasData: Bool {
         trainStats != nil || lineStats != nil || destinationStats != nil
@@ -176,7 +176,7 @@ struct TrackUsageSection: View {
     let trainStats: TrackStats?
     let lineStats: TrackStats?
     let destinationStats: TrackStats?
-    let train: Train
+    let train: TrainV2
     
     var hasData: Bool {
         trainStats != nil || lineStats != nil || destinationStats != nil
@@ -355,10 +355,10 @@ class HistoricalDataViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     
-    private let train: Train
+    private let train: TrainV2
     private let apiService = APIService.shared
     
-    init(train: Train) {
+    init(train: TrainV2) {
         self.train = train
     }
     
@@ -402,18 +402,24 @@ class HistoricalDataViewModel: ObservableObject {
 }
 
 #Preview {
-    HistoricalDataView(train: Train(
+    HistoricalDataView(train: TrainV2(
         id: 1,
         trainId: "3923",
-        line: "Northeast Corridor",
+        line: LineInfo(code: "NEC", name: "Northeast Corridor", color: "#0066CC"),
         destination: "Trenton",
-        departureTime: Date(),
-        track: nil,
-        status: .scheduled,
-        delayMinutes: nil,
-        stops: nil,
-        predictionData: nil,
-        originStationCode: "NYP",
-        dataSource: "AMTRAK"
+        departure: StationTiming(
+            code: "NYP",
+            name: "New York Penn Station",
+            scheduledTime: Date(),
+            actualTime: nil,
+            estimatedTime: nil,
+            track: nil,
+            status: "SCHEDULED",
+            delayMinutes: 0
+        ),
+        arrival: nil,
+        journey: nil,
+        dataFreshness: nil,
+        stops: nil
     ))
 }

@@ -31,7 +31,6 @@ infra/
     ├── application/                 # Application-level configuration
     ├── artifact-registry/           # Container registry module
     ├── cloud-run/                   # Cloud Run service module
-    ├── cloud-run-jobs/             # Cloud Run jobs module
     ├── collector/                   # Data collector service module
     ├── database/                    # Cloud SQL database module
     ├── scheduler/                   # Cloud Scheduler module
@@ -58,7 +57,6 @@ infra/
 - **application**: Application-level configuration and service orchestration
 - **artifact-registry**: Creates Docker repositories with cleanup policies
 - **cloud-run**: Cloud Run service configuration with auto-scaling
-- **cloud-run-jobs**: Cloud Run jobs for batch processing
 - **collector**: Data collector service for train data ingestion
 - **database**: Cloud SQL PostgreSQL instance with private networking
 - **scheduler**: Cloud Scheduler for automated task execution

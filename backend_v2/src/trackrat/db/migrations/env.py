@@ -1,0 +1,86 @@
+"""
+Alembic environment configuration for TrackRat V2.
+
+Handles SQLite database migrations using synchronous connections.
+"""
+
+from logging.config import fileConfig
+
+from alembic import context
+from sqlalchemy import Connection, engine_from_config, pool
+
+from trackrat.config import get_settings
+from trackrat.models.database import Base
+
+# This is the Alembic Config object
+config = context.config
+
+# Interpret the config file for Python logging
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Add model's MetaData object for 'autogenerate' support
+target_metadata = Base.metadata
+
+# Get database URL from settings
+settings = get_settings()
+config.set_main_option("sqlalchemy.url", settings.database_url_sync)
+
+
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode.
+
+    This configures the context with just a URL
+    and not an Engine, though an Engine is acceptable
+    here as well. By skipping the Engine creation
+    we don't even need a DBAPI to be available.
+
+    Calls to context.execute() here emit the given string to the
+    script output.
+    """
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    """Run migrations with a connection."""
+    context.configure(connection=connection, target_metadata=target_metadata)
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode using async engine."""
+    # Get the sync URL for migrations
+    db_url = settings.database_url_sync
+    config.set_main_option("sqlalchemy.url", db_url)
+
+    # Create a sync engine for migrations
+    config_section = config.get_section(config.config_ini_section) or {}
+    connectable = engine_from_config(
+        config_section,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    # Run migrations synchronously since Alembic doesn't support async
+    run_migrations_online()

@@ -23,19 +23,9 @@ output "artifact_registry_repository" {
   value       = module.infrastructure.artifact_registry_repository
 }
 
-output "database_url_secret_name" {
-  description = "Name of the database URL secret"
-  value       = module.database.database_url_secret_name
-}
-
-output "njt_username_secret_name" {
-  description = "Name of the NJ Transit username secret"
-  value       = module.infrastructure.njt_username_secret_name
-}
-
-output "njt_password_secret_name" {
-  description = "Name of the NJ Transit password secret"
-  value       = module.infrastructure.njt_password_secret_name
+output "njt_token_secret_name" {
+  description = "Name of the NJ Transit API token secret"
+  value       = module.infrastructure.njt_token_secret_name
 }
 
 output "amtrak_api_key_secret_name" {
@@ -68,26 +58,7 @@ output "scheduler_service_account_email" {
   value       = google_service_account.scheduler_sa.email
 }
 
-# Database connection outputs for automated secret management
-output "database_private_ip" {
-  description = "Private IP of the database instance"
-  value       = module.database.private_ip_address
-}
-
-output "database_name" {
-  description = "Name of the database"
-  value       = module.database.database_name
-}
-
-output "database_user_name" {
-  description = "Database user name"
-  value       = module.database.database_user_name
-}
-
-output "database_password_secret_id" {
-  description = "Secret Manager secret ID for database password"
-  value       = module.database.db_password_secret_id
-}
+# Database outputs removed - using SQLite in backend_v2
 
 output "app_secrets_name" {
   description = "Name of the main application secrets"

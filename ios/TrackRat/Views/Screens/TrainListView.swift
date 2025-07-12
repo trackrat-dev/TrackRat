@@ -136,57 +136,40 @@ struct TrainListView: View {
 // MARK: - Train Card
 struct TrainCard: View {
     @EnvironmentObject private var appState: AppState
-    let train: Train
+    let train: TrainV2
     let destination: String
     let onTap: () -> Void
     
     /// Check if train is cancelled
     private var isCancelled: Bool {
-        return train.statusV2?.current == "CANCELLED"
+        return train.status == .delayed  // V2 maps CANCELLED to delayed
     }
     
-    /// Check if train is boarding specifically at the user's origin station (StatusV2 only)
+    /// Check if train is boarding at origin
     private var isBoardingAtOrigin: Bool {
-        guard let statusV2 = train.statusV2,
-              let departureCode = appState.departureStationCode else {
+        guard let departureCode = appState.departureStationCode else {
             return false
         }
         
-        // Only show boarding if the train is actually boarding
-        guard statusV2.current == "BOARDING" else {
-            return false
-        }
-        
-        // Check if the boarding is happening at the user's origin station
-        // Method 1: Check if StatusV2 source starts with user's station code
-        if statusV2.source.hasPrefix(departureCode) {
-            // Verify we have a track for this station
-            return train.getTrackForStation(departureCode) != nil
-        }
-        
-        // Method 2: Check if StatusV2 location mentions user's station
-        if let selectedDeparture = appState.selectedDeparture {
-            let userStationName = Stations.displayName(for: selectedDeparture)
-            if statusV2.location.lowercased().contains(userStationName.lowercased()) {
-                // Verify we have a track for this station
-                return train.getTrackForStation(departureCode) != nil
-            }
-        }
-        
-        // If StatusV2 indicates boarding elsewhere, don't show boarding status
-        return false
+        // Check if train is boarding and we're at the origin
+        return train.isBoarding && train.originStationCode == departureCode && train.track != nil
     }
     
     private var departureTime: String {
         if let departureCode = appState.departureStationCode {
-            return train.getFormattedScheduledDepartureTime(fromStationCode: departureCode)
+            return train.getFormattedDepartureTime(fromStationCode: departureCode)
         }
         let formatter = DateFormatter.easternTime(time: .short)
         return formatter.string(from: train.departureTime)
     }
     
     private var arrivalTime: String {
-        return train.getFormattedScheduledArrivalTime(toStationName: destination)
+        // For V2, we show arrival time if available
+        if let arrivalTime = train.arrival?.scheduledTime {
+            let formatter = DateFormatter.easternTime(time: .short)
+            return formatter.string(from: arrivalTime)
+        }
+        return "--:--"
     }
     
     var body: some View {
@@ -228,8 +211,8 @@ struct TrainCard: View {
                 }
                 
                 // Show cancellation location
-                if isCancelled, let cancellationLocation = train.cancellationLocation {
-                    Text("Cancelled at \(cancellationLocation)")
+                if isCancelled {
+                    Text("Cancelled")
                         .font(.caption)
                         .foregroundColor(.red.opacity(0.8))
                         .fontWeight(.medium)
@@ -237,8 +220,8 @@ struct TrainCard: View {
                 
                 // Show delay status
                 if !isCancelled {
-                    let hasDepDelay = train.getDepartureDelay(fromStationCode: appState.departureStationCode ?? "") ?? 0 >= 2
-                    let hasArrDelay = train.getArrivalDelay(toStationName: destination) ?? 0 >= 2
+                    let hasDepDelay = train.delayMinutes >= 2
+                    let hasArrDelay = train.arrival?.delayMinutes ?? 0 >= 2
                     
                     if hasDepDelay || hasArrDelay {
                         Text("Operating with Delays")
@@ -251,7 +234,7 @@ struct TrainCard: View {
                 // Track and status - only show for boarding trains at origin
                 if !isCancelled && isBoardingAtOrigin,
                    let departureCode = appState.departureStationCode,
-                   let track = train.getTrackForStation(departureCode) {
+                   let track = train.track {
                     Label("Boarding on Track \(track)", systemImage: "tram.fill")
                         .font(.subheadline)
                         .foregroundColor(.white)
@@ -269,7 +252,7 @@ struct TrainCard: View {
 
 // MARK: - StatusV2 Badge
 struct StatusV2Badge: View {
-    let train: Train
+    let train: TrainV2
     let departureStationCode: String?
     
     var body: some View {
@@ -289,48 +272,42 @@ struct StatusV2Badge: View {
     }
     
     private var statusColor: Color {
-        guard let statusV2 = train.statusV2 else {
-            return .gray
-        }
-        
-        switch statusV2.current {
-        case "BOARDING":
-            let hasTrack = departureStationCode != nil ? train.getTrackForStation(departureStationCode!) != nil : train.track != nil
-            return hasTrack ? .orange : .gray
-        case "EN_ROUTE":
+        switch train.status {
+        case .boarding:
+            return train.track != nil ? .orange : .gray
+        case .departed:
             return .blue
-        case "ARRIVED":
+        case .delayed:
+            return .red
+        case .onTime:
             return .green
-        case "DELAYED":
-            return .red
-        case "CANCELLED":
-            return .red
-        default:
+        case .scheduled:
+            return .gray
+        case .unknown:
             return .gray
         }
     }
     
     private var statusText: String {
-        guard let statusV2 = train.statusV2 else {
-            return "Unknown"
+        // Use enhanced display status if available
+        if !train.enhancedDisplayStatus.isEmpty {
+            return train.enhancedDisplayStatus
         }
         
-        switch statusV2.current {
-        case "BOARDING":
-            let hasTrack = departureStationCode != nil ? train.getTrackForStation(departureStationCode!) != nil : train.track != nil
-            return hasTrack ? "Boarding" : "Scheduled"
-        case "EN_ROUTE":
+        // Otherwise use basic status
+        switch train.status {
+        case .boarding:
+            return train.track != nil ? "Boarding" : "Scheduled"
+        case .departed:
             return "En Route"
-        case "ARRIVED":
-            return "Arrived"
-        case "DELAYED":
+        case .delayed:
             return "Delayed"
-        case "CANCELLED":
-            return "Cancelled"
-        case "SCHEDULED":
+        case .onTime:
+            return "On Time"
+        case .scheduled:
             return "Scheduled"
-        default:
-            return statusV2.current.replacingOccurrences(of: "_", with: " ").capitalized
+        case .unknown:
+            return "Unknown"
         }
     }
 }
@@ -338,7 +315,7 @@ struct StatusV2Badge: View {
 // MARK: - View Model
 @MainActor
 class TrainListViewModel: ObservableObject {
-    @Published var trains: [Train] = []
+    @Published var trains: [TrainV2] = []
     @Published var isLoading = false
     @Published var error: String?
     
@@ -349,10 +326,10 @@ class TrainListViewModel: ObservableObject {
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
     
-    private func sortTrainsByDepartureTime(_ trains: [Train], fromStationCode: String) -> [Train] {
+    private func sortTrainsByDepartureTime(_ trains: [TrainV2], fromStationCode: String) -> [TrainV2] {
         return trains.sorted { train1, train2 in
-            let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
-            let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
+            let time1 = train1.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
+            let time2 = train2.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
             return time1 < time2
         }
     }
@@ -386,7 +363,7 @@ class TrainListViewModel: ObservableObject {
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
             let filteredTrains = fetchedTrains.filter { train in
-                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
+                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
                 return departureTime <= sixHoursFromNow
             }
             
@@ -416,7 +393,7 @@ class TrainListViewModel: ObservableObject {
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
             let filteredTrains = fetchedTrains.filter { train in
-                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
+                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
                 return departureTime <= sixHoursFromNow
             }
             
@@ -426,7 +403,7 @@ class TrainListViewModel: ObservableObject {
             // Check for boarding status changes (StatusV2 only)
             for train in trains {
                 if let newTrain = newTrains.first(where: { $0.id == train.id }) {
-                    if !train.isActuallyBoarding && newTrain.isActuallyBoarding {
+                    if !train.isBoarding && newTrain.isBoarding {
                         // Haptic feedback for boarding status
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     }
