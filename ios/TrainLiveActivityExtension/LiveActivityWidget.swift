@@ -143,12 +143,10 @@ struct TrainLiveActivity: Widget {
                 }
             } compactLeading: {
                 // Compact leading (left side) - Time to departure/arrival
-                HStack(spacing: 2) {
-                    Image(systemName: "tram.fill")
-                        .font(.caption2)
-                    Text(context.state.compactLeadingText)
+                Text(context.state.compactLeadingText)
                         .font(.caption)
-                }
+                    .fontWeight(.medium)
+                    .foregroundColor(.orange)
                 .onAppear {
                     debugLog("🟢 Compact appeared", context: context)
                 }

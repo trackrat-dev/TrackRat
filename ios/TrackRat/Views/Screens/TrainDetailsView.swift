@@ -266,8 +266,10 @@ struct CombinedDetailsCard: View {
             return false
         }
         
-        // Check if train is boarding and we're at the origin
-        return train.status == .boarding && train.track != nil
+        // Check if train is boarding, has track, and departing within 11 minutes
+        return train.status == .boarding && 
+               train.track != nil &&
+               train.isDepartingSoon(fromStationCode: departureCode, withinMinutes: 11)
     }
     
     var body: some View {

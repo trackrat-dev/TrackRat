@@ -123,6 +123,19 @@ struct TrainV2: Identifiable, Codable {
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: time)
     }
+    
+    // Check if train is departing soon (within specified minutes)
+    func isDepartingSoon(fromStationCode: String, withinMinutes: Int = 11) -> Bool {
+        guard let departureTime = getDepartureTime(fromStationCode: fromStationCode) else {
+            return false
+        }
+        
+        let now = Date()
+        let timeUntilDeparture = departureTime.timeIntervalSince(now)
+        
+        // Check if departure is in the future and within the specified time window
+        return timeUntilDeparture > 0 && timeUntilDeparture <= Double(withinMinutes * 60)
+    }
 }
 
 // MARK: - Supporting Models

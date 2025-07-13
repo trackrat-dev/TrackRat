@@ -12,6 +12,7 @@ from structlog import get_logger
 
 from trackrat.collectors.base import BaseDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, TrainJourney
 from trackrat.utils.time import now_et, parse_njt_time
@@ -231,51 +232,17 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     # Update last seen time
                     existing.last_updated_at = now_et()
 
-                    # Check if we have track data from discovery
+                    # Store track data from discovery for later use by journey collector
                     track = train_data.get("TRACK")
                     if track and station_code:
-                        # Update or create stop record with track info
-                        from trackrat.models.database import JourneyStop
-
-                        stop_stmt = select(JourneyStop).where(
-                            and_(
-                                JourneyStop.journey_id == existing.id,
-                                JourneyStop.station_code == station_code,
-                            )
+                        existing.discovery_track = str(track)
+                        existing.discovery_station_code = station_code
+                        logger.info(
+                            "updated_track_info_in_journey",
+                            train_id=train_id,
+                            station_code=station_code,
+                            track=track,
                         )
-                        stop = await session.scalar(stop_stmt)
-
-                        if stop and not stop.track:
-                            # Update track if not already set
-                            stop.track = str(track)
-                            stop.track_assigned_at = now_et()
-                            logger.info(
-                                "updated_track_from_discovery",
-                                train_id=train_id,
-                                station_code=station_code,
-                                track=track,
-                            )
-                        elif not stop:
-                            # Create stop with track info
-                            new_stop = JourneyStop(
-                                journey_id=existing.id,
-                                station_code=station_code,
-                                station_name=train_data.get(
-                                    "STATION_NAME", station_code
-                                ),
-                                stop_sequence=0,  # Will be updated by journey collector
-                                scheduled_departure=scheduled_departure,
-                                track=str(track),
-                                track_assigned_at=now_et(),
-                                status="Unknown",
-                            )
-                            session.add(new_stop)
-                            logger.info(
-                                "created_stop_with_track_from_discovery",
-                                train_id=train_id,
-                                station_code=station_code,
-                                track=track,
-                            )
 
                     continue
 
@@ -304,25 +271,13 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                 await session.flush()  # Ensure journey has ID before creating stops
                 new_train_ids.add(train_id)
 
-                # Check if we have track data from discovery
+                # Store track data from discovery for later use by journey collector
                 track = train_data.get("TRACK")
-                if track and station_code and journey.id:
-                    # Create initial stop with track info
-                    from trackrat.models.database import JourneyStop
-
-                    new_stop = JourneyStop(
-                        journey_id=journey.id,
-                        station_code=station_code,
-                        station_name=train_data.get("STATION_NAME", station_code),
-                        stop_sequence=0,  # Will be updated by journey collector
-                        scheduled_departure=scheduled_departure,
-                        track=str(track),
-                        track_assigned_at=now_et(),
-                        status="Unknown",
-                    )
-                    session.add(new_stop)
+                if track and station_code:
+                    journey.discovery_track = str(track)
+                    journey.discovery_station_code = station_code
                     logger.info(
-                        "created_stop_with_track_for_new_journey",
+                        "stored_track_info_for_new_journey",
                         train_id=train_id,
                         station_code=station_code,
                         track=track,

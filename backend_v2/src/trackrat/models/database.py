@@ -64,6 +64,10 @@ class TrainJourney(Base):
     api_error_count = Column(Integer, default=0, nullable=False)
     is_expired = Column(Boolean, default=False, nullable=False)
 
+    # Discovery track information (temporary storage)
+    discovery_track = Column(String(5))
+    discovery_station_code = Column(String(2))
+
     # Relationships
     stops: Mapped[list["JourneyStop"]] = relationship(
         "JourneyStop", back_populates="journey", cascade="all, delete-orphan"

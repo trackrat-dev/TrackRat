@@ -58,8 +58,14 @@ struct ActiveTripsSection: View {
                             Spacer()
                         }
                         .padding()
-                        .background(.ultraThinMaterial)
-                        .cornerRadius(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.ultraThinMaterial)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                                )
+                        )
                         .padding(.horizontal)
                     }
                     .buttonStyle(.plain)

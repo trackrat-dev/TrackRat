@@ -151,8 +151,11 @@ struct TrainCard: View {
             return false
         }
         
-        // Check if train is boarding and we're at the origin
-        return train.isBoarding && train.originStationCode == departureCode && train.track != nil
+        // Check if train is boarding, we're at the origin, has track, and departing within 11 minutes
+        return train.isBoarding && 
+               train.originStationCode == departureCode && 
+               train.track != nil &&
+               train.isDepartingSoon(fromStationCode: departureCode, withinMinutes: 11)
     }
     
     private var departureTime: String {

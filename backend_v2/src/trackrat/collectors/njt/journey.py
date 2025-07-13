@@ -13,6 +13,7 @@ from structlog import get_logger
 
 from trackrat.collectors.base import BaseJourneyCollector
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
+from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
@@ -394,7 +395,7 @@ class JourneyCollector(BaseJourneyCollector):
                 stop = JourneyStop(
                     journey_id=journey.id,
                     station_code=stop_data.STATION_2CHAR,
-                    station_name=stop_data.STATIONNAME,
+                    station_name=stop_data.STATIONNAME or get_station_name(stop_data.STATION_2CHAR),
                     stop_sequence=sequence,
                 )
                 session.add(stop)
@@ -431,6 +432,31 @@ class JourneyCollector(BaseJourneyCollector):
             # Update stop characteristics
             stop.pickup_only = bool(stop_data.PICKUP)
             stop.dropoff_only = bool(stop_data.DROPOFF)
+
+        # Apply discovery track info if available
+        if journey.discovery_track and journey.discovery_station_code:
+            # Find the stop that matches the discovery station
+            discovery_stmt = select(JourneyStop).where(
+                and_(
+                    JourneyStop.journey_id == journey.id,
+                    JourneyStop.station_code == journey.discovery_station_code,
+                )
+            )
+            discovery_stop = await session.scalar(discovery_stmt)
+            
+            if discovery_stop and not discovery_stop.track:
+                discovery_stop.track = journey.discovery_track
+                discovery_stop.track_assigned_at = now_et()
+                logger.info(
+                    "applied_discovery_track_to_stop",
+                    train_id=journey.train_id,
+                    station_code=journey.discovery_station_code,
+                    track=journey.discovery_track,
+                )
+            
+            # Clear discovery track info since it's been applied
+            journey.discovery_track = None
+            journey.discovery_station_code = None
 
     async def check_journey_completion(
         self,
