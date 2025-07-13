@@ -27,6 +27,7 @@ Compared to the original backend:
 
 - Python 3.11+
 - Poetry for dependency management
+- **APNS Certificate**: Valid Apple Push Notification Service P8 certificate for Live Activities
 
 ### Installation
 
@@ -65,14 +66,44 @@ poetry run uvicorn trackrat.main:app --reload
 
 All configuration is done via environment variables. See `.env.example` for available options.
 
-Key settings:
-- `NJ_TRANSIT_USERNAME`: Your NJ Transit API username (required)
-- `NJ_TRANSIT_PASSWORD`: Your NJ Transit API password (required)
+### Required Settings
+- `NJ_TRANSIT_USERNAME`: Your NJ Transit API username
+- `NJ_TRANSIT_PASSWORD`: Your NJ Transit API password
+- **APNS Configuration** (required for Live Activities):
+  - `APNS_TEAM_ID`: Apple Developer Team ID (10 characters)
+  - `APNS_KEY_ID`: APNS Auth Key ID (10 characters)
+  - `APNS_BUNDLE_ID`: iOS app bundle identifier (e.g., `net.trackrat.TrackRat`)
+  - `APNS_ENVIRONMENT`: `dev` for sandbox, `prod` for production
+  - **APNS P8 Certificate**: Place `AuthKey_4WC3F645FR.p8` in `certs/` directory
+
+### Optional Settings
 - `DATABASE_URL`: SQLite database file path (default: `sqlite:///trackrat.db`)
 - `DISCOVERY_INTERVAL_MINUTES`: How often to discover new trains (default: 60)
 - `JOURNEY_UPDATE_INTERVAL_MINUTES`: How often to update journey data (default: 15)
 - `DATA_STALENESS_SECONDS`: When to refresh data on-demand (default: 60)
 - `ENABLE_METRICS`: Enable Prometheus metrics endpoint (default: true)
+
+### APNS Certificate Setup
+
+1. **Generate APNS Auth Key**:
+   - In Apple Developer Console, create an Apple Push Notification service key
+   - Download the `.p8` file (named like `AuthKey_XXXXXXXXXX.p8`)
+
+2. **Configure Certificate**:
+   ```bash
+   # Place the certificate in the expected location
+   mkdir -p certs/
+   cp /path/to/your/AuthKey_4WC3F645FR.p8 certs/
+   
+   # Or set custom path
+   export APNS_AUTH_KEY_PATH=/custom/path/to/key.p8
+   ```
+
+3. **Verify Configuration**:
+   ```bash
+   # Use the included script to validate APNS setup
+   ./run_backend.sh  # Will validate and exit if APNS is misconfigured
+   ```
 
 ## API Endpoints
 
@@ -193,9 +224,60 @@ The system uses **APScheduler** integrated into FastAPI to automatically collect
 ## 🚀 Production Deployment
 
 ### Docker
+
+**⚠️ APNS Validation**: The container will **automatically exit** if APNS is not properly configured. This ensures Live Activities work correctly in production.
+
 ```bash
+# Build the image
 docker build -t trackrat-v2 .
-docker run -p 8000:8000 --env-file .env trackrat-v2
+
+# Run with environment variables and APNS certificate
+docker run -p 8000:8000 \
+  -e APNS_TEAM_ID="D5RZZ55J9R" \
+  -e APNS_KEY_ID="4WC3F645FR" \
+  -e APNS_BUNDLE_ID="net.trackrat.TrackRat" \
+  -e APNS_ENVIRONMENT="prod" \
+  -e TRACKRAT_NJT_API_TOKEN="your_token" \
+  -v $(pwd)/certs:/app/certs:ro \
+  -v $(pwd)/data:/app/data \
+  trackrat-v2
+```
+
+### Docker Compose
+
+```bash
+# Copy the example configuration
+cp docker-compose.example.yml docker-compose.yml
+
+# Create environment file with your credentials
+cat > .env << EOF
+NJT_API_TOKEN=your_nj_transit_token
+APNS_TEAM_ID=your_team_id
+APNS_KEY_ID=your_key_id
+EOF
+
+# Place APNS certificate
+mkdir -p certs
+cp /path/to/AuthKey_4WC3F645FR.p8 certs/
+
+# Start the service
+docker-compose up -d
+```
+
+### Container Validation
+
+The container performs comprehensive APNS validation at startup:
+
+- ✅ **Certificate file exists and is valid**
+- ✅ **Environment variables are set and properly formatted**
+- ✅ **P8 certificate can be loaded by cryptography library**
+- ❌ **Container exits immediately if any validation fails**
+
+Test the validation:
+```bash
+# Test container validation (should fail without APNS)
+./test-docker-apns.sh
+```
 ```
 
 ### Production Considerations

@@ -35,17 +35,20 @@ RUN apk add --no-cache --virtual .build-deps \
     pip install --no-cache-dir -r requirements.txt && \
     apk del .build-deps
 
-# Copy application code
+# Copy application code, certs, and entrypoint script
 COPY src/ ./src/
 COPY alembic.ini ./
+COPY certs/ ./certs/
+COPY docker-entrypoint.sh ./
 
-# Set ownership
-RUN chown -R trackrat:trackrat /app
+# Make entrypoint script executable and set ownership
+RUN chmod +x docker-entrypoint.sh && \
+    chown -R trackrat:trackrat /app
 
 USER trackrat
 
 # Set Python path to include src directory for module imports
 ENV PYTHONPATH="/app/src:$PYTHONPATH"
 
-# Run migrations and start app
-CMD ["sh", "-c", "alembic upgrade head && uvicorn trackrat.main:app --host 0.0.0.0 --port 8000"]
+# Use entrypoint script that validates APNS before starting
+ENTRYPOINT ["./docker-entrypoint.sh"]
