@@ -536,4 +536,9 @@ final class AppState: ObservableObject {
         return recentTrips.filter { $0.isFavorite }
     }
     
+    func reverseFavoriteDirection(_ trip: TripPair) {
+        storageService.reverseFavoriteDirection(trip)
+        loadRecentTrips()
+    }
+    
 }

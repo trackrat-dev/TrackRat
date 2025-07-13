@@ -375,3 +375,191 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
         except Exception as e:
             logger.warning("amtrak_time_parse_failed", time_str=time_str, error=str(e))
             return None
+
+    async def collect_journey_details(
+        self, session: AsyncSession, journey: TrainJourney
+    ) -> None:
+        """Collect complete journey details for an existing train journey.
+
+        This method is used by the JIT service to refresh data for an existing journey.
+
+        Args:
+            session: Database session
+            journey: Journey to collect data for
+        """
+        if not journey.train_id:
+            raise ValueError(f"Journey {journey.id} has no train_id")
+
+        # Remove the 'A' prefix to get the Amtrak train number
+        train_num = (
+            journey.train_id[1:]
+            if journey.train_id.startswith("A")
+            else journey.train_id
+        )
+
+        # Get the train data from Amtrak API
+        train_data = None
+        async with self.client:
+            # Get all trains (from cache if available)
+            all_trains = await self.client.get_all_trains()
+
+            # Find train by train number (Amtrak uses train number not train ID)
+            for train_list in all_trains.values():
+                for train in train_list:
+                    if train.trainNum == train_num:
+                        train_data = train
+                        break
+                if train_data:
+                    break
+
+        if not train_data:
+            logger.warning(
+                "amtrak_train_not_found_for_refresh",
+                train_id=journey.train_id,
+                train_num=train_num,
+            )
+            journey.api_error_count = (journey.api_error_count or 0) + 1
+            journey.last_updated_at = now_et()
+
+            # After 2 failed attempts, mark as expired
+            if journey.api_error_count >= 2:
+                journey.is_expired = True
+                logger.warning(
+                    "amtrak_train_marked_expired",
+                    train_id=journey.train_id,
+                    api_error_count=journey.api_error_count,
+                )
+            return
+
+        # Reset error count on successful fetch
+        if journey.api_error_count and journey.api_error_count > 0:
+            logger.info(
+                "resetting_api_error_count",
+                train_id=journey.train_id,
+                previous_count=journey.api_error_count,
+            )
+            journey.api_error_count = 0
+
+        # Update journey with latest data
+        journey.last_updated_at = now_et()
+        journey.update_count = (journey.update_count or 0) + 1
+        journey.destination = train_data.destName
+        journey.is_cancelled = train_data.trainState == "Cancelled"
+        journey.is_completed = train_data.trainState == "Terminated"
+        journey.has_complete_journey = True
+
+        # Update stops
+        stop_sequence = 0
+        tracked_stops = []
+
+        for amtrak_stop in train_data.stations:
+            internal_code = AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code)
+            if not internal_code:
+                continue
+
+            # Find existing stop or create new
+            existing_stop = await session.scalar(
+                select(JourneyStop).where(
+                    and_(
+                        JourneyStop.journey_id == journey.id,
+                        JourneyStop.station_code == internal_code,
+                    )
+                )
+            )
+
+            # Explicitly type the variables to help mypy
+            station_name: str = get_station_name(internal_code)
+            scheduled_arrival: datetime | None = (
+                self._parse_amtrak_time(amtrak_stop.schArr)
+                if amtrak_stop.schArr
+                else None
+            )
+            scheduled_departure: datetime | None = (
+                self._parse_amtrak_time(amtrak_stop.schDep)
+                if amtrak_stop.schDep
+                else None
+            )
+            actual_arrival: datetime | None = (
+                self._parse_amtrak_time(amtrak_stop.arr) if amtrak_stop.arr else None
+            )
+            actual_departure: datetime | None = (
+                self._parse_amtrak_time(amtrak_stop.dep) if amtrak_stop.dep else None
+            )
+            departed: bool = amtrak_stop.status in ["Departed", "Station"]
+            status: str = self.STATUS_MAP.get(amtrak_stop.status, amtrak_stop.status)
+            track: str | None = amtrak_stop.platform if amtrak_stop.platform else None
+            pickup_only: bool = False
+            dropoff_only: bool = False
+
+            stop_data = {
+                "station_name": station_name,
+                "stop_sequence": stop_sequence,
+                "scheduled_arrival": scheduled_arrival,
+                "scheduled_departure": scheduled_departure,
+                "actual_arrival": actual_arrival,
+                "actual_departure": actual_departure,
+                "departed": departed,
+                "status": status,
+                "track": track,
+                "pickup_only": pickup_only,
+                "dropoff_only": dropoff_only,
+            }
+
+            if existing_stop:
+                # Update existing stop
+                for field, value in stop_data.items():
+                    setattr(existing_stop, field, value)
+                existing_stop.updated_at = now_et()
+                tracked_stops.append(existing_stop)
+            else:
+                # Create new stop
+                new_stop = JourneyStop(
+                    journey_id=journey.id,
+                    station_code=internal_code,
+                    station_name=station_name,
+                    stop_sequence=stop_sequence,
+                    scheduled_arrival=scheduled_arrival,
+                    scheduled_departure=scheduled_departure,
+                    actual_arrival=actual_arrival,
+                    actual_departure=actual_departure,
+                    departed=departed,
+                    status=status,
+                    track=track,
+                    pickup_only=pickup_only,
+                    dropoff_only=dropoff_only,
+                )
+                session.add(new_stop)
+                tracked_stops.append(new_stop)
+
+            stop_sequence += 1
+
+        # Update journey metadata
+        journey.stops_count = len(tracked_stops)
+        if tracked_stops:
+            journey.terminal_station_code = tracked_stops[-1].station_code
+            journey.scheduled_arrival = tracked_stops[-1].scheduled_arrival
+            if journey.is_completed and tracked_stops[-1].actual_arrival:
+                journey.actual_arrival = tracked_stops[-1].actual_arrival
+
+        # Create snapshot
+        completed_stops_count = sum(1 for stop in tracked_stops if stop.departed)
+        snapshot = JourneySnapshot(
+            journey_id=journey.id,
+            captured_at=now_et(),
+            raw_stop_list_data={
+                "train_data": train_data.model_dump(),
+                "data_source": "AMTRAK",
+            },
+            train_status=self.TRAIN_STATE_MAP.get(train_data.trainState, "UNKNOWN"),
+            completed_stops=completed_stops_count,
+            total_stops=len(tracked_stops),
+        )
+        session.add(snapshot)
+
+        logger.info(
+            "amtrak_journey_refreshed",
+            train_id=journey.train_id,
+            stops_count=journey.stops_count,
+            is_completed=journey.is_completed,
+            is_cancelled=journey.is_cancelled,
+        )

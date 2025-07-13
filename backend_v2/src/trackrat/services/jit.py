@@ -11,6 +11,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
+from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.config import get_settings
@@ -23,15 +24,16 @@ logger = get_logger(__name__)
 class JustInTimeUpdateService:
     """Updates train data on-demand to ensure freshness."""
 
-    def __init__(self, njt_client: NJTransitClient) -> None:
+    def __init__(self, njt_client: NJTransitClient | None = None) -> None:
         """Initialize the JIT update service.
 
         Args:
-            njt_client: NJ Transit client instance
+            njt_client: Optional NJ Transit client instance
         """
         self.settings = get_settings()
         self.njt_client = njt_client
-        self._collector: JourneyCollector | None = None
+        self._njt_collector: JourneyCollector | None = None
+        self._amtrak_collector: AmtrakJourneyCollector | None = None
 
     async def __aenter__(self) -> "JustInTimeUpdateService":
         """Enter async context."""
@@ -48,11 +50,38 @@ class JustInTimeUpdateService:
         pass
 
     @property
-    def collector(self) -> JourneyCollector:
-        """Get or create journey collector."""
-        if self._collector is None:
-            self._collector = JourneyCollector(self.njt_client)
-        return self._collector
+    def njt_collector(self) -> JourneyCollector:
+        """Get or create NJT journey collector."""
+        if self._njt_collector is None:
+            if not self.njt_client:
+                raise ValueError("NJT client required for NJT trains")
+            self._njt_collector = JourneyCollector(self.njt_client)
+        return self._njt_collector
+
+    @property
+    def amtrak_collector(self) -> AmtrakJourneyCollector:
+        """Get or create Amtrak journey collector."""
+        if self._amtrak_collector is None:
+            self._amtrak_collector = AmtrakJourneyCollector()
+        return self._amtrak_collector
+
+    async def get_collector_for_journey(
+        self, journey: TrainJourney
+    ) -> JourneyCollector | AmtrakJourneyCollector:
+        """Get the appropriate collector for a journey based on its data source.
+
+        Args:
+            journey: The train journey
+
+        Returns:
+            The appropriate collector for the journey's data source
+        """
+        if journey.data_source == "NJT":
+            return self.njt_collector
+        elif journey.data_source == "AMTRAK":
+            return self.amtrak_collector
+        else:
+            raise ValueError(f"Unknown data source: {journey.data_source}")
 
     async def ensure_fresh_data(
         self,
@@ -82,7 +111,7 @@ class JustInTimeUpdateService:
             force_refresh=force_refresh,
         )
 
-        # Find the journey (only handle NJT trains) - eagerly load stops to avoid lazy loading issues
+        # Find the journey - eagerly load stops to avoid lazy loading issues
         from sqlalchemy.orm import selectinload
 
         stmt = (
@@ -91,7 +120,6 @@ class JustInTimeUpdateService:
                 and_(
                     TrainJourney.train_id == train_id,
                     TrainJourney.journey_date == journey_date,
-                    TrainJourney.data_source == "NJT",
                 )
             )
             .options(selectinload(TrainJourney.stops))
@@ -122,12 +150,16 @@ class JustInTimeUpdateService:
             )
 
             try:
+                # Get appropriate collector for this journey
+                collector = await self.get_collector_for_journey(journey)
+
                 # Use collector to update journey
-                await self.collector.collect_journey_details(session, journey)
+                await collector.collect_journey_details(session, journey)
 
                 logger.info(
                     "journey_data_refreshed",
                     train_id=train_id,
+                    data_source=journey.data_source,
                     stops_count=journey.stops_count,
                     is_completed=journey.is_completed,
                 )
@@ -250,12 +282,14 @@ class JustInTimeUpdateService:
             journey: Journey to refresh
         """
         try:
-            await self.collector.collect_journey_details(session, journey)
+            collector = await self.get_collector_for_journey(journey)
+            await collector.collect_journey_details(session, journey)
         except Exception as e:
             logger.error(
                 "journey_refresh_failed",
                 journey_id=journey.id,
                 train_id=journey.train_id,
+                data_source=journey.data_source,
                 error=str(e),
             )
             raise

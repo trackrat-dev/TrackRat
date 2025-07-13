@@ -34,7 +34,7 @@ class TrainStatus(str, Enum):
 class LineInfo(BaseModel):
     """Train line information."""
 
-    code: str = Field(..., min_length=1, max_length=2)
+    code: str = Field(..., min_length=1, max_length=3)
     name: str
     color: str = Field(..., pattern="^#[0-9A-Fa-f]{6}$")
 
@@ -42,7 +42,7 @@ class LineInfo(BaseModel):
 class StationInfo(BaseModel):
     """Station information with optional timing and status."""
 
-    code: str = Field(..., min_length=1, max_length=2)
+    code: str = Field(..., min_length=1, max_length=3)
     name: str
     scheduled_time: datetime | None = None
     actual_time: datetime | None = None
@@ -55,7 +55,7 @@ class StationInfo(BaseModel):
 class SimpleStationInfo(BaseModel):
     """Simple station information without timing data."""
 
-    code: str = Field(..., min_length=1, max_length=2)
+    code: str = Field(..., min_length=1, max_length=3)
     name: str
 
 

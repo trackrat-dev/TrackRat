@@ -240,6 +240,9 @@ class JourneyCollector(BaseJourneyCollector):
             await session.flush()
             return
 
+        # Enhance with real-time departure board data if applicable
+        await self.enhance_with_departure_board_data(journey, train_data)
+
         # Create snapshot for historical analysis
         await self.create_journey_snapshot(session, journey, train_data)
 
@@ -395,7 +398,8 @@ class JourneyCollector(BaseJourneyCollector):
                 stop = JourneyStop(
                     journey_id=journey.id,
                     station_code=stop_data.STATION_2CHAR,
-                    station_name=stop_data.STATIONNAME or get_station_name(stop_data.STATION_2CHAR),
+                    station_name=stop_data.STATIONNAME
+                    or get_station_name(stop_data.STATION_2CHAR or ""),
                     stop_sequence=sequence,
                 )
                 session.add(stop)
@@ -443,7 +447,7 @@ class JourneyCollector(BaseJourneyCollector):
                 )
             )
             discovery_stop = await session.scalar(discovery_stmt)
-            
+
             if discovery_stop and not discovery_stop.track:
                 discovery_stop.track = journey.discovery_track
                 discovery_stop.track_assigned_at = now_et()
@@ -453,7 +457,7 @@ class JourneyCollector(BaseJourneyCollector):
                     station_code=journey.discovery_station_code,
                     track=journey.discovery_track,
                 )
-            
+
             # Clear discovery track info since it's been applied
             journey.discovery_track = None
             journey.discovery_station_code = None
@@ -498,6 +502,83 @@ class JourneyCollector(BaseJourneyCollector):
         if cancelled_stops == len(stops_data):
             journey.is_cancelled = True
             logger.info("journey_cancelled", train_id=journey.train_id)
+
+    def _is_monitored_station(self, station_code: str) -> bool:
+        """Check if station is monitored for departure board data.
+
+        Args:
+            station_code: Two-character station code
+
+        Returns:
+            True if station is in our monitored stations list
+        """
+        return station_code in ["NY", "NP", "PJ", "TR", "LB", "PL", "DN"]
+
+    def _apply_departure_board_data(
+        self, stop: NJTransitStopData, train_entry: dict[str, Any]
+    ) -> None:
+        """Apply real-time departure board data to a stop.
+
+        Args:
+            stop: Stop data to enhance
+            train_entry: Train entry from departure board
+        """
+        # Update track if available in departure board
+        if "TRACK" in train_entry and train_entry["TRACK"]:
+            stop.TRACK = str(train_entry["TRACK"])
+            logger.debug(
+                "enhanced_stop_with_departure_board_track",
+                station=stop.STATION_2CHAR,
+                track=stop.TRACK,
+            )
+
+        # Could add other fields here if needed in the future
+        # e.g., real-time status, departure time updates, etc.
+
+    async def enhance_with_departure_board_data(
+        self, journey: TrainJourney, train_data: NJTransitTrainData
+    ) -> None:
+        """Enhance train data with real-time departure board info for origin station.
+
+        Args:
+            journey: Journey record
+            train_data: Train data from getTrainStopList to enhance
+        """
+        # Only proceed if origin is monitored and train hasn't departed
+        if not journey.origin_station_code or not self._is_monitored_station(
+            journey.origin_station_code
+        ):
+            return
+
+        if train_data.STOPS and train_data.STOPS[0].DEPARTED == "YES":
+            return  # Already departed from origin
+
+        try:
+            # Get departure board for origin station
+            departure_board = await self.njt_client.get_train_schedule(
+                journey.origin_station_code or ""
+            )
+
+            # Find our train in the departure board
+            for train_entry in departure_board:
+                if train_entry.get("TRAIN_ID") == journey.train_id:
+                    # Enhance origin stop with real-time data
+                    self._apply_departure_board_data(train_data.STOPS[0], train_entry)
+                    logger.debug(
+                        "enhanced_train_with_departure_board_data",
+                        train_id=journey.train_id,
+                        origin_station=journey.origin_station_code,
+                    )
+                    break
+
+        except Exception as e:
+            # Log but don't fail - departure board enhancement is optional
+            logger.debug(
+                "departure_board_enhancement_failed",
+                train_id=journey.train_id,
+                origin_station=journey.origin_station_code,
+                error=str(e),
+            )
 
     def determine_train_status(self, stops_data: list[NJTransitStopData]) -> str:
         """Determine overall train status from stops.

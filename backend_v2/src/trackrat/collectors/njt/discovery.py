@@ -6,13 +6,12 @@ Discovers active trains by polling station departure boards.
 
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.base import BaseDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
-from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, TrainJourney
 from trackrat.utils.time import now_et, parse_njt_time

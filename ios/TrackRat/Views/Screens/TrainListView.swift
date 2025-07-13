@@ -5,23 +5,26 @@ struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainListViewModel
     
-    let destination: String
+    @State private var destination: String
+    @State private var departureStationCode: String
+    @State private var departureName: String
     
     private var isCurrentRouteFavorited: Bool {
-        guard let _ = appState.selectedDeparture,
-              let departureCode = appState.departureStationCode,
-              let destinationCode = Stations.getStationCode(destination) else {
+        guard let destinationCode = Stations.getStationCode(destination) else {
             return false
         }
         
         return appState.getFavoriteTrips().contains { trip in
-            trip.departureCode == departureCode &&
-            trip.destinationCode == destinationCode
+            // Check both directions since routes are stored bidirectionally
+            (trip.departureCode == departureStationCode && trip.destinationCode == destinationCode) ||
+            (trip.departureCode == destinationCode && trip.destinationCode == departureStationCode)
         }
     }
     
     init(destination: String) {
-        self.destination = destination
+        self._destination = State(initialValue: destination)
+        self._departureStationCode = State(initialValue: "")
+        self._departureName = State(initialValue: "")
         self._viewModel = StateObject(wrappedValue: TrainListViewModel())
     }
     
@@ -41,7 +44,7 @@ struct TrainListView: View {
                                 Task {
                                     await viewModel.loadTrains(
                                         destination: destination,
-                                        fromStationCode: appState.departureStationCode ?? "NY"
+                                        fromStationCode: departureStationCode
                                     )
                                 }
                             }
@@ -49,12 +52,12 @@ struct TrainListView: View {
                             EmptyStateView(message: "No trains found")
                         } else {
                             ForEach(viewModel.trains) { train in
-                                TrainCard(train: train, destination: destination) {
+                                TrainCard(train: train, destination: destination, departureStationCode: departureStationCode) {
                                     appState.currentTrainId = train.id
                                     // Use flexible navigation with train number
                                     appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                                         trainNumber: train.trainId,
-                                        fromStation: appState.departureStationCode
+                                        fromStation: departureStationCode
                                     ))
                                 }
                             }
@@ -65,7 +68,7 @@ struct TrainListView: View {
                 .refreshable {
                     await viewModel.loadTrains(
                         destination: destination,
-                        fromStationCode: appState.departureStationCode ?? "NY"
+                        fromStationCode: departureStationCode
                     )
                 }
             }
@@ -78,8 +81,8 @@ struct TrainListView: View {
                     Text(destination)
                         .font(.headline)
                         .foregroundColor(.white)
-                    if let departure = appState.selectedDeparture {
-                        Text("from \(Stations.displayName(for: departure))")
+                    if !departureName.isEmpty {
+                        Text("from \(Stations.displayName(for: departureName))")
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.8))
                     }
@@ -87,19 +90,31 @@ struct TrainListView: View {
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    toggleCurrentRouteFavorite()
-                } label: {
-                    Image(systemName: isCurrentRouteFavorited ? "heart.fill" : "heart")
-                        .font(.system(size: 20))
-                        .foregroundColor(.orange)
+                HStack(spacing: 12) {
+                    // Reverse button
+                    Button {
+                        reverseRoute()
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 18))
+                            .foregroundColor(.orange)
+                    }
+                    
+                    // Favorite button
+                    Button {
+                        toggleCurrentRouteFavorite()
+                    } label: {
+                        Image(systemName: isCurrentRouteFavorited ? "heart.fill" : "heart")
+                            .font(.system(size: 20))
+                            .foregroundColor(.orange)
+                    }
                 }
             }
         }
         .task {
             await viewModel.loadTrains(
                 destination: destination,
-                fromStationCode: appState.departureStationCode ?? "NY"
+                fromStationCode: departureStationCode
             )
         }
         .onReceive(viewModel.timer) { _ in
@@ -108,27 +123,68 @@ struct TrainListView: View {
             }
         }
         .onAppear {
-            // No longer auto-save trips
+            // Initialize state from app state
+            if departureStationCode.isEmpty {
+                departureStationCode = appState.departureStationCode ?? "NY"
+                departureName = appState.selectedDeparture ?? ""
+            }
         }
     }
     
     private func toggleCurrentRouteFavorite() {
-        guard let departure = appState.selectedDeparture,
-              let departureCode = appState.departureStationCode,
-              let destinationCode = Stations.getStationCode(destination) else {
+        guard let destinationCode = Stations.getStationCode(destination),
+              !departureName.isEmpty else {
             return
         }
         
+        // Create the trip pair - it will be normalized internally
         let currentTrip = TripPair(
-            departureCode: departureCode,
-            departureName: departure,
+            departureCode: departureStationCode,
+            departureName: departureName,
             destinationCode: destinationCode,
             destinationName: destination,
             lastUsed: Date(),
-            isFavorite: false // This will be toggled by the toggle function
+            isFavorite: isCurrentRouteFavorited // Use current favorite status
         )
         
         appState.toggleFavorite(currentTrip)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func reverseRoute() {
+        guard let currentDestinationCode = Stations.getStationCode(destination),
+              !departureName.isEmpty else {
+            return
+        }
+        
+        // Store current values
+        let oldDepartureName = departureName
+        let oldDepartureCode = departureStationCode
+        let oldDestination = destination
+        
+        // Swap the stations in local state
+        departureName = oldDestination
+        departureStationCode = currentDestinationCode
+        destination = oldDepartureName
+        
+        // Also update app state for consistency
+        appState.departureStationCode = currentDestinationCode
+        appState.selectedDeparture = oldDestination
+        appState.selectedDestination = oldDepartureName
+        appState.destinationStationCode = oldDepartureCode
+        
+        // Clear existing trains immediately to avoid confusion
+        viewModel.trains = []
+        
+        // Reload trains with swapped stations
+        Task {
+            await viewModel.loadTrains(
+                destination: oldDepartureName,
+                fromStationCode: currentDestinationCode
+            )
+        }
+        
+        // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
@@ -138,6 +194,7 @@ struct TrainCard: View {
     @EnvironmentObject private var appState: AppState
     let train: TrainV2
     let destination: String
+    let departureStationCode: String
     let onTap: () -> Void
     
     /// Check if train is cancelled
@@ -147,23 +204,15 @@ struct TrainCard: View {
     
     /// Check if train is boarding at origin
     private var isBoardingAtOrigin: Bool {
-        guard let departureCode = appState.departureStationCode else {
-            return false
-        }
-        
         // Check if train is boarding, we're at the origin, has track, and departing within 11 minutes
         return train.isBoarding && 
-               train.originStationCode == departureCode && 
+               train.originStationCode == departureStationCode && 
                train.track != nil &&
-               train.isDepartingSoon(fromStationCode: departureCode, withinMinutes: 11)
+               train.isDepartingSoon(fromStationCode: departureStationCode, withinMinutes: 11)
     }
     
     private var departureTime: String {
-        if let departureCode = appState.departureStationCode {
-            return train.getFormattedDepartureTime(fromStationCode: departureCode)
-        }
-        let formatter = DateFormatter.easternTime(time: .short)
-        return formatter.string(from: train.departureTime)
+        return train.getFormattedDepartureTime(fromStationCode: departureStationCode)
     }
     
     private var arrivalTime: String {
@@ -236,7 +285,6 @@ struct TrainCard: View {
                 
                 // Track and status - only show for boarding trains at origin
                 if !isCancelled && isBoardingAtOrigin,
-                   let departureCode = appState.departureStationCode,
                    let track = train.track {
                     Label("Boarding on Track \(track)", systemImage: "tram.fill")
                         .font(.subheadline)
@@ -256,7 +304,7 @@ struct TrainCard: View {
 // MARK: - StatusV2 Badge
 struct StatusV2Badge: View {
     let train: TrainV2
-    let departureStationCode: String?
+    let departureStationCode: String
     
     var body: some View {
         HStack(spacing: 4) {

@@ -34,6 +34,7 @@ from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.utils.time import calculate_delay, now_et, safe_datetime_subtract
+from trackrat.utils.train import is_amtrak_train
 
 logger = get_logger(__name__)
 
@@ -47,11 +48,11 @@ async def get_departures(
         ...,
         alias="from",
         min_length=2,
-        max_length=2,
+        max_length=3,
         description="Departure station code",
     ),
     to_station: str | None = Query(
-        None, alias="to", min_length=2, max_length=2, description="Arrival station code"
+        None, alias="to", min_length=2, max_length=3, description="Arrival station code"
     ),
     time_from: datetime | None = Query(
         None, description="Start time (defaults to now)"
@@ -95,14 +96,19 @@ async def get_train_details(
         date = now_et().date()
 
     # Get fresh train data
-    njt_client = NJTransitClient()
+    # For Amtrak trains, we don't need an NJT client
+    njt_client = None
+    if not is_amtrak_train(train_id):
+        njt_client = NJTransitClient()
+
     try:
         async with JustInTimeUpdateService(njt_client) as jit_service:
             journey = await jit_service.get_fresh_train(
                 db, train_id, date, force_refresh=refresh
             )
     finally:
-        await njt_client.close()
+        if njt_client:
+            await njt_client.close()
 
     if not journey:
         raise HTTPException(
