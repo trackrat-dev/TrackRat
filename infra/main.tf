@@ -60,6 +60,7 @@ module "secrets" {
   amtrak_api_key      = var.amtrak_api_key
   apns_team_id        = var.apns_team_id
   apns_key_id         = var.apns_key_id
+  apns_auth_key       = var.apns_auth_key
 
   depends_on = [module.apis]
 }

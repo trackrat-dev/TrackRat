@@ -83,6 +83,7 @@ module "trackrat_api_service" {
     TRACKRAT_NJT_API_TOKEN = "${module.infrastructure.njt_token_secret_name}:latest"
     APNS_TEAM_ID           = "${module.infrastructure.apns_team_id_secret_name}:latest"
     APNS_KEY_ID            = "${module.infrastructure.apns_key_id_secret_name}:latest"
+    # APNS_AUTH_KEY removed - now loaded from file path in container
   }
 
   # Custom domain configuration

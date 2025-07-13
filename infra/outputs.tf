@@ -55,6 +55,11 @@ output "apns_key_id_secret_name" {
   value       = module.secrets.apns_key_id_secret_name
 }
 
+output "apns_auth_key_secret_name" {
+  description = "Name of the APNS Auth Key secret"
+  value       = module.secrets.apns_auth_key_secret_name
+}
+
 
 output "network_self_link" {
   description = "The self-link of the VPC network."

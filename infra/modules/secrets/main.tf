@@ -137,6 +137,20 @@ resource "google_secret_manager_secret" "apns_key_id" {
   }
 }
 
+resource "google_secret_manager_secret" "apns_auth_key" {
+  secret_id = "${var.app_name}-${var.environment}-apns-auth-key"
+
+  labels = {
+    app         = var.app_name
+    environment = var.environment
+    type        = "apns-credentials"
+  }
+
+  replication {
+    auto {}
+  }
+}
+
 
 resource "google_secret_manager_secret_version" "apns_team_id_version" {
   secret      = google_secret_manager_secret.apns_team_id.id
@@ -150,6 +164,15 @@ resource "google_secret_manager_secret_version" "apns_team_id_version" {
 resource "google_secret_manager_secret_version" "apns_key_id_version" {
   secret      = google_secret_manager_secret.apns_key_id.id
   secret_data = var.apns_key_id != "" ? var.apns_key_id : "placeholder"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+resource "google_secret_manager_secret_version" "apns_auth_key_version" {
+  secret      = google_secret_manager_secret.apns_auth_key.id
+  secret_data = var.apns_auth_key != "" ? var.apns_auth_key : "placeholder"
 
   lifecycle {
     ignore_changes = [secret_data]

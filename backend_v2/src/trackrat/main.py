@@ -39,6 +39,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "apns_service_initialized",
         is_configured=apns_service.is_configured,
         environment=settings.environment,
+        apns_environment=settings.apns_environment,
+        apns_base_url=apns_service.base_url,
     )
 
     # Start scheduler with APNS service

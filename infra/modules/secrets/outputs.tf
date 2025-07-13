@@ -30,4 +30,9 @@ output "apns_key_id_secret_name" {
   value       = google_secret_manager_secret.apns_key_id.secret_id
 }
 
+output "apns_auth_key_secret_name" {
+  description = "Name of the APNS Auth Key secret"
+  value       = google_secret_manager_secret.apns_auth_key.secret_id
+}
+
 # Database password outputs moved to database module

@@ -32,21 +32,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Free up disk space
-        run: |
-          echo "🗄️ Disk usage before cleanup:"
-          df -h
-          echo "🧹 Removing large unused packages..."
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune -af
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          echo "💾 Disk usage after cleanup:"
-          df -h
-
       # Backend Tests
       - name: Set up Python 3.11
         uses: actions/setup-python@v4

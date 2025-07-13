@@ -87,12 +87,40 @@ class Settings(BaseSettings):
     )
     apns_auth_key: str = Field(
         default_factory=lambda: os.getenv("APNS_AUTH_KEY", ""),
-        description="APNS Auth Key (P8 content)",
+        description="APNS Auth Key (P8 content) - legacy environment variable approach",
+    )
+    apns_auth_key_path: str = Field(
+        default_factory=lambda: os.getenv(
+            "APNS_AUTH_KEY_PATH", "certs/AuthKey_4WC3F645FR.p8"
+        ),
+        description="Path to APNS Auth Key (P8 file) - preferred file-based approach",
     )
     apns_bundle_id: str = Field(
         default_factory=lambda: os.getenv("APNS_BUNDLE_ID", "net.trackrat.TrackRat"),
         description="iOS App Bundle ID",
     )
+    apns_environment: str = Field(
+        default_factory=lambda: os.getenv("APNS_ENVIRONMENT", "dev"),
+        description="APNS Environment (dev for sandbox, prod for production)",
+    )
+
+    @property
+    def apns_auth_key_content(self) -> str:
+        """
+        Get APNS auth key content, prioritizing file path over environment variable.
+        Returns empty string if neither is available or file cannot be read.
+        """
+        # First try to load from file path if it exists
+        if self.apns_auth_key_path:
+            try:
+                with open(self.apns_auth_key_path) as f:
+                    return f.read().strip()
+            except (FileNotFoundError, PermissionError, OSError):
+                # Fall through to environment variable
+                pass
+
+        # Fall back to environment variable
+        return self.apns_auth_key
 
     @field_validator("database_url")
     @classmethod

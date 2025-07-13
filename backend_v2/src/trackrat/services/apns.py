@@ -24,8 +24,8 @@ class SimpleAPNSService:
         """Initialize APNS service with minimal configuration."""
         settings = get_settings()
 
-        # Use sandbox for development, production for prod
-        if settings.environment == "production":
+        # Use sandbox for dev APNS environment, production for prod APNS environment
+        if settings.apns_environment == "prod":
             self.base_url = "https://api.push.apple.com"
         else:
             self.base_url = "https://api.sandbox.push.apple.com"
@@ -33,7 +33,9 @@ class SimpleAPNSService:
         # APNS configuration from settings
         self.team_id = settings.apns_team_id
         self.key_id = settings.apns_key_id
-        self.auth_key = settings.apns_auth_key  # P8 key content
+        self.auth_key = (
+            settings.apns_auth_key_content
+        )  # P8 key content (from file or env var)
         self.bundle_id = settings.apns_bundle_id
 
         # JWT token cache
@@ -46,7 +48,23 @@ class SimpleAPNSService:
         )
 
         if not self.is_configured:
-            logger.warning("apns_not_configured", reason="Missing APNS credentials")
+            missing_fields = []
+            if not self.team_id:
+                missing_fields.append("team_id")
+            if not self.key_id:
+                missing_fields.append("key_id")
+            if not self.auth_key:
+                missing_fields.append("auth_key")
+            if not self.bundle_id:
+                missing_fields.append("bundle_id")
+
+            logger.warning(
+                "apns_not_configured",
+                reason="Missing APNS credentials",
+                missing_fields=missing_fields,
+                auth_key_path=settings.apns_auth_key_path,
+                has_auth_key_env_var=bool(settings.apns_auth_key),
+            )
 
     def _get_jwt_token(self) -> str:
         """Generate or return cached JWT token for APNS."""
@@ -86,7 +104,18 @@ class SimpleAPNSService:
             return self._jwt_token
 
         except Exception as e:
-            logger.error(f"Failed to generate JWT token: {str(e)}")
+            logger.error(
+                "Failed to generate JWT token",
+                error=str(e),
+                error_type=type(e).__name__,
+                auth_key_length=len(self.auth_key) if self.auth_key else 0,
+                auth_key_starts_with_begin=(
+                    self.auth_key.startswith("-----BEGIN") if self.auth_key else False
+                ),
+                auth_key_ends_with_end=(
+                    self.auth_key.endswith("-----") if self.auth_key else False
+                ),
+            )
             raise
 
     async def send_live_activity_update(
