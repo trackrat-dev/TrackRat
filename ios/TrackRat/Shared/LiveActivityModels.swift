@@ -83,13 +83,25 @@ struct TrainActivityAttributes: ActivityAttributes {
         var compactTrailingText: String {
             if hasTrainDeparted {
                 if let minutes = minutesUntilArrival {
-                    return minutes >= 0 ? "~\(minutes) min" : "Overdue"
+                    if minutes > 0 {
+                        return "~\(minutes) min"
+                    } else if minutes == 0 {
+                        return "now"
+                    } else {
+                        return "late"
+                    }
                 }
             } else if trackDisplay != nil {
                 return trackDisplay!
             } else {
                 if let minutes = minutesUntilDeparture {
-                    return minutes >= 0 ? "~\(minutes) min" : "Overdue"
+                    if minutes > 0 {
+                        return "~\(minutes) min"
+                    } else if minutes == 0 {
+                        return "now"
+                    } else {
+                        return "late"
+                    }
                 }
             }
             return ""

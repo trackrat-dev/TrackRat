@@ -13,6 +13,28 @@ struct ActiveTripsSection: View {
         return formatter.string(from: date)
     }
     
+    private func statusText(for activity: Activity<TrainActivityAttributes>) -> String {
+        let contentState = activity.content.state
+        
+        // Use the existing computed properties for intelligent display
+        if contentState.hasTrainDeparted {
+            if let minutes = contentState.minutesUntilArrival {
+                if minutes > 0 {
+                    return "Arriving in \(minutes) minutes"
+                } else if minutes == 0 {
+                    return "Arriving now"
+                } else {
+                    return "Arrival delayed"
+                }
+            }
+        } else if let track = contentState.track {
+            return "Boarding on Track \(track)"
+        }
+        
+        // Default departure time
+        return "Scheduled to depart at \(formattedDepartureTime(activity.attributes.departureTime))"
+    }
+    
     var body: some View {
         Group {
             if liveActivityService.isActivityActive, let activity = liveActivityService.currentActivity {
@@ -42,17 +64,9 @@ struct ActiveTripsSection: View {
                                     .font(.subheadline)
                                     .foregroundColor(.white.opacity(0.8))
                                 
-                                HStack {
-                                    Text("Scheduled to depart at \(formattedDepartureTime(activity.attributes.departureTime))")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.8))
-                                    
-                                    if let track = activity.content.state.track {
-                                        Text("Track \(track)")
-                                            .font(.caption)
-                                            .foregroundColor(.orange)
-                                    }
-                                }
+                                Text(statusText(for: activity))
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.8))
                             }
                             
                             Spacer()

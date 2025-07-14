@@ -33,11 +33,14 @@ class JourneyCollector(BaseJourneyCollector):
         """
         self.njt_client = njt_client
 
-    async def collect_journey(self, train_id: str) -> TrainJourney | None:
+    async def collect_journey(
+        self, train_id: str, skip_enhancement: bool = False
+    ) -> TrainJourney | None:
         """Collect journey details for a specific train.
 
         Args:
             train_id: The train ID to collect journey details for
+            skip_enhancement: If True, skip departure board enhancement (for scheduled batch collection)
 
         Returns:
             TrainJourney object if successful, None if failed
@@ -57,7 +60,7 @@ class JourneyCollector(BaseJourneyCollector):
                 return None
 
             try:
-                await self.collect_journey_details(session, journey)
+                await self.collect_journey_details(session, journey, skip_enhancement)
                 await session.commit()
                 return journey
             except TrainNotFoundError as e:
@@ -186,13 +189,17 @@ class JourneyCollector(BaseJourneyCollector):
         return list(result.scalars().all())
 
     async def collect_journey_details(
-        self, session: AsyncSession, journey: TrainJourney
+        self,
+        session: AsyncSession,
+        journey: TrainJourney,
+        skip_enhancement: bool = False,
     ) -> None:
         """Collect complete journey details for a train.
 
         Args:
             session: Database session
             journey: Journey to collect data for
+            skip_enhancement: If True, skip departure board enhancement (for scheduled batch collection)
         """
         now_et()
 
@@ -241,7 +248,8 @@ class JourneyCollector(BaseJourneyCollector):
             return
 
         # Enhance with real-time departure board data if applicable
-        await self.enhance_with_departure_board_data(journey, train_data)
+        if not skip_enhancement:
+            await self.enhance_with_departure_board_data(journey, train_data)
 
         # Create snapshot for historical analysis
         await self.create_journey_snapshot(session, journey, train_data)
@@ -514,6 +522,27 @@ class JourneyCollector(BaseJourneyCollector):
         """
         return station_code in ["NY", "NP", "PJ", "TR", "LB", "PL", "DN"]
 
+    def _is_departing_within_minutes(
+        self, scheduled_departure_str: str, minutes: int
+    ) -> bool:
+        """Check if train departs within specified minutes from now.
+
+        Args:
+            scheduled_departure_str: Scheduled departure time in NJT format
+            minutes: Number of minutes to check within
+
+        Returns:
+            True if train departs within the specified time window
+        """
+        try:
+            scheduled_time = parse_njt_time(scheduled_departure_str)
+            now = now_et()
+            time_until_departure = (scheduled_time - now).total_seconds() / 60
+            return 0 <= time_until_departure <= minutes
+        except Exception:
+            # If we can't parse the time, skip enhancement for safety
+            return False
+
     def _apply_departure_board_data(
         self, stop: NJTransitStopData, train_entry: dict[str, Any]
     ) -> None:
@@ -552,6 +581,11 @@ class JourneyCollector(BaseJourneyCollector):
 
         if train_data.STOPS and train_data.STOPS[0].DEPARTED == "YES":
             return  # Already departed from origin
+
+        # Only enhance if train is departing within 15 minutes
+        if train_data.STOPS and train_data.STOPS[0].DEP_TIME:
+            if not self._is_departing_within_minutes(train_data.STOPS[0].DEP_TIME, 15):
+                return  # Not departing soon enough to need real-time data
 
         try:
             # Get departure board for origin station

@@ -141,7 +141,10 @@ class NJTransitClient:
         Returns:
             List of train schedule data
         """
-        logger.info("getting_train_schedule", station_code=station_code)
+        logger.info(
+            "API QUERY: getting train schedule with getTrainSchedule19Rec",
+            station_code=station_code,
+        )
 
         response = await self._make_request(
             "TrainData/getTrainSchedule19Rec", {"station": station_code}
@@ -166,7 +169,7 @@ class NJTransitClient:
             and len(response["ITEMS"]) > 0
         ):
             sample_train = response["ITEMS"][0]
-            logger.info(
+            logger.debug(
                 "train_schedule_sample_data",
                 station_code=station_code,
                 train_id=sample_train.get("TRAIN_ID"),
@@ -221,7 +224,10 @@ class NJTransitClient:
         Raises:
             NJTransitAPIError: If the request fails or data is invalid
         """
-        logger.debug("getting_train_stop_list", train_id=train_id)
+        logger.info(
+            "API QUERY: getting train stop list with getTrainStopList",
+            train_id=train_id,
+        )
 
         response = await self._make_request(
             "TrainData/getTrainStopList", {"train": train_id}

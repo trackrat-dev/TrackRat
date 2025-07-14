@@ -19,25 +19,18 @@ Data Sources → Cloud Run (API + ML) → iOS App + Web App
 
 ## Quick Start
 
-### Backend (TrackCast)
+### Backend V2
 ```bash
-cd backend
-pip install -e .
-trackcast init-db
-trackcast start-scheduler
+cd backend_v2
+poetry install
+poetry run alembic upgrade head
+poetry run uvicorn trackrat.main:app --reload
 ```
 
 ### iOS App
 ```bash
 cd ios
 open TrackRat.xcodeproj
-```
-
-### Web App
-```bash
-cd webpage
-python proxy.py  # Development only
-open http://localhost:9998
 ```
 
 ## Development
@@ -69,11 +62,10 @@ Fully automated deployment via GitHub Actions to Google Cloud Run with:
 
 ## Documentation
 
-- **Backend**: `backend/CLAUDE.md` - API development and deployment
+- **Backend V2**: `backend_v2/CLAUDE.md` - Simplified V2 API development
 - **iOS**: `ios/CLAUDE.md` - Native app and Live Activities
-- **Web**: `webpage/CLAUDE.md` - Web application development
 - **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP setup
-- **Operations**: `OPERATORS_GUIDE.md` - Production monitoring and troubleshooting
+- **Project Guide**: `CLAUDE.md` - Comprehensive project overview
 
 ## Deployment Tools
 

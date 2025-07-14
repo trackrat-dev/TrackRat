@@ -1,13 +1,14 @@
 # TrackRat iOS App
 
-A minimalistic iOS app for tracking train departures from New York Penn Station with real-time updates and intelligent track predictions.
+A comprehensive iOS app for tracking NJ Transit and Amtrak trains with Live Activities, real-time updates, and intelligent track predictions.
 
 ## Features
 
-- **Destination Search**: Quick access to recent destinations and autocomplete search
-- **Real-time Updates**: 30-second refresh intervals with boarding status notifications
+- **Live Activities**: Real-time train tracking on Lock Screen and Dynamic Island
+- **Multi-Station Support**: Departures from NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark
+- **Real-time Updates**: 30-second refresh intervals with push notifications
 - **Track Predictions**: "Owl" system shows confidence-based track predictions
-- **Journey Tracking**: Visual stop indicators with destination highlighting
+- **Journey Tracking**: Visual progress indicators with stop-by-stop updates
 - **Historical Analytics**: Performance data and track usage statistics
 - **Native iOS Experience**: Haptic feedback, pull-to-refresh, and smooth animations
 
@@ -22,12 +23,12 @@ A minimalistic iOS app for tracking train departures from New York Penn Station 
 
 - iOS 17.0+
 - Xcode 15.0+
-- API server accessible at `https://prod.api.trackrat.net/api`
+- Backend V2 API running (local or deployed)
 
 ## Setup
 
 1. Open `TrackRat.xcodeproj` in Xcode
-2. Ensure the API server is accessible at `https://prod.api.trackrat.net/api`
+2. Configure API endpoint in the app (defaults to local development)
 3. Build and run on simulator or device
 
 ## Project Structure

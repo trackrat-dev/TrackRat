@@ -950,8 +950,10 @@ class SchedulerService:
                         progress=f"{i+1}/{len(train_ids)}",
                     )
 
-                    # Collect journey details
-                    journey = await collector.collect_journey(train_id)
+                    # Collect journey details (skip enhancement for scheduled batch collection)
+                    journey = await collector.collect_journey(
+                        train_id, skip_enhancement=True
+                    )
 
                     if journey:
                         success_count += 1

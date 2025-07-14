@@ -1,6 +1,6 @@
 # TrackRat V2 Backend
 
-A simplified, efficient train tracking system for NJ Transit built with FastAPI, SQLite, and modern Python.
+A simplified, efficient train tracking system for NJ Transit and Amtrak built with FastAPI, SQLite, and modern Python.
 
 ## ✨ Features
 
@@ -11,6 +11,8 @@ A simplified, efficient train tracking system for NJ Transit built with FastAPI,
 - **🚀 Async Throughout**: Built on aiosqlite for maximum performance
 - **📊 Built-in Monitoring**: Health checks, metrics, and structured logging
 - **🔧 Zero Config**: Works with SQLite out of the box, no database server required
+- **📱 Live Activities**: Push notification support for iOS Live Activity updates
+- **🚂 Multi-Source**: Supports both NJ Transit and Amtrak data sources
 
 ## 📈 V2 Improvements
 

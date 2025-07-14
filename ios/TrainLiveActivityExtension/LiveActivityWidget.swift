@@ -85,6 +85,11 @@ struct TrainLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded UI (when tapped)
+                DynamicIslandExpandedRegion(.center) {
+                    // Only center status content
+                    CenterStatusView(state: context.state)
+                        .padding(.top, 17) // Aligns with station name text
+                }
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Next stop")
@@ -275,6 +280,55 @@ struct TrainLiveActivityView: View {
             return .gray
         default:
             return .gray.opacity(0.3)
+        }
+    }
+}
+
+// MARK: - Center Status View
+
+@available(iOS 16.1, *)
+private struct CenterStatusView: View {
+    let state: TrainActivityAttributes.ContentState
+    
+    private var primaryText: String {
+        if !state.hasTrainDeparted && state.trackDisplay != nil {
+            return "Boarding"
+        } else if !state.hasTrainDeparted, let minutes = state.minutesUntilDeparture {
+            return "Departing"
+        } else if state.hasTrainDeparted, let minutes = state.minutesUntilArrival {
+            return "Arriving"
+        } else if state.hasTrainDeparted {
+            return "En Route"
+        } else {
+            return "Scheduled"
+        }
+    }
+    
+    private var secondaryText: String {
+        if !state.hasTrainDeparted && state.trackDisplay != nil {
+            return "on Track \(state.track ?? "")"
+        } else if !state.hasTrainDeparted, let minutes = state.minutesUntilDeparture {
+            return minutes > 0 ? "in \(minutes)m" : "now"
+        } else if state.hasTrainDeparted, let minutes = state.minutesUntilArrival {
+            return minutes > 0 ? "in \(minutes)m" : (minutes == 0 ? "now" : "late")
+        } else {
+            return ""
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(primaryText)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.orange)
+            
+            if !secondaryText.isEmpty {
+                Text(secondaryText)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.orange)
+            }
         }
     }
 }

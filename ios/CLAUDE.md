@@ -126,14 +126,12 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **Error handling**: Typed errors with recovery
 - **Eastern Time Zone**: Automatic conversion for all timestamps
 
-### Endpoints Used
-- `GET /trains/?from_station_code=X&to_station_code=Y&departure_time_after=Z&limit=N` - Search by origin/destination
-- `GET /trains/{id}?from_station_code=X` - Train details filtered by origin
-- `GET /trains/{train_number}?from_station_code=X` - Lookup by number with origin filter
-- `GET /trains/?train_id=X&no_pagination=true&from_station_code=Y` - Historical data by origin
-- `GET /trains/?line=X&limit=1000&from_station_code=Y` - Line history by origin
-- `GET /trains/?destination=X&limit=1000&from_station_code=Y` - Destination history by origin
-- `GET /trains/?consolidate=true` - Consolidated train data with multi-source support (use consolidate parameter)
+### Endpoints Used (V2 API)
+- `GET /v2/trains/departures?from=X&to=Y&time_after=Z` - Search trains between stations
+- `GET /v2/trains/{train_id}?refresh=true` - Train details with optional forced refresh
+- `GET /v2/trains/{train_id}/history?days=30` - Historical performance data
+- `POST /v2/live-activities/register` - Register Live Activity for updates
+- `DELETE /v2/live-activities/{push_token}` - Unregister Live Activity
 
 ### New API Features
 - **Consolidated Train Data**: Merges data from multiple sources (Amtrak, NJTransit)
