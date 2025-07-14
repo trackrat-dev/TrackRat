@@ -62,6 +62,7 @@ module "trackrat_api_service" {
 
   vpc_connector_id       = null
   enable_cloudsql_access = false
+  enable_backup_access   = true
 
   # Environment variables (non-sensitive)
   environment_variables = {
@@ -76,6 +77,7 @@ module "trackrat_api_service" {
     OTEL_SAMPLE_RATE             = "0.05"               # Lower sampling for production cost optimization
     OTEL_SERVICE_NAME            = "trackcast-api-prod" # Environment-specific service name
     GCP_METRICS_EXPORT_INTERVAL  = "60"                 # Export metrics to GCP every 60 seconds
+    GCS_BACKUP_BUCKET            = module.infrastructure.db_backup_bucket_name
   }
 
   # Secret environment variables (sensitive data from Secret Manager)

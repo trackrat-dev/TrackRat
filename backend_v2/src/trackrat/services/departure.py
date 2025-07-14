@@ -43,7 +43,9 @@ class DepartureService:
 
         # Set default time range
         if time_from is None:
-            time_from = now_et()
+            time_from = now_et().replace(
+                tzinfo=None
+            )  # Convert to naive Eastern for consistent DB comparison
         if time_to is None:
             time_to = time_from + timedelta(hours=6)
 

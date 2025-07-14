@@ -75,6 +75,15 @@ class Settings(BaseSettings):
         default=False, description="Enable SQLAlchemy query logging"
     )
 
+    # Backup Settings
+    gcs_backup_bucket: str = Field(
+        default="",
+        description="GCS bucket name for database backups (empty = no backup)",
+    )
+    backup_interval_seconds: int = Field(
+        default=300, description="Backup interval in seconds", ge=60
+    )
+
     # APNS Settings (optional - Live Activities work without if not configured)
     # Use non-prefixed env vars for compatibility with V1 backend
     apns_team_id: str = Field(

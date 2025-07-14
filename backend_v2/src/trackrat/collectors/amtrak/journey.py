@@ -288,6 +288,30 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     else None
                 )
 
+                # Safety check: trains never depart before scheduled time
+                if actual_dep and sched_dep and actual_dep < sched_dep:
+                    logger.warning(
+                        "amtrak_early_departure_corrected",
+                        train_id=train_id,
+                        station=amtrak_stop.code,
+                        scheduled=sched_dep.isoformat(),
+                        actual=actual_dep.isoformat(),
+                        status=amtrak_stop.status,
+                    )
+                    actual_dep = sched_dep
+
+                # Safety check: trains never arrive before scheduled time
+                if actual_arr and sched_arr and actual_arr < sched_arr:
+                    logger.warning(
+                        "amtrak_early_arrival_corrected",
+                        train_id=train_id,
+                        station=amtrak_stop.code,
+                        scheduled=sched_arr.isoformat(),
+                        actual=actual_arr.isoformat(),
+                        status=amtrak_stop.status,
+                    )
+                    actual_arr = sched_arr
+
                 # Prepare stop data for upsert
                 stop_data = {
                     "station_name": get_station_name(internal_code),
@@ -485,6 +509,38 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             actual_departure: datetime | None = (
                 self._parse_amtrak_time(amtrak_stop.dep) if amtrak_stop.dep else None
             )
+
+            # Safety check: trains never depart before scheduled time
+            if (
+                actual_departure
+                and scheduled_departure
+                and actual_departure < scheduled_departure
+            ):
+                logger.warning(
+                    "amtrak_early_departure_corrected_refresh",
+                    train_id=journey.train_id,
+                    station=amtrak_stop.code,
+                    scheduled=scheduled_departure.isoformat(),
+                    actual=actual_departure.isoformat(),
+                    status=amtrak_stop.status,
+                )
+                actual_departure = scheduled_departure
+
+            # Safety check: trains never arrive before scheduled time
+            if (
+                actual_arrival
+                and scheduled_arrival
+                and actual_arrival < scheduled_arrival
+            ):
+                logger.warning(
+                    "amtrak_early_arrival_corrected_refresh",
+                    train_id=journey.train_id,
+                    station=amtrak_stop.code,
+                    scheduled=scheduled_arrival.isoformat(),
+                    actual=actual_arrival.isoformat(),
+                    status=amtrak_stop.status,
+                )
+                actual_arrival = scheduled_arrival
             departed: bool = amtrak_stop.status in ["Departed", "Station"]
             status: str = self.STATUS_MAP.get(amtrak_stop.status, amtrak_stop.status)
             track: str | None = amtrak_stop.platform if amtrak_stop.platform else None

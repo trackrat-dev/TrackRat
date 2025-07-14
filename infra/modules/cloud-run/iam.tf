@@ -61,4 +61,12 @@ resource "google_project_iam_member" "monitoring_metric_writer" {
   member  = "serviceAccount:${local.effective_service_account_email}"
 }
 
+# Grant Storage Object Admin role for backup bucket access
+resource "google_project_iam_member" "storage_object_admin" {
+  count   = var.enable_backup_access ? 1 : 0 # Only if backup is enabled
+  project = var.project_id
+  role    = "roles/storage.objectAdmin"
+  member  = "serviceAccount:${local.effective_service_account_email}"
+}
+
 # Add other necessary IAM bindings here, for example, Pub/Sub subscriber if triggered by Pub/Sub, etc.

@@ -83,21 +83,32 @@ struct TrainDetailsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .trackRatNavigationBarStyle()
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if #available(iOS 16.1, *) {
-                    if let train = viewModel.train, train.status != .delayed {  // V2 maps CANCELLED to delayed
-                        Button {
-                            toggleLiveActivity(for: train)
-                        } label: {
-                            Image(systemName: "eye.circle.fill")
-                                .font(.title3)
-                                .foregroundColor((liveActivityService.currentActivity?.attributes.trainNumber == train.trainId) ? .orange : .white.opacity(0.7))
+            ToolbarItem(placement: .navigationBarTrailing) {
+                HStack(spacing: 8) {
+                    if #available(iOS 16.1, *) {
+                        if let train = viewModel.train, train.status != .delayed {  // V2 maps CANCELLED to delayed
+                            Button {
+                                toggleLiveActivity(for: train)
+                            } label: {
+                                Image(systemName: "eye.circle.fill")
+                                    .font(.title3)
+                                    .foregroundColor((liveActivityService.currentActivity?.attributes.trainNumber == train.trainId) ? .orange : .white.opacity(0.7))
+                            }
                         }
                     }
-                }
-                
-                Button("Close") {
-                    appState.navigationPath.removeLast(appState.navigationPath.count)
+                    
+                    if let train = viewModel.train {
+                        // Share button
+                        ShareButton(
+                            train: train,
+                            fromStationCode: appState.departureStationCode,
+                            destinationName: appState.selectedDestination
+                        )
+                    }
+                    
+                    Button("Close") {
+                        appState.navigationPath.removeLast(appState.navigationPath.count)
+                    }
                 }
             }
         }

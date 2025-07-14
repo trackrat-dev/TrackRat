@@ -15,7 +15,13 @@ STATION_NAMES: dict[str, str] = {
     "DN": "Dunellen",
     "MP": "Metropark",
     "NB": "New Brunswick",
-    "WAS": "Washington Union Station",
+    "WS": "Washington Union Station",
+    "PH": "Philadelphia",
+    "WI": "Wilmington Station",
+    "BL": "Baltimore Station",
+    "BA": "BWI Thurgood Marshall Airport",
+    "BOS": "Boston South Station",
+    "BBY": "Boston Back Bay",
 }
 
 
@@ -40,7 +46,13 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "MET": "MP",  # Metropark
     "NBK": "NB",  # New Brunswick
     "EWR": "NP",  # Newark Airport → Newark Penn
-    "WAS": "WAS",  # Washington Union Station
+    "WAS": "WS",  # Washington Union Station
+    "PHL": "PH",  # Philadelphia
+    "WIL": "WI",  # Wilmington
+    "BAL": "BL",  # Baltimore Penn Station
+    "BWI": "BA",  # Baltimore BWI Thurgood Marshall Airport
+    "BOS": "BOS",  # Boston South Station
+    "BBY": "BBY",  # Boston Back Bay
 }
 
 # Reverse mapping from internal codes to Amtrak codes (for the first match)
@@ -51,7 +63,13 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "PJ": "PJC",
     "MP": "MET",
     "NB": "NBK",
-    "WAS": "WAS",
+    "WS": "WAS",
+    "PH": "PHL",
+    "WI": "WIL",
+    "BL": "BAL",
+    "BA": "BWI",
+    "BOS": "BOS",
+    "BBY": "BBY",
 }
 
 

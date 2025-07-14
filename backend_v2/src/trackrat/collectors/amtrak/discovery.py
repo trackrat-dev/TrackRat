@@ -1,7 +1,7 @@
 """
 Amtrak train discovery collector for TrackRat V2.
 
-Discovers active Amtrak trains that stop at New York Penn Station.
+Discovers active Amtrak trains that stop at major Northeast Corridor hubs.
 """
 
 from typing import Any
@@ -14,16 +14,25 @@ from trackrat.models.api import AmtrakTrainData
 
 logger = get_logger(__name__)
 
+# Major hubs for Amtrak discovery in the Northeast Corridor
+DISCOVERY_HUBS = {
+    "NYP",  # New York Penn Station
+    "PHL",  # Philadelphia
+    "WAS",  # Washington Union Station (Amtrak code)
+    "BOS",  # Boston South Station
+    "WIL",  # Wilmington Station
+}
+
 
 class AmtrakDiscoveryCollector(BaseDiscoveryCollector):
-    """Discovers active Amtrak trains serving New York Penn Station."""
+    """Discovers active Amtrak trains serving major Northeast Corridor hubs."""
 
     def __init__(self) -> None:
         """Initialize the Amtrak discovery collector."""
         self.client = AmtrakClient()
 
     async def discover_trains(self) -> list[str]:
-        """Discover all Amtrak trains that stop at NYP.
+        """Discover all Amtrak trains that stop at major Northeast Corridor hubs.
 
         Returns:
             List of Amtrak train IDs (e.g., ["2150-4", "141-4"])
@@ -34,10 +43,10 @@ class AmtrakDiscoveryCollector(BaseDiscoveryCollector):
 
             discovered_train_ids = []
 
-            # Check each train to see if it stops at NYP
+            # Check each train to see if it stops at any discovery hub
             for train_list in all_trains.values():
                 for train in train_list:
-                    if self._stops_at_nyp(train):
+                    if self._stops_at_any_hub(train):
                         discovered_train_ids.append(train.trainID)
                         logger.debug(
                             "discovered_amtrak_train",
@@ -73,8 +82,22 @@ class AmtrakDiscoveryCollector(BaseDiscoveryCollector):
             "data_source": "AMTRAK",
         }
 
+    def _stops_at_any_hub(self, train: AmtrakTrainData) -> bool:
+        """Check if a train stops at any of the major Northeast Corridor hubs.
+
+        Args:
+            train: Amtrak train data
+
+        Returns:
+            True if the train stops at NYP, PHL, WAS, BOS, or WIL
+        """
+        train_stations = {station.code for station in train.stations}
+        return bool(train_stations.intersection(DISCOVERY_HUBS))
+
     def _stops_at_nyp(self, train: AmtrakTrainData) -> bool:
         """Check if a train stops at New York Penn Station.
+
+        Deprecated: Use _stops_at_any_hub() for broader coverage.
 
         Args:
             train: Amtrak train data

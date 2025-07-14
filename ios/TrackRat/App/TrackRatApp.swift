@@ -28,6 +28,10 @@ struct TrackRatApp: App {
                         .preferredColorScheme(.dark)
                         .tint(TrackRatTheme.Colors.accent)
                         .transition(.opacity)
+                        .onOpenURL { url in
+                            print("🔗 App received URL: \(url)")
+                            DeepLinkService.shared.handleOpenURL(url, appState: appState)
+                        }
                 }
             }
             .onChange(of: scenePhase) { _, newPhase in

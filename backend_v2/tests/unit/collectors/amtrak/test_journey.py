@@ -59,7 +59,7 @@ def sample_train_data():
                 status="Enroute",
             ),
             create_amtrak_station_data(
-                code="PHL",  # Philadelphia - not in our tracking
+                code="PHL",  # Philadelphia - now tracked
                 name="Philadelphia",
                 sch_arr="2025-07-05T15:45:00-05:00",
                 sch_dep="2025-07-05T15:50:00-05:00",
@@ -333,11 +333,11 @@ class TestAmtrakJourneyCollector:
             assert result.line_code == "AM"
             assert result.line_name == "Amtrak"
             assert result.destination == "Washington Union Station"
-            assert result.stops_count == 3  # Only tracked stations (NYP, NWK, TRE)
+            assert result.stops_count == 4  # Only tracked stations (NYP, NWK, TRE, PHL)
             assert result.has_complete_journey is True
             # Verify correct number of session.add calls:
-            # 1 journey + 3 stops + 1 snapshot = 5 total
-            assert mock_db_session.add.call_count == 5
+            # 1 journey + 4 stops + 1 snapshot = 6 total
+            assert mock_db_session.add.call_count == 6
 
     @pytest.mark.asyncio
     async def test_convert_to_journey_existing_journey(
@@ -374,8 +374,8 @@ class TestAmtrakJourneyCollector:
             train_num="2150",
             stations=[
                 create_amtrak_station_data(
-                    code="BOS",  # Boston - not tracked
-                    name="Boston",
+                    code="ALB",  # Albany - not tracked
+                    name="Albany",
                     sch_dep="2025-07-05T14:30:00-05:00",
                     status="Departed",
                 )

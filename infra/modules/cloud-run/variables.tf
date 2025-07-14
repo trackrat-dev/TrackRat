@@ -84,6 +84,12 @@ variable "enable_cloudsql_access" {
   default     = false
 }
 
+variable "enable_backup_access" {
+  description = "Whether to grant Storage Object Admin permissions for backup access"
+  type        = bool
+  default     = false
+}
+
 variable "startup_probe_path" {
   description = "Path for the startup probe (e.g., /healthz). Disabled if null."
   type        = string

@@ -24,6 +24,13 @@ class TestStationMapping:
         assert AMTRAK_TO_INTERNAL_STATION_MAP["TRE"] == "TR"
         assert AMTRAK_TO_INTERNAL_STATION_MAP["PJC"] == "PJ"
         assert AMTRAK_TO_INTERNAL_STATION_MAP["MET"] == "MP"
+        assert AMTRAK_TO_INTERNAL_STATION_MAP["PHL"] == "PH"
+        assert AMTRAK_TO_INTERNAL_STATION_MAP["WIL"] == "WI"
+        assert AMTRAK_TO_INTERNAL_STATION_MAP["BAL"] == "BL"
+        assert AMTRAK_TO_INTERNAL_STATION_MAP["BWI"] == "BA"
+        assert AMTRAK_TO_INTERNAL_STATION_MAP["BOS"] == "BOS"
+        assert AMTRAK_TO_INTERNAL_STATION_MAP["BBY"] == "BBY"
+        assert AMTRAK_TO_INTERNAL_STATION_MAP["WAS"] == "WS"
 
     def test_map_amtrak_station_code_valid_codes(self):
         """Test mapping valid Amtrak station codes."""
@@ -32,6 +39,13 @@ class TestStationMapping:
         assert map_amtrak_station_code("TRE") == "TR"
         assert map_amtrak_station_code("PJC") == "PJ"
         assert map_amtrak_station_code("MET") == "MP"
+        assert map_amtrak_station_code("PHL") == "PH"
+        assert map_amtrak_station_code("WIL") == "WI"
+        assert map_amtrak_station_code("BAL") == "BL"
+        assert map_amtrak_station_code("BWI") == "BA"
+        assert map_amtrak_station_code("BOS") == "BOS"
+        assert map_amtrak_station_code("BBY") == "BBY"
+        assert map_amtrak_station_code("WAS") == "WS"
 
     def test_map_amtrak_station_code_invalid_codes(self):
         """Test mapping invalid/unmapped Amtrak station codes."""
@@ -68,8 +82,21 @@ class TestStationMapping:
         assert result is not None
 
     def test_mapping_completeness(self):
-        """Test that all expected NJ stations are mapped."""
-        expected_internal_codes = ["NY", "NP", "TR", "PJ", "MP"]
+        """Test that all expected stations are mapped."""
+        expected_internal_codes = [
+            "NY",
+            "NP",
+            "TR",
+            "PJ",
+            "MP",
+            "PH",
+            "WI",
+            "BL",
+            "BA",
+            "BOS",
+            "BBY",
+            "WS",
+        ]
         mapped_internal_codes = set(AMTRAK_TO_INTERNAL_STATION_MAP.values())
 
         for code in expected_internal_codes:
@@ -119,6 +146,13 @@ class TestStationMapping:
             ("TRE", "TR"),
             ("PJC", "PJ"),
             ("MET", "MP"),
+            ("PHL", "PH"),
+            ("WIL", "WI"),
+            ("BAL", "BL"),
+            ("BWI", "BA"),
+            ("BOS", "BOS"),
+            ("BBY", "BBY"),
+            ("WAS", "WS"),
         ],
     )
     def test_known_mappings_parametrized(self, amtrak_code, expected_internal):
@@ -129,7 +163,7 @@ class TestStationMapping:
     def test_integration_with_amtrak_data(self):
         """Test that mapping works with realistic Amtrak station data."""
         # Simulate common Amtrak codes we'd see in real data
-        common_amtrak_codes = ["NYP", "NWK", "TRE", "PHL", "BOS", "WAS"]
+        common_amtrak_codes = ["NYP", "NWK", "TRE", "PHL", "BOS", "WAS", "BAL", "BWI"]
 
         for code in common_amtrak_codes:
             result = map_amtrak_station_code(code)
