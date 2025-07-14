@@ -161,11 +161,11 @@ class TestAmtrakCollectionPipeline:
             assert departure.arrival.code == "TR"
             assert departure.journey.stops_between == 1  # NWK between NY and TR
 
-    async def test_discovery_with_no_nyp_trains(self, db_session: AsyncSession):
-        """Test discovery when no trains serve NYP."""
+    async def test_discovery_with_hub_trains(self, db_session: AsyncSession):
+        """Test discovery when trains serve discovery hubs (PHL, WAS)."""
 
-        # Create trains that don't stop at NYP
-        non_nyp_trains = []
+        # Create trains that serve discovery hubs (PHL, WAS) but not NYP
+        hub_trains = []
         for i in range(2):
             train_num = str(350 + i)
             train_data = create_amtrak_train_data(
@@ -177,10 +177,10 @@ class TestAmtrakCollectionPipeline:
                     create_amtrak_station_data(code="WAS", name="Washington"),
                 ],
             )
-            non_nyp_trains.append(train_data)
+            hub_trains.append(train_data)
 
         mock_api_response = {}
-        for train_data in non_nyp_trains:
+        for train_data in hub_trains:
             mock_api_response[train_data.trainNum] = [train_data]
 
         discovery_collector = AmtrakDiscoveryCollector()
@@ -192,10 +192,10 @@ class TestAmtrakCollectionPipeline:
 
             discovered_trains = await discovery_collector.discover_trains()
 
-            # Should discover no trains since none stop at NYP
-            assert len(discovered_trains) == 0
+            # Should discover both trains since they serve discovery hubs (PHL, WAS)
+            assert len(discovered_trains) == 2
 
-        # Verify no journeys in database
+        # Discovery doesn't create database entries, so no journeys yet
         stmt = select(TrainJourney).where(TrainJourney.data_source == "AMTRAK")
         result = await db_session.execute(stmt)
         db_journeys = list(result.scalars().all())
@@ -203,7 +203,7 @@ class TestAmtrakCollectionPipeline:
         assert len(db_journeys) == 0
 
     async def test_mixed_collection_pipeline(self, db_session: AsyncSession):
-        """Test pipeline with mix of NYP and non-NYP trains."""
+        """Test pipeline with mix of trains serving different discovery hubs."""
 
         # Create mixed train data
         mock_trains = []
@@ -223,15 +223,25 @@ class TestAmtrakCollectionPipeline:
             )
             mock_trains.append(train_data)
 
-        # Non-NYP trains (should be filtered out)
+        # PHL/WAS trains (should also be discovered since they serve discovery hubs)
         for i in range(2):
             train_num = str(350 + i)
             train_data = create_amtrak_train_data(
                 train_id=f"{train_num}-4",
                 train_num=train_num,
                 stations=[
-                    create_amtrak_station_data(code="PHL"),
-                    create_amtrak_station_data(code="WAS"),
+                    create_amtrak_station_data(
+                        code="PHL",
+                        name="Philadelphia 30th Street Station",
+                        sch_dep=f"2025-07-05T{12+i}:00:00-05:00",
+                        status="Enroute",
+                    ),
+                    create_amtrak_station_data(
+                        code="WAS",
+                        name="Washington Union Station",
+                        sch_arr=f"2025-07-05T{14+i}:30:00-05:00",
+                        status="Enroute",
+                    ),
                 ],
             )
             mock_trains.append(train_data)
@@ -250,9 +260,13 @@ class TestAmtrakCollectionPipeline:
 
             discovered_trains = await discovery_collector.discover_trains()
 
-            # Should only discover NYP trains
-            assert len(discovered_trains) == 2
-            assert all(tid.startswith("215") for tid in discovered_trains)
+            # Should discover all trains that serve discovery hubs (NYP, PHL, WAS)
+            assert len(discovered_trains) == 4
+            # Should include both NYP trains (215x) and PHL/WAS trains (35x)
+            nyp_trains = [tid for tid in discovered_trains if tid.startswith("215")]
+            hub_trains = [tid for tid in discovered_trains if tid.startswith("35")]
+            assert len(nyp_trains) == 2
+            assert len(hub_trains) == 2
 
         # Run journey collection
         journey_collector = AmtrakJourneyCollector()
@@ -268,13 +282,17 @@ class TestAmtrakCollectionPipeline:
                 for train_id in discovered_trains:
                     await journey_collector.collect_journey(train_id)
 
-        # Verify only NYP trains in database
+        # Verify all discovered trains are now collected (multi-hub discovery)
         stmt = select(TrainJourney).where(TrainJourney.data_source == "AMTRAK")
         result = await db_session.execute(stmt)
         db_journeys = list(result.scalars().all())
 
-        assert len(db_journeys) == 2
-        assert all(j.train_id.startswith("A215") for j in db_journeys)
+        assert len(db_journeys) == 4
+        # Should include both NYP trains (A215x) and PHL/WAS trains (A35x)
+        nyp_journeys = [j for j in db_journeys if j.train_id.startswith("A215")]
+        hub_journeys = [j for j in db_journeys if j.train_id.startswith("A35")]
+        assert len(nyp_journeys) == 2
+        assert len(hub_journeys) == 2
 
     @pytest.mark.skip(
         reason="Mock Amtrak data setup issue - station code mapping not working in test environment"

@@ -83,8 +83,8 @@ class TestPerformance:
             # Performance assertions
             assert discovery_duration < 2.0  # Should complete within 2 seconds
 
-            # Should discover approximately 1/3 of trains (those serving NYP)
-            expected_count = sum(1 for i in range(train_count) if i % 3 == 0)
+            # Should discover all trains (multi-hub discovery includes NYP, PHL, WAS)
+            expected_count = train_count  # All trains serve at least one discovery hub
             assert len(discovered_trains) == expected_count
 
             # Verify performance metrics

@@ -335,10 +335,10 @@ class TestAmtrakDatabaseIntegration:
                 )
                 stops_result = await db_session.execute(stops_stmt)
                 stops = stops_result.scalars().all()
-                assert len(stops) == 3  # NYP, NWK, WAS
+                assert len(stops) == 5  # BOS, NYP, PHL, NWK, WAS (all now tracked)
 
                 station_codes = {stop.station_code for stop in stops}
-                assert station_codes == {"NY", "NP", "WAS"}
+                assert station_codes == {"BOS", "NY", "PH", "NP", "WS"}
 
     async def test_journey_snapshots_creation(self, db_session: AsyncSession):
         """Test that journey snapshots are properly created."""

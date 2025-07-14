@@ -12,6 +12,7 @@ from trackrat.models.api import AmtrakTrainData
 from tests.fixtures.amtrak_api_responses import (
     AMTRAK_FULL_RESPONSE,
     EXPECTED_NYP_TRAIN_IDS,
+    EXPECTED_MULTI_HUB_TRAIN_IDS,
 )
 from tests.factories.amtrak import (
     create_amtrak_train_data,
@@ -43,23 +44,24 @@ class TestAmtrakDiscoveryCollector:
         return parsed_response
 
     async def test_discover_trains_with_nyp_stops(self, collector, mock_client):
-        """Test discovering trains that stop at NYP."""
+        """Test discovering trains that stop at discovery hubs (including NYP)."""
         parsed_response = self._parse_response_to_objects(AMTRAK_FULL_RESPONSE)
         mock_client.get_all_trains.return_value = parsed_response
         collector.client = mock_client
 
         result = await collector.discover_trains()
 
-        # Should discover the expected trains that serve NYP
+        # Should discover trains that serve any discovery hub (NYP, PHL, WAS, BOS, WIL)
         assert isinstance(result, list)
-        assert len(result) == len(EXPECTED_NYP_TRAIN_IDS)
-        assert set(result) == set(EXPECTED_NYP_TRAIN_IDS)
+        assert len(result) == len(EXPECTED_MULTI_HUB_TRAIN_IDS)
+        assert set(result) == set(EXPECTED_MULTI_HUB_TRAIN_IDS)
 
-    async def test_discover_trains_filtering_non_nyp(self, collector, mock_client):
-        """Test that trains not serving NYP are filtered out."""
-        # Create response with mix of NYP and non-NYP trains
+    async def test_discover_trains_filtering_non_hub(self, collector, mock_client):
+        """Test that trains not serving discovery hubs are included if they serve hubs."""
+        # Create response with mix of hub and non-hub trains
         raw_response = create_mock_amtrak_api_response(
-            train_count=2, include_non_nyp_train=True  # 2 NYP trains  # 1 non-NYP train
+            train_count=2,
+            include_non_nyp_train=True,  # 2 hub trains + 1 train serving PHL
         )
         parsed_response = self._parse_response_to_objects(raw_response)
         mock_client.get_all_trains.return_value = parsed_response
@@ -67,10 +69,10 @@ class TestAmtrakDiscoveryCollector:
 
         result = await collector.discover_trains()
 
-        # Should only return the NYP trains (not the non-NYP train)
-        assert len(result) == 2
-        # Should not include the non-NYP train (350-5)
-        assert "350-5" not in result
+        # Should return all trains that serve discovery hubs (including 350-5 which serves PHL)
+        assert len(result) == 3
+        # Should include the PHL train (350-5) since PHL is now a discovery hub
+        assert "350-5" in result
 
     async def test_discover_trains_empty_response(self, collector, mock_client):
         """Test handling of empty API response."""
@@ -81,11 +83,12 @@ class TestAmtrakDiscoveryCollector:
 
         assert result == []
 
-    async def test_discover_trains_no_nyp_trains(self, collector, mock_client):
-        """Test when no trains serve NYP."""
-        # Create response with only non-NYP trains
+    async def test_discover_trains_no_hub_trains(self, collector, mock_client):
+        """Test when trains serve PHL (which is now a discovery hub)."""
+        # Create response with only trains serving discovery hubs (like PHL)
         raw_response = create_mock_amtrak_api_response(
-            train_count=0, include_non_nyp_train=True
+            train_count=0,
+            include_non_nyp_train=True,  # This creates train 350-5 serving PHL
         )
         parsed_response = self._parse_response_to_objects(raw_response)
         mock_client.get_all_trains.return_value = parsed_response
@@ -93,7 +96,8 @@ class TestAmtrakDiscoveryCollector:
 
         result = await collector.discover_trains()
 
-        assert result == []
+        # Should discover the train serving PHL (350-5) since PHL is now a discovery hub
+        assert result == ["350-5"]
 
     async def test_discover_trains_api_error(self, collector, mock_client, caplog):
         """Test handling of API errors."""
@@ -140,8 +144,8 @@ class TestAmtrakDiscoveryCollector:
         assert "train_ids" in result
         assert "data_source" in result
         assert result["data_source"] == "AMTRAK"
-        assert result["discovered_trains"] == len(EXPECTED_NYP_TRAIN_IDS)
-        assert set(result["train_ids"]) == set(EXPECTED_NYP_TRAIN_IDS)
+        assert result["discovered_trains"] == len(EXPECTED_MULTI_HUB_TRAIN_IDS)
+        assert set(result["train_ids"]) == set(EXPECTED_MULTI_HUB_TRAIN_IDS)
 
     async def test_logging_discovery_results(self, collector, mock_client, caplog):
         """Test that discovery results are logged."""
@@ -153,7 +157,7 @@ class TestAmtrakDiscoveryCollector:
 
         # Should log discovery completion with count
         assert "amtrak_discovery_complete" in caplog.text
-        assert f"discovered_count={len(EXPECTED_NYP_TRAIN_IDS)}" in caplog.text
+        assert f"discovered_count={len(EXPECTED_MULTI_HUB_TRAIN_IDS)}" in caplog.text
 
     async def test_logging_discovered_trains(self, collector, mock_client, caplog):
         """Test that individual discovered trains are logged."""

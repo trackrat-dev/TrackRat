@@ -383,7 +383,13 @@ API_ERROR_RESPONSE = {
 }
 
 # Expected trains that serve NYP from the full response
-EXPECTED_NYP_TRAIN_IDS = ["2150-5", "141-5", "280-5"]  # 350-5 doesn't serve NYP
+EXPECTED_NYP_TRAIN_IDS = ["2150-5", "141-5", "280-5"]  # Trains serving NYP only
+EXPECTED_MULTI_HUB_TRAIN_IDS = [
+    "2150-5",
+    "141-5",
+    "280-5",
+    "350-5",
+]  # Trains serving any discovery hub
 
 # Train with cancelled status
 CANCELLED_TRAIN: dict[str, Any] = {
