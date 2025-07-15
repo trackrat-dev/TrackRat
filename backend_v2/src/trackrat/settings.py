@@ -57,10 +57,10 @@ class Settings(BaseSettings):
 
     # Collection Settings
     discovery_interval_minutes: int = Field(
-        default=5, description="Interval between discovery runs (minutes)", ge=1
+        default=30, description="Interval between discovery runs (minutes)", ge=1
     )
     journey_update_interval_minutes: int = Field(
-        default=10, description="Interval between journey updates (minutes)", ge=1
+        default=60, description="Interval between journey updates (minutes)", ge=1
     )
     data_staleness_seconds: int = Field(
         default=60, description="Maximum age of data before refresh (seconds)", ge=1

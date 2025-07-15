@@ -66,18 +66,21 @@ module "trackrat_api_service" {
 
   # Environment variables (non-sensitive)
   environment_variables = {
-    APP_ENV                      = "production"
-    TRACKCAST_ENV                = "production"
-    APNS_ENVIRONMENT             = "prod"                                             # Use production APNS for App Store
-    APNS_BUNDLE_ID               = "net.trackrat.TrackRat"                            # Main app bundle ID
-    APNS_LIVE_ACTIVITY_BUNDLE_ID = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
-    MODEL_PATH                   = "/app/models"
-    TRACKCAST_SCHEDULER_MODE     = "cloud_native"
-    GOOGLE_CLOUD_PROJECT         = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
-    OTEL_SAMPLE_RATE             = "0.05"               # Lower sampling for production cost optimization
-    OTEL_SERVICE_NAME            = "trackcast-api-prod" # Environment-specific service name
-    GCP_METRICS_EXPORT_INTERVAL  = "60"                 # Export metrics to GCP every 60 seconds
-    GCS_BACKUP_BUCKET            = module.infrastructure.db_backup_bucket_name
+    APP_ENV                                  = "production"
+    TRACKCAST_ENV                            = "production"
+    APNS_ENVIRONMENT                         = "prod"                                             # Use production APNS for App Store
+    APNS_BUNDLE_ID                           = "net.trackrat.TrackRat"                            # Main app bundle ID
+    APNS_LIVE_ACTIVITY_BUNDLE_ID             = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
+    MODEL_PATH                               = "/app/models"
+    TRACKCAST_SCHEDULER_MODE                 = "cloud_native"
+    GOOGLE_CLOUD_PROJECT                     = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE                         = "0.05"               # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME                        = "trackcast-api-prod" # Environment-specific service name
+    GCP_METRICS_EXPORT_INTERVAL              = "60"                 # Export metrics to GCP every 60 seconds
+    TRACKRAT_GCS_BACKUP_BUCKET               = module.infrastructure.db_backup_bucket_name
+    TRACKRAT_DISCOVERY_INTERVAL_MINUTES      = "30"
+    TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES = "60"
+    TRACKRAT_DATA_STALENESS_SECONDS          = "60"
   }
 
   # Secret environment variables (sensitive data from Secret Manager)
