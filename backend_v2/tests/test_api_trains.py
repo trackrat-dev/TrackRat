@@ -233,7 +233,7 @@ async def test_get_train_history(client, db_session):
     for i in range(3):
         journey = TrainJourney(
             train_id="3840",
-            journey_date=date.today() - timedelta(days=i),
+            journey_date=now_et().date() - timedelta(days=i),
             line_code="NE",
             destination="Trenton",
             origin_station_code="NY",
