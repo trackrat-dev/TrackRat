@@ -24,7 +24,12 @@ from trackrat.db.engine import get_session
 from trackrat.models.database import TrainJourney
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
-from trackrat.utils.time import ensure_timezone_aware, now_et, safe_datetime_subtract
+from trackrat.utils.time import (
+    calculate_delay,
+    ensure_timezone_aware,
+    now_et,
+    safe_datetime_subtract,
+)
 
 logger = get_logger(__name__)
 
@@ -1151,6 +1156,7 @@ class SchedulerService:
                     current_stop = None
                     next_stop = None
                     journey_progress = 0.0
+                    calculated_delay = 0  # Default delay
 
                     if journey and journey.stops:
                         # Sort stops by sequence to ensure proper ordering
@@ -1234,6 +1240,29 @@ class SchedulerService:
                                 departed_stops / total_stops if total_stops > 0 else 0.0
                             )
 
+                    # Calculate delay from stops (similar to API logic)
+                    if journey and journey.stops:
+                        # Find the most recent departed stop with timing info
+                        stops_for_delay = (
+                            sorted_stops
+                            if "sorted_stops" in locals()
+                            else sorted(
+                                journey.stops, key=lambda s: s.stop_sequence or 0
+                            )
+                        )
+                        for stop in reversed(stops_for_delay):
+                            if stop.departed:
+                                if stop.actual_departure and stop.scheduled_departure:
+                                    calculated_delay = calculate_delay(
+                                        stop.scheduled_departure, stop.actual_departure
+                                    )
+                                    break
+                                elif stop.actual_arrival and stop.scheduled_arrival:
+                                    calculated_delay = calculate_delay(
+                                        stop.scheduled_arrival, stop.actual_arrival
+                                    )
+                                    break
+
                     # Determine if train has departed from user's origin
                     has_train_departed = False
                     scheduled_departure_time = None
@@ -1312,11 +1341,7 @@ class SchedulerService:
                             current_stop.station_name if current_stop else "Unknown"
                         ),
                         "nextStopName": next_stop.station_name if next_stop else None,
-                        "delayMinutes": (
-                            journey.snapshots[-1].delay_minutes
-                            if journey and journey.snapshots
-                            else 0
-                        ),
+                        "delayMinutes": calculated_delay,
                         "journeyProgress": journey_progress,
                         "dataTimestamp": int(
                             time.time()
