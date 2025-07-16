@@ -4,9 +4,11 @@ import UIKit
 struct VideoSplashScreenView: View {
     @State private var videoEnded = false
     @State private var videoFailed = false
+    @State private var videoStarted = false
     @State private var textOpacity: Double = 0
     @State private var fadeToBlackOpacity: Double = 0
     @State private var hapticTriggered = false
+    @State private var showLoadingBuffer = true
     let onComplete: () -> Void
     
     var body: some View {
@@ -39,6 +41,17 @@ struct VideoSplashScreenView: View {
                         // Video failed to play
                         print("Video playback error: \(error)")
                         videoFailed = true
+                    } onStart: {
+                        // Video has started playing
+                        videoStarted = true
+                        showLoadingBuffer = false
+                        
+                        // Start the fade timer only after video starts
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 4.2) {
+                            withAnimation(.easeIn(duration: 1.0)) {
+                                fadeToBlackOpacity = 1.0
+                            }
+                        }
                     }
                     .ignoresSafeArea()
                     .onAppear {
@@ -48,12 +61,6 @@ struct VideoSplashScreenView: View {
                             impactFeedback.impactOccurred()
                             hapticTriggered = true
                         }
-                        
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 4.2) {
-                            withAnimation(.easeIn(duration: 1.0)) {
-                                fadeToBlackOpacity = 1.0
-                            }
-                        }
                     }
                     
                     // Fade to black overlay
@@ -61,6 +68,13 @@ struct VideoSplashScreenView: View {
                         .opacity(fadeToBlackOpacity)
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
+                    
+                    // Loading buffer - shows black screen until video starts
+                    if showLoadingBuffer {
+                        Color.black
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                    }
                 } else {
                     // Video file not found
                     LaunchScreenView(onComplete: onComplete)

@@ -1045,7 +1045,6 @@ struct SegmentedTrackPredictionView: View {
     let train: TrainV2
     @State private var selectedSegment: TrackPredictionSegment?
     @State private var showingOthersPopup = false
-    @State private var animateAppearance = false
     
     private var predictionSegments: [TrackPredictionSegment] {
         guard let predictionData = train.predictionData,
@@ -1054,47 +1053,23 @@ struct SegmentedTrackPredictionView: View {
         }
         
         let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
-        let filteredPlatforms = platformProbabilities.filter { $0.value >= 0.04 }
-        let sortedPlatforms = filteredPlatforms.sorted { $0.value > $1.value }
+        let sortedPlatforms = platformProbabilities.sorted { $0.value > $1.value }
         
         return createSegments(from: sortedPlatforms)
     }
     
-    private var owlMessage: String {
-        guard !predictionSegments.isEmpty else {
-            return "🤷 TrackRat is thinking..."
-        }
-        
-        let topSegment = predictionSegments.first!
-        let confidence = topSegment.probability
-        
-        if confidence >= 0.8 {
-            return "🐀 TrackRat predicts tracks \(topSegment.platformName)"
-        } else if confidence >= 0.5 {
-            return "🤔 TrackRat thinks it may be tracks \(topSegment.platformName)"
-        } else {
-            return "🤷 TrackRat sees several possibilities"
-        }
-    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header with owl messaging
+            // Header
             HStack {
                 Image(systemName: "tram.circle.fill")
                     .foregroundColor(.black)
                     .font(.title2)
                 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Track Predictions")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    
-                    Text(owlMessage)
-                        .font(.subheadline)
-                        .foregroundColor(.black.opacity(0.8))
-                        .fontWeight(.medium)
-                }
+                Text("Track Predictions")
+                    .font(.headline)
+                    .foregroundColor(.black)
                 
                 Spacer()
             }
@@ -1108,7 +1083,7 @@ struct SegmentedTrackPredictionView: View {
                     
                     // Main segmented bar
                     segmentedBarView
-                        .frame(height: 32)
+                        .frame(height: 64)
                 }
                 .padding(.top, 4)
             } else {
@@ -1125,18 +1100,6 @@ struct SegmentedTrackPredictionView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.8)) {
-                animateAppearance = true
-            }
-        }
-        .alert("Other Predictions", isPresented: $showingOthersPopup) {
-            Button("OK") { }
-        } message: {
-            if let othersSegment = predictionSegments.first(where: { $0.isOthersGroup }) {
-                Text(othersSegment.detailText)
-            }
-        }
     }
     
     private var segmentedBarView: some View {
@@ -1148,6 +1111,10 @@ struct SegmentedTrackPredictionView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.black, lineWidth: 2)
+        )
     }
     
     private func segmentView(segment: TrackPredictionSegment, totalWidth: CGFloat) -> some View {
@@ -1156,16 +1123,23 @@ struct SegmentedTrackPredictionView: View {
         
         return Rectangle()
             .fill(segment.color)
-            .frame(width: animateAppearance ? segmentWidth : 0)
+            .frame(width: segmentWidth)
             .overlay(
                 segment.labelPosition == .inside ? 
                 Text(segment.displayText)
-                    .font(.caption2)
+                    .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .opacity(animateAppearance ? 1 : 0)
+                    .foregroundColor(.black)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 8)
+                    .opacity(1)
                 : nil
+            )
+            .overlay(
+                Rectangle()
+                    .stroke(Color.black, lineWidth: 1)
             )
             .scaleEffect(isSelected ? 1.05 : 1.0)
             .overlay(
@@ -1193,7 +1167,7 @@ struct SegmentedTrackPredictionView: View {
                     VStack(spacing: 2) {
                         if segment.labelPosition == .above {
                             VStack(spacing: 1) {
-                                Text(segment.platformName)
+                                Text(segment.topLabelText)
                                     .font(.caption2)
                                     .fontWeight(.medium)
                                     .foregroundColor(.black)
@@ -1202,8 +1176,7 @@ struct SegmentedTrackPredictionView: View {
                                     .fill(Color.black.opacity(0.3))
                                     .frame(width: min(segmentWidth * 0.8, 20), height: 1)
                             }
-                            .opacity(animateAppearance ? 1 : 0)
-                            .animation(.easeOut(duration: 0.8).delay(0.2), value: animateAppearance)
+                            .opacity(1)
                         }
                     }
                     .frame(width: segmentWidth)
@@ -1215,8 +1188,6 @@ struct SegmentedTrackPredictionView: View {
     
     private func createSegments(from platformProbabilities: [(key: String, value: Double)]) -> [TrackPredictionSegment] {
         var segments: [TrackPredictionSegment] = []
-        var othersSegments: [TrackPredictionSegment] = []
-        let maxMainSegments = 4
         
         for (index, platform) in platformProbabilities.enumerated() {
             let segment = TrackPredictionSegment(
@@ -1226,27 +1197,7 @@ struct SegmentedTrackPredictionView: View {
                 rank: index + 1
             )
             
-            if (platform.value < 0.08 && segments.count >= 3) || segments.count >= maxMainSegments {
-                othersSegments.append(segment)
-            } else {
-                segments.append(segment)
-            }
-        }
-        
-        if !othersSegments.isEmpty {
-            let totalOthersProbability = othersSegments.reduce(0) { $0 + $1.probability }
-            let minOthersWidth = 0.06
-            let adjustedProbability = max(totalOthersProbability, minOthersWidth)
-            
-            let othersSegment = TrackPredictionSegment(
-                id: "others",
-                platformName: "Others",
-                probability: adjustedProbability,
-                rank: segments.count + 1,
-                isOthersGroup: true,
-                detailText: createOthersDetailText(from: othersSegments)
-            )
-            segments.append(othersSegment)
+            segments.append(segment)
         }
         
         return segments
@@ -1263,16 +1214,12 @@ struct SegmentedTrackPredictionView: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
         
-        if segment.isOthersGroup {
-            showingOthersPopup = true
-        } else {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedSegment = segment
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                selectedSegment = nil
-            }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedSegment = segment
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            selectedSegment = nil
         }
     }
 }
@@ -1299,7 +1246,14 @@ struct TrackPredictionSegment: Identifiable, Equatable {
         if isOthersGroup {
             return "Others"
         }
-        return "\(platformName)\n\(Int(probability * 100))%"
+        return "Tracks\n\(platformName)"
+    }
+    
+    var topLabelText: String {
+        if isOthersGroup {
+            return "Others"
+        }
+        return "Tracks \(platformName)"
     }
     
     var color: Color {
@@ -1324,12 +1278,11 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .inside
         }
         
-        if probability >= 0.15 {
+        // Only show labels for segments with >= 20% probability
+        if probability >= 0.20 {
             return .inside
-        } else if probability >= 0.08 {
-            return .above
         } else {
-            return .inside
+            return .none
         }
     }
 }
@@ -1337,6 +1290,7 @@ struct TrackPredictionSegment: Identifiable, Equatable {
 enum TrackLabelPosition {
     case inside
     case above
+    case none
 }
 
 // MARK: - Stations Helper Extension

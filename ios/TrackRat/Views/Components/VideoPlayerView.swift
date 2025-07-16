@@ -6,6 +6,7 @@ struct VideoPlayerView: UIViewRepresentable {
     let url: URL
     var onEnd: (() -> Void)?
     var onError: ((Error) -> Void)?
+    var onStart: (() -> Void)?
     
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
@@ -81,6 +82,8 @@ struct VideoPlayerView: UIViewRepresentable {
                     if player?.timeControlStatus != .playing {
                         player?.seek(to: .zero) { _ in
                             self.player?.play()
+                            // Notify that playback has started
+                            self.parent.onStart?()
                         }
                     }
                 case .unknown:

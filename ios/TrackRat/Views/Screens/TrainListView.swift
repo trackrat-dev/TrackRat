@@ -421,8 +421,11 @@ class TrainListViewModel: ObservableObject {
                 return departureTime <= sixHoursFromNow
             }
             
+            // Deduplicate trains by ID to prevent ForEach crashes
+            let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
+            
             // Sort trains by origin station departure time
-            trains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
+            trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
         } catch {
             self.error = error.localizedDescription
         }
@@ -451,8 +454,11 @@ class TrainListViewModel: ObservableObject {
                 return departureTime <= sixHoursFromNow
             }
             
+            // Deduplicate trains by ID to prevent ForEach crashes
+            let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
+            
             // Sort trains by origin station departure time
-            let newTrains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
+            let newTrains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
             
             // Check for boarding status changes (StatusV2 only)
             for train in trains {

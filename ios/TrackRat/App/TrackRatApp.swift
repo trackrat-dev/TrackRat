@@ -480,7 +480,7 @@ final class AppState: ObservableObject {
     @Published var destinationStationCode: String?
     @Published var selectedDeparture: String?
     @Published var departureStationCode: String?
-    @Published var currentTrainId: Int?
+    @Published var currentTrainId: String?
     @Published var navigationPath = NavigationPath()
     
     private let apiService = APIService()

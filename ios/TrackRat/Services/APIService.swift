@@ -293,7 +293,6 @@ final class APIService: ObservableObject {
     
     private func adaptV2DepartureToTrainV2(_ departure: V2TrainDeparture) -> TrainV2 {
         return TrainV2(
-            id: departure.trainId.hashValue,
             trainId: departure.trainId,
             line: LineInfo(
                 code: departure.line.code,
@@ -405,7 +404,6 @@ final class APIService: ObservableObject {
         }
         
         return TrainV2(
-            id: details.trainId.hashValue,
             trainId: details.trainId,
             line: LineInfo(
                 code: details.line.code,

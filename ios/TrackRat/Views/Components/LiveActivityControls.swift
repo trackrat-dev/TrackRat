@@ -101,7 +101,6 @@ struct LiveActivityControls: View {
 #Preview {
     LiveActivityControls(
         train: TrainV2(
-            id: 123,
             trainId: "123",
             line: LineInfo(code: "NE", name: "Northeast Corridor", color: "#0066CC"),
             destination: "New York Penn Station",

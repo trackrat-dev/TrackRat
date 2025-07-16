@@ -18,7 +18,11 @@ struct JourneyContext {
 
 struct TrainV2: Identifiable, Codable {
     // Core fields
-    let id: Int  // Generated from trainId.hashValue for Identifiable
+    var id: String {
+        // Combine trainId + departure station + scheduled time for uniqueness
+        let timeString = departure.scheduledTime?.timeIntervalSince1970.description ?? "0"
+        return "\(trainId)-\(departure.code)-\(timeString)"
+    }
     let trainId: String
     let line: LineInfo
     let destination: String
