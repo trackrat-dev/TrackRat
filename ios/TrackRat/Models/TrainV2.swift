@@ -48,6 +48,11 @@ struct TrainV2: Identifiable, Codable {
         arrival?.code
     }
     
+    // Static track prediction data (temporary until backend implementation)
+    var predictionData: PredictionData? {
+        return StaticTrackDistributionService.shared.getPredictionData(for: self)
+    }
+    
     // Enhanced display status using journey progress
     var enhancedDisplayStatus: String {
         if let progress = journey?.progress {

@@ -112,14 +112,17 @@ struct TrainLiveActivity: Widget {
                         Text("Destination")
                             .font(.caption2)
                             .foregroundColor(.secondary)
+                            .multilineTextAlignment(.trailing)
                         Text(context.attributes.destination)
                             .font(.caption)
                             .lineLimit(2)
                             .minimumScaleFactor(0.8)
+                            .multilineTextAlignment(.trailing)
                         if let time = context.state.destinationArrivalTime {
                             Text(time, style: .time)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .multilineTextAlignment(.trailing)
                         }
                     }
                     .padding(.trailing, 8)
@@ -131,6 +134,7 @@ struct TrainLiveActivity: Widget {
                         ProgressView(value: validProgress)
                             .progressViewStyle(.linear)
                             .tint(.orange)
+                            .padding(.horizontal, 8)
                             .onAppear {
                                 logger.info("🟡 Progress bar - value: \(validProgress)")
                             }
@@ -151,7 +155,7 @@ struct TrainLiveActivity: Widget {
                 Text(context.state.compactLeadingText)
                         .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(.orange)
+                    .foregroundColor(context.state.delayColor)
                 .onAppear {
                     debugLog("🟢 Compact appeared", context: context)
                 }
@@ -161,7 +165,7 @@ struct TrainLiveActivity: Widget {
                     .font(.caption)
                     .monospacedDigit()
                     .fontWeight(.medium)
-                    .foregroundColor(.orange)
+                    .foregroundColor(context.state.delayColor)
             } minimal: {
                 // Minimal view (when multiple activities)
                 Image(systemName: "tram.fill")
@@ -321,13 +325,13 @@ private struct CenterStatusView: View {
             Text(primaryText)
                 .font(.caption)
                 .fontWeight(.semibold)
-                .foregroundColor(.orange)
+                .foregroundColor(state.delayColor)
             
             if !secondaryText.isEmpty {
                 Text(secondaryText)
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundColor(.orange)
+                    .foregroundColor(state.delayColor)
             }
         }
     }

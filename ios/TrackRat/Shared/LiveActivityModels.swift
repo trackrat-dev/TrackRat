@@ -1,5 +1,6 @@
 import Foundation
 import ActivityKit
+import SwiftUI
 
 // MARK: - Live Activity Attributes
 struct TrainActivityAttributes: ActivityAttributes {
@@ -123,6 +124,20 @@ struct TrainActivityAttributes: ActivityAttributes {
         var nextStopArrivalTimeAsDate: Date? {
             guard let arrivalTimeString = nextStopArrivalTime else { return nil }
             return Date.fromISO8601(arrivalTimeString)
+        }
+        
+        /// Color based on delay minutes for timing text
+        var delayColor: Color {
+            switch delayMinutes {
+            case 0...1:
+                return .green
+            case 2...5:
+                return .yellow
+            case 6...14:
+                return .orange
+            default: // 15+
+                return .red
+            }
         }
         
         // Reference to parent attributes for access to static data

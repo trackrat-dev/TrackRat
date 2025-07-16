@@ -254,8 +254,8 @@ struct CombinedDetailsCard: View {
     
     /// Enhanced logic to determine if track predictions should be shown
     private var shouldShowPredictions: Bool {
-        // DISABLED: Prediction data not available in TrainV2
-        return false
+        // Show predictions only for NY Penn Station and when track is not assigned
+        return StaticTrackDistributionService.shared.shouldShowPredictions(for: train)
     }
     
     /// Check if train has departed from the user's origin station
@@ -331,7 +331,10 @@ struct CombinedDetailsCard: View {
                     }
                 }
                 
-                // DISABLED: Track predictions not available in TrainV2
+                // Track predictions section
+                if shouldShowPredictions {
+                    TrackPredictionCard(train: train)
+                }
             }
             .padding([.horizontal, .top])
             
@@ -421,7 +424,91 @@ struct CombinedDetailsCard: View {
 
 // DISABLED: StatusV2 Card removed for TrainV2 migration
 
-// DISABLED: TrackRat Prediction View removed for TrainV2 migration
+// MARK: - Track Prediction Card
+struct TrackPredictionCard: View {
+    let train: TrainV2
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "tram.circle.fill")
+                    .foregroundColor(.orange)
+                    .font(.title2)
+                
+                Text("Track Predictions")
+                    .font(.headline)
+                    .foregroundColor(.orange)
+                
+                Spacer()
+                
+                // Data source indicator
+                Text(train.trainId.uppercased().hasPrefix("A") ? "Amtrak" : "NJ Transit")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(6)
+            }
+            
+            if let predictionData = train.predictionData,
+               let trackProbabilities = predictionData.trackProbabilities {
+                
+                // Group tracks by platform and show percentages
+                let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
+                let sortedPlatforms = platformProbabilities.sorted { $0.value > $1.value }
+                
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 8) {
+                    ForEach(sortedPlatforms, id: \.key) { platform, probability in
+                        PlatformPredictionRow(
+                            platformName: platform,
+                            probability: probability
+                        )
+                    }
+                }
+                .padding(.top, 4)
+            } else {
+                Text("No prediction data available")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .italic()
+            }
+        }
+        .padding()
+        .background(Color.orange.opacity(0.05))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Platform Prediction Row
+struct PlatformPredictionRow: View {
+    let platformName: String
+    let probability: Double
+    
+    var body: some View {
+        HStack {
+            Text(platformName)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.black)
+            
+            Spacer()
+            
+            Text("\(Int(probability * 100))%")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.orange)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .background(Color.white.opacity(0.8))
+        .cornerRadius(8)
+    }
+}
 
 // MARK: - Stops Card
 struct StopsCard: View {
