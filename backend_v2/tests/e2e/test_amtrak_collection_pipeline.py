@@ -159,7 +159,7 @@ class TestAmtrakCollectionPipeline:
             assert departure.line.code == "AM"
             assert departure.departure.code == "NY"
             assert departure.arrival.code == "TR"
-            assert departure.journey.stops_between == 1  # NWK between NY and TR
+            # Journey info no longer included in departure response (pure data approach)
 
     async def test_discovery_with_hub_trains(self, db_session: AsyncSession):
         """Test discovery when trains serve discovery hubs (PHL, WAS)."""
@@ -355,8 +355,8 @@ class TestAmtrakCollectionPipeline:
                 stops_result = await db_session.execute(stops_stmt)
                 stops = stops_result.scalars().all()
                 ny_stop = next(s for s in stops if s.station_code == "NY")
-                assert ny_stop.status == "Boarding"
-                assert ny_stop.departed is False
+                assert ny_stop.raw_amtrak_status == "Station"
+                assert ny_stop.has_departed_station is False
 
         # Second collection cycle (simulating scheduled update)
         with patch.object(journey_collector.client, "get_all_trains") as mock_journey:
@@ -378,8 +378,8 @@ class TestAmtrakCollectionPipeline:
                 stops_result = await db_session.execute(stops_stmt)
                 stops = stops_result.scalars().all()
                 ny_stop = next(s for s in stops if s.station_code == "NY")
-                assert ny_stop.status == "DEPARTED"
-                assert ny_stop.departed is True
+                assert ny_stop.raw_amtrak_status == "Departed"
+                assert ny_stop.has_departed_station is True
                 assert ny_stop.actual_departure is not None
 
         # Verify API reflects updates
@@ -406,7 +406,7 @@ class TestAmtrakCollectionPipeline:
 
         assert len(response.departures) == 1
         departure = response.departures[0]
-        assert departure.departure.status == "DEPARTED"
+        # Status no longer included in departure response (pure data approach)
 
     @pytest.mark.skip(
         reason="Mock Amtrak data setup issue - station code mapping not working in test environment"
@@ -586,21 +586,21 @@ class TestAmtrakCollectionPipeline:
         assert ny_stop.scheduled_departure is not None
         assert ny_stop.actual_departure is not None
         assert ny_stop.track == "15"
-        assert ny_stop.status == "DEPARTED"
-        assert ny_stop.departed is True
+        assert ny_stop.raw_amtrak_status == "Departed"
+        assert ny_stop.has_departed_station is True
 
         # NP stop (mapped from NWK)
         np_stop = stops_by_code["NP"]
         assert np_stop.station_name == "Newark Penn Station"
         assert np_stop.scheduled_arrival is not None
         assert np_stop.scheduled_departure is not None
-        assert np_stop.status == "EN ROUTE"  # Mapped status
+        assert np_stop.raw_amtrak_status == "Enroute"
 
         # TR stop
         tr_stop = stops_by_code["TR"]
         assert tr_stop.station_name == "Trenton"
         assert tr_stop.scheduled_arrival is not None
-        assert tr_stop.status == "EN ROUTE"
+        assert tr_stop.raw_amtrak_status == "Enroute"
 
         # Check snapshots by querying separately
         snapshots_stmt = select(JourneySnapshot).where(

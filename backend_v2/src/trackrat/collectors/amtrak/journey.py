@@ -318,12 +318,12 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     "stop_sequence": stop_sequence,
                     "scheduled_arrival": sched_arr,
                     "scheduled_departure": sched_dep,
+                    "updated_arrival": sched_arr,  # For Amtrak, use scheduled since no estimates
+                    "updated_departure": sched_dep,
                     "actual_arrival": actual_arr,
                     "actual_departure": actual_dep,
-                    "departed": (amtrak_stop.status == "Departed"),
-                    "status": self.STATUS_MAP.get(
-                        amtrak_stop.status, amtrak_stop.status
-                    ),
+                    "raw_amtrak_status": amtrak_stop.status,
+                    "has_departed_station": (amtrak_stop.status == "Departed"),
                     "track": amtrak_stop.platform if amtrak_stop.platform else None,
                     "pickup_only": False,
                     "dropoff_only": False,
@@ -350,7 +350,9 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
             # Create snapshot for all journeys (both new and existing)
             # Journey now has a valid ID after flush/creation
-            completed_stops_count = sum(1 for stop in new_stops if stop.departed)
+            completed_stops_count = sum(
+                1 for stop in new_stops if stop.has_departed_station
+            )
             snapshot = JourneySnapshot(
                 journey_id=journey.id,
                 captured_at=now_et(),
@@ -552,10 +554,12 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 "stop_sequence": stop_sequence,
                 "scheduled_arrival": scheduled_arrival,
                 "scheduled_departure": scheduled_departure,
+                "updated_arrival": scheduled_arrival,  # For Amtrak, use scheduled since no estimates
+                "updated_departure": scheduled_departure,
                 "actual_arrival": actual_arrival,
                 "actual_departure": actual_departure,
-                "departed": departed,
-                "status": status,
+                "raw_amtrak_status": amtrak_stop.status,
+                "has_departed_station": departed,
                 "track": track,
                 "pickup_only": pickup_only,
                 "dropoff_only": dropoff_only,
@@ -578,8 +582,8 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     scheduled_departure=scheduled_departure,
                     actual_arrival=actual_arrival,
                     actual_departure=actual_departure,
-                    departed=departed,
-                    status=status,
+                    has_departed_station=departed,
+                    raw_amtrak_status=status,
                     track=track,
                     pickup_only=pickup_only,
                     dropoff_only=dropoff_only,
@@ -598,7 +602,9 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 journey.actual_arrival = tracked_stops[-1].actual_arrival
 
         # Create snapshot
-        completed_stops_count = sum(1 for stop in tracked_stops if stop.departed)
+        completed_stops_count = sum(
+            1 for stop in tracked_stops if stop.has_departed_station
+        )
         snapshot = JourneySnapshot(
             journey_id=journey.id,
             captured_at=now_et(),

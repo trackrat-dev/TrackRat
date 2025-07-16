@@ -486,6 +486,24 @@ poetry run pytest                         # Run all tests
 poetry run pytest tests/unit/             # Unit tests only
 ```
 
+### iOS Commands
+```bash
+# Build iOS app for simulator
+xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16'
+
+# Check for compilation errors only
+xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | grep -E "(error|failed|BUILD FAILED)" || echo "BUILD SUCCESSFUL"
+
+# Run iOS tests
+xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'
+
+# Open Xcode project
+open ios/TrackRat.xcodeproj
+
+# Show available destinations
+xcodebuild -scheme TrackRat -showdestinations
+```
+
 ### iOS Key Files
 ```
 TrackRat/App/TrackRatApp.swift      # App entry point

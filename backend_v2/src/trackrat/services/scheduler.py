@@ -1182,7 +1182,11 @@ class SchedulerService:
 
                             # Log stop sequence for debugging
                             stop_sequence_info = [
-                                (s.stop_sequence, s.station_code, s.departed)
+                                (
+                                    s.stop_sequence,
+                                    s.station_code,
+                                    s.has_departed_station,
+                                )
                                 for s in user_journey_stops[:5]
                             ]  # First 5 stops
                             logger.debug(
@@ -1198,7 +1202,9 @@ class SchedulerService:
                             # Calculate progress based on user's journey only
                             total_user_stops = len(user_journey_stops)
                             departed_user_stops = sum(
-                                1 for stop in user_journey_stops if stop.departed
+                                1
+                                for stop in user_journey_stops
+                                if stop.has_departed_station
                             )
                             journey_progress = (
                                 departed_user_stops / total_user_stops
@@ -1208,7 +1214,7 @@ class SchedulerService:
 
                             # Find current and next stops within user's journey
                             for i, stop in enumerate(user_journey_stops):
-                                if not stop.departed and i > 0:
+                                if not stop.has_departed_station and i > 0:
                                     current_stop = user_journey_stops[i - 1]
                                     next_stop = stop
                                     # Log the stop sequence for debugging
@@ -1234,7 +1240,7 @@ class SchedulerService:
                             )
                             total_stops = len(sorted_stops)
                             departed_stops = sum(
-                                1 for stop in sorted_stops if stop.departed
+                                1 for stop in sorted_stops if stop.has_departed_station
                             )
                             journey_progress = (
                                 departed_stops / total_stops if total_stops > 0 else 0.0
@@ -1251,7 +1257,7 @@ class SchedulerService:
                             )
                         )
                         for stop in reversed(stops_for_delay):
-                            if stop.departed:
+                            if stop.has_departed_station:
                                 if stop.actual_departure and stop.scheduled_departure:
                                     calculated_delay = calculate_delay(
                                         stop.scheduled_departure, stop.actual_departure

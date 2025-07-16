@@ -182,8 +182,8 @@ def create_amtrak_journey_stop(
     scheduled_arrival: datetime | None = None,
     actual_departure: datetime | None = None,
     actual_arrival: datetime | None = None,
-    departed: bool = False,
-    status: str = "ENROUTE",
+    has_departed_station: bool = False,
+    raw_amtrak_status: str = "Enroute",
     track: str | None = None,
 ) -> JourneyStop:
     """Factory for creating JourneyStop objects for Amtrak journeys."""
@@ -193,10 +193,12 @@ def create_amtrak_journey_stop(
         stop_sequence=stop_sequence,
         scheduled_departure=scheduled_departure,
         scheduled_arrival=scheduled_arrival,
+        updated_departure=scheduled_departure,
+        updated_arrival=scheduled_arrival,
         actual_departure=actual_departure,
         actual_arrival=actual_arrival,
-        departed=departed,
-        status=status,
+        has_departed_station=has_departed_station,
+        raw_amtrak_status=raw_amtrak_status,
         track=track,
     )
 

@@ -16,24 +16,23 @@ from trackrat.api.utils import handle_errors
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.db.engine import get_db
 from trackrat.models.api import (
-    CurrentStatus,
     DataFreshness,
     DeparturesResponse,
     HistoricalJourney,
-    JourneyProgress,
     LineInfo,
+    RawStopStatus,
     RouteInfo,
     SimpleStationInfo,
     StopDetails,
     TrainDetails,
     TrainDetailsResponse,
     TrainHistoryResponse,
-    TrainStatus,
+    TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
 from trackrat.services.jit import JustInTimeUpdateService
-from trackrat.utils.time import calculate_delay, now_et, safe_datetime_subtract
+from trackrat.utils.time import now_et, safe_datetime_subtract
 from trackrat.utils.train import is_amtrak_train
 
 logger = get_logger(__name__)
@@ -123,22 +122,25 @@ async def get_train_details(
                 code=stop.station_code,
                 name=stop.station_name,
             ),
-            sequence=stop.stop_sequence,
+            stop_sequence=stop.stop_sequence or 0,
             scheduled_arrival=stop.scheduled_arrival,
             scheduled_departure=stop.scheduled_departure,
+            updated_arrival=stop.updated_arrival,
+            updated_departure=stop.updated_departure,
             actual_arrival=stop.actual_arrival,
             actual_departure=stop.actual_departure,
-            estimated_arrival=calculate_estimated_times(stop, journey)[0],
-            estimated_departure=calculate_estimated_times(stop, journey)[1],
             track=stop.track,
-            status=determine_stop_status(stop).value,
-            delay_minutes=calculate_stop_delay(stop),
-            departed=stop.departed,
+            track_assigned_at=stop.track_assigned_at,
+            raw_status=RawStopStatus(
+                amtrak_status=stop.raw_amtrak_status,
+                njt_departed_flag=stop.raw_njt_departed_flag,
+            ),
+            has_departed_station=stop.has_departed_station,
         )
         stops.append(stop_detail)
 
-    # Determine current status
-    current_status = determine_current_status(journey)
+    # Calculate train position
+    train_position = calculate_train_position(journey)
 
     # Build response
     train_details = TrainDetails(
@@ -155,7 +157,7 @@ async def get_train_details(
             origin_code=journey.origin_station_code,
             destination_code=journey.terminal_station_code,
         ),
-        current_status=current_status,
+        train_position=train_position,
         stops=stops,
         data_freshness=DataFreshness(
             last_updated=journey.last_updated_at or journey.first_seen_at or now_et(),
@@ -169,6 +171,7 @@ async def get_train_details(
             collection_method="just_in_time" if refresh else "scheduled",
         ),
         data_source=journey.data_source or "NJT",
+        raw_train_state="Active" if journey.data_source == "AMTRAK" else None,
     )
 
     return TrainDetailsResponse(train=train_details)
@@ -227,15 +230,23 @@ async def get_train_history(
         if not first_stop or not last_stop:
             continue
 
-        # Calculate delays
+        # Calculate delays (simple calculation for historical data)
         departure_delay = (
-            calculate_delay(first_stop.scheduled_departure, first_stop.actual_departure)
+            int(
+                (
+                    first_stop.actual_departure - first_stop.scheduled_departure
+                ).total_seconds()
+                / 60
+            )
             if first_stop.actual_departure and first_stop.scheduled_departure
             else 0
         )
 
         arrival_delay = (
-            calculate_delay(last_stop.scheduled_arrival, last_stop.actual_arrival)
+            int(
+                (last_stop.actual_arrival - last_stop.scheduled_arrival).total_seconds()
+                / 60
+            )
             if last_stop.actual_arrival and last_stop.scheduled_arrival
             else 0
         )
@@ -289,102 +300,10 @@ async def get_train_history(
 # Helper functions
 
 
-def calculate_journey_progress(
-    journey: TrainJourney, from_stop: JourneyStop
-) -> JourneyProgress:
-    """Calculate journey progress information."""
-    stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
-
-    # Find completed stops
-    completed = sum(
-        1
-        for s in stops
-        if s.departed and (s.stop_sequence or 0) <= (from_stop.stop_sequence or 0)
-    )
-    total = len(stops)
-
-    # Find current location
-    current_location = journey.origin_station_code
-    next_stop = None
-
-    for i, stop in enumerate(stops):
-        if stop.departed:
-            current_location = stop.station_code
-        else:
-            if i > 0:
-                current_location = (
-                    f"Between {stops[i-1].station_code} and {stop.station_code}"
-                )
-            next_stop = stop.station_code
-            break
-
-    return JourneyProgress(
-        completed_stops=completed,
-        total_stops=total,
-        percentage=int((completed / total) * 100) if total > 0 else 0,
-        current_location=current_location,
-        next_stop=next_stop,
-    )
+# Removed old journey progress calculation - iOS app will calculate based on user's journey context
 
 
-def determine_stop_status(stop: JourneyStop) -> TrainStatus:
-    """Determine the status for a stop."""
-    if stop.departed:
-        return TrainStatus.DEPARTED
-    elif stop.track:
-        return TrainStatus.BOARDING
-    elif stop.status == "Cancelled":
-        return TrainStatus.CANCELLED
-    elif stop.status == "Late":
-        return TrainStatus.LATE
-    else:
-        return TrainStatus.ON_TIME
-
-
-def determine_current_status(journey: TrainJourney) -> CurrentStatus:
-    """Determine current status of a journey."""
-    if journey.is_cancelled:
-        status = TrainStatus.CANCELLED
-        location = "Cancelled"
-    elif journey.is_completed:
-        status = TrainStatus.ARRIVED
-        location = journey.destination or "Unknown"
-    else:
-        # Find current position
-        status = TrainStatus.IN_TRANSIT
-        location = "Unknown"
-
-        stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
-        for i, stop in enumerate(stops):
-            if not stop.departed:
-                if stop.track:
-                    status = TrainStatus.BOARDING
-                    location = f"At {stop.station_name}"
-                else:
-                    status = TrainStatus.IN_TRANSIT
-                    if i > 0:
-                        location = f"Approaching {stop.station_name}"
-                    else:
-                        status = TrainStatus.ON_TIME
-                        location = stop.station_name or "Unknown"
-                break
-            else:
-                location = f"Departed {stop.station_name}"
-
-    # Calculate overall delay
-    delay = 0
-    for stop in journey.stops:
-        if stop.departed and stop.actual_departure and stop.scheduled_departure:
-            delay = calculate_delay(stop.scheduled_departure, stop.actual_departure)
-
-    return CurrentStatus(
-        status=status,
-        location=location,
-        delay_minutes=delay,
-        is_cancelled=journey.is_cancelled,
-        is_completed=journey.is_completed,
-        last_update=journey.last_updated_at,
-    )
+# Removed old status determination functions - iOS app will calculate these based on journey context
 
 
 def calculate_duration(from_stop: JourneyStop, to_stop: JourneyStop | None) -> int:
@@ -414,47 +333,55 @@ def count_stops_between(
     return count
 
 
-def calculate_stop_delay(stop: JourneyStop) -> int:
-    """Calculate delay for a stop."""
-    if stop.departed and stop.actual_departure and stop.scheduled_departure:
-        return calculate_delay(stop.scheduled_departure, stop.actual_departure)
-    elif stop.departed and stop.actual_arrival and stop.scheduled_arrival:
-        return calculate_delay(stop.scheduled_arrival, stop.actual_arrival)
-    return 0
+# Removed old delay and estimated time calculations - iOS app will calculate these based on journey context
 
 
-def calculate_estimated_times(
-    stop: JourneyStop, journey: TrainJourney
-) -> tuple[datetime | None, datetime | None]:
-    """Calculate estimated times for future stops based on current delay.
+def calculate_train_position(journey: TrainJourney) -> TrainPosition:
+    """Calculate current train position based on stops data."""
+    if not journey.stops:
+        return TrainPosition()
 
-    Returns:
-        Tuple of (estimated_arrival, estimated_departure)
-    """
-    if stop.departed or journey.is_cancelled:
-        return (None, None)
+    # Sort stops by sequence
+    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-    # Find the current delay from last departed stop
-    current_delay = 0
-    for s in sorted(journey.stops, key=lambda x: x.stop_sequence or 0, reverse=True):
-        if s.departed and s.actual_departure and s.scheduled_departure:
-            current_delay = calculate_delay(s.scheduled_departure, s.actual_departure)
+    # Find last departed station and next station
+    last_departed_station_code = None
+    at_station_code = None
+    next_station_code = None
+
+    for stop in sorted_stops:
+        if stop.has_departed_station:
+            last_departed_station_code = stop.station_code
+        else:
+            # This is the next station
+            next_station_code = stop.station_code
+
+            # Check if currently at this station (based on raw status)
+            if journey.data_source == "AMTRAK":
+                # For Amtrak, "Station" means at the station
+                if stop.raw_amtrak_status == "Station":
+                    at_station_code = stop.station_code
+            elif journey.data_source == "NJT":
+                # For NJT, having a track assignment suggests at station
+                if stop.track and not stop.has_departed_station:
+                    at_station_code = stop.station_code
+
             break
 
-    if current_delay > 0:
-        estimated_arrival = (
-            stop.scheduled_arrival + timedelta(minutes=current_delay)
-            if stop.scheduled_arrival
-            else None
-        )
-        estimated_departure = (
-            stop.scheduled_departure + timedelta(minutes=current_delay)
-            if stop.scheduled_departure
-            else None
-        )
-        return (estimated_arrival, estimated_departure)
+    # If no undeparted stops found, train may have completed journey
+    if not next_station_code and sorted_stops:
+        last_stop = sorted_stops[-1]
+        if last_stop.has_departed_station:
+            at_station_code = last_stop.station_code
 
-    return (None, None)
+    return TrainPosition(
+        last_departed_station_code=last_departed_station_code,
+        at_station_code=at_station_code,
+        next_station_code=next_station_code,
+        between_stations=bool(
+            last_departed_station_code and next_station_code and not at_station_code
+        ),
+    )
 
 
 def get_first_stop_name(journey: TrainJourney) -> str:

@@ -204,9 +204,8 @@ struct TrainCard: View {
     
     /// Check if train is boarding at origin
     private var isBoardingAtOrigin: Bool {
-        // Check if train is boarding, we're at the origin, has track, and departing within 11 minutes
-        return train.isBoarding && 
-               train.originStationCode == departureStationCode && 
+        // Use context-aware boarding check and verify track + departure timing
+        return train.isBoarding(fromStationCode: departureStationCode) && 
                train.track != nil &&
                train.isDepartingSoon(fromStationCode: departureStationCode, withinMinutes: 11)
     }
@@ -323,7 +322,10 @@ struct StatusV2Badge: View {
     }
     
     private var statusColor: Color {
-        switch train.status {
+        // Use context-aware status
+        let contextStatus = train.calculateStatus(fromStationCode: departureStationCode)
+        
+        switch contextStatus {
         case .boarding:
             return train.track != nil ? .orange : .gray
         case .departed:
@@ -345,8 +347,9 @@ struct StatusV2Badge: View {
             return train.enhancedDisplayStatus
         }
         
-        // Otherwise use basic status
-        switch train.status {
+        // Otherwise use context-aware status
+        let contextStatus = train.calculateStatus(fromStationCode: departureStationCode)
+        switch contextStatus {
         case .boarding:
             return train.track != nil ? "Boarding" : "Scheduled"
         case .departed:
@@ -454,7 +457,7 @@ class TrainListViewModel: ObservableObject {
             // Check for boarding status changes (StatusV2 only)
             for train in trains {
                 if let newTrain = newTrains.first(where: { $0.id == train.id }) {
-                    if !train.isBoarding && newTrain.isBoarding {
+                    if !train.isBoarding(fromStationCode: fromStationCode) && newTrain.isBoarding(fromStationCode: fromStationCode) {
                         // Haptic feedback for boarding status
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     }

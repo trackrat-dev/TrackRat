@@ -108,9 +108,9 @@ class TestAmtrakDatabaseIntegration:
 
                 ny_stop = stops_by_code["NY"]
                 assert ny_stop.station_name == "New York Penn Station"
-                assert ny_stop.status == "DEPARTED"
+                assert ny_stop.raw_amtrak_status == "Departed"
                 assert ny_stop.track == "15"
-                assert ny_stop.departed is True
+                assert ny_stop.has_departed_station is True
 
                 # Verify snapshot was created
                 from trackrat.models.database import JourneySnapshot
@@ -199,8 +199,8 @@ class TestAmtrakDatabaseIntegration:
 
                 # Verify status updates
                 ny_stop = next(s for s in stops if s.station_code == "NY")
-                assert ny_stop.status == "DEPARTED"
-                assert ny_stop.departed is True
+                assert ny_stop.raw_amtrak_status == "Departed"
+                assert ny_stop.has_departed_station is True
                 assert ny_stop.actual_departure is not None
 
                 # Verify new snapshot was added by querying database

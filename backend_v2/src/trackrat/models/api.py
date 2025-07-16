@@ -40,16 +40,14 @@ class LineInfo(BaseModel):
 
 
 class StationInfo(BaseModel):
-    """Station information with optional timing and status."""
+    """Station information with timing data only."""
 
     code: str = Field(..., min_length=1, max_length=3)
     name: str
     scheduled_time: datetime | None = None
+    updated_time: datetime | None = None
     actual_time: datetime | None = None
-    estimated_time: datetime | None = None
     track: str | None = None
-    status: TrainStatus | None = None
-    delay_minutes: int = Field(default=0, ge=0)
 
 
 class SimpleStationInfo(BaseModel):
@@ -68,24 +66,33 @@ class DataFreshness(BaseModel):
     collection_method: Literal["scheduled", "just_in_time"] | None = None
 
 
+class CurrentStatus(BaseModel):
+    """Current train status information."""
+
+    status: TrainStatus
+    status_v2: TrainStatus | None = None
+    last_updated: datetime
+    delay_minutes: int = Field(default=0, ge=0)
+
+
 class JourneyProgress(BaseModel):
     """Journey progress information."""
 
-    completed_stops: int = Field(..., ge=0)
-    total_stops: int = Field(..., ge=1)
-    percentage: int = Field(..., ge=0, le=100)
-    current_location: str
-    next_stop: str | None = None
+    stops_completed: int = Field(default=0, ge=0)
+    stops_total: int = Field(default=0, ge=0)
+    journey_percent: float = Field(default=0.0, ge=0.0, le=100.0)
+    minutes_to_arrival: int | None = None
+    last_departed: str | None = None
+    next_arrival: str | None = None
 
 
-class JourneyInfo(BaseModel):
-    """Journey summary information."""
+class TrainPosition(BaseModel):
+    """Current train position information."""
 
-    origin: str
-    origin_name: str
-    duration_minutes: int = Field(..., ge=0)
-    stops_between: int = Field(..., ge=0)
-    progress: JourneyProgress
+    last_departed_station_code: str | None = None
+    at_station_code: str | None = None
+    next_station_code: str | None = None
+    between_stations: bool = False
 
 
 class TrainDeparture(BaseModel):
@@ -96,7 +103,7 @@ class TrainDeparture(BaseModel):
     destination: str
     departure: StationInfo
     arrival: StationInfo | None = None
-    journey: JourneyInfo
+    train_position: TrainPosition
     data_freshness: DataFreshness
     data_source: str = Field(..., description="Data source (NJT or AMTRAK)")
 
@@ -130,32 +137,28 @@ class RouteInfo(BaseModel):
     destination_code: str
 
 
-class CurrentStatus(BaseModel):
-    """Current train status."""
+class RawStopStatus(BaseModel):
+    """Raw status information from data source."""
 
-    status: TrainStatus
-    location: str
-    delay_minutes: int = Field(default=0, ge=0)
-    is_cancelled: bool = False
-    is_completed: bool = False
-    last_update: datetime
+    amtrak_status: str | None = None
+    njt_departed_flag: str | None = None
 
 
 class StopDetails(BaseModel):
     """Detailed information for a single stop."""
 
     station: SimpleStationInfo
-    sequence: int = Field(..., ge=0)
+    stop_sequence: int = Field(..., ge=0)
     scheduled_arrival: datetime | None = None
     scheduled_departure: datetime | None = None
+    updated_arrival: datetime | None = None
+    updated_departure: datetime | None = None
     actual_arrival: datetime | None = None
     actual_departure: datetime | None = None
-    estimated_arrival: datetime | None = None
-    estimated_departure: datetime | None = None
     track: str | None = None
-    status: str | None = None
-    delay_minutes: int = Field(default=0, ge=0)
-    departed: bool = False
+    track_assigned_at: datetime | None = None
+    raw_status: RawStopStatus
+    has_departed_station: bool = False
 
 
 class TrainDetails(BaseModel):
@@ -165,10 +168,11 @@ class TrainDetails(BaseModel):
     journey_date: date
     line: LineInfo
     route: RouteInfo
-    current_status: CurrentStatus
+    train_position: TrainPosition
     stops: list[StopDetails]
     data_freshness: DataFreshness
     data_source: str = Field(..., description="Data source (NJT or AMTRAK)")
+    raw_train_state: str | None = None
 
     @field_serializer("journey_date")
     def serialize_journey_date(self, journey_date: date) -> str:

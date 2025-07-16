@@ -62,8 +62,10 @@ async def test_get_departures_with_data(client, db_session):
             stop_sequence=seq,
             scheduled_departure=now_et() + timedelta(hours=hours, minutes=minutes),
             scheduled_arrival=now_et() + timedelta(hours=hours, minutes=minutes),
-            departed=False,
-            status="OnTime",
+            updated_departure=now_et() + timedelta(hours=hours, minutes=minutes),
+            updated_arrival=now_et() + timedelta(hours=hours, minutes=minutes),
+            has_departed_station=False,
+            raw_njt_departed_flag="NO",
         )
         if code == "NY":
             stop.track = "7"
@@ -142,8 +144,8 @@ async def test_get_train_details(client, db_session):
             stop_sequence=0,
             scheduled_departure=base_time - timedelta(minutes=30),
             actual_departure=base_time - timedelta(minutes=28),
-            departed=True,
-            status="OnTime",
+            has_departed_station=True,
+            raw_njt_departed_flag="YES",
             track="7",
         ),
         JourneyStop(
@@ -153,8 +155,8 @@ async def test_get_train_details(client, db_session):
             stop_sequence=1,
             scheduled_arrival=base_time - timedelta(minutes=15),
             scheduled_departure=base_time - timedelta(minutes=13),
-            departed=False,
-            status="OnTime",
+            has_departed_station=False,
+            raw_njt_departed_flag="NO",
             track="2",
         ),
         JourneyStop(
@@ -163,8 +165,8 @@ async def test_get_train_details(client, db_session):
             station_name="Trenton",
             stop_sequence=2,
             scheduled_arrival=base_time + timedelta(minutes=45),
-            departed=False,
-            status="OnTime",
+            has_departed_station=False,
+            raw_njt_departed_flag="NO",
         ),
     ]
 
@@ -207,9 +209,9 @@ async def test_get_train_details(client, db_session):
         assert "Newark" in train["current_status"]["location"]
 
         # Check stops
-        assert train["stops"][0]["departed"] is True
+        assert train["stops"][0]["has_departed_station"] is True
         assert train["stops"][0]["track"] == "7"
-        assert train["stops"][1]["departed"] is False
+        assert train["stops"][1]["has_departed_station"] is False
         assert train["stops"][1]["track"] == "2"
 
 
@@ -262,14 +264,20 @@ async def test_get_train_history(client, db_session):
                 stop_sequence=seq,
                 scheduled_departure=now_et() - timedelta(days=i, hours=2 - seq),
                 scheduled_arrival=now_et() - timedelta(days=i, hours=2 - seq),
+                updated_departure=now_et()
+                - timedelta(days=i, hours=2 - seq)
+                + timedelta(minutes=5),
+                updated_arrival=now_et()
+                - timedelta(days=i, hours=2 - seq)
+                + timedelta(minutes=5),
                 actual_departure=now_et()
                 - timedelta(days=i, hours=2 - seq)
                 + timedelta(minutes=5),
                 actual_arrival=now_et()
                 - timedelta(days=i, hours=2 - seq)
                 + timedelta(minutes=5),
-                departed=True,
-                status="OnTime" if i == 0 else "Late",
+                has_departed_station=True,
+                raw_njt_departed_flag="YES",
                 track="7" if code == "NY" else None,
             )
             db_session.add(stop)

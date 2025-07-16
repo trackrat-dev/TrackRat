@@ -45,14 +45,14 @@ class TestAPIMixedSources:
             scheduled_departure=base_time,
             stop_sequence=0,
             track="15",
-            status="BOARDING",
+            raw_amtrak_status="Station",
         )
         tr_stop_amtrak = create_amtrak_journey_stop(
             station_code="TR",
             station_name="Trenton",
             scheduled_arrival=base_time + timedelta(minutes=45),
             stop_sequence=1,
-            status="EN ROUTE",
+            raw_amtrak_status="Enroute",
         )
         amtrak_journey.stops = [ny_stop_amtrak, tr_stop_amtrak]
 
@@ -79,16 +79,20 @@ class TestAPIMixedSources:
             station_code="NY",
             station_name="New York Penn Station",
             scheduled_departure=base_time + timedelta(minutes=30),
+            updated_departure=base_time + timedelta(minutes=30),
             stop_sequence=0,
             track="7",
-            status="ON TIME",
+            has_departed_station=False,
+            raw_njt_departed_flag="NO",
         )
         tr_stop_njt = JourneyStop(
             station_code="TR",
             station_name="Trenton",
             scheduled_arrival=base_time + timedelta(hours=1, minutes=15),
+            updated_arrival=base_time + timedelta(hours=1, minutes=15),
             stop_sequence=1,
-            status="ON TIME",
+            has_departed_station=False,
+            raw_njt_departed_flag="NO",
         )
         njt_journey.stops = [ny_stop_njt, tr_stop_njt]
 
@@ -416,16 +420,17 @@ class TestAPIMixedSources:
         assert len(data["departures"]) == 1
         departure = data["departures"][0]
 
-        # Check journey information
-        assert "journey" in departure
-        journey_info = departure["journey"]
+        # Check train position information (replaces journey)
+        assert "train_position" in departure
+        train_position = departure["train_position"]
 
-        assert "origin" in journey_info
-        assert "origin_name" in journey_info
-        assert "duration_minutes" in journey_info
-        assert "stops_between" in journey_info
-        assert "progress" in journey_info
+        # Check basic departure info
+        assert "departure" in departure
+        assert "arrival" in departure
+        assert departure["departure"]["code"] == "NY"
+        assert departure["arrival"]["code"] == "TR"
+        assert "last_departed_station_code" in train_position
+        assert "next_station_code" in train_position
 
-        # Verify journey calculations
-        assert journey_info["duration_minutes"] == 45  # NY to TR travel time
-        assert journey_info["stops_between"] == 1  # NP between NY and TR
+        # Train position provides objective data instead of journey calculations
+        # Client calculates journey-specific info based on context

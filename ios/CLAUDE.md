@@ -371,17 +371,26 @@ The app provides sophisticated real-time journey visualization through multiple 
 # Open project
 open TrackRat.xcodeproj
 
-# Build for simulator
+# Build for simulator (complete build with destination)
+xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16'
+
+# Build for simulator (basic build)
 xcodebuild -scheme TrackRat -sdk iphonesimulator
 
 # Build for device
 xcodebuild -scheme TrackRat -sdk iphoneos
 
+# Check for compilation errors only
+xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | grep -E "(error|failed|BUILD FAILED)" || echo "BUILD SUCCESSFUL"
+
 # Run tests
-xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 15'
+xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'
 
 # Archive for distribution
 xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
+
+# Note: Use iPhone 16 instead of iPhone 15 as it's available in current simulators
+# Available destinations can be checked with: xcodebuild -scheme TrackRat -showdestinations
 ```
 
 ### Testing Live Activities

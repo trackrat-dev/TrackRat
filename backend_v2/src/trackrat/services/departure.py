@@ -14,15 +14,14 @@ from trackrat.config.stations import get_station_name
 from trackrat.models.api import (
     DataFreshness,
     DeparturesResponse,
-    JourneyInfo,
-    JourneyProgress,
     LineInfo,
     StationInfo,
     TrainDeparture,
+    TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.jit import JustInTimeUpdateService
-from trackrat.utils.time import calculate_delay, now_et, safe_datetime_subtract
+from trackrat.utils.time import now_et, safe_datetime_subtract
 
 logger = get_logger(__name__)
 
@@ -103,6 +102,9 @@ class DepartureService:
             if not from_stop or (to_station and not to_stop):
                 continue
 
+            # Calculate train position
+            train_position = self._calculate_train_position(journey)
+
             # Build departure
             departure = TrainDeparture(
                 train_id=journey.train_id,
@@ -117,155 +119,26 @@ class DepartureService:
                     name=from_stop.station_name,
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
+                    updated_time=from_stop.updated_departure
+                    or from_stop.updated_arrival,
                     actual_time=from_stop.actual_departure or from_stop.actual_arrival,
                     track=from_stop.track,
-                    status=(
-                        "DEPARTED"
-                        if from_stop.departed
-                        else (
-                            "BOARDING"
-                            if from_stop.track
-                            else (
-                                "CANCELLED"
-                                if from_stop.status == "Cancelled"
-                                else "LATE" if from_stop.status == "Late" else "ON_TIME"
-                            )
-                        )
-                    ),
-                    delay_minutes=(
-                        calculate_delay(
-                            from_stop.scheduled_departure, from_stop.actual_departure
-                        )
-                        if from_stop.departed
-                        and from_stop.actual_departure
-                        and from_stop.scheduled_departure
-                        else (
-                            calculate_delay(
-                                from_stop.scheduled_arrival, from_stop.actual_arrival
-                            )
-                            if from_stop.departed
-                            and from_stop.actual_arrival
-                            and from_stop.scheduled_arrival
-                            else 0
-                        )
-                    ),
                 ),
                 arrival=(
                     StationInfo(
                         code=to_stop.station_code,
                         name=to_stop.station_name,
-                        scheduled_time=to_stop.scheduled_departure
-                        or to_stop.scheduled_arrival,
-                        actual_time=to_stop.actual_departure or to_stop.actual_arrival,
+                        scheduled_time=to_stop.scheduled_arrival
+                        or to_stop.scheduled_departure,
+                        updated_time=to_stop.updated_arrival
+                        or to_stop.updated_departure,
+                        actual_time=to_stop.actual_arrival or to_stop.actual_departure,
                         track=to_stop.track,
-                        status=(
-                            "DEPARTED"
-                            if to_stop.departed
-                            else (
-                                "BOARDING"
-                                if to_stop.track
-                                else (
-                                    "CANCELLED"
-                                    if to_stop.status == "Cancelled"
-                                    else (
-                                        "LATE"
-                                        if to_stop.status == "Late"
-                                        else "ON_TIME"
-                                    )
-                                )
-                            )
-                        ),
-                        delay_minutes=(
-                            calculate_delay(
-                                to_stop.scheduled_departure, to_stop.actual_departure
-                            )
-                            if to_stop.departed
-                            and to_stop.actual_departure
-                            and to_stop.scheduled_departure
-                            else (
-                                calculate_delay(
-                                    to_stop.scheduled_arrival, to_stop.actual_arrival
-                                )
-                                if to_stop.departed
-                                and to_stop.actual_arrival
-                                and to_stop.scheduled_arrival
-                                else 0
-                            )
-                        ),
                     )
                     if to_stop
                     else None
                 ),
-                journey=JourneyInfo(
-                    origin=journey.origin_station_code,
-                    origin_name=(
-                        min(
-                            journey.stops, key=lambda s: s.stop_sequence or 0
-                        ).station_name
-                        if journey.stops
-                        else journey.origin_station_code or ""
-                    ),
-                    duration_minutes=(
-                        max(
-                            0,
-                            int(
-                                safe_datetime_subtract(
-                                    to_stop.scheduled_arrival,
-                                    from_stop.scheduled_departure,
-                                ).total_seconds()
-                                / 60
-                            ),
-                        )
-                        if to_stop
-                        and from_stop.scheduled_departure
-                        and to_stop.scheduled_arrival
-                        else 0
-                    ),
-                    stops_between=(
-                        sum(
-                            1
-                            for stop in journey.stops
-                            if (from_stop.stop_sequence or 0)
-                            < (stop.stop_sequence or 0)
-                            < (to_stop.stop_sequence or 0)
-                        )
-                        if to_stop
-                        else 0
-                    ),
-                    progress=JourneyProgress(
-                        completed_stops=sum(
-                            1
-                            for s in sorted(
-                                journey.stops, key=lambda s: s.stop_sequence or 0
-                            )
-                            if s.departed
-                            and (s.stop_sequence or 0) <= (from_stop.stop_sequence or 0)
-                        ),
-                        total_stops=len(journey.stops),
-                        percentage=(
-                            int(
-                                (
-                                    sum(
-                                        1
-                                        for s in sorted(
-                                            journey.stops,
-                                            key=lambda s: s.stop_sequence or 0,
-                                        )
-                                        if s.departed
-                                        and (s.stop_sequence or 0)
-                                        <= (from_stop.stop_sequence or 0)
-                                    )
-                                    / len(journey.stops)
-                                )
-                                * 100
-                            )
-                            if journey.stops
-                            else 0
-                        ),
-                        current_location=journey.origin_station_code,
-                        next_stop=None,
-                    ),
-                ),
+                train_position=train_position,
                 data_freshness=DataFreshness(
                     last_updated=journey.last_updated_at or journey.first_seen_at,
                     age_seconds=int(
@@ -300,4 +173,53 @@ class DepartureService:
                 "count": len(departures),
                 "generated_at": now_et().isoformat(),
             },
+        )
+
+    def _calculate_train_position(self, journey: TrainJourney) -> TrainPosition:
+        """Calculate current train position based on stops data."""
+        if not journey.stops:
+            return TrainPosition()
+
+        # Sort stops by sequence
+        sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+
+        # Find last departed station and next station
+        last_departed_station_code = None
+        at_station_code = None
+        next_station_code = None
+
+        for stop in sorted_stops:
+            if stop.has_departed_station:
+                last_departed_station_code = stop.station_code
+            else:
+                # This is the next station
+                next_station_code = stop.station_code
+
+                # Check if currently at this station (based on raw status)
+                if journey.data_source == "AMTRAK":
+                    # For Amtrak, "Station" means at the station
+                    if stop.raw_amtrak_status == "Station":
+                        at_station_code = stop.station_code
+                elif journey.data_source == "NJT":
+                    # For NJT, having a track assignment suggests at station
+                    if stop.track and not stop.has_departed_station:
+                        at_station_code = stop.station_code
+
+                break
+
+        # If no undeparted stops found, train may have completed journey
+        if not next_station_code and sorted_stops:
+            last_stop = sorted_stops[-1]
+            if last_stop.has_departed_station:
+                at_station_code = last_stop.station_code
+
+        return TrainPosition(
+            last_departed_station_code=last_departed_station_code,
+            at_station_code=at_station_code,
+            next_station_code=next_station_code,
+            between_stations=(
+                last_departed_station_code is not None
+                and at_station_code is None
+                and next_station_code is not None
+            ),
         )

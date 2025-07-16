@@ -74,14 +74,20 @@ class TestDepartureServiceIntegration:
             station_code="NY",
             station_name="New York Penn Station",
             scheduled_departure=now_et() + timedelta(hours=1, minutes=30),
+            updated_departure=now_et() + timedelta(hours=1, minutes=30),
             stop_sequence=0,
             track="7",
+            has_departed_station=False,
+            raw_njt_departed_flag="NO",
         )
         tr_stop_njt = JourneyStop(
             station_code="TR",
             station_name="Trenton",
             scheduled_arrival=now_et() + timedelta(hours=2, minutes=15),
+            updated_arrival=now_et() + timedelta(hours=2, minutes=15),
             stop_sequence=1,
+            has_departed_station=False,
+            raw_njt_departed_flag="NO",
         )
         njt_journey.stops = [ny_stop_njt, tr_stop_njt]
 
@@ -328,7 +334,7 @@ class TestDepartureServiceIntegration:
                 departure = response_ny_tr.departures[0]
                 assert departure.departure.code == "NY"
                 assert departure.arrival.code == "TR"
-                assert departure.journey.stops_between == 1  # NP is between NY and TR
+                # Journey info no longer included in departure response (pure data approach)
 
                 # Test NP to TR (should also find the same train)
                 response_np_tr = await service.get_departures(
@@ -343,9 +349,8 @@ class TestDepartureServiceIntegration:
                 departure = response_np_tr.departures[0]
                 assert departure.departure.code == "NP"
                 assert departure.arrival.code == "TR"
-                assert (
-                    departure.journey.stops_between == 0
-                )  # No stops between NP and TR
+                # Train position provides objective data instead of journey calculations
+                assert departure.train_position is not None
 
     async def test_cancelled_amtrak_trains_excluded(self, db_session: AsyncSession):
         """Test that cancelled Amtrak trains are excluded from departures."""

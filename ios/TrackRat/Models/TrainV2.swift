@@ -1,8 +1,20 @@
 import Foundation
 
-// MARK: - Simplified Train Model for Backend V2
-// This model is designed to work with the backend_v2 API structure
-// without consolidation or ML predictions
+// MARK: - Journey Context
+// Represents the user's journey segment for context-aware calculations
+struct JourneyContext {
+    let originStationCode: String
+    let destinationName: String?
+    
+    init(from originCode: String, to destinationName: String? = nil) {
+        self.originStationCode = originCode
+        self.destinationName = destinationName
+    }
+}
+
+// MARK: - Pure Data Train Model for Backend V2
+// This model uses the pure data approach where the backend provides
+// objective facts and the iOS client calculates context-aware status
 
 struct TrainV2: Identifiable, Codable {
     // Core fields
@@ -12,7 +24,7 @@ struct TrainV2: Identifiable, Codable {
     let destination: String
     let departure: StationTiming
     let arrival: StationTiming?
-    let journey: JourneyInfo?
+    let trainPosition: TrainPosition?
     let dataFreshness: DataFreshness?
     
     // Optional detailed stops (populated from detail endpoint)
@@ -29,7 +41,8 @@ struct TrainV2: Identifiable, Codable {
     }
     
     var status: TrainStatus {
-        mapV2StatusToTrainStatus(departure.status ?? "SCHEDULED")
+        // Default to scheduled - context-aware status should be calculated separately
+        .scheduled
     }
     
     var delayMinutes: Int {
@@ -53,35 +66,64 @@ struct TrainV2: Identifiable, Codable {
         return StaticTrackDistributionService.shared.getPredictionData(for: self)
     }
     
-    // Enhanced display status using journey progress
+    // Enhanced display status using train position
     var enhancedDisplayStatus: String {
-        if let progress = journey?.progress {
-            if progress.percentage >= 100 {
-                return "Arrived"
-            } else if progress.percentage > 0 {
-                return "En Route - \(progress.currentLocation)"
+        if let position = trainPosition {
+            if let nextStation = position.nextStationCode {
+                return "En Route to \(nextStation)"
+            } else if let atStation = position.atStationCode {
+                return "At \(atStation)"
             }
         }
         return status.displayText
     }
     
-    // Check if train is boarding
-    var isBoarding: Bool {
-        status == .boarding
+    // Check if train is boarding at user's origin (requires journey context)
+    func isBoarding(fromStationCode: String) -> Bool {
+        // Check if train is at the user's origin station
+        if let position = trainPosition,
+           position.atStationCode == fromStationCode {
+            // Check if train has departed from this station
+            if let stop = stops?.first(where: { $0.stationCode == fromStationCode }) {
+                return !stop.hasDepartedStation
+            }
+        }
+        return false
     }
     
     // MARK: - Helper Methods
     
-    private func mapV2StatusToTrainStatus(_ v2Status: String) -> TrainStatus {
-        switch v2Status.uppercased() {
-        case "ON_TIME": return .onTime
-        case "LATE", "DELAYED": return .delayed
-        case "BOARDING", "ALL_ABOARD": return .boarding
-        case "DEPARTED", "IN_TRANSIT": return .departed
-        case "CANCELLED": return .delayed  // Map cancelled to delayed for now
-        case "ARRIVED": return .departed  // Map arrived to departed for now
-        default: return .scheduled
+    // Calculate context-aware status based on user's journey
+    func calculateStatus(fromStationCode: String, toStationName: String? = nil) -> TrainStatus {
+        // Check if train has departed from user's origin
+        if hasTrainDepartedFromStation(fromStationCode) {
+            return .departed
         }
+        
+        // Check if train is at user's origin and boarding
+        if isBoarding(fromStationCode: fromStationCode) {
+            return .boarding
+        }
+        
+        // Check for delays
+        if delayMinutes > 0 {
+            return .delayed
+        }
+        
+        return .onTime
+    }
+    
+    // Convenience method using JourneyContext
+    func calculateStatus(for context: JourneyContext) -> TrainStatus {
+        return calculateStatus(fromStationCode: context.originStationCode, toStationName: context.destinationName)
+    }
+    
+    // Check if train has departed from a specific station
+    func hasTrainDepartedFromStation(_ stationCode: String) -> Bool {
+        if let stop = stops?.first(where: { $0.stationCode == stationCode }) {
+            return stop.hasDepartedStation
+        }
+        return false
     }
     
     // Get departure time from a specific station
@@ -155,50 +197,38 @@ struct StationTiming: Codable {
     let code: String
     let name: String
     let scheduledTime: Date?
+    let updatedTime: Date?  // Renamed from estimatedTime to match backend
     let actualTime: Date?
-    let estimatedTime: Date?
     let track: String?
-    let status: String?
-    let delayMinutes: Int
+    
+    // Computed property to calculate delay client-side (pure data approach)
+    var delayMinutes: Int {
+        guard let scheduled = scheduledTime else { return 0 }
+        
+        // Use actual time if available, otherwise updated time
+        let compareTime = actualTime ?? updatedTime ?? scheduled
+        
+        let delaySeconds = compareTime.timeIntervalSince(scheduled)
+        return max(0, Int(delaySeconds / 60))
+    }
     
     enum CodingKeys: String, CodingKey {
-        case code, name, track, status
+        case code, name, track
         case scheduledTime = "scheduled_time"
+        case updatedTime = "updated_time"
         case actualTime = "actual_time"
-        case estimatedTime = "estimated_time"
-        case delayMinutes = "delay_minutes"
     }
 }
 
-struct JourneyInfo: Codable {
-    let origin: String
-    let originName: String
-    let durationMinutes: Int
-    let stopsBetween: Int
-    let progress: JourneyProgressV2
+struct TrainPosition: Codable {
+    let lastDepartedStationCode: String?
+    let atStationCode: String?
+    let nextStationCode: String?
     
     enum CodingKeys: String, CodingKey {
-        case origin
-        case originName = "origin_name"
-        case durationMinutes = "duration_minutes"
-        case stopsBetween = "stops_between"
-        case progress
-    }
-}
-
-struct JourneyProgressV2: Codable {
-    let completedStops: Int
-    let totalStops: Int
-    let percentage: Int
-    let currentLocation: String
-    let nextStop: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case completedStops = "completed_stops"
-        case totalStops = "total_stops"
-        case percentage
-        case currentLocation = "current_location"
-        case nextStop = "next_stop"
+        case lastDepartedStationCode = "last_departed_station_code"
+        case atStationCode = "at_station_code"
+        case nextStationCode = "next_station_code"
     }
 }
 
@@ -238,17 +268,25 @@ struct StopV2: Identifiable, Codable {
     let sequence: Int
     let scheduledArrival: Date?
     let scheduledDeparture: Date?
+    let updatedArrival: Date?
+    let updatedDeparture: Date?
     let actualArrival: Date?
     let actualDeparture: Date?
-    let estimatedArrival: Date?
-    let estimatedDeparture: Date?
     let track: String?
-    let status: String?
-    let delayMinutes: Int
-    let departed: Bool
+    let rawStatus: RawStopStatus?
+    let hasDepartedStation: Bool
     
     var id: String {
         "\(stationCode)-\(sequence)"
+    }
+    
+    // Computed delay based on updated vs scheduled times
+    var delayMinutes: Int {
+        if let updated = updatedDeparture ?? updatedArrival,
+           let scheduled = scheduledDeparture ?? scheduledArrival {
+            return max(0, Int(updated.timeIntervalSince(scheduled) / 60))
+        }
+        return 0
     }
     
     enum CodingKeys: String, CodingKey {
@@ -257,14 +295,23 @@ struct StopV2: Identifiable, Codable {
         case sequence
         case scheduledArrival = "scheduled_arrival"
         case scheduledDeparture = "scheduled_departure"
+        case updatedArrival = "updated_arrival"
+        case updatedDeparture = "updated_departure"
         case actualArrival = "actual_arrival"
         case actualDeparture = "actual_departure"
-        case estimatedArrival = "estimated_arrival"
-        case estimatedDeparture = "estimated_departure"
         case track
-        case status
-        case delayMinutes = "delay_minutes"
-        case departed
+        case rawStatus = "raw_status"
+        case hasDepartedStation = "has_departed_station"
+    }
+}
+
+struct RawStopStatus: Codable {
+    let amtrakStatus: String?
+    let njtDepartedFlag: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case amtrakStatus = "amtrak_status"
+        case njtDepartedFlag = "njt_departed_flag"
     }
 }
 
@@ -287,26 +334,28 @@ extension TrainV2 {
     }
     
     // Convert to Live Activity content state with origin and destination
-    func toLiveActivityContentState(from originCode: String, to destinationName: String, lastKnownStatusV2: String? = nil) -> TrainActivityAttributes.ContentState {
-        // Calculate simple progress (0.0 to 1.0)
-        var progress = 0.0
-        if let stops = stops {
-            let departedCount = stops.filter { $0.departed }.count
-            progress = Double(departedCount) / Double(stops.count)
-        }
+    func toLiveActivityContentState(from originCode: String, to destinationName: String) -> TrainActivityAttributes.ContentState {
+        // Calculate context-aware progress for user's journey segment
+        let progress = calculateJourneyProgress(from: originCode, to: destinationName)
         
-        // Get current and next stop names
-        let currentStop = stops?.last(where: { $0.departed })?.stationName ?? departure.name
-        let nextStop = stops?.first(where: { !$0.departed })?.stationName
+        // Get current and next stop names based on train position
+        let currentStop = trainPosition?.atStationCode ?? 
+                         stops?.last(where: { $0.hasDepartedStation })?.stationName ?? 
+                         departure.name
+        let nextStop = trainPosition?.nextStationCode ??
+                      stops?.first(where: { !$0.hasDepartedStation })?.stationName
+        
+        // Calculate context-aware status
+        let contextStatus = calculateStatus(fromStationCode: originCode, toStationName: destinationName)
         
         // Determine if train has departed user's origin
-        let hasTrainDeparted = self.hasTrainDeparted(fromStation: originCode)
+        let hasTrainDeparted = hasTrainDepartedFromStation(originCode)
         
         // Get next stop arrival time
-        let nextStopArrivalTime = self.getNextStopArrivalTime()
+        let nextStopArrivalTime = getNextStopArrivalTime()
         
         return TrainActivityAttributes.ContentState(
-            status: status.rawValue,
+            status: contextStatus.rawValue,
             track: track,
             currentStopName: currentStop,
             nextStopName: nextStop,
@@ -324,21 +373,15 @@ extension TrainV2 {
     
     // Convert to Live Activity content state (simple version)
     func toContentState() -> TrainActivityAttributes.ContentState {
-        // Calculate simple progress (0.0 to 1.0)
-        var progress = 0.0
-        if let stops = stops {
-            let departedCount = stops.filter { $0.departed }.count
-            progress = Double(departedCount) / Double(stops.count)
-        } else if let journey = journey {
-            progress = Double(journey.progress.percentage) / 100.0
-        }
+        // Calculate overall progress
+        let progress = calculateOverallProgress()
         
-        // Get current and next stop names
-        let currentStop = stops?.last(where: { $0.departed })?.stationName ?? 
-                         journey?.progress.currentLocation ?? 
+        // Get current and next stop names from train position
+        let currentStop = trainPosition?.atStationCode ?? 
+                         stops?.last(where: { $0.hasDepartedStation })?.stationName ?? 
                          departure.name
-        let nextStop = stops?.first(where: { !$0.departed })?.stationName ?? 
-                      journey?.progress.nextStop
+        let nextStop = trainPosition?.nextStationCode ??
+                      stops?.first(where: { !$0.hasDepartedStation })?.stationName
         
         return TrainActivityAttributes.ContentState(
             status: status.rawValue,
@@ -351,7 +394,7 @@ extension TrainV2 {
             scheduledDepartureTime: departure.scheduledTime?.toISO8601String(),
             scheduledArrivalTime: arrival?.scheduledTime?.toISO8601String(),
             nextStopArrivalTime: getNextStopArrivalTime()?.toISO8601String(),
-            hasTrainDeparted: hasTrainDeparted(fromStation: originStationCode),
+            hasTrainDeparted: hasTrainDepartedFromStation(originStationCode),
             originStationCode: originStationCode,
             destinationStationCode: destinationStationCode ?? ""
         )
@@ -359,26 +402,37 @@ extension TrainV2 {
     
     // MARK: - Helper Methods for Live Activities
     
-    /// Determine if train has departed from the user's origin station
-    private func hasTrainDeparted(fromStation originCode: String) -> Bool {
-        // Check if train has departed based on stops
-        if let stops = stops {
-            // Find the origin stop
-            if let originStop = stops.first(where: { $0.stationCode == originCode }) {
-                // Check if stop is marked as departed
-                if originStop.departed {
-                    return true
-                }
-                
-                // Check if actual departure time exists and is in the past
-                if let actualDeparture = originStop.actualDeparture {
-                    return actualDeparture < Date()
-                }
-            }
+    // Calculate journey progress for a specific origin-destination segment
+    func calculateJourneyProgress(from originCode: String, to destinationName: String) -> Double {
+        guard let stops = stops else { return 0.0 }
+        
+        // Find origin and destination stops
+        let originIndex = stops.firstIndex { $0.stationCode == originCode }
+        let destinationIndex = stops.lastIndex { $0.stationName.lowercased().contains(destinationName.lowercased()) }
+        
+        guard let fromIndex = originIndex, let toIndex = destinationIndex, fromIndex < toIndex else {
+            return 0.0
         }
         
-        // Check basic status
-        return status == .departed || status == .onTime && departureTime < Date()
+        // Get the journey segment stops
+        let journeyStops = Array(stops[fromIndex...toIndex])
+        let completedInSegment = journeyStops.filter { $0.hasDepartedStation }.count
+        
+        return Double(completedInSegment) / Double(journeyStops.count)
+    }
+    
+    // Convenience method using JourneyContext
+    func calculateJourneyProgress(for context: JourneyContext) -> Double {
+        guard let destinationName = context.destinationName else { return calculateOverallProgress() }
+        return calculateJourneyProgress(from: context.originStationCode, to: destinationName)
+    }
+    
+    // Calculate overall train progress (all stops)
+    func calculateOverallProgress() -> Double {
+        guard let stops = stops, !stops.isEmpty else { return 0.0 }
+        
+        let departedCount = stops.filter { $0.hasDepartedStation }.count
+        return Double(departedCount) / Double(stops.count)
     }
     
     /// Get the next stop arrival time
@@ -387,8 +441,8 @@ extension TrainV2 {
         if let stops = stops {
             // Find first stop that hasn't departed
             for stop in stops {
-                if !stop.departed {
-                    return stop.scheduledArrival ?? stop.estimatedArrival
+                if !stop.hasDepartedStation {
+                    return stop.updatedArrival ?? stop.scheduledArrival
                 }
             }
         }

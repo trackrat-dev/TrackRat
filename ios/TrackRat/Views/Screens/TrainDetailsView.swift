@@ -68,7 +68,7 @@ struct TrainDetailsView: View {
                         }
                         .padding()
                         // Force view update by using a composite ID that includes changing data
-                        .id("\(train.id)-\(train.status.rawValue)-\(viewModel.stopStatesHash)")
+                        .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
                     }
                 } // VStack
                 .refreshable {
@@ -86,7 +86,7 @@ struct TrainDetailsView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 8) {
                     if #available(iOS 16.1, *) {
-                        if let train = viewModel.train, train.status != .delayed {  // V2 maps CANCELLED to delayed
+                        if let train = viewModel.train, train.calculateStatus(fromStationCode: appState.departureStationCode ?? "") != .delayed {  // Use context-aware status
                             Button {
                                 toggleLiveActivity(for: train)
                             } label: {
@@ -268,7 +268,7 @@ struct CombinedDetailsCard: View {
             stop.stationCode.uppercased() == departureCode.uppercased()
         }
         
-        return originStop?.departed ?? false
+        return originStop?.hasDepartedStation ?? false
     }
     
     /// Check if train is boarding specifically at the user's origin station
@@ -278,7 +278,7 @@ struct CombinedDetailsCard: View {
         }
         
         // Check if train is boarding, has track, and departing within 11 minutes
-        return train.status == .boarding && 
+        return train.isBoarding(fromStationCode: departureCode) && 
                train.track != nil &&
                train.isDepartingSoon(fromStationCode: departureCode, withinMinutes: 11)
     }
@@ -290,7 +290,8 @@ struct CombinedDetailsCard: View {
                 // Status Display for TrainV2
                 VStack(spacing: 12) {
                     // Show CANCELLED banner if train is cancelled
-                    if train.status == .delayed {  // V2 maps CANCELLED to delayed
+                    let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
+                    if contextStatus == .delayed {  // Use context-aware status
                         VStack(spacing: 8) {
                             Text("CANCELLED")
                                 .font(.largeTitle)
@@ -333,7 +334,7 @@ struct CombinedDetailsCard: View {
                 
                 // Track predictions section
                 if shouldShowPredictions {
-                    TrackPredictionCard(train: train)
+                    SegmentedTrackPredictionView(train: train)
                 }
             }
             .padding([.horizontal, .top])
@@ -362,8 +363,8 @@ struct CombinedDetailsCard: View {
                             isDestination: selectedDestination != nil && 
                                          stop.stationName.lowercased() == selectedDestination!.lowercased(),
                             isDeparture: checkIfDepartureStop(stop.stationName),
-                            isBoarding: stop.status == "BOARDING" && !checkIfDepartureStop(stop.stationName),
-                            boardingTrack: stop.status == "BOARDING" && !checkIfDepartureStop(stop.stationName) ? train.track : nil,
+                            isBoarding: stop.rawStatus?.amtrakStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName),
+                            boardingTrack: stop.rawStatus?.amtrakStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName) ? train.track : nil,
                             train: train,
                             departureStationCode: appState.departureStationCode
                         )
@@ -432,23 +433,14 @@ struct TrackPredictionCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "tram.circle.fill")
-                    .foregroundColor(.orange)
+                    .foregroundColor(.black)
                     .font(.title2)
                 
                 Text("Track Predictions")
                     .font(.headline)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.black)
                 
                 Spacer()
-                
-                // Data source indicator
-                Text(train.trainId.uppercased().hasPrefix("A") ? "Amtrak" : "NJ Transit")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(6)
             }
             
             if let predictionData = train.predictionData,
@@ -456,7 +448,9 @@ struct TrackPredictionCard: View {
                 
                 // Group tracks by platform and show percentages
                 let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
-                let sortedPlatforms = platformProbabilities.sorted { $0.value > $1.value }
+                // Filter to only show platforms with ≥4% likelihood
+                let filteredPlatforms = platformProbabilities.filter { $0.value >= 0.04 }
+                let sortedPlatforms = filteredPlatforms.sorted { $0.value > $1.value }
                 
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 8) {
                     ForEach(sortedPlatforms, id: \.key) { platform, probability in
@@ -526,8 +520,8 @@ struct StopsCard: View {
                                      stop.stationName.lowercased() == selectedDestination!.lowercased(),
                         isDeparture: appState.selectedDeparture != nil && 
                                    stop.stationName.lowercased() == appState.selectedDeparture!.lowercased(),
-                        isBoarding: stop.status == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
-                        boardingTrack: stop.status == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? train.track : nil,
+                        isBoarding: stop.rawStatus?.amtrakStatus == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
+                        boardingTrack: stop.rawStatus?.amtrakStatus == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? train.track : nil,
                         train: train,
                         departureStationCode: appState.departureStationCode
                     )
@@ -561,7 +555,7 @@ struct StopRowV2: View {
     
     // Helper to check if this stop is cancelled
     private var isCancelled: Bool {
-        return stop.status == "CANCELLED"
+        return stop.rawStatus?.amtrakStatus == "CANCELLED"
     }
     
     // Helper to determine if this is the origin station (first stop)
@@ -584,7 +578,7 @@ struct StopRowV2: View {
             s.stationCode.uppercased() == departureCode.uppercased()
         }
         
-        return originStop?.departed ?? false
+        return originStop?.hasDepartedStation ?? false
     }
     
     // Determine if this is the next important station
@@ -596,14 +590,14 @@ struct StopRowV2: View {
         
         // Fallback: Find first non-departed stop
         if let stops = train.stops {
-            let firstUpcomingStop = stops.first { !$0.departed }
+            let firstUpcomingStop = stops.first { !$0.hasDepartedStation }
             if let upcoming = firstUpcomingStop {
                 return stop.stationCode == upcoming.stationCode
             }
         }
         
         // If journey seems complete (all stops departed), highlight destination
-        let allDeparted = train.stops?.allSatisfy { $0.departed } ?? false
+        let allDeparted = train.stops?.allSatisfy { $0.hasDepartedStation } ?? false
         if allDeparted && isDestination {
             return true
         }
@@ -620,7 +614,7 @@ struct StopRowV2: View {
         let formatter = DateFormatter.easternTime(time: .short)
         
         // For departed stops: Show only "Departed X:XX PM" with delay indicator
-        if stop.departed {
+        if stop.hasDepartedStation {
             if let correctedDepartureTime = stop.actualDeparture {
                 let delayText = departureDelayText(actual: correctedDepartureTime, scheduled: stop.scheduledDeparture)
                 let departureText = "Departed: \(formatter.string(from: correctedDepartureTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
@@ -638,8 +632,8 @@ struct StopRowV2: View {
                 let delayText = departureDelayText(actual: correctedDepartureTime, scheduled: stop.scheduledDeparture)
                 let departureText = "Departure: \(formatter.string(from: correctedDepartureTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (nil, departureText, [])
-            } else if let estimatedDeparture = stop.estimatedDeparture {
-                let departureText = "Departure: \(formatter.string(from: estimatedDeparture)) (est)"
+            } else if let estimatedDeparture = stop.updatedDeparture {
+                let departureText = "Departure: \(formatter.string(from: estimatedDeparture))"
                 return (nil, departureText, [])
             } else if let scheduledDeparture = stop.scheduledDeparture {
                 return (nil, "Departure: \(formatter.string(from: scheduledDeparture))", [])
@@ -654,8 +648,8 @@ struct StopRowV2: View {
                 let delayText = arrivalDelayText(actual: actualArrival, scheduled: stop.scheduledArrival)
                 let arrivalText = "Arrival: \(formatter.string(from: actualArrival))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (arrivalText, nil, [])
-            } else if let estimatedArrival = stop.estimatedArrival {
-                let arrivalText = "Arrival: \(formatter.string(from: estimatedArrival)) (est)"
+            } else if let estimatedArrival = stop.updatedArrival {
+                let arrivalText = "Arrival: \(formatter.string(from: estimatedArrival))"
                 return (arrivalText, nil, [])
             } else if let scheduledArrival = stop.scheduledArrival {
                 return ("Arrival: \(formatter.string(from: scheduledArrival))", nil, [])
@@ -669,8 +663,8 @@ struct StopRowV2: View {
             let delayText = arrivalDelayText(actual: actualArrival, scheduled: stop.scheduledArrival)
             let arrivalText = "Arrival: \(formatter.string(from: actualArrival))" + (delayText.isEmpty ? "" : " (\(delayText))")
             return (arrivalText, nil, [])
-        } else if let estimatedArrival = stop.estimatedArrival {
-            let arrivalText = "Arrival: \(formatter.string(from: estimatedArrival)) (est)"
+        } else if let estimatedArrival = stop.updatedArrival {
+            let arrivalText = "Arrival: \(formatter.string(from: estimatedArrival))"
             return (arrivalText, nil, [])
         } else if let scheduledArrival = stop.scheduledArrival {
             return ("Arrival: \(formatter.string(from: scheduledArrival))", nil, [])
@@ -754,21 +748,19 @@ struct StopRowV2: View {
     private var stopColor: Color {
         if isCancelled { return .gray }
         if isNextImportantStation { return .orange }
-        if stop.departed { return .gray }
+        if stop.hasDepartedStation { return .gray }
         return .blue
     }
     
     private var textColor: Color {
         if isCancelled { return .gray }
-        if isNextImportantStation { return .orange }
-        if stop.departed { return .gray }
+        if stop.hasDepartedStation { return .gray }
         return .black
     }
     
     private var timeColor: Color {
         if isCancelled { return .gray }
-        if isNextImportantStation { return .orange }
-        if stop.departed { return .gray }
+        if stop.hasDepartedStation { return .gray }
         return .black.opacity(0.6)
     }
     
@@ -861,7 +853,7 @@ class TrainDetailsViewModel: ObservableObject {
     
     /// Hash of stop departure states for SwiftUI view update detection
     var stopStatesHash: String {
-        let departedStates = displayableTrainStops.map { $0.departed }
+        let departedStates = displayableTrainStops.map { $0.hasDepartedStation }
         return String(departedStates.hashValue)
     }
     
@@ -903,9 +895,19 @@ class TrainDetailsViewModel: ObservableObject {
     }
     
     private func updateJourneyProgress() {
-        journeyProgressPercentage = train?.journey?.progress.percentage ?? 0
-        journeyStopsCompleted = train?.journey?.progress.completedStops ?? 0
-        journeyTotalStops = train?.journey?.progress.totalStops ?? 0
+        guard let stops = train?.stops else {
+            journeyProgressPercentage = 0
+            journeyStopsCompleted = 0
+            journeyTotalStops = 0
+            return
+        }
+        
+        let completedStops = stops.filter { $0.hasDepartedStation }.count
+        let totalStops = stops.count
+        
+        journeyStopsCompleted = completedStops
+        journeyTotalStops = totalStops
+        journeyProgressPercentage = totalStops > 0 ? (completedStops * 100) / totalStops : 0
     }
     
     func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
@@ -963,11 +965,6 @@ class TrainDetailsViewModel: ObservableObject {
             
             // Check for boarding status change
             if let currentTrain = train {
-                // Check for boarding status change
-                if currentTrain.status != .boarding && newTrain.status == .boarding {
-                    triggerBoardingHaptic = true
-                }
-                
                 // Check for track assignment
                 if currentTrain.track == nil && newTrain.track != nil {
                     triggerTrackAssignedHaptic = true
@@ -1042,6 +1039,305 @@ struct TrainProgressIndicator: View {
 
 // DISABLED: Position Tracking Card removed for TrainV2 migration
 
+
+// MARK: - Segmented Track Prediction View
+struct SegmentedTrackPredictionView: View {
+    let train: TrainV2
+    @State private var selectedSegment: TrackPredictionSegment?
+    @State private var showingOthersPopup = false
+    @State private var animateAppearance = false
+    
+    private var predictionSegments: [TrackPredictionSegment] {
+        guard let predictionData = train.predictionData,
+              let trackProbabilities = predictionData.trackProbabilities else {
+            return []
+        }
+        
+        let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
+        let filteredPlatforms = platformProbabilities.filter { $0.value >= 0.04 }
+        let sortedPlatforms = filteredPlatforms.sorted { $0.value > $1.value }
+        
+        return createSegments(from: sortedPlatforms)
+    }
+    
+    private var owlMessage: String {
+        guard !predictionSegments.isEmpty else {
+            return "🤷 TrackRat is thinking..."
+        }
+        
+        let topSegment = predictionSegments.first!
+        let confidence = topSegment.probability
+        
+        if confidence >= 0.8 {
+            return "🐀 TrackRat predicts tracks \(topSegment.platformName)"
+        } else if confidence >= 0.5 {
+            return "🤔 TrackRat thinks it may be tracks \(topSegment.platformName)"
+        } else {
+            return "🤷 TrackRat sees several possibilities"
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with owl messaging
+            HStack {
+                Image(systemName: "tram.circle.fill")
+                    .foregroundColor(.black)
+                    .font(.title2)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Track Predictions")
+                        .font(.headline)
+                        .foregroundColor(.black)
+                    
+                    Text(owlMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.black.opacity(0.8))
+                        .fontWeight(.medium)
+                }
+                
+                Spacer()
+            }
+            
+            if !predictionSegments.isEmpty {
+                VStack(spacing: 8) {
+                    // Labels for segments that need them above the bar
+                    if hasSegmentsWithTopLabels {
+                        topLabelsView
+                    }
+                    
+                    // Main segmented bar
+                    segmentedBarView
+                        .frame(height: 32)
+                }
+                .padding(.top, 4)
+            } else {
+                Text("No prediction data available")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .italic()
+            }
+        }
+        .padding()
+        .background(Color.orange.opacity(0.05))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.8)) {
+                animateAppearance = true
+            }
+        }
+        .alert("Other Predictions", isPresented: $showingOthersPopup) {
+            Button("OK") { }
+        } message: {
+            if let othersSegment = predictionSegments.first(where: { $0.isOthersGroup }) {
+                Text(othersSegment.detailText)
+            }
+        }
+    }
+    
+    private var segmentedBarView: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                ForEach(predictionSegments) { segment in
+                    segmentView(segment: segment, totalWidth: geometry.size.width)
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    
+    private func segmentView(segment: TrackPredictionSegment, totalWidth: CGFloat) -> some View {
+        let segmentWidth = totalWidth * segment.probability
+        let isSelected = selectedSegment?.id == segment.id
+        
+        return Rectangle()
+            .fill(segment.color)
+            .frame(width: animateAppearance ? segmentWidth : 0)
+            .overlay(
+                segment.labelPosition == .inside ? 
+                Text(segment.displayText)
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .opacity(animateAppearance ? 1 : 0)
+                : nil
+            )
+            .scaleEffect(isSelected ? 1.05 : 1.0)
+            .overlay(
+                isSelected ? 
+                RoundedRectangle(cornerRadius: 2)
+                    .stroke(Color.white, lineWidth: 2)
+                : nil
+            )
+            .onTapGesture {
+                handleSegmentTap(segment)
+            }
+            .animation(.easeInOut(duration: 0.2), value: isSelected)
+    }
+    
+    private var hasSegmentsWithTopLabels: Bool {
+        predictionSegments.contains { $0.labelPosition == .above }
+    }
+    
+    private var topLabelsView: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                ForEach(predictionSegments) { segment in
+                    let segmentWidth = geometry.size.width * segment.probability
+                    
+                    VStack(spacing: 2) {
+                        if segment.labelPosition == .above {
+                            VStack(spacing: 1) {
+                                Text(segment.platformName)
+                                    .font(.caption2)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.black)
+                                
+                                Rectangle()
+                                    .fill(Color.black.opacity(0.3))
+                                    .frame(width: min(segmentWidth * 0.8, 20), height: 1)
+                            }
+                            .opacity(animateAppearance ? 1 : 0)
+                            .animation(.easeOut(duration: 0.8).delay(0.2), value: animateAppearance)
+                        }
+                    }
+                    .frame(width: segmentWidth)
+                }
+            }
+        }
+        .frame(height: 18)
+    }
+    
+    private func createSegments(from platformProbabilities: [(key: String, value: Double)]) -> [TrackPredictionSegment] {
+        var segments: [TrackPredictionSegment] = []
+        var othersSegments: [TrackPredictionSegment] = []
+        let maxMainSegments = 4
+        
+        for (index, platform) in platformProbabilities.enumerated() {
+            let segment = TrackPredictionSegment(
+                id: platform.key,
+                platformName: platform.key,
+                probability: platform.value,
+                rank: index + 1
+            )
+            
+            if (platform.value < 0.08 && segments.count >= 3) || segments.count >= maxMainSegments {
+                othersSegments.append(segment)
+            } else {
+                segments.append(segment)
+            }
+        }
+        
+        if !othersSegments.isEmpty {
+            let totalOthersProbability = othersSegments.reduce(0) { $0 + $1.probability }
+            let minOthersWidth = 0.06
+            let adjustedProbability = max(totalOthersProbability, minOthersWidth)
+            
+            let othersSegment = TrackPredictionSegment(
+                id: "others",
+                platformName: "Others",
+                probability: adjustedProbability,
+                rank: segments.count + 1,
+                isOthersGroup: true,
+                detailText: createOthersDetailText(from: othersSegments)
+            )
+            segments.append(othersSegment)
+        }
+        
+        return segments
+    }
+    
+    private func createOthersDetailText(from segments: [TrackPredictionSegment]) -> String {
+        let sortedSegments = segments.sorted { $0.probability > $1.probability }
+        return sortedSegments.map { 
+            "Tracks \($0.platformName): \(Int($0.probability * 100))%" 
+        }.joined(separator: "\n")
+    }
+    
+    private func handleSegmentTap(_ segment: TrackPredictionSegment) {
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        if segment.isOthersGroup {
+            showingOthersPopup = true
+        } else {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                selectedSegment = segment
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                selectedSegment = nil
+            }
+        }
+    }
+}
+
+// MARK: - Track Prediction Segment Model
+struct TrackPredictionSegment: Identifiable, Equatable {
+    let id: String
+    let platformName: String
+    let probability: Double
+    let rank: Int
+    let isOthersGroup: Bool
+    let detailText: String
+    
+    init(id: String, platformName: String, probability: Double, rank: Int, isOthersGroup: Bool = false, detailText: String = "") {
+        self.id = id
+        self.platformName = platformName
+        self.probability = probability
+        self.rank = rank
+        self.isOthersGroup = isOthersGroup
+        self.detailText = detailText
+    }
+    
+    var displayText: String {
+        if isOthersGroup {
+            return "Others"
+        }
+        return "\(platformName)\n\(Int(probability * 100))%"
+    }
+    
+    var color: Color {
+        if isOthersGroup {
+            return .gray.opacity(0.6)
+        }
+        
+        switch rank {
+        case 1:
+            return .orange
+        case 2:
+            return .orange.opacity(0.7)
+        case 3:
+            return .orange.opacity(0.5)
+        default:
+            return .orange.opacity(0.3)
+        }
+    }
+    
+    var labelPosition: TrackLabelPosition {
+        if isOthersGroup {
+            return .inside
+        }
+        
+        if probability >= 0.15 {
+            return .inside
+        } else if probability >= 0.08 {
+            return .above
+        } else {
+            return .inside
+        }
+    }
+}
+
+enum TrackLabelPosition {
+    case inside
+    case above
+}
 
 // MARK: - Stations Helper Extension
 extension Stations {

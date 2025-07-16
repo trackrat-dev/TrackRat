@@ -207,8 +207,8 @@ class TestAmtrakSchedulerIntegration:
                 stops_result = await db_session.execute(stops_stmt)
                 stops = stops_result.scalars().all()
                 ny_stop = next(s for s in stops if s.station_code == "NY")
-                assert ny_stop.status == "Boarding"  # Raw status, not mapped
-                assert ny_stop.departed is False
+                assert ny_stop.raw_amtrak_status == "Boarding"  # Raw status, not mapped
+                assert ny_stop.has_departed_station is False
 
         # Second collection (updated state)
         with patch.object(collector, "_get_train_data") as mock_get_data:
@@ -230,8 +230,8 @@ class TestAmtrakSchedulerIntegration:
                 stops_result = await db_session.execute(stops_stmt)
                 stops = stops_result.scalars().all()
                 ny_stop = next(s for s in stops if s.station_code == "NY")
-                assert ny_stop.status == "DEPARTED"
-                assert ny_stop.departed is True
+                assert ny_stop.raw_amtrak_status == "Departed"
+                assert ny_stop.has_departed_station is True
                 assert ny_stop.actual_departure is not None
 
     async def test_scheduler_data_freshness(self, db_session: AsyncSession):

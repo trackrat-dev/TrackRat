@@ -109,14 +109,12 @@ struct LiveActivityControls: View {
                 code: "NP",
                 name: "Newark Penn Station",
                 scheduledTime: Date(),
+                updatedTime: nil,
                 actualTime: nil,
-                estimatedTime: nil,
-                track: "7",
-                status: "ON_TIME",
-                delayMinutes: 0
+                track: "7"
             ),
             arrival: nil,
-            journey: nil,
+            trainPosition: nil,
             dataFreshness: nil
         ),
         origin: "Newark Penn Station",

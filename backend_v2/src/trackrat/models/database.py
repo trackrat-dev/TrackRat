@@ -103,14 +103,18 @@ class JourneyStop(Base):
     scheduled_arrival = Column(DateTime(timezone=True))
     scheduled_departure = Column(DateTime(timezone=True))
 
-    # Actual times (updated in real-time)
+    # Updated times (current best estimate)
+    updated_arrival = Column(DateTime(timezone=True))
+    updated_departure = Column(DateTime(timezone=True))
+
+    # Actual times (recorded when events occur)
     actual_arrival = Column(DateTime(timezone=True))
     actual_departure = Column(DateTime(timezone=True))
 
-    # Status information
-    departed = Column(Boolean, default=False, nullable=False)
-    status = Column(String(20))  # OnTime, Late, Cancelled, etc.
-    status_details = Column(JSON)  # Additional status metadata
+    # Raw status information from data source
+    raw_amtrak_status = Column(String(50))  # Amtrak status values
+    raw_njt_departed_flag = Column(String(10))  # NJT DEPARTED flag
+    has_departed_station = Column(Boolean, default=False, nullable=False)
 
     # Track assignment (null until assigned)
     track = Column(String(5))

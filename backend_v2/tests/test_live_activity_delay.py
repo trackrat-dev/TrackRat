@@ -46,8 +46,10 @@ def test_amtrak_journey_with_null_delay_minutes(db_session):
         station_name="New York Penn",
         stop_sequence=1,
         scheduled_departure=ET.localize(datetime(2024, 7, 4, 14, 30)),
+        updated_departure=ET.localize(datetime(2024, 7, 4, 14, 35)),
         actual_departure=ET.localize(datetime(2024, 7, 4, 14, 35)),  # 5 minutes late
-        departed=True,
+        has_departed_station=True,
+        raw_amtrak_status="Departed",
     )
     stop2 = JourneyStop(
         journey_id=journey.id,
@@ -55,7 +57,9 @@ def test_amtrak_journey_with_null_delay_minutes(db_session):
         station_name="Washington Union",
         stop_sequence=2,
         scheduled_arrival=ET.localize(datetime(2024, 7, 4, 17, 30)),
-        departed=False,
+        updated_arrival=ET.localize(datetime(2024, 7, 4, 17, 30)),
+        has_departed_station=False,
+        raw_amtrak_status="Enroute",
     )
     db_session.add_all([stop1, stop2])
     db_session.flush()
@@ -78,13 +82,13 @@ def test_amtrak_journey_with_null_delay_minutes(db_session):
     assert journey.stops[0].actual_departure is not None
     assert journey.stops[0].scheduled_departure is not None
 
-    # Calculate delay from stops (like our fix does)
+    # Calculate delay from stops using new fields
     from trackrat.utils.time import calculate_delay
 
     calculated_delay = 0
     sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
     for stop in reversed(sorted_stops):
-        if stop.departed:
+        if stop.has_departed_station:
             if stop.actual_departure and stop.scheduled_departure:
                 calculated_delay = calculate_delay(
                     stop.scheduled_departure, stop.actual_departure
@@ -126,8 +130,10 @@ def test_njt_journey_with_delay_minutes(db_session):
         station_name="New York Penn",
         stop_sequence=1,
         scheduled_departure=ET.localize(datetime(2024, 7, 4, 14, 30)),
+        updated_departure=ET.localize(datetime(2024, 7, 4, 14, 33)),
         actual_departure=ET.localize(datetime(2024, 7, 4, 14, 33)),  # 3 minutes late
-        departed=True,
+        has_departed_station=True,
+        raw_njt_departed_flag="YES",
     )
     stop2 = JourneyStop(
         journey_id=journey.id,
@@ -135,7 +141,9 @@ def test_njt_journey_with_delay_minutes(db_session):
         station_name="Trenton",
         stop_sequence=2,
         scheduled_arrival=ET.localize(datetime(2024, 7, 4, 15, 30)),
-        departed=False,
+        updated_arrival=ET.localize(datetime(2024, 7, 4, 15, 30)),
+        has_departed_station=False,
+        raw_njt_departed_flag="NO",
     )
     db_session.add_all([stop1, stop2])
     db_session.flush()
@@ -162,7 +170,7 @@ def test_njt_journey_with_delay_minutes(db_session):
     calculated_delay = 0
     sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
     for stop in reversed(sorted_stops):
-        if stop.departed:
+        if stop.has_departed_station:
             if stop.actual_departure and stop.scheduled_departure:
                 calculated_delay = calculate_delay(
                     stop.scheduled_departure, stop.actual_departure

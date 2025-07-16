@@ -57,13 +57,15 @@ class LiveActivityService: ObservableObject {
         // Get next stop arrival time if available
         let nextStopArrivalTime = self.getNextStopArrivalTime(train)
         
-        // Calculate proper initial stops (same logic as updates)
-        let initialCurrentStop = train.stops?.last(where: { $0.departed })?.stationName ?? origin
-        let initialNextStop = train.stops?.first(where: { !$0.departed })?.stationName
+        // Calculate proper initial stops using context-aware methods
+        let context = JourneyContext(from: originCode, to: destination)
+        let contextStatus = train.calculateStatus(for: context)
+        let initialCurrentStop = train.stops?.last(where: { $0.hasDepartedStation })?.stationName ?? origin
+        let initialNextStop = train.stops?.first(where: { !$0.hasDepartedStation })?.stationName
         
         // Create simple initial content state
         let initialState = TrainActivityAttributes.ContentState(
-            status: train.status.rawValue,
+            status: contextStatus.rawValue,
             track: train.track,
             currentStopName: initialCurrentStop,
             nextStopName: initialNextStop,
@@ -173,16 +175,13 @@ class LiveActivityService: ObservableObject {
                 fromStationCode: activity.attributes.originStationCode
             )
             
-            // Calculate simple progress (0.0 to 1.0)
-            var progress = 0.0
-            if let stops = train.stops {
-                let departedCount = stops.filter { $0.departed }.count
-                progress = Double(departedCount) / Double(stops.count)
-            }
+            // Calculate context-aware progress for user's journey
+            let context = JourneyContext(from: activity.attributes.originStationCode, to: activity.attributes.destination)
+            let progress = train.calculateJourneyProgress(for: context)
             
-            // Get current and next stop names
-            let currentStop = train.stops?.last(where: { $0.departed })?.stationName ?? activity.attributes.origin
-            let nextStop = train.stops?.first(where: { !$0.departed })?.stationName
+            // Get current and next stop names using new fields
+            let currentStop = train.stops?.last(where: { $0.hasDepartedStation })?.stationName ?? activity.attributes.origin
+            let nextStop = train.stops?.first(where: { !$0.hasDepartedStation })?.stationName
             
             // Get scheduled times and departure status
             let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: activity.attributes.originStationCode)
@@ -190,9 +189,12 @@ class LiveActivityService: ObservableObject {
             let hasTrainDeparted = self.hasTrainDeparted(train, fromStation: activity.attributes.originStationCode)
             let nextStopArrivalTime = self.getNextStopArrivalTime(train)
             
+            // Calculate context-aware status
+            let contextStatus = train.calculateStatus(for: context)
+            
             // Create updated state
             let updatedState = TrainActivityAttributes.ContentState(
-                status: train.status.rawValue,
+                status: contextStatus.rawValue,
                 track: train.track,
                 currentStopName: currentStop,
                 nextStopName: nextStop,
@@ -325,36 +327,18 @@ class LiveActivityService: ObservableObject {
     
     /// Determine if train has departed from the user's origin station
     private func hasTrainDeparted(_ train: TrainV2, fromStation originCode: String) -> Bool {
-        // Check if train has departed based on stops
-        if let stops = train.stops {
-            // Find the origin stop
-            if let originStop = stops.first(where: { stop in
-                stop.stationCode == originCode
-            }) {
-                // Check if stop is marked as departed
-                if originStop.departed {
-                    return true
-                }
-                
-                // Check if actual departure time exists and is in the past
-                if let actualDeparture = originStop.actualDeparture {
-                    return actualDeparture < Date()
-                }
-            }
-        }
-        
-        // Check basic status
-        return train.status == .departed
+        // Use the context-aware method from TrainV2
+        return train.hasTrainDepartedFromStation(originCode)
     }
     
     /// Get the next stop arrival time
     private func getNextStopArrivalTime(_ train: TrainV2) -> Date? {
-        // Find the next non-departed stop
+        // Find the next non-departed stop using new field
         if let stops = train.stops {
             // Find first stop that hasn't departed
             for stop in stops {
-                if !stop.departed {
-                    return stop.scheduledArrival ?? stop.estimatedArrival
+                if !stop.hasDepartedStation {
+                    return stop.updatedArrival ?? stop.scheduledArrival
                 }
             }
         }

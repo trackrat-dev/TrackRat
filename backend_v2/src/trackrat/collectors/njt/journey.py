@@ -412,20 +412,24 @@ class JourneyCollector(BaseJourneyCollector):
                 )
                 session.add(stop)
 
-            # Update times
+            # Update scheduled times
             if stop_data.TIME:
                 stop.scheduled_arrival = parse_njt_time(stop_data.TIME)
             if stop_data.DEP_TIME:
                 stop.scheduled_departure = parse_njt_time(stop_data.DEP_TIME)
 
-            # Update actual times (for now, same as scheduled + delay)
+            # Update updated times (for NJT, same as scheduled since no estimates provided)
+            stop.updated_arrival = stop.scheduled_arrival
+            stop.updated_departure = stop.scheduled_departure
+
+            # Update actual times only if train has departed
             if stop_data.DEPARTED == "YES":
                 stop.actual_arrival = stop.scheduled_arrival
                 stop.actual_departure = stop.scheduled_departure
 
-            # Update status
-            stop.departed = stop_data.DEPARTED == "YES"
-            stop.status = stop_data.STOP_STATUS or "Unknown"
+            # Update raw status information
+            stop.raw_njt_departed_flag = stop_data.DEPARTED
+            stop.has_departed_station = stop_data.DEPARTED == "YES"
 
             # Update track if available - but don't overwrite existing track from discovery
             if stop_data.TRACK:

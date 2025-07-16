@@ -10,22 +10,18 @@ class TrainLiveActivityTests: XCTestCase {
             code: "NP",
             name: "Newark Penn Station",
             scheduledTime: Date(),
+            updatedTime: nil,
             actualTime: nil,
-            estimatedTime: nil,
-            track: "7",
-            status: status,
-            delayMinutes: 0
+            track: "7"
         )
         
         let arrival = StationTiming(
             code: "NY",
             name: "New York Penn Station",
             scheduledTime: Date().addingTimeInterval(1200),
+            updatedTime: nil,
             actualTime: nil,
-            estimatedTime: nil,
-            track: nil,
-            status: nil,
-            delayMinutes: 0
+            track: nil
         )
         
         let line = LineInfo(code: "NE", name: "Northeast Corridor", color: "#0066CC")
@@ -145,11 +141,9 @@ class TrainLiveActivityTests: XCTestCase {
             code: "NP",
             name: "Newark Penn Station",
             scheduledTime: Date(),
+            updatedTime: Date().addingTimeInterval(900), // 15 minutes delay
             actualTime: nil,
-            estimatedTime: nil,
-            track: "7",
-            status: "DELAYED",
-            delayMinutes: 15
+            track: "7"
         )
         
         let delayedTrainV2 = TrainV2(
@@ -225,11 +219,9 @@ class TrainLiveActivityTests: XCTestCase {
             code: "NP",
             name: "Newark Penn Station",
             scheduledTime: Date(),
+            updatedTime: nil,
             actualTime: nil,
-            estimatedTime: nil,
-            track: nil, // No track assigned
-            status: "SCHEDULED",
-            delayMinutes: 0
+            track: nil // No track assigned
         )
         
         let train = TrainV2(

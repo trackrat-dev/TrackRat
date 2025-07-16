@@ -305,36 +305,24 @@ final class APIService: ObservableObject {
                 code: departure.departure.code,
                 name: departure.departure.name,
                 scheduledTime: departure.departure.scheduledTime,
+                updatedTime: departure.departure.updatedTime,
                 actualTime: departure.departure.actualTime,
-                estimatedTime: departure.departure.estimatedTime,
-                track: departure.departure.track,
-                status: departure.departure.status,
-                delayMinutes: departure.departure.delayMinutes
+                track: departure.departure.track
             ),
             arrival: departure.arrival.map { arrival in
                 StationTiming(
                     code: arrival.code,
                     name: arrival.name,
                     scheduledTime: arrival.scheduledTime,
+                    updatedTime: arrival.updatedTime,
                     actualTime: arrival.actualTime,
-                    estimatedTime: arrival.estimatedTime,
-                    track: arrival.track,
-                    status: arrival.status,
-                    delayMinutes: arrival.delayMinutes
+                    track: arrival.track
                 )
             },
-            journey: JourneyInfo(
-                origin: departure.journey.origin,
-                originName: departure.journey.originName,
-                durationMinutes: departure.journey.durationMinutes,
-                stopsBetween: departure.journey.stopsBetween,
-                progress: JourneyProgressV2(
-                    completedStops: departure.journey.progress.completedStops,
-                    totalStops: departure.journey.progress.totalStops,
-                    percentage: departure.journey.progress.percentage,
-                    currentLocation: departure.journey.progress.currentLocation,
-                    nextStop: departure.journey.progress.nextStop
-                )
+            trainPosition: TrainPosition(
+                lastDepartedStationCode: departure.trainPosition.lastDepartedStationCode,
+                atStationCode: departure.trainPosition.atStationCode,
+                nextStationCode: departure.trainPosition.nextStationCode
             ),
             dataFreshness: DataFreshness(
                 lastUpdated: departure.dataFreshness.lastUpdated,
@@ -356,17 +344,19 @@ final class APIService: ObservableObject {
             StopV2(
                 stationCode: stop.station.code,
                 stationName: stop.station.name,
-                sequence: stop.sequence,
+                sequence: stop.stopSequence,
                 scheduledArrival: stop.scheduledArrival,
                 scheduledDeparture: stop.scheduledDeparture,
+                updatedArrival: stop.updatedArrival,
+                updatedDeparture: stop.updatedDeparture,
                 actualArrival: stop.actualArrival,
                 actualDeparture: stop.actualDeparture,
-                estimatedArrival: stop.estimatedArrival,
-                estimatedDeparture: stop.estimatedDeparture,
                 track: stop.track,
-                status: stop.status,
-                delayMinutes: stop.delayMinutes,
-                departed: stop.departed
+                rawStatus: RawStopStatus(
+                    amtrakStatus: stop.rawStatus.amtrakStatus, 
+                    njtDepartedFlag: stop.rawStatus.njtDepartedFlag
+                ),
+                hasDepartedStation: stop.hasDepartedStation
             )
         }
         
@@ -378,33 +368,27 @@ final class APIService: ObservableObject {
                 code: requestedStop.station.code,
                 name: requestedStop.station.name,
                 scheduledTime: requestedStop.scheduledDeparture,
+                updatedTime: requestedStop.updatedDeparture,
                 actualTime: requestedStop.actualDeparture,
-                estimatedTime: requestedStop.estimatedDeparture,
-                track: requestedStop.track,
-                status: requestedStop.status,
-                delayMinutes: requestedStop.delayMinutes
+                track: requestedStop.track
             )
         } else if let firstStop = departureStop {
             departureTiming = StationTiming(
                 code: firstStop.station.code,
                 name: firstStop.station.name,
                 scheduledTime: firstStop.scheduledDeparture,
+                updatedTime: firstStop.updatedDeparture,
                 actualTime: firstStop.actualDeparture,
-                estimatedTime: firstStop.estimatedDeparture,
-                track: firstStop.track,
-                status: firstStop.status,
-                delayMinutes: firstStop.delayMinutes
+                track: firstStop.track
             )
         } else {
             departureTiming = StationTiming(
                 code: details.route.originCode,
                 name: details.route.origin,
                 scheduledTime: nil,
+                updatedTime: nil,
                 actualTime: nil,
-                estimatedTime: nil,
-                track: nil,
-                status: nil,
-                delayMinutes: 0
+                track: nil
             )
         }
         
@@ -414,20 +398,11 @@ final class APIService: ObservableObject {
                 code: stop.station.code,
                 name: stop.station.name,
                 scheduledTime: stop.scheduledArrival,
+                updatedTime: stop.updatedArrival,
                 actualTime: stop.actualArrival,
-                estimatedTime: stop.estimatedArrival,
-                track: stop.track,
-                status: stop.status,
-                delayMinutes: stop.delayMinutes
+                track: stop.track
             )
         }
-        
-        // Calculate journey progress
-        let completedStops = stops.filter { $0.departed }.count
-        let totalStops = stops.count
-        let percentage = totalStops > 0 ? (completedStops * 100) / totalStops : 0
-        let currentLocation = details.currentStatus.location
-        let nextStop = stops.first(where: { !$0.departed })?.stationName
         
         return TrainV2(
             id: details.trainId.hashValue,
@@ -440,18 +415,10 @@ final class APIService: ObservableObject {
             destination: details.route.destination,
             departure: departureTiming,
             arrival: arrivalTiming,
-            journey: JourneyInfo(
-                origin: details.route.originCode,
-                originName: details.route.origin,
-                durationMinutes: 0,  // Calculate from stops if needed
-                stopsBetween: max(0, stops.count - 2),  // Exclude origin and destination
-                progress: JourneyProgressV2(
-                    completedStops: completedStops,
-                    totalStops: totalStops,
-                    percentage: percentage,
-                    currentLocation: currentLocation,
-                    nextStop: nextStop
-                )
+            trainPosition: TrainPosition(
+                lastDepartedStationCode: details.trainPosition.lastDepartedStationCode,
+                atStationCode: details.trainPosition.atStationCode,
+                nextStationCode: details.trainPosition.nextStationCode
             ),
             dataFreshness: DataFreshness(
                 lastUpdated: details.dataFreshness.lastUpdated,

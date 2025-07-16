@@ -411,14 +411,12 @@ class HistoricalDataViewModel: ObservableObject {
             code: "NYP",
             name: "New York Penn Station",
             scheduledTime: Date(),
+            updatedTime: nil,
             actualTime: nil,
-            estimatedTime: nil,
-            track: nil,
-            status: "SCHEDULED",
-            delayMinutes: 0
+            track: nil
         ),
         arrival: nil,
-        journey: nil,
+        trainPosition: nil,
         dataFreshness: nil,
         stops: nil
     ))

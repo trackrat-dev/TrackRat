@@ -15,18 +15,15 @@ struct V2StationInfo: Codable {
     let code: String
     let name: String
     let scheduledTime: Date?
+    let updatedTime: Date?
     let actualTime: Date?
-    let estimatedTime: Date?
     let track: String?
-    let status: String?
-    let delayMinutes: Int
     
     enum CodingKeys: String, CodingKey {
-        case code, name, track, status
+        case code, name, track
         case scheduledTime = "scheduled_time"
+        case updatedTime = "updated_time"
         case actualTime = "actual_time"
-        case estimatedTime = "estimated_time"
-        case delayMinutes = "delay_minutes"
     }
 }
 
@@ -78,19 +75,34 @@ struct V2JourneyInfo: Codable {
 
 // MARK: - Departures Endpoint Models
 
+struct V2TrainPosition: Codable {
+    let lastDepartedStationCode: String?
+    let atStationCode: String?
+    let nextStationCode: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case lastDepartedStationCode = "last_departed_station_code"
+        case atStationCode = "at_station_code"
+        case nextStationCode = "next_station_code"
+    }
+}
+
 struct V2TrainDeparture: Codable {
     let trainId: String
     let line: V2LineInfo
     let destination: String
     let departure: V2StationInfo
     let arrival: V2StationInfo?
-    let journey: V2JourneyInfo
+    let trainPosition: V2TrainPosition
     let dataFreshness: V2DataFreshness
+    let dataSource: String
     
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
-        case line, destination, departure, arrival, journey
+        case line, destination, departure, arrival
+        case trainPosition = "train_position"
         case dataFreshness = "data_freshness"
+        case dataSource = "data_source"
     }
 }
 
@@ -151,29 +163,42 @@ struct V2CurrentStatus: Codable {
     }
 }
 
-struct V2StopDetails: Codable {
-    let station: V2SimpleStationInfo
-    let sequence: Int
-    let scheduledArrival: Date?
-    let scheduledDeparture: Date?
-    let actualArrival: Date?
-    let actualDeparture: Date?
-    let estimatedArrival: Date?
-    let estimatedDeparture: Date?
-    let track: String?
-    let status: String?
-    let delayMinutes: Int
-    let departed: Bool
+struct V2RawStopStatus: Codable {
+    let amtrakStatus: String?
+    let njtDepartedFlag: String?
     
     enum CodingKeys: String, CodingKey {
-        case station, sequence, departed, track, status
+        case amtrakStatus = "amtrak_status"
+        case njtDepartedFlag = "njt_departed_flag"
+    }
+}
+
+struct V2StopDetails: Codable {
+    let station: V2SimpleStationInfo
+    let stopSequence: Int
+    let scheduledArrival: Date?
+    let scheduledDeparture: Date?
+    let updatedArrival: Date?
+    let updatedDeparture: Date?
+    let actualArrival: Date?
+    let actualDeparture: Date?
+    let track: String?
+    let trackAssignedAt: Date?
+    let rawStatus: V2RawStopStatus
+    let hasDepartedStation: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case station, track
+        case stopSequence = "stop_sequence"
         case scheduledArrival = "scheduled_arrival"
         case scheduledDeparture = "scheduled_departure"
+        case updatedArrival = "updated_arrival"
+        case updatedDeparture = "updated_departure"
         case actualArrival = "actual_arrival"
         case actualDeparture = "actual_departure"
-        case estimatedArrival = "estimated_arrival"
-        case estimatedDeparture = "estimated_departure"
-        case delayMinutes = "delay_minutes"
+        case trackAssignedAt = "track_assigned_at"
+        case rawStatus = "raw_status"
+        case hasDepartedStation = "has_departed_station"
     }
 }
 
@@ -187,17 +212,21 @@ struct V2TrainDetails: Codable {
     let journeyDate: Date
     let line: V2LineInfo
     let route: V2RouteInfo
-    let currentStatus: V2CurrentStatus
+    let trainPosition: V2TrainPosition
     let stops: [V2StopDetails]
     let dataFreshness: V2DataFreshness
+    let dataSource: String
+    let rawTrainState: String?
     
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
         case journeyDate = "journey_date"
         case line, route
-        case currentStatus = "current_status"
+        case trainPosition = "train_position"
         case stops
         case dataFreshness = "data_freshness"
+        case dataSource = "data_source"
+        case rawTrainState = "raw_train_state"
     }
 }
 

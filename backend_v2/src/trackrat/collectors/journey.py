@@ -309,8 +309,7 @@ class JourneyCollector:
                 stop.actual_departure = stop.scheduled_departure
 
             # Update status
-            stop.departed = stop_data.DEPARTED == "YES"
-            stop.status = stop_data.STOP_STATUS or "Unknown"
+            stop.has_departed_station = stop_data.DEPARTED == "YES"
 
             # Update track if available
             if stop_data.TRACK:

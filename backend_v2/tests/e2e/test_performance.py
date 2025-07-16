@@ -378,7 +378,8 @@ class TestPerformance:
                     ),
                     stop_sequence=j,
                     track=f"{15 + j}" if j == 0 else None,
-                    status="DEPARTED" if j == 0 else "EN ROUTE",
+                    raw_amtrak_status="Departed" if j == 0 else "Enroute",
+                    has_departed_station=j == 0,
                 )
                 stops.append(stop)
 
@@ -423,5 +424,5 @@ class TestPerformance:
                     assert departure.line is not None
                     assert departure.departure is not None
                     assert departure.arrival is not None
-                    assert departure.journey is not None
+                    assert departure.train_position is not None
                     assert departure.data_freshness is not None
