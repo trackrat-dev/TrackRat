@@ -11,7 +11,7 @@
 
 | Name | Version |
 |------|---------|
-| <a name="provider_google"></a> [google](#provider\_google) | 5.45.2 |
+| <a name="provider_google"></a> [google](#provider\_google) | 6.44.0 |
 
 ## Modules
 
@@ -22,12 +22,14 @@ No modules.
 | Name | Type |
 |------|------|
 | [google_secret_manager_secret.amtrak_api_key](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
+| [google_secret_manager_secret.apns_auth_key](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
 | [google_secret_manager_secret.apns_key_id](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
 | [google_secret_manager_secret.apns_team_id](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
 | [google_secret_manager_secret.njt_password](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
 | [google_secret_manager_secret.njt_token](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
 | [google_secret_manager_secret.njt_username](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret) | resource |
 | [google_secret_manager_secret_version.amtrak_api_key_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
+| [google_secret_manager_secret_version.apns_auth_key_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
 | [google_secret_manager_secret_version.apns_key_id_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
 | [google_secret_manager_secret_version.apns_team_id_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
 | [google_secret_manager_secret_version.njt_password_version](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/secret_manager_secret_version) | resource |
@@ -39,6 +41,7 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_amtrak_api_key"></a> [amtrak\_api\_key](#input\_amtrak\_api\_key) | Amtrak API key (optional) | `string` | `""` | no |
+| <a name="input_apns_auth_key"></a> [apns\_auth\_key](#input\_apns\_auth\_key) | APNS Auth Key (P8 content) | `string` | `""` | no |
 | <a name="input_apns_key_id"></a> [apns\_key\_id](#input\_apns\_key\_id) | APNS Auth Key ID | `string` | `""` | no |
 | <a name="input_apns_team_id"></a> [apns\_team\_id](#input\_apns\_team\_id) | Apple Developer Team ID for APNS | `string` | `""` | no |
 | <a name="input_app_name"></a> [app\_name](#input\_app\_name) | Application name | `string` | n/a | yes |
@@ -52,6 +55,7 @@ No modules.
 | Name | Description |
 |------|-------------|
 | <a name="output_amtrak_api_key_secret_name"></a> [amtrak\_api\_key\_secret\_name](#output\_amtrak\_api\_key\_secret\_name) | Name of the Amtrak API key secret |
+| <a name="output_apns_auth_key_secret_name"></a> [apns\_auth\_key\_secret\_name](#output\_apns\_auth\_key\_secret\_name) | Name of the APNS Auth Key secret |
 | <a name="output_apns_key_id_secret_name"></a> [apns\_key\_id\_secret\_name](#output\_apns\_key\_id\_secret\_name) | Name of the APNS Key ID secret |
 | <a name="output_apns_team_id_secret_name"></a> [apns\_team\_id\_secret\_name](#output\_apns\_team\_id\_secret\_name) | Name of the APNS Team ID secret |
 | <a name="output_njt_password_secret_name"></a> [njt\_password\_secret\_name](#output\_njt\_password\_secret\_name) | Name of the NJ Transit password secret |

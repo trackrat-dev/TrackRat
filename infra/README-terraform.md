@@ -10,7 +10,9 @@
 
 ## Providers
 
-No providers.
+| Name | Version |
+|------|---------|
+| <a name="provider_google"></a> [google](#provider\_google) | 5.45.2 |
 
 ## Modules
 
@@ -23,13 +25,16 @@ No providers.
 
 ## Resources
 
-No resources.
+| Name | Type |
+|------|------|
+| [google_storage_bucket.db_backup](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket) | resource |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_amtrak_api_key"></a> [amtrak\_api\_key](#input\_amtrak\_api\_key) | Amtrak API key (optional) | `string` | `""` | no |
+| <a name="input_apns_auth_key"></a> [apns\_auth\_key](#input\_apns\_auth\_key) | APNS Auth Key (P8 content) | `string` | `""` | no |
 | <a name="input_apns_key_id"></a> [apns\_key\_id](#input\_apns\_key\_id) | APNS Auth Key ID | `string` | `""` | no |
 | <a name="input_apns_team_id"></a> [apns\_team\_id](#input\_apns\_team\_id) | Apple Developer Team ID for APNS | `string` | `""` | no |
 | <a name="input_app_name"></a> [app\_name](#input\_app\_name) | Application name | `string` | `"trackrat"` | no |
@@ -50,9 +55,11 @@ No resources.
 | Name | Description |
 |------|-------------|
 | <a name="output_amtrak_api_key_secret_name"></a> [amtrak\_api\_key\_secret\_name](#output\_amtrak\_api\_key\_secret\_name) | Name of the Amtrak API key secret |
+| <a name="output_apns_auth_key_secret_name"></a> [apns\_auth\_key\_secret\_name](#output\_apns\_auth\_key\_secret\_name) | Name of the APNS Auth Key secret |
 | <a name="output_apns_key_id_secret_name"></a> [apns\_key\_id\_secret\_name](#output\_apns\_key\_id\_secret\_name) | Name of the APNS Key ID secret |
 | <a name="output_apns_team_id_secret_name"></a> [apns\_team\_id\_secret\_name](#output\_apns\_team\_id\_secret\_name) | Name of the APNS Team ID secret |
 | <a name="output_artifact_registry_repository"></a> [artifact\_registry\_repository](#output\_artifact\_registry\_repository) | Artifact Registry repository for Docker images |
+| <a name="output_db_backup_bucket_name"></a> [db\_backup\_bucket\_name](#output\_db\_backup\_bucket\_name) | Name of the GCS bucket for database backups |
 | <a name="output_network_self_link"></a> [network\_self\_link](#output\_network\_self\_link) | The self-link of the VPC network. |
 | <a name="output_njt_password_secret_name"></a> [njt\_password\_secret\_name](#output\_njt\_password\_secret\_name) | Name of the NJ Transit password secret |
 | <a name="output_njt_token_secret_name"></a> [njt\_token\_secret\_name](#output\_njt\_token\_secret\_name) | Name of the NJ Transit token secret |
