@@ -77,7 +77,7 @@ module "trackrat_api_service" {
     OTEL_SAMPLE_RATE                         = "0.05"               # Lower sampling for production cost optimization
     OTEL_SERVICE_NAME                        = "trackcast-api-prod" # Environment-specific service name
     GCP_METRICS_EXPORT_INTERVAL              = "60"                 # Export metrics to GCP every 60 seconds
-    TRACKRAT_GCS_BACKUP_BUCKET               = module.infrastructure.db_backup_bucket_name
+    TRACKRAT_GCS_BACKUP_BUCKET               = ""
     TRACKRAT_DISCOVERY_INTERVAL_MINUTES      = "30"
     TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES = "60"
     TRACKRAT_DATA_STALENESS_SECONDS          = "60"
