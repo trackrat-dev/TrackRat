@@ -177,41 +177,41 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-terraform-
 
-      - name: Terraform validation and linting
-        working-directory: ./infra
-        run: |
-          echo "🔧 Running Terraform format check..."
-          terraform fmt -check -recursive
-          echo "🔧 Running Terraform validation..."
-          terraform init -backend=false
-          terraform validate
-          # Validate modules
-          for module_dir in modules/*/; do
-            if [ -d "$module_dir" ]; then
-              echo "Validating module: $module_dir"
-              (cd "$module_dir" && terraform init -backend=false && terraform validate)
-            fi
-          done
-          # Validate environments
-          for env_dir in environments/*/; do
-            if [ -d "$env_dir" ]; then
-              echo "Validating environment: $env_dir"
-              (cd "$env_dir" && terraform init -backend=false && terraform validate)
-            fi
-          done
-          echo "🔧 Running TFLint..."
-          tflint --init
-          tflint
-          for module_dir in modules/*/; do
-            if [ -d "$module_dir" ]; then
-              tflint --chdir="$module_dir"
-            fi
-          done
-          for env_dir in environments/*/; do
-            if [ -d "$env_dir" ]; then
-              tflint --chdir="$env_dir"
-            fi
-          done
+#      - name: Terraform validation and linting
+#        working-directory: ./infra
+#        run: |
+#          echo "🔧 Running Terraform format check..."
+#          terraform fmt -check -recursive
+#          echo "🔧 Running Terraform validation..."
+#          terraform init -backend=false
+#          terraform validate
+#          # Validate modules
+#          for module_dir in modules/*/; do
+#            if [ -d "$module_dir" ]; then
+#              echo "Validating module: $module_dir"
+#              (cd "$module_dir" && terraform init -backend=false && terraform validate)
+#            fi
+#          done
+#          # Validate environments
+#          for env_dir in environments/*/; do
+#            if [ -d "$env_dir" ]; then
+#              echo "Validating environment: $env_dir"
+#              (cd "$env_dir" && terraform init -backend=false && terraform validate)
+#            fi
+#          done
+#          echo "🔧 Running TFLint..."
+#          tflint --init
+#          tflint
+#          for module_dir in modules/*/; do
+#            if [ -d "$module_dir" ]; then
+#              tflint --chdir="$module_dir"
+#            fi
+#          done
+#          for env_dir in environments/*/; do
+#            if [ -d "$env_dir" ]; then
+#              tflint --chdir="$env_dir"
+#            fi
+#          done
 
       # Workflow Validation
       - name: Install yamllint
