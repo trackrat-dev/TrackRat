@@ -130,7 +130,7 @@ struct TrainActivityAttributes: ActivityAttributes {
         var delayColor: Color {
             switch delayMinutes {
             case 0...1:
-                return .green
+                return Color(hex: "#0e5c8d")
             case 2...5:
                 return .yellow
             case 6...14:

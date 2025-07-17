@@ -26,7 +26,7 @@ struct TrackRatApp: App {
                     ContentView()
                         .environmentObject(appState)
                         .preferredColorScheme(.dark)
-                        .tint(TrackRatTheme.Colors.accent)
+                        .tint(.white)
                         .transition(.opacity)
                         .onOpenURL { url in
                             print("🔗 App received URL: \(url)")

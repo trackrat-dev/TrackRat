@@ -13,7 +13,7 @@ struct VideoSplashScreenView: View {
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            TrackRatTheme.Colors.surface.ignoresSafeArea()
             
             if !videoFailed {
                 // Video player
@@ -63,15 +63,15 @@ struct VideoSplashScreenView: View {
                         }
                     }
                     
-                    // Fade to black overlay
-                    Color.black
+                    // Fade to surface overlay
+                    TrackRatTheme.Colors.surface
                         .opacity(fadeToBlackOpacity)
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
                     
-                    // Loading buffer - shows black screen until video starts
+                    // Loading buffer - shows surface screen until video starts
                     if showLoadingBuffer {
-                        Color.black
+                        TrackRatTheme.Colors.surface
                             .ignoresSafeArea()
                             .allowsHitTesting(false)
                     }
@@ -101,6 +101,6 @@ struct VideoSplashScreenView: View {
 //                .opacity(textOpacity)
 //            }
         }
-        .background(Color.black)
+        .background(TrackRatTheme.Colors.surface)
     }
 }

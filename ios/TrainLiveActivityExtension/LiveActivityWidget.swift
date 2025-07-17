@@ -3,6 +3,9 @@ import ActivityKit
 import WidgetKit
 import os.log
 
+// MARK: - Color Helpers
+private let lightBlueColor = Color(red: 0x84/255.0, green: 0xca/255.0, blue: 0xf4/255.0)
+
 private let logger = Logger(subsystem: "net.trackrat.TrackRat", category: "LiveActivity")
 
 // Debug logging helper
@@ -92,9 +95,6 @@ struct TrainLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(context.state.hasTrainDeparted ? "Next Stop" : "Departing")
-                            .font(.caption2)
-                            .foregroundColor(.white)
                         Text(context.state.nextStopName ?? "--")
                             .font(.caption)
                             .lineLimit(2)
@@ -109,10 +109,6 @@ struct TrainLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("Destination")
-                            .font(.caption2)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.trailing)
                         Text(context.attributes.destination)
                             .font(.caption)
                             .lineLimit(2)
@@ -155,7 +151,7 @@ struct TrainLiveActivity: Widget {
                 Text(context.state.compactLeadingText)
                         .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(context.state.delayColor)
+                    .foregroundColor(lightBlueColor)
                 .onAppear {
                     debugLog("🟢 Compact appeared", context: context)
                 }
@@ -165,7 +161,7 @@ struct TrainLiveActivity: Widget {
                     .font(.caption)
                     .monospacedDigit()
                     .fontWeight(.medium)
-                    .foregroundColor(context.state.delayColor)
+                    .foregroundColor(lightBlueColor)
             } minimal: {
                 // Minimal view (when multiple activities)
                 Image(systemName: "tram.fill")
@@ -294,13 +290,13 @@ struct TrainLiveActivityView: View {
 private struct CenterStatusView: View {
     let state: TrainActivityAttributes.ContentState
     
-    private var primaryText: String {
+    private var displayText: String {
         if !state.hasTrainDeparted && state.trackDisplay != nil {
-            return "Boarding"
+            return "Boarding on Track \(state.track ?? "")"
         } else if !state.hasTrainDeparted, let minutes = state.minutesUntilDeparture {
-            return "Departing"
+            return minutes > 0 ? "Departing in \(minutes)m" : "Departing now"
         } else if state.hasTrainDeparted, let minutes = state.minutesUntilArrival {
-            return "Arriving"
+            return minutes > 0 ? "Arriving in \(minutes)m" : (minutes == 0 ? "Arriving now" : "Arriving late")
         } else if state.hasTrainDeparted {
             return "En Route"
         } else {
@@ -308,31 +304,10 @@ private struct CenterStatusView: View {
         }
     }
     
-    private var secondaryText: String {
-        if !state.hasTrainDeparted && state.trackDisplay != nil {
-            return "on Track \(state.track ?? "")"
-        } else if !state.hasTrainDeparted, let minutes = state.minutesUntilDeparture {
-            return minutes > 0 ? "in \(minutes)m" : "now"
-        } else if state.hasTrainDeparted, let minutes = state.minutesUntilArrival {
-            return minutes > 0 ? "in \(minutes)m" : (minutes == 0 ? "now" : "late")
-        } else {
-            return ""
-        }
-    }
-    
     var body: some View {
-        VStack(spacing: 2) {
-            Text(primaryText)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(state.delayColor)
-            
-            if !secondaryText.isEmpty {
-                Text(secondaryText)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(state.delayColor)
-            }
-        }
+        Text(displayText)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundColor(lightBlueColor)
     }
 }

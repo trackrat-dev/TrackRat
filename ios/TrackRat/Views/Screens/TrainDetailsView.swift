@@ -1113,7 +1113,7 @@ struct SegmentedTrackPredictionView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.black, lineWidth: 2)
+                .stroke(TrackRatTheme.Colors.surface, lineWidth: 2)
         )
     }
     
@@ -1139,7 +1139,7 @@ struct SegmentedTrackPredictionView: View {
             )
             .overlay(
                 Rectangle()
-                    .stroke(Color.black, lineWidth: 1)
+                    .stroke(TrackRatTheme.Colors.surface, lineWidth: 1)
             )
             .scaleEffect(isSelected ? 1.05 : 1.0)
             .overlay(
@@ -1170,10 +1170,10 @@ struct SegmentedTrackPredictionView: View {
                                 Text(segment.topLabelText)
                                     .font(.caption2)
                                     .fontWeight(.medium)
-                                    .foregroundColor(.black)
+                                    .foregroundColor(TrackRatTheme.Colors.onSurface)
                                 
                                 Rectangle()
-                                    .fill(Color.black.opacity(0.3))
+                                    .fill(TrackRatTheme.Colors.surface.opacity(0.3))
                                     .frame(width: min(segmentWidth * 0.8, 20), height: 1)
                             }
                             .opacity(1)

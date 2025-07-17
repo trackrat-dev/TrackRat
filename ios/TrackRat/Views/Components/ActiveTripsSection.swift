@@ -93,5 +93,5 @@ struct ActiveTripsSection: View {
     ActiveTripsSection()
         .environmentObject(AppState())
         .preferredColorScheme(.dark)
-        .background(.black)
+        .background(TrackRatTheme.Colors.surface)
 }
