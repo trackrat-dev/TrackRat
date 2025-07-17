@@ -5,6 +5,7 @@ import os.log
 
 // MARK: - Color Helpers
 private let lightBlueColor = Color(red: 0x84/255.0, green: 0xca/255.0, blue: 0xf4/255.0)
+private let trackRatBlue = Color(hex: "#0e5c8d")
 
 private let logger = Logger(subsystem: "net.trackrat.TrackRat", category: "LiveActivity")
 
@@ -80,7 +81,7 @@ struct TrainLiveActivity: Widget {
         ActivityConfiguration(for: TrainActivityAttributes.self) { context in
             // Lock Screen widget UI
             TrainLiveActivityView(context: context)
-                .activityBackgroundTint(.clear)
+                .activityBackgroundTint(trackRatBlue)
                 .activitySystemActionForegroundColor(.white)
                 .onAppear {
                     debugLog("🔵 Lock Screen appeared", context: context)
@@ -204,6 +205,7 @@ struct TrainLiveActivityView: View {
             HStack {
                 Label("Train \(context.attributes.trainNumber)", systemImage: "tram.fill")
                     .font(.headline)
+                    .foregroundColor(.white)
                 Spacer()
             }
             
@@ -211,6 +213,7 @@ struct TrainLiveActivityView: View {
             HStack {
                 Text(context.attributes.routeDescription)
                     .font(.subheadline)
+                    .foregroundColor(.white)
                 Spacer()
             }
             
@@ -224,6 +227,7 @@ struct TrainLiveActivityView: View {
                     Text(context.state.nextStopName ?? "--")
                         .font(.subheadline)
                         .fontWeight(.medium)
+                        .foregroundColor(.white)
                     if let time = context.state.nextStopArrivalTimeAsDate {
                         Text(time, style: .time)
                             .font(.caption)
@@ -241,6 +245,7 @@ struct TrainLiveActivityView: View {
                     Text(context.attributes.destination)
                         .font(.subheadline)
                         .fontWeight(.medium)
+                        .foregroundColor(.white)
                     if let time = context.state.destinationArrivalTime {
                         Text(time, style: .time)
                             .font(.caption)

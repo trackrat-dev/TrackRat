@@ -10,30 +10,18 @@ let BACKGROUND_REFRESH_TASK_ID = "com.trackrat.backgroundrefresh"
 struct TrackRatApp: App {
     @StateObject private var appState = AppState()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var showLaunchScreen = true
     @Environment(\.scenePhase) private var scenePhase
     
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                if showLaunchScreen {
-                    VideoSplashScreenView {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            showLaunchScreen = false
-                        }
-                    }
-                } else {
-                    ContentView()
-                        .environmentObject(appState)
-                        .preferredColorScheme(.dark)
-                        .tint(.white)
-                        .transition(.opacity)
-                        .onOpenURL { url in
-                            print("🔗 App received URL: \(url)")
-                            DeepLinkService.shared.handleOpenURL(url, appState: appState)
-                        }
+            ContentView()
+                .environmentObject(appState)
+                .preferredColorScheme(.dark)
+                .tint(.white)
+                .onOpenURL { url in
+                    print("🔗 App received URL: \(url)")
+                    DeepLinkService.shared.handleOpenURL(url, appState: appState)
                 }
-            }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .active:

@@ -94,9 +94,11 @@ struct ShareButton: View {
     var body: some View {
         Button(action: shareAction) {
             Image(systemName: "square.and.arrow.up")
-                .font(.subheadline)
+                .font(.body)
+                .fontWeight(.medium)
                 .foregroundColor(.orange)
         }
+        .buttonStyle(.plain)
         .sheet(isPresented: $showingShareSheet) {
             if let url = ShareService.shared.createShareURL(
                 for: train,

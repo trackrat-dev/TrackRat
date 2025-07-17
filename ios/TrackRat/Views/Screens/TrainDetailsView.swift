@@ -84,16 +84,18 @@ struct TrainDetailsView: View {
         .trackRatNavigationBarStyle()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 8) {
+                HStack(alignment: .center, spacing: 12) {
                     if #available(iOS 16.1, *) {
                         if let train = viewModel.train, train.calculateStatus(fromStationCode: appState.departureStationCode ?? "") != .delayed {  // Use context-aware status
                             Button {
                                 toggleLiveActivity(for: train)
                             } label: {
                                 Image(systemName: "eye.circle.fill")
-                                    .font(.title3)
+                                    .font(.body)
+                                    .fontWeight(.medium)
                                     .foregroundColor((liveActivityService.currentActivity?.attributes.trainNumber == train.trainId) ? .orange : .white.opacity(0.7))
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     
@@ -109,7 +111,12 @@ struct TrainDetailsView: View {
                     Button("Close") {
                         appState.navigationPath.removeLast(appState.navigationPath.count)
                     }
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .foregroundColor(.orange)
+                    .buttonStyle(.plain)
                 }
+                .frame(height: 44)
             }
         }
         .task {
@@ -448,8 +455,8 @@ struct TrackPredictionCard: View {
                 
                 // Group tracks by platform and show percentages
                 let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
-                // Filter to only show platforms with ≥4% likelihood
-                let filteredPlatforms = platformProbabilities.filter { $0.value >= 0.04 }
+                // Filter to only show platforms with ≥2% likelihood
+                let filteredPlatforms = platformProbabilities.filter { $0.value >= 0.02 }
                 let sortedPlatforms = filteredPlatforms.sorted { $0.value > $1.value }
                 
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 8) {
@@ -1292,8 +1299,8 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .inside
         }
         
-        // Only show labels for segments with >= 15% probability
-        if probability >= 0.15 {
+        // Only show labels for segments with >= 18% probability
+        if probability >= 0.18 {
             return .inside
         } else {
             return .none

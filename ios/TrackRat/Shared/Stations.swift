@@ -255,7 +255,9 @@ struct Stations {
         ("Metropark", "MP"),
         ("Princeton Junction", "PJ"),
         ("Hamilton", "HL"),
-        ("Trenton", "TR")
+        ("Trenton", "TR"),
+        ("Philadelphia", "PH"),
+        ("Wilmington Station", "WI")
     ]
     
     // Popular destination stations - kept in sync with departure stations

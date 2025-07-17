@@ -186,7 +186,7 @@ struct DestinationPickerView: View {
                     // Navigate back to the root (TripSelectionView)
                     appState.navigationPath.removeLast(appState.navigationPath.count)
                 }
-                .foregroundColor(.orange)
+                .foregroundColor(.white)
             }
         }
         .onAppear {

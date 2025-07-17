@@ -77,7 +77,7 @@ struct ActiveTripsSection: View {
                                 .fill(.ultraThinMaterial)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                                        .stroke(TrackRatTheme.Colors.accent, lineWidth: 1)
                                 )
                         )
                         .padding(.horizontal)
