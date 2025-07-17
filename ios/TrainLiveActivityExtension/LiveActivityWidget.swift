@@ -92,9 +92,9 @@ struct TrainLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Next stop")
+                        Text(context.state.hasTrainDeparted ? "Next Stop" : "Departing")
                             .font(.caption2)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.white)
                         Text(context.state.nextStopName ?? "--")
                             .font(.caption)
                             .lineLimit(2)
@@ -102,7 +102,7 @@ struct TrainLiveActivity: Widget {
                         if let time = context.state.nextStopArrivalTimeAsDate {
                             Text(time, style: .time)
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.white)
                         }
                     }
                     .padding(.leading, 8)
@@ -111,7 +111,7 @@ struct TrainLiveActivity: Widget {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("Destination")
                             .font(.caption2)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.white)
                             .multilineTextAlignment(.trailing)
                         Text(context.attributes.destination)
                             .font(.caption)
@@ -121,7 +121,7 @@ struct TrainLiveActivity: Widget {
                         if let time = context.state.destinationArrivalTime {
                             Text(time, style: .time)
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.white)
                                 .multilineTextAlignment(.trailing)
                         }
                     }
@@ -222,16 +222,16 @@ struct TrainLiveActivityView: View {
             HStack(spacing: 16) {
                 // Left side - Next stop
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Next stop")
+                    Text(context.state.hasTrainDeparted ? "Next Stop" : "Departing")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white)
                     Text(context.state.nextStopName ?? "--")
                         .font(.subheadline)
                         .fontWeight(.medium)
                     if let time = context.state.nextStopArrivalTimeAsDate {
                         Text(time, style: .time)
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.white)
                     }
                 }
                 
@@ -241,14 +241,14 @@ struct TrainLiveActivityView: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("Destination")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white)
                     Text(context.attributes.destination)
                         .font(.subheadline)
                         .fontWeight(.medium)
                     if let time = context.state.destinationArrivalTime {
                         Text(time, style: .time)
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.white)
                     }
                 }
             }

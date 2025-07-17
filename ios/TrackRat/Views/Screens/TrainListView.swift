@@ -51,15 +51,22 @@ struct TrainListView: View {
                         } else if viewModel.trains.isEmpty {
                             EmptyStateView(message: "No trains found")
                         } else {
+                            let expressTrains = viewModel.identifyExpressTrains()
                             ForEach(viewModel.trains) { train in
-                                TrainCard(train: train, destination: destination, departureStationCode: departureStationCode) {
-                                    appState.currentTrainId = train.id
-                                    // Use flexible navigation with train number
-                                    appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
-                                        trainNumber: train.trainId,
-                                        fromStation: departureStationCode
-                                    ))
-                                }
+                                TrainCard(
+                                    train: train, 
+                                    destination: destination, 
+                                    departureStationCode: departureStationCode,
+                                    onTap: {
+                                        appState.currentTrainId = train.id
+                                        // Use flexible navigation with train number
+                                        appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                                            trainNumber: train.trainId,
+                                            fromStation: departureStationCode
+                                        ))
+                                    },
+                                    isExpress: expressTrains.contains(train.trainId)
+                                )
                             }
                         }
                     }
@@ -196,6 +203,7 @@ struct TrainCard: View {
     let destination: String
     let departureStationCode: String
     let onTap: () -> Void
+    let isExpress: Bool
     
     /// Check if train is cancelled
     private var isCancelled: Bool {
@@ -240,6 +248,11 @@ struct TrainCard: View {
                             .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
                             .strikethrough(isCancelled)
                         
+                        if isExpress {
+                            Image(systemName: "bolt.fill")
+                                .font(.caption)
+                                .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .orange))
+                        }
                     }
                     
                     Spacer()
@@ -379,6 +392,42 @@ class TrainListViewModel: ObservableObject {
     
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    
+    // MARK: - Express Train Identification
+    
+    /// Identify express trains using 15% faster travel time threshold
+    func identifyExpressTrains() -> Set<String> {
+        var expressTrains = Set<String>()
+        
+        // Group trains by class (NJ Transit vs Amtrak)
+        let trainsByClass = Dictionary(grouping: trains) { $0.trainClass }
+        
+        for (_, trainsInClass) in trainsByClass {
+            // Calculate travel time for each train in this class
+            let trainsWithTimes = trainsInClass.compactMap { train -> (train: TrainV2, travelTime: TimeInterval)? in
+                let travelTime = train.getTravelTime()
+                return travelTime > 0 ? (train, travelTime) : nil
+            }
+            
+            // Skip if no trains with valid travel time data
+            guard !trainsWithTimes.isEmpty else { continue }
+            
+            // Find the train with the maximum travel time
+            let maxTravelTime = trainsWithTimes.map { $0.travelTime }.max() ?? 0
+            
+            // Calculate 15% threshold (15% faster = 85% of max time)
+            let threshold = maxTravelTime * 0.85
+            
+            // Identify express trains (15% or more faster)
+            for (train, travelTime) in trainsWithTimes {
+                if travelTime <= threshold {
+                    expressTrains.insert(train.trainId)
+                }
+            }
+        }
+        
+        return expressTrains
+    }
     
     private func sortTrainsByDepartureTime(_ trains: [TrainV2], fromStationCode: String) -> [TrainV2] {
         return trains.sorted { train1, train2 in

@@ -150,17 +150,15 @@ struct TrainV2: Identifiable, Codable {
         return stops?.first { $0.stationCode == fromStationCode }?.scheduledDeparture
     }
     
-    // Get scheduled arrival time at a specific destination
+    // Get scheduled arrival time at destination
+    func getScheduledArrivalTime() -> Date? {
+        // API already filtered for correct destination
+        return arrival?.scheduledTime
+    }
+    
+    // Legacy method for compatibility - delegates to parameterless version
     func getScheduledArrivalTime(toStationName: String) -> Date? {
-        // Check if destination matches
-        if destination.lowercased().contains(toStationName.lowercased()) {
-            return arrival?.scheduledTime
-        }
-        
-        // Find arrival from stops if available
-        return stops?.first { 
-            $0.stationName.lowercased().contains(toStationName.lowercased()) 
-        }?.scheduledArrival
+        return getScheduledArrivalTime()
     }
     
     // Get formatted departure time for display
@@ -452,5 +450,30 @@ extension TrainV2 {
         }
         
         return nil
+    }
+    
+    // MARK: - Express Train Identification
+    
+    /// Calculate travel time between origin and destination
+    func getTravelTime() -> TimeInterval {
+        // Use departure time from origin station
+        let departureTime = departure.scheduledTime ?? Date()
+        
+        // Use arrival time at destination - API already filtered for correct destination
+        if let arrivalTime = arrival?.scheduledTime {
+            return arrivalTime.timeIntervalSince(departureTime)
+        }
+        
+        return 0
+    }
+    
+    /// Get the train class for express comparison (NJ Transit vs Amtrak)
+    var trainClass: String {
+        // Check if this is an Amtrak train based on line code or name
+        if line.code.hasPrefix("AMT") || line.name.lowercased().contains("amtrak") {
+            return "Amtrak"
+        } else {
+            return "NJ Transit"
+        }
     }
 }

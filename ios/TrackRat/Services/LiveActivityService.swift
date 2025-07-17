@@ -61,7 +61,7 @@ class LiveActivityService: ObservableObject {
         let context = JourneyContext(from: originCode, to: destination)
         let contextStatus = train.calculateStatus(for: context)
         let initialCurrentStop = train.stops?.last(where: { $0.hasDepartedStation })?.stationName ?? origin
-        let initialNextStop = train.stops?.first(where: { !$0.hasDepartedStation })?.stationName
+        let initialNextStop = getNextStopName(train, originCode: originCode, destinationName: destination, hasTrainDeparted: hasTrainDeparted)
         
         // Create simple initial content state
         let initialState = TrainActivityAttributes.ContentState(
@@ -179,14 +179,14 @@ class LiveActivityService: ObservableObject {
             let context = JourneyContext(from: activity.attributes.originStationCode, to: activity.attributes.destination)
             let progress = train.calculateJourneyProgress(for: context)
             
-            // Get current and next stop names using new fields
-            let currentStop = train.stops?.last(where: { $0.hasDepartedStation })?.stationName ?? activity.attributes.origin
-            let nextStop = train.stops?.first(where: { !$0.hasDepartedStation })?.stationName
-            
             // Get scheduled times and departure status
             let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: activity.attributes.originStationCode)
             let scheduledArrivalTime = train.getScheduledArrivalTime(toStationName: activity.attributes.destination)
             let hasTrainDeparted = self.hasTrainDeparted(train, fromStation: activity.attributes.originStationCode)
+            
+            // Get current and next stop names using new fields
+            let currentStop = train.stops?.last(where: { $0.hasDepartedStation })?.stationName ?? activity.attributes.origin
+            let nextStop = getNextStopName(train, originCode: activity.attributes.originStationCode, destinationName: activity.attributes.destination, hasTrainDeparted: hasTrainDeparted)
             let nextStopArrivalTime = self.getNextStopArrivalTime(train)
             
             // Calculate context-aware status
@@ -344,6 +344,30 @@ class LiveActivityService: ObservableObject {
         }
         
         return nil
+    }
+    
+    /// Get the next stop name for user's journey segment
+    private func getNextStopName(_ train: TrainV2, originCode: String, destinationName: String, hasTrainDeparted: Bool) -> String? {
+        guard let stops = train.stops else { return nil }
+        
+        // Find origin and destination stops
+        let originIndex = stops.firstIndex { $0.stationCode == originCode }
+        let destinationIndex = stops.lastIndex { $0.stationName.lowercased().contains(destinationName.lowercased()) }
+        
+        guard let fromIndex = originIndex, let toIndex = destinationIndex, fromIndex < toIndex else {
+            return nil
+        }
+        
+        // Get the journey segment stops
+        let journeyStops = Array(stops[fromIndex...toIndex])
+        
+        // If train hasn't departed from origin, next stop is origin station
+        if !hasTrainDeparted {
+            return journeyStops.first?.stationName
+        }
+        
+        // If train has departed, find next non-departed stop in journey
+        return journeyStops.first(where: { !$0.hasDepartedStation })?.stationName
     }
     
     // MARK: - Compatibility Methods for TrackRatApp
