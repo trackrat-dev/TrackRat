@@ -298,16 +298,21 @@ async def get_train_history(
     )
 
 
-@router.get("/stations/{station_code}/tracks/occupied", response_model=OccupiedTracksResponse)
+@router.get(
+    "/stations/{station_code}/tracks/occupied", response_model=OccupiedTracksResponse
+)
 @handle_errors
 async def get_occupied_tracks(
-    station_code: str = Path(..., min_length=2, max_length=3, description="Station code"),
+    station_code: str = Path(
+        ..., min_length=2, max_length=3, description="Station code"
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> OccupiedTracksResponse:
     """Get occupied tracks at a station."""
     logger.info("get_occupied_tracks_request", station_code=station_code)
-    
+
     from trackrat.services.track_occupancy import track_occupancy_service
+
     return await track_occupancy_service.get_occupied_tracks(station_code)
 
 
