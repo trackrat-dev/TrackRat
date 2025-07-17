@@ -67,6 +67,7 @@
 		A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60E92DFC73650002FB39 /* TrainTestData.swift */; };
 		A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60EA2DFC73650002FB39 /* TestHelpers.swift */; };
 		A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60EB2DFC73650002FB39 /* XCTestCase+Extensions.swift */; };
+		A1F1BA642E29685E000EB4EE /* TrackOccupancyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F1BA632E29685E000EB4EE /* TrackOccupancyService.swift */; };
 		A1WIDGET012DFC73650002FB39 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET022DFC73650002FB39 /* WidgetKit.framework */; };
 		A1WIDGET032DFC73650002FB39 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET042DFC73650002FB39 /* SwiftUI.framework */; };
 		A1WIDGET052DFC73650002FB39 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET062DFC73650002FB39 /* ActivityKit.framework */; };
@@ -165,6 +166,7 @@
 		A1BA60E92DFC73650002FB39 /* TrainTestData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainTestData.swift; sourceTree = "<group>"; };
 		A1BA60EA2DFC73650002FB39 /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		A1BA60EB2DFC73650002FB39 /* XCTestCase+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "XCTestCase+Extensions.swift"; sourceTree = "<group>"; };
+		A1F1BA632E29685E000EB4EE /* TrackOccupancyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackOccupancyService.swift; path = Services/TrackOccupancyService.swift; sourceTree = "<group>"; };
 		A1WIDGET022DFC73650002FB39 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		A1WIDGET042DFC73650002FB39 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		A1WIDGET062DFC73650002FB39 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
@@ -243,6 +245,7 @@
 				A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */,
 				A10E98072DE39F23002F3214 /* DeparturePickerView.swift */,
 				A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */,
+				A1F1BA632E29685E000EB4EE /* TrackOccupancyService.swift */,
 				A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */,
 				A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */,
 				A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */,
@@ -535,6 +538,7 @@
 				A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
 				A126E5592E25BBC700958ABA /* V2APIModels.swift in Sources */,
+				A1F1BA642E29685E000EB4EE /* TrackOccupancyService.swift in Sources */,
 				A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */,
 				A10E97FB2DE39F0F002F3214 /* Extensions.swift in Sources */,
 				A10E98062DE39F23002F3214 /* DeparturePickerView.swift in Sources */,

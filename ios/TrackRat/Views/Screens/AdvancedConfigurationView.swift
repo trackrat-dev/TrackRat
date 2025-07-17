@@ -15,7 +15,7 @@ struct AdvancedConfigurationView: View {
     }
     
     var body: some View {
-        let backgroundView = TrackRatTheme.Colors.primaryGradient
+        let backgroundView = TrackRatTheme.Colors.primaryBackground
             .ignoresSafeArea()
         
         let serverEnvironmentSection = createServerEnvironmentSection()

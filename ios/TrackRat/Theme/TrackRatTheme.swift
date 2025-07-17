@@ -13,12 +13,8 @@ struct TrackRatTheme {
         static let accent = Color.orange
         static let accentSecondary = Color.orange.opacity(0.8)
         
-        // Background Gradients - Blue-based
-        static let primaryGradient = LinearGradient(
-            colors: [Color(hex: "#0e5c8d"), Color.gray.opacity(0.2)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        // Background - Flat Blue
+        static let primaryBackground = Color(hex: "#0e5c8d")
         
         static let cardGradient = LinearGradient(
             colors: [Color.white.opacity(0.1), Color.white.opacity(0.05)],
@@ -152,7 +148,7 @@ extension View {
     
     func trackRatGlassmorphicBackground() -> some View {
         self
-            .background(TrackRatTheme.Colors.primaryGradient)
+            .background(TrackRatTheme.Colors.primaryBackground)
             .ignoresSafeArea()
     }
     

@@ -31,7 +31,7 @@ struct TrainListView: View {
     var body: some View {
         ZStack {
             // Black gradient background
-            TrackRatTheme.Colors.primaryGradient
+            TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
             ScrollView {

@@ -223,6 +223,16 @@ class TrainHistoryResponse(BaseModel):
     )
 
 
+class OccupiedTracksResponse(BaseModel):
+    """Response for occupied tracks endpoint."""
+
+    station_code: str = Field(..., min_length=1, max_length=3)
+    station_name: str
+    occupied_tracks: list[str]
+    last_updated: datetime
+    cache_expires_at: datetime
+
+
 # Internal Models (not exposed via API)
 
 

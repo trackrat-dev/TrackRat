@@ -129,7 +129,7 @@ struct TrainLiveActivity: Widget {
                         let validProgress = max(0, min(1, context.state.journeyProgress))
                         ProgressView(value: validProgress)
                             .progressViewStyle(.linear)
-                            .tint(.orange)
+                            .tint(lightBlueColor)
                             .padding(.horizontal, 8)
                             .onAppear {
                                 logger.info("🟡 Progress bar - value: \(validProgress)")

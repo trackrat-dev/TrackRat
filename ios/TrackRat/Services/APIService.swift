@@ -289,6 +289,33 @@ final class APIService: ObservableObject {
         print("✅ Live Activity token unregistered")
     }
     
+    // MARK: - Occupied Tracks
+    
+    func fetchOccupiedTracks(stationCode: String) async throws -> V2OccupiedTracksResponse {
+        var components = URLComponents(string: "\(baseURL)/v2/trains/stations/\(stationCode)/tracks/occupied")!
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        let (data, response) = try await session.data(from: url)
+        
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 {
+            throw APIError.noData
+        }
+        
+        do {
+            let response = try decoder.decode(V2OccupiedTracksResponse.self, from: data)
+            return response
+        } catch {
+            print("🔴 V2 DECODING ERROR (fetchOccupiedTracks for station: \(stationCode)): \(error)")
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+            }
+            throw error
+        }
+    }
+    
     // MARK: - V2 API Adapters
     
     private func adaptV2DepartureToTrainV2(_ departure: V2TrainDeparture) -> TrainV2 {

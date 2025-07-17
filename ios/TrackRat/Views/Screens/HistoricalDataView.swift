@@ -16,7 +16,7 @@ struct HistoricalDataView: View {
         NavigationStack {
             ZStack {
                 // Black gradient background
-                TrackRatTheme.Colors.primaryGradient
+                TrackRatTheme.Colors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {

@@ -73,4 +73,53 @@ class StaticTrackDistributionService {
     func shouldShowPredictions(for train: TrainV2) -> Bool {
         return train.originStationCode == "NY" && train.track == nil
     }
+    
+    /// Generate adjusted prediction data that excludes occupied tracks
+    /// Returns nil for stations other than NY Penn Station
+    func getAdjustedPredictionData(for train: TrainV2, excludingOccupiedTracks: Bool = true) async -> PredictionData? {
+        // Only provide predictions for NY Penn Station (code "NY")
+        guard train.originStationCode == "NY" else {
+            return nil
+        }
+        
+        // Determine if train is Amtrak or NJ Transit based on train ID
+        let isAmtrak = train.trainId.uppercased().hasPrefix("A")
+        
+        var distribution = isAmtrak ? amtrakDistribution : njTransitDistribution
+        
+        // Fetch and exclude occupied tracks if enabled
+        if excludingOccupiedTracks {
+            do {
+                let occupiedTracks = try await TrackOccupancyService.shared.getOccupiedTracks(for: "NY")
+                
+                // Zero out occupied tracks
+                for track in occupiedTracks {
+                    if let platformGroup = findPlatformGroup(for: track, in: distribution) {
+                        distribution[platformGroup] = 0.0
+                    }
+                }
+                
+                // Renormalize probabilities
+                let totalProbability = distribution.values.reduce(0, +)
+                if totalProbability > 0 {
+                    for (track, probability) in distribution {
+                        distribution[track] = probability / totalProbability
+                    }
+                }
+            } catch {
+                // On error, return unadjusted predictions
+                print("Failed to fetch occupied tracks: \(error)")
+            }
+        }
+        
+        return PredictionData(trackProbabilities: distribution)
+    }
+    
+    /// Map individual tracks to platform groups for NY Penn Station
+    private func findPlatformGroup(for track: String, in probabilities: [String: Double]) -> String? {
+        // For NY Penn Station, tracks are typically grouped by platform
+        // This simple implementation maps directly to track numbers
+        // since the distribution already uses individual track numbers
+        return probabilities.keys.contains(track) ? track : nil
+    }
 }

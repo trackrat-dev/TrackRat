@@ -14,7 +14,7 @@ struct TrainNumberSearchView: View {
     var body: some View {
         ZStack {
             // Black gradient background
-            TrackRatTheme.Colors.primaryGradient
+            TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
             VStack(spacing: 32) {

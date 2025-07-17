@@ -282,3 +282,58 @@ struct V2HistoryStatistics: Codable {
         case cancellationRate = "cancellation_rate"
     }
 }
+
+// MARK: - Occupied Tracks Endpoint Models
+
+struct V2OccupiedTrack: Codable {
+    let trackNumber: String
+    let trainId: String
+    let line: V2LineInfo
+    let destination: String
+    let scheduledDeparture: Date
+    let updatedDeparture: Date?
+    let actualDeparture: Date?
+    let status: String
+    let trackAssignedAt: Date?
+    let platform: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case trackNumber = "track_number"
+        case trainId = "train_id"
+        case line, destination, status, platform
+        case scheduledDeparture = "scheduled_departure"
+        case updatedDeparture = "updated_departure"
+        case actualDeparture = "actual_departure"
+        case trackAssignedAt = "track_assigned_at"
+    }
+}
+
+struct V2OccupiedTracksResponse: Codable {
+    let stationCode: String
+    let stationName: String
+    let occupiedTracks: [String]
+    let lastUpdated: Date
+    let cacheExpiresAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case stationCode = "station_code"
+        case stationName = "station_name"
+        case occupiedTracks = "occupied_tracks"
+        case lastUpdated = "last_updated"
+        case cacheExpiresAt = "cache_expires_at"
+    }
+}
+
+struct V2OccupiedTracksMetadata: Codable {
+    let station: V2StationMetadata
+    let generatedAt: Date
+    let totalTracks: Int
+    let occupiedCount: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case station
+        case generatedAt = "generated_at"
+        case totalTracks = "total_tracks"
+        case occupiedCount = "occupied_count"
+    }
+}

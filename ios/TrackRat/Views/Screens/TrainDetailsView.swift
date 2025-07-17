@@ -34,7 +34,7 @@ struct TrainDetailsView: View {
     var body: some View {
         ZStack {
             // Black gradient background
-            TrackRatTheme.Colors.primaryGradient
+            TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
             ScrollView {
@@ -1045,9 +1045,11 @@ struct SegmentedTrackPredictionView: View {
     let train: TrainV2
     @State private var selectedSegment: TrackPredictionSegment?
     @State private var showingOthersPopup = false
+    @State private var adjustedPredictions: PredictionData?
+    @State private var isLoadingPredictions = true
     
     private var predictionSegments: [TrackPredictionSegment] {
-        guard let predictionData = train.predictionData,
+        guard let predictionData = adjustedPredictions,
               let trackProbabilities = predictionData.trackProbabilities else {
             return []
         }
@@ -1074,7 +1076,10 @@ struct SegmentedTrackPredictionView: View {
                 Spacer()
             }
             
-            if !predictionSegments.isEmpty {
+            if isLoadingPredictions {
+                ProgressView()
+                    .frame(height: 64)
+            } else if !predictionSegments.isEmpty {
                 VStack(spacing: 8) {
                     // Labels for segments that need them above the bar
                     if hasSegmentsWithTopLabels {
@@ -1100,6 +1105,15 @@ struct SegmentedTrackPredictionView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
+        .task {
+            await loadAdjustedPredictions()
+        }
+    }
+    
+    private func loadAdjustedPredictions() async {
+        isLoadingPredictions = true
+        adjustedPredictions = await StaticTrackDistributionService.shared.getAdjustedPredictionData(for: train)
+        isLoadingPredictions = false
     }
     
     private var segmentedBarView: some View {
@@ -1278,8 +1292,8 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .inside
         }
         
-        // Only show labels for segments with >= 20% probability
-        if probability >= 0.20 {
+        // Only show labels for segments with >= 15% probability
+        if probability >= 0.15 {
             return .inside
         } else {
             return .none

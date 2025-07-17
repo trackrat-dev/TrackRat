@@ -20,6 +20,7 @@ from trackrat.models.api import (
     DeparturesResponse,
     HistoricalJourney,
     LineInfo,
+    OccupiedTracksResponse,
     RawStopStatus,
     RouteInfo,
     SimpleStationInfo,
@@ -295,6 +296,19 @@ async def get_train_history(
     return TrainHistoryResponse(
         train_id=train_id, journeys=historical_journeys, statistics=statistics
     )
+
+
+@router.get("/stations/{station_code}/tracks/occupied", response_model=OccupiedTracksResponse)
+@handle_errors
+async def get_occupied_tracks(
+    station_code: str = Path(..., min_length=2, max_length=3, description="Station code"),
+    db: AsyncSession = Depends(get_db),
+) -> OccupiedTracksResponse:
+    """Get occupied tracks at a station."""
+    logger.info("get_occupied_tracks_request", station_code=station_code)
+    
+    from trackrat.services.track_occupancy import track_occupancy_service
+    return await track_occupancy_service.get_occupied_tracks(station_code)
 
 
 # Helper functions

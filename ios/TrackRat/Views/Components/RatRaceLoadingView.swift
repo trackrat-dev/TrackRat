@@ -346,7 +346,7 @@ struct RatRaceProgressView: View {
 
 #Preview("Rat Race Loading") {
     ZStack {
-        TrackRatTheme.Colors.primaryGradient
+        TrackRatTheme.Colors.primaryBackground
             .ignoresSafeArea()
         
         VStack(spacing: 40) {
