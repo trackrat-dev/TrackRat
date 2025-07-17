@@ -96,6 +96,7 @@ struct V2TrainDeparture: Codable {
     let trainPosition: V2TrainPosition
     let dataFreshness: V2DataFreshness
     let dataSource: String
+    let isCancelled: Bool
     
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
@@ -103,6 +104,7 @@ struct V2TrainDeparture: Codable {
         case trainPosition = "train_position"
         case dataFreshness = "data_freshness"
         case dataSource = "data_source"
+        case isCancelled = "is_cancelled"
     }
 }
 
@@ -217,6 +219,7 @@ struct V2TrainDetails: Codable {
     let dataFreshness: V2DataFreshness
     let dataSource: String
     let rawTrainState: String?
+    let isCancelled: Bool
     
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
@@ -227,6 +230,7 @@ struct V2TrainDetails: Codable {
         case dataFreshness = "data_freshness"
         case dataSource = "data_source"
         case rawTrainState = "raw_train_state"
+        case isCancelled = "is_cancelled"
     }
 }
 

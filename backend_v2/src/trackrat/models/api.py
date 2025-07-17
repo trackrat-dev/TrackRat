@@ -106,6 +106,9 @@ class TrainDeparture(BaseModel):
     train_position: TrainPosition
     data_freshness: DataFreshness
     data_source: str = Field(..., description="Data source (NJT or AMTRAK)")
+    is_cancelled: bool = Field(
+        default=False, description="Whether the train is cancelled"
+    )
 
 
 class DeparturesResponse(BaseModel):
@@ -173,6 +176,9 @@ class TrainDetails(BaseModel):
     data_freshness: DataFreshness
     data_source: str = Field(..., description="Data source (NJT or AMTRAK)")
     raw_train_state: str | None = None
+    is_cancelled: bool = Field(
+        default=False, description="Whether the train is cancelled"
+    )
 
     @field_serializer("journey_date")
     def serialize_journey_date(self, journey_date: date) -> str:

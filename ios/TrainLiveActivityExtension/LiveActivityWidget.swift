@@ -70,6 +70,14 @@ func dataFreshnessText(_ timestamp: TimeInterval) -> String {
     }
 }
 
+// Helper function to strip "Station" suffix from station names
+func stripStationSuffix(_ stationName: String) -> String {
+    if stationName.hasSuffix(" Station") {
+        return String(stationName.dropLast(8)) // Remove " Station"
+    }
+    return stationName
+}
+
 func isDataStaleCheck(_ timestamp: TimeInterval) -> Bool {
     let secondsAgo = Date().timeIntervalSince1970 - timestamp
     return secondsAgo > 180  // 3 minutes
@@ -96,7 +104,7 @@ struct TrainLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(context.state.nextStopName ?? "--")
+                        Text(stripStationSuffix(context.state.nextStopName ?? "--"))
                             .font(.caption)
                             .lineLimit(2)
                             .minimumScaleFactor(0.8)
@@ -110,7 +118,7 @@ struct TrainLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(context.attributes.destination)
+                        Text(stripStationSuffix(context.attributes.destination))
                             .font(.caption)
                             .lineLimit(2)
                             .minimumScaleFactor(0.8)
@@ -224,7 +232,7 @@ struct TrainLiveActivityView: View {
                     Text(context.state.hasTrainDeparted ? "Next Stop" : "Departing")
                         .font(.caption)
                         .foregroundColor(.white)
-                    Text(context.state.nextStopName ?? "--")
+                    Text(stripStationSuffix(context.state.nextStopName ?? "--"))
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.white)
@@ -242,7 +250,7 @@ struct TrainLiveActivityView: View {
                     Text("Destination")
                         .font(.caption)
                         .foregroundColor(.white)
-                    Text(context.attributes.destination)
+                    Text(stripStationSuffix(context.attributes.destination))
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.white)

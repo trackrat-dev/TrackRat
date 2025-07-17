@@ -352,8 +352,8 @@ class TestDepartureServiceIntegration:
                 # Train position provides objective data instead of journey calculations
                 assert departure.train_position is not None
 
-    async def test_cancelled_amtrak_trains_excluded(self, db_session: AsyncSession):
-        """Test that cancelled Amtrak trains are excluded from departures."""
+    async def test_cancelled_amtrak_trains_included(self, db_session: AsyncSession):
+        """Test that cancelled Amtrak trains are included in departures."""
         service = DepartureService()
 
         # Create cancelled Amtrak journey
@@ -409,9 +409,25 @@ class TestDepartureServiceIntegration:
                     time_to=now_et() + timedelta(hours=3),
                 )
 
-        # Should only return the active train
-        assert len(response.departures) == 1
-        assert response.departures[0].train_id == "A2160"
+        # Should return both trains (cancelled and active)
+        assert len(response.departures) == 2
+
+        # Find the cancelled and active trains
+        cancelled_train = None
+        active_train = None
+        for departure in response.departures:
+            if departure.train_id == "A2150":
+                cancelled_train = departure
+            elif departure.train_id == "A2160":
+                active_train = departure
+
+        # Verify both trains are present
+        assert cancelled_train is not None
+        assert active_train is not None
+
+        # Verify cancellation status is properly set
+        assert cancelled_train.is_cancelled is True
+        assert active_train.is_cancelled is False
 
     async def test_departure_time_filtering(self, db_session: AsyncSession):
         """Test filtering departures by time range."""

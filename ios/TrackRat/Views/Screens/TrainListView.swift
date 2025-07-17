@@ -5,6 +5,9 @@ struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainListViewModel
     
+    // Configuration constants
+    private static let DELAY_THRESHOLD_MINUTES = 6
+    
     @State private var destination: String
     @State private var departureStationCode: String
     @State private var departureName: String
@@ -205,9 +208,12 @@ struct TrainCard: View {
     let onTap: () -> Void
     let isExpress: Bool
     
+    // Configuration constants
+    private static let DELAY_THRESHOLD_MINUTES = 6
+    
     /// Check if train is cancelled
     private var isCancelled: Bool {
-        return train.status == .delayed  // V2 maps CANCELLED to delayed
+        return train.isCancelled
     }
     
     /// Check if train is boarding at origin
@@ -284,8 +290,8 @@ struct TrainCard: View {
                 
                 // Show delay status
                 if !isCancelled {
-                    let hasDepDelay = train.delayMinutes >= 2
-                    let hasArrDelay = train.arrival?.delayMinutes ?? 0 >= 2
+                    let hasDepDelay = train.delayMinutes >= TrainCard.DELAY_THRESHOLD_MINUTES
+                    let hasArrDelay = train.arrival?.delayMinutes ?? 0 >= TrainCard.DELAY_THRESHOLD_MINUTES
                     
                     if hasDepDelay || hasArrDelay {
                         Text("Operating with Delays")
@@ -349,6 +355,8 @@ struct StatusV2Badge: View {
             return .green
         case .scheduled:
             return .gray
+        case .cancelled:
+            return .red
         case .unknown:
             return .gray
         }
@@ -373,6 +381,8 @@ struct StatusV2Badge: View {
             return "On Time"
         case .scheduled:
             return "Scheduled"
+        case .cancelled:
+            return "Cancelled"
         case .unknown:
             return "Unknown"
         }

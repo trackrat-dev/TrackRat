@@ -62,7 +62,6 @@ class DepartureService:
                 and_(
                     JourneyStop.scheduled_departure >= time_from,
                     JourneyStop.scheduled_departure <= time_to,
-                    TrainJourney.is_cancelled.is_not(True),
                     # Include both data sources
                     TrainJourney.data_source.in_(["NJT", "AMTRAK"]),
                 )
@@ -152,6 +151,7 @@ class DepartureService:
                     update_count=journey.update_count,
                 ),
                 data_source=journey.data_source,
+                is_cancelled=journey.is_cancelled,
             )
             departures.append(departure)
 

@@ -184,6 +184,7 @@ enum TrainStatus: String, Codable {
     case delayed = "DELAYED"
     case boarding = "BOARDING"
     case departed = "DEPARTED"
+    case cancelled = "CANCELLED"
     case unknown = "UNKNOWN"
     
     init(from decoder: Decoder) throws {
@@ -205,6 +206,7 @@ enum TrainStatus: String, Codable {
         case .delayed: return "Delayed"
         case .boarding: return "Boarding"
         case .departed: return "Departed"
+        case .cancelled: return "Cancelled"
         case .unknown: return "Unknown"
         }
     }
@@ -216,6 +218,7 @@ enum TrainStatus: String, Codable {
         case .delayed: return "red"
         case .boarding: return "orange"
         case .departed: return "gray"
+        case .cancelled: return "red"
         case .unknown: return "gray"
         }
     }

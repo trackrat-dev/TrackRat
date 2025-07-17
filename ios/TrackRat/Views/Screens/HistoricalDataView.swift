@@ -417,6 +417,7 @@ class HistoricalDataViewModel: ObservableObject {
         arrival: nil,
         trainPosition: nil,
         dataFreshness: nil,
+        isCancelled: false,
         stops: nil
     ))
 }

@@ -114,7 +114,8 @@ struct LiveActivityControls: View {
             ),
             arrival: nil,
             trainPosition: nil,
-            dataFreshness: nil
+            dataFreshness: nil,
+            isCancelled: false
         ),
         origin: "Newark Penn Station",
         destination: "New York Penn Station",

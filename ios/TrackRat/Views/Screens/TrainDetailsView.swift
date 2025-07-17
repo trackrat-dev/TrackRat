@@ -86,7 +86,7 @@ struct TrainDetailsView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(alignment: .center, spacing: 12) {
                     if #available(iOS 16.1, *) {
-                        if let train = viewModel.train, train.calculateStatus(fromStationCode: appState.departureStationCode ?? "") != .delayed {  // Use context-aware status
+                        if let train = viewModel.train, train.calculateStatus(fromStationCode: appState.departureStationCode ?? "") != .cancelled {
                             Button {
                                 toggleLiveActivity(for: train)
                             } label: {
@@ -113,7 +113,7 @@ struct TrainDetailsView: View {
                     }
                     .font(.body)
                     .fontWeight(.medium)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.white)
                     .buttonStyle(.plain)
                 }
                 .frame(height: 44)
@@ -261,6 +261,11 @@ struct CombinedDetailsCard: View {
     
     /// Enhanced logic to determine if track predictions should be shown
     private var shouldShowPredictions: Bool {
+        // Don't show predictions for cancelled trains
+        if train.isCancelled {
+            return false
+        }
+        
         // Show predictions only for NY Penn Station and when track is not assigned
         return StaticTrackDistributionService.shared.shouldShowPredictions(for: train)
     }
@@ -298,7 +303,7 @@ struct CombinedDetailsCard: View {
                 VStack(spacing: 12) {
                     // Show CANCELLED banner if train is cancelled
                     let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
-                    if contextStatus == .delayed {  // Use context-aware status
+                    if contextStatus == .cancelled {
                         VStack(spacing: 8) {
                             Text("CANCELLED")
                                 .font(.largeTitle)
@@ -1096,6 +1101,9 @@ struct SegmentedTrackPredictionView: View {
                     // Main segmented bar
                     segmentedBarView
                         .frame(height: 64)
+                    
+                    // Percentages below the bar
+                    bottomLabelsView
                 }
                 .padding(.top, 4)
             } else {
@@ -1134,7 +1142,7 @@ struct SegmentedTrackPredictionView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(TrackRatTheme.Colors.surface, lineWidth: 2)
+                .stroke(Color.black, lineWidth: 1)
         )
     }
     
@@ -1160,7 +1168,7 @@ struct SegmentedTrackPredictionView: View {
             )
             .overlay(
                 Rectangle()
-                    .stroke(TrackRatTheme.Colors.surface, lineWidth: 1)
+                    .stroke(Color.black, lineWidth: 1)
             )
             .scaleEffect(isSelected ? 1.05 : 1.0)
             .overlay(
@@ -1205,6 +1213,27 @@ struct SegmentedTrackPredictionView: View {
             }
         }
         .frame(height: 18)
+    }
+    
+    private var bottomLabelsView: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                ForEach(predictionSegments) { segment in
+                    let segmentWidth = geometry.size.width * segment.probability
+                    
+                    VStack {
+                        if segment.probability >= 0.18 {
+                            Text("\(Int(segment.probability * 100))%")
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                                .foregroundColor(.black)
+                        }
+                    }
+                    .frame(width: segmentWidth)
+                }
+            }
+        }
+        .frame(height: 16)
     }
     
     private func createSegments(from platformProbabilities: [(key: String, value: Double)]) -> [TrackPredictionSegment] {

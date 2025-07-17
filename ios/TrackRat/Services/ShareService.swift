@@ -96,7 +96,7 @@ struct ShareButton: View {
             Image(systemName: "square.and.arrow.up")
                 .font(.body)
                 .fontWeight(.medium)
-                .foregroundColor(.orange)
+                .foregroundColor(.white)
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showingShareSheet) {

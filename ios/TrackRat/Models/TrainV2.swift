@@ -30,6 +30,7 @@ struct TrainV2: Identifiable, Codable {
     let arrival: StationTiming?
     let trainPosition: TrainPosition?
     let dataFreshness: DataFreshness?
+    let isCancelled: Bool
     
     // Optional detailed stops (populated from detail endpoint)
     var stops: [StopV2]? = nil
@@ -99,6 +100,11 @@ struct TrainV2: Identifiable, Codable {
     
     // Calculate context-aware status based on user's journey
     func calculateStatus(fromStationCode: String, toStationName: String? = nil) -> TrainStatus {
+        // Cancelled takes precedence over all other statuses
+        if isCancelled {
+            return .cancelled
+        }
+        
         // Check if train has departed from user's origin
         if hasTrainDepartedFromStation(fromStationCode) {
             return .departed
