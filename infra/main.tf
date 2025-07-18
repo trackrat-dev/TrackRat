@@ -78,7 +78,7 @@ module "artifact_registry" {
 
 # Create GCS bucket for database backups
 resource "google_storage_bucket" "db_backup" {
-  name     = "${var.app_name}-${var.environment}-db-backup"
+  name     = "${var.app_name}-${var.environment}-periodic-db-backup"
   location = var.region
 
   # Prevent accidental deletion

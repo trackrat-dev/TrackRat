@@ -30,9 +30,7 @@ enum ServerEnvironment: String, CaseIterable, Codable {
     
     var supportsHistoricalData: Bool {
         switch self {
-        case .production:
-            return false
-        case .staging, .local:
+        case .production, .staging, .local:
             return true
         }
     }

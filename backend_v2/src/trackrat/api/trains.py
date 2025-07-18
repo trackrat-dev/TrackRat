@@ -216,6 +216,17 @@ async def get_train_history(
     on_time_count = 0
     cancelled_count = 0
 
+    # New statistics for delay breakdown
+    delay_categories = {
+        "on_time": 0,  # 0-5 minutes
+        "slight": 0,  # 6-15 minutes
+        "significant": 0,  # 16-30 minutes
+        "major": 0,  # >30 minutes
+    }
+
+    # Track usage statistics
+    track_usage_counts = {}
+
     for journey in journeys:
         # Get key stops
         first_stop = (
@@ -274,24 +285,69 @@ async def get_train_history(
         # Update statistics
         if journey.is_cancelled:
             cancelled_count += 1
-        elif arrival_delay <= 5:  # Consider on-time if <= 5 minutes late
-            on_time_count += 1
+        else:
+            # Categorize delay
+            if arrival_delay <= 5:
+                on_time_count += 1
+                delay_categories["on_time"] += 1
+            elif arrival_delay <= 15:
+                delay_categories["slight"] += 1
+            elif arrival_delay <= 30:
+                delay_categories["significant"] += 1
+            else:
+                delay_categories["major"] += 1
 
-        total_delay += arrival_delay
+            total_delay += arrival_delay
+
+        # Count track usage for each station
+        for _, track in track_assignments.items():
+            if track:  # Only count if track is assigned
+                if track not in track_usage_counts:
+                    track_usage_counts[track] = 0
+                track_usage_counts[track] += 1
 
     # Calculate statistics
     total_journeys = len(historical_journeys)
+    non_cancelled_journeys = total_journeys - cancelled_count
+
+    # Calculate delay breakdown percentages
+    delay_breakdown = {}
+    if non_cancelled_journeys > 0:
+        delay_breakdown = {
+            "on_time": round(
+                delay_categories["on_time"] / non_cancelled_journeys * 100
+            ),
+            "slight": round(delay_categories["slight"] / non_cancelled_journeys * 100),
+            "significant": round(
+                delay_categories["significant"] / non_cancelled_journeys * 100
+            ),
+            "major": round(delay_categories["major"] / non_cancelled_journeys * 100),
+        }
+    else:
+        delay_breakdown = {"on_time": 0, "slight": 0, "significant": 0, "major": 0}
+
+    # Calculate track usage percentages
+    track_usage = {}
+    total_track_assignments = sum(track_usage_counts.values())
+    if total_track_assignments > 0:
+        track_usage = {
+            track: round(count / total_track_assignments * 100)
+            for track, count in track_usage_counts.items()
+        }
+
     statistics = {
         "total_journeys": total_journeys,
         "on_time_percentage": (
             (on_time_count / total_journeys * 100) if total_journeys > 0 else 0
         ),
         "average_delay_minutes": (
-            (total_delay / total_journeys) if total_journeys > 0 else 0
+            (total_delay / non_cancelled_journeys) if non_cancelled_journeys > 0 else 0
         ),
         "cancellation_rate": (
             (cancelled_count / total_journeys * 100) if total_journeys > 0 else 0
         ),
+        "delay_breakdown": delay_breakdown,
+        "track_usage": track_usage,
     }
 
     return TrainHistoryResponse(

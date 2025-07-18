@@ -109,15 +109,106 @@ final class APIService: ObservableObject {
     // MARK: - Historical Data (Simplified for V2)
     
     func fetchHistoricalData(for train: TrainV2, fromStationCode: String, toStationCode: String) async throws -> HistoricalData {
-        // V2 backend has a different history endpoint
-        // For now, return empty historical data
+        let urlString = "\(baseURL)/v2/trains/\(train.trainId)/history?days=30"
+        guard let url = URL(string: urlString) else {
+            throw APIError.invalidURL
+        }
+        
+        print("📊 Fetching historical data from: \(url)")
+        
+        let (data, _) = try await URLSession.shared.data(from: url)
+        
+        // Debug: Print raw response
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("📊 Raw historical data response: \(jsonString.prefix(500))...")
+        }
+        
+        // Define response structure for V2 history endpoint
+        struct V2HistoryResponse: Decodable {
+            let trainId: String
+            let statistics: V2Statistics
+            
+            struct V2Statistics: Decodable {
+                let totalJourneys: Int
+                let onTimePercentage: Double
+                let averageDelayMinutes: Double
+                let cancellationRate: Double
+                let delayBreakdown: DelayBreakdown?
+                let trackUsage: [String: Int]?
+                
+                struct DelayBreakdown: Decodable {
+                    let onTime: Int
+                    let slight: Int
+                    let significant: Int
+                    let major: Int
+                    
+                    private enum CodingKeys: String, CodingKey {
+                        case onTime = "on_time"
+                        case slight
+                        case significant
+                        case major
+                    }
+                }
+                
+                private enum CodingKeys: String, CodingKey {
+                    case totalJourneys = "total_journeys"
+                    case onTimePercentage = "on_time_percentage"
+                    case averageDelayMinutes = "average_delay_minutes"
+                    case cancellationRate = "cancellation_rate"
+                    case delayBreakdown = "delay_breakdown"
+                    case trackUsage = "track_usage"
+                }
+            }
+            
+            private enum CodingKeys: String, CodingKey {
+                case trainId = "train_id"
+                case statistics
+            }
+        }
+        
+        let response: V2HistoryResponse
+        do {
+            response = try decoder.decode(V2HistoryResponse.self, from: data)
+        } catch {
+            print("❌ Failed to decode historical data: \(error)")
+            throw error
+        }
+        
+        // Transform V2 response to iOS HistoricalData model
+        var trainStats: DelayStats? = nil
+        var trainTrackStats: TrackStats? = nil
+        
+        // Create delay stats if we have delay breakdown
+        if let breakdown = response.statistics.delayBreakdown {
+            trainStats = DelayStats(
+                onTime: breakdown.onTime,
+                slight: breakdown.slight,
+                significant: breakdown.significant,
+                major: breakdown.major,
+                total: response.statistics.totalJourneys,
+                avgDelay: Int(response.statistics.averageDelayMinutes.rounded())
+            )
+        }
+        
+        // Create track stats if we have track usage data
+        if let trackUsage = response.statistics.trackUsage, !trackUsage.isEmpty {
+            let tracks = trackUsage
+                .sorted { $0.value > $1.value }  // Sort by usage percentage descending
+                .map { (track: $0.key, percentage: $0.value, count: Int(Double(response.statistics.totalJourneys) * Double($0.value) / 100)) }
+            
+            trainTrackStats = TrackStats(
+                tracks: tracks,
+                total: response.statistics.totalJourneys
+            )
+        }
+        
         return HistoricalData(
-            trainStats: nil,
-            lineStats: nil,
-            destinationStats: nil,
-            trainTrackStats: nil,
-            lineTrackStats: nil,
-            destinationTrackStats: nil
+            trainStats: trainStats,
+            lineStats: nil,  // Not provided by backend
+            destinationStats: nil,  // Not provided by backend
+            trainTrackStats: trainTrackStats,
+            lineTrackStats: nil,  // Not provided by backend
+            destinationTrackStats: nil  // Not provided by backend
         )
     }
     
