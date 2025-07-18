@@ -183,7 +183,7 @@ async def get_train_details(
 @handle_errors
 async def get_train_history(
     train_id: str = Path(..., description="Train ID"),
-    days: int = Query(30, ge=1, le=90, description="Number of days of history"),
+    days: int = Query(30, ge=1, description="Number of days of history"),
     db: AsyncSession = Depends(get_db),
 ) -> TrainHistoryResponse:
     """Get historical data for a train."""

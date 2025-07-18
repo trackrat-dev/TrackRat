@@ -202,7 +202,7 @@ class HistoricalJourney(BaseModel):
     journey_date: date
     scheduled_departure: datetime
     actual_departure: datetime | None = None
-    scheduled_arrival: datetime
+    scheduled_arrival: datetime | None = None
     actual_arrival: datetime | None = None
     delay_minutes: int = Field(default=0, ge=0)
     was_cancelled: bool = False
