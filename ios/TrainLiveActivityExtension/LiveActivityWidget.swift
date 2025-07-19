@@ -125,7 +125,7 @@ struct TrainLiveActivity: Widget {
                         Text(stripStationSuffix(context.state.nextStopName ?? "--"))
                             .font(.caption)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.8)
+                            .minimumScaleFactor(0.75)
                         if let time = context.state.contextAwareNextStopTime {
                             Text(time, style: .time)
                                 .font(.caption)
@@ -139,7 +139,7 @@ struct TrainLiveActivity: Widget {
                         Text(stripStationSuffix(context.attributes.destination))
                             .font(.caption)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.8)
+                            .minimumScaleFactor(0.75)
                             .multilineTextAlignment(.trailing)
                         if let time = context.state.destinationArrivalTime {
                             Text(time, style: .time)
