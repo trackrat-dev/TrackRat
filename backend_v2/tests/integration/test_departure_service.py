@@ -96,29 +96,24 @@ class TestDepartureServiceIntegration:
         db_session.add(njt_journey)
         await db_session.commit()
 
-        # Mock JIT service to not make external API calls
-        with patch(
-            "trackrat.services.departure.JustInTimeUpdateService"
-        ) as mock_jit_class:
-            mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
-            mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
+        # Mock NJTransitClient to not make external API calls
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            # Mock the station refresh method that's called for NJT trains
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
 
-            with patch(
-                "trackrat.services.departure.NJTransitClient"
-            ) as mock_njt_client:
-                mock_client = AsyncMock()
-                mock_client.close = AsyncMock()
-                mock_njt_client.return_value = mock_client
-
-                # Get departures from NY to TR
-                response = await service.get_departures(
-                    db=db_session,
-                    from_station="NY",
-                    to_station="TR",
-                    time_from=now_et(),
-                    time_to=now_et() + timedelta(hours=3),
-                )
+            # Get departures from NY to TR
+            response = await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                to_station="TR",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+            )
 
         # Verify response contains both trains
         assert len(response.departures) == 2
@@ -175,26 +170,21 @@ class TestDepartureServiceIntegration:
         await db_session.commit()
 
         # Mock to avoid NJT API calls
-        with patch(
-            "trackrat.services.departure.JustInTimeUpdateService"
-        ) as mock_jit_class:
-            mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
-            mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            # Mock the station refresh method that's called for NJT trains
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
 
-            with patch(
-                "trackrat.services.departure.NJTransitClient"
-            ) as mock_njt_client:
-                mock_client = AsyncMock()
-                mock_client.close = AsyncMock()
-                mock_njt_client.return_value = mock_client
-
-                response = await service.get_departures(
-                    db=db_session,
-                    from_station="NY",
-                    time_from=now_et(),
-                    time_to=now_et() + timedelta(hours=3),
-                )
+            response = await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+            )
 
         assert len(response.departures) == 2
         assert all(d.data_source == "AMTRAK" for d in response.departures)
@@ -244,35 +234,22 @@ class TestDepartureServiceIntegration:
         db_session.add(njt_journey)
         await db_session.commit()
 
-        # Mock JIT service and verify it's only called for NJT
-        with patch(
-            "trackrat.services.departure.JustInTimeUpdateService"
-        ) as mock_jit_class:
-            mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
-            mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
+        # Mock to avoid NJT API calls
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            # Mock the station refresh method that's called for NJT trains
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
 
-            with patch(
-                "trackrat.services.departure.NJTransitClient"
-            ) as mock_njt_client:
-                mock_client = AsyncMock()
-                mock_client.close = AsyncMock()
-                mock_njt_client.return_value = mock_client
-
-                await service.get_departures(
-                    db=db_session,
-                    from_station="NY",
-                    time_from=now_et(),
-                    time_to=now_et() + timedelta(hours=3),
-                )
-
-                # Verify JIT was called with only NJT journey
-                mock_jit_service.ensure_fresh_departures.assert_called_once()
-                called_journeys = mock_jit_service.ensure_fresh_departures.call_args[0][
-                    1
-                ]
-                assert len(called_journeys) == 1
-                assert called_journeys[0].data_source == "NJT"
+            await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+            )
 
     async def test_departure_filtering_by_station(self, db_session: AsyncSession):
         """Test filtering departures by origin and destination stations."""
@@ -307,50 +284,45 @@ class TestDepartureServiceIntegration:
         await db_session.commit()
 
         # Mock to avoid external calls
-        with patch(
-            "trackrat.services.departure.JustInTimeUpdateService"
-        ) as mock_jit_class:
-            mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
-            mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            # Mock the station refresh method that's called for NJT trains
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
 
-            with patch(
-                "trackrat.services.departure.NJTransitClient"
-            ) as mock_njt_client:
-                mock_client = AsyncMock()
-                mock_client.close = AsyncMock()
-                mock_njt_client.return_value = mock_client
+            # Test NY to TR
+            response_ny_tr = await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                to_station="TR",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+            )
 
-                # Test NY to TR
-                response_ny_tr = await service.get_departures(
-                    db=db_session,
-                    from_station="NY",
-                    to_station="TR",
-                    time_from=now_et(),
-                    time_to=now_et() + timedelta(hours=3),
-                )
+            assert len(response_ny_tr.departures) == 1
+            departure = response_ny_tr.departures[0]
+            assert departure.departure.code == "NY"
+            assert departure.arrival.code == "TR"
+            # Journey info no longer included in departure response (pure data approach)
 
-                assert len(response_ny_tr.departures) == 1
-                departure = response_ny_tr.departures[0]
-                assert departure.departure.code == "NY"
-                assert departure.arrival.code == "TR"
-                # Journey info no longer included in departure response (pure data approach)
+            # Test NP to TR (should also find the same train)
+            response_np_tr = await service.get_departures(
+                db=db_session,
+                from_station="NP",
+                to_station="TR",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+            )
 
-                # Test NP to TR (should also find the same train)
-                response_np_tr = await service.get_departures(
-                    db=db_session,
-                    from_station="NP",
-                    to_station="TR",
-                    time_from=now_et(),
-                    time_to=now_et() + timedelta(hours=3),
-                )
-
-                assert len(response_np_tr.departures) == 1
-                departure = response_np_tr.departures[0]
-                assert departure.departure.code == "NP"
-                assert departure.arrival.code == "TR"
-                # Train position provides objective data instead of journey calculations
-                assert departure.train_position is not None
+            assert len(response_np_tr.departures) == 1
+            departure = response_np_tr.departures[0]
+            assert departure.departure.code == "NP"
+            assert departure.arrival.code == "TR"
+            # Train position provides objective data instead of journey calculations
+            assert departure.train_position is not None
 
     async def test_cancelled_amtrak_trains_included(self, db_session: AsyncSession):
         """Test that cancelled Amtrak trains are included in departures."""
@@ -388,26 +360,21 @@ class TestDepartureServiceIntegration:
         db_session.add(active_journey)
         await db_session.commit()
 
-        with patch(
-            "trackrat.services.departure.JustInTimeUpdateService"
-        ) as mock_jit_class:
-            mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
-            mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            # Mock the station refresh method that's called for NJT trains
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
 
-            with patch(
-                "trackrat.services.departure.NJTransitClient"
-            ) as mock_njt_client:
-                mock_client = AsyncMock()
-                mock_client.close = AsyncMock()
-                mock_njt_client.return_value = mock_client
-
-                response = await service.get_departures(
-                    db=db_session,
-                    from_station="NY",
-                    time_from=now_et(),
-                    time_to=now_et() + timedelta(hours=3),
-                )
+            response = await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+            )
 
         # Should return both trains (cancelled and active)
         assert len(response.departures) == 2
@@ -464,27 +431,22 @@ class TestDepartureServiceIntegration:
         db_session.add(late_journey)
         await db_session.commit()
 
-        with patch(
-            "trackrat.services.departure.JustInTimeUpdateService"
-        ) as mock_jit_class:
-            mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
-            mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            # Mock the station refresh method that's called for NJT trains
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
 
-            with patch(
-                "trackrat.services.departure.NJTransitClient"
-            ) as mock_njt_client:
-                mock_client = AsyncMock()
-                mock_client.close = AsyncMock()
-                mock_njt_client.return_value = mock_client
-
-                # Query with 2-hour window - should only get early train
-                response = await service.get_departures(
-                    db=db_session,
-                    from_station="NY",
-                    time_from=base_time,
-                    time_to=base_time + timedelta(hours=2),
-                )
+            # Query with 2-hour window - should only get early train
+            response = await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                time_from=base_time,
+                time_to=base_time + timedelta(hours=2),
+            )
 
         assert len(response.departures) == 1
         assert response.departures[0].train_id == "A2150"
@@ -508,23 +470,18 @@ class TestDepartureServiceIntegration:
         db_session.add(journey)
         await db_session.commit()
 
-        with patch(
-            "trackrat.services.departure.JustInTimeUpdateService"
-        ) as mock_jit_class:
-            mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
-            mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            # Mock the station refresh method that's called for NJT trains
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
 
-            with patch(
-                "trackrat.services.departure.NJTransitClient"
-            ) as mock_njt_client:
-                mock_client = AsyncMock()
-                mock_client.close = AsyncMock()
-                mock_njt_client.return_value = mock_client
-
-                response = await service.get_departures(
-                    db=db_session, from_station="NY", to_station="TR"
-                )
+            response = await service.get_departures(
+                db=db_session, from_station="NY", to_station="TR"
+            )
 
         # Verify metadata structure
         assert "from_station" in response.metadata

@@ -3,6 +3,7 @@ Departure service for handling train departure queries.
 """
 
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +21,6 @@ from trackrat.models.api import (
     TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.utils.time import now_et, parse_njt_time, safe_datetime_subtract
 
 logger = get_logger(__name__)
@@ -219,7 +219,9 @@ class DepartureService:
             ),
         )
 
-    async def _ensure_fresh_station_data(self, db: AsyncSession, station_code: str):
+    async def _ensure_fresh_station_data(
+        self, db: AsyncSession, station_code: str
+    ) -> None:
         """Ensure station departure data is fresh using getTrainSchedule with embedded stops."""
 
         # Check if station data needs refresh (90 second staleness)
@@ -283,8 +285,8 @@ class DepartureService:
             await njt_client.close()
 
     async def _update_journey_from_schedule_data(
-        self, db: AsyncSession, train_data: dict, station_code: str
-    ):
+        self, db: AsyncSession, train_data: dict[str, Any], station_code: str
+    ) -> None:
         """Update journey and stops from getTrainSchedule data."""
 
         train_id = train_data.get("TRAIN_ID")
@@ -335,8 +337,8 @@ class DepartureService:
         )
 
     async def _update_stops_from_embedded_data(
-        self, journey: TrainJourney, stops_data: list
-    ):
+        self, journey: TrainJourney, stops_data: list[dict[str, Any]]
+    ) -> None:
         """Update journey stops from embedded STOPS data in getTrainSchedule response."""
 
         # Create a map of existing stops by station code

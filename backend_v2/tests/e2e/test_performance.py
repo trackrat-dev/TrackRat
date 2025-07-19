@@ -8,7 +8,7 @@ ensuring the system scales well with additional data sources.
 import pytest
 import time
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -258,27 +258,27 @@ class TestPerformance:
         # Test query memory efficiency
         departure_service = DepartureService()
 
-        with patch(
-            "trackrat.services.departure.JustInTimeUpdateService"
-        ) as mock_jit_class:
-            mock_jit_service = patch.object(
-                mock_jit_class.return_value, "__aenter__", return_value=None
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            # Mock the station refresh method that's called for NJT trains
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
+
+            # Query large dataset
+            response = await departure_service.get_departures(
+                db=db_session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=4),
+                limit=100,  # Limit to test pagination efficiency
             )
 
-            with patch("trackrat.services.departure.NJTransitClient"):
-
-                # Query large dataset
-                response = await departure_service.get_departures(
-                    db=db_session,
-                    from_station="NY",
-                    time_from=now_et(),
-                    time_to=now_et() + timedelta(hours=4),
-                    limit=100,  # Limit to test pagination efficiency
-                )
-
-                # Should handle large dataset efficiently
-                assert len(response.departures) <= 100
-                assert response.metadata["count"] == len(response.departures)
+            # Should handle large dataset efficiently
+            assert len(response.departures) <= 100
+            assert response.metadata["count"] == len(response.departures)
 
     async def test_database_query_optimization(self, db_session: AsyncSession):
         """Test database query performance and optimization."""
@@ -391,38 +391,38 @@ class TestPerformance:
         # Test serialization performance via departure service
         departure_service = DepartureService()
 
-        with patch(
-            "trackrat.services.departure.JustInTimeUpdateService"
-        ) as mock_jit_class:
-            mock_jit_service = patch.object(
-                mock_jit_class.return_value, "__aenter__", return_value=None
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            # Mock the station refresh method that's called for NJT trains
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
+
+            start_time = time.time()
+
+            response = await departure_service.get_departures(
+                db=db_session,
+                from_station="NY",
+                to_station="TR",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=10),
             )
 
-            with patch("trackrat.services.departure.NJTransitClient"):
+            end_time = time.time()
 
-                start_time = time.time()
+            serialization_duration = end_time - start_time
 
-                response = await departure_service.get_departures(
-                    db=db_session,
-                    from_station="NY",
-                    to_station="TR",
-                    time_from=now_et(),
-                    time_to=now_et() + timedelta(hours=10),
-                )
+            # Performance assertions
+            assert serialization_duration < 0.3  # Should serialize quickly
+            assert len(response.departures) <= journey_count
 
-                end_time = time.time()
-
-                serialization_duration = end_time - start_time
-
-                # Performance assertions
-                assert serialization_duration < 0.3  # Should serialize quickly
-                assert len(response.departures) <= journey_count
-
-                # Verify complete serialization
-                for departure in response.departures:
-                    assert departure.train_id is not None
-                    assert departure.line is not None
-                    assert departure.departure is not None
-                    assert departure.arrival is not None
-                    assert departure.train_position is not None
-                    assert departure.data_freshness is not None
+            # Verify complete serialization
+            for departure in response.departures:
+                assert departure.train_id is not None
+                assert departure.line is not None
+                assert departure.departure is not None
+                assert departure.arrival is not None
+                assert departure.train_position is not None
+                assert departure.data_freshness is not None
