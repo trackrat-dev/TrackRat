@@ -18,14 +18,13 @@ from structlog import get_logger
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
-from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.config import Settings, get_settings
 from trackrat.db.engine import get_session
+from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.utils.time import (
-    calculate_delay,
     ensure_timezone_aware,
     now_et,
     safe_datetime_subtract,
@@ -1017,11 +1016,15 @@ class SchedulerService:
             self._running_tasks.pop(task_id, None)
 
     def _calculate_live_activity_content_state(
-        self, journey: TrainJourney, token: LiveActivityToken, session
-    ) -> dict:
+        self,
+        journey: TrainJourney,
+        token: LiveActivityToken,
+        session: AsyncSession | Any,
+    ) -> dict[str, Any]:
         """Calculate Live Activity content state for a specific token's journey segment."""
         import time
-        from trackrat.utils.time import ensure_timezone_aware, now_et, calculate_delay
+
+        from trackrat.utils.time import calculate_delay, ensure_timezone_aware, now_et
 
         # Calculate simple progress
         current_stop = None
@@ -1031,9 +1034,7 @@ class SchedulerService:
 
         if journey and journey.stops:
             # Sort stops by sequence to ensure proper ordering
-            sorted_stops = sorted(
-                journey.stops, key=lambda s: s.stop_sequence or 0
-            )
+            sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
 
             # Find user's origin and destination indices
             origin_index = None
@@ -1047,9 +1048,7 @@ class SchedulerService:
             # If we found both, filter stops to user's journey
             if origin_index is not None and destination_index is not None:
                 # Filter to only the user's journey segment
-                user_journey_stops = sorted_stops[
-                    origin_index : destination_index + 1
-                ]
+                user_journey_stops = sorted_stops[origin_index : destination_index + 1]
 
                 # Log stop sequence for debugging
                 stop_sequence_info = [
@@ -1073,9 +1072,7 @@ class SchedulerService:
                 # Calculate progress based on user's journey only
                 total_user_stops = len(user_journey_stops)
                 departed_user_stops = sum(
-                    1
-                    for stop in user_journey_stops
-                    if stop.has_departed_station
+                    1 for stop in user_journey_stops if stop.has_departed_station
                 )
                 journey_progress = (
                     departed_user_stops / total_user_stops
@@ -1092,13 +1089,22 @@ class SchedulerService:
                     # Don't assume train is at origin just because it hasn't departed
                     actual_current_stop = None
                     for stop in sorted_stops:
-                        if (journey.data_source == "AMTRAK" and stop.raw_amtrak_status == "Station") or \
-                           (journey.data_source == "NJT" and stop.track and not stop.has_departed_station):
+                        if (
+                            journey.data_source == "AMTRAK"
+                            and stop.raw_amtrak_status == "Station"
+                        ) or (
+                            journey.data_source == "NJT"
+                            and stop.track
+                            and not stop.has_departed_station
+                        ):
                             actual_current_stop = stop
                             break
-                    
+
                     # If train is actually at the user's origin, show that
-                    if actual_current_stop and actual_current_stop.station_code == token.origin_code:
+                    if (
+                        actual_current_stop
+                        and actual_current_stop.station_code == token.origin_code
+                    ):
                         current_stop = actual_current_stop
                         next_stop = actual_current_stop
                     else:
@@ -1108,10 +1114,15 @@ class SchedulerService:
                     logger.debug(
                         "user_journey_before_origin",
                         train_number=journey.train_id,
-                        actual_current_stop=current_stop.station_name if current_stop else "Unknown",
-                        next_stop_name=next_stop.station_name if next_stop else "Unknown",
+                        actual_current_stop=(
+                            current_stop.station_name if current_stop else "Unknown"
+                        ),
+                        next_stop_name=(
+                            next_stop.station_name if next_stop else "Unknown"
+                        ),
                         user_journey_stops=total_user_stops,
-                        train_at_origin=actual_current_stop and actual_current_stop.station_code == token.origin_code,
+                        train_at_origin=actual_current_stop
+                        and actual_current_stop.station_code == token.origin_code,
                     )
                 else:
                     # Train has departed origin - find progression through journey
@@ -1154,9 +1165,7 @@ class SchedulerService:
             stops_for_delay = (
                 sorted_stops
                 if "sorted_stops" in locals()
-                else sorted(
-                    journey.stops, key=lambda s: s.stop_sequence or 0
-                )
+                else sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             )
             for stop in reversed(stops_for_delay):
                 if stop.has_departed_station:
@@ -1208,9 +1217,7 @@ class SchedulerService:
                     has_train_departed = True
                 elif stop.scheduled_departure:
                     # Use ensure_timezone_aware to properly handle timezone conversion
-                    scheduled_dep = ensure_timezone_aware(
-                        stop.scheduled_departure
-                    )
+                    scheduled_dep = ensure_timezone_aware(stop.scheduled_departure)
                     current_time = now_et()
                     if scheduled_dep < current_time:
                         has_train_departed = True
@@ -1248,7 +1255,7 @@ class SchedulerService:
             # Train has departed user's origin
             journey_status = (
                 journey.snapshots[-1].train_status
-                if journey and journey.snapshots
+                if journey and journey.snapshots and journey.snapshots[-1].train_status
                 else "EN ROUTE"
             )
 
@@ -1256,9 +1263,7 @@ class SchedulerService:
         content_state = {
             "status": journey_status,
             "track": (
-                current_stop.track
-                if current_stop and current_stop.track
-                else None
+                current_stop.track if current_stop and current_stop.track else None
             ),
             "currentStopName": (
                 current_stop.station_name if current_stop else "Unknown"
@@ -1266,9 +1271,7 @@ class SchedulerService:
             "nextStopName": next_stop.station_name if next_stop else None,
             "delayMinutes": calculated_delay,
             "journeyProgress": journey_progress,
-            "dataTimestamp": int(
-                time.time()
-            ),  # Unix timestamp for data freshness
+            "dataTimestamp": int(time.time()),  # Unix timestamp for data freshness
             # New fields for enhanced Live Activity display
             "scheduledDepartureTime": scheduled_departure_time,
             "scheduledArrivalTime": scheduled_arrival_time,
@@ -1285,9 +1288,7 @@ class SchedulerService:
             # Progress tracking
             journey_progress=journey_progress,
             user_journey_stops=(
-                len(user_journey_stops)
-                if "user_journey_stops" in locals()
-                else "N/A"
+                len(user_journey_stops) if "user_journey_stops" in locals() else "N/A"
             ),
             # Departure/arrival data
             has_departed=has_train_departed,
@@ -1295,12 +1296,8 @@ class SchedulerService:
             scheduled_arrival_time=scheduled_arrival_time,
             next_stop_arrival_time=next_stop_arrival_time,
             # Current state
-            current_stop=(
-                current_stop.station_name if current_stop else None
-            ),
-            current_stop_code=(
-                current_stop.station_code if current_stop else None
-            ),
+            current_stop=(current_stop.station_name if current_stop else None),
+            current_stop_code=(current_stop.station_code if current_stop else None),
             next_stop=next_stop.station_name if next_stop else None,
             next_stop_code=next_stop.station_code if next_stop else None,
             # Track and status
@@ -1339,7 +1336,7 @@ class SchedulerService:
             with SyncSession() as session:
                 # Find expired tokens that are still active
                 current_time = now_et()
-                
+
                 # Update expired tokens to inactive
                 result = session.execute(
                     update(LiveActivityToken)
@@ -1351,9 +1348,9 @@ class SchedulerService:
                     )
                     .values(is_active=False)
                 )
-                
+
                 session.commit()
-                
+
                 cleaned_count = result.rowcount
                 logger.info(
                     "live_activity_token_cleanup_completed",
@@ -1382,7 +1379,6 @@ class SchedulerService:
 
             from sqlalchemy import and_, create_engine, select
             from sqlalchemy.orm import selectinload, sessionmaker
-
 
             # Use synchronous database access to avoid greenlet issues in scheduler context
             # This is a workaround for APScheduler's async executor not properly initializing greenlets
@@ -1520,7 +1516,7 @@ class SchedulerService:
                             content_state = self._calculate_live_activity_content_state(
                                 journey, token, session
                             )
-                            
+
                             # Send token-specific update via APNS
                             success = await self.apns_service.send_live_activity_update(
                                 token.push_token, content_state
