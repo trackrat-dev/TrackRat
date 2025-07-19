@@ -228,7 +228,9 @@ class LiveActivityService: ObservableObject {
             
             // Auto-end if journey is complete
             if progress >= 1.0 {
-                print("🏁 Journey complete, ending Live Activity")
+                print("🏁 Journey complete (progress: \(progress)), ending Live Activity")
+                print("  - Origin: \(activity.attributes.originStationCode)")
+                print("  - Destination: \(activity.attributes.destinationStationCode)")
                 await endCurrentActivity()
             }
             

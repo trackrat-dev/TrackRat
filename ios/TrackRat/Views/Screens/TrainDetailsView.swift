@@ -1222,7 +1222,7 @@ struct SegmentedTrackPredictionView: View {
                     let segmentWidth = geometry.size.width * segment.probability
                     
                     VStack {
-                        if segment.probability >= 0.18 {
+                        if segment.probability >= 0.20 {
                             Text("\(Int(segment.probability * 100))%")
                                 .font(.caption2)
                                 .fontWeight(.medium)
@@ -1328,8 +1328,8 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .inside
         }
         
-        // Only show labels for segments with >= 18% probability
-        if probability >= 0.18 {
+        // Only show labels for segments with >= 20% probability
+        if probability >= 0.2 {
             return .inside
         } else {
             return .none

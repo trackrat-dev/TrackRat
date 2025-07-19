@@ -94,7 +94,7 @@ struct ShareButton: View {
     var body: some View {
         Button(action: shareAction) {
             Image(systemName: "square.and.arrow.up")
-                .font(.body)
+                .font(.callout)
                 .fontWeight(.medium)
                 .foregroundColor(.white)
         }

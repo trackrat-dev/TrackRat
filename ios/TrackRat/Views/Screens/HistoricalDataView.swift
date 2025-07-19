@@ -34,7 +34,9 @@ struct HistoricalDataView: View {
                                     trainStats: data.trainStats,
                                     lineStats: data.lineStats,
                                     destinationStats: data.destinationStats,
-                                    train: train
+                                    train: train,
+                                    fromStationCode: appState.departureStationCode,
+                                    toStationCode: appState.destinationStationCode ?? Stations.getStationCode(train.destination)
                                 )
                                 
                                 // Track Usage
@@ -42,7 +44,9 @@ struct HistoricalDataView: View {
                                     trainStats: data.trainTrackStats,
                                     lineStats: data.lineTrackStats,
                                     destinationStats: data.destinationTrackStats,
-                                    train: train
+                                    train: train,
+                                    fromStationCode: appState.departureStationCode,
+                                    toStationCode: appState.destinationStationCode ?? Stations.getStationCode(train.destination)
                                 )
                             }
                             .padding()
@@ -128,6 +132,8 @@ struct PerformanceSection: View {
     let lineStats: DelayStats?
     let destinationStats: DelayStats?
     let train: TrainV2
+    let fromStationCode: String?
+    let toStationCode: String?
     
     var hasData: Bool {
         trainStats != nil || lineStats != nil || destinationStats != nil
@@ -143,8 +149,10 @@ struct PerformanceSection: View {
                 
                 VStack(spacing: 20) {
                     if let stats = trainStats {
+                        let fromCode = fromStationCode ?? "?"
+                        let toCode = toStationCode ?? "?"
                         DelayPerformanceBar(
-                            label: "Train \(train.trainId)",
+                            label: "Train \(train.trainId) (\(fromCode)→\(toCode))",
                             stats: stats
                         )
                     }
@@ -177,6 +185,8 @@ struct TrackUsageSection: View {
     let lineStats: TrackStats?
     let destinationStats: TrackStats?
     let train: TrainV2
+    let fromStationCode: String?
+    let toStationCode: String?
     
     var hasData: Bool {
         trainStats != nil || lineStats != nil || destinationStats != nil
@@ -192,8 +202,10 @@ struct TrackUsageSection: View {
                 
                 VStack(spacing: 20) {
                     if let stats = trainStats {
+                        let fromCode = fromStationCode ?? "?"
+                        let toCode = toStationCode ?? "?"
                         TrackUsageBar(
-                            label: "Train \(train.trainId)",
+                            label: "Train \(train.trainId) (\(fromCode)→\(toCode))",
                             stats: stats
                         )
                     }

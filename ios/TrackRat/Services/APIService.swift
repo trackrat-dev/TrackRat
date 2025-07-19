@@ -109,7 +109,7 @@ final class APIService: ObservableObject {
     // MARK: - Historical Data (Simplified for V2)
     
     func fetchHistoricalData(for train: TrainV2, fromStationCode: String, toStationCode: String) async throws -> HistoricalData {
-        let urlString = "\(baseURL)/v2/trains/\(train.trainId)/history?days=365"
+        let urlString = "\(baseURL)/v2/trains/\(train.trainId)/history?days=365&from_station=\(fromStationCode)&to_station=\(toStationCode)"
         guard let url = URL(string: urlString) else {
             throw APIError.invalidURL
         }

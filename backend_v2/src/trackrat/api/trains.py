@@ -184,10 +184,12 @@ async def get_train_details(
 async def get_train_history(
     train_id: str = Path(..., description="Train ID"),
     days: int = Query(30, ge=1, description="Number of days of history"),
+    from_station: str | None = Query(None, description="Filter to journeys containing this origin station"),
+    to_station: str | None = Query(None, description="Filter to journeys containing this destination station"),
     db: AsyncSession = Depends(get_db),
 ) -> TrainHistoryResponse:
     """Get historical data for a train."""
-    logger.info("get_train_history_request", train_id=train_id, days=days)
+    logger.info("get_train_history_request", train_id=train_id, days=days, from_station=from_station, to_station=to_station)
 
     # Calculate date range
     end_date = now_et().date()
@@ -228,6 +230,24 @@ async def get_train_history(
     track_usage_counts = {}
 
     for journey in journeys:
+        # Filter by station route if specified
+        if from_station and to_station:
+            # Find the stops for from_station and to_station
+            from_stop = None
+            to_stop = None
+            
+            for stop in journey.stops:
+                if stop.station_code == from_station:
+                    from_stop = stop
+                elif stop.station_code == to_station:
+                    to_stop = stop
+            
+            # Skip if either station is not found, or if they're in wrong order
+            if not from_stop or not to_stop:
+                continue
+            if (from_stop.stop_sequence or 0) >= (to_stop.stop_sequence or 0):
+                continue
+        
         # Get key stops
         first_stop = (
             min(journey.stops, key=lambda s: s.stop_sequence or 0)

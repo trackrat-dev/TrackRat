@@ -424,9 +424,22 @@ extension TrainV2 {
         
         // Get the journey segment stops
         let journeyStops = Array(stops[fromIndex...toIndex])
-        let completedInSegment = journeyStops.filter { $0.hasDepartedStation }.count
+        let destinationStop = journeyStops.last
         
-        return Double(completedInSegment) / Double(journeyStops.count)
+        // Check if we've arrived at the destination
+        let hasArrivedAtDestination = destinationStop?.actualArrival != nil ||
+                                     (trainPosition?.atStationCode == destinationStop?.stationCode)
+        
+        if hasArrivedAtDestination {
+            return 1.0  // Journey complete - we've arrived at destination
+        }
+        
+        // Calculate progress based on completed segments (exclude destination from denominator)
+        let stopsBeforeDestination = Array(journeyStops.dropLast())
+        let completedStops = stopsBeforeDestination.filter { $0.hasDepartedStation }.count
+        let totalSegments = max(1, journeyStops.count - 1)  // Number of segments between stops
+        
+        return Double(completedStops) / Double(totalSegments)
     }
     
     // Convenience method using JourneyContext
