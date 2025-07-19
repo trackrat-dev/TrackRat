@@ -126,14 +126,12 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **Error handling**: Typed errors with recovery
 - **Eastern Time Zone**: Automatic conversion for all timestamps
 
-### Endpoints Used
-- `GET /trains/?from_station_code=X&to_station_code=Y&departure_time_after=Z&limit=N` - Search by origin/destination
-- `GET /trains/{id}?from_station_code=X` - Train details filtered by origin
-- `GET /trains/{train_number}?from_station_code=X` - Lookup by number with origin filter
-- `GET /trains/?train_id=X&no_pagination=true&from_station_code=Y` - Historical data by origin
-- `GET /trains/?line=X&limit=1000&from_station_code=Y` - Line history by origin
-- `GET /trains/?destination=X&limit=1000&from_station_code=Y` - Destination history by origin
-- `GET /trains/?consolidate=true` - Consolidated train data with multi-source support (use consolidate parameter)
+### Endpoints Used (V2 API)
+- `GET /v2/trains/departures?from=X&to=Y&limit=50` - Search trains between stations
+- `GET /v2/trains/{train_id}?date=YYYY-MM-DD&refresh=true` - Train details with optional forced refresh
+- `GET /v2/routes/history?from_station=X&to_station=Y&data_source=NJT&days=30` - Route historical performance data
+- `POST /v2/live-activities/register` - Register Live Activity for updates
+- `DELETE /v2/live-activities/{push_token}` - Unregister Live Activity
 
 ### New API Features
 - **Consolidated Train Data**: Merges data from multiple sources (Amtrak, NJTransit)
@@ -144,14 +142,15 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 ## Data Models
 
 ### Core Types
-- **Train**: Main model with comprehensive train data
+- **TrainV2**: Main model with comprehensive train data (current implementation)
   - Extensions for origin-based departure time calculation
-  - Methods: `getDepartureTime(fromStationCode:)`, `getFormattedDepartureTime(fromStationCode:)`
+  - Methods: `getScheduledDepartureTime(fromStationCode:)`, `getFormattedScheduledDepartureTime(fromStationCode:)`
   - Live Activity support: `toActivityAttributes()`, `toContentState()`
   - New fields: `originStation`, `dataSource`, `currentPosition`, `trackAssignment`, `statusV2`, `progress`
   - Status summary with delay information
   - Consolidation metadata for multi-source trains
   - Enhanced properties: `enhancedDisplayStatus`, `displayLocation`, `journeyProgress`
+- **Train**: Legacy model maintained for compatibility
 - **TrainStatus**: Enum with color mappings and display strings
 - **Stop**: Station with times, status, and departure confirmations
   - Enhanced with `departedConfirmedBy` array for multi-source validation
@@ -373,17 +372,26 @@ The app provides sophisticated real-time journey visualization through multiple 
 # Open project
 open TrackRat.xcodeproj
 
-# Build for simulator
+# Build for simulator (complete build with destination)
+xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16'
+
+# Build for simulator (basic build)
 xcodebuild -scheme TrackRat -sdk iphonesimulator
 
 # Build for device
 xcodebuild -scheme TrackRat -sdk iphoneos
 
+# Check for compilation errors only
+xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | grep -E "(error|failed|BUILD FAILED)" || echo "BUILD SUCCESSFUL"
+
 # Run tests
-xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 15'
+xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'
 
 # Archive for distribution
 xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
+
+# Note: Use iPhone 16 instead of iPhone 15 as it's available in current simulators
+# Available destinations can be checked with: xcodebuild -scheme TrackRat -showdestinations
 ```
 
 ### Testing Live Activities

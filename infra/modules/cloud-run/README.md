@@ -28,6 +28,7 @@ No modules.
 | [google_project_iam_member.cloudsql_client](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
 | [google_project_iam_member.monitoring_metric_writer](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
 | [google_project_iam_member.secret_accessor](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
+| [google_project_iam_member.storage_object_admin](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/project_iam_member) | resource |
 | [google_service_account.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/service_account) | resource |
 
 ## Inputs
@@ -40,6 +41,7 @@ No modules.
 | <a name="input_container_port"></a> [container\_port](#input\_container\_port) | Port the container listens on | `number` | `8080` | no |
 | <a name="input_cpu_limit"></a> [cpu\_limit](#input\_cpu\_limit) | CPU limit for the container (e.g., '1', '2') | `string` | `"1"` | no |
 | <a name="input_custom_domain_name"></a> [custom\_domain\_name](#input\_custom\_domain\_name) | The custom domain name (e.g., api.example.com) | `string` | `""` | no |
+| <a name="input_enable_backup_access"></a> [enable\_backup\_access](#input\_enable\_backup\_access) | Whether to grant Storage Object Admin permissions for backup access | `bool` | `false` | no |
 | <a name="input_enable_cloudsql_access"></a> [enable\_cloudsql\_access](#input\_enable\_cloudsql\_access) | Whether to grant Cloud SQL client permissions to the service account | `bool` | `false` | no |
 | <a name="input_enable_custom_domain"></a> [enable\_custom\_domain](#input\_enable\_custom\_domain) | Set to true to enable custom domain mapping | `bool` | `false` | no |
 | <a name="input_environment_variables"></a> [environment\_variables](#input\_environment\_variables) | A map of environment variables for the container | `map(string)` | `{}` | no |
@@ -47,9 +49,9 @@ No modules.
 | <a name="input_liveness_probe_path"></a> [liveness\_probe\_path](#input\_liveness\_probe\_path) | Path for the liveness probe. Disabled if null. | `string` | `"/health"` | no |
 | <a name="input_liveness_probe_period_seconds"></a> [liveness\_probe\_period\_seconds](#input\_liveness\_probe\_period\_seconds) | Periodicity of liveness probe in seconds. | `number` | `30` | no |
 | <a name="input_location"></a> [location](#input\_location) | The GCP region for Cloud Run services | `string` | n/a | yes |
-| <a name="input_max_instances"></a> [max\_instances](#input\_max\_instances) | Maximum number of instances | `number` | `2` | no |
-| <a name="input_memory_limit"></a> [memory\_limit](#input\_memory\_limit) | Memory limit for the container (e.g., '512Mi', '1Gi') | `string` | `"2Gi"` | no |
-| <a name="input_min_instances"></a> [min\_instances](#input\_min\_instances) | Minimum number of instances | `number` | `0` | no |
+| <a name="input_max_instances"></a> [max\_instances](#input\_max\_instances) | Maximum number of instances | `number` | `1` | no |
+| <a name="input_memory_limit"></a> [memory\_limit](#input\_memory\_limit) | Memory limit for the container (e.g., '512Mi', '1Gi') | `string` | `"512Mi"` | no |
+| <a name="input_min_instances"></a> [min\_instances](#input\_min\_instances) | Minimum number of instances | `number` | `1` | no |
 | <a name="input_project_id"></a> [project\_id](#input\_project\_id) | The GCP project ID | `string` | n/a | yes |
 | <a name="input_request_timeout_seconds"></a> [request\_timeout\_seconds](#input\_request\_timeout\_seconds) | Request timeout in seconds | `number` | `60` | no |
 | <a name="input_secret_environment_variables"></a> [secret\_environment\_variables](#input\_secret\_environment\_variables) | A map of environment variables to be sourced from Secret Manager. Key is the env var name, value is the secret name:version. | `map(string)` | `{}` | no |

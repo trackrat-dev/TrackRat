@@ -5,18 +5,18 @@ struct HistoricalDataView: View {
     @StateObject private var viewModel: HistoricalDataViewModel
     @Environment(\.dismiss) private var dismiss
     
-    let train: Train
+    let train: TrainV2
     
-    init(train: Train) {
+    init(train: TrainV2, toStationCode: String? = nil) {
         self.train = train
-        self._viewModel = StateObject(wrappedValue: HistoricalDataViewModel(train: train))
+        self._viewModel = StateObject(wrappedValue: HistoricalDataViewModel(train: train, toStationCode: toStationCode))
     }
     
     var body: some View {
         NavigationStack {
             ZStack {
                 // Black gradient background
-                TrackRatTheme.Colors.primaryGradient
+                TrackRatTheme.Colors.primaryBackground
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -34,7 +34,11 @@ struct HistoricalDataView: View {
                                     trainStats: data.trainStats,
                                     lineStats: data.lineStats,
                                     destinationStats: data.destinationStats,
-                                    train: train
+                                    routeStats: data.routeStats,
+                                    train: train,
+                                    fromStationCode: appState.departureStationCode,
+                                    toStationCode: viewModel.destinationStationCode,
+                                    dataSource: data.dataSource
                                 )
                                 
                                 // Track Usage
@@ -42,7 +46,11 @@ struct HistoricalDataView: View {
                                     trainStats: data.trainTrackStats,
                                     lineStats: data.lineTrackStats,
                                     destinationStats: data.destinationTrackStats,
-                                    train: train
+                                    routeStats: data.routeTrackStats,
+                                    train: train,
+                                    fromStationCode: appState.departureStationCode,
+                                    toStationCode: viewModel.destinationStationCode,
+                                    dataSource: data.dataSource
                                 )
                             }
                             .padding()
@@ -84,9 +92,7 @@ struct HistoricalDataView: View {
                             
                             Button("Try Again") {
                                 Task {
-                                    // Use user's selected destination if available, otherwise fall back to train's actual destination
-                                    let toStationCode = appState.destinationStationCode ?? Stations.getStationCode(train.destination)
-                                    await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: toStationCode)
+                                    await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: nil, includeRouteTrains: true)
                                 }
                             }
                             .padding(.horizontal, 24)
@@ -101,7 +107,7 @@ struct HistoricalDataView: View {
                     }
                 }
             }
-            .navigationTitle("Historical Data")
+            .navigationTitle("Historical Data (beta)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -115,9 +121,7 @@ struct HistoricalDataView: View {
             .toolbarBackground(.visible, for: .navigationBar)
         }
         .task {
-            // Use user's selected destination if available, otherwise fall back to train's actual destination
-            let toStationCode = appState.destinationStationCode ?? Stations.getStationCode(train.destination)
-            await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: toStationCode)
+            await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: nil, includeRouteTrains: true)
         }
     }
 }
@@ -127,10 +131,14 @@ struct PerformanceSection: View {
     let trainStats: DelayStats?
     let lineStats: DelayStats?
     let destinationStats: DelayStats?
-    let train: Train
+    let routeStats: DelayStats?
+    let train: TrainV2
+    let fromStationCode: String?
+    let toStationCode: String?
+    let dataSource: String?
     
     var hasData: Bool {
-        trainStats != nil || lineStats != nil || destinationStats != nil
+        trainStats != nil || lineStats != nil || destinationStats != nil || routeStats != nil
     }
     
     var body: some View {
@@ -143,8 +151,21 @@ struct PerformanceSection: View {
                 
                 VStack(spacing: 20) {
                     if let stats = trainStats {
+                        let fromCode = fromStationCode ?? "?"
+                        let toCode = toStationCode ?? "?"
                         DelayPerformanceBar(
-                            label: "Train \(train.trainId)",
+                            label: "Train \(train.trainId) (\(fromCode)→\(toCode))",
+                            stats: stats
+                        )
+                    }
+                    
+                    // Route-wide statistics (same service only)
+                    if let stats = routeStats, let source = dataSource {
+                        let fromCode = fromStationCode ?? "?"
+                        let toCode = toStationCode ?? "?"
+                        let serviceLabel = source == "AMTRAK" ? "All Amtrak trains" : "All NJ Transit trains"
+                        DelayPerformanceBar(
+                            label: "\(serviceLabel) (\(fromCode)→\(toCode))",
                             stats: stats
                         )
                     }
@@ -176,10 +197,14 @@ struct TrackUsageSection: View {
     let trainStats: TrackStats?
     let lineStats: TrackStats?
     let destinationStats: TrackStats?
-    let train: Train
+    let routeStats: TrackStats?
+    let train: TrainV2
+    let fromStationCode: String?
+    let toStationCode: String?
+    let dataSource: String?
     
     var hasData: Bool {
-        trainStats != nil || lineStats != nil || destinationStats != nil
+        trainStats != nil || lineStats != nil || destinationStats != nil || routeStats != nil
     }
     
     var body: some View {
@@ -192,8 +217,21 @@ struct TrackUsageSection: View {
                 
                 VStack(spacing: 20) {
                     if let stats = trainStats {
+                        let fromCode = fromStationCode ?? "?"
+                        let toCode = toStationCode ?? "?"
                         TrackUsageBar(
-                            label: "Train \(train.trainId)",
+                            label: "Train \(train.trainId) (\(fromCode)→\(toCode))",
+                            stats: stats
+                        )
+                    }
+                    
+                    // Route-wide track usage (same service only)
+                    if let stats = routeStats, let source = dataSource {
+                        let fromCode = fromStationCode ?? "?"
+                        let toCode = toStationCode ?? "?"
+                        let serviceLabel = source == "AMTRAK" ? "All Amtrak trains" : "All NJ Transit trains"
+                        TrackUsageBar(
+                            label: "\(serviceLabel) (\(fromCode)→\(toCode))",
                             stats: stats
                         )
                     }
@@ -355,14 +393,25 @@ class HistoricalDataViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     
-    private let train: Train
+    private let train: TrainV2
+    private let toStationCode: String?
     private let apiService = APIService.shared
     
-    init(train: Train) {
+    init(train: TrainV2, toStationCode: String? = nil) {
         self.train = train
+        // Only apply fallback when toStationCode is truly nil
+        if let userDestination = toStationCode {
+            self.toStationCode = userDestination
+        } else {
+            self.toStationCode = Stations.getStationCode(train.destination)
+        }
     }
     
-    func loadHistoricalData(fromStationCode: String? = nil, toStationCode: String? = nil) async {
+    var destinationStationCode: String? {
+        return toStationCode
+    }
+    
+    func loadHistoricalData(fromStationCode: String? = nil, toStationCode: String? = nil, includeRouteTrains: Bool = false) async {
         isLoading = true
         error = nil
         
@@ -374,8 +423,8 @@ class HistoricalDataViewModel: ObservableObject {
             return
         }
         
-        // Validate destination station code
-        guard let toCode = toStationCode else {
+        // Use provided toStationCode or fall back to stored value
+        guard let toCode = toStationCode ?? self.toStationCode else {
             print("❌ Error: Missing toStationCode in loadHistoricalData for train destination: \(train.destination)")
             self.error = "Cannot determine destination station code for '\(train.destination)'"
             isLoading = false
@@ -391,7 +440,21 @@ class HistoricalDataViewModel: ObservableObject {
         }
         
         do {
-            historicalData = try await apiService.fetchHistoricalData(for: train, fromStationCode: fromCode, toStationCode: toCode)
+            // Determine data source from train
+            let dataSource = train.trainClass == "Amtrak" ? "AMTRAK" : "NJT"
+            
+            // Use new route-based API
+            let routeData = try await apiService.fetchRouteHistoricalData(
+                from: fromCode,
+                to: toCode,
+                dataSource: dataSource,
+                highlightTrain: train.trainId,
+                days: 365
+            )
+            
+            // Convert RouteHistoricalData to HistoricalData format
+            historicalData = convertRouteDataToHistoricalData(routeData)
+            
         } catch {
             print("❌ Error loading historical data: \(error)")
             self.error = error.localizedDescription
@@ -399,21 +462,98 @@ class HistoricalDataViewModel: ObservableObject {
         
         isLoading = false
     }
+    
+    // MARK: - Data Conversion Helper
+    
+    private func convertRouteDataToHistoricalData(_ routeData: RouteHistoricalData) -> HistoricalData {
+        // Convert route aggregate stats to route stats
+        let routeStats = DelayStats(
+            onTime: routeData.aggregateStats.delayBreakdown.onTime,
+            slight: routeData.aggregateStats.delayBreakdown.slight,
+            significant: routeData.aggregateStats.delayBreakdown.significant,
+            major: routeData.aggregateStats.delayBreakdown.major,
+            total: routeData.route.totalTrains,
+            avgDelay: Int(routeData.aggregateStats.averageDelayMinutes.rounded())
+        )
+        
+        // Convert route track usage to route track stats
+        let routeTrackStats: TrackStats?
+        if !routeData.aggregateStats.trackUsageAtOrigin.isEmpty {
+            let tracks = routeData.aggregateStats.trackUsageAtOrigin
+                .sorted { $0.value > $1.value }  // Sort by usage percentage descending
+                .map { (track: $0.key, percentage: $0.value, count: Int(Double(routeData.route.totalTrains) * Double($0.value) / 100)) }
+            
+            routeTrackStats = TrackStats(
+                tracks: tracks,
+                total: routeData.route.totalTrains
+            )
+        } else {
+            routeTrackStats = nil
+        }
+        
+        // Convert highlighted train stats to train stats if available
+        let trainStats: DelayStats?
+        let trainTrackStats: TrackStats?
+        
+        if let highlighted = routeData.highlightedTrain {
+            trainStats = DelayStats(
+                onTime: highlighted.delayBreakdown.onTime,
+                slight: highlighted.delayBreakdown.slight,
+                significant: highlighted.delayBreakdown.significant,
+                major: highlighted.delayBreakdown.major,
+                total: 1, // Individual train has at most 1 journey in the time period
+                avgDelay: Int(highlighted.averageDelayMinutes.rounded())
+            )
+            
+            // Convert highlighted train track usage
+            if !highlighted.trackUsageAtOrigin.isEmpty {
+                let tracks = highlighted.trackUsageAtOrigin
+                    .sorted { $0.value > $1.value }
+                    .map { (track: $0.key, percentage: $0.value, count: Int(Double($0.value) / 100)) }
+                
+                trainTrackStats = TrackStats(
+                    tracks: tracks,
+                    total: 1
+                )
+            } else {
+                trainTrackStats = nil
+            }
+        } else {
+            trainStats = nil
+            trainTrackStats = nil
+        }
+        
+        return HistoricalData(
+            trainStats: trainStats,
+            lineStats: nil,  // Not provided by route API
+            destinationStats: nil,  // Not provided by route API
+            trainTrackStats: trainTrackStats,
+            lineTrackStats: nil,  // Not provided by route API
+            destinationTrackStats: nil,  // Not provided by route API
+            routeStats: routeStats,
+            routeTrackStats: routeTrackStats,
+            dataSource: routeData.route.dataSource
+        )
+    }
 }
 
 #Preview {
-    HistoricalDataView(train: Train(
-        id: 1,
+    HistoricalDataView(train: TrainV2(
         trainId: "3923",
-        line: "Northeast Corridor",
+        line: LineInfo(code: "NEC", name: "Northeast Corridor", color: "#0066CC"),
         destination: "Trenton",
-        departureTime: Date(),
-        track: nil,
-        status: .scheduled,
-        delayMinutes: nil,
-        stops: nil,
-        predictionData: nil,
-        originStationCode: "NYP",
-        dataSource: "AMTRAK"
+        departure: StationTiming(
+            code: "NYP",
+            name: "New York Penn Station",
+            scheduledTime: Date(),
+            updatedTime: nil,
+            actualTime: nil,
+            track: nil
+        ),
+        arrival: nil,
+        trainPosition: nil,
+        dataFreshness: nil,
+        isCancelled: false,
+        stops: nil
     ))
 }

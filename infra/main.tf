@@ -60,6 +60,7 @@ module "secrets" {
   amtrak_api_key      = var.amtrak_api_key
   apns_team_id        = var.apns_team_id
   apns_key_id         = var.apns_key_id
+  apns_auth_key       = var.apns_auth_key
 
   depends_on = [module.apis]
 }
@@ -71,6 +72,47 @@ module "artifact_registry" {
   environment     = var.environment
   region          = var.region
   repository_name = var.artifact_registry_repository_name
+
+  depends_on = [module.apis]
+}
+
+# Create GCS bucket for database backups
+resource "google_storage_bucket" "db_backup" {
+  name     = "${var.app_name}-${var.environment}-periodic-db-backup"
+  location = var.region
+
+  # Prevent accidental deletion
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  # Enable versioning for backup history
+  versioning {
+    enabled = true
+  }
+
+  # Lifecycle management for backups
+  lifecycle_rule {
+    condition {
+      age = 30
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  # Lifecycle rule for versioned objects
+  lifecycle_rule {
+    condition {
+      num_newer_versions = 10
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  # Enable uniform bucket-level access
+  uniform_bucket_level_access = true
 
   depends_on = [module.apis]
 }

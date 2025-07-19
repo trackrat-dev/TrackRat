@@ -23,6 +23,11 @@ output "artifact_registry_repository" {
   value       = module.artifact_registry.repository_id
 }
 
+output "db_backup_bucket_name" {
+  description = "Name of the GCS bucket for database backups"
+  value       = google_storage_bucket.db_backup.name
+}
+
 # Database URL secret name is now output by the database module
 
 output "njt_username_secret_name" {
@@ -53,6 +58,11 @@ output "apns_team_id_secret_name" {
 output "apns_key_id_secret_name" {
   description = "Name of the APNS Key ID secret"
   value       = module.secrets.apns_key_id_secret_name
+}
+
+output "apns_auth_key_secret_name" {
+  description = "Name of the APNS Auth Key secret"
+  value       = module.secrets.apns_auth_key_secret_name
 }
 
 

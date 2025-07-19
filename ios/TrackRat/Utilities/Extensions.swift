@@ -76,6 +76,12 @@ extension Date {
         
         return nil
     }
+    
+    /// Convert Date to ISO8601 string with timezone for Live Activities
+    func toISO8601String() -> String {
+        // Use the timezone-aware formatter to ensure consistent format
+        return Formatter.customISO8601withTimezone.string(from: self)
+    }
 }
 
 // MARK: - Color Extension
@@ -132,7 +138,6 @@ struct GlassmorphicNavigationBar: ViewModifier {
     func body(content: Content) -> some View {
         content
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
     }
 }

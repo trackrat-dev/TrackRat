@@ -4,7 +4,7 @@ This file provides comprehensive guidance to Claude Code (claude.ai/code) when w
 
 ## Project Overview
 
-TrackRat is a full-stack train tracking system that combines a sophisticated Python backend (TrackCast) with a native iOS app featuring Live Activity support for real-time track predictions for NJ Transit and Amtrak trains.
+TrackRat is a full-stack train tracking system that combines a simplified Python backend V2 with a native iOS app featuring Live Activity support for real-time track predictions for NJ Transit and Amtrak trains.
 
 ### System Architecture
 
@@ -18,8 +18,8 @@ TrackRat is a full-stack train tracking system that combines a sophisticated Pyt
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                 │
                         ┌───────▼────────┐
-                        │  Cloud SQL     │
-                        │  (PostgreSQL)  │
+                        │    SQLite      │
+                        │   Database     │
                         └────────────────┘
                                 │
                         ┌───────▼────────┐
@@ -34,8 +34,8 @@ TrackRat is a full-stack train tracking system that combines a sophisticated Pyt
 
 1. **Multi-Station Support**: Backend and iOS app support NY Penn, Newark Penn, Trenton, Princeton Junction, and Metropark
 2. **Train Consolidation**: Backend merges duplicate trains; iOS app displays unified journey data
-3. **Track Predictions**: Backend ML models (Owl system) predict tracks; iOS app displays predictions with confidence levels
-4. **Real-Time Updates**: Backend polls APIs every 60-120 seconds; iOS app refreshes every 30 seconds
+3. **Track Predictions**: Track assignments from NJ Transit API; iOS app displays "Owl" predictions when available
+4. **Real-Time Updates**: Backend updates hourly + on-demand; iOS app refreshes every 30 seconds
 5. **Journey Planning**: Backend provides smart filtering; iOS app enables origin-destination trip selection
 6. **Live Activities**: Real-time train tracking on Lock Screen and Dynamic Island
 7. **Push Notifications**: Background updates for Live Activities with status changes
@@ -74,32 +74,24 @@ The system recognizes: `ALL ABOARD`, `BOARDING`, `DEPARTED`, `CANCELLED`, `DELAY
 
 ## Development Workflow
 
-### Local Development Deployment
+### Local Development
 
-For rapid iteration during development, use the local deployment tools:
+For local development, run the components individually:
 
 ```bash
-# Quick deployment (most common - skip tests and Terraform)
-make deploy-dev-quick
+# Backend V2 development
+cd backend_v2
+poetry run uvicorn trackrat.main:app --reload
 
-# Full deployment (infrastructure + application)
-./deploy-dev.sh
+# iOS development
+cd ios
+open TrackRat.xcodeproj
 
-# Check deployment status
-make status-dev
-
-# View logs
-make logs-dev
+# Infrastructure management
+cd infra
+terraform plan
+terraform apply
 ```
-
-The `deploy-dev.sh` script handles:
-- Docker image building and pushing to Artifact Registry
-- Terraform infrastructure updates (optional)
-- Cloud Run service deployments
-- Health checks and verification
-- Rollback on failure
-
-See [Deployment Tools](#deployment-tools) section for detailed options.
 
 ### Automated Deployment
 
@@ -161,16 +153,19 @@ The system uses GitHub Actions for fully automated CI/CD:
 
 ## Testing
 
-### Backend Testing
+### Backend V2 Testing
 ```bash
-# Unit tests (fast, SQLite)
-pytest tests/unit/
+# Run all tests (uses SQLite)
+poetry run pytest
 
-# Integration tests (requires PostgreSQL)
-pytest tests/integration/
+# Unit tests only
+poetry run pytest tests/unit/
 
-# Full test suite
-pytest
+# Integration tests
+poetry run pytest tests/integration/
+
+# With coverage
+poetry run pytest --cov=trackrat
 ```
 
 ### iOS Testing
@@ -185,10 +180,10 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 ### End-to-End Testing
 
 1. **Data Flow Verification**:
-   - Start backend services: `trackcast start-scheduler`
-   - Verify data collection: `trackcast collect-data`
-   - Check predictions: `trackcast generate-predictions`
-   - Test iOS app against live API
+   - Start backend V2: `poetry run uvicorn trackrat.main:app`
+   - Monitor health: `curl http://localhost:8000/health`
+   - Check metrics: `curl http://localhost:8000/metrics`
+   - Test iOS app against API
 
 2. **Consolidation Testing**:
    - Enable consolidation in API: `?consolidate=true`
@@ -200,37 +195,40 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 
 ### API Endpoints Used by iOS App
 
-1. **Train Search**:
+1. **Train Departures** (V2):
    ```
-   GET /api/trains/?from_station_code=X&to_station_code=Y&departure_time_after=Z
-   ```
-
-2. **Train Details**:
-   ```
-   GET /api/trains/{id}?from_station_code=X
-   GET /api/trains/{train_number}?from_station_code=X
+   GET /api/v2/trains/departures?from=X&to=Y&limit=50
    ```
 
-3. **Historical Data**:
+2. **Train Details** (V2):
    ```
-   GET /api/trains/?train_id=X&no_pagination=true&from_station_code=Y
+   GET /api/v2/trains/{train_id}?date=YYYY-MM-DD&refresh=true
    ```
 
-4. **Consolidated Trains** (via query parameter):
+3. **Route History** (V2):
    ```
-   GET /api/trains/?consolidate=true&train_id=X
+   GET /api/v2/routes/history?from_station=X&to_station=Y&data_source=NJT&days=30
+   ```
+
+4. **Live Activities**:
+   ```
+   POST /api/v2/live-activities/register    # Register Live Activity
+   DELETE /api/v2/live-activities/{token}   # Unregister Live Activity
    ```
 
 5. **Health & Metrics**:
    ```
-   GET /health                  # System health with quality metrics
+   GET /health                  # System health check
+   GET /health/live             # Liveness probe
+   GET /health/ready            # Readiness probe
+   GET /scheduler/status        # Scheduler status
    GET /metrics                 # Prometheus metrics endpoint
    ```
 
 ### Data Synchronization
 
 1. **Polling Intervals**:
-   - Backend: 60s (NJ Transit), 120s (Amtrak)
+   - Backend V2: Hourly discovery + just-in-time updates when requested
    - iOS: 30s (active view), 30s (Live Activity background)
 
 2. **Cache Considerations**:
@@ -243,14 +241,12 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 
 ## Deployment Considerations
 
-### Backend Deployment (Cloud Run)
-- **Automatic**: GitHub Actions handles build, deploy, and migrations
-- **Configuration**: Via Terraform and Secret Manager
-- **Scaling**: Auto-scales from 0 to configured max instances
-- **Health Checks**: Built-in startup and liveness probes with extended timeout
-- **Database**: Cloud SQL PostgreSQL with VPC connectivity
-- **Startup**: Extended startup probe (10 minutes) for model loading
-- **VPC Connector**: Name limited to 25 characters (e.g., `trackrat-dev-vpc`)
+### Backend V2 Deployment
+- **Database**: SQLite with zero configuration (development) or Cloud SQL (production)
+- **Scheduler**: APScheduler runs in-process, starts automatically
+- **Docker**: Container with APNS validation at startup
+- **Scaling**: Simplified architecture with reduced API calls (~95% reduction)
+- **Health Checks**: Built-in endpoints at `/health` and `/metrics`
 
 ### iOS Deployment
 - Update bundle version and build number
@@ -267,18 +263,18 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 - ✅ Health monitoring and restart on failure
 
 **Manual Operations:**
-- Populate API credentials in Secret Manager
-- Train and update ML models periodically
+- Configure NJ Transit API credentials
+- Set up APNS certificates for iOS push notifications
 - Monitor system health and performance
 - Rotate secrets quarterly
 
 ## Performance Optimization
 
-### Backend
-- Station-specific models reduce prediction time
-- Database indexes on frequently queried fields
-- Connection pooling for database efficiency
-- Async processing where applicable
+### Backend V2
+- Just-in-time updates reduce API calls by ~95%
+- SQLite database with efficient queries
+- Async processing throughout the stack
+- Smart caching and staleness checks
 
 ### iOS
 - Lazy loading with pagination
@@ -306,10 +302,11 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 
 ## Troubleshooting Guide
 
-### Common Backend Issues
-1. **Missing predictions**: Check model files exist in `models/` directory
+### Common Backend V2 Issues
+1. **No trains found**: Check NJ Transit API credentials in environment
 2. **API timeouts**: Verify network connectivity to NJ Transit/Amtrak
-3. **Database errors**: Check PostgreSQL connection and migrations
+3. **Database errors**: Run `alembic upgrade head` for migrations
+4. **APNS failures**: Verify certificate in `certs/` directory
 
 ### Common iOS Issues
 1. **Live Activities not appearing**: Verify Info.plist configuration
@@ -320,8 +317,8 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 
 ### Integration Issues
 1. **Time mismatches**: Ensure Eastern Time Zone handling
-2. **Missing trains**: Check consolidation logic
-3. **Wrong predictions**: Verify correct station model is loaded
+2. **Missing trains**: Check JIT update logic and data staleness
+3. **No track info**: Verify NJ Transit API is returning track data
 4. **Live Activity data inconsistencies**: Check API response format
 
 ## Code Style Guidelines
@@ -411,12 +408,12 @@ Real-time tracking of ML model performance:
 
 ### Future Considerations
 
-1. **Backend**:
+1. **Backend V2**:
+   - ML track prediction models (planned)
    - GraphQL API for more efficient queries
    - WebSocket support for real-time updates
-   - Additional ML model types
-   - More data sources
-   - Enhanced prediction algorithms
+   - Additional transit systems (LIRR, Metro-North)
+   - Redis caching layer
 
 2. **iOS**:
    - Widget Extension
@@ -426,64 +423,60 @@ Real-time tracking of ML model performance:
    - Siri Shortcuts integration
    - CarPlay support
 
-## Deployment Tools
+## Development Tools
 
-### Quick Deployment Commands
-
-```bash
-# Most common - quick app deployment
-make deploy-dev-quick
-
-# Full deployment options
-make deploy-dev         # Full deployment (infrastructure + application)
-make deploy-dev-infra   # Infrastructure only
-make deploy-dev-docker  # Docker only
-make status-dev         # Check environment status
-make logs-dev           # View recent logs
-```
-
-### Deployment Script (`deploy-dev.sh`)
-
-The main deployment script provides flexible options:
+### Development Commands
 
 ```bash
-./deploy-dev.sh [OPTIONS]
-  --skip-tests          Skip running tests
-  --skip-terraform      Skip Terraform apply (only update Cloud Run)
-  --skip-docker         Skip Docker build (only run Terraform)
-  --terraform-only      Only apply Terraform changes
-  --docker-only         Only build/deploy Docker images
-  --auto-approve        Skip confirmation prompts
-  --dry-run             Show what would be done without executing
+# Run tests and linting
+make test                            # Run all tests
+make lint                            # Run linting checks  
+make clean                           # Clean build artifacts
+
+# Backend commands
+make backend-test                    # Run backend tests
+make backend-migrate                 # Run database migrations
+
+# Infrastructure commands  
+make infra-plan                      # Plan infrastructure changes
+make infra-validate                  # Validate Terraform configuration
+
+# Setup development environment
+make setup                           # Install dependencies and initialize
 ```
-
-### Configuration
-
-Deployment settings in `.deploy/`:
-- `dev.env` - Development environment variables
-- `deploy.config` - Default deployment behavior
-
-### Deployment Workflow
-
-1. **Pre-flight checks**: GCP auth, git status, Docker buildx setup
-2. **Testing** (optional): Backend tests, Terraform validation
-3. **Docker operations**: Build for linux/amd64, tag, push to Artifact Registry
-4. **Infrastructure**: Terraform plan and apply
-5. **Cloud Run update**: Deploy new image to services
-6. **Verification**: Health checks, API tests
-
-**Note**: The script automatically builds Docker images for `linux/amd64` platform to ensure compatibility with Cloud Run, even when running on Apple Silicon (M1/M2) Macs.
 
 ## Quick Reference
 
-### Backend Commands
+### Backend V2 Commands
 ```bash
-trackcast init-db                    # Initialize database
-trackcast collect-data               # Collect train data
-trackcast generate-predictions       # Generate predictions
-trackcast start-api                  # Start API server
-trackcast start-scheduler            # Start all services
-trackcast train-model --station NY   # Train station model
+# Start development server (scheduler starts automatically)
+poetry run uvicorn trackrat.main:app --reload
+
+# Database management
+poetry run alembic upgrade head           # Apply migrations
+poetry run alembic revision -m "desc"     # Create new migration
+
+# Run tests
+poetry run pytest                         # Run all tests
+poetry run pytest tests/unit/             # Unit tests only
+```
+
+### iOS Commands
+```bash
+# Build iOS app for simulator
+xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16'
+
+# Check for compilation errors only
+xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | grep -E "(error|failed|BUILD FAILED)" || echo "BUILD SUCCESSFUL"
+
+# Run iOS tests
+xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'
+
+# Open Xcode project
+open ios/TrackRat.xcodeproj
+
+# Show available destinations
+xcodebuild -scheme TrackRat -showdestinations
 ```
 
 ### iOS Key Files
@@ -503,18 +496,15 @@ TrackRat/Views/                      # All UI components
 ## Contact for Questions
 
 When working on this project, refer to:
-- **Operations**: `/OPERATORS_GUIDE.md` - Comprehensive operational procedures for deployed system
-- **Backend details**: `backend/CLAUDE.md` - Development and deployment guidance
-- **iOS details**: `ios/CLAUDE.md` - iOS app development
-- **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP infrastructure
+- **Backend V2 details**: `backend_v2/CLAUDE.md` - Simplified V2 backend development
+- **iOS details**: `ios/CLAUDE.md` - iOS app development with Live Activities
+- **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP infrastructure  
 - **Integration guidance**: This file for backend-iOS integration
 
 ### Quick Reference
 
-**For Operators**: Start with `/OPERATORS_GUIDE.md` for comprehensive operational procedures, monitoring, and troubleshooting.
+**For Developers**: Backend and iOS components have detailed CLAUDE.md files with development workflows.
 
-**For Developers**: Backend and iOS components have detailed CLAUDE.md files with development workflows and deployment procedures.
+**For Infrastructure**: Use `infra/CLAUDE.md` for Terraform operations and Cloud Run deployment details.
 
-**For Infrastructure**: Use `infra/CLAUDE.md` for Terraform operations and `backend/DEPLOYMENT.md` for Cloud Run deployment details.
-
-Remember: The goal is seamless integration between a powerful prediction backend and an intuitive iOS frontend experience with Live Activities, all running on a fully automated Cloud Run infrastructure.
+Remember: The goal is seamless integration between an efficient backend V2 (with ~95% fewer API calls) and an intuitive iOS frontend experience with Live Activities.

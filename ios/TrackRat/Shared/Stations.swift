@@ -255,7 +255,9 @@ struct Stations {
         ("Metropark", "MP"),
         ("Princeton Junction", "PJ"),
         ("Hamilton", "HL"),
-        ("Trenton", "TR")
+        ("Trenton", "TR"),
+        ("Philadelphia", "PH"),
+        ("Wilmington Station", "WI")
     ]
     
     // Popular destination stations - kept in sync with departure stations
@@ -279,6 +281,30 @@ struct Stations {
         
         // Try common variations for ambiguous names
         let normalized = stationName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Handle NJ Transit destinations with -SEC suffix, emojis, and HTML entities
+        if normalized.contains("-sec") || normalized.contains("✈") || normalized.contains("&#9992") {
+            let cleaned = normalized
+                .replacingOccurrences(of: " -sec", with: "")
+                .replacingOccurrences(of: "-sec", with: "")
+                .replacingOccurrences(of: " ✈", with: "")
+                .replacingOccurrences(of: "✈", with: "")
+                .replacingOccurrences(of: " &#9992", with: "")
+                .replacingOccurrences(of: "&#9992", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // If we cleaned something, try again with the cleaned string
+            if cleaned != normalized {
+                // Capitalize first letter of each word for the recursive call
+                let capitalized = cleaned.split(separator: " ")
+                    .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+                    .joined(separator: " ")
+                
+                if let code = getStationCode(capitalized) {
+                    return code
+                }
+            }
+        }
         
         switch normalized {
         case "new york":

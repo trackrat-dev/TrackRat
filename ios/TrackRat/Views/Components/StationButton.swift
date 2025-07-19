@@ -37,5 +37,5 @@ struct StationButton: View {
         print("Station selected")
     }
     .padding()
-    .background(Color.black)
+    .background(TrackRatTheme.Colors.surface)
 }

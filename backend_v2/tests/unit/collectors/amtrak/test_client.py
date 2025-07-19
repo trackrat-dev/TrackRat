@@ -1,0 +1,264 @@
+"""
+Unit tests for AmtrakClient.
+
+Tests HTTP client behavior with mocked responses, caching, and error handling.
+"""
+
+import pytest
+import httpx
+from unittest.mock import AsyncMock, Mock
+from datetime import datetime, timedelta
+
+from trackrat.collectors.amtrak.client import AmtrakClient
+from trackrat.models.api import AmtrakTrainData
+from tests.fixtures.amtrak_api_responses import (
+    AMTRAK_FULL_RESPONSE,
+    API_ERROR_RESPONSE,
+    TRAIN_MISSING_OBJECT_ID,
+)
+
+
+class TestAmtrakClient:
+    """Test suite for AmtrakClient."""
+
+    @pytest.fixture
+    def client(self):
+        """Create an AmtrakClient instance for testing."""
+        return AmtrakClient(timeout=10.0)
+
+    @pytest.fixture
+    def mock_response(self):
+        """Create a mock HTTP response."""
+        mock_resp = AsyncMock()
+        # Use Mock instead of AsyncMock for json() since it returns data, not a coroutine
+        mock_resp.json = Mock(return_value=AMTRAK_FULL_RESPONSE)
+        mock_resp.raise_for_status = Mock(return_value=None)
+        mock_resp.text = str(AMTRAK_FULL_RESPONSE)
+        return mock_resp
+
+    async def test_successful_api_response(self, client, mock_response):
+        """Test successful API response parsing."""
+        mock_session = AsyncMock()
+        mock_session.get.return_value = mock_response
+        client._session = mock_session
+
+        result = await client.get_all_trains()
+
+        # Verify API was called correctly
+        mock_session.get.assert_called_once_with(
+            "https://api-v3.amtraker.com/v3/trains"
+        )
+
+        # Verify response structure
+        assert isinstance(result, dict)
+        assert "2150" in result
+        assert "141" in result
+        assert "280" in result
+        assert "350" in result
+
+        # Verify train data was parsed correctly
+        acela_trains = result["2150"]
+        assert len(acela_trains) == 1
+        assert isinstance(acela_trains[0], AmtrakTrainData)
+        assert acela_trains[0].trainID == "2150-5"
+        assert acela_trains[0].routeName == "Acela"
+
+    async def test_cache_behavior(self, client, mock_response):
+        """Test that caching works correctly."""
+        mock_session = AsyncMock()
+        mock_session.get.return_value = mock_response
+        client._session = mock_session
+
+        # First call should hit API
+        result1 = await client.get_all_trains()
+        assert mock_session.get.call_count == 1
+
+        # Second call within TTL should use cache
+        result2 = await client.get_all_trains()
+        assert mock_session.get.call_count == 1  # No additional calls
+
+        # Results should be identical
+        assert result1 == result2
+
+    async def test_cache_expiration(self, client, mock_response):
+        """Test that cache expires after TTL."""
+        mock_session = AsyncMock()
+        mock_session.get.return_value = mock_response
+        client._session = mock_session
+
+        # First call
+        await client.get_all_trains()
+        assert mock_session.get.call_count == 1
+
+        # Simulate cache expiration by setting old cache time
+        client._cache_time = datetime.now() - timedelta(seconds=client._cache_ttl + 1)
+
+        # Second call should hit API again
+        await client.get_all_trains()
+        assert mock_session.get.call_count == 2
+
+    async def test_cache_clearing(self, client, mock_response):
+        """Test manual cache clearing."""
+        mock_session = AsyncMock()
+        mock_session.get.return_value = mock_response
+        client._session = mock_session
+
+        # Populate cache
+        await client.get_all_trains()
+        assert client._cache
+        assert client._cache_time
+
+        # Clear cache
+        client.clear_cache()
+        assert not client._cache
+        assert client._cache_time is None
+
+    async def test_http_error_handling(self, client):
+        """Test handling of HTTP errors."""
+        mock_session = AsyncMock()
+        mock_error_response = AsyncMock()
+        mock_error_response.status_code = 500
+        mock_error_response.text = "Internal Server Error"
+
+        http_error = httpx.HTTPStatusError(
+            "Server error", request=AsyncMock(), response=mock_error_response
+        )
+        mock_session.get.side_effect = http_error
+        client._session = mock_session
+
+        with pytest.raises(Exception):  # Should propagate the error
+            await client.get_all_trains()
+
+    async def test_timeout_handling(self, client):
+        """Test handling of request timeouts."""
+        mock_session = AsyncMock()
+        mock_session.get.side_effect = httpx.TimeoutException("Request timeout")
+        client._session = mock_session
+
+        with pytest.raises(httpx.TimeoutException):
+            await client.get_all_trains()
+
+    async def test_invalid_json_handling(self, client):
+        """Test handling of invalid JSON responses."""
+        mock_session = AsyncMock()
+        mock_resp = AsyncMock()
+        mock_resp.json = Mock(side_effect=ValueError("Invalid JSON"))
+        mock_resp.raise_for_status = Mock(return_value=None)
+        mock_session.get.return_value = mock_resp
+        client._session = mock_session
+
+        with pytest.raises(Exception):
+            await client.get_all_trains()
+
+    async def test_data_validation_with_missing_fields(self, client):
+        """Test parsing with missing optional fields."""
+        # Create response with missing objectID
+        response_with_missing_fields = {"63": [TRAIN_MISSING_OBJECT_ID]}
+
+        mock_session = AsyncMock()
+        mock_resp = AsyncMock()
+        mock_resp.json = Mock(return_value=response_with_missing_fields)
+        mock_resp.raise_for_status = Mock(return_value=None)
+        mock_resp.text = str(response_with_missing_fields)
+        mock_session.get.return_value = mock_resp
+        client._session = mock_session
+
+        result = await client.get_all_trains()
+
+        # Should parse successfully despite missing objectID
+        assert "63" in result
+        train = result["63"][0]
+        assert train.trainID == "63-5"
+        assert train.objectID is None  # Should be None for missing field
+
+    async def test_get_train_by_id_from_cache(self, client, mock_response):
+        """Test retrieving specific train by ID from cache."""
+        mock_session = AsyncMock()
+        mock_session.get.return_value = mock_response
+        client._session = mock_session
+
+        # Populate cache
+        await client.get_all_trains()
+
+        # Test successful lookup
+        train = client.get_train_by_id("2150-5")
+        assert train is not None
+        assert train.trainID == "2150-5"
+        assert train.routeName == "Acela"
+
+        # Test non-existent train
+        missing_train = client.get_train_by_id("9999-5")
+        assert missing_train is None
+
+    async def test_get_train_by_id_without_cache(self, client):
+        """Test retrieving train by ID when cache is empty."""
+        # Empty cache
+        client.clear_cache()
+
+        train = client.get_train_by_id("2150-5")
+        assert train is None
+
+    async def test_context_manager(self, client):
+        """Test async context manager behavior."""
+        async with client:
+            # Should be able to use client
+            assert client._session is None  # Session created lazily
+
+        # Session should be closed after context
+        # Note: close() will be called but session may still be None if never used
+
+    async def test_base_client_interface(self, client, mock_response):
+        """Test that client satisfies BaseClient interface."""
+        mock_session = AsyncMock()
+        mock_session.get.return_value = mock_response
+        client._session = mock_session
+
+        # get_train_data should work the same as get_all_trains
+        result = await client.get_train_data()
+
+        assert isinstance(result, dict)
+        assert "2150" in result
+
+    async def test_session_lazy_creation(self, client):
+        """Test that HTTP session is created lazily."""
+        # Session should be None initially
+        assert client._session is None
+
+        # Accessing session property should create it
+        session = client.session
+        assert session is not None
+        assert isinstance(session, httpx.AsyncClient)
+
+        # Should return same session on subsequent calls
+        assert client.session is session
+
+    async def test_session_headers(self, client):
+        """Test that session has correct headers."""
+        session = client.session
+
+        assert session.headers["User-Agent"] == "TrackRat-V2/1.0"
+        assert session.headers["Accept"] == "application/json"
+
+    async def test_logging_on_success(self, client, mock_response, caplog):
+        """Test that successful requests are logged."""
+        mock_session = AsyncMock()
+        mock_session.get.return_value = mock_response
+        client._session = mock_session
+
+        await client.get_all_trains()
+
+        # Should log fetching and success messages
+        assert "fetching_amtrak_trains" in caplog.text
+        assert "amtrak_data_fetched" in caplog.text
+
+    async def test_logging_on_error(self, client, caplog):
+        """Test that errors are logged."""
+        mock_session = AsyncMock()
+        mock_session.get.side_effect = httpx.TimeoutException("Timeout")
+        client._session = mock_session
+
+        with pytest.raises(httpx.TimeoutException):
+            await client.get_all_trains()
+
+        # Should log timeout error
+        assert "amtrak_api_timeout" in caplog.text

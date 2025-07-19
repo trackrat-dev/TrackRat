@@ -52,4 +52,11 @@ variable "apns_key_id" {
   sensitive   = true
 }
 
+variable "apns_auth_key" {
+  description = "APNS Auth Key (P8 content)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # Database connection parameters are now managed by the database module

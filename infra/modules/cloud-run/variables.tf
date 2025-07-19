@@ -33,7 +33,7 @@ variable "cpu_limit" {
 variable "memory_limit" {
   description = "Memory limit for the container (e.g., '512Mi', '1Gi')"
   type        = string
-  default     = "2Gi"
+  default     = "512Mi"
 }
 
 variable "concurrency" {
@@ -45,13 +45,13 @@ variable "concurrency" {
 variable "min_instances" {
   description = "Minimum number of instances"
   type        = number
-  default     = 0
+  default     = 1
 }
 
 variable "max_instances" {
   description = "Maximum number of instances"
   type        = number
-  default     = 2 # As per issue spec
+  default     = 1
 }
 
 variable "request_timeout_seconds" {
@@ -80,6 +80,12 @@ variable "vpc_connector_id" {
 
 variable "enable_cloudsql_access" {
   description = "Whether to grant Cloud SQL client permissions to the service account"
+  type        = bool
+  default     = false
+}
+
+variable "enable_backup_access" {
+  description = "Whether to grant Storage Object Admin permissions for backup access"
   type        = bool
   default     = false
 }

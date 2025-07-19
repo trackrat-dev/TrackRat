@@ -5,30 +5,36 @@ struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainListViewModel
     
-    let destination: String
+    // Configuration constants
+    private static let DELAY_THRESHOLD_MINUTES = 6
+    
+    @State private var destination: String
+    @State private var departureStationCode: String
+    @State private var departureName: String
     
     private var isCurrentRouteFavorited: Bool {
-        guard let _ = appState.selectedDeparture,
-              let departureCode = appState.departureStationCode,
-              let destinationCode = Stations.getStationCode(destination) else {
+        guard let destinationCode = Stations.getStationCode(destination) else {
             return false
         }
         
         return appState.getFavoriteTrips().contains { trip in
-            trip.departureCode == departureCode &&
-            trip.destinationCode == destinationCode
+            // Check both directions since routes are stored bidirectionally
+            (trip.departureCode == departureStationCode && trip.destinationCode == destinationCode) ||
+            (trip.departureCode == destinationCode && trip.destinationCode == departureStationCode)
         }
     }
     
     init(destination: String) {
-        self.destination = destination
+        self._destination = State(initialValue: destination)
+        self._departureStationCode = State(initialValue: "")
+        self._departureName = State(initialValue: "")
         self._viewModel = StateObject(wrappedValue: TrainListViewModel())
     }
     
     var body: some View {
         ZStack {
             // Black gradient background
-            TrackRatTheme.Colors.primaryGradient
+            TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
             ScrollView {
@@ -41,22 +47,29 @@ struct TrainListView: View {
                                 Task {
                                     await viewModel.loadTrains(
                                         destination: destination,
-                                        fromStationCode: appState.departureStationCode ?? "NY"
+                                        fromStationCode: departureStationCode
                                     )
                                 }
                             }
                         } else if viewModel.trains.isEmpty {
                             EmptyStateView(message: "No trains found")
                         } else {
+                            let expressTrains = viewModel.identifyExpressTrains()
                             ForEach(viewModel.trains) { train in
-                                TrainCard(train: train, destination: destination) {
-                                    appState.currentTrainId = train.id
-                                    // Use flexible navigation with train number
-                                    appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
-                                        trainNumber: train.trainId,
-                                        fromStation: appState.departureStationCode
-                                    ))
-                                }
+                                TrainCard(
+                                    train: train, 
+                                    destination: destination, 
+                                    departureStationCode: departureStationCode,
+                                    onTap: {
+                                        appState.currentTrainId = train.id
+                                        // Use flexible navigation with train number
+                                        appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                                            trainNumber: train.trainId,
+                                            fromStation: departureStationCode
+                                        ))
+                                    },
+                                    isExpress: expressTrains.contains(train.trainId)
+                                )
                             }
                         }
                     }
@@ -65,7 +78,7 @@ struct TrainListView: View {
                 .refreshable {
                     await viewModel.loadTrains(
                         destination: destination,
-                        fromStationCode: appState.departureStationCode ?? "NY"
+                        fromStationCode: departureStationCode
                     )
                 }
             }
@@ -78,8 +91,8 @@ struct TrainListView: View {
                     Text(destination)
                         .font(.headline)
                         .foregroundColor(.white)
-                    if let departure = appState.selectedDeparture {
-                        Text("from \(Stations.displayName(for: departure))")
+                    if !departureName.isEmpty {
+                        Text("from \(Stations.displayName(for: departureName))")
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.8))
                     }
@@ -87,19 +100,31 @@ struct TrainListView: View {
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    toggleCurrentRouteFavorite()
-                } label: {
-                    Image(systemName: isCurrentRouteFavorited ? "heart.fill" : "heart")
-                        .font(.system(size: 20))
-                        .foregroundColor(.orange)
+                HStack(spacing: 12) {
+                    // Reverse button
+                    Button {
+                        reverseRoute()
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 18))
+                            .foregroundColor(.orange)
+                    }
+                    
+                    // Favorite button
+                    Button {
+                        toggleCurrentRouteFavorite()
+                    } label: {
+                        Image(systemName: isCurrentRouteFavorited ? "heart.fill" : "heart")
+                            .font(.system(size: 20))
+                            .foregroundColor(.orange)
+                    }
                 }
             }
         }
         .task {
             await viewModel.loadTrains(
                 destination: destination,
-                fromStationCode: appState.departureStationCode ?? "NY"
+                fromStationCode: departureStationCode
             )
         }
         .onReceive(viewModel.timer) { _ in
@@ -108,27 +133,68 @@ struct TrainListView: View {
             }
         }
         .onAppear {
-            // No longer auto-save trips
+            // Initialize state from app state
+            if departureStationCode.isEmpty {
+                departureStationCode = appState.departureStationCode ?? "NY"
+                departureName = appState.selectedDeparture ?? ""
+            }
         }
     }
     
     private func toggleCurrentRouteFavorite() {
-        guard let departure = appState.selectedDeparture,
-              let departureCode = appState.departureStationCode,
-              let destinationCode = Stations.getStationCode(destination) else {
+        guard let destinationCode = Stations.getStationCode(destination),
+              !departureName.isEmpty else {
             return
         }
         
+        // Create the trip pair - it will be normalized internally
         let currentTrip = TripPair(
-            departureCode: departureCode,
-            departureName: departure,
+            departureCode: departureStationCode,
+            departureName: departureName,
             destinationCode: destinationCode,
             destinationName: destination,
             lastUsed: Date(),
-            isFavorite: false // This will be toggled by the toggle function
+            isFavorite: isCurrentRouteFavorited // Use current favorite status
         )
         
         appState.toggleFavorite(currentTrip)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func reverseRoute() {
+        guard let currentDestinationCode = Stations.getStationCode(destination),
+              !departureName.isEmpty else {
+            return
+        }
+        
+        // Store current values
+        let oldDepartureName = departureName
+        let oldDepartureCode = departureStationCode
+        let oldDestination = destination
+        
+        // Swap the stations in local state
+        departureName = oldDestination
+        departureStationCode = currentDestinationCode
+        destination = oldDepartureName
+        
+        // Also update app state for consistency
+        appState.departureStationCode = currentDestinationCode
+        appState.selectedDeparture = oldDestination
+        appState.selectedDestination = oldDepartureName
+        appState.destinationStationCode = oldDepartureCode
+        
+        // Clear existing trains immediately to avoid confusion
+        viewModel.trains = []
+        
+        // Reload trains with swapped stations
+        Task {
+            await viewModel.loadTrains(
+                destination: oldDepartureName,
+                fromStationCode: currentDestinationCode
+            )
+        }
+        
+        // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
@@ -136,57 +202,39 @@ struct TrainListView: View {
 // MARK: - Train Card
 struct TrainCard: View {
     @EnvironmentObject private var appState: AppState
-    let train: Train
+    let train: TrainV2
     let destination: String
+    let departureStationCode: String
     let onTap: () -> Void
+    let isExpress: Bool
+    
+    // Configuration constants
+    private static let DELAY_THRESHOLD_MINUTES = 6
     
     /// Check if train is cancelled
     private var isCancelled: Bool {
-        return train.statusV2?.current == "CANCELLED"
+        return train.isCancelled
     }
     
-    /// Check if train is boarding specifically at the user's origin station (StatusV2 only)
+    /// Check if train is boarding at origin
     private var isBoardingAtOrigin: Bool {
-        guard let statusV2 = train.statusV2,
-              let departureCode = appState.departureStationCode else {
-            return false
-        }
-        
-        // Only show boarding if the train is actually boarding
-        guard statusV2.current == "BOARDING" else {
-            return false
-        }
-        
-        // Check if the boarding is happening at the user's origin station
-        // Method 1: Check if StatusV2 source starts with user's station code
-        if statusV2.source.hasPrefix(departureCode) {
-            // Verify we have a track for this station
-            return train.getTrackForStation(departureCode) != nil
-        }
-        
-        // Method 2: Check if StatusV2 location mentions user's station
-        if let selectedDeparture = appState.selectedDeparture {
-            let userStationName = Stations.displayName(for: selectedDeparture)
-            if statusV2.location.lowercased().contains(userStationName.lowercased()) {
-                // Verify we have a track for this station
-                return train.getTrackForStation(departureCode) != nil
-            }
-        }
-        
-        // If StatusV2 indicates boarding elsewhere, don't show boarding status
-        return false
+        // Use context-aware boarding check and verify track + departure timing
+        return train.isBoarding(fromStationCode: departureStationCode) && 
+               train.track != nil &&
+               train.isDepartingSoon(fromStationCode: departureStationCode, withinMinutes: 11)
     }
     
     private var departureTime: String {
-        if let departureCode = appState.departureStationCode {
-            return train.getFormattedScheduledDepartureTime(fromStationCode: departureCode)
-        }
-        let formatter = DateFormatter.easternTime(time: .short)
-        return formatter.string(from: train.departureTime)
+        return train.getFormattedDepartureTime(fromStationCode: departureStationCode)
     }
     
     private var arrivalTime: String {
-        return train.getFormattedScheduledArrivalTime(toStationName: destination)
+        // For V2, we show arrival time if available
+        if let arrivalTime = train.arrival?.scheduledTime {
+            let formatter = DateFormatter.easternTime(time: .short)
+            return formatter.string(from: arrivalTime)
+        }
+        return "--:--"
     }
     
     var body: some View {
@@ -206,6 +254,11 @@ struct TrainCard: View {
                             .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
                             .strikethrough(isCancelled)
                         
+                        if isExpress {
+                            Image(systemName: "bolt.fill")
+                                .font(.caption)
+                                .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .orange))
+                        }
                     }
                     
                     Spacer()
@@ -228,8 +281,8 @@ struct TrainCard: View {
                 }
                 
                 // Show cancellation location
-                if isCancelled, let cancellationLocation = train.cancellationLocation {
-                    Text("Cancelled at \(cancellationLocation)")
+                if isCancelled {
+                    Text("Cancelled")
                         .font(.caption)
                         .foregroundColor(.red.opacity(0.8))
                         .fontWeight(.medium)
@@ -237,8 +290,8 @@ struct TrainCard: View {
                 
                 // Show delay status
                 if !isCancelled {
-                    let hasDepDelay = train.getDepartureDelay(fromStationCode: appState.departureStationCode ?? "") ?? 0 >= 2
-                    let hasArrDelay = train.getArrivalDelay(toStationName: destination) ?? 0 >= 2
+                    let hasDepDelay = train.delayMinutes >= TrainCard.DELAY_THRESHOLD_MINUTES
+                    let hasArrDelay = train.arrival?.delayMinutes ?? 0 >= TrainCard.DELAY_THRESHOLD_MINUTES
                     
                     if hasDepDelay || hasArrDelay {
                         Text("Operating with Delays")
@@ -250,8 +303,7 @@ struct TrainCard: View {
                 
                 // Track and status - only show for boarding trains at origin
                 if !isCancelled && isBoardingAtOrigin,
-                   let departureCode = appState.departureStationCode,
-                   let track = train.getTrackForStation(departureCode) {
+                   let track = train.track {
                     Label("Boarding on Track \(track)", systemImage: "tram.fill")
                         .font(.subheadline)
                         .foregroundColor(.white)
@@ -269,8 +321,8 @@ struct TrainCard: View {
 
 // MARK: - StatusV2 Badge
 struct StatusV2Badge: View {
-    let train: Train
-    let departureStationCode: String?
+    let train: TrainV2
+    let departureStationCode: String
     
     var body: some View {
         HStack(spacing: 4) {
@@ -289,48 +341,50 @@ struct StatusV2Badge: View {
     }
     
     private var statusColor: Color {
-        guard let statusV2 = train.statusV2 else {
-            return .gray
-        }
+        // Use context-aware status
+        let contextStatus = train.calculateStatus(fromStationCode: departureStationCode)
         
-        switch statusV2.current {
-        case "BOARDING":
-            let hasTrack = departureStationCode != nil ? train.getTrackForStation(departureStationCode!) != nil : train.track != nil
-            return hasTrack ? .orange : .gray
-        case "EN_ROUTE":
+        switch contextStatus {
+        case .boarding:
+            return train.track != nil ? .orange : .gray
+        case .departed:
             return .blue
-        case "ARRIVED":
+        case .delayed:
+            return .red
+        case .onTime:
             return .green
-        case "DELAYED":
+        case .scheduled:
+            return .gray
+        case .cancelled:
             return .red
-        case "CANCELLED":
-            return .red
-        default:
+        case .unknown:
             return .gray
         }
     }
     
     private var statusText: String {
-        guard let statusV2 = train.statusV2 else {
-            return "Unknown"
+        // Use enhanced display status if available
+        if !train.enhancedDisplayStatus.isEmpty {
+            return train.enhancedDisplayStatus
         }
         
-        switch statusV2.current {
-        case "BOARDING":
-            let hasTrack = departureStationCode != nil ? train.getTrackForStation(departureStationCode!) != nil : train.track != nil
-            return hasTrack ? "Boarding" : "Scheduled"
-        case "EN_ROUTE":
+        // Otherwise use context-aware status
+        let contextStatus = train.calculateStatus(fromStationCode: departureStationCode)
+        switch contextStatus {
+        case .boarding:
+            return train.track != nil ? "Boarding" : "Scheduled"
+        case .departed:
             return "En Route"
-        case "ARRIVED":
-            return "Arrived"
-        case "DELAYED":
+        case .delayed:
             return "Delayed"
-        case "CANCELLED":
-            return "Cancelled"
-        case "SCHEDULED":
+        case .onTime:
+            return "On Time"
+        case .scheduled:
             return "Scheduled"
-        default:
-            return statusV2.current.replacingOccurrences(of: "_", with: " ").capitalized
+        case .cancelled:
+            return "Cancelled"
+        case .unknown:
+            return "Unknown"
         }
     }
 }
@@ -338,7 +392,7 @@ struct StatusV2Badge: View {
 // MARK: - View Model
 @MainActor
 class TrainListViewModel: ObservableObject {
-    @Published var trains: [Train] = []
+    @Published var trains: [TrainV2] = []
     @Published var isLoading = false
     @Published var error: String?
     
@@ -349,10 +403,46 @@ class TrainListViewModel: ObservableObject {
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
     
-    private func sortTrainsByDepartureTime(_ trains: [Train], fromStationCode: String) -> [Train] {
+    // MARK: - Express Train Identification
+    
+    /// Identify express trains using 15% faster travel time threshold
+    func identifyExpressTrains() -> Set<String> {
+        var expressTrains = Set<String>()
+        
+        // Group trains by class (NJ Transit vs Amtrak)
+        let trainsByClass = Dictionary(grouping: trains) { $0.trainClass }
+        
+        for (_, trainsInClass) in trainsByClass {
+            // Calculate travel time for each train in this class
+            let trainsWithTimes = trainsInClass.compactMap { train -> (train: TrainV2, travelTime: TimeInterval)? in
+                let travelTime = train.getTravelTime()
+                return travelTime > 0 ? (train, travelTime) : nil
+            }
+            
+            // Skip if no trains with valid travel time data
+            guard !trainsWithTimes.isEmpty else { continue }
+            
+            // Find the train with the maximum travel time
+            let maxTravelTime = trainsWithTimes.map { $0.travelTime }.max() ?? 0
+            
+            // Calculate 15% threshold (15% faster = 85% of max time)
+            let threshold = maxTravelTime * 0.85
+            
+            // Identify express trains (15% or more faster)
+            for (train, travelTime) in trainsWithTimes {
+                if travelTime <= threshold {
+                    expressTrains.insert(train.trainId)
+                }
+            }
+        }
+        
+        return expressTrains
+    }
+    
+    private func sortTrainsByDepartureTime(_ trains: [TrainV2], fromStationCode: String) -> [TrainV2] {
         return trains.sorted { train1, train2 in
-            let time1 = train1.getDepartureTime(fromStationCode: fromStationCode)
-            let time2 = train2.getDepartureTime(fromStationCode: fromStationCode)
+            let time1 = train1.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
+            let time2 = train2.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
             return time1 < time2
         }
     }
@@ -386,12 +476,15 @@ class TrainListViewModel: ObservableObject {
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
             let filteredTrains = fetchedTrains.filter { train in
-                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
+                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
                 return departureTime <= sixHoursFromNow
             }
             
+            // Deduplicate trains by ID to prevent ForEach crashes
+            let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
+            
             // Sort trains by origin station departure time
-            trains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
+            trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
         } catch {
             self.error = error.localizedDescription
         }
@@ -416,17 +509,20 @@ class TrainListViewModel: ObservableObject {
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
             let filteredTrains = fetchedTrains.filter { train in
-                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
+                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
                 return departureTime <= sixHoursFromNow
             }
             
+            // Deduplicate trains by ID to prevent ForEach crashes
+            let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
+            
             // Sort trains by origin station departure time
-            let newTrains = sortTrainsByDepartureTime(filteredTrains, fromStationCode: fromStationCode)
+            let newTrains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
             
             // Check for boarding status changes (StatusV2 only)
             for train in trains {
                 if let newTrain = newTrains.first(where: { $0.id == train.id }) {
-                    if !train.isActuallyBoarding && newTrain.isActuallyBoarding {
+                    if !train.isBoarding(fromStationCode: fromStationCode) && newTrain.isBoarding(fromStationCode: fromStationCode) {
                         // Haptic feedback for boarding status
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                     }

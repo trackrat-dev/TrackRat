@@ -30,9 +30,7 @@ enum ServerEnvironment: String, CaseIterable, Codable {
     
     var supportsHistoricalData: Bool {
         switch self {
-        case .production:
-            return false
-        case .staging, .local:
+        case .production, .staging, .local:
             return true
         }
     }
@@ -40,19 +38,85 @@ enum ServerEnvironment: String, CaseIterable, Codable {
 
 // MARK: - Trip Pair Model
 struct TripPair: Codable, Identifiable {
-    var id: String { "\(departureCode)-\(destinationCode)" }
-    let departureCode: String
-    let departureName: String
-    let destinationCode: String
-    let destinationName: String
+    let id: String  // Normalized: "MP-NY" (alphabetical order)
+    private let stationA: (code: String, name: String)  // First station alphabetically
+    private let stationB: (code: String, name: String)  // Second station alphabetically
+    var preferredDirection: Direction = .aToB   // Which direction to display
     let lastUsed: Date
     let isFavorite: Bool
     
+    enum Direction: String, Codable {
+        case aToB  // A → B
+        case bToA  // B → A
+    }
+    
+    // Computed properties for display
+    var departureCode: String {
+        preferredDirection == .aToB ? stationA.code : stationB.code
+    }
+    
+    var departureName: String {
+        preferredDirection == .aToB ? stationA.name : stationB.name
+    }
+    
+    var destinationCode: String {
+        preferredDirection == .aToB ? stationB.code : stationA.code
+    }
+    
+    var destinationName: String {
+        preferredDirection == .aToB ? stationB.name : stationA.name
+    }
+    
+    // Custom coding to handle tuple encoding
+    enum CodingKeys: String, CodingKey {
+        case id, preferredDirection, lastUsed, isFavorite
+        case stationACode, stationAName, stationBCode, stationBName
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        preferredDirection = try container.decode(Direction.self, forKey: .preferredDirection)
+        lastUsed = try container.decode(Date.self, forKey: .lastUsed)
+        isFavorite = try container.decode(Bool.self, forKey: .isFavorite)
+        
+        let aCode = try container.decode(String.self, forKey: .stationACode)
+        let aName = try container.decode(String.self, forKey: .stationAName)
+        let bCode = try container.decode(String.self, forKey: .stationBCode)
+        let bName = try container.decode(String.self, forKey: .stationBName)
+        
+        stationA = (code: aCode, name: aName)
+        stationB = (code: bCode, name: bName)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(preferredDirection, forKey: .preferredDirection)
+        try container.encode(lastUsed, forKey: .lastUsed)
+        try container.encode(isFavorite, forKey: .isFavorite)
+        try container.encode(stationA.code, forKey: .stationACode)
+        try container.encode(stationA.name, forKey: .stationAName)
+        try container.encode(stationB.code, forKey: .stationBCode)
+        try container.encode(stationB.name, forKey: .stationBName)
+    }
+    
     init(departureCode: String, departureName: String, destinationCode: String, destinationName: String, lastUsed: Date = Date(), isFavorite: Bool = false) {
-        self.departureCode = departureCode
-        self.departureName = departureName
-        self.destinationCode = destinationCode
-        self.destinationName = destinationName
+        // Normalize the station codes alphabetically
+        let isNormalized = departureCode < destinationCode
+        
+        if isNormalized {
+            self.id = "\(departureCode)-\(destinationCode)"
+            self.stationA = (code: departureCode, name: departureName)
+            self.stationB = (code: destinationCode, name: destinationName)
+            self.preferredDirection = .aToB
+        } else {
+            self.id = "\(destinationCode)-\(departureCode)"
+            self.stationA = (code: destinationCode, name: destinationName)
+            self.stationB = (code: departureCode, name: departureName)
+            self.preferredDirection = .bToA
+        }
+        
         self.lastUsed = lastUsed
         self.isFavorite = isFavorite
     }
@@ -150,6 +214,20 @@ final class StorageService {
         
         if let data = try? JSONEncoder().encode(trips) {
             userDefaults.set(data, forKey: recentTripsKey)
+        }
+    }
+    
+    func reverseFavoriteDirection(_ trip: TripPair) {
+        var trips = loadRecentTrips()
+        
+        if let index = trips.firstIndex(where: { $0.id == trip.id }) {
+            var updatedTrip = trips[index]
+            updatedTrip.preferredDirection = updatedTrip.preferredDirection == .aToB ? .bToA : .aToB
+            trips[index] = updatedTrip
+            
+            if let data = try? JSONEncoder().encode(trips) {
+                userDefaults.set(data, forKey: recentTripsKey)
+            }
         }
     }
     

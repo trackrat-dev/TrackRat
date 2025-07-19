@@ -184,6 +184,7 @@ enum TrainStatus: String, Codable {
     case delayed = "DELAYED"
     case boarding = "BOARDING"
     case departed = "DEPARTED"
+    case cancelled = "CANCELLED"
     case unknown = "UNKNOWN"
     
     init(from decoder: Decoder) throws {
@@ -205,6 +206,7 @@ enum TrainStatus: String, Codable {
         case .delayed: return "Delayed"
         case .boarding: return "Boarding"
         case .departed: return "Departed"
+        case .cancelled: return "Cancelled"
         case .unknown: return "Unknown"
         }
     }
@@ -216,6 +218,7 @@ enum TrainStatus: String, Codable {
         case .delayed: return "red"
         case .boarding: return "orange"
         case .departed: return "gray"
+        case .cancelled: return "red"
         case .unknown: return "gray"
         }
     }
@@ -324,6 +327,35 @@ struct PredictionData: Codable {
     
     enum CodingKeys: String, CodingKey {
         case trackProbabilities = "track_probabilities"
+    }
+    
+    /// Groups individual track probabilities by shared platforms
+    /// Platforms that share the same physical location are combined
+    static func groupTracksByPlatform(_ trackProbabilities: [String: Double]) -> [String: Double] {
+        let platformGroups = [
+            "1 & 2": ["1", "2"],
+            "3 & 4": ["3", "4"],
+            "5 & 6": ["5", "6"],
+            "7 & 8": ["7", "8"],
+            "9 & 10": ["9", "10"],
+            "11 & 12": ["11", "12"],
+            "13 & 14": ["13", "14"],
+            "15 & 16": ["15", "16"],
+            "17": ["17"],
+            "18 & 19": ["18", "19"],
+            "20 & 21": ["20", "21"]
+        ]
+        
+        var platformProbabilities: [String: Double] = [:]
+        
+        for (platformName, tracks) in platformGroups {
+            let totalProbability = tracks.compactMap { trackProbabilities[$0] }.reduce(0, +)
+            if totalProbability > 0 {
+                platformProbabilities[platformName] = totalProbability
+            }
+        }
+        
+        return platformProbabilities
     }
 }
 
@@ -923,6 +955,11 @@ struct HistoricalData {
     let trainTrackStats: TrackStats?
     let lineTrackStats: TrackStats?
     let destinationTrackStats: TrackStats?
+    
+    // New route-wide data
+    let routeStats: DelayStats?
+    let routeTrackStats: TrackStats?
+    let dataSource: String?
 }
 
 struct DelayStats {
@@ -937,6 +974,36 @@ struct DelayStats {
 struct TrackStats {
     let tracks: [(track: String, percentage: Int, count: Int)]
     let total: Int
+}
+
+// MARK: - Route Historical Data
+
+struct RouteHistoricalData {
+    let route: RouteInfo
+    let aggregateStats: Stats
+    let highlightedTrain: Stats?
+    
+    struct RouteInfo {
+        let fromStation: String
+        let toStation: String
+        let totalTrains: Int
+        let dataSource: String
+    }
+    
+    struct Stats {
+        let onTimePercentage: Double
+        let averageDelayMinutes: Double
+        let cancellationRate: Double
+        let delayBreakdown: DelayBreakdown
+        let trackUsageAtOrigin: [String: Int]
+    }
+    
+    struct DelayBreakdown {
+        let onTime: Int
+        let slight: Int
+        let significant: Int
+        let major: Int
+    }
 }
 
 // MARK: - Journey Progress Helper

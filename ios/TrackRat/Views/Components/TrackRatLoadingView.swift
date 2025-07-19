@@ -69,7 +69,7 @@ struct TrackRatProgressView: View {
 
 #Preview("TrackRat Loading") {
     ZStack {
-        TrackRatTheme.Colors.primaryGradient
+        TrackRatTheme.Colors.primaryBackground
             .ignoresSafeArea()
         
         TrackRatLoadingView(message: "Finding your trains...")
@@ -78,7 +78,7 @@ struct TrackRatProgressView: View {
 
 #Preview("Pulsing TrackRat") {
     ZStack {
-        Color.black
+        TrackRatTheme.Colors.surface
         PulsingTrackRatView()
     }
 }
@@ -90,5 +90,5 @@ struct TrackRatProgressView: View {
         TrackRatProgressView(progress: 1.0)
     }
     .padding()
-    .background(Color.black)
+    .background(TrackRatTheme.Colors.surface)
 }

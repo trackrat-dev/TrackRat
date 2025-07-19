@@ -10,26 +10,18 @@ let BACKGROUND_REFRESH_TASK_ID = "com.trackrat.backgroundrefresh"
 struct TrackRatApp: App {
     @StateObject private var appState = AppState()
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var showLaunchScreen = true
     @Environment(\.scenePhase) private var scenePhase
     
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                if showLaunchScreen {
-                    VideoSplashScreenView {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            showLaunchScreen = false
-                        }
-                    }
-                } else {
-                    ContentView()
-                        .environmentObject(appState)
-                        .preferredColorScheme(.dark)
-                        .tint(TrackRatTheme.Colors.accent)
-                        .transition(.opacity)
+            ContentView()
+                .environmentObject(appState)
+                .preferredColorScheme(.dark)
+                .tint(.white)
+                .onOpenURL { url in
+                    print("🔗 App received URL: \(url)")
+                    DeepLinkService.shared.handleOpenURL(url, appState: appState)
                 }
-            }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .active:
@@ -137,11 +129,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             AppDelegate.deviceToken = tokenString
         }
         
-        // Register device token with backend - ensure this completes first
-        Task {
-            await registerDeviceToken(tokenString)
-            print("📱 Device token registration completed - ready for Live Activity registration")
-        }
+        // Device token received - Live Activities will handle their own registration
+        print("📱 Device token received: \(tokenString) - Live Activities ready")
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
@@ -186,17 +175,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
     
     // MARK: - Push Notification Helpers
-    
-    private func registerDeviceToken(_ token: String) async {
-        do {
-            try await APIService.shared.registerDeviceToken(token)
-            print("✅ Device token registered with backend: \(token)")
-        } catch {
-            print("❌ Failed to register device token with backend: \(error)")
-            print("❌ Device token that failed: \(token)")
-            // Continue without registration - app will still work with local updates
-        }
-    }
     
     private func handleLiveActivityPushUpdate(_ userInfo: [AnyHashable: Any]) async {
         print("🔄 Processing Live Activity push update")
@@ -490,7 +468,7 @@ final class AppState: ObservableObject {
     @Published var destinationStationCode: String?
     @Published var selectedDeparture: String?
     @Published var departureStationCode: String?
-    @Published var currentTrainId: Int?
+    @Published var currentTrainId: String?
     @Published var navigationPath = NavigationPath()
     
     private let apiService = APIService()
@@ -548,6 +526,11 @@ final class AppState: ObservableObject {
     
     func getFavoriteTrips() -> [TripPair] {
         return recentTrips.filter { $0.isFavorite }
+    }
+    
+    func reverseFavoriteDirection(_ trip: TripPair) {
+        storageService.reverseFavoriteDirection(trip)
+        loadRecentTrips()
     }
     
 }

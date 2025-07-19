@@ -16,18 +16,6 @@ variable "zone" {
   default     = "us-central1-b"
 }
 
-variable "app_name" {
-  description = "Application name"
-  type        = string
-  default     = "trackrat"
-}
-
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "prod"
-}
-
 variable "api_image_url" {
   description = "Docker image URL for the trackrat-api service"
   type        = string
@@ -46,14 +34,3 @@ variable "custom_domain_name" {
   default     = "prod.api.trackrat.net"
 }
 
-variable "critical_alert_email" {
-  description = "Email address for critical database alerts"
-  type        = string
-  default     = "andy@andymartin.cc"
-}
-
-variable "warning_alert_email" {
-  description = "Email address for warning database alerts"
-  type        = string
-  default     = "andy@andymartin.cc"
-}

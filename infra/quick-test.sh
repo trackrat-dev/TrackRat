@@ -101,7 +101,6 @@ required_dirs=(
     "modules/secrets"
     "modules/artifact-registry"
     "modules/apis"
-    "environments/dev"
     "environments/staging"
 )
 

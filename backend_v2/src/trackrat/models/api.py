@@ -1,0 +1,388 @@
+"""
+Pydantic models for API requests and responses.
+
+These models define the API contract for the V2 backend.
+"""
+
+from datetime import date, datetime
+from enum import Enum
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field, field_serializer
+
+# Enums
+
+
+class TrainStatus(str, Enum):
+    """Train status values."""
+
+    ON_TIME = "ON_TIME"
+    LATE = "LATE"
+    CANCELLED = "CANCELLED"
+    BOARDING = "BOARDING"
+    ALL_ABOARD = "ALL_ABOARD"
+    DEPARTED = "DEPARTED"
+    IN_TRANSIT = "IN_TRANSIT"
+    APPROACHING = "APPROACHING"
+    ARRIVED = "ARRIVED"
+    UNKNOWN = "UNKNOWN"
+
+
+# Shared Models
+
+
+class LineInfo(BaseModel):
+    """Train line information."""
+
+    code: str = Field(..., min_length=1, max_length=3)
+    name: str
+    color: str = Field(..., pattern="^#[0-9A-Fa-f]{6}$")
+
+
+class StationInfo(BaseModel):
+    """Station information with timing data only."""
+
+    code: str = Field(..., min_length=1, max_length=3)
+    name: str
+    scheduled_time: datetime | None = None
+    updated_time: datetime | None = None
+    actual_time: datetime | None = None
+    track: str | None = None
+
+
+class SimpleStationInfo(BaseModel):
+    """Simple station information without timing data."""
+
+    code: str = Field(..., min_length=1, max_length=3)
+    name: str
+
+
+class DataFreshness(BaseModel):
+    """Information about data freshness."""
+
+    last_updated: datetime
+    age_seconds: int = Field(..., ge=0)
+    update_count: int | None = Field(None, ge=0)
+    collection_method: Literal["scheduled", "just_in_time"] | None = None
+
+
+class CurrentStatus(BaseModel):
+    """Current train status information."""
+
+    status: TrainStatus
+    status_v2: TrainStatus | None = None
+    last_updated: datetime
+    delay_minutes: int = Field(default=0, ge=0)
+
+
+class JourneyProgress(BaseModel):
+    """Journey progress information."""
+
+    stops_completed: int = Field(default=0, ge=0)
+    stops_total: int = Field(default=0, ge=0)
+    journey_percent: float = Field(default=0.0, ge=0.0, le=100.0)
+    minutes_to_arrival: int | None = None
+    last_departed: str | None = None
+    next_arrival: str | None = None
+
+
+class TrainPosition(BaseModel):
+    """Current train position information."""
+
+    last_departed_station_code: str | None = None
+    at_station_code: str | None = None
+    next_station_code: str | None = None
+    between_stations: bool = False
+
+
+class TrainDeparture(BaseModel):
+    """Train departure information for list view."""
+
+    train_id: str
+    line: LineInfo
+    destination: str
+    departure: StationInfo
+    arrival: StationInfo | None = None
+    train_position: TrainPosition
+    data_freshness: DataFreshness
+    data_source: str = Field(..., description="Data source (NJT or AMTRAK)")
+    is_cancelled: bool = Field(
+        default=False, description="Whether the train is cancelled"
+    )
+
+
+class DeparturesResponse(BaseModel):
+    """Response for departures endpoint."""
+
+    departures: list[TrainDeparture]
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        examples=[
+            {
+                "from_station": {"code": "NP", "name": "Newark Penn Station"},
+                "to_station": {"code": "TR", "name": "Trenton"},
+                "count": 12,
+                "generated_at": "2024-01-15T14:47:00-05:00",
+            }
+        ],
+    )
+
+
+# Train Details API Models
+
+
+class RouteInfo(BaseModel):
+    """Route information."""
+
+    origin: str
+    destination: str
+    origin_code: str
+    destination_code: str
+
+
+class RawStopStatus(BaseModel):
+    """Raw status information from data source."""
+
+    amtrak_status: str | None = None
+    njt_departed_flag: str | None = None
+
+
+class StopDetails(BaseModel):
+    """Detailed information for a single stop."""
+
+    station: SimpleStationInfo
+    stop_sequence: int = Field(..., ge=0)
+    scheduled_arrival: datetime | None = None
+    scheduled_departure: datetime | None = None
+    updated_arrival: datetime | None = None
+    updated_departure: datetime | None = None
+    actual_arrival: datetime | None = None
+    actual_departure: datetime | None = None
+    track: str | None = None
+    track_assigned_at: datetime | None = None
+    raw_status: RawStopStatus
+    has_departed_station: bool = False
+
+
+class TrainDetails(BaseModel):
+    """Complete train journey details."""
+
+    train_id: str
+    journey_date: date
+    line: LineInfo
+    route: RouteInfo
+    train_position: TrainPosition
+    stops: list[StopDetails]
+    data_freshness: DataFreshness
+    data_source: str = Field(..., description="Data source (NJT or AMTRAK)")
+    raw_train_state: str | None = None
+    is_cancelled: bool = Field(
+        default=False, description="Whether the train is cancelled"
+    )
+
+    @field_serializer("journey_date")
+    def serialize_journey_date(self, journey_date: date) -> str:
+        """Serialize date as datetime string for iOS compatibility."""
+        # Convert date to datetime at midnight in Eastern time
+        return f"{journey_date.isoformat()}T00:00:00"
+
+
+class TrainDetailsResponse(BaseModel):
+    """Response for train details endpoint."""
+
+    train: TrainDetails
+
+
+# History API Models
+
+
+class HistoricalJourney(BaseModel):
+    """Historical journey summary."""
+
+    journey_date: date
+    scheduled_departure: datetime
+    actual_departure: datetime | None = None
+    scheduled_arrival: datetime | None = None
+    actual_arrival: datetime | None = None
+    delay_minutes: int = Field(default=0, ge=0)
+    was_cancelled: bool = False
+    track_assignments: dict[str, str | None] = Field(
+        default_factory=dict, examples=[{"NY": "7", "NP": "2", "TR": None}]
+    )
+
+
+class TrainHistoryResponse(BaseModel):
+    """Response for train history endpoint."""
+
+    train_id: str
+    journeys: list[HistoricalJourney]
+    statistics: dict[str, Any] = Field(
+        default_factory=dict,
+        examples=[
+            {
+                "total_journeys": 30,
+                "on_time_percentage": 85.5,
+                "average_delay_minutes": 3.2,
+                "cancellation_rate": 2.1,
+            }
+        ],
+    )
+    route_statistics: dict[str, Any] | None = Field(
+        default=None,
+        description="Statistics for all trains on the same route (same service only)",
+    )
+    data_source: str | None = Field(
+        default=None, description="Data source for this train (NJT or AMTRAK)"
+    )
+
+
+class OccupiedTracksResponse(BaseModel):
+    """Response for occupied tracks endpoint."""
+
+    station_code: str = Field(..., min_length=1, max_length=3)
+    station_name: str
+    occupied_tracks: list[str]
+    last_updated: datetime
+    cache_expires_at: datetime
+
+
+# Internal Models (not exposed via API)
+
+
+class NJTransitStopData(BaseModel):
+    """Raw stop data from NJ Transit API."""
+
+    STATION_2CHAR: str | None = None
+    STATIONNAME: str | None = None
+    TIME: str | None = None
+    PICKUP: str | None = None
+    DROPOFF: str | None = None
+    DEPARTED: str | None = None
+    STOP_STATUS: str | None = None
+    DEP_TIME: str | None = None
+    TIME_UTC_FORMAT: str | None = None
+    TRACK: str | None = None
+    STOP_LINES: list[dict[str, str]] | None = None
+
+
+class NJTransitTrainData(BaseModel):
+    """Raw train data from NJ Transit getTrainStopList API."""
+
+    TRAIN_ID: str
+    LINECODE: str
+    BACKCOLOR: str
+    FORECOLOR: str
+    SHADOWCOLOR: str
+    DESTINATION: str
+    TRANSFERAT: str = ""
+    STOPS: list[NJTransitStopData]
+
+
+# Amtrak API Models
+
+
+class AmtrakStationData(BaseModel):
+    """Raw station/stop data from Amtrak API."""
+
+    name: str
+    code: str
+    tz: str
+    bus: bool
+    schArr: str | None = None
+    schDep: str | None = None
+    arr: str | None = None
+    dep: str | None = None
+    arrCmnt: str = ""
+    depCmnt: str = ""
+    status: str
+    stopIconColor: str = ""
+    platform: str = ""
+
+
+class AmtrakTrainData(BaseModel):
+    """Raw train data from Amtrak API."""
+
+    routeName: str
+    trainNum: str
+    trainNumRaw: str
+    trainID: str
+    lat: float
+    lon: float
+    trainTimely: str = ""
+    iconColor: str = ""
+    textColor: str = ""
+    stations: list[AmtrakStationData]
+    heading: str
+    eventCode: str
+    eventTZ: str = ""
+    eventName: str = ""
+    origCode: str
+    originTZ: str = ""
+    origName: str = ""
+    destCode: str
+    destTZ: str = ""
+    destName: str = ""
+    trainState: str
+    velocity: float
+    statusMsg: str = ""
+    createdAt: str
+    updatedAt: str
+    lastValTS: str | None = None
+    objectID: int | None = None
+    provider: str = "Amtrak"
+    providerShort: str = "AMTK"
+    onlyOfTrainNum: bool = False
+    alerts: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# Route History API Models
+
+
+class HistoricalRouteInfo(BaseModel):
+    """Route information for route-based historical data."""
+
+    from_station: str = Field(..., min_length=1, max_length=3)
+    to_station: str = Field(..., min_length=1, max_length=3)
+    total_trains: int = Field(..., ge=0)
+    data_source: Literal["NJT", "AMTRAK"]
+
+
+class DelayBreakdown(BaseModel):
+    """Delay breakdown percentages."""
+
+    on_time: int = Field(..., ge=0, le=100)
+    slight: int = Field(..., ge=0, le=100)
+    significant: int = Field(..., ge=0, le=100)
+    major: int = Field(..., ge=0, le=100)
+
+
+class AggregateStats(BaseModel):
+    """Aggregate statistics for all trains on the route."""
+
+    on_time_percentage: float = Field(..., ge=0.0, le=100.0)
+    average_delay_minutes: float = Field(..., ge=0.0)
+    cancellation_rate: float = Field(..., ge=0.0, le=100.0)
+    delay_breakdown: DelayBreakdown
+    track_usage_at_origin: dict[str, int] = Field(
+        default_factory=dict, description="Track number to usage percentage mapping"
+    )
+
+
+class HighlightedTrain(BaseModel):
+    """Statistics for a specific train compared to the route."""
+
+    train_id: str
+    on_time_percentage: float = Field(..., ge=0.0, le=100.0)
+    average_delay_minutes: float = Field(..., ge=0.0)
+    delay_breakdown: DelayBreakdown
+    track_usage_at_origin: dict[str, int] = Field(
+        default_factory=dict, description="Track number to usage percentage mapping"
+    )
+
+
+class RouteHistoryResponse(BaseModel):
+    """Response for route history endpoint."""
+
+    route: HistoricalRouteInfo
+    aggregate_stats: AggregateStats
+    highlighted_train: HighlightedTrain | None = None

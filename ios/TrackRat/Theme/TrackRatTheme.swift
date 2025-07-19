@@ -3,9 +3,9 @@ import SwiftUI
 struct TrackRatTheme {
     // MARK: - Colors
     struct Colors {
-        // Brand Colors - Black-based theme (Uber-style)
-        static let surface = Color.black
-        static let surfaceSecondary = Color.black.opacity(0.8)
+        // Brand Colors - Blue-based theme
+        static let surface = Color(hex: "#0e5c8d")
+        static let surfaceSecondary = Color(hex: "#0e5c8d").opacity(0.8)
         static let surfaceCard = Color.white.opacity(0.1)
         static let surfaceElevated = Color.white.opacity(0.05)
         
@@ -13,12 +13,8 @@ struct TrackRatTheme {
         static let accent = Color.orange
         static let accentSecondary = Color.orange.opacity(0.8)
         
-        // Background Gradients - Black-based
-        static let primaryGradient = LinearGradient(
-            colors: [Color.black, Color.gray.opacity(0.2)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        // Background - Flat Blue
+        static let primaryBackground = Color(hex: "#0e5c8d")
         
         static let cardGradient = LinearGradient(
             colors: [Color.white.opacity(0.1), Color.white.opacity(0.05)],
@@ -32,13 +28,13 @@ struct TrackRatTheme {
         static let onSurfaceTertiary = Color.white.opacity(0.5)
         
         // Status Colors
-        static let success = Color.green
+        static let success = Color(hex: "#0e5c8d")
         static let warning = Color.yellow
         static let error = Color.red
         static let info = Color.blue
         
         // Train Status Colors
-        static let onTime = Color.green
+        static let onTime = Color(hex: "#0e5c8d")
         static let delayed = Color.red
         static let boarding = accent
         static let departed = Color.blue
@@ -83,21 +79,21 @@ struct TrackRatTheme {
     // MARK: - Shadows
     struct Shadows {
         static let light = Shadow(
-            color: Color.black.opacity(0.3),
+            color: Color(hex: "#0e5c8d").opacity(0.4),
             radius: 4,
             x: 0,
             y: 2
         )
         
         static let medium = Shadow(
-            color: Color.black.opacity(0.4),
+            color: Color(hex: "#0e5c8d").opacity(0.5),
             radius: 8,
             x: 0,
             y: 4
         )
         
         static let heavy = Shadow(
-            color: Color.black.opacity(0.6),
+            color: Color(hex: "#0e5c8d").opacity(0.7),
             radius: 16,
             x: 0,
             y: 8
@@ -152,7 +148,7 @@ extension View {
     
     func trackRatGlassmorphicBackground() -> some View {
         self
-            .background(TrackRatTheme.Colors.primaryGradient)
+            .background(TrackRatTheme.Colors.primaryBackground)
             .ignoresSafeArea()
     }
     

@@ -12,7 +12,7 @@ struct TripSelectionView: View {
     var body: some View {
         ZStack {
             // Black gradient background
-            TrackRatTheme.Colors.primaryGradient
+            TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
             ScrollView {
@@ -116,39 +116,6 @@ struct TripSelectionView: View {
                         }
                         .padding(.top, 20)
                         
-                        // WhatsApp Community button
-                        Button {
-                            openWhatsAppCommunity()
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            HStack {
-                                Image(systemName: "message.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.green)
-                                
-                                Text("Report bugs and missing stations")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.7))
-                                
-                                Spacer()
-                                
-                                Image(systemName: "arrow.up.right")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(.white.opacity(0.08))
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(.white.opacity(0.15), lineWidth: 1)
-                                    )
-                            )
-                            .padding(.horizontal)
-                        }
-                        .padding(.top, 20)
                         
                         // Advanced Configuration button
                         Button {
@@ -203,12 +170,6 @@ struct TripSelectionView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
-    private func openWhatsAppCommunity() {
-        let whatsappURL = "https://chat.whatsapp.com/LhYRVFBoWOt0fR1kDnvJbo"
-        if let url = URL(string: whatsappURL) {
-            openURL(url)
-        }
-    }
     
 }
 
@@ -231,6 +192,18 @@ struct TripButton: View {
                 }
                 
                 Spacer()
+                
+                // Reverse direction button
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        appState.reverseFavoriteDirection(trip)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 18))
+                        .foregroundColor(.orange)
+                }
                 
                 // Unfavorite button (heart icon)
                 Button {

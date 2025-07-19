@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-// MARK: - API Service
+// MARK: - Clean API Service for V2 Backend
 @MainActor
 final class APIService: ObservableObject {
     static let shared = APIService()
@@ -32,88 +32,14 @@ final class APIService: ObservableObject {
         return decoder
     }()
     
-    // MARK: - Notification Registration
-    
-    struct LiveActivityTokenRequest: Codable {
-        let trainId: String
-        let pushToken: String
-        let deviceToken: String?
-        let userOriginStationCode: String?
-        let userDestinationStationCode: String?
-        
-        enum CodingKeys: String, CodingKey {
-            case trainId = "train_id"
-            case pushToken = "push_token"
-            case deviceToken = "device_token"
-            case userOriginStationCode = "user_origin_station_code"
-            case userDestinationStationCode = "user_destination_station_code"
-        }
-    }
-    
-    struct LiveActivityTokenResponse: Codable {
-        // Add necessary properties for the response
-    }
-    
-    func registerLiveActivity(
-        trainId: String,
-        pushToken: String,
-        deviceToken: String?,
-        userOrigin: String?,
-        userDestination: String?
-    ) async throws {
-        let url = URL(string: "\(baseURL)/notifications/live-activities/register")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let requestBody = LiveActivityTokenRequest(
-            trainId: trainId,
-            pushToken: pushToken,
-            deviceToken: deviceToken,
-            userOriginStationCode: userOrigin,
-            userDestinationStationCode: userDestination
-        )
-        
-        do {
-            request.httpBody = try JSONEncoder().encode(requestBody)
-        } catch {
-            print("Failed to encode request body: \(error)")
-            throw APIError.encodingError
-        }
-        
-        let (data, response) = try await session.data(for: request)
-        
-        if let httpResponse = response as? HTTPURLResponse {
-            print("📱 Live Activity token registration response: \(httpResponse.statusCode)")
-            
-            // Log response body for debugging
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("📱 Live Activity registration response body: \(responseString)")
-            }
-            
-            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
-                throw APIError.invalidParameters
-            }
-        }
-        
-        print("✅ Live Activity token registered for train \(trainId)")
-    }
-    
     // MARK: - Train Search
-    func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [Train] {
-        // Format current time as Eastern Time without timezone suffix
-        let formatter = DateFormatter()
-        formatter.timeZone = TimeZone(identifier: "America/New_York")
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        let currentTime = formatter.string(from: Date())
-        
-        var components = URLComponents(string: "\(baseURL)/trains/")!
+    
+    func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [TrainV2] {
+        var components = URLComponents(string: "\(baseURL)/v2/trains/departures")!
         components.queryItems = [
-            URLQueryItem(name: "from_station_code", value: fromStationCode),
-            URLQueryItem(name: "to_station_code", value: toStationCode),
-            URLQueryItem(name: "departure_time_after", value: currentTime),
-            URLQueryItem(name: "limit", value: "100"),
-            URLQueryItem(name: "consolidate", value: "true")
+            URLQueryItem(name: "from", value: fromStationCode),
+            URLQueryItem(name: "to", value: toStationCode),
+            URLQueryItem(name: "limit", value: "100")
         ]
         
         guard let url = components.url else {
@@ -123,404 +49,357 @@ final class APIService: ObservableObject {
         let (data, _) = try await session.data(from: url)
         
         do {
-            let response = try decoder.decode(TrainListResponse.self, from: data)
-            return response.trains
+            let response = try decoder.decode(V2DeparturesResponse.self, from: data)
+            return response.departures.map { adaptV2DepartureToTrainV2($0) }
         } catch {
-            print("🔴 DECODING ERROR (searchTrains): \(error)") // Detailed error print
-            print("🔴 RAW ERROR OBJECT (searchTrains): \(String(describing: error))")
-            
-            // Print raw data on error too
+            print("🔴 V2 DECODING ERROR (searchTrains): \(error)")
             if let jsonString = String(data: data, encoding: .utf8) {
-                print("🔴 RAW DATA THAT FAILED TO DECODE:")
-                print(jsonString)
+                print("🔴 RAW DATA: \(jsonString.prefix(500))")
             }
-            
-            throw error // Re-throw the original error to see it in the UI if not caught elsewhere
+            throw error
         }
     }
     
     // MARK: - Train Details
-    func fetchTrainDetails(id: String, fromStationCode: String? = nil) async throws -> Train {
-        var urlString = "\(baseURL)/trains/\(id)"
-        if let fromCode = fromStationCode {
-            urlString += "?from_station_code=\(fromCode)"
-        }
-        let url = URL(string: urlString)!
-        do {
-            let (data, _) = try await session.data(from: url)
-            // print(String(data: data, encoding: .utf8) ?? "Could not print data") // Optional: for debugging
-            return try decoder.decode(Train.self, from: data)
-        } catch {
-            print("🔴 DECODING ERROR (fetchTrainDetails for id: \(id)): \(error)") // Detailed error print
-            print("🔴 RAW ERROR OBJECT (fetchTrainDetails for id: \(id)): \(String(describing: error))")
-            if let decodingError = error as? DecodingError {
-                print("🔴 DECODING ERROR DETAILS: \(decodingError.localizedDescription)")
-                switch decodingError {
-                case .typeMismatch(let type, let context):
-                    print("🔴 Type Mismatch: type '\(type)' mismatched for '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                case .valueNotFound(let type, let context):
-                    print("🔴 Value Not Found: no value was found for type '\(type)' at '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                case .keyNotFound(let key, let context):
-                    print("🔴 Key Not Found: key '\(key.stringValue)' not found at '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                case .dataCorrupted(let context):
-                    print("🔴 Data Corrupted: data corrupted at '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                @unknown default:
-                    print("🔴 Unknown decoding error: \(decodingError)")
-                }
-            }
-            throw error // Re-throw the original error
-        }
-    }
     
-    // MARK: - Train by Number (Legacy)
-    func fetchTrainByNumber(_ number: String, fromStationCode: String? = nil) async throws -> Train {
-        var components = URLComponents(string: "\(baseURL)/trains/")!
-        let queryItems = [
-            URLQueryItem(name: "train_id", value: number),
-            URLQueryItem(name: "sort_by", value: "departure_time"),
-            URLQueryItem(name: "sort_order", value: "desc"),
-            URLQueryItem(name: "limit", value: "1"),
-            URLQueryItem(name: "consolidate", value: "true")
-        ]
+    func fetchTrainDetails(id: String, fromStationCode: String? = nil) async throws -> TrainV2 {
+        var components = URLComponents(string: "\(baseURL)/v2/trains/\(id)")!
         
-        components.queryItems = queryItems
-        
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-        
-        do {
-            let (data, response) = try await session.data(from: url)
-            
-            // Log the HTTP response status
-            if let httpResponse = response as? HTTPURLResponse {
-                print("📡 HTTP Response for train \(number): Status \(httpResponse.statusCode)")
-                if httpResponse.statusCode != 200 {
-                    print("🔴 Non-200 status code: \(httpResponse.statusCode)")
-                }
-            }
-            
-            // Log raw data size
-            print("📊 Response data size for train \(number): \(data.count) bytes")
-            
-            // Log the raw response for debugging
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("📄 Raw response preview (first 500 chars): \(String(responseString.prefix(500)))")
-            }
-            
-            // Try to decode the response
-            let trainResponse = try decoder.decode(TrainListResponse.self, from: data)
-            
-            print("✅ Successfully decoded response with \(trainResponse.trains.count) trains")
-            
-            // Since we're expecting exactly one train with limit=1, get the first one
-            guard let train = trainResponse.trains.first else {
-                print("🔴 No trains in response for train \(number) - throwing APIError.noData")
-                throw APIError.noData
-            }
-            
-            return train
-        } catch {
-            print("🔴 ERROR (fetchTrainByNumber for number: \(number)): \(error)") // Detailed error print
-            print("🔴 ERROR TYPE: \(type(of: error))")
-            print("🔴 RAW ERROR OBJECT (fetchTrainByNumber for number: \(number)): \(String(describing: error))")
-            if let decodingError = error as? DecodingError {
-                print("🔴 DECODING ERROR DETAILS: \(decodingError.localizedDescription)")
-                switch decodingError {
-                case .typeMismatch(let type, let context):
-                    print("🔴 Type Mismatch: type '\(type)' mismatched for '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                case .valueNotFound(let type, let context):
-                    print("🔴 Value Not Found: no value was found for type '\(type)' at '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                case .keyNotFound(let key, let context):
-                    print("🔴 Key Not Found: key '\(key.stringValue)' not found at '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                case .dataCorrupted(let context):
-                    print("🔴 Data Corrupted: data corrupted at '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                @unknown default:
-                    print("🔴 Unknown decoding error: \(decodingError)")
-                }
-            }
-            throw error // Re-throw the original error
-        }
-    }
-    
-    // MARK: - Consolidated Train Query
-    func fetchTrainByTrainId(_ trainId: String, fromStationCode: String? = nil, sinceHoursAgo: Int = 6, consolidate: Bool = true) async throws -> [Train] {
-        print("🔍 fetchTrainByTrainId called for: \(trainId)")
-        
-        // Calculate time filter (6 hours ago by default)
-        let timeFilter = Date().addingTimeInterval(-Double(sinceHoursAgo) * 3600)
         let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(identifier: "America/New_York")
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        let departureTimeAfter = formatter.string(from: timeFilter)
-        
-        var components = URLComponents(string: "\(baseURL)/trains/")!
-        var queryItems = [
-            URLQueryItem(name: "train_id", value: trainId),
-            URLQueryItem(name: "departure_time_after", value: departureTimeAfter),
-            URLQueryItem(name: "consolidate", value: String(consolidate)),
-            URLQueryItem(name: "show_sources", value: "true"),
-            URLQueryItem(name: "include_predictions", value: "true")
+        components.queryItems = [
+            URLQueryItem(name: "date", value: formatter.string(from: Date()))
         ]
-        
-        // Add from_station_code if provided
-        if let fromStationCode = fromStationCode {
-            queryItems.append(URLQueryItem(name: "from_station_code", value: fromStationCode))
-        }
-        
-        components.queryItems = queryItems
         
         guard let url = components.url else {
             throw APIError.invalidURL
         }
         
-        do {
-            let (data, response) = try await session.data(from: url)
-            
-            // Log the HTTP response
-            if let httpResponse = response as? HTTPURLResponse {
-                print("📡 HTTP Response for trainId \(trainId): Status \(httpResponse.statusCode)")
-            }
-            
-            print("📊 Response data size for trainId \(trainId): \(data.count) bytes")
-            
-            let trainResponse = try decoder.decode(TrainListResponse.self, from: data)
-            print("✅ fetchTrainByTrainId decoded \(trainResponse.trains.count) trains for trainId: \(trainId)")
-            
-            return trainResponse.trains
-        } catch {
-            print("🔴 DECODING ERROR (fetchTrainByTrainId for trainId: \(trainId)): \(error)")
-            print("🔴 RAW ERROR OBJECT (fetchTrainByTrainId for trainId: \(trainId)): \(String(describing: error))")
-            if let decodingError = error as? DecodingError {
-                print("🔴 DECODING ERROR DETAILS: \(decodingError.localizedDescription)")
-                switch decodingError {
-                case .typeMismatch(let type, let context):
-                    print("🔴 Type Mismatch: type '\(type)' mismatched for '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                case .valueNotFound(let type, let context):
-                    print("🔴 Value Not Found: no value was found for type '\(type)' at '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                case .keyNotFound(let key, let context):
-                    print("🔴 Key Not Found: key '\(key.stringValue)' not found at '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                case .dataCorrupted(let context):
-                    print("🔴 Data Corrupted: data corrupted at '\(context.codingPath.map { $0.stringValue }.joined(separator: "."))'")
-                    print("🔴 Context: \(context.debugDescription)")
-                @unknown default:
-                    print("🔴 Unknown decoding error: \(decodingError)")
-                }
-            }
-            throw error
-        }
-    }
-    
-    // MARK: - Flexible Train Details
-    func fetchTrainDetailsFlexible(id: String? = nil, trainId: String? = nil, fromStationCode: String? = nil) async throws -> Train {
-        // If we have a database ID and station code, use existing method
-        if let id = id, let fromCode = fromStationCode {
-            return try await fetchTrainDetails(id: id, fromStationCode: fromCode)
-        }
+        let (data, response) = try await session.data(from: url)
         
-        // If we have a database ID but no station code, try without
-        if let id = id {
-            return try await fetchTrainDetails(id: id)
-        }
-        
-        // Otherwise, use train_id query with consolidation
-        guard let trainId = trainId else {
-            throw APIError.invalidParameters
-        }
-        
-        print("🔍 fetchTrainDetailsFlexible: Using fetchTrainByTrainId for trainId: \(trainId)")
-        let trains = try await fetchTrainByTrainId(trainId, fromStationCode: fromStationCode)
-        print("📊 fetchTrainDetailsFlexible: Got \(trains.count) trains for trainId: \(trainId)")
-        
-        // If we have a station code, filter for trains that stop there
-        if let fromCode = fromStationCode {
-            print("🔍 fetchTrainDetailsFlexible: Filtering by station code: \(fromCode)")
-            let filtered = trains.filter { train in
-                guard let stops = train.stops else { return false }
-                return stops.contains { stop in
-                    Stations.stationMatches(stop, stationCode: fromCode)
-                }
-            }
-            print("📊 fetchTrainDetailsFlexible: \(filtered.count) trains stop at \(fromCode)")
-            if let train = filtered.first {
-                return train
-            }
-        }
-        
-        // Return most recent train (should typically be only one)
-        guard let train = trains.first else {
-            print("🔴 fetchTrainDetailsFlexible: No trains found - throwing APIError.noData")
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 {
             throw APIError.noData
         }
         
-        return train
-    }
-    
-    // MARK: - Historical Data
-    func fetchHistoricalData(for train: Train, fromStationCode: String, toStationCode: String) async throws -> HistoricalData {
-        async let trainHistoryTask = fetchTrainHistory(trainId: train.trainId, fromStationCode: fromStationCode, toStationCode: toStationCode)
-        async let lineHistoryTask = fetchLineHistory(line: train.line, fromStationCode: fromStationCode, toStationCode: toStationCode)
-        async let destinationHistoryTask = fetchDestinationHistory(destination: train.destination, fromStationCode: fromStationCode, toStationCode: toStationCode)
-        
-        let (trainHistory, lineHistory, destinationHistory) = try await (trainHistoryTask, lineHistoryTask, destinationHistoryTask)
-        
-        return HistoricalData(
-            trainStats: calculateDelayStats(from: trainHistory),
-            lineStats: calculateDelayStats(from: lineHistory),
-            destinationStats: calculateDelayStats(from: destinationHistory),
-            trainTrackStats: calculateTrackStats(from: trainHistory, fromStation: fromStationCode),
-            lineTrackStats: calculateTrackStats(from: lineHistory, fromStation: fromStationCode),
-            destinationTrackStats: calculateTrackStats(from: destinationHistory, fromStation: fromStationCode)
-        )
-    }
-    
-    private func fetchTrainHistory(trainId: String, fromStationCode: String, toStationCode: String) async throws -> [Train] {
-        var components = URLComponents(string: "\(baseURL)/trains/")!
-        let queryItems = [
-            URLQueryItem(name: "train_id", value: trainId),
-            URLQueryItem(name: "no_pagination", value: "true"),
-            URLQueryItem(name: "from_station_code", value: fromStationCode),
-            URLQueryItem(name: "to_station_code", value: toStationCode),
-            URLQueryItem(name: "consolidate", value: "true")
-        ]
-        components.queryItems = queryItems
-        
-        guard let url = components.url else { throw APIError.invalidURL }
         do {
-            let (data, _) = try await session.data(from: url)
-            let response = try decoder.decode(TrainListResponse.self, from: data)
-            return response.trains
+            let detailsResponse = try decoder.decode(V2TrainDetailsResponse.self, from: data)
+            return adaptV2TrainDetailsToTrainV2(detailsResponse.train, fromStationCode: fromStationCode)
         } catch {
-            print("🔴 DECODING ERROR (fetchTrainHistory for trainId: \(trainId)): \(error)")
-            print("🔴 RAW ERROR OBJECT (fetchTrainHistory for trainId: \(trainId)): \(String(describing: error))")
+            print("🔴 V2 DECODING ERROR (fetchTrainDetails for id: \(id)): \(error)")
             throw error
         }
     }
     
-    private func fetchLineHistory(line: String, fromStationCode: String, toStationCode: String) async throws -> [Train] {
-        var components = URLComponents(string: "\(baseURL)/trains/")!
-        let queryItems = [
-            URLQueryItem(name: "line", value: line),
-            URLQueryItem(name: "limit", value: "1000"),
-            URLQueryItem(name: "from_station_code", value: fromStationCode),
-            URLQueryItem(name: "to_station_code", value: toStationCode),
-            URLQueryItem(name: "consolidate", value: "true")
-        ]
-        components.queryItems = queryItems
-        
-        guard let url = components.url else { throw APIError.invalidURL }
-        do {
-            let (data, _) = try await session.data(from: url)
-            let response = try decoder.decode(TrainListResponse.self, from: data)
-            return response.trains
-        } catch {
-            print("🔴 DECODING ERROR (fetchLineHistory for line: \(line)): \(error)")
-            print("🔴 RAW ERROR OBJECT (fetchLineHistory for line: \(line)): \(String(describing: error))")
-            throw error
-        }
+    // MARK: - Train by Number
+    
+    func fetchTrainByNumber(_ number: String, fromStationCode: String? = nil) async throws -> TrainV2 {
+        // V2 backend doesn't support search by train number in list endpoint
+        // So we try to fetch details directly
+        return try await fetchTrainDetails(id: number, fromStationCode: fromStationCode)
     }
     
-    private func fetchDestinationHistory(destination: String, fromStationCode: String, toStationCode: String) async throws -> [Train] {
-        var components = URLComponents(string: "\(baseURL)/trains/")!
-        let queryItems = [
-            URLQueryItem(name: "destination", value: destination),
-            URLQueryItem(name: "limit", value: "1000"),
-            URLQueryItem(name: "from_station_code", value: fromStationCode),
-            URLQueryItem(name: "to_station_code", value: toStationCode),
-            URLQueryItem(name: "consolidate", value: "true")
-        ]
-        components.queryItems = queryItems
-        
-        guard let url = components.url else { throw APIError.invalidURL }
-        do {
-            let (data, _) = try await session.data(from: url)
-            let response = try decoder.decode(TrainListResponse.self, from: data)
-            return response.trains
-        } catch {
-            print("🔴 DECODING ERROR (fetchDestinationHistory for destination: \(destination)): \(error)")
-            print("🔴 RAW ERROR OBJECT (fetchDestinationHistory for destination: \(destination)): \(String(describing: error))")
-            throw error
-        }
+    // MARK: - Flexible Train Details
+    
+    func fetchTrainDetailsFlexible(id: String? = nil, trainId: String? = nil, fromStationCode: String? = nil) async throws -> TrainV2 {
+        let trainNumber = id ?? trainId ?? ""
+        return try await fetchTrainDetails(id: trainNumber, fromStationCode: fromStationCode)
     }
     
-    // MARK: - Statistics Calculation
-    private func calculateDelayStats(from trains: [Train]) -> DelayStats? {
-        let departedTrains = trains.filter { $0.status == .departed && $0.delayMinutes != nil }
-        guard !departedTrains.isEmpty else { return nil }
+    // MARK: - Historical Data (Simplified for V2)
+    
+    func fetchHistoricalData(for train: TrainV2, fromStationCode: String, toStationCode: String, includeRouteTrains: Bool = false) async throws -> HistoricalData {
+        var urlString = "\(baseURL)/v2/trains/\(train.trainId)/history?days=365&from_station=\(fromStationCode)&to_station=\(toStationCode)"
+        if includeRouteTrains {
+            urlString += "&include_route_trains=true"
+        }
+        guard let url = URL(string: urlString) else {
+            throw APIError.invalidURL
+        }
         
-        var onTime = 0
-        var slight = 0
-        var significant = 0
-        var major = 0
-        var totalDelay = 0
+        print("📊 Fetching historical data from: \(url)")
         
-        for train in departedTrains {
-            let delay = train.delayMinutes ?? 0
-            totalDelay += delay
+        let (data, _) = try await URLSession.shared.data(from: url)
+        
+        // Debug: Print raw response
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("📊 Raw historical data response: \(jsonString.prefix(500))...")
+        }
+        
+        // Define response structure for V2 history endpoint
+        struct V2HistoryResponse: Decodable {
+            let trainId: String
+            let statistics: V2Statistics
+            let routeStatistics: V2Statistics?
+            let dataSource: String?
             
-            switch delay {
-            case 0...1: onTime += 1
-            case 2...19: slight += 1
-            case 20...59: significant += 1
-            default: major += 1
-            }
-        }
-        
-        let total = departedTrains.count
-        return DelayStats(
-            onTime: Int((Double(onTime) / Double(total)) * 100),
-            slight: Int((Double(slight) / Double(total)) * 100),
-            significant: Int((Double(significant) / Double(total)) * 100),
-            major: Int((Double(major) / Double(total)) * 100),
-            total: total,
-            avgDelay: total > 0 ? totalDelay / total : 0
-        )
-    }
-    
-    private func calculateTrackStats(from trains: [Train], fromStation: String?) -> TrackStats? {
-        var trackCounts: [String: Int] = [:]
-        var totalTrainsWithTracks = 0
-        
-        for train in trains {
-            var trackUsed = false
-            
-            // If we have a fromStation and the train has stops, look for platform data
-            if let fromStation = fromStation, let stops = train.stops {
-                // Find the stop that matches the fromStation
-                if let departureStop = stops.first(where: { stop in
-                    stop.stationCode == fromStation
-                }), let platform = departureStop.platform, !platform.isEmpty {
-                    // Use the platform from the specific stop
-                    trackCounts[platform, default: 0] += 1
-                    totalTrainsWithTracks += 1
-                    trackUsed = true
+            struct V2Statistics: Decodable {
+                let totalJourneys: Int
+                let onTimePercentage: Double
+                let averageDelayMinutes: Double
+                let cancellationRate: Double
+                let delayBreakdown: DelayBreakdown?
+                let trackUsage: [String: Int]?
+                
+                struct DelayBreakdown: Decodable {
+                    let onTime: Int
+                    let slight: Int
+                    let significant: Int
+                    let major: Int
+                    
+                    private enum CodingKeys: String, CodingKey {
+                        case onTime = "on_time"
+                        case slight
+                        case significant
+                        case major
+                    }
+                }
+                
+                private enum CodingKeys: String, CodingKey {
+                    case totalJourneys = "total_journeys"
+                    case onTimePercentage = "on_time_percentage"
+                    case averageDelayMinutes = "average_delay_minutes"
+                    case cancellationRate = "cancellation_rate"
+                    case delayBreakdown = "delay_breakdown"
+                    case trackUsage = "track_usage"
                 }
             }
             
-            // Fallback to train track if no platform was used
-            if !trackUsed, let track = train.track, !track.isEmpty {
-                trackCounts[track, default: 0] += 1
-                totalTrainsWithTracks += 1
+            private enum CodingKeys: String, CodingKey {
+                case trainId = "train_id"
+                case statistics
+                case routeStatistics = "route_statistics"
+                case dataSource = "data_source"
             }
         }
         
-        guard totalTrainsWithTracks > 0 else { return nil }
+        let response: V2HistoryResponse
+        do {
+            response = try decoder.decode(V2HistoryResponse.self, from: data)
+        } catch {
+            print("❌ Failed to decode historical data: \(error)")
+            throw error
+        }
         
-        let sortedTracks = trackCounts.sorted { $0.value > $1.value }
-            .map { (track: $0.key, percentage: Int((Double($0.value) / Double(totalTrainsWithTracks)) * 100), count: $0.value) }
+        // Transform V2 response to iOS HistoricalData model
+        var trainStats: DelayStats? = nil
+        var trainTrackStats: TrackStats? = nil
+        var routeStats: DelayStats? = nil
+        var routeTrackStats: TrackStats? = nil
         
-        return TrackStats(tracks: sortedTracks, total: totalTrainsWithTracks)
+        // Create delay stats if we have delay breakdown
+        if let breakdown = response.statistics.delayBreakdown {
+            trainStats = DelayStats(
+                onTime: breakdown.onTime,
+                slight: breakdown.slight,
+                significant: breakdown.significant,
+                major: breakdown.major,
+                total: response.statistics.totalJourneys,
+                avgDelay: Int(response.statistics.averageDelayMinutes.rounded())
+            )
+        }
+        
+        // Create track stats if we have track usage data
+        if let trackUsage = response.statistics.trackUsage, !trackUsage.isEmpty {
+            let tracks = trackUsage
+                .sorted { $0.value > $1.value }  // Sort by usage percentage descending
+                .map { (track: $0.key, percentage: $0.value, count: Int(Double(response.statistics.totalJourneys) * Double($0.value) / 100)) }
+            
+            trainTrackStats = TrackStats(
+                tracks: tracks,
+                total: response.statistics.totalJourneys
+            )
+        }
+        
+        // Create route delay stats if we have route statistics
+        if let routeStatistics = response.routeStatistics,
+           let breakdown = routeStatistics.delayBreakdown {
+            routeStats = DelayStats(
+                onTime: breakdown.onTime,
+                slight: breakdown.slight,
+                significant: breakdown.significant,
+                major: breakdown.major,
+                total: routeStatistics.totalJourneys,
+                avgDelay: Int(routeStatistics.averageDelayMinutes.rounded())
+            )
+        }
+        
+        // Create route track stats if we have route track usage data
+        if let routeStatistics = response.routeStatistics,
+           let trackUsage = routeStatistics.trackUsage, !trackUsage.isEmpty {
+            let tracks = trackUsage
+                .sorted { $0.value > $1.value }  // Sort by usage percentage descending
+                .map { (track: $0.key, percentage: $0.value, count: Int(Double(routeStatistics.totalJourneys) * Double($0.value) / 100)) }
+            
+            routeTrackStats = TrackStats(
+                tracks: tracks,
+                total: routeStatistics.totalJourneys
+            )
+        }
+        
+        return HistoricalData(
+            trainStats: trainStats,
+            lineStats: nil,  // Not provided by backend
+            destinationStats: nil,  // Not provided by backend
+            trainTrackStats: trainTrackStats,
+            lineTrackStats: nil,  // Not provided by backend
+            destinationTrackStats: nil,  // Not provided by backend
+            routeStats: routeStats,
+            routeTrackStats: routeTrackStats,
+            dataSource: response.dataSource
+        )
+    }
+    
+    // MARK: - Route Historical Data
+    
+    func fetchRouteHistoricalData(
+        from: String,
+        to: String,
+        dataSource: String,
+        highlightTrain: String? = nil,
+        days: Int = 365
+    ) async throws -> RouteHistoricalData {
+        var urlComponents = URLComponents(string: "\(baseURL)/v2/routes/history")!
+        urlComponents.queryItems = [
+            URLQueryItem(name: "from_station", value: from),
+            URLQueryItem(name: "to_station", value: to),
+            URLQueryItem(name: "data_source", value: dataSource),
+            URLQueryItem(name: "days", value: String(days))
+        ]
+        
+        if let highlightTrain = highlightTrain {
+            urlComponents.queryItems?.append(URLQueryItem(name: "highlight_train", value: highlightTrain))
+        }
+        
+        guard let url = urlComponents.url else {
+            throw APIError.invalidURL
+        }
+        
+        print("📊 Fetching route historical data from: \(url)")
+        
+        let (data, _) = try await URLSession.shared.data(from: url)
+        
+        // Debug: Print raw response
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("📊 Raw route historical response: \(jsonString.prefix(500))...")
+        }
+        
+        // Define response structure for route history endpoint
+        struct RouteHistoryResponse: Decodable {
+            let route: RouteInfo
+            let aggregateStats: AggregateStats
+            let highlightedTrain: HighlightedTrainStats?
+            
+            struct RouteInfo: Decodable {
+                let fromStation: String
+                let toStation: String
+                let totalTrains: Int
+                let dataSource: String
+                
+                private enum CodingKeys: String, CodingKey {
+                    case fromStation = "from_station"
+                    case toStation = "to_station"
+                    case totalTrains = "total_trains"
+                    case dataSource = "data_source"
+                }
+            }
+            
+            struct AggregateStats: Decodable {
+                let onTimePercentage: Double
+                let averageDelayMinutes: Double
+                let cancellationRate: Double
+                let delayBreakdown: DelayBreakdown
+                let trackUsageAtOrigin: [String: Int]
+                
+                private enum CodingKeys: String, CodingKey {
+                    case onTimePercentage = "on_time_percentage"
+                    case averageDelayMinutes = "average_delay_minutes"
+                    case cancellationRate = "cancellation_rate"
+                    case delayBreakdown = "delay_breakdown"
+                    case trackUsageAtOrigin = "track_usage_at_origin"
+                }
+            }
+            
+            struct HighlightedTrainStats: Decodable {
+                let trainId: String
+                let onTimePercentage: Double
+                let averageDelayMinutes: Double
+                let delayBreakdown: DelayBreakdown
+                let trackUsageAtOrigin: [String: Int]
+                
+                private enum CodingKeys: String, CodingKey {
+                    case trainId = "train_id"
+                    case onTimePercentage = "on_time_percentage"
+                    case averageDelayMinutes = "average_delay_minutes"
+                    case delayBreakdown = "delay_breakdown"
+                    case trackUsageAtOrigin = "track_usage_at_origin"
+                }
+            }
+            
+            struct DelayBreakdown: Decodable {
+                let onTime: Int
+                let slight: Int
+                let significant: Int
+                let major: Int
+                
+                private enum CodingKeys: String, CodingKey {
+                    case onTime = "on_time"
+                    case slight
+                    case significant
+                    case major
+                }
+            }
+            
+            private enum CodingKeys: String, CodingKey {
+                case route
+                case aggregateStats = "aggregate_stats"
+                case highlightedTrain = "highlighted_train"
+            }
+        }
+        
+        let response: RouteHistoryResponse
+        do {
+            response = try decoder.decode(RouteHistoryResponse.self, from: data)
+        } catch {
+            print("❌ Failed to decode route historical data: \(error)")
+            throw error
+        }
+        
+        // Transform to RouteHistoricalData model
+        return RouteHistoricalData(
+            route: RouteHistoricalData.RouteInfo(
+                fromStation: response.route.fromStation,
+                toStation: response.route.toStation,
+                totalTrains: response.route.totalTrains,
+                dataSource: response.route.dataSource
+            ),
+            aggregateStats: RouteHistoricalData.Stats(
+                onTimePercentage: response.aggregateStats.onTimePercentage,
+                averageDelayMinutes: response.aggregateStats.averageDelayMinutes,
+                cancellationRate: response.aggregateStats.cancellationRate,
+                delayBreakdown: RouteHistoricalData.DelayBreakdown(
+                    onTime: response.aggregateStats.delayBreakdown.onTime,
+                    slight: response.aggregateStats.delayBreakdown.slight,
+                    significant: response.aggregateStats.delayBreakdown.significant,
+                    major: response.aggregateStats.delayBreakdown.major
+                ),
+                trackUsageAtOrigin: response.aggregateStats.trackUsageAtOrigin
+            ),
+            highlightedTrain: response.highlightedTrain.map { highlighted in
+                RouteHistoricalData.Stats(
+                    onTimePercentage: highlighted.onTimePercentage,
+                    averageDelayMinutes: highlighted.averageDelayMinutes,
+                    cancellationRate: 0.0, // Not provided for individual trains
+                    delayBreakdown: RouteHistoricalData.DelayBreakdown(
+                        onTime: highlighted.delayBreakdown.onTime,
+                        slight: highlighted.delayBreakdown.slight,
+                        significant: highlighted.delayBreakdown.significant,
+                        major: highlighted.delayBreakdown.major
+                    ),
+                    trackUsageAtOrigin: highlighted.trackUsageAtOrigin
+                )
+            }
+        )
     }
     
     // MARK: - Push Notification Registration
@@ -557,52 +436,306 @@ final class APIService: ObservableObject {
         }
     }
     
-    /// Register Live Activity push token
-    func registerLiveActivityToken(_ token: String, for trainId: String, deviceToken: String? = nil) async throws {
+    // MARK: - Live Activity Registration
+    
+    struct LiveActivityTokenRequest: Codable {
+        let trainId: String
+        let pushToken: String
+        let deviceToken: String?
+        let userOriginStationCode: String?
+        let userDestinationStationCode: String?
+        
+        enum CodingKeys: String, CodingKey {
+            case trainId = "train_id"
+            case pushToken = "push_token"
+            case deviceToken = "device_token"
+            case userOriginStationCode = "user_origin_station_code"
+            case userDestinationStationCode = "user_destination_station_code"
+        }
+    }
+    
+    func registerLiveActivity(
+        trainId: String,
+        pushToken: String,
+        deviceToken: String?,
+        userOrigin: String?,
+        userDestination: String?
+    ) async throws {
         let url = URL(string: "\(baseURL)/notifications/live-activities/register")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let requestBody = LiveActivityTokenRequest(
+            trainId: trainId,
+            pushToken: pushToken,
+            deviceToken: deviceToken,
+            userOriginStationCode: userOrigin,
+            userDestinationStationCode: userDestination
+        )
+        
+        do {
+            request.httpBody = try JSONEncoder().encode(requestBody)
+        } catch {
+            print("Failed to encode request body: \(error)")
+            throw APIError.encodingError
+        }
+        
+        let (data, response) = try await session.data(for: request)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            print("📱 Live Activity token registration response: \(httpResponse.statusCode)")
+            
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("📱 Live Activity registration response body: \(responseString)")
+            }
+            
+            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+                throw APIError.invalidParameters
+            }
+        }
+        
+        print("✅ Live Activity token registered for train \(trainId)")
+    }
+    
+    // MARK: - Live Activity Token Registration (V2)
+    
+    func registerLiveActivityToken(pushToken: String, activityId: String, trainNumber: String, originCode: String, destinationCode: String) async throws {
+        // Create V2 endpoint
+        let endpoint = "/v2/live-activities/register"
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            throw APIError.invalidURL
+        }
+        
+        // Create request body matching new backend
+        struct RegisterRequest: Encodable {
+            let push_token: String
+            let activity_id: String
+            let train_number: String
+            let origin_code: String
+            let destination_code: String
+        }
+        
+        let body = RegisterRequest(
+            push_token: pushToken,
+            activity_id: activityId,
+            train_number: trainNumber,
+            origin_code: originCode,
+            destination_code: destinationCode
+        )
+        
+        // Create request
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        var payload: [String: Any] = [
-            "train_id": trainId,
-            "push_token": token,
-            "platform": "ios",
-            "timestamp": ISO8601DateFormatter().string(from: Date())
-        ]
+        let encoder = JSONEncoder()
+        request.httpBody = try encoder.encode(body)
         
-        // Include device token if available for linking regular notifications
-        if let deviceToken = deviceToken {
-            payload["device_token"] = deviceToken
+        print("📱 Registering Live Activity token (V2):")
+        print("  Token: \(pushToken.prefix(10))...")
+        print("  Train: \(trainNumber)")
+        print("  Route: \(originCode) → \(destinationCode)")
+        
+        let (_, response) = try await session.data(for: request)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+                throw APIError.invalidParameters
+            }
         }
         
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        print("✅ Live Activity token registered for train \(trainNumber)")
+    }
+    
+    func unregisterLiveActivityToken(pushToken: String) async throws {
+        // Create V2 endpoint
+        let endpoint = "/v2/live-activities/\(pushToken)"
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            throw APIError.invalidURL
+        }
         
-        // Debug logging
-        print("📱 Live Activity registration URL: \(url)")
-        print("📱 Live Activity registration payload: \(payload)")
+        // Create request
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        
+        let (_, response) = try await session.data(for: request)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            if httpResponse.statusCode != 200 && httpResponse.statusCode != 404 {
+                throw APIError.invalidParameters
+            }
+        }
+        
+        print("✅ Live Activity token unregistered")
+    }
+    
+    // MARK: - Occupied Tracks
+    
+    func fetchOccupiedTracks(stationCode: String) async throws -> V2OccupiedTracksResponse {
+        var components = URLComponents(string: "\(baseURL)/v2/trains/stations/\(stationCode)/tracks/occupied")!
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        let (data, response) = try await session.data(from: url)
+        
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 {
+            throw APIError.noData
+        }
         
         do {
-            let (data, response) = try await session.data(for: request)
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                print("📱 Live Activity token registration response: \(httpResponse.statusCode)")
-                
-                // Log response body for debugging
-                if let responseString = String(data: data, encoding: .utf8) {
-                    print("📱 Live Activity registration response body: \(responseString)")
-                }
-                
-                if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
-                    throw APIError.invalidParameters
-                }
-            }
-            
-            print("✅ Live Activity token registered for train \(trainId)")
+            let response = try decoder.decode(V2OccupiedTracksResponse.self, from: data)
+            return response
         } catch {
-            print("❌ Failed to register Live Activity token: \(error)")
+            print("🔴 V2 DECODING ERROR (fetchOccupiedTracks for station: \(stationCode)): \(error)")
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+            }
             throw error
         }
+    }
+    
+    // MARK: - V2 API Adapters
+    
+    private func adaptV2DepartureToTrainV2(_ departure: V2TrainDeparture) -> TrainV2 {
+        return TrainV2(
+            trainId: departure.trainId,
+            line: LineInfo(
+                code: departure.line.code,
+                name: departure.line.name,
+                color: departure.line.color
+            ),
+            destination: departure.destination,
+            departure: StationTiming(
+                code: departure.departure.code,
+                name: departure.departure.name,
+                scheduledTime: departure.departure.scheduledTime,
+                updatedTime: departure.departure.updatedTime,
+                actualTime: departure.departure.actualTime,
+                track: departure.departure.track
+            ),
+            arrival: departure.arrival.map { arrival in
+                StationTiming(
+                    code: arrival.code,
+                    name: arrival.name,
+                    scheduledTime: arrival.scheduledTime,
+                    updatedTime: arrival.updatedTime,
+                    actualTime: arrival.actualTime,
+                    track: arrival.track
+                )
+            },
+            trainPosition: TrainPosition(
+                lastDepartedStationCode: departure.trainPosition.lastDepartedStationCode,
+                atStationCode: departure.trainPosition.atStationCode,
+                nextStationCode: departure.trainPosition.nextStationCode
+            ),
+            dataFreshness: DataFreshness(
+                lastUpdated: departure.dataFreshness.lastUpdated,
+                ageSeconds: departure.dataFreshness.ageSeconds,
+                updateCount: departure.dataFreshness.updateCount,
+                collectionMethod: departure.dataFreshness.collectionMethod
+            ),
+            isCancelled: departure.isCancelled,
+            stops: nil
+        )
+    }
+    
+    private func adaptV2TrainDetailsToTrainV2(_ details: V2TrainDetails, fromStationCode: String?) -> TrainV2 {
+        // Find departure and arrival stations from stops
+        let departureStop = details.stops.first
+        let arrivalStop = details.stops.last
+        
+        // Convert stops
+        let stops = details.stops.map { stop in
+            StopV2(
+                stationCode: stop.station.code,
+                stationName: stop.station.name,
+                sequence: stop.stopSequence,
+                scheduledArrival: stop.scheduledArrival,
+                scheduledDeparture: stop.scheduledDeparture,
+                updatedArrival: stop.updatedArrival,
+                updatedDeparture: stop.updatedDeparture,
+                actualArrival: stop.actualArrival,
+                actualDeparture: stop.actualDeparture,
+                track: stop.track,
+                rawStatus: RawStopStatus(
+                    amtrakStatus: stop.rawStatus.amtrakStatus, 
+                    njtDepartedFlag: stop.rawStatus.njtDepartedFlag
+                ),
+                hasDepartedStation: stop.hasDepartedStation
+            )
+        }
+        
+        // Create departure timing from first stop or requested station
+        let departureTiming: StationTiming
+        if let fromCode = fromStationCode,
+           let requestedStop = details.stops.first(where: { $0.station.code == fromCode }) {
+            departureTiming = StationTiming(
+                code: requestedStop.station.code,
+                name: requestedStop.station.name,
+                scheduledTime: requestedStop.scheduledDeparture,
+                updatedTime: requestedStop.updatedDeparture,
+                actualTime: requestedStop.actualDeparture,
+                track: requestedStop.track
+            )
+        } else if let firstStop = departureStop {
+            departureTiming = StationTiming(
+                code: firstStop.station.code,
+                name: firstStop.station.name,
+                scheduledTime: firstStop.scheduledDeparture,
+                updatedTime: firstStop.updatedDeparture,
+                actualTime: firstStop.actualDeparture,
+                track: firstStop.track
+            )
+        } else {
+            departureTiming = StationTiming(
+                code: details.route.originCode,
+                name: details.route.origin,
+                scheduledTime: nil,
+                updatedTime: nil,
+                actualTime: nil,
+                track: nil
+            )
+        }
+        
+        // Create arrival timing from last stop
+        let arrivalTiming = arrivalStop.map { stop in
+            StationTiming(
+                code: stop.station.code,
+                name: stop.station.name,
+                scheduledTime: stop.scheduledArrival,
+                updatedTime: stop.updatedArrival,
+                actualTime: stop.actualArrival,
+                track: stop.track
+            )
+        }
+        
+        return TrainV2(
+            trainId: details.trainId,
+            line: LineInfo(
+                code: details.line.code,
+                name: details.line.name,
+                color: details.line.color
+            ),
+            destination: details.route.destination,
+            departure: departureTiming,
+            arrival: arrivalTiming,
+            trainPosition: TrainPosition(
+                lastDepartedStationCode: details.trainPosition.lastDepartedStationCode,
+                atStationCode: details.trainPosition.atStationCode,
+                nextStationCode: details.trainPosition.nextStationCode
+            ),
+            dataFreshness: DataFreshness(
+                lastUpdated: details.dataFreshness.lastUpdated,
+                ageSeconds: details.dataFreshness.ageSeconds,
+                updateCount: details.dataFreshness.updateCount,
+                collectionMethod: details.dataFreshness.collectionMethod
+            ),
+            isCancelled: details.isCancelled,
+            stops: stops
+        )
     }
 }
 
@@ -624,4 +757,3 @@ enum APIError: LocalizedError {
         }
     }
 }
-

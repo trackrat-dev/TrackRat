@@ -19,12 +19,12 @@ Data Sources → Cloud Run (API + ML) → iOS App + Web App
 
 ## Quick Start
 
-### Backend (TrackCast)
+### Backend V2
 ```bash
-cd backend
-pip install -e .
-trackcast init-db
-trackcast start-scheduler
+cd backend_v2
+poetry install
+poetry run alembic upgrade head
+poetry run uvicorn trackrat.main:app --reload
 ```
 
 ### iOS App
@@ -33,31 +33,22 @@ cd ios
 open TrackRat.xcodeproj
 ```
 
-### Web App
-```bash
-cd webpage
-python proxy.py  # Development only
-open http://localhost:9998
-```
-
 ## Development
 
-### Local Development Deployment
+### Local Development
 
-Deploy your local changes to the development environment:
+Run components individually for development:
 
 ```bash
-# Full deployment (infrastructure + application)
-./deploy-dev.sh
+# Backend V2
+cd backend_v2
+poetry install
+poetry run uvicorn trackrat.main:app --reload
 
-# Quick deployment (skip tests and Terraform)
-make deploy-dev-quick
-
-# Check deployment status
-make status-dev
+# iOS App
+cd ios
+open TrackRat.xcodeproj
 ```
-
-See [Deployment Tools](#deployment-tools) section for more details.
 
 ## Production
 
@@ -69,42 +60,29 @@ Fully automated deployment via GitHub Actions to Google Cloud Run with:
 
 ## Documentation
 
-- **Backend**: `backend/CLAUDE.md` - API development and deployment
+- **Backend V2**: `backend_v2/CLAUDE.md` - Simplified V2 API development
 - **iOS**: `ios/CLAUDE.md` - Native app and Live Activities
-- **Web**: `webpage/CLAUDE.md` - Web application development
 - **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP setup
-- **Operations**: `OPERATORS_GUIDE.md` - Production monitoring and troubleshooting
+- **Project Guide**: `CLAUDE.md` - Comprehensive project overview
 
-## Deployment Tools
+## Development Tools
 
-### Quick Commands
-
-```bash
-make deploy-dev         # Full deployment (infrastructure + application)
-make deploy-dev-quick   # Quick app deployment (skip tests & Terraform)
-make deploy-dev-infra   # Infrastructure only
-make deploy-dev-docker  # Docker only
-make status-dev         # Check environment status
-make logs-dev           # View recent logs
-```
-
-### Deployment Script Options
-
-The `deploy-dev.sh` script provides flexible deployment options:
+### Development Commands
 
 ```bash
-./deploy-dev.sh [OPTIONS]
-  --skip-tests          Skip running tests
-  --skip-terraform      Skip Terraform apply (only update Cloud Run)
-  --skip-docker         Skip Docker build (only run Terraform)
-  --terraform-only      Only apply Terraform changes
-  --docker-only         Only build/deploy Docker images
-  --auto-approve        Skip confirmation prompts
-  --dry-run             Show what would be done without executing
+# Run tests and linting
+make test                            # Run all tests
+make lint                            # Run linting checks  
+make clean                           # Clean build artifacts
+
+# Backend commands
+make backend-test                    # Run backend tests
+make backend-migrate                 # Run database migrations
+
+# Infrastructure commands  
+make infra-plan                      # Plan infrastructure changes
+make infra-validate                  # Validate Terraform configuration
+
+# Setup
+make setup                           # Setup development environment
 ```
-
-### Configuration
-
-Deployment settings are stored in `.deploy/`:
-- `dev.env` - Development environment configuration
-- `deploy.config` - Default deployment settings

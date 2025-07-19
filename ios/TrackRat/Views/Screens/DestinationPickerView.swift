@@ -34,7 +34,7 @@ struct DestinationPickerView: View {
     var body: some View {
         ZStack {
             // Black gradient background
-            TrackRatTheme.Colors.primaryGradient
+            TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
             
@@ -186,7 +186,7 @@ struct DestinationPickerView: View {
                     // Navigate back to the root (TripSelectionView)
                     appState.navigationPath.removeLast(appState.navigationPath.count)
                 }
-                .foregroundColor(.orange)
+                .foregroundColor(.white)
             }
         }
         .onAppear {

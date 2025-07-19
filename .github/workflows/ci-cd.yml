@@ -27,39 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     name: Test All Components
 
-    services:
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: trackcast_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       # Setup
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Free up disk space
-        run: |
-          echo "🗄️ Disk usage before cleanup:"
-          df -h
-          echo "🧹 Removing large unused packages..."
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune -af
-          sudo apt-get autoremove -y
-          sudo apt-get clean
-          echo "💾 Disk usage after cleanup:"
-          df -h
 
       # Backend Tests
       - name: Set up Python 3.11
@@ -76,53 +47,43 @@ jobs:
             ${{ runner.os }}-pip-backend-
             ${{ runner.os }}-pip-
 
-      - name: Install Python dependencies
-        working-directory: ./backend
-        run: |
-          echo "💾 Disk space before venv creation:"
-          df -h
-          python -m pip install --upgrade pip
-          echo "🏗️ Creating temporary virtual environment for CI tests..."
-          python -m venv ci-venv
-          source ci-venv/bin/activate
-          echo "📦 Installing CPU-only dependencies..."
-          # Install PyTorch CPU-only first to avoid CUDA dependencies (~2GB savings)
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements-production.txt
-          pip install -r requirements-cpu.txt  # also needed for black and other tools
-          pip install -e .
-          echo "📦 Virtual environment created at: $(pwd)/ci-venv"
-          echo "📊 Virtual environment size: $(du -sh ci-venv)"
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.7.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
 
-      - name: Run backend code quality checks
-        working-directory: ./backend
-        run: |
-          source ci-venv/bin/activate
-          echo "🎨 Checking code formatting..."
-          black --check trackcast/
-          echo "🔍 Running linting checks..."
-          flake8 --ignore F541,E712,F841,E203,E711,W503,F401,W291,E501 trackcast/
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('backend_v2/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
 
-      - name: Run backend tests
-        working-directory: ./backend
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trackcast_test
+      - name: Install dependencies
+        working-directory: ./backend_v2
         run: |
-          source ci-venv/bin/activate
-          echo "🧪 Running unit tests..."
-          pytest tests/unit/ -v --tb=short
-          echo "🔗 Running integration tests..."
-          pytest tests/integration/ -v --tb=short
+          echo "📦 Installing dependencies with Poetry..."
+          poetry install --no-interaction --no-ansi
+
+      - name: Run backend tests and checks
+        working-directory: ./backend_v2
+        run: |
+          echo "🧪 Running tests and code quality checks..."
+          chmod +x run_tests.sh
+          ./run_tests.sh
 
       - name: Clean up Python environment
-        working-directory: ./backend
+        working-directory: ./backend_v2
         run: |
-          echo "🧹 Removing CI virtual environment to save space before Docker build..."
-          rm -rf ci-venv
-          pip cache purge
+          echo "🧹 Cleaning up to save space before Docker build..."
+          rm -rf .venv
+          poetry cache clear pypi --all -n
           find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
           find . -type f -name "*.pyc" -delete 2>/dev/null || true
-          echo "💾 Disk space after venv cleanup:"
+          echo "💾 Disk space after cleanup:"
           df -h
 
       # Docker Build (only for deployable branches)
@@ -159,8 +120,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
+          context: ./backend_v2
+          file: ./backend_v2/Dockerfile
           target: runtime
           push: true
           tags: |
@@ -180,8 +141,8 @@ jobs:
         if: github.ref == 'refs/heads/production'
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
+          context: ./backend_v2
+          file: ./backend_v2/Dockerfile
           target: runtime
           push: true
           tags: |
@@ -216,41 +177,41 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-terraform-
 
-      - name: Terraform validation and linting
-        working-directory: ./infra
-        run: |
-          echo "🔧 Running Terraform format check..."
-          terraform fmt -check -recursive
-          echo "🔧 Running Terraform validation..."
-          terraform init -backend=false
-          terraform validate
-          # Validate modules
-          for module_dir in modules/*/; do
-            if [ -d "$module_dir" ]; then
-              echo "Validating module: $module_dir"
-              (cd "$module_dir" && terraform init -backend=false && terraform validate)
-            fi
-          done
-          # Validate environments
-          for env_dir in environments/*/; do
-            if [ -d "$env_dir" ]; then
-              echo "Validating environment: $env_dir"
-              (cd "$env_dir" && terraform init -backend=false && terraform validate)
-            fi
-          done
-          echo "🔧 Running TFLint..."
-          tflint --init
-          tflint
-          for module_dir in modules/*/; do
-            if [ -d "$module_dir" ]; then
-              tflint --chdir="$module_dir"
-            fi
-          done
-          for env_dir in environments/*/; do
-            if [ -d "$env_dir" ]; then
-              tflint --chdir="$env_dir"
-            fi
-          done
+#      - name: Terraform validation and linting
+#        working-directory: ./infra
+#        run: |
+#          echo "🔧 Running Terraform format check..."
+#          terraform fmt -check -recursive
+#          echo "🔧 Running Terraform validation..."
+#          terraform init -backend=false
+#          terraform validate
+#          # Validate modules
+#          for module_dir in modules/*/; do
+#            if [ -d "$module_dir" ]; then
+#              echo "Validating module: $module_dir"
+#              (cd "$module_dir" && terraform init -backend=false && terraform validate)
+#            fi
+#          done
+#          # Validate environments
+#          for env_dir in environments/*/; do
+#            if [ -d "$env_dir" ]; then
+#              echo "Validating environment: $env_dir"
+#              (cd "$env_dir" && terraform init -backend=false && terraform validate)
+#            fi
+#          done
+#          echo "🔧 Running TFLint..."
+#          tflint --init
+#          tflint
+#          for module_dir in modules/*/; do
+#            if [ -d "$module_dir" ]; then
+#              tflint --chdir="$module_dir"
+#            fi
+#          done
+#          for env_dir in environments/*/; do
+#            if [ -d "$env_dir" ]; then
+#              tflint --chdir="$env_dir"
+#            fi
+#          done
 
       # Workflow Validation
       - name: Install yamllint

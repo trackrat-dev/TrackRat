@@ -36,19 +36,11 @@ resource "google_cloud_run_v2_service" "default" {
       max_instance_count = var.max_instances
     }
 
-    # Remove volumes block - Cloud SQL connection will be handled via VPC connector
-    # volumes {
-    #   name = "cloudsql"
-    #   cloud_sql_instance {
-    #     instances = [] # To be populated if Cloud SQL direct connection is used without proxy
-    #   }
-    # }
-
     dynamic "vpc_access" {
       for_each = var.vpc_connector_id != null ? [1] : []
       content {
         connector = var.vpc_connector_id
-        egress    = "ALL_TRAFFIC"
+        egress    = "PRIVATE_RANGES_ONLY"
       }
     }
 
