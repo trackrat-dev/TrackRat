@@ -161,17 +161,6 @@ struct TrainLiveActivity: Widget {
                             .onAppear {
                                 logger.info("🟡 Progress bar - value: \(validProgress)")
                             }
-                        
-                        // Delay information
-                        HStack {
-                            Spacer()
-                            if context.state.delayMinutes > 0 {
-                                Text("\(context.state.delayMinutes) min delay")
-                                    .font(.caption)
-                                    .foregroundColor(.red)
-                            }
-                        }
-                        .padding(.horizontal, 8)
                     }
                 }
             } compactLeading: {

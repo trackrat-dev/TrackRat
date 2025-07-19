@@ -36,7 +36,13 @@ class LiveActivityService: ObservableObject {
         
         // Get scheduled times for the user's journey
         let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: originCode)
-        let scheduledArrivalTime = train.getScheduledArrivalTime(toStationName: destination)
+        
+        // Fetch full train details to get correct destination timing
+        let detailedTrain = try await APIService.shared.fetchTrainDetails(
+            id: train.trainId, 
+            fromStationCode: originCode
+        )
+        let scheduledArrivalTime = detailedTrain.getScheduledArrivalTime(toStationName: destination)
         
         // Create activity attributes
         let attributes = TrainActivityAttributes(
