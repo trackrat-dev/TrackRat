@@ -190,6 +190,9 @@ async def get_train_history(
     to_station: str | None = Query(
         None, description="Filter to journeys containing this destination station"
     ),
+    include_route_trains: bool = Query(
+        False, description="Include statistics for all trains on the same route"
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> TrainHistoryResponse:
     """Get historical data for a train."""
@@ -199,6 +202,7 @@ async def get_train_history(
         days=days,
         from_station=from_station,
         to_station=to_station,
+        include_route_trains=include_route_trains,
     )
 
     # Calculate date range
@@ -221,6 +225,48 @@ async def get_train_history(
 
     result = await db.execute(stmt)
     journeys = list(result.scalars().all())
+
+    # Query route-wide data if requested
+    route_journeys = []
+    train_data_source = None
+    if include_route_trains and from_station and to_station and journeys:
+        # Get the data source from the first journey
+        train_data_source = journeys[0].data_source
+
+        # Query all trains with same data source on this route
+        route_stmt = (
+            select(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.journey_date >= start_date,
+                    TrainJourney.journey_date <= end_date,
+                    TrainJourney.data_source == train_data_source,
+                )
+            )
+            .options(selectinload(TrainJourney.stops))
+        )
+
+        route_result = await db.execute(route_stmt)
+        all_route_journeys = list(route_result.scalars().all())
+
+        # Filter to only journeys that contain both stations in correct order
+        for journey in all_route_journeys:
+            from_stop = None
+            to_stop = None
+
+            for stop in journey.stops:
+                if stop.station_code == from_station:
+                    from_stop = stop
+                elif stop.station_code == to_station:
+                    to_stop = stop
+
+            # Include if both stations found and in correct order
+            if (
+                from_stop
+                and to_stop
+                and (from_stop.stop_sequence or 0) < (to_stop.stop_sequence or 0)
+            ):
+                route_journeys.append(journey)
 
     # Build historical data
     historical_journeys = []
@@ -380,8 +426,178 @@ async def get_train_history(
         "track_usage": track_usage,
     }
 
+    # Calculate route statistics if requested
+    route_statistics = None
+    if route_journeys:
+        route_total_delay = 0
+        route_on_time_count = 0
+        route_cancelled_count = 0
+        route_delay_categories = {
+            "on_time": 0,
+            "slight": 0,
+            "significant": 0,
+            "major": 0,
+        }
+        route_track_usage_counts = {}
+        route_historical_journeys = []
+
+        # Process route journeys (similar to train-specific logic)
+        for journey in route_journeys:
+            # Apply same filtering logic as train-specific
+            if from_station and to_station:
+                from_stop = None
+                to_stop = None
+
+                for stop in journey.stops:
+                    if stop.station_code == from_station:
+                        from_stop = stop
+                    elif stop.station_code == to_station:
+                        to_stop = stop
+
+                if not from_stop or not to_stop:
+                    continue
+                if (from_stop.stop_sequence or 0) >= (to_stop.stop_sequence or 0):
+                    continue
+
+            # Get key stops (same logic)
+            first_stop = (
+                min(journey.stops, key=lambda s: s.stop_sequence or 0)
+                if journey.stops
+                else None
+            )
+            last_stop = (
+                max(journey.stops, key=lambda s: s.stop_sequence or 0)
+                if journey.stops
+                else None
+            )
+
+            if not first_stop or not last_stop:
+                continue
+
+            # Calculate delays
+            arrival_delay = (
+                int(
+                    (
+                        last_stop.actual_arrival - last_stop.scheduled_arrival
+                    ).total_seconds()
+                    / 60
+                )
+                if last_stop.actual_arrival and last_stop.scheduled_arrival
+                else 0
+            )
+
+            # Track assignments
+            track_assignments = {
+                stop.station_code: stop.track for stop in journey.stops if stop.track
+            }
+
+            route_historical_journeys.append(
+                {
+                    "journey_date": journey.journey_date,
+                    "scheduled_departure": journey.scheduled_departure,
+                    "actual_departure": journey.actual_departure,
+                    "scheduled_arrival": journey.scheduled_arrival,
+                    "actual_arrival": journey.actual_arrival,
+                    "delay_minutes": max(0, arrival_delay),
+                    "was_cancelled": journey.is_cancelled,
+                    "track_assignments": track_assignments,
+                }
+            )
+
+            if journey.is_cancelled:
+                route_cancelled_count += 1
+            else:
+                # Categorize delay
+                if arrival_delay <= 5:
+                    route_on_time_count += 1
+                    route_delay_categories["on_time"] += 1
+                elif arrival_delay <= 15:
+                    route_delay_categories["slight"] += 1
+                elif arrival_delay <= 30:
+                    route_delay_categories["significant"] += 1
+                else:
+                    route_delay_categories["major"] += 1
+
+                route_total_delay += arrival_delay
+
+            # Count track usage
+            for _, track in track_assignments.items():
+                if track:
+                    if track not in route_track_usage_counts:
+                        route_track_usage_counts[track] = 0
+                    route_track_usage_counts[track] += 1
+
+        # Calculate route statistics
+        route_total_journeys = len(route_historical_journeys)
+        route_non_cancelled_journeys = route_total_journeys - route_cancelled_count
+
+        # Calculate route delay breakdown percentages
+        route_delay_breakdown = {}
+        if route_non_cancelled_journeys > 0:
+            route_delay_breakdown = {
+                "on_time": round(
+                    route_delay_categories["on_time"]
+                    / route_non_cancelled_journeys
+                    * 100
+                ),
+                "slight": round(
+                    route_delay_categories["slight"]
+                    / route_non_cancelled_journeys
+                    * 100
+                ),
+                "significant": round(
+                    route_delay_categories["significant"]
+                    / route_non_cancelled_journeys
+                    * 100
+                ),
+                "major": round(
+                    route_delay_categories["major"] / route_non_cancelled_journeys * 100
+                ),
+            }
+        else:
+            route_delay_breakdown = {
+                "on_time": 0,
+                "slight": 0,
+                "significant": 0,
+                "major": 0,
+            }
+
+        # Calculate route track usage percentages
+        route_track_usage = {}
+        route_total_track_assignments = sum(route_track_usage_counts.values())
+        if route_total_track_assignments > 0:
+            route_track_usage = {
+                track: round(count / route_total_track_assignments * 100)
+                for track, count in route_track_usage_counts.items()
+            }
+
+        route_statistics = {
+            "total_journeys": route_total_journeys,
+            "on_time_percentage": (
+                (route_on_time_count / route_total_journeys * 100)
+                if route_total_journeys > 0
+                else 0
+            ),
+            "average_delay_minutes": (
+                (route_total_delay / route_non_cancelled_journeys)
+                if route_non_cancelled_journeys > 0
+                else 0
+            ),
+            "cancellation_rate": (
+                (route_cancelled_count / route_total_journeys * 100)
+                if route_total_journeys > 0
+                else 0
+            ),
+            "delay_breakdown": route_delay_breakdown,
+            "track_usage": route_track_usage,
+        }
+
     return TrainHistoryResponse(
-        train_id=train_id, journeys=historical_journeys, statistics=statistics
+        train_id=train_id,
+        journeys=historical_journeys,
+        statistics=statistics,
+        route_statistics=route_statistics,
+        data_source=train_data_source,
     )
 
 

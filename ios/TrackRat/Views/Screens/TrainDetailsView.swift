@@ -413,7 +413,7 @@ struct CombinedDetailsCard: View {
                     HStack {
                         Image(systemName: "clock.arrow.circlepath")
                             .foregroundColor(.orange)
-                        Text("View Historical Data")
+                        Text("View Historical Data (beta)")
                             .font(.subheadline)
                             .foregroundColor(.black)
                         Spacer()

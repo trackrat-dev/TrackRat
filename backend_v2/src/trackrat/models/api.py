@@ -227,6 +227,13 @@ class TrainHistoryResponse(BaseModel):
             }
         ],
     )
+    route_statistics: dict[str, Any] | None = Field(
+        default=None,
+        description="Statistics for all trains on the same route (same service only)",
+    )
+    data_source: str | None = Field(
+        default=None, description="Data source for this train (NJT or AMTRAK)"
+    )
 
 
 class OccupiedTracksResponse(BaseModel):
@@ -326,3 +333,56 @@ class AmtrakTrainData(BaseModel):
     providerShort: str = "AMTK"
     onlyOfTrainNum: bool = False
     alerts: list[dict[str, Any]] = Field(default_factory=list)
+
+
+# Route History API Models
+
+
+class HistoricalRouteInfo(BaseModel):
+    """Route information for route-based historical data."""
+
+    from_station: str = Field(..., min_length=1, max_length=3)
+    to_station: str = Field(..., min_length=1, max_length=3)
+    total_trains: int = Field(..., ge=0)
+    data_source: Literal["NJT", "AMTRAK"]
+
+
+class DelayBreakdown(BaseModel):
+    """Delay breakdown percentages."""
+
+    on_time: int = Field(..., ge=0, le=100)
+    slight: int = Field(..., ge=0, le=100)
+    significant: int = Field(..., ge=0, le=100)
+    major: int = Field(..., ge=0, le=100)
+
+
+class AggregateStats(BaseModel):
+    """Aggregate statistics for all trains on the route."""
+
+    on_time_percentage: float = Field(..., ge=0.0, le=100.0)
+    average_delay_minutes: float = Field(..., ge=0.0)
+    cancellation_rate: float = Field(..., ge=0.0, le=100.0)
+    delay_breakdown: DelayBreakdown
+    track_usage_at_origin: dict[str, int] = Field(
+        default_factory=dict, description="Track number to usage percentage mapping"
+    )
+
+
+class HighlightedTrain(BaseModel):
+    """Statistics for a specific train compared to the route."""
+
+    train_id: str
+    on_time_percentage: float = Field(..., ge=0.0, le=100.0)
+    average_delay_minutes: float = Field(..., ge=0.0)
+    delay_breakdown: DelayBreakdown
+    track_usage_at_origin: dict[str, int] = Field(
+        default_factory=dict, description="Track number to usage percentage mapping"
+    )
+
+
+class RouteHistoryResponse(BaseModel):
+    """Response for route history endpoint."""
+
+    route: HistoricalRouteInfo
+    aggregate_stats: AggregateStats
+    highlighted_train: HighlightedTrain | None = None

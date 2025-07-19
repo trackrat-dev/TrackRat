@@ -955,6 +955,11 @@ struct HistoricalData {
     let trainTrackStats: TrackStats?
     let lineTrackStats: TrackStats?
     let destinationTrackStats: TrackStats?
+    
+    // New route-wide data
+    let routeStats: DelayStats?
+    let routeTrackStats: TrackStats?
+    let dataSource: String?
 }
 
 struct DelayStats {
@@ -969,6 +974,36 @@ struct DelayStats {
 struct TrackStats {
     let tracks: [(track: String, percentage: Int, count: Int)]
     let total: Int
+}
+
+// MARK: - Route Historical Data
+
+struct RouteHistoricalData {
+    let route: RouteInfo
+    let aggregateStats: Stats
+    let highlightedTrain: Stats?
+    
+    struct RouteInfo {
+        let fromStation: String
+        let toStation: String
+        let totalTrains: Int
+        let dataSource: String
+    }
+    
+    struct Stats {
+        let onTimePercentage: Double
+        let averageDelayMinutes: Double
+        let cancellationRate: Double
+        let delayBreakdown: DelayBreakdown
+        let trackUsageAtOrigin: [String: Int]
+    }
+    
+    struct DelayBreakdown {
+        let onTime: Int
+        let slight: Int
+        let significant: Int
+        let major: Int
+    }
 }
 
 // MARK: - Journey Progress Helper

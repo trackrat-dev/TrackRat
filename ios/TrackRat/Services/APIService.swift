@@ -108,8 +108,11 @@ final class APIService: ObservableObject {
     
     // MARK: - Historical Data (Simplified for V2)
     
-    func fetchHistoricalData(for train: TrainV2, fromStationCode: String, toStationCode: String) async throws -> HistoricalData {
-        let urlString = "\(baseURL)/v2/trains/\(train.trainId)/history?days=365&from_station=\(fromStationCode)&to_station=\(toStationCode)"
+    func fetchHistoricalData(for train: TrainV2, fromStationCode: String, toStationCode: String, includeRouteTrains: Bool = false) async throws -> HistoricalData {
+        var urlString = "\(baseURL)/v2/trains/\(train.trainId)/history?days=365&from_station=\(fromStationCode)&to_station=\(toStationCode)"
+        if includeRouteTrains {
+            urlString += "&include_route_trains=true"
+        }
         guard let url = URL(string: urlString) else {
             throw APIError.invalidURL
         }
@@ -127,6 +130,8 @@ final class APIService: ObservableObject {
         struct V2HistoryResponse: Decodable {
             let trainId: String
             let statistics: V2Statistics
+            let routeStatistics: V2Statistics?
+            let dataSource: String?
             
             struct V2Statistics: Decodable {
                 let totalJourneys: Int
@@ -163,6 +168,8 @@ final class APIService: ObservableObject {
             private enum CodingKeys: String, CodingKey {
                 case trainId = "train_id"
                 case statistics
+                case routeStatistics = "route_statistics"
+                case dataSource = "data_source"
             }
         }
         
@@ -177,6 +184,8 @@ final class APIService: ObservableObject {
         // Transform V2 response to iOS HistoricalData model
         var trainStats: DelayStats? = nil
         var trainTrackStats: TrackStats? = nil
+        var routeStats: DelayStats? = nil
+        var routeTrackStats: TrackStats? = nil
         
         // Create delay stats if we have delay breakdown
         if let breakdown = response.statistics.delayBreakdown {
@@ -202,13 +211,194 @@ final class APIService: ObservableObject {
             )
         }
         
+        // Create route delay stats if we have route statistics
+        if let routeStatistics = response.routeStatistics,
+           let breakdown = routeStatistics.delayBreakdown {
+            routeStats = DelayStats(
+                onTime: breakdown.onTime,
+                slight: breakdown.slight,
+                significant: breakdown.significant,
+                major: breakdown.major,
+                total: routeStatistics.totalJourneys,
+                avgDelay: Int(routeStatistics.averageDelayMinutes.rounded())
+            )
+        }
+        
+        // Create route track stats if we have route track usage data
+        if let routeStatistics = response.routeStatistics,
+           let trackUsage = routeStatistics.trackUsage, !trackUsage.isEmpty {
+            let tracks = trackUsage
+                .sorted { $0.value > $1.value }  // Sort by usage percentage descending
+                .map { (track: $0.key, percentage: $0.value, count: Int(Double(routeStatistics.totalJourneys) * Double($0.value) / 100)) }
+            
+            routeTrackStats = TrackStats(
+                tracks: tracks,
+                total: routeStatistics.totalJourneys
+            )
+        }
+        
         return HistoricalData(
             trainStats: trainStats,
             lineStats: nil,  // Not provided by backend
             destinationStats: nil,  // Not provided by backend
             trainTrackStats: trainTrackStats,
             lineTrackStats: nil,  // Not provided by backend
-            destinationTrackStats: nil  // Not provided by backend
+            destinationTrackStats: nil,  // Not provided by backend
+            routeStats: routeStats,
+            routeTrackStats: routeTrackStats,
+            dataSource: response.dataSource
+        )
+    }
+    
+    // MARK: - Route Historical Data
+    
+    func fetchRouteHistoricalData(
+        from: String,
+        to: String,
+        dataSource: String,
+        highlightTrain: String? = nil,
+        days: Int = 365
+    ) async throws -> RouteHistoricalData {
+        var urlComponents = URLComponents(string: "\(baseURL)/v2/routes/history")!
+        urlComponents.queryItems = [
+            URLQueryItem(name: "from_station", value: from),
+            URLQueryItem(name: "to_station", value: to),
+            URLQueryItem(name: "data_source", value: dataSource),
+            URLQueryItem(name: "days", value: String(days))
+        ]
+        
+        if let highlightTrain = highlightTrain {
+            urlComponents.queryItems?.append(URLQueryItem(name: "highlight_train", value: highlightTrain))
+        }
+        
+        guard let url = urlComponents.url else {
+            throw APIError.invalidURL
+        }
+        
+        print("📊 Fetching route historical data from: \(url)")
+        
+        let (data, _) = try await URLSession.shared.data(from: url)
+        
+        // Debug: Print raw response
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("📊 Raw route historical response: \(jsonString.prefix(500))...")
+        }
+        
+        // Define response structure for route history endpoint
+        struct RouteHistoryResponse: Decodable {
+            let route: RouteInfo
+            let aggregateStats: AggregateStats
+            let highlightedTrain: HighlightedTrainStats?
+            
+            struct RouteInfo: Decodable {
+                let fromStation: String
+                let toStation: String
+                let totalTrains: Int
+                let dataSource: String
+                
+                private enum CodingKeys: String, CodingKey {
+                    case fromStation = "from_station"
+                    case toStation = "to_station"
+                    case totalTrains = "total_trains"
+                    case dataSource = "data_source"
+                }
+            }
+            
+            struct AggregateStats: Decodable {
+                let onTimePercentage: Double
+                let averageDelayMinutes: Double
+                let cancellationRate: Double
+                let delayBreakdown: DelayBreakdown
+                let trackUsageAtOrigin: [String: Int]
+                
+                private enum CodingKeys: String, CodingKey {
+                    case onTimePercentage = "on_time_percentage"
+                    case averageDelayMinutes = "average_delay_minutes"
+                    case cancellationRate = "cancellation_rate"
+                    case delayBreakdown = "delay_breakdown"
+                    case trackUsageAtOrigin = "track_usage_at_origin"
+                }
+            }
+            
+            struct HighlightedTrainStats: Decodable {
+                let trainId: String
+                let onTimePercentage: Double
+                let averageDelayMinutes: Double
+                let delayBreakdown: DelayBreakdown
+                let trackUsageAtOrigin: [String: Int]
+                
+                private enum CodingKeys: String, CodingKey {
+                    case trainId = "train_id"
+                    case onTimePercentage = "on_time_percentage"
+                    case averageDelayMinutes = "average_delay_minutes"
+                    case delayBreakdown = "delay_breakdown"
+                    case trackUsageAtOrigin = "track_usage_at_origin"
+                }
+            }
+            
+            struct DelayBreakdown: Decodable {
+                let onTime: Int
+                let slight: Int
+                let significant: Int
+                let major: Int
+                
+                private enum CodingKeys: String, CodingKey {
+                    case onTime = "on_time"
+                    case slight
+                    case significant
+                    case major
+                }
+            }
+            
+            private enum CodingKeys: String, CodingKey {
+                case route
+                case aggregateStats = "aggregate_stats"
+                case highlightedTrain = "highlighted_train"
+            }
+        }
+        
+        let response: RouteHistoryResponse
+        do {
+            response = try decoder.decode(RouteHistoryResponse.self, from: data)
+        } catch {
+            print("❌ Failed to decode route historical data: \(error)")
+            throw error
+        }
+        
+        // Transform to RouteHistoricalData model
+        return RouteHistoricalData(
+            route: RouteHistoricalData.RouteInfo(
+                fromStation: response.route.fromStation,
+                toStation: response.route.toStation,
+                totalTrains: response.route.totalTrains,
+                dataSource: response.route.dataSource
+            ),
+            aggregateStats: RouteHistoricalData.Stats(
+                onTimePercentage: response.aggregateStats.onTimePercentage,
+                averageDelayMinutes: response.aggregateStats.averageDelayMinutes,
+                cancellationRate: response.aggregateStats.cancellationRate,
+                delayBreakdown: RouteHistoricalData.DelayBreakdown(
+                    onTime: response.aggregateStats.delayBreakdown.onTime,
+                    slight: response.aggregateStats.delayBreakdown.slight,
+                    significant: response.aggregateStats.delayBreakdown.significant,
+                    major: response.aggregateStats.delayBreakdown.major
+                ),
+                trackUsageAtOrigin: response.aggregateStats.trackUsageAtOrigin
+            ),
+            highlightedTrain: response.highlightedTrain.map { highlighted in
+                RouteHistoricalData.Stats(
+                    onTimePercentage: highlighted.onTimePercentage,
+                    averageDelayMinutes: highlighted.averageDelayMinutes,
+                    cancellationRate: 0.0, // Not provided for individual trains
+                    delayBreakdown: RouteHistoricalData.DelayBreakdown(
+                        onTime: highlighted.delayBreakdown.onTime,
+                        slight: highlighted.delayBreakdown.slight,
+                        significant: highlighted.delayBreakdown.significant,
+                        major: highlighted.delayBreakdown.major
+                    ),
+                    trackUsageAtOrigin: highlighted.trackUsageAtOrigin
+                )
+            }
         )
     }
     
