@@ -1262,9 +1262,7 @@ class SchedulerService:
         # Create content state with all required fields
         content_state = {
             "status": journey_status,
-            "track": (
-                current_stop.track if current_stop and current_stop.track else None
-            ),
+            "track": (origin_stop.track if origin_stop and origin_stop.track else None),
             "currentStopName": (
                 current_stop.station_name if current_stop else "Unknown"
             ),
