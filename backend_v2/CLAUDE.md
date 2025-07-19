@@ -106,17 +106,24 @@ All endpoints are prefixed with `/api/v2/`:
 
 ```python
 # Find departures between stations
-GET /trains/departures?from=NY&to=TR&time_after=2024-01-01T12:00:00
+GET /trains/departures?from=NY&to=TR&limit=50
 
 # Get specific train journey
-GET /trains/{train_id}
+GET /trains/{train_id}?date=2024-01-01&refresh=true
 
-# Get historical performance
-GET /trains/{train_id}/history?days=30
+# Get route historical performance
+GET /routes/history?from_station=NY&to_station=TR&data_source=NJT&days=30
+
+# Live Activities management
+POST /live-activities/register
+DELETE /live-activities/{push_token}
 
 # System health and metrics
-GET /health
-GET /metrics
+GET /health                    # Comprehensive health check
+GET /health/live              # Liveness probe
+GET /health/ready             # Readiness probe  
+GET /scheduler/status         # Detailed scheduler status
+GET /metrics                  # Prometheus metrics
 ```
 
 ### 4. Background Scheduler
@@ -180,13 +187,22 @@ poetry run pytest --cov=trackrat
 
 ```bash
 # Required
-NJ_TRANSIT_USERNAME=your_username
-NJ_TRANSIT_PASSWORD=your_password
+TRACKRAT_NJT_API_TOKEN=your_nj_transit_api_token
 
 # Optional
-DATABASE_URL=sqlite:///trackrat.db
-LOG_LEVEL=INFO
-ENVIRONMENT=development
+TRACKRAT_DATABASE_URL=sqlite:///trackrat.db
+TRACKRAT_LOG_LEVEL=INFO
+TRACKRAT_ENVIRONMENT=development
+
+# APNS Settings (for Live Activities)
+APNS_TEAM_ID=your_team_id
+APNS_KEY_ID=your_key_id
+APNS_AUTH_KEY_PATH=certs/AuthKey_4WC3F645FR.p8
+APNS_BUNDLE_ID=net.trackrat.TrackRat
+APNS_ENVIRONMENT=dev
+
+# Backup Settings (optional)
+TRACKRAT_GCS_BACKUP_BUCKET=your-backup-bucket
 ```
 
 ### Settings Management
@@ -257,6 +273,9 @@ alembic downgrade -1
 
 # View migration history
 alembic history
+
+# Migration files are located in:
+# src/trackrat/db/migrations/versions/
 ```
 
 ### Debugging

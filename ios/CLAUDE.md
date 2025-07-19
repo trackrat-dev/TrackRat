@@ -127,9 +127,9 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **Eastern Time Zone**: Automatic conversion for all timestamps
 
 ### Endpoints Used (V2 API)
-- `GET /v2/trains/departures?from=X&to=Y&time_after=Z` - Search trains between stations
-- `GET /v2/trains/{train_id}?refresh=true` - Train details with optional forced refresh
-- `GET /v2/trains/{train_id}/history?days=30` - Historical performance data
+- `GET /v2/trains/departures?from=X&to=Y&limit=50` - Search trains between stations
+- `GET /v2/trains/{train_id}?date=YYYY-MM-DD&refresh=true` - Train details with optional forced refresh
+- `GET /v2/routes/history?from_station=X&to_station=Y&data_source=NJT&days=30` - Route historical performance data
 - `POST /v2/live-activities/register` - Register Live Activity for updates
 - `DELETE /v2/live-activities/{push_token}` - Unregister Live Activity
 
@@ -142,14 +142,15 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 ## Data Models
 
 ### Core Types
-- **Train**: Main model with comprehensive train data
+- **TrainV2**: Main model with comprehensive train data (current implementation)
   - Extensions for origin-based departure time calculation
-  - Methods: `getDepartureTime(fromStationCode:)`, `getFormattedDepartureTime(fromStationCode:)`
+  - Methods: `getScheduledDepartureTime(fromStationCode:)`, `getFormattedScheduledDepartureTime(fromStationCode:)`
   - Live Activity support: `toActivityAttributes()`, `toContentState()`
   - New fields: `originStation`, `dataSource`, `currentPosition`, `trackAssignment`, `statusV2`, `progress`
   - Status summary with delay information
   - Consolidation metadata for multi-source trains
   - Enhanced properties: `enhancedDisplayStatus`, `displayLocation`, `journeyProgress`
+- **Train**: Legacy model maintained for compatibility
 - **TrainStatus**: Enum with color mappings and display strings
 - **Stop**: Station with times, status, and departure confirmations
   - Enhanced with `departedConfirmedBy` array for multi-source validation

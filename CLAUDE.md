@@ -74,32 +74,24 @@ The system recognizes: `ALL ABOARD`, `BOARDING`, `DEPARTED`, `CANCELLED`, `DELAY
 
 ## Development Workflow
 
-### Local Development Deployment
+### Local Development
 
-For rapid iteration during development, use the local deployment tools:
+For local development, run the components individually:
 
 ```bash
-# Quick deployment (most common - skip tests and Terraform)
-make deploy-dev-quick
+# Backend V2 development
+cd backend_v2
+poetry run uvicorn trackrat.main:app --reload
 
-# Full deployment (infrastructure + application)
-./deploy-dev.sh
+# iOS development
+cd ios
+open TrackRat.xcodeproj
 
-# Check deployment status
-make status-dev
-
-# View logs
-make logs-dev
+# Infrastructure management
+cd infra
+terraform plan
+terraform apply
 ```
-
-The `deploy-dev.sh` script handles:
-- Docker image building and pushing to Artifact Registry
-- Terraform infrastructure updates (optional)
-- Cloud Run service deployments
-- Health checks and verification
-- Rollback on failure
-
-See [Deployment Tools](#deployment-tools) section for detailed options.
 
 ### Automated Deployment
 
@@ -205,22 +197,31 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 
 1. **Train Departures** (V2):
    ```
-   GET /api/v2/trains/departures?from=X&to=Y&time_after=Z
+   GET /api/v2/trains/departures?from=X&to=Y&limit=50
    ```
 
 2. **Train Details** (V2):
    ```
-   GET /api/v2/trains/{train_id}?refresh=true
+   GET /api/v2/trains/{train_id}?date=YYYY-MM-DD&refresh=true
    ```
 
-3. **Historical Data** (V2):
+3. **Route History** (V2):
    ```
-   GET /api/v2/trains/{train_id}/history?days=30
+   GET /api/v2/routes/history?from_station=X&to_station=Y&data_source=NJT&days=30
    ```
 
-4. **Health & Metrics**:
+4. **Live Activities**:
+   ```
+   POST /api/v2/live-activities/register    # Register Live Activity
+   DELETE /api/v2/live-activities/{token}   # Unregister Live Activity
+   ```
+
+5. **Health & Metrics**:
    ```
    GET /health                  # System health check
+   GET /health/live             # Liveness probe
+   GET /health/ready            # Readiness probe
+   GET /scheduler/status        # Scheduler status
    GET /metrics                 # Prometheus metrics endpoint
    ```
 
@@ -422,53 +423,27 @@ Real-time tracking of ML model performance:
    - Siri Shortcuts integration
    - CarPlay support
 
-## Deployment Tools
+## Development Tools
 
-### Quick Deployment Commands
-
-```bash
-# Most common - quick app deployment
-make deploy-dev-quick
-
-# Full deployment options
-make deploy-dev         # Full deployment (infrastructure + application)
-make deploy-dev-infra   # Infrastructure only
-make deploy-dev-docker  # Docker only
-make status-dev         # Check environment status
-make logs-dev           # View recent logs
-```
-
-### Deployment Script (`deploy-dev.sh`)
-
-The main deployment script provides flexible options:
+### Development Commands
 
 ```bash
-./deploy-dev.sh [OPTIONS]
-  --skip-tests          Skip running tests
-  --skip-terraform      Skip Terraform apply (only update Cloud Run)
-  --skip-docker         Skip Docker build (only run Terraform)
-  --terraform-only      Only apply Terraform changes
-  --docker-only         Only build/deploy Docker images
-  --auto-approve        Skip confirmation prompts
-  --dry-run             Show what would be done without executing
+# Run tests and linting
+make test                            # Run all tests
+make lint                            # Run linting checks  
+make clean                           # Clean build artifacts
+
+# Backend commands
+make backend-test                    # Run backend tests
+make backend-migrate                 # Run database migrations
+
+# Infrastructure commands  
+make infra-plan                      # Plan infrastructure changes
+make infra-validate                  # Validate Terraform configuration
+
+# Setup development environment
+make setup                           # Install dependencies and initialize
 ```
-
-### Configuration
-
-Deployment settings in `.deploy/`:
-- `dev.env` - Development environment variables
-- `deploy.config` - Default deployment behavior
-
-### Deployment Workflow
-
-1. **Pre-flight checks**: GCP auth, git status, Docker buildx setup
-2. **Testing** (optional): Backend tests, Terraform validation
-3. **Docker operations**: Build for linux/amd64, tag, push to Artifact Registry
-4. **Infrastructure**: Terraform plan and apply
-5. **Cloud Run update**: Deploy new image to services
-6. **Verification**: Health checks, API tests
-
-**Note**: The script automatically builds Docker images for `linux/amd64` platform to ensure compatibility with Cloud Run, even when running on Apple Silicon (M1/M2) Macs.
 
 ## Quick Reference
 
@@ -528,9 +503,7 @@ When working on this project, refer to:
 
 ### Quick Reference
 
-**For Operators**: Start with `/OPERATORS_GUIDE.md` for comprehensive operational procedures, monitoring, and troubleshooting.
-
-**For Developers**: Backend and iOS components have detailed CLAUDE.md files with development workflows and deployment procedures.
+**For Developers**: Backend and iOS components have detailed CLAUDE.md files with development workflows.
 
 **For Infrastructure**: Use `infra/CLAUDE.md` for Terraform operations and Cloud Run deployment details.
 

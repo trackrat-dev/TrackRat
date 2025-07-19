@@ -43,7 +43,7 @@ poetry install
 # Copy environment template
 cp .env.example .env
 # Edit .env with your configuration
-# Set NJ_TRANSIT_USERNAME and NJ_TRANSIT_PASSWORD
+# Set TRACKRAT_NJT_API_TOKEN with your NJ Transit API token
 
 # Database is SQLite - no setup required!
 # Default location: ./trackrat.db (configurable in .env)
@@ -69,8 +69,7 @@ poetry run uvicorn trackrat.main:app --reload
 All configuration is done via environment variables. See `.env.example` for available options.
 
 ### Required Settings
-- `NJ_TRANSIT_USERNAME`: Your NJ Transit API username
-- `NJ_TRANSIT_PASSWORD`: Your NJ Transit API password
+- `TRACKRAT_NJT_API_TOKEN`: Your NJ Transit API token
 - **APNS Configuration** (required for Live Activities):
   - `APNS_TEAM_ID`: Apple Developer Team ID (10 characters)
   - `APNS_KEY_ID`: APNS Auth Key ID (10 characters)
@@ -253,7 +252,7 @@ cp docker-compose.example.yml docker-compose.yml
 
 # Create environment file with your credentials
 cat > .env << EOF
-NJT_API_TOKEN=your_nj_transit_token
+TRACKRAT_NJT_API_TOKEN=your_nj_transit_token
 APNS_TEAM_ID=your_team_id
 APNS_KEY_ID=your_key_id
 EOF
