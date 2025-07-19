@@ -169,7 +169,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             for train_list in all_trains.values():
                 for train in train_list:
                     if train.trainID == train_id:
-                        return train
+                        return train  # type: ignore[no-any-return]
 
         return None
 

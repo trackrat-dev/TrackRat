@@ -15,6 +15,7 @@ from structlog import get_logger
 
 from trackrat.collectors.base import BaseClient
 from trackrat.models.api import AmtrakTrainData
+from trackrat.utils.metrics import track_api_call
 
 logger = get_logger(__name__)
 
@@ -74,8 +75,9 @@ class AmtrakClient(BaseClient):
         Returns:
             Dictionary mapping train numbers to lists of train data
         """
-        return await self.get_all_trains()
+        return await self.get_all_trains()  # type: ignore[no-any-return]
 
+    @track_api_call(api_name="amtrak", endpoint="all_trains")
     async def get_all_trains(self) -> dict[str, list[AmtrakTrainData]]:
         """Fetch all active trains from Amtrak API.
 

@@ -11,6 +11,7 @@ from structlog import get_logger
 
 from trackrat.config import Settings, get_settings
 from trackrat.models.api import NJTransitTrainData
+from trackrat.utils.metrics import track_api_call
 
 logger = get_logger(__name__)
 
@@ -130,6 +131,7 @@ class NJTransitClient:
             )
             raise NJTransitAPIError(f"Failed to call {endpoint}: {str(e)}") from e
 
+    @track_api_call(api_name="njtransit", endpoint="train_schedule")
     async def get_train_schedule(self, station_code: str) -> list[dict[str, Any]]:
         """Get train schedule for a station.
 
@@ -210,6 +212,7 @@ class NJTransitClient:
 
         return trains
 
+    @track_api_call(api_name="njtransit", endpoint="train_schedule_with_stops")
     async def get_train_schedule_with_stops(self, station_code: str) -> dict[str, Any]:
         """Get train schedule for a station WITH embedded stop data.
 
@@ -261,6 +264,7 @@ class NJTransitClient:
 
         return response
 
+    @track_api_call(api_name="njtransit", endpoint="train_stop_list")
     async def get_train_stop_list(self, train_id: str) -> NJTransitTrainData:
         """Get detailed stop list for a specific train.
 
