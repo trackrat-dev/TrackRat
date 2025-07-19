@@ -171,6 +171,7 @@ struct TrainLiveActivity: Widget {
                                     .foregroundColor(.red)
                             }
                         }
+                        .padding(.horizontal, 8)
                     }
                 }
             } compactLeading: {

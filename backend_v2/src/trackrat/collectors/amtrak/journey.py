@@ -544,7 +544,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 )
                 actual_arrival = scheduled_arrival
             departed: bool = amtrak_stop.status == "Departed"
-            status: str = self.STATUS_MAP.get(amtrak_stop.status, amtrak_stop.status)
+            # status: str = self.STATUS_MAP.get(amtrak_stop.status, amtrak_stop.status)
             track: str | None = amtrak_stop.platform if amtrak_stop.platform else None
             pickup_only: bool = False
             dropoff_only: bool = False
@@ -583,7 +583,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     actual_arrival=actual_arrival,
                     actual_departure=actual_departure,
                     has_departed_station=departed,
-                    raw_amtrak_status=status,
+                    raw_amtrak_status=amtrak_stop.status,
                     track=track,
                     pickup_only=pickup_only,
                     dropoff_only=dropoff_only,
