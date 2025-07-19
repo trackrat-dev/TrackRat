@@ -282,6 +282,28 @@ struct Stations {
         // Try common variations for ambiguous names
         let normalized = stationName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         
+        // Handle NJ Transit destinations with -SEC suffix and emojis
+        if normalized.contains("-sec") || normalized.contains("✈") {
+            let cleaned = normalized
+                .replacingOccurrences(of: " -sec", with: "")
+                .replacingOccurrences(of: "-sec", with: "")
+                .replacingOccurrences(of: " ✈", with: "")
+                .replacingOccurrences(of: "✈", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // If we cleaned something, try again with the cleaned string
+            if cleaned != normalized {
+                // Capitalize first letter of each word for the recursive call
+                let capitalized = cleaned.split(separator: " ")
+                    .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+                    .joined(separator: " ")
+                
+                if let code = getStationCode(capitalized) {
+                    return code
+                }
+            }
+        }
+        
         switch normalized {
         case "new york":
             return "NY"

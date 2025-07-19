@@ -46,6 +46,12 @@ struct ActiveTripsSection: View {
                         .padding(.horizontal)
                     
                     Button {
+                        // Set the route context from Live Activity (like train cards do)
+                        appState.selectedDestination = activity.attributes.destination
+                        appState.destinationStationCode = activity.attributes.destinationStationCode
+                        appState.selectedDeparture = activity.attributes.origin  
+                        appState.departureStationCode = activity.attributes.originStationCode
+                        
                         // Navigate to train details using flexible navigation
                         appState.navigationPath.append(
                             NavigationDestination.trainDetailsFlexible(

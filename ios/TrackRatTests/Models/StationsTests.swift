@@ -91,6 +91,30 @@ class StationsTests: XCTestCase {
         XCTAssertEqual(Stations.getStationCode("\tTrenton\n"), "TR", "Should handle whitespace")
     }
     
+    func testGetStationCodeWithNJTransitSECSuffix() {
+        // Test NJ Transit destinations with -SEC suffix
+        XCTAssertEqual(Stations.getStationCode("New York -SEC ✈"), "NY", "Should handle 'New York -SEC ✈' → 'NY'")
+        XCTAssertEqual(Stations.getStationCode("new york -sec ✈"), "NY", "Should handle lowercase with -SEC suffix")
+        XCTAssertEqual(Stations.getStationCode("NEW YORK -SEC"), "NY", "Should handle uppercase with -SEC suffix")
+        XCTAssertEqual(Stations.getStationCode("Newark -SEC"), "NP", "Should handle 'Newark -SEC' → 'NP'")
+        XCTAssertEqual(Stations.getStationCode("Trenton -SEC ✈"), "TR", "Should handle 'Trenton -SEC ✈' → 'TR'")
+        XCTAssertEqual(Stations.getStationCode("Metropark -SEC"), "MP", "Should handle 'Metropark -SEC' → 'MP'")
+        XCTAssertEqual(Stations.getStationCode("Long Branch -SEC ✈"), "LBR", "Should handle 'Long Branch -SEC ✈' → 'LBR'")
+        
+        // Test with just emoji
+        XCTAssertEqual(Stations.getStationCode("New York ✈"), "NY", "Should handle destination with just emoji")
+        XCTAssertEqual(Stations.getStationCode("Trenton ✈"), "TR", "Should handle destination with just emoji")
+        
+        // Test with variations of spacing
+        XCTAssertEqual(Stations.getStationCode("New York-SEC"), "NY", "Should handle no space before -SEC")
+        XCTAssertEqual(Stations.getStationCode("New York  -SEC  ✈"), "NY", "Should handle extra spaces")
+        XCTAssertEqual(Stations.getStationCode("  New York -SEC ✈  "), "NY", "Should handle leading/trailing spaces")
+        
+        // Test that it still returns nil for unknown stations even with -SEC
+        XCTAssertNil(Stations.getStationCode("Unknown Station -SEC"), "Should return nil for unknown station with -SEC")
+        XCTAssertNil(Stations.getStationCode("Fake City -SEC ✈"), "Should return nil for fake station with -SEC and emoji")
+    }
+    
     func testGetStationCodeWithPartialMatching() {
         // Test partial matching for stations containing search terms
         XCTAssertEqual(Stations.getStationCode("Metropark"), "MP", "Should find exact match first")
