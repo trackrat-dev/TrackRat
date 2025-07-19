@@ -126,7 +126,7 @@ struct TrainLiveActivity: Widget {
                             .font(.caption)
                             .lineLimit(2)
                             .minimumScaleFactor(0.8)
-                        if let time = context.state.nextStopArrivalTimeAsDate {
+                        if let time = context.state.contextAwareNextStopTime {
                             Text(time, style: .time)
                                 .font(.caption)
                                 .foregroundColor(.white)
@@ -256,7 +256,7 @@ struct TrainLiveActivityView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.white)
-                    if let time = context.state.nextStopArrivalTimeAsDate {
+                    if let time = context.state.contextAwareNextStopTime {
                         Text(time, style: .time)
                             .font(.caption)
                             .foregroundColor(.white)

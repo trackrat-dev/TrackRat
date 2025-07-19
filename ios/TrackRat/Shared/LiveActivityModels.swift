@@ -126,6 +126,42 @@ struct TrainActivityAttributes: ActivityAttributes {
             return Date.fromISO8601(arrivalTimeString)
         }
         
+        /// Context-aware time display: departure time for origin station, arrival time for others
+        var contextAwareNextStopTime: Date? {
+            // If train hasn't departed yet and we're at the origin station, show departure time
+            if !hasTrainDeparted && isCurrentStopOriginStation {
+                guard let departureTimeString = scheduledDepartureTime else { return nil }
+                return Date.fromISO8601(departureTimeString)
+            }
+            
+            // Otherwise show arrival time at next stop
+            return nextStopArrivalTimeAsDate
+        }
+        
+        /// Check if the current/next stop is the user's origin station
+        private var isCurrentStopOriginStation: Bool {
+            guard let originCode = originStationCode,
+                  let nextStop = nextStopName else { return false }
+            
+            // Convert station code to station name for comparison
+            // This is a simplified mapping - in practice you'd want a complete mapping
+            let stationCodeToName: [String: String] = [
+                "NY": "New York Penn Station",
+                "NP": "Newark Penn Station", 
+                "TR": "Trenton Transit Center",
+                "PJ": "Princeton Junction",
+                "MP": "Metropark"
+            ]
+            
+            guard let originStationName = stationCodeToName[originCode] else { return false }
+            
+            // Check if next stop matches origin station (handling "Station" suffix variations)
+            let nextStopNormalized = nextStop.replacingOccurrences(of: " Station", with: "")
+            let originNormalized = originStationName.replacingOccurrences(of: " Station", with: "")
+            
+            return nextStopNormalized.contains(originNormalized) || originNormalized.contains(nextStopNormalized)
+        }
+        
         /// Color based on delay minutes for timing text
         var delayColor: Color {
             switch delayMinutes {
