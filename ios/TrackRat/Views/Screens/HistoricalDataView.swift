@@ -7,9 +7,9 @@ struct HistoricalDataView: View {
     
     let train: TrainV2
     
-    init(train: TrainV2) {
+    init(train: TrainV2, toStationCode: String? = nil) {
         self.train = train
-        self._viewModel = StateObject(wrappedValue: HistoricalDataViewModel(train: train))
+        self._viewModel = StateObject(wrappedValue: HistoricalDataViewModel(train: train, toStationCode: toStationCode))
     }
     
     var body: some View {
@@ -36,7 +36,7 @@ struct HistoricalDataView: View {
                                     destinationStats: data.destinationStats,
                                     train: train,
                                     fromStationCode: appState.departureStationCode,
-                                    toStationCode: appState.destinationStationCode ?? Stations.getStationCode(train.destination)
+                                    toStationCode: viewModel.destinationStationCode
                                 )
                                 
                                 // Track Usage
@@ -46,7 +46,7 @@ struct HistoricalDataView: View {
                                     destinationStats: data.destinationTrackStats,
                                     train: train,
                                     fromStationCode: appState.departureStationCode,
-                                    toStationCode: appState.destinationStationCode ?? Stations.getStationCode(train.destination)
+                                    toStationCode: viewModel.destinationStationCode
                                 )
                             }
                             .padding()
@@ -88,9 +88,7 @@ struct HistoricalDataView: View {
                             
                             Button("Try Again") {
                                 Task {
-                                    // Use user's selected destination if available, otherwise fall back to train's actual destination
-                                    let toStationCode = appState.destinationStationCode ?? Stations.getStationCode(train.destination)
-                                    await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: toStationCode)
+                                    await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: nil)
                                 }
                             }
                             .padding(.horizontal, 24)
@@ -119,9 +117,7 @@ struct HistoricalDataView: View {
             .toolbarBackground(.visible, for: .navigationBar)
         }
         .task {
-            // Use user's selected destination if available, otherwise fall back to train's actual destination
-            let toStationCode = appState.destinationStationCode ?? Stations.getStationCode(train.destination)
-            await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: toStationCode)
+            await viewModel.loadHistoricalData(fromStationCode: appState.departureStationCode, toStationCode: nil)
         }
     }
 }
@@ -368,10 +364,21 @@ class HistoricalDataViewModel: ObservableObject {
     @Published var error: String?
     
     private let train: TrainV2
+    private let toStationCode: String?
     private let apiService = APIService.shared
     
-    init(train: TrainV2) {
+    init(train: TrainV2, toStationCode: String? = nil) {
         self.train = train
+        // Only apply fallback when toStationCode is truly nil
+        if let userDestination = toStationCode {
+            self.toStationCode = userDestination
+        } else {
+            self.toStationCode = Stations.getStationCode(train.destination)
+        }
+    }
+    
+    var destinationStationCode: String? {
+        return toStationCode
     }
     
     func loadHistoricalData(fromStationCode: String? = nil, toStationCode: String? = nil) async {
@@ -386,8 +393,8 @@ class HistoricalDataViewModel: ObservableObject {
             return
         }
         
-        // Validate destination station code
-        guard let toCode = toStationCode else {
+        // Use provided toStationCode or fall back to stored value
+        guard let toCode = toStationCode ?? self.toStationCode else {
             print("❌ Error: Missing toStationCode in loadHistoricalData for train destination: \(train.destination)")
             self.error = "Cannot determine destination station code for '\(train.destination)'"
             isLoading = false

@@ -9,6 +9,23 @@ private let trackRatBlue = Color(hex: "#0e5c8d")
 
 private let logger = Logger(subsystem: "net.trackrat.TrackRat", category: "LiveActivity")
 
+// Helper function to create deep link URL from Live Activity attributes
+private func createDeepLinkURL(from attributes: TrainActivityAttributes) -> URL? {
+    var components = URLComponents()
+    components.scheme = "trackrat"
+    components.host = "train"
+    components.path = "/\(attributes.trainNumber)"
+    
+    var queryItems: [URLQueryItem] = []
+    queryItems.append(URLQueryItem(name: "from", value: attributes.originStationCode))
+    queryItems.append(URLQueryItem(name: "to", value: attributes.destinationStationCode))
+    components.queryItems = queryItems
+    
+    let url = components.url
+    logger.info("🔗 Generated Live Activity deep link: \(url?.absoluteString ?? "nil")")
+    return url
+}
+
 // Debug logging helper
 private func debugLog(_ message: String, context: ActivityViewContext<TrainActivityAttributes>) {
     let state = context.state
@@ -91,6 +108,7 @@ struct TrainLiveActivity: Widget {
             TrainLiveActivityView(context: context)
                 .activityBackgroundTint(trackRatBlue)
                 .activitySystemActionForegroundColor(.white)
+                .widgetURL(createDeepLinkURL(from: context.attributes))
                 .onAppear {
                     debugLog("🔵 Lock Screen appeared", context: context)
                 }
@@ -176,6 +194,7 @@ struct TrainLiveActivity: Widget {
                 Image(systemName: "tram.fill")
                     .font(.caption)
             }
+            .widgetURL(createDeepLinkURL(from: context.attributes))
         }
     }
 }

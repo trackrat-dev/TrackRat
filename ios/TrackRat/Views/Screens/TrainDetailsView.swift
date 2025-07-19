@@ -154,7 +154,7 @@ struct TrainDetailsView: View {
         }
         .sheet(isPresented: $viewModel.showingHistory) {
             if let train = viewModel.train {
-                HistoricalDataView(train: train)
+                HistoricalDataView(train: train, toStationCode: appState.destinationStationCode)
             }
         }
     }

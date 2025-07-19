@@ -282,13 +282,15 @@ struct Stations {
         // Try common variations for ambiguous names
         let normalized = stationName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         
-        // Handle NJ Transit destinations with -SEC suffix and emojis
-        if normalized.contains("-sec") || normalized.contains("✈") {
+        // Handle NJ Transit destinations with -SEC suffix, emojis, and HTML entities
+        if normalized.contains("-sec") || normalized.contains("✈") || normalized.contains("&#9992") {
             let cleaned = normalized
                 .replacingOccurrences(of: " -sec", with: "")
                 .replacingOccurrences(of: "-sec", with: "")
                 .replacingOccurrences(of: " ✈", with: "")
                 .replacingOccurrences(of: "✈", with: "")
+                .replacingOccurrences(of: " &#9992", with: "")
+                .replacingOccurrences(of: "&#9992", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             
             // If we cleaned something, try again with the cleaned string
