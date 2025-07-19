@@ -203,7 +203,7 @@ class TrainDiscoveryCollector:
 
                 # Extract line color if available
                 if "BACKCOLOR" in train_data:
-                    journey.line_color = train_data["BACKCOLOR"]
+                    journey.line_color = train_data["BACKCOLOR"].strip()
 
                 session.add(journey)
                 new_train_ids.add(train_id)

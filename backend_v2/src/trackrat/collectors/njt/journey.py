@@ -352,7 +352,7 @@ class JourneyCollector(BaseJourneyCollector):
         """
         # Update basic info
         journey.destination = train_data.DESTINATION
-        journey.line_color = train_data.BACKCOLOR
+        journey.line_color = train_data.BACKCOLOR.strip()
 
         # Update terminal station (last stop)
         if train_data.STOPS:

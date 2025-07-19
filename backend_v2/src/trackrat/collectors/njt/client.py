@@ -210,6 +210,55 @@ class NJTransitClient:
 
         return trains
 
+    async def get_train_schedule_with_stops(self, station_code: str) -> dict[str, Any]:
+        """Get train schedule for a station WITH embedded stop data.
+
+        This uses getTrainSchedule (not getTrainSchedule19Rec) which includes
+        a STOPS array for each train with complete journey information.
+
+        Args:
+            station_code: Two-character station code (e.g., "NY", "NP")
+
+        Returns:
+            Full response dict with ITEMS containing trains with STOPS data
+        """
+        logger.info(
+            "API QUERY: getting train schedule with embedded stops using getTrainSchedule",
+            station_code=station_code,
+        )
+
+        response = await self._make_request(
+            "TrainData/getTrainSchedule", {"station": station_code}
+        )
+
+        # Log response structure for debugging
+        logger.debug(
+            "train_schedule_with_stops_response",
+            station_code=station_code,
+            response_type=type(response).__name__,
+            response_keys=list(response.keys()) if isinstance(response, dict) else None,
+            items_count=len(response.get("ITEMS", [])) if isinstance(response, dict) else None,
+        )
+
+        # Log sample stop data if available
+        if (
+            isinstance(response, dict)
+            and "ITEMS" in response
+            and len(response["ITEMS"]) > 0
+            and "STOPS" in response["ITEMS"][0]
+        ):
+            sample_train = response["ITEMS"][0]
+            stops_count = len(sample_train.get("STOPS", []))
+            logger.debug(
+                "train_schedule_stops_sample",
+                station_code=station_code,
+                train_id=sample_train.get("TRAIN_ID"),
+                stops_count=stops_count,
+                has_stops_data=stops_count > 0,
+            )
+
+        return response
+
     async def get_train_stop_list(self, train_id: str) -> NJTransitTrainData:
         """Get detailed stop list for a specific train.
 

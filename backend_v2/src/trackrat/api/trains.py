@@ -150,7 +150,7 @@ async def get_train_details(
         line=LineInfo(
             code=journey.line_code,
             name=journey.line_name or journey.line_code,
-            color=journey.line_color or "#000000",
+            color=(journey.line_color or "#000000").strip(),
         ),
         route=RouteInfo(
             origin=get_first_stop_name(journey),

@@ -264,7 +264,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
 
                 # Extract line color if available
                 if "BACKCOLOR" in train_data:
-                    journey.line_color = train_data["BACKCOLOR"]
+                    journey.line_color = train_data["BACKCOLOR"].strip()
 
                 session.add(journey)
                 await session.flush()  # Ensure journey has ID before creating stops

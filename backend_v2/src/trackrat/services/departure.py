@@ -21,7 +21,7 @@ from trackrat.models.api import (
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.jit import JustInTimeUpdateService
-from trackrat.utils.time import now_et, safe_datetime_subtract
+from trackrat.utils.time import now_et, parse_njt_time, safe_datetime_subtract
 
 logger = get_logger(__name__)
 
@@ -74,15 +74,10 @@ class DepartureService:
         result = await db.execute(stmt)
         journeys = list(result.scalars().unique().all())
 
-        # Ensure fresh data for NJT trains only (Amtrak data is already fresh from API)
+        # Ensure fresh data for NJT trains using station-level refresh
         njt_journeys = [j for j in journeys if j.data_source == "NJT"]
         if njt_journeys:
-            njt_client = NJTransitClient()
-            try:
-                async with JustInTimeUpdateService(njt_client) as jit_service:
-                    await jit_service.ensure_fresh_departures(db, njt_journeys)
-            finally:
-                await njt_client.close()
+            await self._ensure_fresh_station_data(db, from_station)
 
         # Build departures list
         departures = []
@@ -110,7 +105,7 @@ class DepartureService:
                 line=LineInfo(
                     code=journey.line_code,
                     name=journey.line_name or journey.line_code,
-                    color=journey.line_color or "#000000",
+                    color=(journey.line_color or "#000000").strip(),
                 ),
                 destination=journey.destination,
                 departure=StationInfo(
@@ -223,3 +218,135 @@ class DepartureService:
                 and next_station_code is not None
             ),
         )
+
+    async def _ensure_fresh_station_data(self, db: AsyncSession, station_code: str):
+        """Ensure station departure data is fresh using getTrainSchedule with embedded stops."""
+        
+        # Check if station data needs refresh (90 second staleness)
+        cutoff_time = now_et() - timedelta(seconds=90)
+        
+        needs_refresh = await db.scalar(
+            select(TrainJourney.id)
+            .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    JourneyStop.station_code == station_code,
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.last_updated_at < cutoff_time
+                )
+            )
+            .limit(1)
+        )
+        
+        if not needs_refresh:
+            logger.debug("station_data_fresh", station_code=station_code)
+            return
+        
+        logger.info("refreshing_station_data", station_code=station_code)
+        
+        # Refresh entire station using getTrainSchedule (with embedded STOPS)
+        njt_client = NJTransitClient()
+        try:
+            schedule_data = await njt_client.get_train_schedule_with_stops(station_code)
+            
+            train_items = schedule_data.get("ITEMS", [])
+            logger.info("station_refresh_retrieved", station_code=station_code, train_count=len(train_items))
+            
+            for train_data in train_items:
+                train_id = train_data.get("TRAIN_ID")
+                if not train_id:
+                    continue
+                
+                # Update journey and its stops from the embedded data
+                await self._update_journey_from_schedule_data(db, train_data, station_code)
+            
+            await db.commit()
+            logger.info("station_refresh_complete", station_code=station_code, updated_trains=len(train_items))
+            
+        except Exception as e:
+            logger.error("station_refresh_failed", station_code=station_code, error=str(e))
+            await db.rollback()
+            raise
+        finally:
+            await njt_client.close()
+
+    async def _update_journey_from_schedule_data(self, db: AsyncSession, train_data: dict, station_code: str):
+        """Update journey and stops from getTrainSchedule data."""
+        
+        train_id = train_data.get("TRAIN_ID")
+        if not train_id:
+            return
+        
+        # Find existing journey
+        journey = await db.scalar(
+            select(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.train_id == train_id,
+                    TrainJourney.journey_date == now_et().date(),
+                    TrainJourney.data_source == "NJT"
+                )
+            )
+            .options(selectinload(TrainJourney.stops))
+        )
+        
+        if not journey:
+            logger.warning("journey_not_found_during_station_refresh", train_id=train_id, station_code=station_code)
+            return
+        
+        # Update journey metadata
+        journey.destination = train_data.get("DESTINATION", journey.destination)
+        
+        # Clean color value (remove trailing spaces)
+        if backcolor := train_data.get("BACKCOLOR"):
+            journey.line_color = backcolor.strip()
+        journey.last_updated_at = now_et()
+        journey.update_count = (journey.update_count or 0) + 1
+        
+        # Update stops from embedded STOPS data
+        stops_data = train_data.get("STOPS", [])
+        if stops_data:
+            await self._update_stops_from_embedded_data(journey, stops_data)
+            journey.has_complete_journey = True
+            journey.stops_count = len(stops_data)
+        
+        logger.debug("journey_updated_from_schedule", train_id=train_id, stops_count=len(stops_data))
+
+    async def _update_stops_from_embedded_data(self, journey: TrainJourney, stops_data: list):
+        """Update journey stops from embedded STOPS data in getTrainSchedule response."""
+        
+        # Create a map of existing stops by station code
+        existing_stops = {stop.station_code: stop for stop in journey.stops}
+        
+        # Update or create stops from embedded data
+        for i, stop_data in enumerate(stops_data):
+            station_code = stop_data.get("STATION_2CHAR")
+            if not station_code:
+                continue
+            
+            # Get existing stop or create new one
+            stop = existing_stops.get(station_code)
+            if not stop:
+                stop = JourneyStop(
+                    journey_id=journey.id,
+                    station_code=station_code,
+                    station_name=stop_data.get("STATIONNAME", ""),
+                    stop_sequence=i
+                )
+                journey.stops.append(stop)
+            
+            # Update stop data from schedule
+            if arrival_time_str := stop_data.get("TIME"):
+                stop.scheduled_arrival = parse_njt_time(arrival_time_str)
+            
+            if departure_time_str := stop_data.get("DEP_TIME"):
+                stop.scheduled_departure = parse_njt_time(departure_time_str)
+            
+            # Update departure status
+            departed = stop_data.get("DEPARTED")
+            stop.has_departed_station = departed == "YES"
+            stop.raw_njt_departed_flag = departed
+            
+            # Update stop sequence if not set
+            if stop.stop_sequence is None:
+                stop.stop_sequence = i
