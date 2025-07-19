@@ -18,10 +18,10 @@ from structlog import get_logger
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
+from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.config import Settings, get_settings
 from trackrat.db.engine import get_session
-from trackrat.models.database import TrainJourney
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.utils.time import (
@@ -109,6 +109,16 @@ class SchedulerService:
             trigger=IntervalTrigger(minutes=1),
             id="live_activity_updates",
             name="Live Activity Updates",
+            replace_existing=True,
+            max_instances=1,
+        )
+
+        # Schedule Live Activity token cleanup (every hour)
+        self.scheduler.add_job(
+            self.cleanup_expired_live_activity_tokens,
+            trigger=IntervalTrigger(hours=1),
+            id="live_activity_token_cleanup",
+            name="Live Activity Token Cleanup",
             replace_existing=True,
             max_instances=1,
         )
@@ -1006,6 +1016,358 @@ class SchedulerService:
             # Remove from running tasks
             self._running_tasks.pop(task_id, None)
 
+    def _calculate_live_activity_content_state(
+        self, journey: TrainJourney, token: LiveActivityToken, session
+    ) -> dict:
+        """Calculate Live Activity content state for a specific token's journey segment."""
+        import time
+        from trackrat.utils.time import ensure_timezone_aware, now_et, calculate_delay
+
+        # Calculate simple progress
+        current_stop = None
+        next_stop = None
+        journey_progress = 0.0
+        calculated_delay = 0  # Default delay
+
+        if journey and journey.stops:
+            # Sort stops by sequence to ensure proper ordering
+            sorted_stops = sorted(
+                journey.stops, key=lambda s: s.stop_sequence or 0
+            )
+
+            # Find user's origin and destination indices
+            origin_index = None
+            destination_index = None
+            for i, stop in enumerate(sorted_stops):
+                if stop.station_code == token.origin_code:
+                    origin_index = i
+                if stop.station_code == token.destination_code:
+                    destination_index = i
+
+            # If we found both, filter stops to user's journey
+            if origin_index is not None and destination_index is not None:
+                # Filter to only the user's journey segment
+                user_journey_stops = sorted_stops[
+                    origin_index : destination_index + 1
+                ]
+
+                # Log stop sequence for debugging
+                stop_sequence_info = [
+                    (
+                        s.stop_sequence,
+                        s.station_code,
+                        s.has_departed_station,
+                    )
+                    for s in user_journey_stops[:5]
+                ]  # First 5 stops
+                logger.debug(
+                    "user_journey_stops_debug",
+                    train_number=journey.train_id,
+                    origin_code=token.origin_code,
+                    destination_code=token.destination_code,
+                    user_journey_stop_count=len(user_journey_stops),
+                    total_stop_count=len(sorted_stops),
+                    first_stops=stop_sequence_info,
+                )
+
+                # Calculate progress based on user's journey only
+                total_user_stops = len(user_journey_stops)
+                departed_user_stops = sum(
+                    1
+                    for stop in user_journey_stops
+                    if stop.has_departed_station
+                )
+                journey_progress = (
+                    departed_user_stops / total_user_stops
+                    if total_user_stops > 0
+                    else 0.0
+                )
+
+                # Find current and next stops within user's journey
+                origin_station = user_journey_stops[0]
+                has_departed_origin = origin_station.has_departed_station
+
+                if not has_departed_origin:
+                    # Train hasn't left origin yet - determine actual current position
+                    # Don't assume train is at origin just because it hasn't departed
+                    actual_current_stop = None
+                    for stop in sorted_stops:
+                        if (journey.data_source == "AMTRAK" and stop.raw_amtrak_status == "Station") or \
+                           (journey.data_source == "NJT" and stop.track and not stop.has_departed_station):
+                            actual_current_stop = stop
+                            break
+                    
+                    # If train is actually at the user's origin, show that
+                    if actual_current_stop and actual_current_stop.station_code == token.origin_code:
+                        current_stop = actual_current_stop
+                        next_stop = actual_current_stop
+                    else:
+                        # Train hasn't reached user's origin yet - show actual location or none
+                        current_stop = actual_current_stop
+                        next_stop = origin_station
+                    logger.debug(
+                        "user_journey_before_origin",
+                        train_number=journey.train_id,
+                        actual_current_stop=current_stop.station_name if current_stop else "Unknown",
+                        next_stop_name=next_stop.station_name if next_stop else "Unknown",
+                        user_journey_stops=total_user_stops,
+                        train_at_origin=actual_current_stop and actual_current_stop.station_code == token.origin_code,
+                    )
+                else:
+                    # Train has departed origin - find progression through journey
+                    for i, stop in enumerate(user_journey_stops):
+                        if not stop.has_departed_station and i > 0:
+                            current_stop = user_journey_stops[i - 1]
+                            next_stop = stop
+                            # Log the stop sequence for debugging
+                            logger.debug(
+                                "user_journey_next_stop_found",
+                                train_number=journey.train_id,
+                                current_stop=current_stop.station_name,
+                                current_stop_sequence=current_stop.stop_sequence,
+                                next_stop=next_stop.station_name,
+                                next_stop_sequence=next_stop.stop_sequence,
+                                user_journey_stops=total_user_stops,
+                                stop_index=i,
+                            )
+                            break
+            else:
+                # Fallback to all stops if we can't find origin/destination
+                logger.warning(
+                    "origin_destination_not_found",
+                    train_number=journey.train_id,
+                    origin_code=token.origin_code,
+                    destination_code=token.destination_code,
+                    available_stops=[s.station_code for s in sorted_stops],
+                )
+                total_stops = len(sorted_stops)
+                departed_stops = sum(
+                    1 for stop in sorted_stops if stop.has_departed_station
+                )
+                journey_progress = (
+                    departed_stops / total_stops if total_stops > 0 else 0.0
+                )
+
+        # Calculate delay from stops (similar to API logic)
+        if journey and journey.stops:
+            # Find the most recent departed stop with timing info
+            stops_for_delay = (
+                sorted_stops
+                if "sorted_stops" in locals()
+                else sorted(
+                    journey.stops, key=lambda s: s.stop_sequence or 0
+                )
+            )
+            for stop in reversed(stops_for_delay):
+                if stop.has_departed_station:
+                    if stop.actual_departure and stop.scheduled_departure:
+                        calculated_delay = calculate_delay(
+                            stop.scheduled_departure, stop.actual_departure
+                        )
+                        break
+                    elif stop.actual_arrival and stop.scheduled_arrival:
+                        calculated_delay = calculate_delay(
+                            stop.scheduled_arrival, stop.actual_arrival
+                        )
+                        break
+
+        # Determine if train has departed from user's origin
+        has_train_departed = False
+        scheduled_departure_time = None
+        scheduled_arrival_time = None
+        next_stop_arrival_time = None
+
+        # Find the user's origin and destination stops
+        origin_stop = None
+        destination_stop = None
+
+        # Use sorted_stops if available, otherwise sort journey.stops
+        stops_to_check = (
+            sorted_stops
+            if "sorted_stops" in locals()
+            else (
+                sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+                if journey and journey.stops
+                else []
+            )
+        )
+
+        for stop in stops_to_check:
+            if stop.station_code == token.origin_code:
+                origin_stop = stop
+                # Convert to ISO8601 string for iOS
+                scheduled_departure_time = (
+                    stop.scheduled_departure.isoformat()
+                    if stop.scheduled_departure
+                    else None
+                )
+                # Check if departed
+
+                # Use has_departed_station as authoritative source
+                if stop.has_departed_station:
+                    has_train_departed = True
+                elif stop.scheduled_departure:
+                    # Use ensure_timezone_aware to properly handle timezone conversion
+                    scheduled_dep = ensure_timezone_aware(
+                        stop.scheduled_departure
+                    )
+                    current_time = now_et()
+                    if scheduled_dep < current_time:
+                        has_train_departed = True
+            if stop.station_code == token.destination_code:
+                destination_stop = stop
+                # Convert to ISO8601 string for iOS
+                scheduled_arrival_time = (
+                    stop.scheduled_arrival.isoformat()
+                    if stop.scheduled_arrival
+                    else None
+                )
+
+        # Get next stop arrival time
+        if next_stop:
+            # Convert to ISO8601 string for iOS
+            next_stop_arrival_time = (
+                next_stop.scheduled_arrival.isoformat()
+                if next_stop.scheduled_arrival
+                else None
+            )
+
+        # Determine status based on user's journey context
+        if not has_train_departed:
+            # Train hasn't left user's origin yet
+            if current_stop and current_stop.station_code == token.origin_code:
+                # Train is at user's origin
+                if current_stop.track:
+                    journey_status = "BOARDING"
+                else:
+                    journey_status = "ARRIVED_AT_ORIGIN"
+            else:
+                # Train hasn't reached user's origin yet
+                journey_status = "NOT_DEPARTED"
+        else:
+            # Train has departed user's origin
+            journey_status = (
+                journey.snapshots[-1].train_status
+                if journey and journey.snapshots
+                else "EN ROUTE"
+            )
+
+        # Create content state with all required fields
+        content_state = {
+            "status": journey_status,
+            "track": (
+                current_stop.track
+                if current_stop and current_stop.track
+                else None
+            ),
+            "currentStopName": (
+                current_stop.station_name if current_stop else "Unknown"
+            ),
+            "nextStopName": next_stop.station_name if next_stop else None,
+            "delayMinutes": calculated_delay,
+            "journeyProgress": journey_progress,
+            "dataTimestamp": int(
+                time.time()
+            ),  # Unix timestamp for data freshness
+            # New fields for enhanced Live Activity display
+            "scheduledDepartureTime": scheduled_departure_time,
+            "scheduledArrivalTime": scheduled_arrival_time,
+            "nextStopArrivalTime": next_stop_arrival_time,
+            "hasTrainDeparted": has_train_departed,
+            "originStationCode": token.origin_code,
+            "destinationStationCode": token.destination_code,
+        }
+
+        # Enhanced debug logging for Live Activity payload
+        logger.info(
+            "live_activity_content_state_detailed",
+            train_number=journey.train_id,
+            # Progress tracking
+            journey_progress=journey_progress,
+            user_journey_stops=(
+                len(user_journey_stops)
+                if "user_journey_stops" in locals()
+                else "N/A"
+            ),
+            # Departure/arrival data
+            has_departed=has_train_departed,
+            scheduled_departure_time=scheduled_departure_time,
+            scheduled_arrival_time=scheduled_arrival_time,
+            next_stop_arrival_time=next_stop_arrival_time,
+            # Current state
+            current_stop=(
+                current_stop.station_name if current_stop else None
+            ),
+            current_stop_code=(
+                current_stop.station_code if current_stop else None
+            ),
+            next_stop=next_stop.station_name if next_stop else None,
+            next_stop_code=next_stop.station_code if next_stop else None,
+            # Track and status
+            track=content_state.get("track"),
+            status=content_state.get("status"),
+            delay_minutes=content_state.get("delayMinutes"),
+            # User journey
+            origin_code=token.origin_code,
+            destination_code=token.destination_code,
+            # Data validation
+            has_origin_stop=origin_stop is not None,
+            has_destination_stop=destination_stop is not None,
+            # Full payload for debugging
+            full_content_state=content_state,
+        )
+
+        return content_state
+
+    async def cleanup_expired_live_activity_tokens(self) -> None:
+        """Clean up expired Live Activity tokens by marking them as inactive."""
+        try:
+            logger.info("starting_live_activity_token_cleanup")
+
+            # Use sync database access for consistency with other scheduler methods
+            from sqlalchemy import create_engine, update
+            from sqlalchemy.orm import sessionmaker
+
+            db_url = str(self.settings.database_url).replace(
+                "sqlite+aiosqlite", "sqlite"
+            )
+            sync_engine = create_engine(
+                db_url, connect_args={"check_same_thread": False}
+            )
+            SyncSession = sessionmaker(sync_engine)
+
+            with SyncSession() as session:
+                # Find expired tokens that are still active
+                current_time = now_et()
+                
+                # Update expired tokens to inactive
+                result = session.execute(
+                    update(LiveActivityToken)
+                    .where(
+                        and_(
+                            LiveActivityToken.is_active.is_(True),
+                            LiveActivityToken.expires_at <= current_time,
+                        )
+                    )
+                    .values(is_active=False)
+                )
+                
+                session.commit()
+                
+                cleaned_count = result.rowcount
+                logger.info(
+                    "live_activity_token_cleanup_completed",
+                    tokens_cleaned=cleaned_count,
+                    cutoff_time=current_time.isoformat(),
+                )
+
+        except Exception as e:
+            logger.error(
+                "live_activity_token_cleanup_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
     async def update_live_activities(self) -> None:
         """Update all active Live Activities with current train data."""
         task_id = f"live_activity_update_{now_et().isoformat()}"
@@ -1021,7 +1383,6 @@ class SchedulerService:
             from sqlalchemy import and_, create_engine, select
             from sqlalchemy.orm import selectinload, sessionmaker
 
-            from trackrat.models.database import LiveActivityToken, TrainJourney
 
             # Use synchronous database access to avoid greenlet issues in scheduler context
             # This is a workaround for APScheduler's async executor not properly initializing greenlets
@@ -1152,274 +1513,15 @@ class SchedulerService:
                                 )
                                 # Continue with stale data rather than failing
 
-                    # Calculate simple progress
-                    current_stop = None
-                    next_stop = None
-                    journey_progress = 0.0
-                    calculated_delay = 0  # Default delay
-
-                    if journey and journey.stops:
-                        # Sort stops by sequence to ensure proper ordering
-                        sorted_stops = sorted(
-                            journey.stops, key=lambda s: s.stop_sequence or 0
-                        )
-
-                        # Find user's origin and destination indices
-                        origin_index = None
-                        destination_index = None
-                        for i, stop in enumerate(sorted_stops):
-                            if stop.station_code == token.origin_code:
-                                origin_index = i
-                            if stop.station_code == token.destination_code:
-                                destination_index = i
-
-                        # If we found both, filter stops to user's journey
-                        if origin_index is not None and destination_index is not None:
-                            # Filter to only the user's journey segment
-                            user_journey_stops = sorted_stops[
-                                origin_index : destination_index + 1
-                            ]
-
-                            # Log stop sequence for debugging
-                            stop_sequence_info = [
-                                (
-                                    s.stop_sequence,
-                                    s.station_code,
-                                    s.has_departed_station,
-                                )
-                                for s in user_journey_stops[:5]
-                            ]  # First 5 stops
-                            logger.debug(
-                                "user_journey_stops_debug",
-                                train_number=train_number,
-                                origin_code=token.origin_code,
-                                destination_code=token.destination_code,
-                                user_journey_stop_count=len(user_journey_stops),
-                                total_stop_count=len(sorted_stops),
-                                first_stops=stop_sequence_info,
-                            )
-
-                            # Calculate progress based on user's journey only
-                            total_user_stops = len(user_journey_stops)
-                            departed_user_stops = sum(
-                                1
-                                for stop in user_journey_stops
-                                if stop.has_departed_station
-                            )
-                            journey_progress = (
-                                departed_user_stops / total_user_stops
-                                if total_user_stops > 0
-                                else 0.0
-                            )
-
-                            # Find current and next stops within user's journey
-                            origin_station = user_journey_stops[0]
-                            has_departed_origin = origin_station.has_departed_station
-
-                            if not has_departed_origin:
-                                # Train hasn't left origin yet - stay at origin for both current and next
-                                current_stop = origin_station
-                                next_stop = origin_station
-                                logger.debug(
-                                    "user_journey_at_origin",
-                                    train_number=train_number,
-                                    origin_stop=current_stop.station_name,
-                                    origin_stop_sequence=current_stop.stop_sequence,
-                                    user_journey_stops=total_user_stops,
-                                )
-                            else:
-                                # Train has departed origin - find progression through journey
-                                for i, stop in enumerate(user_journey_stops):
-                                    if not stop.has_departed_station and i > 0:
-                                        current_stop = user_journey_stops[i - 1]
-                                        next_stop = stop
-                                        # Log the stop sequence for debugging
-                                        logger.debug(
-                                            "user_journey_next_stop_found",
-                                            train_number=train_number,
-                                            current_stop=current_stop.station_name,
-                                            current_stop_sequence=current_stop.stop_sequence,
-                                            next_stop=next_stop.station_name,
-                                            next_stop_sequence=next_stop.stop_sequence,
-                                            user_journey_stops=total_user_stops,
-                                            stop_index=i,
-                                        )
-                                        break
-                        else:
-                            # Fallback to all stops if we can't find origin/destination
-                            logger.warning(
-                                "origin_destination_not_found",
-                                train_number=train_number,
-                                origin_code=token.origin_code,
-                                destination_code=token.destination_code,
-                                available_stops=[s.station_code for s in sorted_stops],
-                            )
-                            total_stops = len(sorted_stops)
-                            departed_stops = sum(
-                                1 for stop in sorted_stops if stop.has_departed_station
-                            )
-                            journey_progress = (
-                                departed_stops / total_stops if total_stops > 0 else 0.0
-                            )
-
-                    # Calculate delay from stops (similar to API logic)
-                    if journey and journey.stops:
-                        # Find the most recent departed stop with timing info
-                        stops_for_delay = (
-                            sorted_stops
-                            if "sorted_stops" in locals()
-                            else sorted(
-                                journey.stops, key=lambda s: s.stop_sequence or 0
-                            )
-                        )
-                        for stop in reversed(stops_for_delay):
-                            if stop.has_departed_station:
-                                if stop.actual_departure and stop.scheduled_departure:
-                                    calculated_delay = calculate_delay(
-                                        stop.scheduled_departure, stop.actual_departure
-                                    )
-                                    break
-                                elif stop.actual_arrival and stop.scheduled_arrival:
-                                    calculated_delay = calculate_delay(
-                                        stop.scheduled_arrival, stop.actual_arrival
-                                    )
-                                    break
-
-                    # Determine if train has departed from user's origin
-                    has_train_departed = False
-                    scheduled_departure_time = None
-                    scheduled_arrival_time = None
-                    next_stop_arrival_time = None
-
-                    # Find the user's origin and destination stops
-                    origin_stop = None
-                    destination_stop = None
-
-                    # Use sorted_stops if available, otherwise sort journey.stops
-                    stops_to_check = (
-                        sorted_stops
-                        if "sorted_stops" in locals()
-                        else (
-                            sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
-                            if journey and journey.stops
-                            else []
-                        )
-                    )
-
-                    for stop in stops_to_check:
-                        if stop.station_code == token.origin_code:
-                            origin_stop = stop
-                            # Convert to ISO8601 string for iOS
-                            scheduled_departure_time = (
-                                stop.scheduled_departure.isoformat()
-                                if stop.scheduled_departure
-                                else None
-                            )
-                            # Check if departed
-
-                            if stop.actual_departure:
-                                has_train_departed = True
-                            elif stop.scheduled_departure:
-                                # Use ensure_timezone_aware to properly handle timezone conversion
-                                scheduled_dep = ensure_timezone_aware(
-                                    stop.scheduled_departure
-                                )
-                                current_time = now_et()
-                                if scheduled_dep < current_time:
-                                    has_train_departed = True
-                        if stop.station_code == token.destination_code:
-                            destination_stop = stop
-                            # Convert to ISO8601 string for iOS
-                            scheduled_arrival_time = (
-                                stop.scheduled_arrival.isoformat()
-                                if stop.scheduled_arrival
-                                else None
-                            )
-
-                    # Get next stop arrival time
-                    if next_stop:
-                        # Convert to ISO8601 string for iOS
-                        next_stop_arrival_time = (
-                            next_stop.scheduled_arrival.isoformat()
-                            if next_stop.scheduled_arrival
-                            else None
-                        )
-
-                    # Create content state with all required fields
-                    import time
-
-                    content_state = {
-                        "status": (
-                            journey.snapshots[-1].train_status
-                            if journey and journey.snapshots
-                            else "UNKNOWN"
-                        ),
-                        "track": (
-                            current_stop.track
-                            if current_stop and current_stop.track
-                            else None
-                        ),
-                        "currentStopName": (
-                            current_stop.station_name if current_stop else "Unknown"
-                        ),
-                        "nextStopName": next_stop.station_name if next_stop else None,
-                        "delayMinutes": calculated_delay,
-                        "journeyProgress": journey_progress,
-                        "dataTimestamp": int(
-                            time.time()
-                        ),  # Unix timestamp for data freshness
-                        # New fields for enhanced Live Activity display
-                        "scheduledDepartureTime": scheduled_departure_time,
-                        "scheduledArrivalTime": scheduled_arrival_time,
-                        "nextStopArrivalTime": next_stop_arrival_time,
-                        "hasTrainDeparted": has_train_departed,
-                        "originStationCode": token.origin_code,
-                        "destinationStationCode": token.destination_code,
-                    }
-
-                    # Enhanced debug logging for Live Activity payload
-                    logger.info(
-                        "live_activity_content_state_detailed",
-                        train_number=train_number,
-                        # Progress tracking
-                        journey_progress=journey_progress,
-                        user_journey_stops=(
-                            len(user_journey_stops)
-                            if "user_journey_stops" in locals()
-                            else "N/A"
-                        ),
-                        # Departure/arrival data
-                        has_departed=has_train_departed,
-                        scheduled_departure_time=scheduled_departure_time,
-                        scheduled_arrival_time=scheduled_arrival_time,
-                        next_stop_arrival_time=next_stop_arrival_time,
-                        # Current state
-                        current_stop=(
-                            current_stop.station_name if current_stop else None
-                        ),
-                        current_stop_code=(
-                            current_stop.station_code if current_stop else None
-                        ),
-                        next_stop=next_stop.station_name if next_stop else None,
-                        next_stop_code=next_stop.station_code if next_stop else None,
-                        # Track and status
-                        track=content_state.get("track"),
-                        status=content_state.get("status"),
-                        delay_minutes=content_state.get("delayMinutes"),
-                        # User journey
-                        origin_code=token.origin_code,
-                        destination_code=token.destination_code,
-                        # Data validation
-                        has_origin_stop=origin_stop is not None,
-                        has_destination_stop=destination_stop is not None,
-                        # Full payload for debugging
-                        full_content_state=content_state,
-                    )
-
-                    # Send update to each token
+                    # Process each token individually to calculate personalized content state
                     for token in tokens:
                         try:
-                            # Run async APNS call in sync context
+                            # Calculate content state specific to this token's journey segment
+                            content_state = self._calculate_live_activity_content_state(
+                                journey, token, session
+                            )
+                            
+                            # Send token-specific update via APNS
                             success = await self.apns_service.send_live_activity_update(
                                 token.push_token, content_state
                             )
