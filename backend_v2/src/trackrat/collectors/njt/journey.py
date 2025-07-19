@@ -593,9 +593,10 @@ class JourneyCollector(BaseJourneyCollector):
 
         try:
             # Get departure board for origin station
-            departure_board = await self.njt_client.get_train_schedule(
+            schedule_response = await self.njt_client.get_train_schedule_with_stops(
                 journey.origin_station_code or ""
             )
+            departure_board = schedule_response.get("ITEMS", [])
 
             # Find our train in the departure board
             for train_entry in departure_board:

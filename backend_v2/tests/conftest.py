@@ -122,16 +122,18 @@ def mock_njt_client():
     client = AsyncMock(spec=NJTransitClient)
 
     # Mock responses
-    client.get_train_schedule.return_value = [
-        {
-            "TRAIN_ID": "3840",
-            "LINE": "NE",
-            "LINE_NAME": "Northeast Corridor",
-            "DESTINATION": "Trenton",
-            "SCHED_DEP_DATE": "05-Jul-2025 02:30:00 PM",
-            "BACKCOLOR": "#F7505E",
-        }
-    ]
+    client.get_train_schedule_with_stops.return_value = {
+        "ITEMS": [
+            {
+                "TRAIN_ID": "3840",
+                "LINE": "NE",
+                "LINE_NAME": "Northeast Corridor",
+                "DESTINATION": "Trenton",
+                "SCHED_DEP_DATE": "05-Jul-2025 02:30:00 PM",
+                "BACKCOLOR": "#F7505E",
+            }
+        ]
+    }
 
     stop_list_response = Mock(
         TRAIN_ID="3840",

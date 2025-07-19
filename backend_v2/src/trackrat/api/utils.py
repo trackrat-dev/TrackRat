@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from sqlalchemy.exc import DatabaseError, OperationalError
 from structlog import get_logger
 
-from trackrat.collectors.njt_client import NJTransitAPIError
+from trackrat.collectors.njt.client import NJTransitAPIError
 
 logger = get_logger(__name__)
 

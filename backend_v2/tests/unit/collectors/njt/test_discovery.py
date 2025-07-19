@@ -17,7 +17,7 @@ from trackrat.utils.time import now_et
 def mock_njt_client():
     """Mock NJ Transit client."""
     client = AsyncMock()
-    client.get_train_schedule = AsyncMock()
+    client.get_train_schedule_with_stops_with_stops = AsyncMock()
     return client
 
 
@@ -68,9 +68,9 @@ class TestTrainDiscoveryCollector:
         """Test that discover_station_trains returns all discovered train IDs."""
         # Mock the session and client
         mock_session = AsyncMock()
-        discovery_collector.njt_client.get_train_schedule.return_value = (
-            sample_train_data
-        )
+        discovery_collector.njt_client.get_train_schedule_with_stops.return_value = {
+            "ITEMS": sample_train_data
+        }
 
         # Mock database operations
         mock_session.add = Mock()
@@ -95,7 +95,9 @@ class TestTrainDiscoveryCollector:
         assert set(result["new_train_ids"]) == {"3737", "1281"}
 
         # Verify client was called correctly
-        discovery_collector.njt_client.get_train_schedule.assert_called_once_with("NY")
+        discovery_collector.njt_client.get_train_schedule_with_stops.assert_called_once_with(
+            "NY"
+        )
 
         # Verify process_discovered_trains was called
         mock_process.assert_called_once_with(mock_session, "NY", sample_train_data)
@@ -106,7 +108,9 @@ class TestTrainDiscoveryCollector:
     ):
         """Test handling of empty train schedule response."""
         mock_session = AsyncMock()
-        discovery_collector.njt_client.get_train_schedule.return_value = []
+        discovery_collector.njt_client.get_train_schedule_with_stops.return_value = {
+            "ITEMS": []
+        }
 
         mock_session.add = Mock()
         mock_session.flush = AsyncMock()
@@ -137,9 +141,9 @@ class TestTrainDiscoveryCollector:
         ]
 
         mock_session = AsyncMock()
-        discovery_collector.njt_client.get_train_schedule.return_value = (
-            invalid_train_data
-        )
+        discovery_collector.njt_client.get_train_schedule_with_stops.return_value = {
+            "ITEMS": invalid_train_data
+        }
 
         mock_session.add = Mock()
         mock_session.flush = AsyncMock()
@@ -162,8 +166,8 @@ class TestTrainDiscoveryCollector:
     async def test_discover_station_trains_handles_api_error(self, discovery_collector):
         """Test error handling when API call fails."""
         mock_session = AsyncMock()
-        discovery_collector.njt_client.get_train_schedule.side_effect = Exception(
-            "API Error"
+        discovery_collector.njt_client.get_train_schedule_with_stops.side_effect = (
+            Exception("API Error")
         )
 
         mock_session.add = Mock()

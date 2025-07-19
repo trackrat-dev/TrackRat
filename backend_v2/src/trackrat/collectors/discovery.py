@@ -92,8 +92,11 @@ class TrainDiscoveryCollector:
         discovery_run = DiscoveryRun(station_code=station_code, run_at=start_time)
 
         try:
-            # Get train schedule data
-            trains_data = await self.njt_client.get_train_schedule(station_code)
+            # Get train schedule data with embedded stops
+            schedule_response = await self.njt_client.get_train_schedule_with_stops(
+                station_code
+            )
+            trains_data = schedule_response.get("ITEMS", [])
 
             # Process discovered trains
             new_train_ids = await self.process_discovered_trains(

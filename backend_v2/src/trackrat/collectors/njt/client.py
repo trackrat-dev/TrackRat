@@ -131,87 +131,6 @@ class NJTransitClient:
             )
             raise NJTransitAPIError(f"Failed to call {endpoint}: {str(e)}") from e
 
-    @track_api_call(api_name="njtransit", endpoint="train_schedule")
-    async def get_train_schedule(self, station_code: str) -> list[dict[str, Any]]:
-        """Get train schedule for a station.
-
-        This is used for train discovery - finding which trains are active.
-
-        Args:
-            station_code: Two-character station code (e.g., "NY", "NP")
-
-        Returns:
-            List of train schedule data
-        """
-        logger.info(
-            "API QUERY: getting train schedule with getTrainSchedule19Rec",
-            station_code=station_code,
-        )
-
-        response = await self._make_request(
-            "TrainData/getTrainSchedule19Rec", {"station": station_code}
-        )
-
-        # Response should have a "STATION" key with station data
-        # and train data in the response
-        trains = []
-
-        # Log the response structure for debugging
-        logger.debug(
-            "train_schedule_response_structure",
-            response_type=type(response).__name__,
-            response_keys=list(response.keys()) if isinstance(response, dict) else None,
-            response_length=len(response) if isinstance(response, list) else None,
-        )
-
-        # Log sample train data to see what fields are available
-        if (
-            isinstance(response, dict)
-            and "ITEMS" in response
-            and len(response["ITEMS"]) > 0
-        ):
-            sample_train = response["ITEMS"][0]
-            logger.debug(
-                "train_schedule_sample_data",
-                station_code=station_code,
-                train_id=sample_train.get("TRAIN_ID"),
-                track=sample_train.get("TRACK"),
-                dep_time=sample_train.get("SCHED_DEP_DATE"),
-                status=sample_train.get("STATUS"),
-                available_fields=list(sample_train.keys()),
-            )
-
-        # The exact structure varies, but typically trains are in the root
-        # or under a specific key. We'll need to adapt based on actual response.
-        if isinstance(response, list):
-            trains = response
-        elif isinstance(response, dict):
-            # Try common keys - ITEMS is the actual key used by NJT API
-            for key in ["ITEMS", "TRAINS", "trains", "data"]:
-                if key in response and isinstance(response[key], list):
-                    trains = response[key]
-                    logger.debug(f"Found trains under key: {key}")
-                    break
-            else:
-                # If no known key, assume the whole response minus metadata
-                trains = [
-                    v
-                    for k, v in response.items()
-                    if isinstance(v, dict) and "TRAIN_ID" in v
-                ]
-                if trains:
-                    logger.debug(
-                        "Found trains by searching for TRAIN_ID in dict values"
-                    )
-
-        logger.info(
-            "train_schedule_retrieved",
-            station_code=station_code,
-            train_count=len(trains),
-        )
-
-        return trains
-
     @track_api_call(api_name="njtransit", endpoint="train_schedule_with_stops")
     async def get_train_schedule_with_stops(self, station_code: str) -> dict[str, Any]:
         """Get train schedule for a station WITH embedded stop data.
@@ -263,6 +182,57 @@ class NJTransitClient:
             )
 
         return response
+
+    @track_api_call(api_name="njtransit", endpoint="train_schedule")
+    async def get_train_schedule(self, station_code: str) -> list[dict[str, Any]]:
+        """Get train schedule for a station (legacy format).
+
+        This uses getTrainSchedule19Rec which returns a simple list of trains
+        without embedded stop data. Used for discovery purposes.
+
+        Args:
+            station_code: Two-character station code (e.g., "NY", "NP")
+
+        Returns:
+            List of train dictionaries (parsed from ITEMS or TRAINS keys)
+        """
+        logger.info(
+            "API QUERY: getting train schedule using getTrainSchedule19Rec",
+            station_code=station_code,
+        )
+
+        response = await self._make_request(
+            "TrainData/getTrainSchedule19Rec", {"station": station_code}
+        )
+
+        # Handle different response formats
+        if isinstance(response, list):
+            # API returned a list directly
+            return response
+        elif isinstance(response, dict):
+            # Check for ITEMS key (newer format)
+            if "ITEMS" in response:
+                items = response["ITEMS"]
+                return items if isinstance(items, list) else []
+            # Check for TRAINS key (legacy format)
+            elif "TRAINS" in response:
+                trains = response["TRAINS"]
+                return trains if isinstance(trains, list) else []
+            else:
+                # Empty response or unknown format
+                logger.warning(
+                    "unexpected_train_schedule_format",
+                    station_code=station_code,
+                    response_keys=list(response.keys()),
+                )
+                return []
+        else:
+            logger.error(
+                "invalid_train_schedule_response_type",
+                station_code=station_code,
+                response_type=type(response).__name__,
+            )
+            return []
 
     @track_api_call(api_name="njtransit", endpoint="train_stop_list")
     async def get_train_stop_list(self, train_id: str) -> NJTransitTrainData:
