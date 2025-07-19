@@ -1213,22 +1213,38 @@ class SchedulerService:
                             )
 
                             # Find current and next stops within user's journey
-                            for i, stop in enumerate(user_journey_stops):
-                                if not stop.has_departed_station and i > 0:
-                                    current_stop = user_journey_stops[i - 1]
-                                    next_stop = stop
-                                    # Log the stop sequence for debugging
-                                    logger.debug(
-                                        "user_journey_next_stop_found",
-                                        train_number=train_number,
-                                        current_stop=current_stop.station_name,
-                                        current_stop_sequence=current_stop.stop_sequence,
-                                        next_stop=next_stop.station_name,
-                                        next_stop_sequence=next_stop.stop_sequence,
-                                        user_journey_stops=total_user_stops,
-                                        stop_index=i,
-                                    )
-                                    break
+                            origin_station = user_journey_stops[0]
+                            has_departed_origin = origin_station.has_departed_station
+
+                            if not has_departed_origin:
+                                # Train hasn't left origin yet - stay at origin for both current and next
+                                current_stop = origin_station
+                                next_stop = origin_station
+                                logger.debug(
+                                    "user_journey_at_origin",
+                                    train_number=train_number,
+                                    origin_stop=current_stop.station_name,
+                                    origin_stop_sequence=current_stop.stop_sequence,
+                                    user_journey_stops=total_user_stops,
+                                )
+                            else:
+                                # Train has departed origin - find progression through journey
+                                for i, stop in enumerate(user_journey_stops):
+                                    if not stop.has_departed_station and i > 0:
+                                        current_stop = user_journey_stops[i - 1]
+                                        next_stop = stop
+                                        # Log the stop sequence for debugging
+                                        logger.debug(
+                                            "user_journey_next_stop_found",
+                                            train_number=train_number,
+                                            current_stop=current_stop.station_name,
+                                            current_stop_sequence=current_stop.stop_sequence,
+                                            next_stop=next_stop.station_name,
+                                            next_stop_sequence=next_stop.stop_sequence,
+                                            user_journey_stops=total_user_stops,
+                                            stop_index=i,
+                                        )
+                                        break
                         else:
                             # Fallback to all stops if we can't find origin/destination
                             logger.warning(

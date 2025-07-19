@@ -237,7 +237,9 @@ class NJTransitClient:
             station_code=station_code,
             response_type=type(response).__name__,
             response_keys=list(response.keys()) if isinstance(response, dict) else None,
-            items_count=len(response.get("ITEMS", [])) if isinstance(response, dict) else None,
+            items_count=(
+                len(response.get("ITEMS", [])) if isinstance(response, dict) else None
+            ),
         )
 
         # Log sample stop data if available

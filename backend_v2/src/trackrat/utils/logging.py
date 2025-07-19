@@ -27,6 +27,11 @@ def setup_logging() -> None:
     # Disable verbose httpx logs
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+    # Disable verbose database operation logs
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+
     # Processors for structlog
     processors: list[Processor] = [
         structlog.stdlib.add_log_level,
