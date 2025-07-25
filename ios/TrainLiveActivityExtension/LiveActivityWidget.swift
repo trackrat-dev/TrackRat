@@ -152,14 +152,6 @@ struct TrainLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 4) {
-                        // Minutes to arrival display
-                        if let minutes = context.state.minutesUntilArrival {
-                            Text(minutes > 1 ? "Arriving in \(minutes) minutes" : minutes == 1 ? "Arriving in 1 minute" : minutes == 0 ? "Arriving now" : "Arrived")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundColor(lightBlueColor)
-                        }
-                        
                         // Progress bar - ensure value is valid
                         let validProgress = max(0, min(1, context.state.journeyProgress))
                         ProgressView(value: validProgress)
