@@ -146,6 +146,7 @@ class DepartureService:
                     update_count=journey.update_count,
                 ),
                 data_source=journey.data_source,
+                data_source_type=journey.data_source_type,
                 is_cancelled=journey.is_cancelled,
             )
             departures.append(departure)

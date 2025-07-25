@@ -259,6 +259,23 @@ struct TrainCard: View {
                                 .font(.caption)
                                 .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .orange))
                         }
+                        
+                        // Schedule indicator
+                        if train.dataSourceType == "schedule" {
+                            HStack(spacing: 2) {
+                                Image(systemName: "calendar")
+                                    .font(.caption2)
+                                Text("Schedule")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .blue))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                (isCancelled ? Color.black.opacity(0.1) : (isBoardingAtOrigin ? Color.white.opacity(0.2) : Color.blue.opacity(0.1)))
+                                    .cornerRadius(4)
+                            )
+                        }
                     }
                     
                     Spacer()
@@ -311,7 +328,10 @@ struct TrainCard: View {
                 }
             }
             .padding()
-            .background(isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
+            .background(
+                isBoardingAtOrigin ? Color.orange.opacity(0.9) : 
+                (train.dataSourceType == "schedule" ? Color.white.opacity(0.7) : Color.white.opacity(0.9))
+            )
             .cornerRadius(16)
             .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
         }
@@ -448,6 +468,7 @@ class TrainListViewModel: ObservableObject {
     }
     
     // Initializer for dependency injection
+    @MainActor
     init(apiService: APIService = .shared) {
         self.apiService = apiService
     }

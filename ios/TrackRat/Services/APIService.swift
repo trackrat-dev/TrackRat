@@ -638,6 +638,7 @@ final class APIService: ObservableObject {
                 collectionMethod: departure.dataFreshness.collectionMethod
             ),
             isCancelled: departure.isCancelled,
+            dataSourceType: departure.dataSourceType,
             stops: nil
         )
     }
@@ -734,6 +735,7 @@ final class APIService: ObservableObject {
                 collectionMethod: details.dataFreshness.collectionMethod
             ),
             isCancelled: details.isCancelled,
+            dataSourceType: details.dataSourceType,
             stops: stops
         )
     }

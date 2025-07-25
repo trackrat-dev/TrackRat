@@ -67,6 +67,10 @@ class TrainJourney(Base):
     # Discovery track information (temporary storage)
     discovery_track = Column(String(5))
     discovery_station_code = Column(String(2))
+    
+    # Schedule data fields
+    data_source_type = Column(String(20), nullable=False, default="realtime")
+    schedule_collected_at = Column(DateTime(timezone=True))
 
     # Relationships
     stops: Mapped[list["JourneyStop"]] = relationship(

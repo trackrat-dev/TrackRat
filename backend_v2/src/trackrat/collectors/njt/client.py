@@ -185,52 +185,42 @@ class NJTransitClient:
 
     @track_api_call(api_name="njtransit", endpoint="train_schedule")
     async def get_train_schedule(self, station_code: str) -> list[dict[str, Any]]:
-        """Get train schedule for a station (legacy format).
+        """Get train schedule for a station (simple format).
 
-        This uses getTrainSchedule19Rec which returns a simple list of trains
-        without embedded stop data. Used for discovery purposes.
+        This uses getTrainSchedule which returns the next 19 trains
+        for schedule discovery. This is different from get_train_schedule_with_stops
+        which includes full stop data.
 
         Args:
             station_code: Two-character station code (e.g., "NY", "NP")
 
         Returns:
-            List of train dictionaries (parsed from ITEMS or TRAINS keys)
+            List of train dictionaries from ITEMS array
         """
         logger.info(
-            "API QUERY: getting train schedule using getTrainSchedule19Rec",
+            "API QUERY: getting train schedule using getTrainSchedule",
             station_code=station_code,
         )
 
         response = await self._make_request(
-            "TrainData/getTrainSchedule19Rec", {"station": station_code}
+            "TrainData/getTrainSchedule", {"station": station_code}
         )
 
-        # Handle different response formats
-        if isinstance(response, list):
-            # API returned a list directly
-            return response
-        elif isinstance(response, dict):
-            # Check for ITEMS key (newer format)
-            if "ITEMS" in response:
-                items = response["ITEMS"]
-                return items if isinstance(items, list) else []
-            # Check for TRAINS key (legacy format)
-            elif "TRAINS" in response:
-                trains = response["TRAINS"]
-                return trains if isinstance(trains, list) else []
-            else:
-                # Empty response or unknown format
-                logger.warning(
-                    "unexpected_train_schedule_format",
-                    station_code=station_code,
-                    response_keys=list(response.keys()),
-                )
-                return []
+        # Extract train list from ITEMS
+        if isinstance(response, dict) and "ITEMS" in response:
+            items = response["ITEMS"]
+            logger.debug(
+                "train_schedule_response",
+                station_code=station_code,
+                train_count=len(items) if isinstance(items, list) else 0,
+            )
+            return items if isinstance(items, list) else []
         else:
-            logger.error(
-                "invalid_train_schedule_response_type",
+            logger.warning(
+                "unexpected_train_schedule_format",
                 station_code=station_code,
                 response_type=type(response).__name__,
+                response_keys=list(response.keys()) if isinstance(response, dict) else None,
             )
             return []
 

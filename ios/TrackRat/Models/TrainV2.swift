@@ -31,9 +31,23 @@ struct TrainV2: Identifiable, Codable {
     let trainPosition: TrainPosition?
     let dataFreshness: DataFreshness?
     let isCancelled: Bool
+    let dataSourceType: String?
     
     // Optional detailed stops (populated from detail endpoint)
     var stops: [StopV2]? = nil
+    
+    enum CodingKeys: String, CodingKey {
+        case trainId = "train_id"
+        case line
+        case destination
+        case departure
+        case arrival
+        case trainPosition = "train_position"
+        case dataFreshness = "data_freshness"
+        case isCancelled = "is_cancelled"
+        case dataSourceType = "data_source_type"
+        case stops
+    }
     
     // MARK: - Computed Properties for UI Compatibility
     
