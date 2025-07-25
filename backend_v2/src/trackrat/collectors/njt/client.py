@@ -9,8 +9,8 @@ from typing import Any
 import httpx
 from structlog import get_logger
 
-from trackrat.config import Settings, get_settings
 from trackrat.models.api import NJTransitTrainData
+from trackrat.settings import Settings, get_settings
 from trackrat.utils.metrics import track_api_call
 
 logger = get_logger(__name__)

@@ -101,6 +101,13 @@ class TestAmtrakDiscoveryCollector:
 
     async def test_discover_trains_api_error(self, collector, mock_client, caplog):
         """Test handling of API errors."""
+        from structlog.testing import LogCapture
+        import structlog
+
+        # Use structlog's testing capability
+        cap = LogCapture()
+        structlog.configure(processors=[cap])
+
         mock_client.get_all_trains.side_effect = Exception("API Error")
         collector.client = mock_client
 
@@ -109,8 +116,19 @@ class TestAmtrakDiscoveryCollector:
         # Should return empty list on error
         assert result == []
         # Should log the error
-        assert "amtrak_discovery_failed" in caplog.text
-        assert "API Error" in caplog.text
+        assert len(cap.entries) > 0, "Expected log entries"
+        error_entry = next(
+            (
+                entry
+                for entry in cap.entries
+                if entry.get("event") == "amtrak_discovery_failed"
+            ),
+            None,
+        )
+        assert (
+            error_entry is not None
+        ), f"Expected 'amtrak_discovery_failed' event in {cap.entries}"
+        assert error_entry["error"] == "API Error"
 
     def test_stops_at_nyp_true(self, collector):
         """Test _stops_at_nyp method returns True for trains serving NYP."""
@@ -149,6 +167,13 @@ class TestAmtrakDiscoveryCollector:
 
     async def test_logging_discovery_results(self, collector, mock_client, caplog):
         """Test that discovery results are logged."""
+        from structlog.testing import LogCapture
+        import structlog
+
+        # Use structlog's testing capability
+        cap = LogCapture()
+        structlog.configure(processors=[cap])
+
         parsed_response = self._parse_response_to_objects(AMTRAK_FULL_RESPONSE)
         mock_client.get_all_trains.return_value = parsed_response
         collector.client = mock_client
@@ -156,15 +181,28 @@ class TestAmtrakDiscoveryCollector:
         await collector.discover_trains()
 
         # Should log discovery completion with count
-        assert "amtrak_discovery_complete" in caplog.text
-        assert f"discovered_count={len(EXPECTED_MULTI_HUB_TRAIN_IDS)}" in caplog.text
+        assert len(cap.entries) > 0, "Expected log entries"
+        completion_entry = next(
+            (
+                entry
+                for entry in cap.entries
+                if entry.get("event") == "amtrak_discovery_complete"
+            ),
+            None,
+        )
+        assert (
+            completion_entry is not None
+        ), f"Expected 'amtrak_discovery_complete' event in {cap.entries}"
+        assert completion_entry["discovered_count"] == len(EXPECTED_MULTI_HUB_TRAIN_IDS)
 
     async def test_logging_discovered_trains(self, collector, mock_client, caplog):
         """Test that individual discovered trains are logged."""
-        # Set log level to DEBUG to capture debug messages
-        import logging
+        from structlog.testing import LogCapture
+        import structlog
 
-        caplog.set_level(logging.DEBUG)
+        # Use structlog's testing capability
+        cap = LogCapture()
+        structlog.configure(processors=[cap])
 
         parsed_response = self._parse_response_to_objects(AMTRAK_FULL_RESPONSE)
         mock_client.get_all_trains.return_value = parsed_response
@@ -173,10 +211,21 @@ class TestAmtrakDiscoveryCollector:
         await collector.discover_trains()
 
         # Should log each discovered train (debug level)
-        assert "discovered_amtrak_train" in caplog.text
-        # Should include train details
-        assert "train_id=2150-5" in caplog.text
-        assert "route=Acela" in caplog.text
+        train_entries = [
+            entry
+            for entry in cap.entries
+            if entry.get("event") == "discovered_amtrak_train"
+        ]
+        assert (
+            len(train_entries) > 0
+        ), f"Expected 'discovered_amtrak_train' events in {cap.entries}"
+        # Should include train details - check for a specific train
+        train_2150 = next(
+            (entry for entry in train_entries if entry.get("train_id") == "2150-5"),
+            None,
+        )
+        assert train_2150 is not None, f"Expected train 2150-5 in {train_entries}"
+        assert train_2150["route"] == "Acela"
 
     async def test_unique_train_ids(self, collector, mock_client):
         """Test that duplicate train IDs are handled correctly."""

@@ -20,11 +20,11 @@ from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.collectors.njt.schedule import ScheduleDiscoveryCollector
-from trackrat.config import Settings, get_settings
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
+from trackrat.settings import Settings, get_settings
 from trackrat.utils.time import (
     ensure_timezone_aware,
     now_et,

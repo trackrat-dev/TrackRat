@@ -241,6 +241,13 @@ class TestAmtrakClient:
 
     async def test_logging_on_success(self, client, mock_response, caplog):
         """Test that successful requests are logged."""
+        from structlog.testing import LogCapture
+        import structlog
+
+        # Use structlog's testing capability
+        cap = LogCapture()
+        structlog.configure(processors=[cap])
+
         mock_session = AsyncMock()
         mock_session.get.return_value = mock_response
         client._session = mock_session
@@ -248,11 +255,38 @@ class TestAmtrakClient:
         await client.get_all_trains()
 
         # Should log fetching and success messages
-        assert "fetching_amtrak_trains" in caplog.text
-        assert "amtrak_data_fetched" in caplog.text
+        assert len(cap.entries) > 0, "Expected log entries"
+        fetching_entry = next(
+            (
+                entry
+                for entry in cap.entries
+                if entry.get("event") == "fetching_amtrak_trains"
+            ),
+            None,
+        )
+        assert (
+            fetching_entry is not None
+        ), f"Expected 'fetching_amtrak_trains' event in {cap.entries}"
+
+        # Also check for success message
+        success_entries = [
+            entry
+            for entry in cap.entries
+            if entry.get("event") == "amtrak_data_fetched"
+        ]
+        assert (
+            len(success_entries) > 0
+        ), f"Expected 'amtrak_data_fetched' event in {cap.entries}"
 
     async def test_logging_on_error(self, client, caplog):
         """Test that errors are logged."""
+        from structlog.testing import LogCapture
+        import structlog
+
+        # Use structlog's testing capability
+        cap = LogCapture()
+        structlog.configure(processors=[cap])
+
         mock_session = AsyncMock()
         mock_session.get.side_effect = httpx.TimeoutException("Timeout")
         client._session = mock_session
@@ -261,4 +295,15 @@ class TestAmtrakClient:
             await client.get_all_trains()
 
         # Should log timeout error
-        assert "amtrak_api_timeout" in caplog.text
+        assert len(cap.entries) > 0, "Expected log entries"
+        timeout_entry = next(
+            (
+                entry
+                for entry in cap.entries
+                if entry.get("event") == "amtrak_api_timeout"
+            ),
+            None,
+        )
+        assert (
+            timeout_entry is not None
+        ), f"Expected 'amtrak_api_timeout' event in {cap.entries}"

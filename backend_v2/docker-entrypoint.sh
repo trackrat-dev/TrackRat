@@ -134,9 +134,6 @@ if ! validate_apns_config; then
 fi
 
 echo ""
-echo "🔧 Running database migrations..."
-alembic upgrade head
-
-echo ""
 echo "🌟 Starting application server..."
+echo "   Note: Database migrations will run after backup restore (if applicable)"
 exec uvicorn trackrat.main:app --host 0.0.0.0 --port 8000

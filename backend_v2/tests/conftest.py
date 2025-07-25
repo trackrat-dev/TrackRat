@@ -3,14 +3,16 @@ Test configuration and fixtures for TrackRat V2.
 """
 
 import asyncio
+import logging
 import pytest
+import structlog
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 from starlette.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from trackrat.config import Settings, get_settings
+from trackrat.settings import Settings, get_settings
 from trackrat.main import app
 from trackrat.db.engine import get_db
 from trackrat.models.database import Base
@@ -19,6 +21,27 @@ from trackrat.collectors.njt.client import NJTransitClient
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest.fixture(autouse=True, scope="session")
+def setup_logging_for_tests():
+    """Configure structlog to work with pytest's caplog fixture."""
+    # Configure structlog once per session to avoid conflicts
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.format_exc_info,
+            structlog.dev.ConsoleRenderer(),  # Use console renderer for test-friendly format
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=False,  # Don't cache to ensure fresh config
+    )
+
+    # Set the logging level to DEBUG for all tests
+    logging.getLogger().setLevel(logging.DEBUG)
 
 
 # Remove custom event_loop fixture to avoid deprecation warning
