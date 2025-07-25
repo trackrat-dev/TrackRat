@@ -117,6 +117,41 @@ struct TripSelectionView: View {
                         .padding(.top, 20)
                         
                         
+                        // Report Issues & Request Features button
+                        Button {
+                            if let signalURL = URL(string: "signal://signal.me/#p/@andymartin.11") {
+                                openURL(signalURL)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: "exclamationmark.bubble.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.gray)
+                                
+                                Text("Report Issues & Request Features")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.7))
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(.white.opacity(0.08))
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(.white.opacity(0.15), lineWidth: 1)
+                                    )
+                            )
+                            .padding(.horizontal)
+                        }
+                        
                         // Advanced Configuration button
                         Button {
                             appState.navigationPath.append(NavigationDestination.advancedConfiguration)
