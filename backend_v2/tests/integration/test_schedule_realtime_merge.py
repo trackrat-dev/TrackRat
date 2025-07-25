@@ -67,11 +67,11 @@ async def test_schedule_to_realtime_upgrade(db_session, mock_njt_client):
     assert journey.data_source_type == "realtime"
 
 
-@pytest.mark.asyncio 
+@pytest.mark.asyncio
 async def test_schedule_and_realtime_coexist(db_session, mock_njt_client):
     """Test that schedule and realtime trains can coexist."""
     current_time = now_et()
-    
+
     # Create a realtime train (current)
     realtime_journey = TrainJourney(
         train_id="3921",
@@ -86,12 +86,12 @@ async def test_schedule_and_realtime_coexist(db_session, mock_njt_client):
         first_seen_at=current_time,
         last_updated_at=current_time,
     )
-    
+
     # Create a schedule train (future)
     schedule_journey = TrainJourney(
         train_id="3955",
         journey_date=current_time.date(),
-        line_code="NE", 
+        line_code="NE",
         destination="Trenton",
         origin_station_code="NY",
         terminal_station_code="TR",
@@ -102,17 +102,17 @@ async def test_schedule_and_realtime_coexist(db_session, mock_njt_client):
         first_seen_at=current_time,
         last_updated_at=current_time,
     )
-    
+
     db_session.add_all([realtime_journey, schedule_journey])
     await db_session.commit()
-    
+
     # Query all NJT trains
     stmt = select(TrainJourney).where(TrainJourney.data_source == "NJT")
     result = await db_session.execute(stmt)
     journeys = list(result.scalars().all())
-    
+
     assert len(journeys) == 2
-    
+
     # Verify both types exist
     types = {j.data_source_type for j in journeys}
     assert "realtime" in types

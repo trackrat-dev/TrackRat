@@ -187,7 +187,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         track: str,
     ) -> None:
         """Update track for a specific journey stop, creating the stop if needed.
-        
+
         Args:
             session: Database session
             journey: The journey to update
@@ -202,7 +202,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
             )
         )
         stop = await session.scalar(stmt)
-        
+
         if stop:
             # Stop exists - update track if not already set
             if not stop.track:
@@ -217,7 +217,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         else:
             # Stop doesn't exist - create it with the track
             from trackrat.config.stations import get_station_name
-            
+
             stop = JourneyStop(
                 journey_id=journey.id,
                 station_code=station_code,
@@ -291,7 +291,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                 if existing:
                     # Update last seen time
                     existing.last_updated_at = now_et()
-                    
+
                     # If this was schedule data, upgrade it to realtime
                     if existing.data_source_type == "schedule":
                         existing.data_source_type = "realtime"

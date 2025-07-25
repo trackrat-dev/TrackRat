@@ -220,7 +220,9 @@ class NJTransitClient:
                 "unexpected_train_schedule_format",
                 station_code=station_code,
                 response_type=type(response).__name__,
-                response_keys=list(response.keys()) if isinstance(response, dict) else None,
+                response_keys=(
+                    list(response.keys()) if isinstance(response, dict) else None
+                ),
             )
             return []
 

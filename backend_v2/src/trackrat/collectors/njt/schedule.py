@@ -7,7 +7,7 @@ Discovers scheduled trains from NJ Transit schedule API.
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 

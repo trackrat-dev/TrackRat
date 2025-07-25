@@ -102,7 +102,7 @@ class SchedulerService:
             replace_existing=True,
             max_instances=1,
         )
-        
+
         # Schedule NJT schedule discovery (every 30 minutes)
         self.scheduler.add_job(
             self.run_njt_schedule_discovery,
@@ -244,37 +244,37 @@ class SchedulerService:
     async def run_njt_schedule_discovery(self) -> None:
         """Run NJ Transit schedule discovery for all configured stations."""
         task_id = f"njt_schedule_discovery_{now_et().isoformat()}"
-        
+
         try:
             logger.info("starting_njt_schedule_discovery_task")
-            
+
             # Track running task
             task = asyncio.current_task()
             if task:
                 self._running_tasks[task_id] = task
-            
+
             # Run schedule discovery
             if not self.njt_client:
                 raise RuntimeError(
                     "NJTransitClient not initialized - call start() first"
                 )
-            
+
             collector = ScheduleDiscoveryCollector(self.njt_client)
             async with get_session() as session:
                 result = await collector.collect(session)
                 await session.commit()
-            
+
             logger.info(
                 "njt_schedule_discovery_completed",
                 total_discovered=result.get("total_discovered", 0),
                 total_new=result.get("total_new", 0),
             )
-            
+
         except Exception as e:
             logger.error(
-                "njt_schedule_discovery_failed", 
-                error=str(e), 
-                error_type=type(e).__name__
+                "njt_schedule_discovery_failed",
+                error=str(e),
+                error_type=type(e).__name__,
             )
         finally:
             # Remove from running tasks

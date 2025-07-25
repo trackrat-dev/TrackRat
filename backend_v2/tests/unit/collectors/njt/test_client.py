@@ -75,13 +75,13 @@ class TestNJTransitClient:
 
         # Verify the API was called correctly
         client._make_request.assert_called_once_with(
-            "TrainData/getTrainSchedule19Rec", {"station": "NY"}
+            "TrainData/getTrainSchedule", {"station": "NY"}
         )
 
     @pytest.mark.asyncio
-    async def test_get_train_schedule_fallback_parsing(self, client):
-        """Test fallback parsing when ITEMS key is not present."""
-        # Mock response with legacy format (TRAINS key)
+    async def test_get_train_schedule_unsupported_format_returns_empty(self, client):
+        """Test that unsupported response formats return empty list."""
+        # Mock response with legacy format (TRAINS key) - no longer supported
         mock_response = {
             "TRAINS": [
                 {
@@ -95,8 +95,8 @@ class TestNJTransitClient:
         client._make_request = AsyncMock(return_value=mock_response)
         trains = await client.get_train_schedule("NP")
 
-        assert len(trains) == 1
-        assert trains[0]["TRAIN_ID"] == "1234"
+        # Should return empty list for unsupported format
+        assert len(trains) == 0
 
     @pytest.mark.asyncio
     async def test_get_train_schedule_empty_items(self, client):
@@ -109,15 +109,16 @@ class TestNJTransitClient:
         assert len(trains) == 0
 
     @pytest.mark.asyncio
-    async def test_get_train_schedule_list_response(self, client):
-        """Test handling when API returns a list directly."""
+    async def test_get_train_schedule_list_response_returns_empty(self, client):
+        """Test that direct list responses return empty list."""
+        # Direct list response - no longer supported
         mock_response = [{"TRAIN_ID": "5678", "DESTINATION": "Hoboken"}]
 
         client._make_request = AsyncMock(return_value=mock_response)
         trains = await client.get_train_schedule("HB")
 
-        assert len(trains) == 1
-        assert trains[0]["TRAIN_ID"] == "5678"
+        # Should return empty list for unsupported format
+        assert len(trains) == 0
 
     @pytest.mark.asyncio
     async def test_get_train_schedule_malformed_response(self, client):
