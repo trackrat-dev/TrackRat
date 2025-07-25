@@ -119,7 +119,7 @@ struct TripSelectionView: View {
                         
                         // Report Issues & Request Features button
                         Button {
-                            if let signalURL = URL(string: "signal://signal.me/#p/@andymartin.11") {
+                            if let signalURL = URL(string: "https://signal.me/#eu/iG3LNnu-IycTUbwrWF1nwrlR-u-TN5gtBO0tXtJk3Nder7TtfzFPa6On6N9dl3e-") {
                                 openURL(signalURL)
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             }
