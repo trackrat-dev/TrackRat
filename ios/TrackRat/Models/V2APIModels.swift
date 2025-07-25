@@ -223,6 +223,7 @@ struct V2TrainDetails: Codable {
     let dataSourceType: String?
     let rawTrainState: String?
     let isCancelled: Bool
+    let isCompleted: Bool
     
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
@@ -235,6 +236,7 @@ struct V2TrainDetails: Codable {
         case dataSourceType = "data_source_type"
         case rawTrainState = "raw_train_state"
         case isCancelled = "is_cancelled"
+        case isCompleted = "is_completed"
     }
 }
 

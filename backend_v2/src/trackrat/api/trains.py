@@ -175,6 +175,7 @@ async def get_train_details(
         data_source_type=journey.data_source_type,
         raw_train_state="Active" if journey.data_source == "AMTRAK" else None,
         is_cancelled=journey.is_cancelled,
+        is_completed=journey.is_completed,
     )
 
     return TrainDetailsResponse(train=train_details)

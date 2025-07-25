@@ -31,6 +31,7 @@ struct TrainV2: Identifiable, Codable {
     let trainPosition: TrainPosition?
     let dataFreshness: DataFreshness?
     let isCancelled: Bool
+    let isCompleted: Bool
     let dataSourceType: String?
     
     // Optional detailed stops (populated from detail endpoint)
@@ -45,6 +46,7 @@ struct TrainV2: Identifiable, Codable {
         case trainPosition = "train_position"
         case dataFreshness = "data_freshness"
         case isCancelled = "is_cancelled"
+        case isCompleted = "is_completed"
         case dataSourceType = "data_source_type"
         case stops
     }
@@ -427,6 +429,11 @@ extension TrainV2 {
     // Calculate journey progress for a specific origin-destination segment
     func calculateJourneyProgress(from originCode: String, to destinationName: String) -> Double {
         guard let stops = stops else { return 0.0 }
+        
+        // Check if train has completed its journey (definitive signal from backend)
+        if isCompleted {
+            return 1.0
+        }
         
         // Find origin and destination stops
         let originIndex = stops.firstIndex { $0.stationCode == originCode }

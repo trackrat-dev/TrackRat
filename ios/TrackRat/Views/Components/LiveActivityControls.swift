@@ -116,6 +116,7 @@ struct LiveActivityControls: View {
             trainPosition: nil,
             dataFreshness: nil,
             isCancelled: false,
+            isCompleted: false,
             dataSourceType: "realtime"
         ),
         origin: "Newark Penn Station",
