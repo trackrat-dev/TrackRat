@@ -430,11 +430,6 @@ extension TrainV2 {
     func calculateJourneyProgress(from originCode: String, to destinationName: String) -> Double {
         guard let stops = stops else { return 0.0 }
         
-        // Check if train has completed its journey (definitive signal from backend)
-        if isCompleted {
-            return 1.0
-        }
-        
         // Find origin and destination stops
         let originIndex = stops.firstIndex { $0.stationCode == originCode }
         let destinationIndex = stops.lastIndex { $0.stationName.lowercased().contains(destinationName.lowercased()) }
