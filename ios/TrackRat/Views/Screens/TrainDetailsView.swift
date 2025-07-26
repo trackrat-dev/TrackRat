@@ -5,7 +5,6 @@ struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
-    // @State private var showingHistory = false // REMOVE THIS LINE
     
     let trainId: Int  // Keep for backwards compatibility
     
@@ -435,7 +434,7 @@ struct CombinedDetailsCard: View {
     }
 }
 
-// DISABLED: StatusV2 Card removed for TrainV2 migration
+// Note: StatusV2 functionality is now integrated directly into TrainV2 model
 
 // MARK: - Track Prediction Card
 struct TrackPredictionCard: View {
@@ -1047,9 +1046,9 @@ struct TrainProgressIndicator: View {
     }
 }
 
-// DISABLED: Consolidated Data Card removed for TrainV2 migration
+// Note: Consolidated data functionality is now built into TrainV2 model
 
-// DISABLED: Position Tracking Card removed for TrainV2 migration
+// Note: Position tracking is now available through TrainV2.trainPosition
 
 
 // MARK: - Segmented Track Prediction View

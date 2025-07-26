@@ -80,7 +80,7 @@ struct TrainV2: Identifiable, Codable {
         arrival?.code
     }
     
-    // Static track prediction data (temporary until backend implementation)
+    // Static track prediction data from local service
     var predictionData: PredictionData? {
         return StaticTrackDistributionService.shared.getPredictionData(for: self)
     }

@@ -1,7 +1,7 @@
 """
 Train API endpoints for TrackRat V2.
 
-Implements the API design from V2_BACKEND_API.md.
+Implements the V2 API design documented in backend_v2/CLAUDE.md.
 """
 
 from datetime import date, datetime, timedelta
@@ -623,10 +623,7 @@ async def get_occupied_tracks(
 # Helper functions
 
 
-# Removed old journey progress calculation - iOS app will calculate based on user's journey context
-
-
-# Removed old status determination functions - iOS app will calculate these based on journey context
+# Utility functions for journey calculations
 
 
 def calculate_duration(from_stop: JourneyStop, to_stop: JourneyStop | None) -> int:

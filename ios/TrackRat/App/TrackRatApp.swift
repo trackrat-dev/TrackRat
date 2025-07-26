@@ -41,8 +41,7 @@ struct TrackRatApp: App {
     }
     
     init() {
-        // Widget registration now handled by Widget Extension target
-        // No need to manually register here
+        // Live Activity widget configuration handled by TrainLiveActivityBundle
     }
 }
 

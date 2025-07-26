@@ -6,7 +6,6 @@ This file provides comprehensive guidance for Claude Code when working with the 
 
 The TrackRat infrastructure is designed for a multi-environment deployment on Google Cloud Platform:
 
-- **Development**: `trackrat-dev` project
 - **Staging**: `trackrat-staging` project  
 - **Production**: `trackrat-prod` project
 
@@ -19,12 +18,11 @@ infra/
 ├── outputs.tf                        # Outputs from root module
 ├── setup-backend.sh                  # Script to initialize Terraform backends
 ├── environments/                     # Environment-specific configurations
-│   ├── dev/                         # Development environment
-│   │   ├── main.tf                  # Dev-specific configuration
-│   │   ├── variables.tf             # Dev-specific variables
-│   │   ├── outputs.tf               # Dev outputs
-│   │   └── terraform.tfvars         # Dev variable values (created by setup script)
-│   ├── staging/                     # Staging environment (similar structure)
+│   ├── staging/                     # Staging environment
+│   │   ├── main.tf                  # Staging-specific configuration
+│   │   ├── variables.tf             # Staging-specific variables
+│   │   ├── outputs.tf               # Staging outputs
+│   │   └── terraform.tfvars         # Staging variable values (created by setup script)
 │   └── prod/                        # Production environment (similar structure)
 └── modules/                         # Reusable Terraform modules
     ├── apis/                        # GCP API enablement module
@@ -75,7 +73,6 @@ infra/
 - Firewall rules for health checks and internal communication
 
 **CIDR Planning**:
-- Dev: 10.1.0.0/16 (subnet: 10.1.1.0/24)
 - Staging: 10.2.0.0/16 (subnet: 10.2.1.0/24)
 - Prod: 10.3.0.0/16 (subnet: 10.3.1.0/24)
 
@@ -199,10 +196,10 @@ Each environment has its own:
    make test
    
    # 4. Plan and review changes
-   make dev-plan
+   make staging-plan
    
    # 5. Apply if tests pass
-   make dev-apply
+   make staging-apply
    ```
 
 3. **Module Development**:
@@ -243,7 +240,7 @@ Each environment has its own:
 #### For Environment Changes
 3. **Always test plans before applying**:
    ```bash
-   make dev-plan      # For development
+   make staging-plan      # For development
    make staging-plan  # For staging
    make prod-plan     # For production
    ```
@@ -311,8 +308,8 @@ The infrastructure includes multiple linting layers:
 | `make lint` | Run TFLint | For advanced linting (requires tflint) |
 | `make security` | Run security scan | Before production (requires checkov) |
 | `make docs` | Generate documentation | After module changes (requires terraform-docs) |
-| `make dev-plan` | Plan dev environment | Before applying |
-| `make dev-apply` | Apply dev environment | After successful plan |
+| `make staging-plan` | Plan staging environment | Before applying |
+| `make staging-apply` | Apply staging environment | After successful plan |
 
 ### Error Handling
 
@@ -334,7 +331,7 @@ If linting fails:
 ### Deployment Strategy
 
 **Current Approach**: Manual deployment for safety and control
-- Use `make dev-plan` and `make dev-apply` for development
+- Use `make staging-plan` and `make staging-apply` for staging development
 - Use `make staging-plan` and `make staging-apply` for staging  
 - Use `make prod-plan` and `make prod-apply` for production
 

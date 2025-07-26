@@ -14,7 +14,7 @@ Real-time train tracking system with ML-powered track predictions for NJ Transit
 
 ```
 Data Sources → Cloud Run (API + ML) → iOS App + Web App
-(NJ Transit/Amtrak)   (PostgreSQL)    (Live Activities)
+(NJ Transit/Amtrak)     (SQLite)      (Live Activities)
 ```
 
 ## Quick Start

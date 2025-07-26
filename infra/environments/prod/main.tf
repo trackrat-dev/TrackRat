@@ -33,7 +33,7 @@ module "infrastructure" {
   vpc_cidr                            = "10.3.0.0/16"
   subnet_cidr                         = "10.3.1.0/24"
   private_service_connection_ip_range = "10.3.16.0/20"
-  artifact_registry_repository_name   = "trackcast-inference-prod"
+  artifact_registry_repository_name   = "trackrat-prod"
 }
 
 # Database module removed - using SQLite in backend_v2
@@ -67,15 +67,15 @@ module "trackrat_api_service" {
   # Environment variables (non-sensitive)
   environment_variables = {
     APP_ENV                                  = "production"
-    TRACKCAST_ENV                            = "production"
+    TRACKRAT_ENV                             = "production"
     APNS_ENVIRONMENT                         = "prod"                                             # Use production APNS for App Store
     APNS_BUNDLE_ID                           = "net.trackrat.TrackRat"                            # Main app bundle ID
     APNS_LIVE_ACTIVITY_BUNDLE_ID             = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
     MODEL_PATH                               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE                 = "cloud_native"
+    TRACKRAT_SCHEDULER_MODE                  = "cloud_native"
     GOOGLE_CLOUD_PROJECT                     = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
     OTEL_SAMPLE_RATE                         = "0.05"               # Lower sampling for production cost optimization
-    OTEL_SERVICE_NAME                        = "trackcast-api-prod" # Environment-specific service name
+    OTEL_SERVICE_NAME                        = "trackrat-api-prod"  # Environment-specific service name
     GCP_METRICS_EXPORT_INTERVAL              = "60"                 # Export metrics to GCP every 60 seconds
     TRACKRAT_GCS_BACKUP_BUCKET               = "trackrat-prod-periodic-db-backup"
     TRACKRAT_DISCOVERY_INTERVAL_MINUTES      = "20"

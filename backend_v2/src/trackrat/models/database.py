@@ -1,7 +1,7 @@
 """
 SQLAlchemy database models for TrackRat V2.
 
-Follows the simplified single-journey design from V2_BACKEND_API.md.
+Follows the simplified single-journey design documented in backend_v2/CLAUDE.md.
 """
 
 from sqlalchemy import (

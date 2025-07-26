@@ -33,7 +33,7 @@ module "infrastructure" {
   vpc_cidr                            = "10.2.0.0/16"
   subnet_cidr                         = "10.2.1.0/24"
   private_service_connection_ip_range = "10.2.16.0/20"
-  artifact_registry_repository_name   = "trackcast-inference-staging"
+  artifact_registry_repository_name   = "trackrat-staging"
 }
 
 
@@ -65,16 +65,16 @@ module "trackrat_api_service" {
   # Environment variables (non-sensitive)
   environment_variables = {
     APP_ENV                                  = "staging"
-    TRACKCAST_ENV                            = "staging"
+    TRACKRAT_ENV                             = "staging"
     TRACKRAT_ENVIRONMENT                     = "production"                                       # Use production logging format (JSON, no ANSI)
     APNS_ENVIRONMENT                         = "prod"                                             # Use production APNS for TestFlight/production-signed iOS apps
     APNS_BUNDLE_ID                           = "net.trackrat.TrackRat"                            # Main app bundle ID
     APNS_LIVE_ACTIVITY_BUNDLE_ID             = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
     MODEL_PATH                               = "/app/models"
-    TRACKCAST_SCHEDULER_MODE                 = "cloud_native"
+    TRACKRAT_SCHEDULER_MODE                  = "cloud_native"
     GOOGLE_CLOUD_PROJECT                     = var.project_id          # Automatically enable GCP Cloud Trace and Metrics
     OTEL_SAMPLE_RATE                         = "0.2"                   # Higher sampling for staging environment testing
-    OTEL_SERVICE_NAME                        = "trackcast-api-staging" # Environment-specific service name
+    OTEL_SERVICE_NAME                        = "trackrat-api-staging"  # Environment-specific service name
     GCP_METRICS_EXPORT_INTERVAL              = "60"                    # Export metrics to GCP every 60 seconds
     TRACKRAT_GCS_BACKUP_BUCKET               = "trackrat-staging-periodic-db-backup"
     TRACKRAT_DISCOVERY_INTERVAL_MINUTES      = "30"

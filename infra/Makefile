@@ -12,7 +12,7 @@ RED := \033[0;31m
 NC := \033[0m # No Color
 
 # Environment variables
-ENV ?= dev
+ENV ?= staging
 TF_VAR_FILE ?= terraform.tfvars
 
 help: ## Show this help message
@@ -21,7 +21,7 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "$(YELLOW)Environment Variables:$(NC)"
-	@echo "  ENV           Environment to target (dev, staging, prod) [default: dev]"
+	@echo "  ENV           Environment to target (staging, prod) [default: staging]"
 	@echo "  TF_VAR_FILE   Terraform variables file [default: terraform.tfvars]"
 	@echo ""
 	@echo "$(YELLOW)Examples:$(NC)"
@@ -149,12 +149,6 @@ pre-commit-run: ## Run pre-commit hooks on all files
 	fi
 
 # Environment-specific shortcuts
-dev-plan: ## Plan dev environment
-	@$(MAKE) plan ENV=dev
-
-dev-apply: ## Apply dev environment
-	@$(MAKE) apply ENV=dev
-
 staging-plan: ## Plan staging environment
 	@$(MAKE) plan ENV=staging
 
