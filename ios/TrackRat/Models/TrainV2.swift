@@ -440,12 +440,18 @@ extension TrainV2 {
         let journeyStops = Array(stops[fromIndex...toIndex])
         let destinationStop = journeyStops.last
         
-        // Check if we've arrived at the destination
-        let hasArrivedAtDestination = destinationStop?.actualArrival != nil ||
-                                     (trainPosition?.atStationCode == destinationStop?.stationCode)
+        // Check if destination is the train's terminal station
+        let isDestinationTerminal = (toIndex == stops.count - 1)
         
-        if hasArrivedAtDestination {
-            return 1.0  // Journey complete - we've arrived at destination
+        // Journey is complete when:
+        // - For terminal stations: train has arrived
+        // - For intermediate stations: train has departed
+        let hasCompletedJourney = isDestinationTerminal ? 
+            (destinationStop?.actualArrival != nil || trainPosition?.atStationCode == destinationStop?.stationCode) :
+            (destinationStop?.hasDepartedStation == true)
+        
+        if hasCompletedJourney {
+            return 1.0  // Journey complete
         }
         
         // Calculate progress based on completed segments (exclude destination from denominator)
