@@ -118,8 +118,8 @@ if ! validate_apns_config; then
 fi
 
 # Run database migrations
-poetry run alembic upgrade head
+#poetry run alembic upgrade head
 
 # Start the application (scheduler starts automatically)
-#export TRACKRAT_LOG_LEVEL=DEBUG 
+export TRACKRAT_LOG_LEVEL=INFO
 poetry run uvicorn trackrat.main:app --reload

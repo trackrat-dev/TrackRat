@@ -78,11 +78,14 @@ async def init_database_with_backup() -> None:
             logger.info("Not using SQLite, backup not supported")
 
     # Initialize the database engine (this ensures tables are created)
+    logger.info("Getting database engine")
     get_engine()
+    logger.info("Database engine initialized")
 
     # Run migrations AFTER backup restore to ensure we're migrating the restored database
     logger.info("Running database migrations after backup restore")
     await run_migrations()
+    logger.info("Database migrations completed")
 
 
 async def shutdown_database() -> None:
