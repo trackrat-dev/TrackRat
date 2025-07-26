@@ -110,6 +110,14 @@ struct TrainV2: Identifiable, Codable {
         return false
     }
     
+    // Simple track-based boarding detection - works for both NJ Transit and Amtrak
+    func isBoardingAtStation(_ stationCode: String) -> Bool {
+        guard let stop = stops?.first(where: { $0.stationCode == stationCode }) else {
+            return false
+        }
+        return stop.track != nil && !stop.hasDepartedStation
+    }
+    
     // MARK: - Helper Methods
     
     // Calculate context-aware status based on user's journey

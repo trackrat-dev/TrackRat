@@ -288,10 +288,8 @@ struct CombinedDetailsCard: View {
             return false
         }
         
-        // Check if train is boarding, has track, and departing within 11 minutes
-        return train.isBoarding(fromStationCode: departureCode) && 
-               train.track != nil &&
-               train.isDepartingSoon(fromStationCode: departureCode, withinMinutes: 11)
+        // Simple track-based boarding detection
+        return train.isBoardingAtStation(departureCode)
     }
     
     var body: some View {
@@ -374,8 +372,8 @@ struct CombinedDetailsCard: View {
                             isDestination: selectedDestination != nil && 
                                          stop.stationName.lowercased() == selectedDestination!.lowercased(),
                             isDeparture: checkIfDepartureStop(stop.stationName),
-                            isBoarding: stop.rawStatus?.amtrakStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName),
-                            boardingTrack: stop.rawStatus?.amtrakStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName) ? train.track : nil,
+                            isBoarding: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName),
+                            boardingTrack: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName) ? stop.track : nil,
                             train: train,
                             departureStationCode: appState.departureStationCode
                         )
@@ -531,8 +529,8 @@ struct StopsCard: View {
                                      stop.stationName.lowercased() == selectedDestination!.lowercased(),
                         isDeparture: appState.selectedDeparture != nil && 
                                    stop.stationName.lowercased() == appState.selectedDeparture!.lowercased(),
-                        isBoarding: stop.rawStatus?.amtrakStatus == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
-                        boardingTrack: stop.rawStatus?.amtrakStatus == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? train.track : nil,
+                        isBoarding: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
+                        boardingTrack: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? stop.track : nil,
                         train: train,
                         departureStationCode: appState.departureStationCode
                     )
