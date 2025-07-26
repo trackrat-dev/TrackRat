@@ -32,7 +32,6 @@ struct TrainV2: Identifiable, Codable {
     let dataFreshness: DataFreshness?
     let isCancelled: Bool
     let isCompleted: Bool
-    let dataSourceType: String?
     
     // Optional detailed stops (populated from detail endpoint)
     var stops: [StopV2]? = nil
@@ -47,7 +46,6 @@ struct TrainV2: Identifiable, Codable {
         case dataFreshness = "data_freshness"
         case isCancelled = "is_cancelled"
         case isCompleted = "is_completed"
-        case dataSourceType = "data_source_type"
         case stops
     }
     

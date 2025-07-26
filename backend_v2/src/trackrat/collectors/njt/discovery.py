@@ -292,15 +292,6 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     # Update last seen time
                     existing.last_updated_at = now_et()
 
-                    # If this was schedule data, upgrade it to realtime
-                    if existing.data_source_type == "schedule":
-                        existing.data_source_type = "realtime"
-                        logger.info(
-                            "upgraded_schedule_to_realtime",
-                            train_id=train_id,
-                            journey_date=journey_date,
-                        )
-
                     # Update track directly in journey stop
                     track = train_data.get("TRACK")
                     if track and station_code:
@@ -321,7 +312,6 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     terminal_station_code=station_code,  # Will be updated later
                     scheduled_departure=scheduled_departure,
                     data_source="NJT",
-                    data_source_type="realtime",  # Mark as realtime since it's from departure vision
                     first_seen_at=now_et(),
                     last_updated_at=now_et(),
                     has_complete_journey=False,

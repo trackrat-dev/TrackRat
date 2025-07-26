@@ -183,49 +183,6 @@ class NJTransitClient:
 
         return response
 
-    @track_api_call(api_name="njtransit", endpoint="train_schedule")
-    async def get_train_schedule(self, station_code: str) -> list[dict[str, Any]]:
-        """Get train schedule for a station (simple format).
-
-        This uses getTrainSchedule which returns the next 19 trains
-        for schedule discovery. This is different from get_train_schedule_with_stops
-        which includes full stop data.
-
-        Args:
-            station_code: Two-character station code (e.g., "NY", "NP")
-
-        Returns:
-            List of train dictionaries from ITEMS array
-        """
-        logger.info(
-            "API QUERY: getting train schedule using getTrainSchedule",
-            station_code=station_code,
-        )
-
-        response = await self._make_request(
-            "TrainData/getTrainSchedule", {"station": station_code}
-        )
-
-        # Extract train list from ITEMS
-        if isinstance(response, dict) and "ITEMS" in response:
-            items = response["ITEMS"]
-            logger.debug(
-                "train_schedule_response",
-                station_code=station_code,
-                train_count=len(items) if isinstance(items, list) else 0,
-            )
-            return items if isinstance(items, list) else []
-        else:
-            logger.warning(
-                "unexpected_train_schedule_format",
-                station_code=station_code,
-                response_type=type(response).__name__,
-                response_keys=(
-                    list(response.keys()) if isinstance(response, dict) else None
-                ),
-            )
-            return []
-
     @track_api_call(api_name="njtransit", endpoint="train_stop_list")
     async def get_train_stop_list(self, train_id: str) -> NJTransitTrainData:
         """Get detailed stop list for a specific train.

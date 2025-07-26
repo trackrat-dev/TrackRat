@@ -172,7 +172,6 @@ async def get_train_details(
             collection_method="just_in_time" if refresh else "scheduled",
         ),
         data_source=journey.data_source or "NJT",
-        data_source_type=journey.data_source_type,
         raw_train_state="Active" if journey.data_source == "AMTRAK" else None,
         is_cancelled=journey.is_cancelled,
         is_completed=journey.is_completed,

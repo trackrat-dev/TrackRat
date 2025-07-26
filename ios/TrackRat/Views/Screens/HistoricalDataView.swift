@@ -555,7 +555,6 @@ class HistoricalDataViewModel: ObservableObject {
         dataFreshness: nil,
         isCancelled: false,
         isCompleted: false,
-        dataSourceType: "realtime",
         stops: nil
     ))
 }
