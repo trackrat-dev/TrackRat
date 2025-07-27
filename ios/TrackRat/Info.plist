@@ -84,7 +84,9 @@
             <dict>
                 <key>CFBundleIconFiles</key>
                 <array>
-                    <string>AppIcon-Black</string>
+                    <string>AppIcon-Black-60@2x</string>
+                    <string>AppIcon-Black-60@3x</string>
+                    <string>AppIcon-Black-76@2x</string>
                 </array>
             </dict>
         </dict>

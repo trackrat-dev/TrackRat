@@ -38,6 +38,9 @@
 		A16D6EF12E1703C7008C6996 /* rat-train-icon@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */; };
 		A16D6EF22E1703C7008C6996 /* Contents.json in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE72E1703C7008C6996 /* Contents.json */; };
 		A16D6EF32E1703C7008C6996 /* rat-train-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE82E1703C7008C6996 /* rat-train-icon.png */; };
+		B1ICON012E1703C7008C6996 /* AppIcon-Black-60@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = B1ICON022E1703C7008C6996 /* AppIcon-Black-60@2x.png */; };
+		B1ICON032E1703C7008C6996 /* AppIcon-Black-60@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = B1ICON042E1703C7008C6996 /* AppIcon-Black-60@3x.png */; };
+		B1ICON052E1703C7008C6996 /* AppIcon-Black-76@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = B1ICON062E1703C7008C6996 /* AppIcon-Black-76@2x.png */; };
 		A17B9F392E17FD0A00B370A6 /* RatRaceLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F362E17FD0A00B370A6 /* RatRaceLoadingView.swift */; };
 		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
 		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
@@ -136,6 +139,9 @@
 		A16D6EE82E1703C7008C6996 /* rat-train-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon.png"; sourceTree = "<group>"; };
 		A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon@2x.png"; sourceTree = "<group>"; };
 		A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon@3x.png"; sourceTree = "<group>"; };
+		B1ICON022E1703C7008C6996 /* AppIcon-Black-60@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-Black-60@2x.png"; sourceTree = "<group>"; };
+		B1ICON042E1703C7008C6996 /* AppIcon-Black-60@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-Black-60@3x.png"; sourceTree = "<group>"; };
+		B1ICON062E1703C7008C6996 /* AppIcon-Black-76@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-Black-76@2x.png"; sourceTree = "<group>"; };
 		A17B9F362E17FD0A00B370A6 /* RatRaceLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RatRaceLoadingView.swift; path = Views/Components/RatRaceLoadingView.swift; sourceTree = "<group>"; };
 		A17B9F372E17FD0A00B370A6 /* StationButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationButton.swift; path = Views/Components/StationButton.swift; sourceTree = "<group>"; };
 		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
@@ -471,6 +477,9 @@
 				A16D6EF12E1703C7008C6996 /* rat-train-icon@3x.png in Resources */,
 				A16D6EF22E1703C7008C6996 /* Contents.json in Resources */,
 				A16D6EF32E1703C7008C6996 /* rat-train-icon.png in Resources */,
+				B1ICON012E1703C7008C6996 /* AppIcon-Black-60@2x.png in Resources */,
+				B1ICON032E1703C7008C6996 /* AppIcon-Black-60@3x.png in Resources */,
+				B1ICON052E1703C7008C6996 /* AppIcon-Black-76@2x.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
