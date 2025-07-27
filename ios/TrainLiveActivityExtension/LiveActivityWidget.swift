@@ -173,7 +173,7 @@ struct TrainLiveActivity: Widget {
                         let validProgress = max(0, min(1, context.state.journeyProgress))
                         ProgressView(value: validProgress)
                             .progressViewStyle(.linear)
-                            .tint(lightBlueColor)
+                            .tint(departingTextColor(for: context.attributes.theme))
                             .padding(.horizontal, 8)
                             .onAppear {
                                 logger.info("🟡 Progress bar - value: \(validProgress)")
@@ -239,17 +239,10 @@ struct TrainLiveActivityView: View {
             HStack {
                 Label("Train \(context.attributes.trainNumber)", systemImage: "tram.fill")
                     .font(.headline)
-                    .foregroundColor(departingTextColor(for: context.attributes.theme))
-                Spacer()
-            }
-            
-            // Route
-            HStack {
-                Text(context.attributes.routeDescription)
-                    .font(.subheadline)
                     .foregroundColor(.white)
                 Spacer()
             }
+            
             
             // Next stop and destination info
             HStack(spacing: 16) {
@@ -296,19 +289,19 @@ struct TrainLiveActivityView: View {
                         // Show departure timing when train hasn't departed yet
                         if let minutes = context.state.minutesUntilDeparture {
                             Text(minutes > 1 ? "Departing in \(minutes) minutes" : minutes == 1 ? "Departing in 1 minute" : minutes == 0 ? "Departing now" : "Departing late")
-                                .foregroundColor(departingTextColor(for: context.attributes.theme))
+                                .foregroundColor(.white)
                         } else {
                             Text("Preparing to depart")
-                                .foregroundColor(departingTextColor(for: context.attributes.theme))
+                                .foregroundColor(.white)
                         }
                     } else {
                         // Show arrival timing when train has departed
                         if let minutes = context.state.minutesUntilArrival {
                             Text(minutes > 1 ? "Arriving in \(minutes) minutes" : minutes == 1 ? "Arriving in 1 minute" : minutes == 0 ? "Arriving now" : "Arrived")
-                                .foregroundColor(departingTextColor(for: context.attributes.theme))
+                                .foregroundColor(.white)
                         } else {
                             Text("En route")
-                                .foregroundColor(departingTextColor(for: context.attributes.theme))
+                                .foregroundColor(.white)
                         }
                     }
                     
