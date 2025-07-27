@@ -271,30 +271,23 @@ struct TrainLiveActivityView: View {
                 }
             }
             
-            // Minutes to arrival - centered
+            // Minutes to arrival with optional delay - centered
             if let minutes = context.state.minutesUntilArrival {
                 HStack {
                     Spacer()
-                    Text(minutes > 1 ? "Arriving in \(minutes) minutes" : minutes == 1 ? "Arriving in 1 minute" : minutes == 0 ? "Arriving now" : "Arrived")
-                        .font(.callout)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
+                    Group {
+                        Text(minutes > 1 ? "Arriving in \(minutes) minutes" : minutes == 1 ? "Arriving in 1 minute" : minutes == 0 ? "Arriving now" : "Arrived")
+                            .foregroundColor(.white)
+                        + (context.state.delayMinutes > 0 ? 
+                            Text(" • ⚠️ delayed \(context.state.delayMinutes) min")
+                                .foregroundColor(.orange) 
+                            : Text(""))
+                    }
+                    .font(.callout)
+                    .fontWeight(.medium)
                     Spacer()
                 }
                 .padding(.top, 4)
-            }
-            
-            // Delay and alert information
-            if context.state.delayMinutes > 0 {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                    Text("\(context.state.delayMinutes) minute delay")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                    Spacer()
-                }
             }
         }
         .padding()
