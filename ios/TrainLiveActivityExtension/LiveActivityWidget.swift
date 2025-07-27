@@ -239,7 +239,7 @@ struct TrainLiveActivityView: View {
             HStack {
                 Label("Train \(context.attributes.trainNumber)", systemImage: "tram.fill")
                     .font(.headline)
-                    .foregroundColor(.white)
+                    .foregroundColor(departingTextColor(for: context.attributes.theme))
                 Spacer()
             }
             
@@ -296,19 +296,19 @@ struct TrainLiveActivityView: View {
                         // Show departure timing when train hasn't departed yet
                         if let minutes = context.state.minutesUntilDeparture {
                             Text(minutes > 1 ? "Departing in \(minutes) minutes" : minutes == 1 ? "Departing in 1 minute" : minutes == 0 ? "Departing now" : "Departing late")
-                                .foregroundColor(.white)
+                                .foregroundColor(departingTextColor(for: context.attributes.theme))
                         } else {
                             Text("Preparing to depart")
-                                .foregroundColor(.white)
+                                .foregroundColor(departingTextColor(for: context.attributes.theme))
                         }
                     } else {
                         // Show arrival timing when train has departed
                         if let minutes = context.state.minutesUntilArrival {
                             Text(minutes > 1 ? "Arriving in \(minutes) minutes" : minutes == 1 ? "Arriving in 1 minute" : minutes == 0 ? "Arriving now" : "Arrived")
-                                .foregroundColor(.white)
+                                .foregroundColor(departingTextColor(for: context.attributes.theme))
                         } else {
                             Text("En route")
-                                .foregroundColor(.white)
+                                .foregroundColor(departingTextColor(for: context.attributes.theme))
                         }
                     }
                     
