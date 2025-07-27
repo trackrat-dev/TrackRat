@@ -331,21 +331,11 @@ struct ThemeRow: View {
                     Text(theme.displayName)
                         .font(.body)
                         .foregroundColor(TrackRatTheme.Colors.onSurface)
-                    
-                    if isSelected && themeManager.isChangingIcon {
-                        Text("Changing app icon...")
-                            .font(.caption)
-                            .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
-                    }
                 }
                 
                 Spacer()
                 
-                if isSelected && themeManager.isChangingIcon {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: TrackRatTheme.Colors.accent))
-                        .scaleEffect(0.8)
-                } else if isSelected {
+                if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(TrackRatTheme.Colors.accent)
                 }
@@ -357,7 +347,6 @@ struct ThemeRow: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(themeManager.isChangingIcon)
     }
     
     private var themeColor: Color {
