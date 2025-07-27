@@ -14,8 +14,8 @@ from structlog import get_logger
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
-from trackrat.config import get_settings
 from trackrat.models.database import TrainJourney
+from trackrat.settings import get_settings
 from trackrat.utils.time import is_stale, now_et, safe_datetime_subtract
 
 logger = get_logger(__name__)

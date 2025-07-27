@@ -449,31 +449,6 @@ class JourneyCollector(BaseJourneyCollector):
             stop.pickup_only = bool(stop_data.PICKUP)
             stop.dropoff_only = bool(stop_data.DROPOFF)
 
-        # Apply discovery track info if available
-        if journey.discovery_track and journey.discovery_station_code:
-            # Find the stop that matches the discovery station
-            discovery_stmt = select(JourneyStop).where(
-                and_(
-                    JourneyStop.journey_id == journey.id,
-                    JourneyStop.station_code == journey.discovery_station_code,
-                )
-            )
-            discovery_stop = await session.scalar(discovery_stmt)
-
-            if discovery_stop and not discovery_stop.track:
-                discovery_stop.track = journey.discovery_track
-                discovery_stop.track_assigned_at = now_et()
-                logger.info(
-                    "applied_discovery_track_to_stop",
-                    train_id=journey.train_id,
-                    station_code=journey.discovery_station_code,
-                    track=journey.discovery_track,
-                )
-
-            # Clear discovery track info since it's been applied
-            journey.discovery_track = None
-            journey.discovery_station_code = None
-
     async def check_journey_completion(
         self,
         session: AsyncSession,

@@ -11,7 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from trackrat.services.scheduler import SchedulerService
 from trackrat.models.database import TrainJourney
-from trackrat.config import Settings
+from trackrat.settings import Settings
 
 
 @pytest.fixture

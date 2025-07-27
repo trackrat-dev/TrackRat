@@ -1,11 +1,11 @@
 import SwiftUI
 import Combine
+import ActivityKit
 
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
-    // @State private var showingHistory = false // REMOVE THIS LINE
     
     let trainId: Int  // Keep for backwards compatibility
     
@@ -289,10 +289,8 @@ struct CombinedDetailsCard: View {
             return false
         }
         
-        // Check if train is boarding, has track, and departing within 11 minutes
-        return train.isBoarding(fromStationCode: departureCode) && 
-               train.track != nil &&
-               train.isDepartingSoon(fromStationCode: departureCode, withinMinutes: 11)
+        // Simple track-based boarding detection
+        return train.isBoardingAtStation(departureCode)
     }
     
     var body: some View {
@@ -375,8 +373,8 @@ struct CombinedDetailsCard: View {
                             isDestination: selectedDestination != nil && 
                                          stop.stationName.lowercased() == selectedDestination!.lowercased(),
                             isDeparture: checkIfDepartureStop(stop.stationName),
-                            isBoarding: stop.rawStatus?.amtrakStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName),
-                            boardingTrack: stop.rawStatus?.amtrakStatus == "BOARDING" && !checkIfDepartureStop(stop.stationName) ? train.track : nil,
+                            isBoarding: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName),
+                            boardingTrack: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName) ? stop.track : nil,
                             train: train,
                             departureStationCode: appState.departureStationCode
                         )
@@ -435,7 +433,7 @@ struct CombinedDetailsCard: View {
     }
 }
 
-// DISABLED: StatusV2 Card removed for TrainV2 migration
+// Note: StatusV2 functionality is now integrated directly into TrainV2 model
 
 // MARK: - Track Prediction Card
 struct TrackPredictionCard: View {
@@ -532,8 +530,8 @@ struct StopsCard: View {
                                      stop.stationName.lowercased() == selectedDestination!.lowercased(),
                         isDeparture: appState.selectedDeparture != nil && 
                                    stop.stationName.lowercased() == appState.selectedDeparture!.lowercased(),
-                        isBoarding: stop.rawStatus?.amtrakStatus == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
-                        boardingTrack: stop.rawStatus?.amtrakStatus == "BOARDING" && !(appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? train.track : nil,
+                        isBoarding: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
+                        boardingTrack: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? stop.track : nil,
                         train: train,
                         departureStationCode: appState.departureStationCode
                     )
@@ -975,6 +973,27 @@ class TrainDetailsViewModel: ObservableObject {
             
             print("✅ TrainDetailsView refresh successful for train \(identifier)")
             
+            // Check if Live Activity should auto-end (Primary Fix)
+            if #available(iOS 16.1, *) {
+                let liveService = LiveActivityService.shared
+                if liveService.isActivityActive,
+                   let currentActivity = liveService.currentActivity,
+                   currentActivity.attributes.trainNumber == newTrain.trainId {
+                    
+                    print("🔍 Checking Live Activity auto-end for train \(newTrain.trainId)")
+                    
+                    if liveService.shouldEndActivity(train: newTrain, activity: currentActivity) {
+                        print("🏁 Auto-ending Live Activity from TrainDetailsView refresh")
+                        
+                        Task {
+                            await liveService.endCurrentActivity()
+                        }
+                    } else {
+                        print("✅ Live Activity continues - journey not complete")
+                    }
+                }
+            }
+            
             // Check for boarding status change
             if let currentTrain = train {
                 // Check for track assignment
@@ -1047,9 +1066,9 @@ struct TrainProgressIndicator: View {
     }
 }
 
-// DISABLED: Consolidated Data Card removed for TrainV2 migration
+// Note: Consolidated data functionality is now built into TrainV2 model
 
-// DISABLED: Position Tracking Card removed for TrainV2 migration
+// Note: Position tracking is now available through TrainV2.trainPosition
 
 
 // MARK: - Segmented Track Prediction View

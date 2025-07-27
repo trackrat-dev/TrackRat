@@ -31,9 +31,23 @@ struct TrainV2: Identifiable, Codable {
     let trainPosition: TrainPosition?
     let dataFreshness: DataFreshness?
     let isCancelled: Bool
+    let isCompleted: Bool
     
     // Optional detailed stops (populated from detail endpoint)
     var stops: [StopV2]? = nil
+    
+    enum CodingKeys: String, CodingKey {
+        case trainId = "train_id"
+        case line
+        case destination
+        case departure
+        case arrival
+        case trainPosition = "train_position"
+        case dataFreshness = "data_freshness"
+        case isCancelled = "is_cancelled"
+        case isCompleted = "is_completed"
+        case stops
+    }
     
     // MARK: - Computed Properties for UI Compatibility
     
@@ -66,7 +80,7 @@ struct TrainV2: Identifiable, Codable {
         arrival?.code
     }
     
-    // Static track prediction data (temporary until backend implementation)
+    // Static track prediction data from local service
     var predictionData: PredictionData? {
         return StaticTrackDistributionService.shared.getPredictionData(for: self)
     }
@@ -94,6 +108,14 @@ struct TrainV2: Identifiable, Codable {
             }
         }
         return false
+    }
+    
+    // Simple track-based boarding detection - works for both NJ Transit and Amtrak
+    func isBoardingAtStation(_ stationCode: String) -> Bool {
+        guard let stop = stops?.first(where: { $0.stationCode == stationCode }) else {
+            return false
+        }
+        return stop.track != nil && !stop.hasDepartedStation
     }
     
     // MARK: - Helper Methods
@@ -162,9 +184,18 @@ struct TrainV2: Identifiable, Codable {
         return arrival?.scheduledTime
     }
     
-    // Legacy method for compatibility - delegates to parameterless version
+    // Get scheduled arrival time at specific destination station
     func getScheduledArrivalTime(toStationName: String) -> Date? {
-        return getScheduledArrivalTime()
+        // Look up the specific station in stops array
+        if let stops = stops,
+           let destinationStop = stops.first(where: { 
+               $0.stationName.lowercased().contains(toStationName.lowercased()) 
+           }) {
+            return destinationStop.scheduledArrival
+        }
+        
+        // Fallback to train's final destination if station not found
+        return arrival?.scheduledTime
     }
     
     // Get formatted departure time for display
@@ -337,7 +368,8 @@ extension TrainV2 {
             originStationCode: departure.code,
             destinationStationCode: destinationStationCode ?? "",
             departureTime: departureTime,
-            scheduledArrivalTime: getScheduledArrivalTime(toStationName: toStationName)
+            scheduledArrivalTime: getScheduledArrivalTime(toStationName: toStationName),
+            theme: ThemeManager.shared.selectedTheme.rawValue
         )
     }
     
@@ -426,12 +458,18 @@ extension TrainV2 {
         let journeyStops = Array(stops[fromIndex...toIndex])
         let destinationStop = journeyStops.last
         
-        // Check if we've arrived at the destination
-        let hasArrivedAtDestination = destinationStop?.actualArrival != nil ||
-                                     (trainPosition?.atStationCode == destinationStop?.stationCode)
+        // Check if destination is the train's terminal station
+        let isDestinationTerminal = (toIndex == stops.count - 1)
         
-        if hasArrivedAtDestination {
-            return 1.0  // Journey complete - we've arrived at destination
+        // Journey is complete when:
+        // - For terminal stations: train has arrived
+        // - For intermediate stations: train has departed
+        let hasCompletedJourney = isDestinationTerminal ? 
+            (destinationStop?.actualArrival != nil || trainPosition?.atStationCode == destinationStop?.stationCode) :
+            (destinationStop?.hasDepartedStation == true)
+        
+        if hasCompletedJourney {
+            return 1.0  // Journey complete
         }
         
         // Calculate progress based on completed segments (exclude destination from denominator)

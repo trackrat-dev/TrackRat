@@ -2,7 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.njt.client import TrainNotFoundError
@@ -80,7 +80,7 @@ async def test_api_error_count_reset_on_success():
     session = AsyncMock(spec=AsyncSession)
     session.flush = AsyncMock()
     session.scalar = AsyncMock(return_value=None)  # No existing stops
-    session.add = AsyncMock()
+    session.add = Mock()  # session.add is synchronous, not async
 
     # Mock successful API response
     from trackrat.models.api import NJTransitTrainData, NJTransitStopData

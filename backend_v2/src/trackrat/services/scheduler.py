@@ -19,11 +19,11 @@ from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.journey import JourneyCollector
-from trackrat.config import Settings, get_settings
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
+from trackrat.settings import Settings, get_settings
 from trackrat.utils.time import (
     ensure_timezone_aware,
     now_et,
@@ -1050,26 +1050,28 @@ class SchedulerService:
                 # Filter to only the user's journey segment
                 user_journey_stops = sorted_stops[origin_index : destination_index + 1]
 
-                # Log stop sequence for debugging
+                # Enhanced logging for debugging progress calculation differences
                 stop_sequence_info = [
-                    (
-                        s.stop_sequence,
-                        s.station_code,
-                        s.has_departed_station,
-                    )
-                    for s in user_journey_stops[:5]
-                ]  # First 5 stops
-                logger.debug(
-                    "user_journey_stops_debug",
+                    {
+                        "sequence": s.stop_sequence,
+                        "code": s.station_code,
+                        "name": s.station_name,
+                        "departed": s.has_departed_station,
+                    }
+                    for s in user_journey_stops
+                ]
+
+                logger.info(
+                    "backend_progress_calculation_debug",
                     train_number=journey.train_id,
                     origin_code=token.origin_code,
                     destination_code=token.destination_code,
                     user_journey_stop_count=len(user_journey_stops),
                     total_stop_count=len(sorted_stops),
-                    first_stops=stop_sequence_info,
+                    journey_stops=stop_sequence_info,
                 )
 
-                # Calculate progress based on user's journey only
+                # Calculate progress based on user's journey only (includes destination in denominator)
                 total_user_stops = len(user_journey_stops)
                 departed_user_stops = sum(
                     1 for stop in user_journey_stops if stop.has_departed_station
@@ -1078,6 +1080,16 @@ class SchedulerService:
                     departed_user_stops / total_user_stops
                     if total_user_stops > 0
                     else 0.0
+                )
+
+                logger.info(
+                    "backend_progress_calculation_result",
+                    train_number=journey.train_id,
+                    total_stops=total_user_stops,
+                    departed_stops=departed_user_stops,
+                    progress=journey_progress,
+                    calculation_method="departed_stops / total_stops (includes destination)",
+                    note="iOS calculates progress as: departed_stops / (total_stops - 1) excluding destination",
                 )
 
                 # Find current and next stops within user's journey

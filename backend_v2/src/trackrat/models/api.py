@@ -179,6 +179,9 @@ class TrainDetails(BaseModel):
     is_cancelled: bool = Field(
         default=False, description="Whether the train is cancelled"
     )
+    is_completed: bool = Field(
+        default=False, description="Whether the train has completed its journey"
+    )
 
     @field_serializer("journey_date")
     def serialize_journey_date(self, journey_date: date) -> str:

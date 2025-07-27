@@ -14,7 +14,6 @@ class DeepLinkService: ObservableObject {
         
         // Parse the deep link
         guard let deepLink = DeepLink(url: url) else {
-            print("❌ Invalid deep link format: \(url)")
             return
         }
         

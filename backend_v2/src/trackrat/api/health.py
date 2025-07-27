@@ -10,11 +10,11 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.config import Settings, get_settings
 from trackrat.db.database import get_backup_service
 from trackrat.db.engine import get_db
 from trackrat.models.database import DiscoveryRun, TrainJourney
 from trackrat.services.scheduler import get_scheduler
+from trackrat.settings import Settings, get_settings
 from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)

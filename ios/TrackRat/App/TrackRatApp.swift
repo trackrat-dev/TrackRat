@@ -9,6 +9,7 @@ let BACKGROUND_REFRESH_TASK_ID = "com.trackrat.backgroundrefresh"
 @main
 struct TrackRatApp: App {
     @StateObject private var appState = AppState()
+    @ObservedObject private var themeManager = ThemeManager.shared
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     
@@ -16,8 +17,9 @@ struct TrackRatApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
-                .preferredColorScheme(.dark)
-                .tint(.white)
+                .environmentObject(themeManager)
+                .preferredColorScheme(themeManager.colorScheme)
+                .tint(themeManager.tintColor)
                 .onOpenURL { url in
                     print("🔗 App received URL: \(url)")
                     DeepLinkService.shared.handleOpenURL(url, appState: appState)
@@ -41,8 +43,7 @@ struct TrackRatApp: App {
     }
     
     init() {
-        // Widget registration now handled by Widget Extension target
-        // No need to manually register here
+        // Live Activity widget configuration handled by TrainLiveActivityBundle
     }
 }
 
@@ -177,7 +178,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     // MARK: - Push Notification Helpers
     
     private func handleLiveActivityPushUpdate(_ userInfo: [AnyHashable: Any]) async {
-        print("🔄 Processing Live Activity push update")
+        print("🔄 Live Activity Update Source: Server push notification (APNS)")
         print("📦 Full payload: \(userInfo)")
         
         // Extract the aps payload
@@ -189,6 +190,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // Log the content-state for debugging
         if let contentState = aps["content-state"] as? [String: Any] {
             print("📊 Content State Keys: \(Array(contentState.keys))")
+            if let progress = contentState["journeyProgress"] as? Double {
+                print("  - Server calculated progress: \(progress)")
+            }
             if let trainNumber = contentState["trainNumber"] as? String {
                 print("🚂 Train Number: \(trainNumber)")
             }

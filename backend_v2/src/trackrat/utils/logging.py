@@ -10,7 +10,7 @@ import sys
 import structlog
 from structlog.types import EventDict, Processor
 
-from trackrat.config import get_settings
+from trackrat.settings import get_settings
 
 
 def setup_logging() -> None:

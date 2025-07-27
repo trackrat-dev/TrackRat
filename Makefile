@@ -51,7 +51,7 @@ backend-migrate:
 # Infrastructure specific commands
 infra-plan:
 	@echo "📋 Planning infrastructure changes..."
-	@cd infra/environments/dev && terraform plan
+	@cd infra/environments/staging && terraform plan
 
 infra-validate:
 	@echo "✔️  Validating Terraform configuration..."

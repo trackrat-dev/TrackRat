@@ -311,7 +311,9 @@ struct TrainCard: View {
                 }
             }
             .padding()
-            .background(isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9))
+            .background(
+                isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9)
+            )
             .cornerRadius(16)
             .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
         }
@@ -448,6 +450,7 @@ class TrainListViewModel: ObservableObject {
     }
     
     // Initializer for dependency injection
+    @MainActor
     init(apiService: APIService = .shared) {
         self.apiService = apiService
     }

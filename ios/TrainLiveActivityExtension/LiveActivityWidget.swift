@@ -7,6 +7,23 @@ import os.log
 private let lightBlueColor = Color(red: 0x84/255.0, green: 0xca/255.0, blue: 0xf4/255.0)
 private let trackRatBlue = Color(hex: "#0e5c8d")
 
+// Helper function to get theme color
+private func themeColor(for theme: String) -> Color {
+    switch theme {
+    case "blue": return trackRatBlue
+    case "black": return Color.black
+    default: return trackRatBlue
+    }
+}
+
+// Helper function to get "Departing in" text color based on theme
+private func departingTextColor(for theme: String) -> Color {
+    switch theme {
+    case "black": return .orange
+    default: return lightBlueColor
+    }
+}
+
 private let logger = Logger(subsystem: "net.trackrat.TrackRat", category: "LiveActivity")
 
 // Helper function to create deep link URL from Live Activity attributes
@@ -106,7 +123,7 @@ struct TrainLiveActivity: Widget {
         ActivityConfiguration(for: TrainActivityAttributes.self) { context in
             // Lock Screen widget UI
             TrainLiveActivityView(context: context)
-                .activityBackgroundTint(trackRatBlue)
+                .activityBackgroundTint(themeColor(for: context.attributes.theme))
                 .activitySystemActionForegroundColor(.white)
                 .widgetURL(createDeepLinkURL(from: context.attributes))
                 .onAppear {
@@ -117,7 +134,7 @@ struct TrainLiveActivity: Widget {
                 // Expanded UI (when tapped)
                 DynamicIslandExpandedRegion(.center) {
                     // Only center status content
-                    CenterStatusView(state: context.state)
+                    CenterStatusView(state: context.state, theme: context.attributes.theme)
                         .padding(.top, 17) // Aligns with station name text
                 }
                 DynamicIslandExpandedRegion(.leading) {
@@ -156,7 +173,7 @@ struct TrainLiveActivity: Widget {
                         let validProgress = max(0, min(1, context.state.journeyProgress))
                         ProgressView(value: validProgress)
                             .progressViewStyle(.linear)
-                            .tint(lightBlueColor)
+                            .tint(departingTextColor(for: context.attributes.theme))
                             .padding(.horizontal, 8)
                             .onAppear {
                                 logger.info("🟡 Progress bar - value: \(validProgress)")
@@ -168,7 +185,7 @@ struct TrainLiveActivity: Widget {
                 Text(context.state.compactLeadingText)
                         .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(lightBlueColor)
+                    .foregroundColor(departingTextColor(for: context.attributes.theme))
                 .onAppear {
                     debugLog("🟢 Compact appeared", context: context)
                 }
@@ -178,7 +195,7 @@ struct TrainLiveActivity: Widget {
                     .font(.caption)
                     .monospacedDigit()
                     .fontWeight(.medium)
-                    .foregroundColor(lightBlueColor)
+                    .foregroundColor(departingTextColor(for: context.attributes.theme))
             } minimal: {
                 // Minimal view (when multiple activities)
                 Image(systemName: "tram.fill")
@@ -226,13 +243,6 @@ struct TrainLiveActivityView: View {
                 Spacer()
             }
             
-            // Route
-            HStack {
-                Text(context.attributes.routeDescription)
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                Spacer()
-            }
             
             // Next stop and destination info
             HStack(spacing: 16) {
@@ -271,18 +281,41 @@ struct TrainLiveActivityView: View {
                 }
             }
             
-            // Delay and alert information
-            if context.state.delayMinutes > 0 {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                    Text("\(context.state.delayMinutes) minute delay")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                    Spacer()
+            // Dynamic timing: departure before train departs, arrival after departure - centered
+            HStack {
+                Spacer()
+                Group {
+                    if !context.state.hasTrainDeparted {
+                        // Show departure timing when train hasn't departed yet
+                        if let minutes = context.state.minutesUntilDeparture {
+                            Text(minutes > 1 ? "Departing in \(minutes) minutes" : minutes == 1 ? "Departing in 1 minute" : minutes == 0 ? "Departing now" : "Departing late")
+                                .foregroundColor(.white)
+                        } else {
+                            Text("Preparing to depart")
+                                .foregroundColor(.white)
+                        }
+                    } else {
+                        // Show arrival timing when train has departed
+                        if let minutes = context.state.minutesUntilArrival {
+                            Text(minutes > 1 ? "Arriving in \(minutes) minutes" : minutes == 1 ? "Arriving in 1 minute" : minutes == 0 ? "Arriving now" : "Arrived")
+                                .foregroundColor(.white)
+                        } else {
+                            Text("En route")
+                                .foregroundColor(.white)
+                        }
+                    }
+                    
+                    // Add delay indicator if delayed
+                    if context.state.delayMinutes > 0 {
+                        Text(" ⚠️ delayed")
+                            .foregroundColor(.orange)
+                    }
                 }
+                .font(.callout)
+                .fontWeight(.medium)
+                Spacer()
             }
+            .padding(.top, 4)
         }
         .padding()
         .onReceive(timer) { _ in
@@ -311,6 +344,7 @@ struct TrainLiveActivityView: View {
 @available(iOS 16.1, *)
 private struct CenterStatusView: View {
     let state: TrainActivityAttributes.ContentState
+    let theme: String
     
     private var displayText: String {
         if !state.hasTrainDeparted && state.trackDisplay != nil {
@@ -330,6 +364,6 @@ private struct CenterStatusView: View {
         Text(displayText)
             .font(.caption)
             .fontWeight(.semibold)
-            .foregroundColor(lightBlueColor)
+            .foregroundColor(departingTextColor(for: theme))
     }
 }

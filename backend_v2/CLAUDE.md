@@ -145,7 +145,7 @@ The APScheduler runs in-process and handles:
 2. **Database Changes**:
    - Create migration: `alembic revision -m "description"`
    - Edit migration file in `db/migrations/versions/`
-   - Apply: `alembic upgrade head`
+   - **NOTE**: Migrations run automatically during application startup (after backup restore)
 
 3. **Collector Changes**:
    - Discovery logic in `collectors/discovery.py`
@@ -301,10 +301,13 @@ docker build -t trackrat-backend-v2 .
 
 # Run container
 docker run -p 8000:8000 \
-  -e NJ_TRANSIT_USERNAME=xxx \
-  -e NJ_TRANSIT_PASSWORD=xxx \
+  -e TRACKRAT_NJT_API_TOKEN=xxx \
+  -e APNS_TEAM_ID=xxx \
+  -e APNS_KEY_ID=xxx \
   trackrat-backend-v2
 ```
+
+**Important**: Database migrations run automatically during container startup, **after** any backup restore from GCS.
 
 ### Production Checklist
 

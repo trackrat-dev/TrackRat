@@ -9,8 +9,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import Connection, engine_from_config, pool
 
-from trackrat.config import get_settings
 from trackrat.models.database import Base
+from trackrat.settings import get_settings
 
 # This is the Alembic Config object
 config = context.config

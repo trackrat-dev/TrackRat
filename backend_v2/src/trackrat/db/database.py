@@ -8,6 +8,7 @@ from trackrat.services.backup_service import BackupService
 from trackrat.settings import get_settings
 
 from .engine import get_engine
+from .migrations_runner import run_migrations
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,14 @@ async def init_database_with_backup() -> None:
             logger.info("Not using SQLite, backup not supported")
 
     # Initialize the database engine (this ensures tables are created)
+    logger.info("Getting database engine")
     get_engine()
+    logger.info("Database engine initialized")
+
+    # Run migrations AFTER backup restore to ensure we're migrating the restored database
+    logger.info("Running database migrations after backup restore")
+    await run_migrations()
+    logger.info("Database migrations completed")
 
 
 async def shutdown_database() -> None:

@@ -11,7 +11,6 @@ infra/
 ├── outputs.tf                 # Global outputs
 ├── setup-backend.sh           # Script to setup Terraform backends
 ├── environments/              # Environment-specific configurations
-│   ├── dev/                   # Development environment
 │   ├── staging/               # Staging environment
 │   └── prod/                  # Production environment
 └── modules/                   # Reusable Terraform modules
@@ -26,7 +25,6 @@ infra/
 1. **Google Cloud SDK**: Install and authenticate with `gcloud`
 2. **Terraform**: Install Terraform >= 1.0
 3. **GCP Projects**: Create the following projects:
-   - `trackrat-dev` (Development)
    - `trackrat-staging` (Staging)
    - `trackrat-prod` (Production)
 4. **Permissions**: Ensure you have appropriate IAM permissions in each project
@@ -86,8 +84,8 @@ Deploy to the development environment:
 
 ```bash
 # Using Make (recommended)
-make dev-plan    # Plan dev environment
-make dev-apply   # Apply dev environment
+make staging-plan    # Plan staging environment
+make staging-apply   # Apply staging environment
 
 # Or using Terraform directly
 cd environments/dev
@@ -164,7 +162,7 @@ make security      # Run Checkov security scan
 make docs          # Generate documentation
 
 # Environment-specific operations
-make dev-plan      # Plan dev environment
+make staging-plan   # Plan staging environment
 make staging-plan  # Plan staging environment
 make prod-plan     # Plan production environment
 ```

@@ -45,10 +45,9 @@ class ShareService {
     /// Present the native iOS share sheet
     func presentShareSheet(
         url: URL,
-        text: String,
         from view: UIView? = nil
     ) {
-        let items: [Any] = [text, url]
+        let items: [Any] = [url]
         let activityViewController = UIActivityViewController(
             activityItems: items,
             applicationActivities: nil
@@ -94,7 +93,7 @@ struct ShareButton: View {
     var body: some View {
         Button(action: shareAction) {
             Image(systemName: "square.and.arrow.up")
-                .font(.callout)
+                .font(.system(size: 14))
                 .fontWeight(.medium)
                 .foregroundColor(.white)
         }
@@ -105,12 +104,7 @@ struct ShareButton: View {
                 fromStationCode: fromStationCode,
                 destinationName: destinationName
             ) {
-                let text = ShareService.shared.createShareText(
-                    for: train,
-                    fromStationCode: fromStationCode,
-                    destinationName: destinationName
-                )
-                ShareSheetView(items: [text, url])
+                ShareSheetView(items: [url])
             }
         }
     }

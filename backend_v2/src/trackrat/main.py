@@ -35,9 +35,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
 
     # Initialize database with backup support
+    logger.info("starting_database_initialization")
     await init_database_with_backup()
+    logger.info("database_initialization_complete")
 
     # Initialize APNS service
+    logger.info("initializing_apns_service")
     apns_service = SimpleAPNSService()
     logger.info(
         "apns_service_initialized",
@@ -48,8 +51,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
 
     # Start scheduler with APNS service
+    logger.info("starting_scheduler_from_lifespan")
     scheduler = get_scheduler(apns_service=apns_service)
     await scheduler.start()
+    logger.info("scheduler_started_from_lifespan")
 
     logger.info("trackrat_v2_started")
 

@@ -262,6 +262,9 @@ class TestTrainDiscoveryCollector:
         """Test that process_discovered_trains creates journey records correctly."""
         mock_session = AsyncMock()
 
+        # Mock synchronous database operations
+        mock_session.add = Mock()
+
         # Mock database query to return no existing journeys (all are new)
         mock_session.scalar = AsyncMock(return_value=None)
 
@@ -294,6 +297,10 @@ class TestTrainDiscoveryCollector:
     ):
         """Test that Amtrak trains are skipped during NJT discovery."""
         mock_session = AsyncMock()
+
+        # Mock synchronous database operations
+        mock_session.add = Mock()
+
         mock_session.scalar = AsyncMock(return_value=None)  # No existing journey
 
         # Sample data with mix of NJT and Amtrak trains
@@ -353,6 +360,10 @@ class TestTrainDiscoveryCollector:
     async def test_amtrak_train_id_patterns(self, discovery_collector):
         """Test that various Amtrak train ID patterns are correctly identified."""
         mock_session = AsyncMock()
+
+        # Mock synchronous database operations
+        mock_session.add = Mock()
+
         mock_session.scalar = AsyncMock(return_value=None)
 
         # Test various Amtrak train ID patterns

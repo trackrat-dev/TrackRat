@@ -367,6 +367,10 @@ class TestAmtrakSchedulerIntegration:
                 "trackrat.collectors.amtrak.journey.get_session"
             ) as mock_get_session:
                 mock_session = AsyncMock()
+
+                # Mock synchronous database operations
+                mock_session.add = Mock()
+
                 mock_get_session.return_value.__aenter__.return_value = mock_session
 
                 # Run collection

@@ -9,8 +9,8 @@ from typing import Any
 import httpx
 from structlog import get_logger
 
-from trackrat.config import Settings, get_settings
 from trackrat.models.api import NJTransitTrainData
+from trackrat.settings import Settings, get_settings
 from trackrat.utils.metrics import track_api_call
 
 logger = get_logger(__name__)
@@ -182,57 +182,6 @@ class NJTransitClient:
             )
 
         return response
-
-    @track_api_call(api_name="njtransit", endpoint="train_schedule")
-    async def get_train_schedule(self, station_code: str) -> list[dict[str, Any]]:
-        """Get train schedule for a station (legacy format).
-
-        This uses getTrainSchedule19Rec which returns a simple list of trains
-        without embedded stop data. Used for discovery purposes.
-
-        Args:
-            station_code: Two-character station code (e.g., "NY", "NP")
-
-        Returns:
-            List of train dictionaries (parsed from ITEMS or TRAINS keys)
-        """
-        logger.info(
-            "API QUERY: getting train schedule using getTrainSchedule19Rec",
-            station_code=station_code,
-        )
-
-        response = await self._make_request(
-            "TrainData/getTrainSchedule19Rec", {"station": station_code}
-        )
-
-        # Handle different response formats
-        if isinstance(response, list):
-            # API returned a list directly
-            return response
-        elif isinstance(response, dict):
-            # Check for ITEMS key (newer format)
-            if "ITEMS" in response:
-                items = response["ITEMS"]
-                return items if isinstance(items, list) else []
-            # Check for TRAINS key (legacy format)
-            elif "TRAINS" in response:
-                trains = response["TRAINS"]
-                return trains if isinstance(trains, list) else []
-            else:
-                # Empty response or unknown format
-                logger.warning(
-                    "unexpected_train_schedule_format",
-                    station_code=station_code,
-                    response_keys=list(response.keys()),
-                )
-                return []
-        else:
-            logger.error(
-                "invalid_train_schedule_response_type",
-                station_code=station_code,
-                response_type=type(response).__name__,
-            )
-            return []
 
     @track_api_call(api_name="njtransit", endpoint="train_stop_list")
     async def get_train_stop_list(self, train_id: str) -> NJTransitTrainData:
