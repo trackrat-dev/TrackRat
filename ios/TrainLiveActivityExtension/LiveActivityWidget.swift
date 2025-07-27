@@ -297,7 +297,7 @@ struct TrainLiveActivityView: View {
                     
                     // Add delay indicator if delayed
                     if context.state.delayMinutes > 0 {
-                        Text(" • ⚠️ delayed \(context.state.delayMinutes) min")
+                        Text(" ⚠️ delayed")
                             .foregroundColor(.orange)
                     }
                 }
