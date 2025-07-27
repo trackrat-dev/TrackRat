@@ -116,74 +116,83 @@ struct TripSelectionView: View {
                         }
                         .padding(.top, 20)
                         
-                        
-                        // Report Issues & Request Features button
-                        Button {
-                            if let signalURL = URL(string: "https://signal.me/#eu/iG3LNnu-IycTUbwrWF1nwrlR-u-TN5gtBO0tXtJk3Nder7TtfzFPa6On6N9dl3e-") {
-                                openURL(signalURL)
+                        // More section
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("MORE")
+                                .font(TrackRatTheme.Typography.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
+                                .padding(.horizontal)
+                            
+                            // Report Issues & Request Features button
+                            Button {
+                                if let signalURL = URL(string: "https://signal.me/#eu/iG3LNnu-IycTUbwrWF1nwrlR-u-TN5gtBO0tXtJk3Nder7TtfzFPa6On6N9dl3e-") {
+                                    openURL(signalURL)
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                            } label: {
+                                HStack {
+                                    Image(systemName: "exclamationmark.bubble.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.gray)
+                                    
+                                    Text("Report Issues & Request Features")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(.white.opacity(0.08))
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(.white.opacity(0.15), lineWidth: 1)
+                                        )
+                                )
+                                .padding(.horizontal)
+                            }
+                            
+                            // Advanced Configuration button
+                            Button {
+                                appState.navigationPath.append(NavigationDestination.advancedConfiguration)
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.gray)
+                                    
+                                    Text("Advanced Configuration")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(.white.opacity(0.08))
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(.white.opacity(0.15), lineWidth: 1)
+                                        )
+                                )
+                                .padding(.horizontal)
                             }
-                        } label: {
-                            HStack {
-                                Image(systemName: "exclamationmark.bubble.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.gray)
-                                
-                                Text("Report Issues & Request Features")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.7))
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(.white.opacity(0.08))
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(.white.opacity(0.15), lineWidth: 1)
-                                    )
-                            )
-                            .padding(.horizontal)
                         }
-                        
-                        // Advanced Configuration button
-                        Button {
-                            appState.navigationPath.append(NavigationDestination.advancedConfiguration)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            HStack {
-                                Image(systemName: "gearshape.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.gray)
-                                
-                                Text("Advanced Configuration")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.7))
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(.white.opacity(0.08))
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(.white.opacity(0.15), lineWidth: 1)
-                                    )
-                            )
-                            .padding(.horizontal)
-                        }
+                        .padding(.top, 20)
                         
                 }
                 .padding(.bottom, 40)

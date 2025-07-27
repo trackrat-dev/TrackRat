@@ -1060,7 +1060,7 @@ class SchedulerService:
                     }
                     for s in user_journey_stops
                 ]
-                
+
                 logger.info(
                     "backend_progress_calculation_debug",
                     train_number=journey.train_id,
@@ -1081,7 +1081,7 @@ class SchedulerService:
                     if total_user_stops > 0
                     else 0.0
                 )
-                
+
                 logger.info(
                     "backend_progress_calculation_result",
                     train_number=journey.train_id,

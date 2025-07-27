@@ -271,24 +271,41 @@ struct TrainLiveActivityView: View {
                 }
             }
             
-            // Minutes to arrival with optional delay - centered
-            if let minutes = context.state.minutesUntilArrival {
-                HStack {
-                    Spacer()
-                    Group {
-                        Text(minutes > 1 ? "Arriving in \(minutes) minutes" : minutes == 1 ? "Arriving in 1 minute" : minutes == 0 ? "Arriving now" : "Arrived")
-                            .foregroundColor(.white)
-                        + (context.state.delayMinutes > 0 ? 
-                            Text(" • ⚠️ delayed \(context.state.delayMinutes) min")
-                                .foregroundColor(.orange) 
-                            : Text(""))
+            // Dynamic timing: departure before train departs, arrival after departure - centered
+            HStack {
+                Spacer()
+                Group {
+                    if !context.state.hasTrainDeparted {
+                        // Show departure timing when train hasn't departed yet
+                        if let minutes = context.state.minutesUntilDeparture {
+                            Text(minutes > 1 ? "Departing in \(minutes) minutes" : minutes == 1 ? "Departing in 1 minute" : minutes == 0 ? "Departing now" : "Departing late")
+                                .foregroundColor(.white)
+                        } else {
+                            Text("Preparing to depart")
+                                .foregroundColor(.white)
+                        }
+                    } else {
+                        // Show arrival timing when train has departed
+                        if let minutes = context.state.minutesUntilArrival {
+                            Text(minutes > 1 ? "Arriving in \(minutes) minutes" : minutes == 1 ? "Arriving in 1 minute" : minutes == 0 ? "Arriving now" : "Arrived")
+                                .foregroundColor(.white)
+                        } else {
+                            Text("En route")
+                                .foregroundColor(.white)
+                        }
                     }
-                    .font(.callout)
-                    .fontWeight(.medium)
-                    Spacer()
+                    
+                    // Add delay indicator if delayed
+                    if context.state.delayMinutes > 0 {
+                        Text(" • ⚠️ delayed \(context.state.delayMinutes) min")
+                            .foregroundColor(.orange)
+                    }
                 }
-                .padding(.top, 4)
+                .font(.callout)
+                .fontWeight(.medium)
+                Spacer()
             }
+            .padding(.top, 4)
         }
         .padding()
         .onReceive(timer) { _ in
