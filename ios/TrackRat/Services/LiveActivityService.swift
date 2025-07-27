@@ -54,7 +54,8 @@ class LiveActivityService: ObservableObject {
             originStationCode: originCode,
             destinationStationCode: destinationCode,
             departureTime: train.getDepartureTime(fromStationCode: originCode) ?? train.departureTime,
-            scheduledArrivalTime: scheduledArrivalTime
+            scheduledArrivalTime: scheduledArrivalTime,
+            theme: ThemeManager.shared.selectedTheme.rawValue
         )
         
         // Determine if train has departed user's origin

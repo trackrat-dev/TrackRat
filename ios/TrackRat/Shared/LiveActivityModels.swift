@@ -191,6 +191,7 @@ struct TrainActivityAttributes: ActivityAttributes {
     let destinationStationCode: String
     let departureTime: Date
     let scheduledArrivalTime: Date?
+    let theme: String // Theme name as string (blue, black, white)
 }
 
 // MARK: - Supporting Data Models

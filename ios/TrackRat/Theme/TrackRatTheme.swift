@@ -3,46 +3,89 @@ import SwiftUI
 struct TrackRatTheme {
     // MARK: - Colors
     struct Colors {
-        // Brand Colors - Blue-based theme
-        static let surface = Color(hex: "#0e5c8d")
-        static let surfaceSecondary = Color(hex: "#0e5c8d").opacity(0.8)
-        static let surfaceCard = Color.white.opacity(0.1)
-        static let surfaceElevated = Color.white.opacity(0.05)
+        // Brand Colors - Dynamic based on theme
+        static var surface: Color {
+            switch ThemeManager.shared.selectedTheme {
+            case .blue: return Color(hex: "#0e5c8d")
+            case .black: return Color.black
+            }
+        }
+        
+        static var surfaceSecondary: Color {
+            surface.opacity(0.8)
+        }
+        
+        static var surfaceCard: Color {
+            return Color.white.opacity(0.1)
+        }
+        
+        static var surfaceElevated: Color {
+            return Color.white.opacity(0.05)
+        }
         
         // Keep orange accent for consistency
         static let accent = Color.orange
         static let accentSecondary = Color.orange.opacity(0.8)
         
-        // Background - Flat Blue
-        static let primaryBackground = Color(hex: "#0e5c8d")
+        // Background - Dynamic
+        static var primaryBackground: Color {
+            surface
+        }
         
-        static let cardGradient = LinearGradient(
-            colors: [Color.white.opacity(0.1), Color.white.opacity(0.05)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        static var cardGradient: LinearGradient {
+            return LinearGradient(
+                colors: [Color.white.opacity(0.1), Color.white.opacity(0.05)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
         
-        // Text Colors
-        static let onSurface = Color.white
-        static let onSurfaceSecondary = Color.white.opacity(0.7)
-        static let onSurfaceTertiary = Color.white.opacity(0.5)
+        // Text Colors - Dynamic based on theme
+        static var onSurface: Color {
+            return Color.white
+        }
         
-        // Status Colors
-        static let success = Color(hex: "#0e5c8d")
+        static var onSurfaceSecondary: Color {
+            onSurface.opacity(0.7)
+        }
+        
+        static var onSurfaceTertiary: Color {
+            onSurface.opacity(0.5)
+        }
+        
+        // Status Colors - Adjust for visibility
+        static var success: Color {
+            return Color(hex: "#0e5c8d")
+        }
+        
         static let warning = Color.yellow
         static let error = Color.red
         static let info = Color.blue
         
         // Train Status Colors
-        static let onTime = Color(hex: "#0e5c8d")
+        static var onTime: Color {
+            success
+        }
+        
         static let delayed = Color.red
         static let boarding = accent
         static let departed = Color.blue
         static let cancelled = Color.gray
         
-        // Border Colors
-        static let border = Color.white.opacity(0.2)
-        static let borderSecondary = Color.white.opacity(0.1)
+        // Border Colors - Dynamic opacity based on theme
+        static var border: Color {
+            switch ThemeManager.shared.selectedTheme {
+            case .black: return Color.white.opacity(0.3)
+            default: return Color.white.opacity(0.2)
+            }
+        }
+        
+        static var borderSecondary: Color {
+            switch ThemeManager.shared.selectedTheme {
+            case .black: return Color.white.opacity(0.2)
+            default: return Color.white.opacity(0.1)
+            }
+        }
     }
     
     // MARK: - Typography
@@ -78,26 +121,36 @@ struct TrackRatTheme {
     
     // MARK: - Shadows
     struct Shadows {
-        static let light = Shadow(
-            color: Color(hex: "#0e5c8d").opacity(0.4),
-            radius: 4,
-            x: 0,
-            y: 2
-        )
+        static var shadowColor: Color {
+            return Colors.surface.opacity(0.4)
+        }
         
-        static let medium = Shadow(
-            color: Color(hex: "#0e5c8d").opacity(0.5),
-            radius: 8,
-            x: 0,
-            y: 4
-        )
+        static var light: Shadow {
+            Shadow(
+                color: shadowColor,
+                radius: 4,
+                x: 0,
+                y: 2
+            )
+        }
         
-        static let heavy = Shadow(
-            color: Color(hex: "#0e5c8d").opacity(0.7),
-            radius: 16,
-            x: 0,
-            y: 8
-        )
+        static var medium: Shadow {
+            Shadow(
+                color: shadowColor.opacity(1.25),
+                radius: 8,
+                x: 0,
+                y: 4
+            )
+        }
+        
+        static var heavy: Shadow {
+            Shadow(
+                color: shadowColor.opacity(1.75),
+                radius: 16,
+                x: 0,
+                y: 8
+            )
+        }
     }
 }
 

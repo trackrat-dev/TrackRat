@@ -368,7 +368,8 @@ extension TrainV2 {
             originStationCode: departure.code,
             destinationStationCode: destinationStationCode ?? "",
             departureTime: departureTime,
-            scheduledArrivalTime: getScheduledArrivalTime(toStationName: toStationName)
+            scheduledArrivalTime: getScheduledArrivalTime(toStationName: toStationName),
+            theme: ThemeManager.shared.selectedTheme.rawValue
         )
     }
     

@@ -9,6 +9,7 @@ let BACKGROUND_REFRESH_TASK_ID = "com.trackrat.backgroundrefresh"
 @main
 struct TrackRatApp: App {
     @StateObject private var appState = AppState()
+    @ObservedObject private var themeManager = ThemeManager.shared
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     
@@ -16,8 +17,9 @@ struct TrackRatApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
-                .preferredColorScheme(.dark)
-                .tint(.white)
+                .environmentObject(themeManager)
+                .preferredColorScheme(themeManager.colorScheme)
+                .tint(themeManager.tintColor)
                 .onOpenURL { url in
                     print("🔗 App received URL: \(url)")
                     DeepLinkService.shared.handleOpenURL(url, appState: appState)
