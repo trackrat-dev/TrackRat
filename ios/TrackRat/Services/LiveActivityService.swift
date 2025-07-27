@@ -185,6 +185,9 @@ class LiveActivityService: ObservableObject {
             let context = JourneyContext(from: activity.attributes.originStationCode, to: activity.attributes.destination)
             let progress = train.calculateJourneyProgress(for: context)
             
+            print("🔄 Live Activity Update Source: Client calculation (30s timer)")
+            print("  - Client calculated progress: \(progress)")
+            
             // Get scheduled times and departure status
             let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: activity.attributes.originStationCode)
             let scheduledArrivalTime = train.getScheduledArrivalTime(toStationName: activity.attributes.destination)
@@ -232,11 +235,24 @@ class LiveActivityService: ObservableObject {
             
             print("✅ Live Activity updated successfully")
             
-            // Auto-end if journey is complete
-            if progress >= 1.0 {
-                print("🏁 Journey complete (progress: \(progress)), ending Live Activity")
-                print("  - Origin: \(activity.attributes.originStationCode)")
-                print("  - Destination: \(activity.attributes.destinationStationCode)")
+            // Auto-end if journey is complete using comprehensive check
+            if shouldEndActivity(train: train, activity: activity) {
+                print("🏁 Live Activity ending due to journey completion")
+                print("  - Notifying server to stop updates...")
+                
+                // Notify server first to stop sending updates
+                if let pushToken = currentPushToken {
+                    let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
+                    do {
+                        try await APIService.shared.unregisterLiveActivityToken(pushToken: tokenString)
+                        print("  ✅ Server notified successfully")
+                    } catch {
+                        print("  ⚠️ Failed to notify server: \(error)")
+                        // Continue with local ending anyway
+                    }
+                }
+                
+                // Then end locally
                 await endCurrentActivity()
             }
             
@@ -332,6 +348,44 @@ class LiveActivityService: ObservableObject {
     }
     
     // MARK: - Helper Methods
+    
+    /// Simple check using the same logic as the Live Activity widget
+    func shouldEndActivity(train: TrainV2, activity: Activity<TrainActivityAttributes>) -> Bool {
+        print("🔍 Checking if Live Activity should end (using widget logic):")
+        print("  - Train: \(train.trainId)")
+        print("  - Origin: \(activity.attributes.originStationCode)")
+        print("  - Destination: \(activity.attributes.destination)")
+        
+        // Get the content state that the widget uses
+        let contentState = train.toLiveActivityContentState(from: activity.attributes.originStationCode, to: activity.attributes.destination)
+        
+        // Use the exact same logic as the widget: if minutesUntilArrival <= 0, journey is complete
+        if let minutesUntilArrival = contentState.minutesUntilArrival {
+            print("  - Minutes until arrival: \(minutesUntilArrival)")
+            
+            if minutesUntilArrival <= 0 {
+                print("  ✅ Journey complete - widget shows 'Arrived' (minutes: \(minutesUntilArrival))")
+                return true
+            } else {
+                print("  ❌ Journey not complete - widget shows 'Arriving in \(minutesUntilArrival) minutes'")
+                return false
+            }
+        }
+        
+        // Fallback: If no arrival time available, use failsafe timeout
+        if let scheduledArrival = train.getScheduledArrivalTime(toStationName: activity.attributes.destination) {
+            let bufferTime: TimeInterval = 30 * 60 // 30 minutes
+            let now = Date()
+            
+            if now > scheduledArrival.addingTimeInterval(bufferTime) {
+                print("  ✅ Journey complete - failsafe timeout (30min past scheduled arrival)")
+                return true
+            }
+        }
+        
+        print("  ⚠️ No arrival time data available - continuing Live Activity")
+        return false
+    }
     
     /// Determine if train has departed from the user's origin station
     private func hasTrainDeparted(_ train: TrainV2, fromStation originCode: String) -> Bool {

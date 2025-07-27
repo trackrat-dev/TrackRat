@@ -184,9 +184,18 @@ struct TrainV2: Identifiable, Codable {
         return arrival?.scheduledTime
     }
     
-    // Legacy method for compatibility - delegates to parameterless version
+    // Get scheduled arrival time at specific destination station
     func getScheduledArrivalTime(toStationName: String) -> Date? {
-        return getScheduledArrivalTime()
+        // Look up the specific station in stops array
+        if let stops = stops,
+           let destinationStop = stops.first(where: { 
+               $0.stationName.lowercased().contains(toStationName.lowercased()) 
+           }) {
+            return destinationStop.scheduledArrival
+        }
+        
+        // Fallback to train's final destination if station not found
+        return arrival?.scheduledTime
     }
     
     // Get formatted departure time for display

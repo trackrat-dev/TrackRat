@@ -176,7 +176,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     // MARK: - Push Notification Helpers
     
     private func handleLiveActivityPushUpdate(_ userInfo: [AnyHashable: Any]) async {
-        print("🔄 Processing Live Activity push update")
+        print("🔄 Live Activity Update Source: Server push notification (APNS)")
         print("📦 Full payload: \(userInfo)")
         
         // Extract the aps payload
@@ -188,6 +188,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         // Log the content-state for debugging
         if let contentState = aps["content-state"] as? [String: Any] {
             print("📊 Content State Keys: \(Array(contentState.keys))")
+            if let progress = contentState["journeyProgress"] as? Double {
+                print("  - Server calculated progress: \(progress)")
+            }
             if let trainNumber = contentState["trainNumber"] as? String {
                 print("🚂 Train Number: \(trainNumber)")
             }

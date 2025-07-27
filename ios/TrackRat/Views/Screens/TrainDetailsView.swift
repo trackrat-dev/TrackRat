@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import ActivityKit
 
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
@@ -971,6 +972,27 @@ class TrainDetailsViewModel: ObservableObject {
             )
             
             print("✅ TrainDetailsView refresh successful for train \(identifier)")
+            
+            // Check if Live Activity should auto-end (Primary Fix)
+            if #available(iOS 16.1, *) {
+                let liveService = LiveActivityService.shared
+                if liveService.isActivityActive,
+                   let currentActivity = liveService.currentActivity,
+                   currentActivity.attributes.trainNumber == newTrain.trainId {
+                    
+                    print("🔍 Checking Live Activity auto-end for train \(newTrain.trainId)")
+                    
+                    if liveService.shouldEndActivity(train: newTrain, activity: currentActivity) {
+                        print("🏁 Auto-ending Live Activity from TrainDetailsView refresh")
+                        
+                        Task {
+                            await liveService.endCurrentActivity()
+                        }
+                    } else {
+                        print("✅ Live Activity continues - journey not complete")
+                    }
+                }
+            }
             
             // Check for boarding status change
             if let currentTrain = train {
