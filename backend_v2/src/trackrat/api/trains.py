@@ -19,6 +19,7 @@ from trackrat.models.api import (
     DataFreshness,
     DeparturesResponse,
     HistoricalJourney,
+    JourneyProgress,
     LineInfo,
     OccupiedTracksResponse,
     RawStopStatus,
@@ -33,6 +34,7 @@ from trackrat.models.api import (
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
 from trackrat.services.jit import JustInTimeUpdateService
+from trackrat.services.predictions import JourneyPredictor
 from trackrat.utils.time import now_et, safe_datetime_subtract
 from trackrat.utils.train import is_amtrak_train
 
@@ -84,6 +86,7 @@ async def get_train_details(
     train_id: str = Path(..., description="Train ID"),
     date: date | None = Query(None, description="Journey date (YYYY-MM-DD)"),
     refresh: bool = Query(False, description="Force data refresh"),
+    include_predictions: bool = Query(True, description="Include arrival predictions"),
     db: AsyncSession = Depends(get_db),
 ) -> TrainDetailsResponse:
     """Get detailed information for a specific train."""
@@ -142,6 +145,37 @@ async def get_train_details(
 
     # Calculate train position
     train_position = calculate_train_position(journey)
+    
+    # Calculate journey progress
+    progress = None
+    if journey.progress_snapshots:
+        # Get the latest progress snapshot
+        latest_progress = max(journey.progress_snapshots, key=lambda p: p.captured_at)
+        progress = JourneyProgress(
+            stops_completed=latest_progress.stops_completed,
+            stops_total=latest_progress.stops_total,
+            journey_percent=latest_progress.journey_percent,
+            minutes_to_arrival=None,  # Will be calculated from prediction
+            last_departed=latest_progress.last_departed_station,
+            next_arrival=latest_progress.next_station,
+        )
+    
+    # Get arrival prediction if requested
+    predicted_arrival = None
+    arrival_confidence = None
+    if include_predictions and journey.terminal_station_code:
+        predictor = JourneyPredictor()
+        prediction = await predictor.predict_arrival(
+            db, journey, journey.terminal_station_code
+        )
+        if prediction:
+            predicted_arrival = prediction.predicted_arrival
+            arrival_confidence = prediction.confidence_score
+            
+            # Update minutes to arrival in progress
+            if progress:
+                minutes_to_arrival = int((predicted_arrival - now_et()).total_seconds() / 60)
+                progress.minutes_to_arrival = max(0, minutes_to_arrival)
 
     # Build response
     train_details = TrainDetails(
@@ -175,6 +209,9 @@ async def get_train_details(
         raw_train_state="Active" if journey.data_source == "AMTRAK" else None,
         is_cancelled=journey.is_cancelled,
         is_completed=journey.is_completed,
+        progress=progress,
+        predicted_arrival=predicted_arrival,
+        arrival_confidence=arrival_confidence,
     )
 
     return TrainDetailsResponse(train=train_details)

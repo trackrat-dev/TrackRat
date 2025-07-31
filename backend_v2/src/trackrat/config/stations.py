@@ -107,3 +107,41 @@ def get_all_stations() -> list[dict[str, str]]:
         List of station dictionaries with 'code' and 'name' keys
     """
     return [{"code": code, "name": name} for code, name in STATION_NAMES.items()]
+
+
+# Station coordinates for map visualization
+STATION_COORDINATES = {
+    "NY": {"lat": 40.7505, "lon": -73.9934},  # NY Penn
+    "NP": {"lat": 40.7348, "lon": -74.1644},  # Newark Penn
+    "TR": {"lat": 40.2206, "lon": -74.7597},  # Trenton
+    "PJ": {"lat": 40.3170, "lon": -74.6225},  # Princeton Junction
+    "MP": {"lat": 40.5686, "lon": -74.3284},  # Metropark
+    "NA": {"lat": 40.7058, "lon": -74.1608},  # Newark Airport
+    "NB": {"lat": 40.4862, "lon": -74.4518},  # New Brunswick
+    "SE": {"lat": 40.7614, "lon": -74.0776},  # Secaucus
+    "PH": {"lat": 39.9566, "lon": -75.1820},  # Philadelphia
+    "WI": {"lat": 39.7391, "lon": -75.5516},  # Wilmington
+    "BA": {"lat": 39.3076, "lon": -76.6159},  # BWI Airport
+    "BL": {"lat": 39.3072, "lon": -76.6200},  # Baltimore
+    "WS": {"lat": 38.8977, "lon": -77.0063},  # Washington Union
+    "BOS": {"lat": 42.3519, "lon": -71.0552},  # Boston South Station
+    "BBY": {"lat": 42.3475, "lon": -71.0754},  # Boston Back Bay
+    "PL": {"lat": 40.6140, "lon": -74.1647},  # Plainfield
+    "LB": {"lat": 40.0849, "lon": -74.1990},  # Long Branch
+    "DN": {"lat": 39.9526, "lon": -75.1652},  # Doylestown
+    "JA": {"lat": 39.9917, "lon": -75.3897},  # Jamaica
+    "HB": {"lat": 40.5544, "lon": -74.4093},  # Highland Beach
+    "RA": {"lat": 40.7418, "lon": -74.2656},  # Raritan
+}
+
+
+def get_station_coordinates(code: str) -> dict[str, float] | None:
+    """Get station coordinates for mapping.
+    
+    Args:
+        code: Two-character station code
+        
+    Returns:
+        Dict with lat/lon or None if not found
+    """
+    return STATION_COORDINATES.get(code)

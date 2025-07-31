@@ -17,6 +17,7 @@ from trackrat.config.stations import AMTRAK_TO_INTERNAL_STATION_MAP, get_station
 from trackrat.db.engine import get_session, with_db_retry
 from trackrat.models.api import AmtrakTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
 from trackrat.utils.time import normalize_to_et, now_et
 
@@ -348,6 +349,16 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             journey.is_cancelled = train_data.trainState == "Cancelled"
             journey.is_completed = train_data.trainState == "Terminated"
 
+            # Set actual departure and arrival times from stops
+            if new_stops:
+                # Set actual departure from first stop
+                if new_stops[0].actual_departure:
+                    journey.actual_departure = new_stops[0].actual_departure
+
+                # Set actual arrival from last stop
+                if new_stops[-1].actual_arrival:
+                    journey.actual_arrival = new_stops[-1].actual_arrival
+
             # Create snapshot for all journeys (both new and existing)
             # Journey now has a valid ID after flush/creation
             # NOTE: Only keeps one snapshot per journey to prevent database growth
@@ -367,6 +378,11 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 total_stops=len(new_stops),
             )
             session.add(snapshot)
+
+            # Analyze transit times and dwell times if journey has actual times
+            if journey.actual_departure:
+                transit_analyzer = TransitAnalyzer()
+                await transit_analyzer.analyze_journey(session, journey)
 
             return journey
 

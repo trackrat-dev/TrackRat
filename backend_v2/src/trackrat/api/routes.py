@@ -14,15 +14,19 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
+from trackrat.config.stations import get_station_coordinates
 from trackrat.db.engine import get_db
 from trackrat.models.api import (
     AggregateStats,
+    CongestionMapResponse,
     DelayBreakdown,
     HighlightedTrain,
     HistoricalRouteInfo,
     RouteHistoryResponse,
+    SegmentCongestion as SegmentCongestionModel,
 )
 from trackrat.models.database import TrainJourney
+from trackrat.services.congestion import CongestionAnalyzer
 from trackrat.utils.time import now_et
 
 logger = get_logger()
@@ -246,3 +250,54 @@ def _calculate_route_stats(
         "delay_breakdown": delay_breakdown,
         "track_usage": track_usage,
     }
+
+
+@router.get("/congestion", response_model=CongestionMapResponse)
+@handle_errors
+async def get_route_congestion(
+    time_window_hours: int = Query(3, ge=1, le=24, description="Hours to look back"),
+    data_source: str | None = Query(None, description="Filter by data source (NJT or AMTRAK)"),
+    db: AsyncSession = Depends(get_db),
+) -> CongestionMapResponse:
+    """Get current congestion levels for all route segments."""
+    
+    analyzer = CongestionAnalyzer()
+    congestion_data = await analyzer.get_network_congestion(db, time_window_hours)
+    
+    # Filter by data source if specified
+    if data_source:
+        congestion_data = [c for c in congestion_data if c.data_source == data_source]
+    
+    # Convert to API models and add station coordinates
+    segments = []
+    for segment in congestion_data:
+        segment_model = SegmentCongestionModel(
+            from_station=segment.from_station,
+            to_station=segment.to_station,
+            data_source=segment.data_source,
+            congestion_factor=segment.congestion_factor,
+            congestion_level=segment.congestion_level,
+            color=segment.color,
+            avg_transit_minutes=segment.avg_transit_minutes,
+            baseline_minutes=segment.baseline_minutes,
+            sample_count=segment.sample_count,
+            last_updated=segment.last_updated,
+            from_station_coords=get_station_coordinates(segment.from_station),
+            to_station_coords=get_station_coordinates(segment.to_station),
+        )
+        segments.append(segment_model)
+    
+    return CongestionMapResponse(
+        segments=segments,
+        generated_at=now_et(),
+        time_window_hours=time_window_hours,
+        metadata={
+            "total_segments": len(segments),
+            "congestion_levels": {
+                "normal": len([s for s in segments if s.congestion_level == "normal"]),
+                "moderate": len([s for s in segments if s.congestion_level == "moderate"]),
+                "heavy": len([s for s in segments if s.congestion_level == "heavy"]),
+                "severe": len([s for s in segments if s.congestion_level == "severe"]),
+            },
+        },
+    )

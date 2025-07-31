@@ -122,7 +122,10 @@ class JustInTimeUpdateService:
                     TrainJourney.journey_date == journey_date,
                 )
             )
-            .options(selectinload(TrainJourney.stops))
+            .options(
+                selectinload(TrainJourney.stops),
+                selectinload(TrainJourney.progress_snapshots),
+            )
         )
         journey = await session.scalar(stmt)
 

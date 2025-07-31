@@ -109,6 +109,10 @@ class TrainDeparture(BaseModel):
     is_cancelled: bool = Field(
         default=False, description="Whether the train is cancelled"
     )
+    # Progress and prediction fields
+    progress: JourneyProgress | None = None
+    predicted_arrival: datetime | None = None
+    arrival_confidence: float | None = Field(None, ge=0.0, le=1.0)
 
 
 class DeparturesResponse(BaseModel):
@@ -182,6 +186,10 @@ class TrainDetails(BaseModel):
     is_completed: bool = Field(
         default=False, description="Whether the train has completed its journey"
     )
+    # Progress and prediction fields
+    progress: JourneyProgress | None = None
+    predicted_arrival: datetime | None = None
+    arrival_confidence: float | None = Field(None, ge=0.0, le=1.0)
 
     @field_serializer("journey_date")
     def serialize_journey_date(self, journey_date: date) -> str:
@@ -389,3 +397,32 @@ class RouteHistoryResponse(BaseModel):
     route: HistoricalRouteInfo
     aggregate_stats: AggregateStats
     highlighted_train: HighlightedTrain | None = None
+
+
+# Congestion API Models
+
+
+class SegmentCongestion(BaseModel):
+    """Congestion data for a route segment."""
+
+    from_station: str
+    to_station: str
+    data_source: str
+    congestion_factor: float = Field(..., ge=0.0)
+    congestion_level: Literal["normal", "moderate", "heavy", "severe"]
+    color: str = Field(..., pattern="^#[0-9A-Fa-f]{6}$")
+    avg_transit_minutes: float = Field(..., ge=0.0)
+    baseline_minutes: float = Field(..., ge=0.0)
+    sample_count: int = Field(..., ge=0)
+    last_updated: datetime
+    from_station_coords: dict[str, float] | None = None
+    to_station_coords: dict[str, float] | None = None
+
+
+class CongestionMapResponse(BaseModel):
+    """Response for congestion map endpoint."""
+
+    segments: list[SegmentCongestion]
+    generated_at: datetime
+    time_window_hours: int
+    metadata: dict[str, Any] = Field(default_factory=dict)

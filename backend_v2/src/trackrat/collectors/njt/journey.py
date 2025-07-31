@@ -17,6 +17,7 @@ from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.time import now_et, parse_njt_time
 
 logger = get_logger(__name__)
@@ -262,6 +263,11 @@ class JourneyCollector(BaseJourneyCollector):
 
         # Check if journey is complete
         await self.check_journey_completion(session, journey, train_data.STOPS)
+
+        # Analyze transit times and dwell times if journey has actual times
+        if journey.actual_departure:
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_journey(session, journey)
 
         # Commit changes
         await session.flush()
@@ -601,6 +607,43 @@ class JourneyCollector(BaseJourneyCollector):
                 origin_station=journey.origin_station_code,
                 error=str(e),
             )
+
+    async def check_journey_completion(
+        self,
+        session: AsyncSession,
+        journey: TrainJourney,
+        stops_data: list[NJTransitStopData],
+    ) -> None:
+        """Check if journey is complete and update status accordingly.
+
+        Args:
+            session: Database session
+            journey: Journey to check
+            stops_data: List of stop data
+        """
+        if not stops_data:
+            return
+
+        # Check if cancelled
+        if all(stop.STOP_STATUS == "Cancelled" for stop in stops_data):
+            journey.is_cancelled = True
+            journey.is_completed = True
+            return
+
+        # Check if all stops have been departed
+        all_departed = all(stop.DEPARTED == "YES" for stop in stops_data)
+        if all_departed:
+            journey.is_completed = True
+
+            # Set actual arrival time from last stop
+            last_stop = stops_data[-1]
+            if last_stop.TIME:
+                journey.actual_arrival = parse_njt_time(last_stop.TIME)
+
+            # Set actual departure time from first stop
+            first_stop = stops_data[0]
+            if first_stop.DEP_TIME:
+                journey.actual_departure = parse_njt_time(first_stop.DEP_TIME)
 
     def determine_train_status(self, stops_data: list[NJTransitStopData]) -> str:
         """Determine overall train status from stops.

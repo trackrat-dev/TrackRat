@@ -256,7 +256,7 @@ class TestTrainDiscoveryCollector:
             result = await discovery_collector.collect(mock_session)
 
         # Verify aggregation
-        assert result["stations_processed"] == 9  # Updated discovery stations count  
+        assert result["stations_processed"] == 9  # Updated discovery stations count
         assert result["total_discovered"] == 5  # 3 + 2 (PJ removed)
         assert result["total_new"] == 1  # 1 + 0 (PJ removed)
 
