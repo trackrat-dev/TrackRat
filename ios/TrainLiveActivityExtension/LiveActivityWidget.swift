@@ -185,7 +185,7 @@ struct TrainLiveActivity: Widget {
                 Text(context.state.compactLeadingText)
                         .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(departingTextColor(for: context.attributes.theme))
+                    .foregroundColor(.white)
                 .onAppear {
                     debugLog("🟢 Compact appeared", context: context)
                 }
@@ -195,7 +195,7 @@ struct TrainLiveActivity: Widget {
                     .font(.caption)
                     .monospacedDigit()
                     .fontWeight(.medium)
-                    .foregroundColor(departingTextColor(for: context.attributes.theme))
+                    .foregroundColor(.white)
             } minimal: {
                 // Minimal view (when multiple activities)
                 Image(systemName: "tram.fill")
