@@ -7,7 +7,7 @@ Collects complete journey details using the getTrainStopList API.
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -290,6 +290,9 @@ class JourneyCollector(BaseJourneyCollector):
     ) -> JourneySnapshot:
         """Create a historical snapshot of the journey data.
 
+        NOTE: Only keeps one snapshot per journey to prevent database growth.
+        Replaces any existing snapshots for this journey.
+
         Args:
             session: Database session
             journey: Journey record
@@ -298,6 +301,11 @@ class JourneyCollector(BaseJourneyCollector):
         Returns:
             Created snapshot
         """
+        # Delete existing snapshots for this journey to maintain single snapshot per journey
+        await session.execute(
+            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
+        )
+
         # Extract metrics
         completed_stops = sum(1 for stop in train_data.STOPS if stop.DEPARTED == "YES")
 
@@ -326,7 +334,7 @@ class JourneyCollector(BaseJourneyCollector):
         snapshot = JourneySnapshot(
             journey_id=journey.id,
             captured_at=now_et(),
-            raw_stop_list_data=train_data.model_dump(),
+            raw_stop_list_data={},  # Deactivated to reduce database size - full data is in journey_stops
             train_status=self.determine_train_status(train_data.STOPS),
             delay_minutes=delay_minutes,
             completed_stops=completed_stops,

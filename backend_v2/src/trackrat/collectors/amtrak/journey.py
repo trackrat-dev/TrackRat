@@ -7,7 +7,7 @@ Collects complete journey details for Amtrak trains.
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -350,16 +350,18 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
             # Create snapshot for all journeys (both new and existing)
             # Journey now has a valid ID after flush/creation
+            # NOTE: Only keeps one snapshot per journey to prevent database growth
+            await session.execute(
+                delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
+            )
+
             completed_stops_count = sum(
                 1 for stop in new_stops if stop.has_departed_station
             )
             snapshot = JourneySnapshot(
                 journey_id=journey.id,
                 captured_at=now_et(),
-                raw_stop_list_data={
-                    "train_data": train_data.model_dump(),
-                    "data_source": "AMTRAK",
-                },
+                raw_stop_list_data={},  # Deactivated to reduce database size - full data is in journey_stops
                 train_status=self.TRAIN_STATE_MAP.get(train_data.trainState, "UNKNOWN"),
                 completed_stops=completed_stops_count,
                 total_stops=len(new_stops),
@@ -601,17 +603,18 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             if journey.is_completed and tracked_stops[-1].actual_arrival:
                 journey.actual_arrival = tracked_stops[-1].actual_arrival
 
-        # Create snapshot
+        # Create snapshot - replace existing to maintain single snapshot per journey
+        await session.execute(
+            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
+        )
+
         completed_stops_count = sum(
             1 for stop in tracked_stops if stop.has_departed_station
         )
         snapshot = JourneySnapshot(
             journey_id=journey.id,
             captured_at=now_et(),
-            raw_stop_list_data={
-                "train_data": train_data.model_dump(),
-                "data_source": "AMTRAK",
-            },
+            raw_stop_list_data={},  # Deactivated to reduce database size - full data is in journey_stops
             train_status=self.TRAIN_STATE_MAP.get(train_data.trainState, "UNKNOWN"),
             completed_stops=completed_stops_count,
             total_stops=len(tracked_stops),

@@ -613,5 +613,5 @@ class TestAmtrakCollectionPipeline:
         assert snapshot.train_status == "EN ROUTE"
         assert snapshot.completed_stops == 1  # NYP departed
         assert snapshot.total_stops == 3
-        assert "train_data" in snapshot.raw_stop_list_data
-        assert snapshot.raw_stop_list_data["data_source"] == "AMTRAK"
+        # raw_stop_list_data is now empty to reduce database size - full data is in journey_stops
+        assert snapshot.raw_stop_list_data == {}

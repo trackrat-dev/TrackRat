@@ -209,7 +209,8 @@ class TestAmtrakDatabaseIntegration:
                 )
                 snapshots_result = await db_session.execute(snapshots_stmt)
                 snapshots = snapshots_result.scalars().all()
-                assert len(snapshots) == 2
+                # Now only keeps 1 snapshot per journey to prevent database growth
+                assert len(snapshots) == 1
 
     @pytest.mark.skip(
         reason="Test data date mismatch - creates journeys for 2025-07-05 but queries for today"
@@ -382,8 +383,8 @@ class TestAmtrakDatabaseIntegration:
                 assert snapshot.train_status == "EN ROUTE"
                 assert snapshot.completed_stops == 1  # NYP departed
                 assert snapshot.total_stops == 2
-                assert "train_data" in snapshot.raw_stop_list_data
-                assert snapshot.raw_stop_list_data["data_source"] == "AMTRAK"
+                # raw_stop_list_data is now empty to reduce database size - full data is in journey_stops
+                assert snapshot.raw_stop_list_data == {}
 
     async def test_concurrent_journey_updates(self, db_session: AsyncSession):
         """Test handling of concurrent journey updates."""
