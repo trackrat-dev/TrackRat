@@ -4,6 +4,7 @@ Transit time analysis service for TrackRat.
 Analyzes journey data to calculate segment transit times and station dwell times.
 """
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -33,11 +34,18 @@ class TransitAnalyzer:
             db: Database session
             journey: The journey to analyze
         """
-        if not journey.stops:
+        # Query stops directly to avoid lazy loading issues
+        stops_stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        result = await db.execute(stops_stmt)
+        stops = list(result.scalars().all())
+        
+        if not stops:
             logger.debug("no_stops_to_analyze", journey_id=journey.id)
             return
-
-        stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
         if len(stops) < 2:
             logger.debug(
                 "insufficient_stops", journey_id=journey.id, stop_count=len(stops)

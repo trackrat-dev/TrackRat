@@ -103,6 +103,7 @@ class JourneyCollector(BaseJourneyCollector):
         This method finds trains that:
         1. Don't have complete journey data yet
         2. Are active (not completed/cancelled) and need periodic updates
+        3. Historical trains that need transit time analysis
 
         Args:
             session: Database session
@@ -122,8 +123,10 @@ class JourneyCollector(BaseJourneyCollector):
             "successful": 0,
             "failed": 0,
             "errors": [],
+            "historical_backfilled": 0,
         }
 
+        # Process current trains
         for journey in trains_to_collect:
             try:
                 await self.collect_journey_details(session, journey)
@@ -153,6 +156,36 @@ class JourneyCollector(BaseJourneyCollector):
                 )
 
             results["trains_processed"] += 1
+
+        # Process historical trains for backfill
+        historical_trains = await self.find_historical_trains_for_backfill(session)
+        
+        if historical_trains:
+            logger.info("found_historical_trains_for_backfill", count=len(historical_trains))
+            
+            for journey in historical_trains:
+                try:
+                    await self.collect_journey_details(session, journey, skip_enhancement=True)
+                    results["successful"] += 1
+                    results["historical_backfilled"] += 1
+                    
+                    if results["historical_backfilled"] % 10 == 0:
+                        logger.info("backfill_progress", processed=results["historical_backfilled"])
+                        
+                except Exception as e:
+                    logger.error(
+                        "failed_to_backfill_historical_journey",
+                        train_id=journey.train_id,
+                        journey_id=journey.id,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
+                    results["failed"] += 1
+                    results["errors"].append(
+                        {"train_id": journey.train_id, "error": str(e), "type": "historical"}
+                    )
+
+                results["trains_processed"] += 1
 
         logger.info("journey_collection_complete", **results)
         return results
@@ -196,6 +229,46 @@ class JourneyCollector(BaseJourneyCollector):
                 TrainJourney.last_updated_at,
             )
             .limit(limit)
+        )
+
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def find_historical_trains_for_backfill(
+        self, session: AsyncSession
+    ) -> list[TrainJourney]:
+        """Find historical trains that need transit time analysis.
+
+        These are completed NJT journeys that have stop data but haven't 
+        had the 30-minute inference logic applied yet.
+
+        Args:
+            session: Database session
+
+        Returns:
+            List of historical journeys needing analysis
+        """
+        # Query for historical journeys that haven't been analyzed
+        stmt = (
+            select(TrainJourney)
+            .where(
+                and_(
+                    # Only NJT trains
+                    TrainJourney.data_source == "NJT",
+                    # Have complete journey data with stops
+                    TrainJourney.has_complete_journey.is_(True),
+                    TrainJourney.stops_count > 0,
+                    # No actual departure time set (haven't been analyzed)
+                    TrainJourney.actual_departure.is_(None),
+                    # Completed or older journeys (not active)
+                    or_(
+                        TrainJourney.is_completed.is_(True),
+                        TrainJourney.is_cancelled.is_(True),
+                        TrainJourney.is_expired.is_(True),
+                    ),
+                )
+            )
+            .order_by(TrainJourney.journey_date.desc())
         )
 
         result = await session.execute(stmt)
@@ -531,11 +604,21 @@ class JourneyCollector(BaseJourneyCollector):
             logger.info("journey_cancelled", train_id=journey.train_id)
 
         # Set journey actual_departure from first departed stop (if not already set)
-        if not journey.actual_departure and journey.stops:
-            # Find the first stop that has departed
-            first_departed_stop = next(
-                (stop for stop in journey.stops if stop.has_departed_station), None
+        if not journey.actual_departure:
+            # Find the first stop that has departed by querying directly
+            first_departed_stmt = (
+                select(JourneyStop)
+                .where(
+                    and_(
+                        JourneyStop.journey_id == journey.id,
+                        JourneyStop.has_departed_station.is_(True),
+                    )
+                )
+                .order_by(JourneyStop.stop_sequence)
+                .limit(1)
             )
+            first_departed_stop = await session.scalar(first_departed_stmt)
+            
             if first_departed_stop and first_departed_stop.actual_departure:
                 journey.actual_departure = first_departed_stop.actual_departure
                 logger.debug(
