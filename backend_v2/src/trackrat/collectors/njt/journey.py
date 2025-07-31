@@ -440,10 +440,24 @@ class JourneyCollector(BaseJourneyCollector):
             if stop_data.DEPARTED == "YES":
                 stop.actual_arrival = stop.scheduled_arrival
                 stop.actual_departure = stop.scheduled_departure
+                stop.has_departed_station = True
+            elif stop.scheduled_departure and now_et() > stop.scheduled_departure + timedelta(minutes=30):
+                # Infer departure after 30 minutes past scheduled time
+                stop.actual_arrival = stop.scheduled_arrival
+                stop.actual_departure = stop.scheduled_departure
+                stop.has_departed_station = True
+                logger.debug(
+                    "inferred_departure_after_delay",
+                    train_id=journey.train_id,
+                    station_code=stop.station_code,
+                    scheduled_departure=stop.scheduled_departure.isoformat(),
+                    current_time=now_et().isoformat(),
+                )
+            else:
+                stop.has_departed_station = False
 
             # Update raw status information
             stop.raw_njt_departed_flag = stop_data.DEPARTED
-            stop.has_departed_station = stop_data.DEPARTED == "YES"
 
             # Update track if available - but don't overwrite existing track from discovery
             if stop_data.TRACK:
@@ -503,6 +517,21 @@ class JourneyCollector(BaseJourneyCollector):
         if cancelled_stops == len(stops_data):
             journey.is_cancelled = True
             logger.info("journey_cancelled", train_id=journey.train_id)
+
+        # Set journey actual_departure from first departed stop (if not already set)
+        if not journey.actual_departure and journey.stops:
+            # Find the first stop that has departed
+            first_departed_stop = next(
+                (stop for stop in journey.stops if stop.has_departed_station), None
+            )
+            if first_departed_stop and first_departed_stop.actual_departure:
+                journey.actual_departure = first_departed_stop.actual_departure
+                logger.debug(
+                    "set_journey_actual_departure",
+                    train_id=journey.train_id,
+                    departure_time=journey.actual_departure.isoformat(),
+                    station_code=first_departed_stop.station_code,
+                )
 
     def _is_monitored_station(self, station_code: str) -> bool:
         """Check if station is monitored for departure board data.
