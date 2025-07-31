@@ -145,21 +145,27 @@ async def get_train_details(
 
     # Calculate train position
     train_position = calculate_train_position(journey)
-    
+
     # Calculate journey progress
     progress = None
     if journey.progress_snapshots:
-        # Get the latest progress snapshot
-        latest_progress = max(journey.progress_snapshots, key=lambda p: p.captured_at)
-        progress = JourneyProgress(
-            stops_completed=latest_progress.stops_completed,
-            stops_total=latest_progress.stops_total,
-            journey_percent=latest_progress.journey_percent,
-            minutes_to_arrival=None,  # Will be calculated from prediction
-            last_departed=latest_progress.last_departed_station,
-            next_arrival=latest_progress.next_station,
-        )
-    
+        # Get the latest progress snapshot (filter out None captured_at)
+        valid_snapshots = [
+            p for p in journey.progress_snapshots if p.captured_at is not None
+        ]
+        if valid_snapshots:
+            latest_progress = max(
+                valid_snapshots, key=lambda p: p.captured_at or datetime.min
+            )
+            progress = JourneyProgress(
+                stops_completed=latest_progress.stops_completed,
+                stops_total=latest_progress.stops_total,
+                journey_percent=latest_progress.journey_percent,
+                minutes_to_arrival=None,  # Will be calculated from prediction
+                last_departed=latest_progress.last_departed_station,
+                next_arrival=latest_progress.next_station,
+            )
+
     # Get arrival prediction if requested
     predicted_arrival = None
     arrival_confidence = None
@@ -171,10 +177,12 @@ async def get_train_details(
         if prediction:
             predicted_arrival = prediction.predicted_arrival
             arrival_confidence = prediction.confidence_score
-            
+
             # Update minutes to arrival in progress
             if progress:
-                minutes_to_arrival = int((predicted_arrival - now_et()).total_seconds() / 60)
+                minutes_to_arrival = int(
+                    (predicted_arrival - now_et()).total_seconds() / 60
+                )
                 progress.minutes_to_arrival = max(0, minutes_to_arrival)
 
     # Build response

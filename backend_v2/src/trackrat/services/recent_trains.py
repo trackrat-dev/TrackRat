@@ -3,14 +3,13 @@ Service for analyzing recent train performance on similar routes.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
-from trackrat.models import JourneyStop, SegmentTransitTime, TrainJourney
+from trackrat.models import SegmentTransitTime, TrainJourney
 
 logger = get_logger(__name__)
 
@@ -26,10 +25,10 @@ class RecentTrainAnalyzer:
         data_source: str,
         hours_back: int = 6,
         limit: int = 10,
-    ) -> List[TrainJourney]:
+    ) -> list[TrainJourney]:
         """
         Get recent trains that traveled the same route.
-        
+
         Args:
             db: Database session
             from_station: Starting station code
@@ -37,7 +36,7 @@ class RecentTrainAnalyzer:
             data_source: NJT or AMTRAK
             hours_back: How many hours to look back
             limit: Maximum number of trains to return
-            
+
         Returns:
             List of recent journeys on the same route
         """
@@ -97,17 +96,17 @@ class RecentTrainAnalyzer:
         to_station: str,
         data_source: str,
         hours_back: int = 4,
-    ) -> Optional[Dict[str, float]]:
+    ) -> dict[str, float] | None:
         """
         Get recent performance metrics for a specific segment.
-        
+
         Args:
             db: Database session
             from_station: Starting station code
             to_station: Ending station code
             data_source: NJT or AMTRAK
             hours_back: How many hours to look back
-            
+
         Returns:
             Performance metrics or None if no data
         """
@@ -133,27 +132,37 @@ class RecentTrainAnalyzer:
         if not recent_segments:
             return None
 
-        transit_times = [s.actual_minutes for s in recent_segments]
-        delays = [s.delay_minutes for s in recent_segments]
+        # Filter out None values for proper type checking
+        transit_times = [
+            s.actual_minutes for s in recent_segments if s.actual_minutes is not None
+        ]
+        delays = [
+            s.delay_minutes for s in recent_segments if s.delay_minutes is not None
+        ]
+
+        if not transit_times or not delays:
+            return None
+
+        latest_time = float(transit_times[0]) if transit_times else 0.0
 
         return {
             "avg_transit_minutes": sum(transit_times) / len(transit_times),
             "avg_delay_minutes": sum(delays) / len(delays),
             "sample_count": len(recent_segments),
-            "latest_transit_minutes": transit_times[0] if transit_times else None,
+            "latest_transit_minutes": latest_time,
         }
 
     def calculate_segment_time(
         self, journey: TrainJourney, from_station: str, to_station: str
-    ) -> Optional[int]:
+    ) -> int | None:
         """
         Calculate time taken between two stations for a journey.
-        
+
         Args:
             journey: The journey to analyze
             from_station: Starting station code
             to_station: Ending station code
-            
+
         Returns:
             Minutes taken or None if data not available
         """
@@ -166,7 +175,12 @@ class RecentTrainAnalyzer:
             elif stop.station_code == to_station and stop.actual_arrival:
                 to_stop = stop
 
-        if not from_stop or not to_stop:
+        if (
+            not from_stop
+            or not to_stop
+            or not from_stop.actual_departure
+            or not to_stop.actual_arrival
+        ):
             return None
 
         time_delta = to_stop.actual_arrival - from_stop.actual_departure

@@ -4,9 +4,6 @@ Transit time analysis service for TrackRat.
 Analyzes journey data to calculate segment transit times and station dwell times.
 """
 
-from datetime import datetime
-from typing import List, Optional
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -64,7 +61,7 @@ class TransitAnalyzer:
         )
 
     async def _analyze_segments(
-        self, db: AsyncSession, journey: TrainJourney, stops: List[JourneyStop]
+        self, db: AsyncSession, journey: TrainJourney, stops: list[JourneyStop]
     ) -> None:
         """Calculate and store transit times between consecutive stations."""
         segments_created = 0
@@ -125,7 +122,7 @@ class TransitAnalyzer:
             )
 
     async def _analyze_dwell_times(
-        self, db: AsyncSession, journey: TrainJourney, stops: List[JourneyStop]
+        self, db: AsyncSession, journey: TrainJourney, stops: list[JourneyStop]
     ) -> None:
         """Calculate and store station dwell times."""
         dwell_times_created = 0
@@ -212,7 +209,7 @@ class TransitAnalyzer:
             )
 
     async def _update_journey_progress(
-        self, db: AsyncSession, journey: TrainJourney, stops: List[JourneyStop]
+        self, db: AsyncSession, journey: TrainJourney, stops: list[JourneyStop]
     ) -> None:
         """Create a journey progress snapshot."""
         # Find current position
@@ -250,7 +247,7 @@ class TransitAnalyzer:
             next_station = None
 
         # Calculate journey percentage
-        journey_percent = (stops_completed / len(stops)) * 100 if stops else 0
+        journey_percent: float = (stops_completed / len(stops)) * 100 if stops else 0.0
 
         # Calculate delays
         initial_delay_minutes = 0
@@ -266,7 +263,7 @@ class TransitAnalyzer:
         total_delay = initial_delay_minutes
         if stops and stops[-1].scheduled_arrival:
             last_stop = stops[-1]
-            if last_stop.actual_arrival:
+            if last_stop.actual_arrival and last_stop.scheduled_arrival:
                 arrival_delay = int(
                     (
                         last_stop.actual_arrival - last_stop.scheduled_arrival
@@ -274,7 +271,7 @@ class TransitAnalyzer:
                     / 60
                 )
                 total_delay = arrival_delay
-            elif last_stop.updated_arrival:
+            elif last_stop.updated_arrival and last_stop.scheduled_arrival:
                 arrival_delay = int(
                     (
                         last_stop.updated_arrival - last_stop.scheduled_arrival
@@ -290,7 +287,7 @@ class TransitAnalyzer:
             next_station=next_station,
             stops_completed=stops_completed,
             stops_total=len(stops),
-            journey_percent=journey_percent,
+            journey_percent=journey_percent,  # type: ignore[arg-type]
             initial_delay_minutes=initial_delay_minutes,
             cumulative_transit_delay=0,  # Will be calculated in phase 2
             cumulative_dwell_delay=0,  # Will be calculated in phase 2

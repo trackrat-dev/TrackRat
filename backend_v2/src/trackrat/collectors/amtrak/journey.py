@@ -379,6 +379,12 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             )
             session.add(snapshot)
 
+            # Flush to ensure all data is persisted before analysis
+            await session.flush()
+
+            # Refresh journey to load relationships properly
+            await session.refresh(journey, ["stops"])
+
             # Analyze transit times and dwell times if journey has actual times
             if journey.actual_departure:
                 transit_analyzer = TransitAnalyzer()

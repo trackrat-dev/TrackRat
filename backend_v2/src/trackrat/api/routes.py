@@ -23,6 +23,8 @@ from trackrat.models.api import (
     HighlightedTrain,
     HistoricalRouteInfo,
     RouteHistoryResponse,
+)
+from trackrat.models.api import (
     SegmentCongestion as SegmentCongestionModel,
 )
 from trackrat.models.database import TrainJourney
@@ -256,18 +258,20 @@ def _calculate_route_stats(
 @handle_errors
 async def get_route_congestion(
     time_window_hours: int = Query(3, ge=1, le=24, description="Hours to look back"),
-    data_source: str | None = Query(None, description="Filter by data source (NJT or AMTRAK)"),
+    data_source: str | None = Query(
+        None, description="Filter by data source (NJT or AMTRAK)"
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> CongestionMapResponse:
     """Get current congestion levels for all route segments."""
-    
+
     analyzer = CongestionAnalyzer()
     congestion_data = await analyzer.get_network_congestion(db, time_window_hours)
-    
+
     # Filter by data source if specified
     if data_source:
         congestion_data = [c for c in congestion_data if c.data_source == data_source]
-    
+
     # Convert to API models and add station coordinates
     segments = []
     for segment in congestion_data:
@@ -286,7 +290,7 @@ async def get_route_congestion(
             to_station_coords=get_station_coordinates(segment.to_station),
         )
         segments.append(segment_model)
-    
+
     return CongestionMapResponse(
         segments=segments,
         generated_at=now_et(),
@@ -295,7 +299,9 @@ async def get_route_congestion(
             "total_segments": len(segments),
             "congestion_levels": {
                 "normal": len([s for s in segments if s.congestion_level == "normal"]),
-                "moderate": len([s for s in segments if s.congestion_level == "moderate"]),
+                "moderate": len(
+                    [s for s in segments if s.congestion_level == "moderate"]
+                ),
                 "heavy": len([s for s in segments if s.congestion_level == "heavy"]),
                 "severe": len([s for s in segments if s.congestion_level == "severe"]),
             },

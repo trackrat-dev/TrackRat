@@ -137,10 +137,10 @@ STATION_COORDINATES = {
 
 def get_station_coordinates(code: str) -> dict[str, float] | None:
     """Get station coordinates for mapping.
-    
+
     Args:
         code: Two-character station code
-        
+
     Returns:
         Dict with lat/lon or None if not found
     """

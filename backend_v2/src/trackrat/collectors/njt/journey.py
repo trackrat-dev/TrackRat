@@ -608,7 +608,7 @@ class JourneyCollector(BaseJourneyCollector):
                 error=str(e),
             )
 
-    async def check_journey_completion(
+    async def check_journey_completion_v2(
         self,
         session: AsyncSession,
         journey: TrainJourney,
