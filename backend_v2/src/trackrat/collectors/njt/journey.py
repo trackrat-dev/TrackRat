@@ -507,7 +507,7 @@ class JourneyCollector(BaseJourneyCollector):
         Returns:
             True if station is in our monitored stations list
         """
-        return station_code in ["NY", "NP", "PJ", "TR", "LB", "PL", "DN"]
+        return station_code in ["NY", "NP", "TR", "LB", "PL", "DN", "JA", "HB", "RA"]
 
     def _is_departing_within_minutes(
         self, scheduled_departure_str: str, minutes: int

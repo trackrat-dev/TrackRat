@@ -22,7 +22,7 @@ class TrainDiscoveryCollector:
     """Discovers active trains from station schedules."""
 
     # Stations to poll for discovery - using major stations from config
-    DISCOVERY_STATIONS = ["NY", "NP", "PJ", "TR", "LB", "PL", "DN"]
+    DISCOVERY_STATIONS = ["NY", "NP", "TR", "LB", "PL", "DN", "JA", "HB", "RA"]
 
     def __init__(self, njt_client: NJTransitClient) -> None:
         """Initialize the discovery collector.
