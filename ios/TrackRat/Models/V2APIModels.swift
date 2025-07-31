@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 // MARK: - V2 API Response Models
 // These models match the backend_v2 API response structure
@@ -341,5 +342,122 @@ struct V2OccupiedTracksMetadata: Codable {
         case generatedAt = "generated_at"
         case totalTracks = "total_tracks"
         case occupiedCount = "occupied_count"
+    }
+}
+
+// MARK: - Congestion Data Models
+
+struct CongestionResponse: Codable {
+    let segments: [CongestionSegment]
+    let generatedAt: Date
+    let timeWindowHours: Int
+    let metadata: CongestionMetadata
+    
+    enum CodingKeys: String, CodingKey {
+        case segments
+        case generatedAt = "generated_at"
+        case timeWindowHours = "time_window_hours"
+        case metadata
+    }
+}
+
+struct CongestionSegment: Codable, Identifiable {
+    let fromStation: String
+    let toStation: String
+    let dataSource: String
+    let congestionFactor: Double
+    let congestionLevel: String
+    let color: String
+    let avgTransitMinutes: Double
+    let baselineMinutes: Double
+    let sampleCount: Int
+    let lastUpdated: Date
+    let fromStationCoords: StationCoordinates
+    let toStationCoords: StationCoordinates
+    
+    enum CodingKeys: String, CodingKey {
+        case fromStation = "from_station"
+        case toStation = "to_station"
+        case dataSource = "data_source"
+        case congestionFactor = "congestion_factor"
+        case congestionLevel = "congestion_level"
+        case color
+        case avgTransitMinutes = "avg_transit_minutes"
+        case baselineMinutes = "baseline_minutes"
+        case sampleCount = "sample_count"
+        case lastUpdated = "last_updated"
+        case fromStationCoords = "from_station_coords"
+        case toStationCoords = "to_station_coords"
+    }
+    
+    // Identifiable
+    var id: String {
+        "\(fromStation)-\(toStation)-\(dataSource)"
+    }
+    
+    // Computed properties for display
+    var displayCongestionLevel: String {
+        switch congestionLevel {
+        case "normal": return "Normal conditions"
+        case "moderate": return "Moderate delays"
+        case "heavy": return "Heavy delays"
+        case "severe": return "Severe delays"
+        default: return congestionLevel.capitalized
+        }
+    }
+    
+    var displayColor: Color {
+        if congestionFactor < 1.05 {
+            return .green
+        } else if congestionFactor < 1.25 {
+            return .yellow
+        } else if congestionFactor < 2.0 {
+            return .orange
+        } else {
+            return .red
+        }
+    }
+}
+
+struct StationCoordinates: Codable {
+    let lat: Double
+    let lon: Double
+}
+
+struct CongestionMetadata: Codable {
+    let totalSegments: Int
+    let congestionLevels: CongestionLevelCounts
+    
+    enum CodingKeys: String, CodingKey {
+        case totalSegments = "total_segments"
+        case congestionLevels = "congestion_levels"
+    }
+}
+
+struct CongestionLevelCounts: Codable {
+    let normal: Int
+    let moderate: Int
+    let heavy: Int
+    let severe: Int
+}
+
+// MARK: - Extensions for Display
+
+extension CongestionSegment {
+    var fromStationDisplayName: String {
+        Stations.displayNameForCode(fromStation)
+    }
+    
+    var toStationDisplayName: String {
+        Stations.displayNameForCode(toStation)
+    }
+    
+    var averageTransitTimeText: String {
+        let minutes = Int(avgTransitMinutes.rounded())
+        return "\(minutes) min avg"
+    }
+    
+    var sampleCountText: String {
+        "\(sampleCount) train\(sampleCount == 1 ? "" : "s")"
     }
 }

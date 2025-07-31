@@ -63,7 +63,8 @@ struct TrainDetailsView: View {
                                 journeyStopsCompleted: viewModel.journeyStopsCompleted,
                                 journeyTotalStops: viewModel.journeyTotalStops,
                                 shouldShowHistoricalData: shouldShowHistoricalData,
-                                onShowHistory: { viewModel.showingHistory = true }
+                                onShowHistory: { viewModel.showingHistory = true },
+                                onShowCongestion: { viewModel.showingCongestion = true }
                             )
                         }
                         .padding()
@@ -157,6 +158,15 @@ struct TrainDetailsView: View {
                 HistoricalDataView(train: train, toStationCode: appState.destinationStationCode)
             }
         }
+        .sheet(isPresented: $viewModel.showingCongestion) {
+            if let train = viewModel.train {
+                CongestionDataView(
+                    train: train,
+                    userOrigin: appState.departureStationCode,
+                    userDestination: appState.selectedDestination
+                )
+            }
+        }
     }
     
     private func toggleLiveActivity(for train: TrainV2) {
@@ -201,6 +211,7 @@ struct CombinedDetailsCard: View {
     
     // Action closures
     let onShowHistory: () -> Void
+    let onShowCongestion: () -> Void
 
     private var departureTime: String {
         let formatter = DateFormatter()
@@ -412,6 +423,28 @@ struct CombinedDetailsCard: View {
                         Image(systemName: "clock.arrow.circlepath")
                             .foregroundColor(.orange)
                         Text("View Historical Data (beta)")
+                            .font(.subheadline)
+                            .foregroundColor(.black)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.black.opacity(0.6))
+                    }
+                    .padding()
+                }
+                .background(Color.clear)
+                .cornerRadius(8)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+                
+                // Congestion Data section
+                Button {
+                    onShowCongestion()
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.triangle.branch")
+                            .foregroundColor(.orange)
+                        Text("View Congestion Data (beta)")
                             .font(.subheadline)
                             .foregroundColor(.black)
                         Spacer()
@@ -790,6 +823,7 @@ class TrainDetailsViewModel: ObservableObject {
     @Published var triggerBoardingHaptic = false
     @Published var triggerTrackAssignedHaptic = false
     @Published var showingHistory = false
+    @Published var showingCongestion = false
     
     // Flexible initialization parameters
     private let databaseId: Int?
