@@ -372,8 +372,8 @@ struct CongestionSegment: Codable, Identifiable {
     let baselineMinutes: Double
     let sampleCount: Int
     let lastUpdated: Date
-    let fromStationCoords: StationCoordinates
-    let toStationCoords: StationCoordinates
+    let fromStationCoords: StationCoordinates?
+    let toStationCoords: StationCoordinates?
     
     enum CodingKeys: String, CodingKey {
         case fromStation = "from_station"
