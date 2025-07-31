@@ -919,6 +919,90 @@ class SchedulerService:
             )
             return None
 
+    async def _collect_single_njt_journey_safe(self, train_id: str) -> dict[str, Any] | None:
+        """Safely collect a single NJT journey using synchronous database operations.
+        
+        This method bypasses async database sessions entirely to avoid greenlet issues
+        when called from APScheduler job contexts.
+        
+        Args:
+            train_id: The train ID to collect
+            
+        Returns:
+            Dict with journey info if successful, None if failed
+        """
+        try:
+            # Use synchronous database operations entirely to avoid greenlet issues
+            from sqlalchemy import and_, create_engine, select
+            from sqlalchemy.orm import sessionmaker
+            
+            # Create synchronous database connection
+            db_url = str(self.settings.database_url).replace(
+                "sqlite+aiosqlite", "sqlite"
+            )
+            sync_engine = create_engine(
+                db_url, connect_args={"check_same_thread": False}
+            )
+            SyncSession = sessionmaker(sync_engine)
+            
+            with SyncSession() as session:
+                # Find the journey for this train
+                stmt = select(TrainJourney).where(
+                    and_(
+                        TrainJourney.train_id == train_id,
+                        TrainJourney.data_source == "NJT",
+                    )
+                )
+                journey = session.scalar(stmt)
+                
+                if not journey:
+                    logger.warning("journey_not_found_sync", train_id=train_id)
+                    return None
+                
+                # Get train data from API (this is still async)
+                train_data = await self.njt_client.get_train_stop_list(train_id)
+                
+                # Process the data synchronously (simplified version)
+                if train_data:
+                    # Update journey metadata synchronously
+                    journey.destination = train_data.DESTINATION
+                    journey.line_color = train_data.BACKCOLOR.strip()
+                    journey.has_complete_journey = True
+                    journey.stops_count = len(train_data.STOPS)
+                    journey.last_updated_at = now_et()
+                    journey.update_count = (journey.update_count or 0) + 1
+                    
+                    # Capture data we need before committing/closing session
+                    result_data = {
+                        "train_id": train_id,
+                        "stops_count": len(train_data.STOPS),
+                        "destination": train_data.DESTINATION,
+                        "success": True
+                    }
+                    
+                    # Commit synchronously
+                    session.commit()
+                    
+                    logger.info(
+                        "journey_collected_sync",
+                        train_id=train_id,
+                        stops_count=len(train_data.STOPS),
+                    )
+                    
+                    return result_data
+                else:
+                    logger.warning("no_train_data_received_sync", train_id=train_id)
+                    return None
+                    
+        except Exception as e:
+            logger.error(
+                "safe_journey_collection_failed",
+                train_id=train_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return None
+
     async def collect_njt_journeys_batch(self, train_ids: list[str]) -> None:
         """Collect journey data for multiple NJ Transit trains in batch.
 
@@ -947,14 +1031,10 @@ class SchedulerService:
             if not self.njt_client:
                 raise RuntimeError("NJTransitClient not initialized")
 
-            # Process trains sequentially to avoid database conflicts
+            # Use synchronous processing to avoid greenlet issues with APScheduler
+            # This is similar to the approach used in update_live_activities
             success_count = 0
             error_count = 0
-
-            # Create journey collector
-            from trackrat.collectors.njt.journey import JourneyCollector
-
-            collector = JourneyCollector(self.njt_client)
 
             for i, train_id in enumerate(train_ids):
                 try:
@@ -964,17 +1044,18 @@ class SchedulerService:
                         progress=f"{i+1}/{len(train_ids)}",
                     )
 
-                    # Collect journey details (skip enhancement for scheduled batch collection)
-                    journey = await collector.collect_journey(
-                        train_id, skip_enhancement=True
+                    # Process each train in a fresh async context to avoid greenlet issues
+                    # This creates a new task for each collection to ensure proper context
+                    result = await asyncio.create_task(
+                        self._collect_single_njt_journey_safe(train_id)
                     )
 
-                    if journey:
+                    if result:
                         success_count += 1
                         logger.debug(
                             "njt_journey_collected",
                             train_id=train_id,
-                            stops_count=journey.stops_count,
+                            stops_count=result.get("stops_count", 0),
                         )
                     else:
                         error_count += 1

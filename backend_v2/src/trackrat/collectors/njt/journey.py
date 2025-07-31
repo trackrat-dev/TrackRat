@@ -47,34 +47,46 @@ class JourneyCollector(BaseJourneyCollector):
             TrainJourney object if successful, None if failed
         """
         async with get_session() as session:
-            # Find the journey for this train
-            stmt = select(TrainJourney).where(
-                and_(
-                    TrainJourney.train_id == train_id,
-                    TrainJourney.data_source == "NJT",
-                )
+            return await self.collect_journey_with_session(session, train_id, skip_enhancement)
+
+    async def collect_journey_with_session(
+        self, session: AsyncSession, train_id: str, skip_enhancement: bool = False
+    ) -> TrainJourney | None:
+        """Collect journey details for a specific train using provided session.
+
+        Args:
+            session: Database session to use
+            train_id: The train ID to collect journey details for
+            skip_enhancement: If True, skip departure board enhancement (for scheduled batch collection)
+
+        Returns:
+            TrainJourney object if successful, None if failed
+        """
+        # Find the journey for this train
+        stmt = select(TrainJourney).where(
+            and_(
+                TrainJourney.train_id == train_id,
+                TrainJourney.data_source == "NJT",
             )
-            journey = await session.scalar(stmt)
+        )
+        journey = await session.scalar(stmt)
 
-            if not journey:
-                logger.warning("journey_not_found", train_id=train_id)
-                return None
+        if not journey:
+            logger.warning("journey_not_found", train_id=train_id)
+            return None
 
-            try:
-                await self.collect_journey_details(session, journey, skip_enhancement)
-                await session.commit()
-                return journey
-            except TrainNotFoundError as e:
-                # Train no longer available - this is handled gracefully in collect_journey_details
-                logger.info(
-                    "collect_journey_train_not_found", train_id=train_id, error=str(e)
-                )
-                await session.commit()  # Still commit the changes (journey marked as completed)
-                return journey
-            except Exception as e:
-                logger.error("collect_journey_failed", train_id=train_id, error=str(e))
-                await session.rollback()
-                return None
+        try:
+            await self.collect_journey_details(session, journey, skip_enhancement)
+            return journey
+        except TrainNotFoundError as e:
+            # Train no longer available - this is handled gracefully in collect_journey_details
+            logger.info(
+                "collect_journey_train_not_found", train_id=train_id, error=str(e)
+            )
+            return journey
+        except Exception as e:
+            logger.error("collect_journey_failed", train_id=train_id, error=str(e))
+            raise  # Re-raise to let caller handle transaction
 
     async def run(self) -> dict[str, Any]:
         """Run the collector with a database session.

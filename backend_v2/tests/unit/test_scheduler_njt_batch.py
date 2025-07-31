@@ -218,26 +218,30 @@ class TestCollectNJTJourneysBatch:
         """Test successful collection of multiple trains."""
         train_ids = ["3737", "3893", "1281"]
 
-        # Mock journey collector
-        mock_collector = AsyncMock()
-        mock_journey = Mock()
-        mock_journey.stops_count = 15
-        mock_collector.collect_journey.return_value = mock_journey
+        # Mock result data (instead of journey object)
+        mock_result = {
+            "train_id": "test_train",
+            "stops_count": 15,
+            "destination": "Test Destination", 
+            "success": True
+        }
 
-        with patch(
-            "trackrat.collectors.njt.journey.JourneyCollector"
-        ) as mock_collector_class:
-            mock_collector_class.return_value = mock_collector
+        # Mock the safe collection method
+        async def mock_safe_collect(train_id):
+            return mock_result
 
+        with patch.object(
+            scheduler_service, "_collect_single_njt_journey_safe", side_effect=mock_safe_collect
+        ) as mock_safe_collect_method:
             with patch.object(scheduler_service, "_running_tasks", {}):
                 await scheduler_service.collect_njt_journeys_batch(train_ids)
 
-        # Should have collected each train
-        assert mock_collector.collect_journey.call_count == 3
+        # Should have collected each train using the safe method
+        assert mock_safe_collect_method.call_count == 3
 
         # Verify each train ID was passed
         collected_trains = [
-            call[0][0] for call in mock_collector.collect_journey.call_args_list
+            call[0][0] for call in mock_safe_collect_method.call_args_list
         ]
         assert set(collected_trains) == set(train_ids)
 
@@ -246,29 +250,28 @@ class TestCollectNJTJourneysBatch:
         """Test that errors in individual train collection don't stop the batch."""
         train_ids = ["3737", "3893", "1281"]
 
-        mock_collector = AsyncMock()
         # First train succeeds, second fails, third succeeds
-        mock_journey = Mock()
-        mock_journey.stops_count = 15
+        mock_result = {
+            "train_id": "test_train",
+            "stops_count": 15,
+            "destination": "Test Destination", 
+            "success": True
+        }
 
         async def mock_collect_side_effect(train_id):
             if train_id == "3893":
                 raise Exception("API Error")
-            return mock_journey
+            return mock_result
 
-        mock_collector.collect_journey.side_effect = mock_collect_side_effect
-
-        with patch(
-            "trackrat.collectors.njt.journey.JourneyCollector"
-        ) as mock_collector_class:
-            mock_collector_class.return_value = mock_collector
-
+        with patch.object(
+            scheduler_service, "_collect_single_njt_journey_safe", side_effect=mock_collect_side_effect
+        ) as mock_safe_collect_method:
             with patch.object(scheduler_service, "_running_tasks", {}):
                 # Should not raise exception
                 await scheduler_service.collect_njt_journeys_batch(train_ids)
 
         # Should have attempted all trains
-        assert mock_collector.collect_journey.call_count == 3
+        assert mock_safe_collect_method.call_count == 3
 
     @pytest.mark.asyncio
     async def test_handles_empty_train_list(self, scheduler_service):
