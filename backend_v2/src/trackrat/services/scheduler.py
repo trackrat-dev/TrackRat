@@ -18,7 +18,6 @@ from structlog import get_logger
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
-from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.apns import SimpleAPNSService
@@ -248,6 +247,8 @@ class SchedulerService:
 
                 # Trains that need periodic updates (every 15 minutes)
                 await self.schedule_periodic_updates(session)
+                # Trains that need departure inference (30+ minutes past departure)
+                await self.check_departure_inference(session)
 
         except Exception as e:
             logger.error(
@@ -354,6 +355,54 @@ class SchedulerService:
                 ),
             )
 
+    async def check_departure_inference(self, session: AsyncSession) -> None:
+        """Check for trains that need departure time inference."""
+        # Find NJT trains that are 30+ minutes past departure without actual_departure
+        inference_threshold = now_et() - timedelta(minutes=30)
+
+        stmt = (
+            select(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.actual_departure.is_(None),
+                    TrainJourney.scheduled_departure < inference_threshold,
+                    TrainJourney.is_cancelled.is_not(True),
+                    TrainJourney.is_expired.is_not(True),
+                    # Only trains updated in last 2 hours to avoid ancient trains
+                    TrainJourney.last_updated_at > now_et() - timedelta(hours=2),
+                )
+            )
+            .limit(50)
+        )  # Batch limit
+
+        result = await session.execute(stmt)
+        trains = result.scalars().all()
+
+        for train in trains:
+            # Schedule immediate collection which will trigger inference
+            job_id = f"inference_collection_{train.train_id}_{train.journey_date}"
+
+            self.scheduler.add_job(
+                self.collect_journey,
+                trigger=DateTrigger(run_date=now_et()),
+                args=[train.train_id, train.journey_date],
+                id=job_id,
+                name=f"Inference collection for {train.train_id}",
+                replace_existing=True,
+                max_instances=1,
+            )
+
+            logger.info(
+                "scheduled_inference_collection",
+                train_id=train.train_id,
+                minutes_past_departure=(
+                    int((now_et() - train.scheduled_departure).total_seconds() / 60)
+                    if train.scheduled_departure
+                    else 0
+                ),
+            )
+
     async def collect_journey(self, train_id: str, journey_date: datetime) -> None:
         """Collect journey data for a specific train."""
         task_id = f"journey_{train_id}_{now_et().isoformat()}"
@@ -373,7 +422,7 @@ class SchedulerService:
                 raise RuntimeError(
                     "NJTransitClient not initialized - call start() first"
                 )
-            
+
             # Use the safe collection method that handles greenlet issues
             # This wraps the collection in a new async task to ensure proper context
             result = await asyncio.create_task(
@@ -926,20 +975,20 @@ class SchedulerService:
 
     def _determine_train_status_sync(self, stops_data: list[Any]) -> str:
         """Determine overall train status from stops (sync version).
-        
+
         Args:
             stops_data: List of NJTransitStopData
-            
+
         Returns:
             Overall status string
         """
         if not stops_data:
             return "UNKNOWN"
-            
+
         # Check if all stops are cancelled
         if all(stop.STOP_STATUS == "Cancelled" for stop in stops_data):
             return "CANCELLED"
-            
+
         # Find current position
         for i, stop in enumerate(stops_data):
             if stop.DEPARTED != "YES":
@@ -950,30 +999,33 @@ class SchedulerService:
                     return "BOARDING"
                 else:
                     return "IN_TRANSIT"
-                    
+
         # All stops departed
         return "COMPLETED"
 
-    async def _collect_single_njt_journey_safe(self, train_id: str) -> dict[str, Any] | None:
+    async def _collect_single_njt_journey_safe(
+        self, train_id: str
+    ) -> dict[str, Any] | None:
         """Safely collect a single NJT journey using synchronous database operations.
-        
+
         This method bypasses async database sessions entirely to avoid greenlet issues
         when called from APScheduler job contexts.
-        
+
         Args:
             train_id: The train ID to collect
-            
+
         Returns:
             Dict with journey info if successful, None if failed
         """
         try:
             # Use synchronous database operations entirely to avoid greenlet issues
             from sqlalchemy import and_, create_engine, delete, select
-            from sqlalchemy.orm import sessionmaker, selectinload
-            from trackrat.models.database import JourneySnapshot, JourneyStop
+            from sqlalchemy.orm import selectinload, sessionmaker
+
             from trackrat.collectors.njt.client import TrainNotFoundError
+            from trackrat.models.database import JourneySnapshot, JourneyStop
             from trackrat.utils.time import parse_njt_time
-            
+
             # Create synchronous database connection
             db_url = str(self.settings.database_url).replace(
                 "sqlite+aiosqlite", "sqlite"
@@ -982,7 +1034,7 @@ class SchedulerService:
                 db_url, connect_args={"check_same_thread": False}
             )
             SyncSession = sessionmaker(sync_engine)
-            
+
             with SyncSession() as session:
                 # Find the journey for this train (eager load stops)
                 stmt = (
@@ -996,12 +1048,16 @@ class SchedulerService:
                     .options(selectinload(TrainJourney.stops))
                 )
                 journey = session.scalar(stmt)
-                
+
                 if not journey:
                     logger.warning("journey_not_found_sync", train_id=train_id)
                     return None
-                
+
                 # Get train data from API (this is still async)
+                if not self.njt_client:
+                    logger.error("njt_client_not_initialized", train_id=train_id)
+                    return None
+
                 try:
                     train_data = await self.njt_client.get_train_stop_list(train_id)
                 except TrainNotFoundError:
@@ -1009,7 +1065,7 @@ class SchedulerService:
                     journey.api_error_count = (journey.api_error_count or 0) + 1
                     journey.last_updated_at = now_et()
                     journey.update_count = (journey.update_count or 0) + 1
-                    
+
                     # After 2 failed attempts, mark as expired
                     if journey.api_error_count >= 2:
                         journey.is_expired = True
@@ -1019,20 +1075,20 @@ class SchedulerService:
                             journey_id=journey.id,
                             error_count=journey.api_error_count,
                         )
-                    
+
                     session.commit()
                     return {
                         "train_id": train_id,
                         "success": False,
                         "error": "Train not found",
-                        "expired": journey.is_expired
+                        "expired": journey.is_expired,
                     }
-                
+
                 # Process the data synchronously
                 if train_data:
                     # Reset error count on successful fetch
                     journey.api_error_count = 0
-                    
+
                     # Update journey metadata synchronously
                     # Note: DIRECTION is not available in NJTransitTrainData
                     journey.destination = train_data.DESTINATION
@@ -1041,25 +1097,31 @@ class SchedulerService:
                     journey.stops_count = len(train_data.STOPS)
                     journey.last_updated_at = now_et()
                     journey.update_count = (journey.update_count or 0) + 1
-                    
+
                     # Delete existing stops
                     session.execute(
                         delete(JourneyStop).where(JourneyStop.journey_id == journey.id)
                     )
-                    
+
                     # Create new stops
                     for idx, stop_data in enumerate(train_data.STOPS):
                         # Parse scheduled times
-                        scheduled_arrival = parse_njt_time(stop_data.TIME) if stop_data.TIME else None
-                        scheduled_departure = parse_njt_time(stop_data.DEP_TIME) if stop_data.DEP_TIME else None
-                        
+                        scheduled_arrival = (
+                            parse_njt_time(stop_data.TIME) if stop_data.TIME else None
+                        )
+                        scheduled_departure = (
+                            parse_njt_time(stop_data.DEP_TIME)
+                            if stop_data.DEP_TIME
+                            else None
+                        )
+
                         # For NJT API, actual times are same as scheduled when DEPARTED = YES
                         actual_arrival = None
                         actual_departure = None
                         if stop_data.DEPARTED == "YES":
                             actual_arrival = scheduled_arrival
                             actual_departure = scheduled_departure
-                        
+
                         stop = JourneyStop(
                             journey_id=journey.id,
                             station_code=stop_data.STATION_2CHAR,
@@ -1074,23 +1136,27 @@ class SchedulerService:
                             has_departed_station=(stop_data.DEPARTED == "YES"),
                         )
                         session.add(stop)
-                    
+
                     # Create/update journey snapshot (only one per journey)
                     # Delete existing snapshots first to maintain single snapshot per journey
                     session.execute(
-                        delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
+                        delete(JourneySnapshot).where(
+                            JourneySnapshot.journey_id == journey.id
+                        )
                     )
-                    
+
                     # Calculate completed stops
-                    completed_stops = sum(1 for stop in train_data.STOPS if stop.DEPARTED == "YES")
-                    
+                    completed_stops = sum(
+                        1 for stop in train_data.STOPS if stop.DEPARTED == "YES"
+                    )
+
                     # Extract track assignments
                     track_assignments = {
-                        stop.STATION_2CHAR: stop.TRACK 
-                        for stop in train_data.STOPS 
+                        stop.STATION_2CHAR: stop.TRACK
+                        for stop in train_data.STOPS
                         if stop.TRACK
                     }
-                    
+
                     # Calculate delay (simplified - from stop status)
                     delay_minutes = 0
                     for stop in reversed(train_data.STOPS):
@@ -1105,10 +1171,10 @@ class SchedulerService:
                                 except (ValueError, IndexError):
                                     pass
                             break
-                    
+
                     # Determine train status
                     train_status = self._determine_train_status_sync(train_data.STOPS)
-                    
+
                     snapshot = JourneySnapshot(
                         journey_id=journey.id,
                         captured_at=now_et(),
@@ -1120,38 +1186,38 @@ class SchedulerService:
                         track_assignments=track_assignments,
                     )
                     session.add(snapshot)
-                    
+
                     # Update journey status from stops
                     is_completed = all(
                         stop.STOP_STATUS in ["DEPARTED", "COMPLETED"]
                         for stop in train_data.STOPS
                     )
                     journey.is_completed = is_completed
-                    
+
                     # Capture data we need before committing/closing session
                     result_data = {
                         "train_id": train_id,
                         "stops_count": len(train_data.STOPS),
                         "destination": train_data.DESTINATION,
                         "success": True,
-                        "is_completed": is_completed
+                        "is_completed": is_completed,
                     }
-                    
+
                     # Commit synchronously
                     session.commit()
-                    
+
                     logger.info(
                         "journey_collected_sync",
                         train_id=train_id,
                         stops_count=len(train_data.STOPS),
                         is_completed=is_completed,
                     )
-                    
+
                     return result_data
                 else:
                     logger.warning("no_train_data_received_sync", train_id=train_id)
                     return None
-                    
+
         except Exception as e:
             logger.error(
                 "safe_journey_collection_failed",

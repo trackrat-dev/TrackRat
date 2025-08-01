@@ -42,7 +42,7 @@ class TransitAnalyzer:
         )
         result = await db.execute(stops_stmt)
         stops = list(result.scalars().all())
-        
+
         if not stops:
             logger.debug("no_stops_to_analyze", journey_id=journey.id)
             return

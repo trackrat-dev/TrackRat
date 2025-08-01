@@ -47,7 +47,9 @@ class JourneyCollector(BaseJourneyCollector):
             TrainJourney object if successful, None if failed
         """
         async with get_session() as session:
-            return await self.collect_journey_with_session(session, train_id, skip_enhancement)
+            return await self.collect_journey_with_session(
+                session, train_id, skip_enhancement
+            )
 
     async def collect_journey_with_session(
         self, session: AsyncSession, train_id: str, skip_enhancement: bool = False
@@ -159,19 +161,26 @@ class JourneyCollector(BaseJourneyCollector):
 
         # Process historical trains for backfill
         historical_trains = await self.find_historical_trains_for_backfill(session)
-        
+
         if historical_trains:
-            logger.info("found_historical_trains_for_backfill", count=len(historical_trains))
-            
+            logger.info(
+                "found_historical_trains_for_backfill", count=len(historical_trains)
+            )
+
             for journey in historical_trains:
                 try:
-                    await self.collect_journey_details(session, journey, skip_enhancement=True)
+                    await self.collect_journey_details(
+                        session, journey, skip_enhancement=True
+                    )
                     results["successful"] += 1
                     results["historical_backfilled"] += 1
-                    
+
                     if results["historical_backfilled"] % 10 == 0:
-                        logger.info("backfill_progress", processed=results["historical_backfilled"])
-                        
+                        logger.info(
+                            "backfill_progress",
+                            processed=results["historical_backfilled"],
+                        )
+
                 except Exception as e:
                     logger.error(
                         "failed_to_backfill_historical_journey",
@@ -182,7 +191,11 @@ class JourneyCollector(BaseJourneyCollector):
                     )
                     results["failed"] += 1
                     results["errors"].append(
-                        {"train_id": journey.train_id, "error": str(e), "type": "historical"}
+                        {
+                            "train_id": journey.train_id,
+                            "error": str(e),
+                            "type": "historical",
+                        }
                     )
 
                 results["trains_processed"] += 1
@@ -239,7 +252,7 @@ class JourneyCollector(BaseJourneyCollector):
     ) -> list[TrainJourney]:
         """Find historical trains that need transit time analysis.
 
-        These are completed NJT journeys that have stop data but haven't 
+        These are completed NJT journeys that have stop data but haven't
         had the 30-minute inference logic applied yet.
 
         Args:
@@ -526,7 +539,10 @@ class JourneyCollector(BaseJourneyCollector):
                 stop.actual_arrival = stop.scheduled_arrival
                 stop.actual_departure = stop.scheduled_departure
                 stop.has_departed_station = True
-            elif stop.scheduled_departure and now_et() > stop.scheduled_departure + timedelta(minutes=30):
+            elif (
+                stop.scheduled_departure
+                and now_et() > stop.scheduled_departure + timedelta(minutes=30)
+            ):
                 # Infer departure after 30 minutes past scheduled time
                 stop.actual_arrival = stop.scheduled_arrival
                 stop.actual_departure = stop.scheduled_departure
@@ -618,7 +634,7 @@ class JourneyCollector(BaseJourneyCollector):
                 .limit(1)
             )
             first_departed_stop = await session.scalar(first_departed_stmt)
-            
+
             if first_departed_stop and first_departed_stop.actual_departure:
                 journey.actual_departure = first_departed_stop.actual_departure
                 logger.debug(

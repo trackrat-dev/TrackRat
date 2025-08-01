@@ -222,8 +222,8 @@ class TestCollectNJTJourneysBatch:
         mock_result = {
             "train_id": "test_train",
             "stops_count": 15,
-            "destination": "Test Destination", 
-            "success": True
+            "destination": "Test Destination",
+            "success": True,
         }
 
         # Mock the safe collection method
@@ -231,7 +231,9 @@ class TestCollectNJTJourneysBatch:
             return mock_result
 
         with patch.object(
-            scheduler_service, "_collect_single_njt_journey_safe", side_effect=mock_safe_collect
+            scheduler_service,
+            "_collect_single_njt_journey_safe",
+            side_effect=mock_safe_collect,
         ) as mock_safe_collect_method:
             with patch.object(scheduler_service, "_running_tasks", {}):
                 await scheduler_service.collect_njt_journeys_batch(train_ids)
@@ -254,8 +256,8 @@ class TestCollectNJTJourneysBatch:
         mock_result = {
             "train_id": "test_train",
             "stops_count": 15,
-            "destination": "Test Destination", 
-            "success": True
+            "destination": "Test Destination",
+            "success": True,
         }
 
         async def mock_collect_side_effect(train_id):
@@ -264,7 +266,9 @@ class TestCollectNJTJourneysBatch:
             return mock_result
 
         with patch.object(
-            scheduler_service, "_collect_single_njt_journey_safe", side_effect=mock_collect_side_effect
+            scheduler_service,
+            "_collect_single_njt_journey_safe",
+            side_effect=mock_collect_side_effect,
         ) as mock_safe_collect_method:
             with patch.object(scheduler_service, "_running_tasks", {}):
                 # Should not raise exception
