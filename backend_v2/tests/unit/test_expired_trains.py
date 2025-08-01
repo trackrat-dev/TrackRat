@@ -251,7 +251,15 @@ async def test_train_not_found_counted_as_success_in_batch():
                 with patch.object(
                     collector, "check_journey_completion", new_callable=AsyncMock
                 ):
-                    results = await collector.collect(session)
+                    with patch.object(
+                        collector,
+                        "find_historical_trains_for_backfill",
+                        new_callable=AsyncMock,
+                    ) as mock_historical:
+                        mock_historical.return_value = (
+                            []
+                        )  # No historical trains to process
+                        results = await collector.collect(session)
 
     # Both should be counted as successful
     assert results["trains_processed"] == 2

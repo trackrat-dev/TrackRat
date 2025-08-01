@@ -41,7 +41,7 @@ class TransitAnalyzer:
             .order_by(JourneyStop.stop_sequence)
         )
         result = await db.execute(stops_stmt)
-        stops = list(result.scalars().all())
+        stops = list(result.scalars())
 
         if not stops:
             logger.debug("no_stops_to_analyze", journey_id=journey.id)

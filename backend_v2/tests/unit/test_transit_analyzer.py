@@ -19,6 +19,14 @@ from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.time import now_et
 
 
+def setup_mock_query(mock_session, stops):
+    """Helper function to set up mock database query to return stops."""
+    mock_result = AsyncMock()
+    # Mock scalars to return a simple iterable, not a coroutine
+    mock_result.scalars = MagicMock(return_value=stops)
+    mock_session.execute.return_value = mock_result
+
+
 @pytest.fixture
 def mock_session():
     """Create a mock database session."""
@@ -82,6 +90,9 @@ async def test_analyze_journey_basic(mock_session, sample_journey):
     """Test basic journey analysis functionality."""
     analyzer = TransitAnalyzer()
 
+    # Mock the database query to return the journey stops
+    setup_mock_query(mock_session, sample_journey.stops)
+
     await analyzer.analyze_journey(mock_session, sample_journey)
 
     # Check that objects were added to the session
@@ -119,6 +130,9 @@ async def test_analyze_dwell_times(mock_session, sample_journey):
     """Test station dwell time analysis."""
     analyzer = TransitAnalyzer()
 
+    # Mock the database query to return the journey stops
+    setup_mock_query(mock_session, sample_journey.stops)
+
     await analyzer.analyze_journey(mock_session, sample_journey)
 
     # Check for dwell times
@@ -150,6 +164,9 @@ async def test_journey_progress(mock_session, sample_journey):
 
     analyzer = TransitAnalyzer()
 
+    # Mock the database query to return the journey stops
+    setup_mock_query(mock_session, sample_journey.stops)
+
     await analyzer.analyze_journey(mock_session, sample_journey)
 
     # Check journey progress
@@ -178,6 +195,9 @@ async def test_invalid_transit_times(mock_session, sample_journey):
 
     analyzer = TransitAnalyzer()
 
+    # Mock the database query to return the journey stops
+    setup_mock_query(mock_session, sample_journey.stops)
+
     await analyzer.analyze_journey(mock_session, sample_journey)
 
     # Should skip invalid segment
@@ -197,6 +217,9 @@ async def test_missing_actual_times(mock_session, sample_journey):
     sample_journey.stops[1].actual_departure = None
 
     analyzer = TransitAnalyzer()
+
+    # Mock the database query to return the journey stops
+    setup_mock_query(mock_session, sample_journey.stops)
 
     await analyzer.analyze_journey(mock_session, sample_journey)
 
@@ -220,6 +243,9 @@ async def test_empty_journey(mock_session):
     )
 
     analyzer = TransitAnalyzer()
+
+    # Mock the database query to return empty stops
+    setup_mock_query(mock_session, [])
 
     await analyzer.analyze_journey(mock_session, journey)
 
