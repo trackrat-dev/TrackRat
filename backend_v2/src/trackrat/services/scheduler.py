@@ -264,18 +264,25 @@ class SchedulerService:
         window_start = now_et()
         window_end = window_start + timedelta(minutes=10)
 
+        # Get candidates without timezone comparison in SQL
         stmt = select(TrainJourney).where(
             and_(
                 TrainJourney.data_source == "NJT",
-                TrainJourney.scheduled_departure >= window_start,
-                TrainJourney.scheduled_departure <= window_end,
                 TrainJourney.has_complete_journey.is_not(True),
                 TrainJourney.is_cancelled.is_not(True),
             )
         )
 
         result = await session.execute(stmt)
-        trains = result.scalars().all()
+        all_trains = result.scalars().all()
+
+        # Filter with proper timezone handling
+        trains = []
+        for train in all_trains:
+            if train.scheduled_departure:
+                scheduled_dep = ensure_timezone_aware(train.scheduled_departure)
+                if window_start <= scheduled_dep <= window_end:
+                    trains.append(train)
 
         for train in trains:
             # Schedule collection at departure time
@@ -307,10 +314,12 @@ class SchedulerService:
     async def schedule_periodic_updates(self, session: AsyncSession) -> None:
         """Schedule periodic updates for active trains."""
         # Find trains that need periodic updates
-        cutoff_time = now_et() - timedelta(
+        current_time = now_et()
+        cutoff_time = current_time - timedelta(
             minutes=self.settings.journey_update_interval_minutes
         )
 
+        # Get candidates without timezone-sensitive comparisons
         stmt = (
             select(TrainJourney)
             .where(
@@ -320,14 +329,21 @@ class SchedulerService:
                     TrainJourney.is_cancelled.is_not(True),
                     TrainJourney.is_completed.is_not(True),
                     TrainJourney.is_expired.is_not(True),  # Exclude expired trains
-                    TrainJourney.last_updated_at < cutoff_time,
                 )
             )
-            .limit(20)
-        )  # Process in batches
+            .limit(50)
+        )  # Get more candidates since we'll filter in Python
 
         result = await session.execute(stmt)
-        trains = result.scalars().all()
+        all_trains = result.scalars().all()
+
+        # Filter with proper timezone handling
+        trains = []
+        for train in all_trains:
+            if train.last_updated_at:
+                last_updated = ensure_timezone_aware(train.last_updated_at)
+                if last_updated < cutoff_time:
+                    trains.append(train)
 
         for train in trains:
             # Use deterministic job ID to prevent duplicate updates
@@ -358,28 +374,46 @@ class SchedulerService:
     async def check_departure_inference(self, session: AsyncSession) -> None:
         """Check for trains that need departure time inference."""
         # Find NJT trains that are 30+ minutes past departure without actual_departure
-        inference_threshold = now_et() - timedelta(minutes=30)
+        current_time = now_et()
+        inference_threshold = current_time - timedelta(minutes=30)
 
+        # First, get the trains we need to check
         stmt = (
             select(TrainJourney)
             .where(
                 and_(
                     TrainJourney.data_source == "NJT",
                     TrainJourney.actual_departure.is_(None),
-                    TrainJourney.scheduled_departure < inference_threshold,
                     TrainJourney.is_cancelled.is_not(True),
                     TrainJourney.is_expired.is_not(True),
-                    # Only trains updated in last 2 hours to avoid ancient trains
-                    TrainJourney.last_updated_at > now_et() - timedelta(hours=2),
                 )
             )
-            .limit(50)
-        )  # Batch limit
+            .limit(100)
+        )  # Get more candidates since we'll filter by time in Python
 
         result = await session.execute(stmt)
-        trains = result.scalars().all()
+        all_trains = result.scalars().all()
 
-        for train in trains:
+        # Filter trains in Python with proper timezone handling
+        trains_needing_inference = []
+        for train in all_trains:
+            if train.scheduled_departure:
+                # Ensure timezone-aware comparison
+                scheduled_dep = ensure_timezone_aware(train.scheduled_departure)
+                if scheduled_dep < inference_threshold:
+                    # Also check last_updated_at to avoid ancient trains
+                    if train.last_updated_at:
+                        last_updated = ensure_timezone_aware(train.last_updated_at)
+                        if last_updated > current_time - timedelta(hours=2):
+                            trains_needing_inference.append(train)
+
+        logger.info(
+            "departure_inference_check",
+            total_candidates=len(all_trains),
+            trains_needing_inference=len(trains_needing_inference),
+        )
+
+        for train in trains_needing_inference:
             # Schedule immediate collection which will trigger inference
             job_id = f"inference_collection_{train.train_id}_{train.journey_date}"
 
@@ -1031,7 +1065,12 @@ class SchedulerService:
                 "sqlite+aiosqlite", "sqlite"
             )
             sync_engine = create_engine(
-                db_url, connect_args={"check_same_thread": False}
+                db_url,
+                connect_args={
+                    "check_same_thread": False,
+                    "timeout": 30,  # 30 second timeout for busy database
+                    "isolation_level": "DEFERRED",  # Use DEFERRED transactions to reduce lock conflicts
+                },
             )
             SyncSession = sessionmaker(sync_engine)
 
@@ -1062,21 +1101,44 @@ class SchedulerService:
                     train_data = await self.njt_client.get_train_stop_list(train_id)
                 except TrainNotFoundError:
                     # Train is no longer available - increment error count
-                    journey.api_error_count = (journey.api_error_count or 0) + 1
-                    journey.last_updated_at = now_et()
-                    journey.update_count = (journey.update_count or 0) + 1
+                    with session.no_autoflush:
+                        journey.api_error_count = (journey.api_error_count or 0) + 1
+                        journey.last_updated_at = now_et()
+                        journey.update_count = (journey.update_count or 0) + 1
 
-                    # After 2 failed attempts, mark as expired
-                    if journey.api_error_count >= 2:
-                        journey.is_expired = True
-                        logger.warning(
-                            "train_marked_expired_sync",
-                            train_id=train_id,
-                            journey_id=journey.id,
-                            error_count=journey.api_error_count,
-                        )
+                        # After 2 failed attempts, mark as expired
+                        if journey.api_error_count >= 2:
+                            journey.is_expired = True
+                            logger.warning(
+                                "train_marked_expired_sync",
+                                train_id=train_id,
+                                journey_id=journey.id,
+                                error_count=journey.api_error_count,
+                            )
 
-                    session.commit()
+                    # Commit with retry logic
+                    max_retries = 3
+                    for retry in range(max_retries):
+                        try:
+                            session.commit()
+                            break
+                        except Exception as e:
+                            if (
+                                "database is locked" in str(e)
+                                and retry < max_retries - 1
+                            ):
+                                logger.warning(
+                                    "database_locked_retrying_on_error",
+                                    train_id=train_id,
+                                    retry=retry + 1,
+                                    error=str(e),
+                                )
+                                import time
+
+                                time.sleep(0.5 * (retry + 1))
+                            else:
+                                raise
+
                     return {
                         "train_id": train_id,
                         "success": False,
@@ -1089,110 +1151,118 @@ class SchedulerService:
                     # Reset error count on successful fetch
                     journey.api_error_count = 0
 
-                    # Update journey metadata synchronously
-                    # Note: DIRECTION is not available in NJTransitTrainData
-                    journey.destination = train_data.DESTINATION
-                    journey.line_color = train_data.BACKCOLOR.strip()
-                    journey.has_complete_journey = True
-                    journey.stops_count = len(train_data.STOPS)
-                    journey.last_updated_at = now_et()
-                    journey.update_count = (journey.update_count or 0) + 1
+                    # Use no_autoflush to prevent premature flushes during updates
+                    with session.no_autoflush:
+                        # Update journey metadata synchronously
+                        # Note: DIRECTION is not available in NJTransitTrainData
+                        journey.destination = train_data.DESTINATION
+                        journey.line_color = train_data.BACKCOLOR.strip()
+                        journey.has_complete_journey = True
+                        journey.stops_count = len(train_data.STOPS)
+                        journey.last_updated_at = now_et()
+                        journey.update_count = (journey.update_count or 0) + 1
 
-                    # Delete existing stops
-                    session.execute(
-                        delete(JourneyStop).where(JourneyStop.journey_id == journey.id)
-                    )
-
-                    # Create new stops
-                    for idx, stop_data in enumerate(train_data.STOPS):
-                        # Parse scheduled times
-                        scheduled_arrival = (
-                            parse_njt_time(stop_data.TIME) if stop_data.TIME else None
-                        )
-                        scheduled_departure = (
-                            parse_njt_time(stop_data.DEP_TIME)
-                            if stop_data.DEP_TIME
-                            else None
+                        # Delete existing stops
+                        session.execute(
+                            delete(JourneyStop).where(
+                                JourneyStop.journey_id == journey.id
+                            )
                         )
 
-                        # For NJT API, actual times are same as scheduled when DEPARTED = YES
-                        actual_arrival = None
-                        actual_departure = None
-                        if stop_data.DEPARTED == "YES":
-                            actual_arrival = scheduled_arrival
-                            actual_departure = scheduled_departure
+                        # Create new stops
+                        for idx, stop_data in enumerate(train_data.STOPS):
+                            # Parse scheduled times
+                            scheduled_arrival = (
+                                parse_njt_time(stop_data.TIME)
+                                if stop_data.TIME
+                                else None
+                            )
+                            scheduled_departure = (
+                                parse_njt_time(stop_data.DEP_TIME)
+                                if stop_data.DEP_TIME
+                                else None
+                            )
 
-                        stop = JourneyStop(
+                            # For NJT API, actual times are same as scheduled when DEPARTED = YES
+                            actual_arrival = None
+                            actual_departure = None
+                            if stop_data.DEPARTED == "YES":
+                                actual_arrival = scheduled_arrival
+                                actual_departure = scheduled_departure
+
+                            stop = JourneyStop(
+                                journey_id=journey.id,
+                                station_code=stop_data.STATION_2CHAR,
+                                station_name=stop_data.STATIONNAME,
+                                stop_sequence=idx,
+                                scheduled_departure=scheduled_departure,
+                                scheduled_arrival=scheduled_arrival,
+                                actual_departure=actual_departure,
+                                actual_arrival=actual_arrival,
+                                track=stop_data.TRACK or None,
+                                raw_njt_departed_flag=stop_data.DEPARTED,
+                                has_departed_station=(stop_data.DEPARTED == "YES"),
+                            )
+                            session.add(stop)
+
+                        # Create/update journey snapshot (only one per journey)
+                        # Delete existing snapshots first to maintain single snapshot per journey
+                        session.execute(
+                            delete(JourneySnapshot).where(
+                                JourneySnapshot.journey_id == journey.id
+                            )
+                        )
+
+                        # Calculate completed stops
+                        completed_stops = sum(
+                            1 for stop in train_data.STOPS if stop.DEPARTED == "YES"
+                        )
+
+                        # Extract track assignments
+                        track_assignments = {
+                            stop.STATION_2CHAR: stop.TRACK
+                            for stop in train_data.STOPS
+                            if stop.TRACK
+                        }
+
+                        # Calculate delay (simplified - from stop status)
+                        delay_minutes = 0
+                        for stop in reversed(train_data.STOPS):
+                            if stop.DEPARTED == "YES" and stop.STOP_STATUS:
+                                if "Late" in stop.STOP_STATUS:
+                                    try:
+                                        parts = stop.STOP_STATUS.split()
+                                        if "minutes" in parts:
+                                            idx = parts.index("minutes")
+                                            if idx > 0:
+                                                delay_minutes = int(parts[idx - 1])
+                                    except (ValueError, IndexError):
+                                        pass
+                                break
+
+                        # Determine train status
+                        train_status = self._determine_train_status_sync(
+                            train_data.STOPS
+                        )
+
+                        snapshot = JourneySnapshot(
                             journey_id=journey.id,
-                            station_code=stop_data.STATION_2CHAR,
-                            station_name=stop_data.STATIONNAME,
-                            stop_sequence=idx,
-                            scheduled_departure=scheduled_departure,
-                            scheduled_arrival=scheduled_arrival,
-                            actual_departure=actual_departure,
-                            actual_arrival=actual_arrival,
-                            track=stop_data.TRACK or None,
-                            raw_njt_departed_flag=stop_data.DEPARTED,
-                            has_departed_station=(stop_data.DEPARTED == "YES"),
+                            captured_at=now_et(),
+                            raw_stop_list_data={},  # Deactivated to reduce database size
+                            train_status=train_status,
+                            delay_minutes=delay_minutes,
+                            completed_stops=completed_stops,
+                            total_stops=len(train_data.STOPS),
+                            track_assignments=track_assignments,
                         )
-                        session.add(stop)
+                        session.add(snapshot)
 
-                    # Create/update journey snapshot (only one per journey)
-                    # Delete existing snapshots first to maintain single snapshot per journey
-                    session.execute(
-                        delete(JourneySnapshot).where(
-                            JourneySnapshot.journey_id == journey.id
+                        # Update journey status from stops
+                        is_completed = all(
+                            stop.STOP_STATUS in ["DEPARTED", "COMPLETED"]
+                            for stop in train_data.STOPS
                         )
-                    )
-
-                    # Calculate completed stops
-                    completed_stops = sum(
-                        1 for stop in train_data.STOPS if stop.DEPARTED == "YES"
-                    )
-
-                    # Extract track assignments
-                    track_assignments = {
-                        stop.STATION_2CHAR: stop.TRACK
-                        for stop in train_data.STOPS
-                        if stop.TRACK
-                    }
-
-                    # Calculate delay (simplified - from stop status)
-                    delay_minutes = 0
-                    for stop in reversed(train_data.STOPS):
-                        if stop.DEPARTED == "YES" and stop.STOP_STATUS:
-                            if "Late" in stop.STOP_STATUS:
-                                try:
-                                    parts = stop.STOP_STATUS.split()
-                                    if "minutes" in parts:
-                                        idx = parts.index("minutes")
-                                        if idx > 0:
-                                            delay_minutes = int(parts[idx - 1])
-                                except (ValueError, IndexError):
-                                    pass
-                            break
-
-                    # Determine train status
-                    train_status = self._determine_train_status_sync(train_data.STOPS)
-
-                    snapshot = JourneySnapshot(
-                        journey_id=journey.id,
-                        captured_at=now_et(),
-                        raw_stop_list_data={},  # Deactivated to reduce database size
-                        train_status=train_status,
-                        delay_minutes=delay_minutes,
-                        completed_stops=completed_stops,
-                        total_stops=len(train_data.STOPS),
-                        track_assignments=track_assignments,
-                    )
-                    session.add(snapshot)
-
-                    # Update journey status from stops
-                    is_completed = all(
-                        stop.STOP_STATUS in ["DEPARTED", "COMPLETED"]
-                        for stop in train_data.STOPS
-                    )
-                    journey.is_completed = is_completed
+                        journey.is_completed = is_completed
 
                     # Capture data we need before committing/closing session
                     result_data = {
@@ -1203,8 +1273,28 @@ class SchedulerService:
                         "is_completed": is_completed,
                     }
 
-                    # Commit synchronously
-                    session.commit()
+                    # Commit synchronously with retry logic for database locks
+                    max_retries = 3
+                    for retry in range(max_retries):
+                        try:
+                            session.commit()
+                            break
+                        except Exception as e:
+                            if (
+                                "database is locked" in str(e)
+                                and retry < max_retries - 1
+                            ):
+                                logger.warning(
+                                    "database_locked_retrying",
+                                    train_id=train_id,
+                                    retry=retry + 1,
+                                    error=str(e),
+                                )
+                                import time
+
+                                time.sleep(0.5 * (retry + 1))  # Exponential backoff
+                            else:
+                                raise
 
                     logger.info(
                         "journey_collected_sync",
@@ -1213,19 +1303,81 @@ class SchedulerService:
                         is_completed=is_completed,
                     )
 
+                    # Analyze transit times after successful collection
+                    # Check if we have any stops with actual times
+                    has_actual_times = any(
+                        stop.actual_arrival or stop.actual_departure
+                        for stop in journey.stops
+                    )
+
+                    if has_actual_times:
+                        from trackrat.services.transit_analyzer import TransitAnalyzer
+
+                        analyzer = TransitAnalyzer()
+                        analyzer.analyze_journey_sync(session, journey)
+
+                        # Commit the analysis results with retry logic
+                        for retry in range(max_retries):
+                            try:
+                                session.commit()
+                                logger.info(
+                                    "transit_analysis_completed_sync",
+                                    train_id=train_id,
+                                    journey_id=journey.id,
+                                )
+                                break
+                            except Exception as e:
+                                if (
+                                    "database is locked" in str(e)
+                                    and retry < max_retries - 1
+                                ):
+                                    logger.warning(
+                                        "database_locked_retrying_analysis",
+                                        train_id=train_id,
+                                        retry=retry + 1,
+                                        error=str(e),
+                                    )
+                                    import time
+
+                                    time.sleep(0.5 * (retry + 1))
+                                else:
+                                    logger.error(
+                                        "transit_analysis_commit_failed",
+                                        train_id=train_id,
+                                        error=str(e),
+                                    )
+                                    # Don't raise, just log the error
+                                    break
+
                     return result_data
                 else:
                     logger.warning("no_train_data_received_sync", train_id=train_id)
                     return None
 
         except Exception as e:
-            logger.error(
-                "safe_journey_collection_failed",
-                train_id=train_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return None
+            # Check if it's a database locking issue
+            if "database is locked" in str(e) or "database is busy" in str(e):
+                logger.warning(
+                    "safe_journey_collection_database_locked",
+                    train_id=train_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                # Return a special result indicating we should retry
+                return {
+                    "train_id": train_id,
+                    "success": False,
+                    "error": "Database locked",
+                    "retry_needed": True,
+                }
+            else:
+                logger.error(
+                    "safe_journey_collection_failed",
+                    train_id=train_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                return None
 
     async def collect_njt_journeys_batch(self, train_ids: list[str]) -> None:
         """Collect journey data for multiple NJ Transit trains in batch.
@@ -1275,12 +1427,44 @@ class SchedulerService:
                     )
 
                     if result:
-                        success_count += 1
-                        logger.debug(
-                            "njt_journey_collected",
-                            train_id=train_id,
-                            stops_count=result.get("stops_count", 0),
-                        )
+                        if result.get("retry_needed"):
+                            # Database was locked, wait and retry
+                            logger.info(
+                                "retrying_njt_journey_collection",
+                                train_id=train_id,
+                                reason="Database locked",
+                            )
+                            await asyncio.sleep(1.0)  # Wait a bit before retry
+                            retry_result = await asyncio.create_task(
+                                self._collect_single_njt_journey_safe(train_id)
+                            )
+                            if retry_result and retry_result.get("success"):
+                                success_count += 1
+                                logger.debug(
+                                    "njt_journey_collected_on_retry",
+                                    train_id=train_id,
+                                    stops_count=retry_result.get("stops_count", 0),
+                                )
+                            else:
+                                error_count += 1
+                                logger.warning(
+                                    "njt_journey_retry_failed",
+                                    train_id=train_id,
+                                )
+                        elif result.get("success"):
+                            success_count += 1
+                            logger.debug(
+                                "njt_journey_collected",
+                                train_id=train_id,
+                                stops_count=result.get("stops_count", 0),
+                            )
+                        else:
+                            error_count += 1
+                            logger.warning(
+                                "njt_journey_collection_error",
+                                train_id=train_id,
+                                error=result.get("error", "Unknown error"),
+                            )
                     else:
                         error_count += 1
                         logger.warning(
@@ -1644,7 +1828,12 @@ class SchedulerService:
                 "sqlite+aiosqlite", "sqlite"
             )
             sync_engine = create_engine(
-                db_url, connect_args={"check_same_thread": False}
+                db_url,
+                connect_args={
+                    "check_same_thread": False,
+                    "timeout": 30,  # 30 second timeout for busy database
+                    "isolation_level": "DEFERRED",  # Use DEFERRED transactions to reduce lock conflicts
+                },
             )
             SyncSession = sessionmaker(sync_engine)
 
@@ -1701,7 +1890,12 @@ class SchedulerService:
                 "sqlite+aiosqlite", "sqlite"
             )
             sync_engine = create_engine(
-                db_url, connect_args={"check_same_thread": False}
+                db_url,
+                connect_args={
+                    "check_same_thread": False,
+                    "timeout": 30,  # 30 second timeout for busy database
+                    "isolation_level": "DEFERRED",  # Use DEFERRED transactions to reduce lock conflicts
+                },
             )
             SyncSession = sessionmaker(sync_engine)
 

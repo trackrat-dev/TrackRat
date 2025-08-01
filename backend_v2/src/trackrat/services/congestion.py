@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.models import SegmentTransitTime
+from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
 
@@ -59,7 +60,7 @@ class CongestionAnalyzer:
         Returns:
             List of segment congestion data
         """
-        cutoff_time = datetime.utcnow() - timedelta(hours=time_window_hours)
+        cutoff_time = now_et() - timedelta(hours=time_window_hours)
 
         # Get all recent segment times
         stmt = (
@@ -150,7 +151,7 @@ class CongestionAnalyzer:
                     avg_transit_minutes=current_avg,
                     baseline_minutes=baseline_minutes,
                     sample_count=len(recent_times),
-                    last_updated=segments[0].departure_time or datetime.utcnow(),
+                    last_updated=segments[0].departure_time or now_et(),
                 )
             )
 

@@ -7,7 +7,7 @@ Collects complete journey details using the getTrainStopList API.
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, delete, or_, select
+from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -18,7 +18,7 @@ from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
-from trackrat.utils.time import now_et, parse_njt_time
+from trackrat.utils.time import ET, now_et, parse_njt_time
 
 logger = get_logger(__name__)
 
@@ -200,8 +200,37 @@ class JourneyCollector(BaseJourneyCollector):
 
                 results["trains_processed"] += 1
 
+        # Clean up old journeys to prevent database clutter
+        await self._expire_old_journeys(session)
+
         logger.info("journey_collection_complete", **results)
         return results
+
+    async def _expire_old_journeys(self, session: AsyncSession) -> None:
+        """Mark yesterday's incomplete journeys as expired to clean up database."""
+        cutoff_date = now_et().date()
+
+        stmt = (
+            update(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.journey_date < cutoff_date,
+                    TrainJourney.is_completed.is_not(True),
+                    TrainJourney.is_expired.is_not(True),
+                    TrainJourney.data_source == "NJT",
+                )
+            )
+            .values(is_expired=True)
+        )
+
+        result = await session.execute(stmt)
+
+        if result.rowcount > 0:
+            logger.info(
+                "expired_old_journeys",
+                count=result.rowcount,
+                cutoff_date=cutoff_date.isoformat(),
+            )
 
     async def find_trains_needing_collection(
         self, session: AsyncSession, limit: int = 50
@@ -224,6 +253,8 @@ class JourneyCollector(BaseJourneyCollector):
                 and_(
                     # Only NJT trains
                     TrainJourney.data_source == "NJT",
+                    # Only today's trains (prevent updating old journeys)
+                    TrainJourney.journey_date >= now_et().date(),
                     # Not cancelled, completed, or expired
                     TrainJourney.is_cancelled.is_not(True),
                     TrainJourney.is_completed.is_not(True),
@@ -268,6 +299,8 @@ class JourneyCollector(BaseJourneyCollector):
                 and_(
                     # Only NJT trains
                     TrainJourney.data_source == "NJT",
+                    # Only recent trains (last 2 days max)
+                    TrainJourney.journey_date >= now_et().date() - timedelta(days=2),
                     # Have complete journey data with stops
                     TrainJourney.has_complete_journey.is_(True),
                     TrainJourney.stops_count > 0,
@@ -286,6 +319,101 @@ class JourneyCollector(BaseJourneyCollector):
 
         result = await session.execute(stmt)
         return list(result.scalars().all())
+
+    async def _has_stops_with_actual_times(
+        self, session: AsyncSession, journey_id: int
+    ) -> bool:
+        """Check if this journey has any stops with actual arrival or departure times."""
+        stmt = (
+            select(JourneyStop.id)
+            .where(
+                and_(
+                    JourneyStop.journey_id == journey_id,
+                    or_(
+                        JourneyStop.actual_departure.is_not(None),
+                        JourneyStop.actual_arrival.is_not(None),
+                    ),
+                )
+            )
+            .limit(1)
+        )
+
+        result = await session.execute(stmt)
+        has_actual_times = result.scalar() is not None
+
+        logger.info(
+            "checked_stops_for_actual_times",
+            journey_id=journey_id,
+            has_actual_times=has_actual_times,
+        )
+
+        return has_actual_times
+
+    async def _is_same_journey(
+        self, stored_journey: TrainJourney, api_train_data: NJTransitTrainData
+    ) -> bool:
+        """
+        Verify if API data represents the same journey as our stored record.
+
+        Uses key signals to detect journey changes:
+        - Destination must match exactly
+        - Line code must match exactly
+        - First stop departure time should be similar (±10 min tolerance)
+        """
+        # Signal 1: Destination must match
+        if stored_journey.destination != api_train_data.DESTINATION:
+            logger.warning(
+                "journey_mismatch_destination",
+                journey_id=stored_journey.id,
+                train_id=stored_journey.train_id,
+                stored_destination=stored_journey.destination,
+                api_destination=api_train_data.DESTINATION,
+            )
+            return False
+
+        # Signal 2: Line code must match
+        if stored_journey.line_code != api_train_data.LINECODE:
+            logger.warning(
+                "journey_mismatch_line_code",
+                journey_id=stored_journey.id,
+                train_id=stored_journey.train_id,
+                stored_line=stored_journey.line_code,
+                api_line=api_train_data.LINECODE,
+            )
+            return False
+
+        # Signal 3: First stop departure time should match (with tolerance)
+        if api_train_data.STOPS and api_train_data.STOPS[0].DEP_TIME:
+            first_stop = api_train_data.STOPS[0]
+            dep_time = first_stop.DEP_TIME
+            if dep_time is not None:
+                api_departure = parse_njt_time(dep_time)
+                if stored_journey.scheduled_departure is not None:
+                    time_diff = abs(
+                        (
+                            api_departure - stored_journey.scheduled_departure
+                        ).total_seconds()
+                    )
+                else:
+                    time_diff = 0  # If no stored departure, consider it a match
+
+            # Allow 10 minute tolerance for schedule adjustments
+            if time_diff > 600:
+                logger.warning(
+                    "journey_mismatch_departure_time",
+                    journey_id=stored_journey.id,
+                    train_id=stored_journey.train_id,
+                    stored_departure=(
+                        stored_journey.scheduled_departure.isoformat()
+                        if stored_journey.scheduled_departure
+                        else None
+                    ),
+                    api_departure=api_departure.isoformat(),
+                    difference_minutes=int(time_diff / 60),
+                )
+                return False
+
+        return True
 
     async def collect_journey_details(
         self,
@@ -346,6 +474,25 @@ class JourneyCollector(BaseJourneyCollector):
             await session.flush()
             return
 
+        # Verify this API data matches our stored journey
+        if not await self._is_same_journey(journey, train_data):
+            # API returned data for a different journey - mark this one as expired
+            journey.is_expired = True
+            journey.api_error_count = 99  # High value to prevent retry
+
+            logger.warning(
+                "journey_expired_due_to_mismatch",
+                journey_id=journey.id,
+                train_id=journey.train_id,
+                journey_date=(
+                    journey.journey_date.isoformat() if journey.journey_date else None
+                ),
+                reason="API returned data for different journey",
+            )
+
+            await session.flush()
+            return
+
         # Enhance with real-time departure board data if applicable
         if not skip_enhancement:
             await self.enhance_with_departure_board_data(journey, train_data)
@@ -362,13 +509,16 @@ class JourneyCollector(BaseJourneyCollector):
         # Check if journey is complete
         await self.check_journey_completion(session, journey, train_data.STOPS)
 
-        # Analyze transit times and dwell times if journey has actual times
-        if journey.actual_departure:
+        # Commit changes to make sure all updates are persisted
+        await session.flush()
+
+        # Analyze transit times and dwell times if any stops have actual times
+        # This must happen AFTER flush so we can see the inferred actual times
+        if journey.id is not None and await self._has_stops_with_actual_times(
+            session, journey.id
+        ):
             transit_analyzer = TransitAnalyzer()
             await transit_analyzer.analyze_journey(session, journey)
-
-        # Commit changes
-        await session.flush()
 
         # Calculate processing time
         end_time = now_et()
@@ -539,21 +689,30 @@ class JourneyCollector(BaseJourneyCollector):
                 stop.actual_arrival = stop.scheduled_arrival
                 stop.actual_departure = stop.scheduled_departure
                 stop.has_departed_station = True
-            elif (
-                stop.scheduled_departure
-                and now_et() > stop.scheduled_departure + timedelta(minutes=30)
-            ):
-                # Infer departure after 30 minutes past scheduled time
-                stop.actual_arrival = stop.scheduled_arrival
-                stop.actual_departure = stop.scheduled_departure
-                stop.has_departed_station = True
-                logger.debug(
-                    "inferred_departure_after_delay",
-                    train_id=journey.train_id,
-                    station_code=stop.station_code,
-                    scheduled_departure=stop.scheduled_departure.isoformat(),
-                    current_time=now_et().isoformat(),
-                )
+            elif stop.scheduled_departure:
+                # Ensure scheduled_departure is timezone-aware for comparison
+                scheduled_dep = stop.scheduled_departure
+                if scheduled_dep.tzinfo is None:
+                    # If naive, assume it's in UTC and convert to Eastern
+                    from pytz import UTC
+
+                    scheduled_dep = UTC.localize(scheduled_dep).astimezone(ET)
+
+                current_time = now_et()
+                if current_time > scheduled_dep + timedelta(minutes=30):
+                    # Infer departure after 30 minutes past scheduled time
+                    stop.actual_arrival = stop.scheduled_arrival
+                    stop.actual_departure = stop.scheduled_departure
+                    stop.has_departed_station = True
+                    logger.info(
+                        "departure_inferred",
+                        train_id=journey.train_id,
+                        station_code=stop.station_code,
+                        scheduled_departure=scheduled_dep.isoformat(),
+                        current_time=current_time.isoformat(),
+                        minutes_past=(current_time - scheduled_dep).total_seconds()
+                        / 60,
+                    )
             else:
                 stop.has_departed_station = False
 
