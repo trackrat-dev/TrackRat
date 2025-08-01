@@ -22,6 +22,8 @@ struct ContentView: View {
                         TrainNumberSearchView()
                     case .advancedConfiguration:
                         AdvancedConfigurationView()
+                    case .congestionMap:
+                        CongestionMapView()
                     }
                 }
         }
@@ -37,6 +39,7 @@ enum NavigationDestination: Hashable {
     case trainDetailsFlexible(trainNumber: String, fromStation: String?)  // New train number navigation
     case trainNumberSearch
     case advancedConfiguration
+    case congestionMap
 }
 
 #Preview {

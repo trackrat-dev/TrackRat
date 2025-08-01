@@ -110,6 +110,11 @@ extension Color {
             opacity: Double(a) / 255
         )
     }
+    
+    init?(hex: String?) {
+        guard let hex = hex else { return nil }
+        self.init(hex: hex)
+    }
 }
 
 // MARK: - Date Extension for Eastern Time

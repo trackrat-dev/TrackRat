@@ -460,4 +460,13 @@ extension CongestionSegment {
     var sampleCountText: String {
         "\(sampleCount) train\(sampleCount == 1 ? "" : "s")"
     }
+    
+    var delayText: String {
+        let delayMinutes = Int((avgTransitMinutes - baselineMinutes).rounded())
+        if delayMinutes > 0 {
+            return " (+\(delayMinutes)m delay in past \(sampleCount) trains)"
+        } else {
+            return " (on time in past \(sampleCount) trains)"
+        }
+    }
 }

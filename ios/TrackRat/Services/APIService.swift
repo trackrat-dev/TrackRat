@@ -630,6 +630,36 @@ final class APIService: ObservableObject {
         }
     }
     
+    // MARK: - Congestion Data
+    
+    func fetchCongestionData(timeWindowHours: Int = 3, dataSource: String? = nil) async throws -> CongestionResponse {
+        var components = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
+        components.queryItems = [
+            URLQueryItem(name: "time_window_hours", value: String(timeWindowHours))
+        ]
+        
+        if let dataSource = dataSource {
+            components.queryItems?.append(URLQueryItem(name: "data_source", value: dataSource))
+        }
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        let (data, _) = try await session.data(from: url)
+        
+        do {
+            let response = try decoder.decode(CongestionResponse.self, from: data)
+            return response
+        } catch {
+            print("🔴 DECODING ERROR (fetchCongestionData): \(error)")
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+            }
+            throw error
+        }
+    }
+    
     // MARK: - V2 API Adapters
     
     private func adaptV2DepartureToTrainV2(_ departure: V2TrainDeparture) -> TrainV2 {

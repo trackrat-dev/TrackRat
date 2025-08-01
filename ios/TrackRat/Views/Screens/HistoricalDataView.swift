@@ -590,6 +590,14 @@ struct CongestionDataView: View {
                             .frame(maxWidth: .infinity, minHeight: 400)
                     } else if let segments = viewModel.relevantSegments, !segments.isEmpty {
                         VStack(spacing: 24) {
+                            // Map view
+                            JourneyCongestionMapView(
+                                train: train,
+                                userOrigin: viewModel.userOrigin,
+                                userDestination: viewModel.userDestination
+                            )
+                            .padding([.leading, .trailing])
+                            
                             // Header info
                             if let lastUpdated = viewModel.lastUpdated {
                                 HStack {
@@ -690,48 +698,24 @@ struct CongestionSegmentCard: View {
     let segment: CongestionSegment
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Route header
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(segment.fromStationDisplayName) → \(segment.toStationDisplayName)")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                    
-                    HStack(spacing: 8) {
-                        // Congestion indicator
-                        Circle()
-                            .fill(segment.displayColor)
-                            .frame(width: 10, height: 10)
-                        
-                        Text(segment.averageTransitTimeText)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.black)
-                        
-                        Text("(\(segment.sampleCountText))")
-                            .font(.caption)
-                            .foregroundColor(.black.opacity(0.6))
-                    }
-                }
-                
-                Spacer()
-            }
+        HStack(spacing: 12) {
+            Text("\(segment.fromStationDisplayName) → \(segment.toStationDisplayName): \(segment.averageTransitTimeText)\(segment.delayText)")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
             
-            // Congestion status
-            Text(segment.displayCongestionLevel)
-                .font(.body)
-                .foregroundColor(.black.opacity(0.8))
-            
-            // Visual comparison bar if delay exists
-            if segment.congestionFactor > 1.05 {
-                CongestionComparisonBar(segment: segment)
-            }
+            Spacer()
         }
-        .padding()
-        .background(Color.white.opacity(0.9))
-        .cornerRadius(12)
-        .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(segment.displayColor.opacity(0.2))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(segment.displayColor.opacity(0.4), lineWidth: 1)
+        )
     }
 }
 
@@ -799,8 +783,8 @@ class CongestionDataViewModel: ObservableObject {
     @Published var lastUpdated: Date?
     
     private let train: TrainV2
-    private let userOrigin: String?
-    private let userDestination: String?
+    let userOrigin: String?
+    let userDestination: String?
     private let apiService = APIService.shared
     
     init(train: TrainV2, userOrigin: String? = nil, userDestination: String? = nil) {
