@@ -50,7 +50,7 @@ def setup_logging() -> None:
     if settings.environment == "production":
         processors.append(structlog.processors.JSONRenderer())
     else:
-        processors.append(structlog.dev.ConsoleRenderer())
+        processors.append(structlog.dev.ConsoleRenderer(colors=False))
 
     structlog.configure(
         processors=processors,
