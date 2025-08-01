@@ -87,6 +87,27 @@ journey_stops (
     track, status
 )
 
+-- Transit time analysis (NEW)
+segment_transit_times (
+    journey_id, from_station_code, to_station_code,
+    scheduled_minutes, actual_minutes, delay_minutes,
+    departure_time, hour_of_day, day_of_week
+)
+
+-- Station dwell time analysis (NEW)
+station_dwell_times (
+    journey_id, station_code, scheduled_minutes, actual_minutes,
+    excess_dwell_minutes, is_origin, is_terminal,
+    arrival_time, departure_time, hour_of_day, day_of_week
+)
+
+-- Real-time journey progress (NEW)
+journey_progress (
+    journey_id, last_departed_station, next_station,
+    stops_completed, stops_total, journey_percent,
+    initial_delay_minutes, total_delay_minutes
+)
+
 -- Historical snapshots for ML training
 journey_snapshots (
     journey_id, snapshot_type, api_response,
@@ -105,20 +126,19 @@ discovery_runs (
 All endpoints are prefixed with `/api/v2/`:
 
 ```python
-# Find departures between stations
-GET /trains/departures?from=NY&to=TR&limit=50
+# Train Operations
+GET /trains/departures?from=NY&to=TR&limit=50         # Find departures between stations
+GET /trains/{train_id}?date=2024-01-01&refresh=true   # Get specific train journey
 
-# Get specific train journey
-GET /trains/{train_id}?date=2024-01-01&refresh=true
+# Route Analytics
+GET /routes/history?from_station=NY&to_station=TR&data_source=NJT&days=30  # Historical route performance
+GET /routes/congestion?time_window_hours=3&data_source=NJT                 # Real-time congestion analysis
 
-# Get route historical performance
-GET /routes/history?from_station=NY&to_station=TR&data_source=NJT&days=30
+# Live Activities Management
+POST /live-activities/register    # Register Live Activity
+DELETE /live-activities/{token}   # Unregister Live Activity
 
-# Live Activities management
-POST /live-activities/register
-DELETE /live-activities/{push_token}
-
-# System health and metrics
+# System Health and Metrics
 GET /health                    # Comprehensive health check
 GET /health/live              # Liveness probe
 GET /health/ready             # Readiness probe  
@@ -132,6 +152,34 @@ The APScheduler runs in-process and handles:
 - **Hourly**: Train discovery from major stations
 - **Every 15 min**: Journey collection for active trains
 - **Automatic startup**: Begins when FastAPI app starts
+
+### 5. Transit Time Tracking System
+
+**NEW: Advanced Analytics and Congestion Monitoring**
+
+The system now includes comprehensive transit time analysis:
+
+**Components:**
+- **TransitAnalyzer**: Calculates segment times, dwell times, and journey progress
+- **CongestionAnalyzer**: Real-time network congestion analysis
+- **Route Analytics**: Historical performance metrics with delay breakdowns
+
+**Automatic Analysis:**
+- Segment transit times between consecutive stations
+- Station dwell time tracking (arrival to departure)
+- Journey progress updates with real-time position
+- Congestion factor calculation using baseline vs current times
+
+**API Endpoints:**
+- `/api/v2/routes/congestion` - Real-time network congestion map
+- `/api/v2/routes/history` - Historical route performance with highlighted trains
+- Enhanced train details with `progress` field for journey tracking
+
+**Congestion Levels:**
+- **Normal** (≤10% slower): Green (`#00ff00`)
+- **Moderate** (10-25% slower): Yellow (`#ffff00`) 
+- **Heavy** (25-50% slower): Orange (`#ff8800`)
+- **Severe** (>50% slower): Red (`#ff0000`)
 
 ## Development Workflow
 

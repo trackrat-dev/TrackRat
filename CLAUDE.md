@@ -210,7 +210,12 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
    GET /api/v2/routes/history?from_station=X&to_station=Y&data_source=NJT&days=30
    ```
 
-4. **Live Activities**:
+4. **Route Congestion** (V2 - NEW):
+   ```
+   GET /api/v2/routes/congestion?time_window_hours=3&data_source=NJT
+   ```
+
+5. **Live Activities**:
    ```
    POST /api/v2/live-activities/register    # Register Live Activity
    DELETE /api/v2/live-activities/{token}   # Unregister Live Activity
@@ -359,6 +364,15 @@ When adding new features:
 
 ## Recent Enhancements
 
+### Transit Time Tracking & Congestion Analysis (NEW)
+Comprehensive analytics system for route performance monitoring:
+- **Backend**: New `TransitAnalyzer` service calculates segment times, dwell times, and journey progress
+- **Database**: Added `segment_transit_times`, `station_dwell_times`, and `journey_progress` tables
+- **API**: New `/api/v2/routes/congestion` endpoint provides real-time network congestion data
+- **Analysis**: Automatic delay breakdown categorization (on-time, slight, significant, major)
+- **Visualization**: Color-coded congestion levels (Normal→Green, Moderate→Yellow, Heavy→Orange, Severe→Red)
+- **Benefits**: Real-time network performance monitoring and historical route analysis
+
 ### Enhanced Status Resolution (StatusV2)
 The system now supports intelligent status conflict resolution:
 - **Backend**: New `status_v2` field with DEPARTED > BOARDING priority
@@ -372,8 +386,11 @@ New `progress` field provides detailed journey information:
 - **Benefits**: Accurate progress visualization and time-to-arrival
 
 ### API Changes Summary
+- **New Endpoints**: `/api/v2/routes/congestion` for real-time network congestion analysis
+- **Enhanced Endpoints**: `/api/v2/routes/history` with delay breakdown and track usage stats  
 - **New Fields**: `status_v2`, `progress` (both optional for backward compatibility)
 - **Enhanced Data**: `last_departed`, `next_arrival`, `journey_percent`
+- **New Models**: `SegmentCongestion`, `CongestionMapResponse`, `DelayBreakdown`, `AggregateStats`
 - **No Breaking Changes**: All existing fields preserved
 
 ### Executive Dashboard

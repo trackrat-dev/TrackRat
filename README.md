@@ -9,12 +9,17 @@ Real-time train tracking system with ML-powered track predictions for NJ Transit
 - **Real-Time Updates**: Live train status, delays, and journey progress
 - **Multi-Station Support**: NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark
 - **Smart Consolidation**: Merges duplicate trains across data sources
+- **Transit Analytics**: Real-time congestion monitoring and historical route performance
+- **Journey Tracking**: Segment-by-segment transit time analysis and delay attribution
 
 ## Architecture
 
 ```
-Data Sources → Cloud Run (API + ML) → iOS App + Web App
-(NJ Transit/Amtrak)     (SQLite)      (Live Activities)
+Data Sources → Cloud Run (API + Analytics) → iOS App + Web App
+(NJ Transit/Amtrak)    (SQLite + ML Models)    (Live Activities)
+                              ↓
+                    Transit Time Analytics
+                   (Congestion + Performance)
 ```
 
 ## Quick Start
