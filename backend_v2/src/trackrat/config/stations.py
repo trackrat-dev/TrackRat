@@ -129,7 +129,7 @@ STATION_COORDINATES = {
     "PL": {"lat": 40.6140, "lon": -74.1647},  # Plainfield
     "LB": {"lat": 40.0849, "lon": -74.1990},  # Long Branch
     "DN": {"lat": 39.9526, "lon": -75.1652},  # Doylestown
-    "JA": {"lat": 39.9917, "lon": -75.3897},  # Jamaica
+    "JA": {"lat": 40.4769, "lon": -74.4674},  # Jersey Avenue
     "HB": {"lat": 40.5544, "lon": -74.4093},  # Highland Beach
     "RA": {"lat": 40.7418, "lon": -74.2656},  # Raritan
 }
