@@ -90,6 +90,32 @@ struct CongestionMapView: View {
                         LegendItem(color: .orange, label: "Heavy")
                         LegendItem(color: .red, label: "Severe")
                     }
+                    
+                    // Cancellation legend
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Rectangle()
+                                .fill(.red)
+                                .frame(width: 20, height: 2)
+                                .overlay(
+                                    Rectangle()
+                                        .fill(.clear)
+                                        .frame(width: 20, height: 2)
+                                        .overlay(
+                                            HStack(spacing: 1) {
+                                                ForEach(0..<4, id: \.self) { _ in
+                                                    Rectangle()
+                                                        .fill(.red)
+                                                        .frame(width: 2, height: 2)
+                                                }
+                                            }
+                                        )
+                                )
+                            Text("High Cancellations")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
                 .padding()
                 .background(
@@ -348,6 +374,11 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 // Convert congestion factor to color
                 if let segment = polyline.segment {
                     renderer.strokeColor = getUIColor(for: segment.congestionFactor)
+                    
+                    // Add dashed pattern for cancellations
+                    if let dashPattern = segment.dashPattern {
+                        renderer.lineDashPattern = dashPattern
+                    }
                 } else {
                     renderer.strokeColor = UIColor.gray
                 }
@@ -547,7 +578,9 @@ struct SegmentTrainDetailsView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                     
-
+                    Text(segment.cancellationDisplayText)
+                        .font(.caption)
+                        .foregroundColor(segment.cancellationRate > 10 ? .red : .secondary)
                 }
             }
             .padding()
@@ -576,6 +609,7 @@ struct SegmentTrainDetailsView: View {
             
             LazyVGrid(columns: [
                 GridItem(.flexible()),
+                GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: 16) {
 
@@ -592,6 +626,14 @@ struct SegmentTrainDetailsView: View {
                     value: summary.averageArrivalDelay > 0 ? "+\(Int(summary.averageArrivalDelay))m" : "On time",
                     color: summary.averageArrivalDelay <= 0 ? .green : summary.averageArrivalDelay <= 5 ? .yellow : .orange,
                     icon: "arrow.down.circle.fill"
+                )
+                
+                SegmentStatCard(
+                    title: "Cancellation Rate",
+                    value: "\(Int(segment.cancellationRate))%",
+                    color: segment.cancellationRate < 5 ? .green : 
+                           segment.cancellationRate < 15 ? .orange : .red,
+                    icon: "xmark.circle.fill"
                 )
             }
         }

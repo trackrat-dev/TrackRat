@@ -347,14 +347,56 @@ struct V2OccupiedTracksMetadata: Codable {
 
 // MARK: - Congestion Data Models
 
-struct CongestionResponse: Codable {
+struct TrainLocationData: Codable, Identifiable {
+    let trainId: String
+    let line: String
+    let dataSource: String
+    
+    // GPS coordinates (Amtrak only)
+    let lat: Double?
+    let lon: Double?
+    
+    // Station-based position (NJT and fallback for Amtrak)
+    let lastDepartedStation: String?
+    let atStation: String?
+    let nextStation: String?
+    let betweenStations: Bool
+    
+    // Progress tracking
+    let journeyPercent: Double?
+    
+    // Movement data (Amtrak only)
+    let velocity: Double?
+    let heading: String?
+    
+    var id: String { trainId }
+    
+    enum CodingKeys: String, CodingKey {
+        case trainId = "train_id"
+        case line
+        case dataSource = "data_source"
+        case lat
+        case lon
+        case lastDepartedStation = "last_departed_station"
+        case atStation = "at_station"
+        case nextStation = "next_station"
+        case betweenStations = "between_stations"
+        case journeyPercent = "journey_percent"
+        case velocity
+        case heading
+    }
+}
+
+struct CongestionMapResponse: Codable {
     let segments: [CongestionSegment]
+    let trainPositions: [TrainLocationData]
     let generatedAt: Date
     let timeWindowHours: Int
     let metadata: CongestionMetadata
     
     enum CodingKeys: String, CodingKey {
         case segments
+        case trainPositions = "train_positions"
         case generatedAt = "generated_at"
         case timeWindowHours = "time_window_hours"
         case metadata
@@ -373,6 +415,8 @@ struct CongestionSegment: Codable, Identifiable {
     let baselineMinutes: Double
     let currentAverageMinutes: Double
     let sampleCount: Int
+    let cancellationCount: Int
+    let cancellationRate: Double
     
     enum CodingKeys: String, CodingKey {
         case fromStation = "from_station"
@@ -386,6 +430,8 @@ struct CongestionSegment: Codable, Identifiable {
         case baselineMinutes = "baseline_minutes"
         case currentAverageMinutes = "current_average_minutes"
         case sampleCount = "sample_count"
+        case cancellationCount = "cancellation_count"
+        case cancellationRate = "cancellation_rate"
     }
     
     // Identifiable
@@ -413,6 +459,39 @@ struct CongestionSegment: Codable, Identifiable {
             return .orange
         } else {
             return .red
+        }
+    }
+    
+    // Cancellation visualization properties
+    var hasCancellations: Bool {
+        return cancellationCount > 0
+    }
+    
+    var hasHighCancellationRate: Bool {
+        return cancellationRate > 10.0
+    }
+    
+    var shouldShowDashedLine: Bool {
+        return cancellationRate > 5.0
+    }
+    
+    var cancellationDisplayText: String {
+        if cancellationRate == 0 {
+            return "No cancellations"
+        } else {
+            return "\(Int(cancellationRate))% cancelled"
+        }
+    }
+    
+    var dashPattern: [NSNumber]? {
+        guard shouldShowDashedLine else { return nil }
+        
+        if cancellationRate > 20 {
+            return [2, 2]  // Short dashes for high cancellation
+        } else if cancellationRate > 10 {
+            return [5, 3]  // Medium dashes
+        } else {
+            return [8, 4]  // Long dashes
         }
     }
 }

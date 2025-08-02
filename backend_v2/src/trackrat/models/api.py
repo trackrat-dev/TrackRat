@@ -402,6 +402,31 @@ class RouteHistoryResponse(BaseModel):
 # Congestion API Models
 
 
+class TrainLocationData(BaseModel):
+    """Current train location data for map display."""
+
+    train_id: str
+    line: str
+    data_source: Literal["NJT", "AMTRAK"]
+
+    # GPS coordinates (Amtrak only)
+    lat: float | None = None
+    lon: float | None = None
+
+    # Station-based position (NJT and fallback for Amtrak)
+    last_departed_station: str | None = None
+    at_station: str | None = None
+    next_station: str | None = None
+    between_stations: bool = False
+
+    # Progress tracking
+    journey_percent: float | None = Field(None, ge=0.0, le=100.0)
+
+    # Movement data (Amtrak only)
+    velocity: float | None = None
+    heading: str | None = None
+
+
 class SegmentCongestion(BaseModel):
     """Congestion data for a route segment."""
 
@@ -416,12 +441,15 @@ class SegmentCongestion(BaseModel):
     sample_count: int = Field(..., ge=0)
     baseline_minutes: float = Field(..., ge=0.0)
     current_average_minutes: float = Field(..., ge=0.0)
+    cancellation_count: int = Field(default=0, ge=0)
+    cancellation_rate: float = Field(default=0.0, ge=0.0, le=100.0)
 
 
 class CongestionMapResponse(BaseModel):
     """Response for congestion map endpoint."""
 
     segments: list[SegmentCongestion]
+    train_positions: list[TrainLocationData] = Field(default_factory=list)
     generated_at: datetime
     time_window_hours: int
     metadata: dict[str, Any] = Field(default_factory=dict)

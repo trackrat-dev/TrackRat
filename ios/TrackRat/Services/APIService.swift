@@ -404,7 +404,7 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 3) async throws -> CongestionResponse {
+    func fetchCongestionData(timeWindowHours: Int = 3) async throws -> CongestionMapResponse {
         var urlComponents = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
         urlComponents.queryItems = [
             URLQueryItem(name: "time_window_hours", value: String(timeWindowHours))
@@ -425,7 +425,7 @@ final class APIService: ObservableObject {
         }
         
         do {
-            return try decoder.decode(CongestionResponse.self, from: data)
+            return try decoder.decode(CongestionMapResponse.self, from: data)
         } catch {
             print("❌ Failed to decode congestion data: \(error)")
             if let jsonString = String(data: data, encoding: .utf8) {
@@ -632,7 +632,7 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 3, dataSource: String? = nil) async throws -> CongestionResponse {
+    func fetchCongestionData(timeWindowHours: Int = 3, dataSource: String? = nil) async throws -> CongestionMapResponse {
         var components = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
         components.queryItems = [
             URLQueryItem(name: "time_window_hours", value: String(timeWindowHours))
@@ -649,7 +649,7 @@ final class APIService: ObservableObject {
         let (data, _) = try await session.data(from: url)
         
         do {
-            let response = try decoder.decode(CongestionResponse.self, from: data)
+            let response = try decoder.decode(CongestionMapResponse.self, from: data)
             return response
         } catch {
             print("🔴 DECODING ERROR (fetchCongestionData): \(error)")

@@ -796,7 +796,7 @@ struct CongestionComparisonBar: View {
 // MARK: - Congestion Data View Model
 @MainActor
 class CongestionDataViewModel: ObservableObject {
-    @Published var congestionData: CongestionResponse?
+    @Published var congestionData: CongestionMapResponse?
     @Published var relevantSegments: [CongestionSegment]?
     @Published var isLoading = false
     @Published var error: String?

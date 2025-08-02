@@ -25,12 +25,14 @@ from trackrat.models.api import (
     RouteHistoryResponse,
     SegmentTrainDetail,
     SegmentTrainDetailsResponse,
+    TrainLocationData,
 )
 from trackrat.models.api import (
     SegmentCongestion as SegmentCongestionModel,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion import CongestionAnalyzer
+from trackrat.services.departure import DepartureService
 from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger()
@@ -268,11 +270,49 @@ async def get_route_congestion(
     """Get current congestion levels for all route segments."""
 
     analyzer = CongestionAnalyzer()
-    congestion_data = await analyzer.get_network_congestion(db, time_window_hours)
+    congestion_data, journeys = await analyzer.get_network_congestion_with_trains(
+        db, time_window_hours
+    )
 
     # Filter by data source if specified
     if data_source:
         congestion_data = [c for c in congestion_data if c.data_source == data_source]
+        journeys = [j for j in journeys if j.data_source == data_source]
+
+    # Extract train positions from journeys
+    departure_service = DepartureService()
+    train_positions = []
+
+    for journey in journeys:
+        # Skip cancelled trains
+        if journey.is_cancelled:
+            continue
+
+        # Calculate train position
+        position = departure_service._calculate_train_position(journey)
+
+        # Get journey progress if available
+        journey_percent = None
+        if journey.progress:
+            journey_percent = journey.progress.journey_percent
+
+        # Create train location data
+        location_data = TrainLocationData(
+            train_id=journey.train_id,
+            line=journey.line_code,
+            data_source=journey.data_source,
+            last_departed_station=position.last_departed_station_code,
+            at_station=position.at_station_code,
+            next_station=position.next_station_code,
+            between_stations=position.between_stations,
+            journey_percent=journey_percent,
+        )
+
+        # Add GPS data for Amtrak trains if available
+        # TODO: This will need to be fetched from Amtrak API snapshot data
+        # For now, we'll just include the station-based position
+
+        train_positions.append(location_data)
 
     # Convert to API models and add station names
     segments = []
@@ -289,11 +329,14 @@ async def get_route_congestion(
             sample_count=segment.sample_count,
             baseline_minutes=segment.baseline_minutes,
             current_average_minutes=segment.avg_transit_minutes,
+            cancellation_count=segment.cancellation_count,
+            cancellation_rate=segment.cancellation_rate,
         )
         segments.append(segment_model)
 
     return CongestionMapResponse(
         segments=segments,
+        train_positions=train_positions,
         generated_at=now_et(),
         time_window_hours=time_window_hours,
         metadata={
@@ -306,6 +349,7 @@ async def get_route_congestion(
                 "heavy": len([s for s in segments if s.congestion_level == "heavy"]),
                 "severe": len([s for s in segments if s.congestion_level == "severe"]),
             },
+            "total_trains": len(train_positions),
         },
     )
 

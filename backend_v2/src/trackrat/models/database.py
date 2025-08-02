@@ -76,6 +76,12 @@ class TrainJourney(Base):
     snapshots: Mapped[list["JourneySnapshot"]] = relationship(
         "JourneySnapshot", back_populates="journey", cascade="all, delete-orphan"
     )
+    progress: Mapped["JourneyProgress"] = relationship(
+        "JourneyProgress",
+        back_populates="journey",
+        uselist=False,
+        primaryjoin="and_(TrainJourney.id==JourneyProgress.journey_id)",
+    )
     segment_times: Mapped[list["SegmentTransitTime"]] = relationship(
         "SegmentTransitTime", back_populates="journey", cascade="all, delete-orphan"
     )
@@ -342,7 +348,7 @@ class JourneyProgress(Base):
 
     # Relationships
     journey: Mapped["TrainJourney"] = relationship(
-        "TrainJourney", back_populates="progress_snapshots"
+        "TrainJourney", back_populates="progress"
     )
 
     __table_args__ = (Index("idx_journey_progress", "journey_id", "captured_at"),)

@@ -34,6 +34,8 @@ class SegmentCongestion:
         baseline_minutes: float,
         sample_count: int,
         average_delay_minutes: float,
+        cancellation_count: int = 0,
+        cancellation_rate: float = 0.0,
     ):
         self.from_station = from_station
         self.to_station = to_station
@@ -44,6 +46,8 @@ class SegmentCongestion:
         self.baseline_minutes = baseline_minutes
         self.sample_count = sample_count
         self.average_delay_minutes = average_delay_minutes
+        self.cancellation_count = cancellation_count
+        self.cancellation_rate = cancellation_rate
 
 
 class CongestionAnalyzer:
@@ -52,6 +56,36 @@ class CongestionAnalyzer:
     def __init__(self) -> None:
         self._cache: dict[str, tuple[list[SegmentCongestion], datetime]] = {}
         self._cache_ttl = 300  # 5 minutes cache
+
+    async def get_network_congestion_with_trains(
+        self, db: AsyncSession, time_window_hours: int = 3
+    ) -> tuple[list[SegmentCongestion], list[TrainJourney]]:
+        """
+        Get congestion data and train journeys.
+
+        Returns:
+            Tuple of (segment congestion data, train journeys)
+        """
+        segments = await self.get_network_congestion(db, time_window_hours)
+
+        # Get the journeys from the last query (we need to re-query to get them)
+        cutoff_time = now_et() - timedelta(hours=time_window_hours)
+        stmt = (
+            select(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.last_updated_at >= cutoff_time,
+                )
+            )
+            .options(
+                selectinload(TrainJourney.stops), selectinload(TrainJourney.progress)
+            )
+        )
+
+        result = await db.execute(stmt)
+        journeys = list(result.scalars().all())
+
+        return segments, journeys
 
     async def get_network_congestion(
         self, db: AsyncSession, time_window_hours: int = 3
@@ -79,16 +113,18 @@ class CongestionAnalyzer:
 
         cutoff_time = now_et() - timedelta(hours=time_window_hours)
 
-        # Query journeys with complete data in the time window
+        # Query journeys in the time window (including cancelled ones for stats)
         stmt = (
             select(TrainJourney)
             .where(
                 and_(
                     TrainJourney.last_updated_at >= cutoff_time,
-                    # TrainJourney.has_complete_journey == True,
+                    # Include all journeys to capture cancellations
                 )
             )
-            .options(selectinload(TrainJourney.stops))
+            .options(
+                selectinload(TrainJourney.stops), selectinload(TrainJourney.progress)
+            )
         )
 
         result = await db.execute(stmt)
@@ -101,11 +137,15 @@ class CongestionAnalyzer:
             cutoff_time=cutoff_time.isoformat(),
         )
 
-        # Calculate segments from journey data
-        segment_data = self._calculate_segments_from_journeys(journeys, cutoff_time)
+        # Calculate segments from journey data (separate active and cancelled)
+        segment_data, cancellation_data = self._calculate_segments_from_journeys(
+            journeys, cutoff_time
+        )
 
         # Analyze congestion for each segment
-        congestion_results = self._analyze_segment_congestion(segment_data)
+        congestion_results = self._analyze_segment_congestion(
+            segment_data, cancellation_data
+        )
 
         # Cache the results
         self._cache[cache_key] = (congestion_results, now_et())
@@ -122,11 +162,15 @@ class CongestionAnalyzer:
 
     def _calculate_segments_from_journeys(
         self, journeys: list[TrainJourney], cutoff_time: datetime
-    ) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
-        """Extract segment data from journeys."""
+    ) -> tuple[
+        dict[tuple[str, str, str], list[dict[str, Any]]],
+        dict[tuple[str, str, str], int],
+    ]:
+        """Extract segment data from journeys and track cancellations."""
         segment_groups: defaultdict[tuple[str, str, str], list[dict[str, Any]]] = (
             defaultdict(list)
         )
+        cancellation_counts: defaultdict[tuple[str, str, str], int] = defaultdict(int)
 
         for journey in journeys:
             if not journey.stops:
@@ -135,7 +179,27 @@ class CongestionAnalyzer:
             # Sort stops by sequence
             sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-            # Calculate segments between consecutive stops
+            # Track cancellations for each potential segment
+            if journey.is_cancelled:
+                # For cancelled journeys, count them against all segments they would have traveled
+                for i in range(len(sorted_stops) - 1):
+                    from_stop = sorted_stops[i]
+                    to_stop = sorted_stops[i + 1]
+
+                    if (
+                        from_stop.station_code
+                        and to_stop.station_code
+                        and journey.data_source
+                    ):
+                        key = (
+                            from_stop.station_code,
+                            to_stop.station_code,
+                            journey.data_source,
+                        )
+                        cancellation_counts[key] += 1
+                continue  # Skip cancelled journeys from active segment calculation
+
+            # Calculate segments between consecutive stops for active journeys
             for i in range(len(sorted_stops) - 1):
                 from_stop = sorted_stops[i]
                 to_stop = sorted_stops[i + 1]
@@ -199,17 +263,55 @@ class CongestionAnalyzer:
                     }
                 )
 
-        return segment_groups
+        return segment_groups, dict(cancellation_counts)
 
     def _analyze_segment_congestion(
-        self, segment_groups: dict[tuple[str, str, str], list[dict[str, Any]]]
+        self,
+        segment_groups: dict[tuple[str, str, str], list[dict[str, Any]]],
+        cancellation_counts: dict[tuple[str, str, str], int],
     ) -> list[SegmentCongestion]:
         """Analyze congestion for each segment."""
         congestion_data = []
 
-        for (from_station, to_station, data_source), segments in segment_groups.items():
-            # Need at least 2 samples for meaningful analysis
-            if len(segments) < 2:
+        # Get all unique segment keys from both active and cancelled data
+        all_segment_keys = set(segment_groups.keys()) | set(cancellation_counts.keys())
+
+        for segment_key in all_segment_keys:
+            from_station, to_station, data_source = segment_key
+            segments = segment_groups.get(segment_key, [])
+            cancellation_count = cancellation_counts.get(segment_key, 0)
+
+            # Calculate total journeys (active + cancelled)
+            total_journeys = len(segments) + cancellation_count
+
+            # Skip if we don't have enough data
+            if total_journeys < 2:
+                continue
+
+            # Calculate cancellation rate
+            cancellation_rate = (
+                (cancellation_count / total_journeys * 100)
+                if total_journeys > 0
+                else 0.0
+            )
+
+            # For segments with only cancellations, create a special entry
+            if len(segments) == 0:
+                congestion_data.append(
+                    SegmentCongestion(
+                        from_station=from_station,
+                        to_station=to_station,
+                        data_source=data_source,
+                        congestion_factor=1.0,  # No congestion data available
+                        congestion_level="normal",  # Default level
+                        avg_transit_minutes=0.0,
+                        baseline_minutes=0.0,
+                        sample_count=0,
+                        average_delay_minutes=0.0,
+                        cancellation_count=cancellation_count,
+                        cancellation_rate=cancellation_rate,
+                    )
+                )
                 continue
 
             # Calculate baseline (scheduled average or median of actuals)
@@ -263,6 +365,8 @@ class CongestionAnalyzer:
                     baseline_minutes=baseline_minutes,
                     sample_count=len(recent_segments),
                     average_delay_minutes=average_delay_minutes,
+                    cancellation_count=cancellation_count,
+                    cancellation_rate=cancellation_rate,
                 )
             )
 
