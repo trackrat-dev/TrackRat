@@ -431,7 +431,12 @@ class SchedulerService:
                 "scheduled_inference_collection",
                 train_id=train.train_id,
                 minutes_past_departure=(
-                    int((now_et() - train.scheduled_departure).total_seconds() / 60)
+                    int(
+                        safe_datetime_subtract(
+                            now_et(), train.scheduled_departure
+                        ).total_seconds()
+                        / 60
+                    )
                     if train.scheduled_departure
                     else 0
                 ),

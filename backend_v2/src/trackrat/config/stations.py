@@ -128,18 +128,16 @@ STATION_COORDINATES = {
     "BBY": {"lat": 42.3475, "lon": -71.0754},  # Boston Back Bay
     "PL": {"lat": 40.6140, "lon": -74.1647},  # Plainfield
     "LB": {"lat": 40.0849, "lon": -74.1990},  # Long Branch
-    "DN": {"lat": 39.9526, "lon": -75.1652},  # Doylestown
     "JA": {"lat": 40.4769, "lon": -74.4674},  # Jersey Avenue
     "HB": {"lat": 40.5544, "lon": -74.4093},  # Highland Beach
-    "RA": {"lat": 40.7418, "lon": -74.2656},  # Raritan
+    "RA": {"lat": 40.5682, "lon": -74.6290},  # Raritan
     # Additional NJT stations for complete map coverage
     "ED": {"lat": 40.5177, "lon": -74.4075},  # Edison
     "MU": {"lat": 40.5378, "lon": -74.3562},  # Metuchen
-    "RH": {"lat": 40.6039, "lon": -74.2723},  # Rahway
+    "RH": {"lat": 40.6063, "lon": -74.2767},  # Rahway
     "LI": {"lat": 40.6295, "lon": -74.2518},  # Linden
     "EL": {"lat": 40.6640, "lon": -74.2107},  # Elizabeth
     "NZ": {"lat": 40.6968, "lon": -74.1733},  # North Elizabeth
-    "EZ": {"lat": 40.7121, "lon": -74.1589},  # East Newark
     # More NJT stations from congestion data
     "RB": {"lat": 40.3483, "lon": -74.0745},  # Red Bank
     "AV": {"lat": 40.5781, "lon": -74.2842},  # Avenel
@@ -165,7 +163,6 @@ STATION_COORDINATES = {
     "PP": {"lat": 40.5356, "lon": -74.4956},  # Point Pleasant
     "BH": {"lat": 40.5467, "lon": -74.5067},  # Bay Head
     # Additional stations from congestion API data
-    "CH": {"lat": 40.6247, "lon": -74.7239},  # Chester
     "DV": {"lat": 40.6156, "lon": -74.6789},  # Dover
     "DO": {"lat": 40.6023, "lon": -74.6456},  # Denville
     "MX": {"lat": 40.5890, "lon": -74.6123},  # Mount Tabor
@@ -194,9 +191,9 @@ STATION_COORDINATES = {
     "ON": {"lat": 40.2831, "lon": -73.8464},  # Brick Township
     "WH": {"lat": 40.2698, "lon": -73.8131},  # Lakewood
     "OR": {"lat": 40.2565, "lon": -73.7798},  # Bay Head
-    "SM": {"lat": 40.2432, "lon": -73.7465},  # Spring Lake
-    "BW": {"lat": 40.2299, "lon": -73.7132},  # Belmar
-    "BK": {"lat": 40.2166, "lon": -73.6799},  # Bradley Beach
+    "SM": {"lat": 40.1505, "lon": -74.0353},  # Spring Lake
+    "BW": {"lat": 40.1785, "lon": -74.0218},  # Belmar
+    "BK": {"lat": 40.2037, "lon": -74.0187},  # Bradley Beach
 }
 
 

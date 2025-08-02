@@ -121,17 +121,30 @@ class JourneyCongestionViewModel: ObservableObject {
             // Fetch congestion data
             let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 3)
             
-            // Filter segments to only consecutive stations in the user's journey
+            // Determine expected data source based on train type
+            let expectedDataSource: String
+            if train.trainClass == "Amtrak" {
+                expectedDataSource = "AMTRAK"
+            } else {
+                expectedDataSource = "NJT"
+            }
+            
+            // Filter segments to any valid forward path in the user's journey
             let journeyStationCodes = getJourneyStationCodes()
             filteredSegments = congestionData.segments.filter { segment in
+                // First check if data source matches train type
+                guard segment.dataSource.uppercased() == expectedDataSource else {
+                    return false
+                }
+                
                 // Find indices of from and to stations
                 guard let fromIndex = journeyStationCodes.firstIndex(of: segment.fromStation),
                       let toIndex = journeyStationCodes.firstIndex(of: segment.toStation) else {
                     return false
                 }
                 
-                // Only include segments where stations are consecutive
-                return toIndex == fromIndex + 1
+                // Include any segment where 'to' station comes after 'from' station
+                return toIndex > fromIndex
             }
             
             // Create journey stations for map annotations

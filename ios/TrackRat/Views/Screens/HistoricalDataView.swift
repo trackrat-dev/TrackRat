@@ -865,19 +865,19 @@ class CongestionDataViewModel: ObservableObject {
         // Get station codes from the journey segment
         let stationCodes = journeyStops.map { $0.stationCode.uppercased() }
         
-        // Filter segments that are consecutive stations in the journey AND match the train type
+        // Filter segments that are valid forward paths in the journey AND match the train type
         let filtered = congestionData.segments.filter { segment in
             // First check if data source matches train type
             guard segment.dataSource.uppercased() == expectedDataSource else {
                 return false
             }
             
-            // Check if stations are consecutive in the journey
+            // Check if stations are in the journey with proper ordering
             let fromIndex = stationCodes.firstIndex(of: segment.fromStation.uppercased())
             let toIndex = stationCodes.firstIndex(of: segment.toStation.uppercased())
             
-            // Only include segments where stations are consecutive
-            if let fromIdx = fromIndex, let toIdx = toIndex, toIdx == fromIdx + 1 {
+            // Include any segment where 'to' station comes after 'from' station
+            if let fromIdx = fromIndex, let toIdx = toIndex, toIdx > fromIdx {
                 return true
             }
             return false
