@@ -17,7 +17,6 @@ from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
-from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.time import ET, now_et, parse_njt_time
 
 logger = get_logger(__name__)
@@ -513,12 +512,7 @@ class JourneyCollector(BaseJourneyCollector):
         await session.flush()
 
         # Analyze transit times and dwell times if any stops have actual times
-        # This must happen AFTER flush so we can see the inferred actual times
-        if journey.id is not None and await self._has_stops_with_actual_times(
-            session, journey.id
-        ):
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_journey(session, journey)
+        # Transit time analysis is now done on-the-fly in API endpoints
 
         # Calculate processing time
         end_time = now_et()

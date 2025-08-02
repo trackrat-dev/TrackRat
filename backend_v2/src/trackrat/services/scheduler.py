@@ -1314,51 +1314,40 @@ class SchedulerService:
                         is_completed=is_completed,
                     )
 
-                    # Analyze transit times after successful collection
-                    # Check if we have any stops with actual times
-                    has_actual_times = any(
-                        stop.actual_arrival or stop.actual_departure
-                        for stop in journey.stops
-                    )
-
-                    if has_actual_times:
-                        from trackrat.services.transit_analyzer import TransitAnalyzer
-
-                        analyzer = TransitAnalyzer()
-                        analyzer.analyze_journey_sync(session, journey)
-
-                        # Commit the analysis results with retry logic
-                        for retry in range(max_retries):
-                            try:
-                                session.commit()
-                                logger.info(
-                                    "transit_analysis_completed_sync",
+                    # Transit time analysis is now done on-the-fly in API endpoints
+                    
+                    # Commit the journey updates with retry logic
+                    for retry in range(max_retries):
+                        try:
+                            session.commit()
+                            logger.info(
+                                "journey_collection_completed_sync",
+                                train_id=train_id,
+                                journey_id=journey.id,
+                            )
+                            break
+                        except Exception as e:
+                            if (
+                                "database is locked" in str(e)
+                                and retry < max_retries - 1
+                            ):
+                                logger.warning(
+                                    "database_locked_retrying_analysis",
                                     train_id=train_id,
-                                    journey_id=journey.id,
+                                    retry=retry + 1,
+                                    error=str(e),
                                 )
-                                break
-                            except Exception as e:
-                                if (
-                                    "database is locked" in str(e)
-                                    and retry < max_retries - 1
-                                ):
-                                    logger.warning(
-                                        "database_locked_retrying_analysis",
-                                        train_id=train_id,
-                                        retry=retry + 1,
-                                        error=str(e),
-                                    )
-                                    import time
+                                import time
 
-                                    time.sleep(0.5 * (retry + 1))
-                                else:
-                                    logger.error(
-                                        "transit_analysis_commit_failed",
-                                        train_id=train_id,
-                                        error=str(e),
-                                    )
-                                    # Don't raise, just log the error
-                                    break
+                                time.sleep(0.5 * (retry + 1))
+                            else:
+                                logger.error(
+                                    "journey_commit_failed",
+                                    train_id=train_id,
+                                    error=str(e),
+                                )
+                                # Don't raise, just log the error
+                                break
 
                     return result_data
                 else:

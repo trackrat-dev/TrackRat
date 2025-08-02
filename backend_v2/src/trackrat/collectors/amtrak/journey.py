@@ -17,7 +17,6 @@ from trackrat.config.stations import AMTRAK_TO_INTERNAL_STATION_MAP, get_station
 from trackrat.db.engine import get_session, with_db_retry
 from trackrat.models.api import AmtrakTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
-from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
 from trackrat.utils.time import normalize_to_et, now_et
 
@@ -385,10 +384,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             # Refresh journey to load relationships properly
             await session.refresh(journey, ["stops"])
 
-            # Analyze transit times and dwell times if journey has actual times
-            if journey.actual_departure:
-                transit_analyzer = TransitAnalyzer()
-                await transit_analyzer.analyze_journey(session, journey)
+            # Transit time analysis is now done on-the-fly in API endpoints
 
             return journey
 

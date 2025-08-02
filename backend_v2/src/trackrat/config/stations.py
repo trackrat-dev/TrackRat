@@ -401,7 +401,7 @@ STATION_COORDINATES = {
     "MD": {"lat": 40.8434, "lon": -74.8359},  # Madison (estimated)
     "CB": {"lat": 40.8334, "lon": -74.8259},  # Convent Branch (estimated)
     "NF": {"lat": 40.2206, "lon": -74.7597},  # North Field (similar to TR)
-    "HL": {"lat": 40.2206, "lon": -74.7597},  # High Line (similar to TR)
+    "HL": {"lat": 40.2547, "lon": -74.7036},  # Hamilton
 }
 
 
