@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.models import SegmentTransitTime
-from trackrat.utils.time import now_et
+from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger(__name__)
 
@@ -63,14 +63,20 @@ class CongestionAnalyzer:
         cutoff_time = now_et() - timedelta(hours=time_window_hours)
 
         # Get all recent segment times
-        stmt = (
-            select(SegmentTransitTime)
-            .where(SegmentTransitTime.departure_time > cutoff_time)
-            .order_by(SegmentTransitTime.departure_time.desc())
+        stmt = select(SegmentTransitTime).order_by(
+            SegmentTransitTime.departure_time.desc()
         )
 
         result = await db.execute(stmt)
-        recent_segments = list(result.scalars().all())
+        all_segments = list(result.scalars().all())
+
+        # Filter to recent segments with proper timezone handling
+        recent_segments = []
+        for segment in all_segments:
+            if segment.departure_time:
+                departure_aware = ensure_timezone_aware(segment.departure_time)
+                if departure_aware > cutoff_time:
+                    recent_segments.append(segment)
 
         # Group by segment and calculate congestion
         segment_groups: dict[tuple[str, str, str], list[SegmentTransitTime]] = {}
@@ -151,7 +157,11 @@ class CongestionAnalyzer:
                     avg_transit_minutes=current_avg,
                     baseline_minutes=baseline_minutes,
                     sample_count=len(recent_times),
-                    last_updated=segments[0].departure_time or now_et(),
+                    last_updated=(
+                        ensure_timezone_aware(segments[0].departure_time)
+                        if segments[0].departure_time
+                        else now_et()
+                    ),
                 )
             )
 
@@ -159,6 +169,9 @@ class CongestionAnalyzer:
             "network_congestion_calculated",
             segment_count=len(congestion_data),
             time_window_hours=time_window_hours,
+            total_segments_before_filter=len(all_segments),
+            segments_after_time_filter=len(recent_segments),
+            unique_segment_groups=len(segment_groups),
         )
 
         return congestion_data

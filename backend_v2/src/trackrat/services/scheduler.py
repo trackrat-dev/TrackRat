@@ -365,7 +365,7 @@ class SchedulerService:
                 "scheduled_periodic_update",
                 train_id=train.train_id,
                 last_updated=(
-                    train.last_updated_at.isoformat()
+                    ensure_timezone_aware(train.last_updated_at).isoformat()
                     if train.last_updated_at
                     else "unknown"
                 ),
@@ -593,7 +593,7 @@ class SchedulerService:
                         not journey.has_complete_journey
                         or journey.last_updated_at is None
                         or safe_datetime_subtract(
-                            now_et(), journey.last_updated_at
+                            now_et(), ensure_timezone_aware(journey.last_updated_at)
                         ).total_seconds()
                         > 900
                     )
@@ -604,7 +604,13 @@ class SchedulerService:
                         logger.debug(
                             "njt_journey_recently_updated",
                             train_id=train_id,
-                            last_updated=journey.last_updated_at,
+                            last_updated=(
+                                ensure_timezone_aware(
+                                    journey.last_updated_at
+                                ).isoformat()
+                                if journey.last_updated_at
+                                else None
+                            ),
                         )
 
         if not trains_to_collect:
@@ -1965,13 +1971,15 @@ class SchedulerService:
 
                     # Check if journey data is stale (>60 seconds old)
                     if journey.last_updated_at is None or self._is_stale(
-                        journey.last_updated_at
+                        ensure_timezone_aware(journey.last_updated_at)
                     ):
                         logger.info(
                             "live_activity_journey_stale",
                             train_number=train_number,
                             last_updated=(
-                                journey.last_updated_at.isoformat()
+                                ensure_timezone_aware(
+                                    journey.last_updated_at
+                                ).isoformat()
                                 if journey.last_updated_at
                                 else None
                             ),
@@ -2004,7 +2012,9 @@ class SchedulerService:
                                                 "live_activity_journey_refreshed",
                                                 train_number=train_number,
                                                 new_last_updated=(
-                                                    journey.last_updated_at.isoformat()
+                                                    ensure_timezone_aware(
+                                                        journey.last_updated_at
+                                                    ).isoformat()
                                                     if journey.last_updated_at
                                                     else None
                                                 ),

@@ -16,7 +16,7 @@ from trackrat.models import (
     StationDwellTime,
     TrainJourney,
 )
-from trackrat.utils.time import now_et
+from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger(__name__)
 
@@ -86,13 +86,15 @@ class TransitAnalyzer:
             # Calculate scheduled transit time
             scheduled_minutes = None
             if current_stop.scheduled_departure and next_stop.scheduled_arrival:
-                scheduled_delta = (
-                    next_stop.scheduled_arrival - current_stop.scheduled_departure
-                )
+                scheduled_delta = ensure_timezone_aware(
+                    next_stop.scheduled_arrival
+                ) - ensure_timezone_aware(current_stop.scheduled_departure)
                 scheduled_minutes = int(scheduled_delta.total_seconds() / 60)
 
             # Calculate actual transit time
-            actual_delta = next_stop.actual_arrival - current_stop.actual_departure
+            actual_delta = ensure_timezone_aware(
+                next_stop.actual_arrival
+            ) - ensure_timezone_aware(current_stop.actual_departure)
             actual_minutes = int(actual_delta.total_seconds() / 60)
 
             # Skip invalid times (negative or unreasonably long)
@@ -115,9 +117,11 @@ class TransitAnalyzer:
                 scheduled_minutes=scheduled_minutes or actual_minutes,
                 actual_minutes=actual_minutes,
                 delay_minutes=actual_minutes - (scheduled_minutes or actual_minutes),
-                departure_time=current_stop.actual_departure,
-                hour_of_day=current_stop.actual_departure.hour,
-                day_of_week=current_stop.actual_departure.weekday(),
+                departure_time=ensure_timezone_aware(current_stop.actual_departure),
+                hour_of_day=ensure_timezone_aware(current_stop.actual_departure).hour,
+                day_of_week=ensure_timezone_aware(
+                    current_stop.actual_departure
+                ).weekday(),
             )
 
             db.add(segment)
@@ -142,7 +146,8 @@ class TransitAnalyzer:
                 if stop.actual_departure and stop.scheduled_departure:
                     delay = int(
                         (
-                            stop.actual_departure - stop.scheduled_departure
+                            ensure_timezone_aware(stop.actual_departure)
+                            - ensure_timezone_aware(stop.scheduled_departure)
                         ).total_seconds()
                         / 60
                     )
@@ -158,9 +163,11 @@ class TransitAnalyzer:
                         ),  # Don't record negative delays as dwell
                         excess_dwell_minutes=delay,
                         is_origin=True,
-                        departure_time=stop.actual_departure,
-                        hour_of_day=stop.actual_departure.hour,
-                        day_of_week=stop.actual_departure.weekday(),
+                        departure_time=ensure_timezone_aware(stop.actual_departure),
+                        hour_of_day=ensure_timezone_aware(stop.actual_departure).hour,
+                        day_of_week=ensure_timezone_aware(
+                            stop.actual_departure
+                        ).weekday(),
                     )
                     db.add(dwell)
                     dwell_times_created += 1
@@ -170,7 +177,9 @@ class TransitAnalyzer:
             if not (stop.actual_arrival and stop.actual_departure):
                 continue
 
-            actual_dwell_delta = stop.actual_departure - stop.actual_arrival
+            actual_dwell_delta = ensure_timezone_aware(
+                stop.actual_departure
+            ) - ensure_timezone_aware(stop.actual_arrival)
             actual_dwell = int(actual_dwell_delta.total_seconds() / 60)
 
             # Skip invalid dwell times
@@ -186,9 +195,9 @@ class TransitAnalyzer:
             # Calculate scheduled dwell if available
             scheduled_dwell = None
             if stop.scheduled_arrival and stop.scheduled_departure:
-                scheduled_dwell_delta = (
-                    stop.scheduled_departure - stop.scheduled_arrival
-                )
+                scheduled_dwell_delta = ensure_timezone_aware(
+                    stop.scheduled_departure
+                ) - ensure_timezone_aware(stop.scheduled_arrival)
                 scheduled_dwell = int(scheduled_dwell_delta.total_seconds() / 60)
 
             excess_dwell = actual_dwell - (scheduled_dwell or 0)
@@ -202,10 +211,10 @@ class TransitAnalyzer:
                 actual_minutes=actual_dwell,
                 excess_dwell_minutes=excess_dwell,
                 is_terminal=(i == len(stops) - 1),
-                arrival_time=stop.actual_arrival,
-                departure_time=stop.actual_departure,
-                hour_of_day=stop.actual_departure.hour,
-                day_of_week=stop.actual_departure.weekday(),
+                arrival_time=ensure_timezone_aware(stop.actual_arrival),
+                departure_time=ensure_timezone_aware(stop.actual_departure),
+                hour_of_day=ensure_timezone_aware(stop.actual_departure).hour,
+                day_of_week=ensure_timezone_aware(stop.actual_departure).weekday(),
             )
             db.add(dwell)
             dwell_times_created += 1
@@ -234,19 +243,12 @@ class TransitAnalyzer:
                 # For actual departure comparison, handle timezone awareness
                 if stop.actual_departure:
                     current_time = now_et()
-                    # Make comparison timezone-aware
-                    if stop.actual_departure.tzinfo is None:
-                        # If actual_departure is naive, compare without timezone
-                        if stop.actual_departure <= current_time.replace(tzinfo=None):
-                            last_departed_station = stop.station_code
-                            stops_completed = i + 1
-                            continue
-                    else:
-                        # Both are timezone-aware
-                        if stop.actual_departure <= current_time:
-                            last_departed_station = stop.station_code
-                            stops_completed = i + 1
-                            continue
+                    # Ensure both datetimes are timezone-aware
+                    actual_dep = ensure_timezone_aware(stop.actual_departure)
+                    if actual_dep <= current_time:
+                        last_departed_station = stop.station_code
+                        stops_completed = i + 1
+                        continue
 
                 next_station = stop.station_code
                 break
@@ -263,7 +265,8 @@ class TransitAnalyzer:
         if stops and stops[0].actual_departure and stops[0].scheduled_departure:
             initial_delay_minutes = int(
                 (
-                    stops[0].actual_departure - stops[0].scheduled_departure
+                    ensure_timezone_aware(stops[0].actual_departure)
+                    - ensure_timezone_aware(stops[0].scheduled_departure)
                 ).total_seconds()
                 / 60
             )
@@ -275,7 +278,8 @@ class TransitAnalyzer:
             if last_stop.actual_arrival and last_stop.scheduled_arrival:
                 arrival_delay = int(
                     (
-                        last_stop.actual_arrival - last_stop.scheduled_arrival
+                        ensure_timezone_aware(last_stop.actual_arrival)
+                        - ensure_timezone_aware(last_stop.scheduled_arrival)
                     ).total_seconds()
                     / 60
                 )
@@ -283,7 +287,8 @@ class TransitAnalyzer:
             elif last_stop.updated_arrival and last_stop.scheduled_arrival:
                 arrival_delay = int(
                     (
-                        last_stop.updated_arrival - last_stop.scheduled_arrival
+                        ensure_timezone_aware(last_stop.updated_arrival)
+                        - ensure_timezone_aware(last_stop.scheduled_arrival)
                     ).total_seconds()
                     / 60
                 )
@@ -375,13 +380,15 @@ class TransitAnalyzer:
             # Calculate scheduled transit time
             scheduled_minutes = None
             if current_stop.scheduled_departure and next_stop.scheduled_arrival:
-                scheduled_delta = (
-                    next_stop.scheduled_arrival - current_stop.scheduled_departure
-                )
+                scheduled_delta = ensure_timezone_aware(
+                    next_stop.scheduled_arrival
+                ) - ensure_timezone_aware(current_stop.scheduled_departure)
                 scheduled_minutes = int(scheduled_delta.total_seconds() / 60)
 
             # Calculate actual transit time
-            actual_delta = next_stop.actual_arrival - current_stop.actual_departure
+            actual_delta = ensure_timezone_aware(
+                next_stop.actual_arrival
+            ) - ensure_timezone_aware(current_stop.actual_departure)
             actual_minutes = int(actual_delta.total_seconds() / 60)
 
             # Skip invalid times (negative or unreasonably long)
@@ -404,9 +411,11 @@ class TransitAnalyzer:
                 scheduled_minutes=scheduled_minutes or actual_minutes,
                 actual_minutes=actual_minutes,
                 delay_minutes=actual_minutes - (scheduled_minutes or actual_minutes),
-                departure_time=current_stop.actual_departure,
-                hour_of_day=current_stop.actual_departure.hour,
-                day_of_week=current_stop.actual_departure.weekday(),
+                departure_time=ensure_timezone_aware(current_stop.actual_departure),
+                hour_of_day=ensure_timezone_aware(current_stop.actual_departure).hour,
+                day_of_week=ensure_timezone_aware(
+                    current_stop.actual_departure
+                ).weekday(),
             )
 
             db.add(segment)
@@ -431,7 +440,8 @@ class TransitAnalyzer:
                 if stop.actual_departure and stop.scheduled_departure:
                     delay = int(
                         (
-                            stop.actual_departure - stop.scheduled_departure
+                            ensure_timezone_aware(stop.actual_departure)
+                            - ensure_timezone_aware(stop.scheduled_departure)
                         ).total_seconds()
                         / 60
                     )
@@ -447,9 +457,11 @@ class TransitAnalyzer:
                         ),  # Don't record negative delays as dwell
                         excess_dwell_minutes=delay,
                         is_origin=True,
-                        departure_time=stop.actual_departure,
-                        hour_of_day=stop.actual_departure.hour,
-                        day_of_week=stop.actual_departure.weekday(),
+                        departure_time=ensure_timezone_aware(stop.actual_departure),
+                        hour_of_day=ensure_timezone_aware(stop.actual_departure).hour,
+                        day_of_week=ensure_timezone_aware(
+                            stop.actual_departure
+                        ).weekday(),
                     )
                     db.add(dwell)
                     dwell_times_created += 1
@@ -459,7 +471,9 @@ class TransitAnalyzer:
             if not (stop.actual_arrival and stop.actual_departure):
                 continue
 
-            actual_dwell_delta = stop.actual_departure - stop.actual_arrival
+            actual_dwell_delta = ensure_timezone_aware(
+                stop.actual_departure
+            ) - ensure_timezone_aware(stop.actual_arrival)
             actual_dwell = int(actual_dwell_delta.total_seconds() / 60)
 
             # Skip invalid dwell times
@@ -475,9 +489,9 @@ class TransitAnalyzer:
             # Calculate scheduled dwell if available
             scheduled_dwell = None
             if stop.scheduled_arrival and stop.scheduled_departure:
-                scheduled_dwell_delta = (
-                    stop.scheduled_departure - stop.scheduled_arrival
-                )
+                scheduled_dwell_delta = ensure_timezone_aware(
+                    stop.scheduled_departure
+                ) - ensure_timezone_aware(stop.scheduled_arrival)
                 scheduled_dwell = int(scheduled_dwell_delta.total_seconds() / 60)
 
             excess_dwell = actual_dwell - (scheduled_dwell or 0)
@@ -491,10 +505,10 @@ class TransitAnalyzer:
                 actual_minutes=actual_dwell,
                 excess_dwell_minutes=excess_dwell,
                 is_terminal=(i == len(stops) - 1),
-                arrival_time=stop.actual_arrival,
-                departure_time=stop.actual_departure,
-                hour_of_day=stop.actual_departure.hour,
-                day_of_week=stop.actual_departure.weekday(),
+                arrival_time=ensure_timezone_aware(stop.actual_arrival),
+                departure_time=ensure_timezone_aware(stop.actual_departure),
+                hour_of_day=ensure_timezone_aware(stop.actual_departure).hour,
+                day_of_week=ensure_timezone_aware(stop.actual_departure).weekday(),
             )
             db.add(dwell)
             dwell_times_created += 1
@@ -523,19 +537,12 @@ class TransitAnalyzer:
                 # For actual departure comparison, handle timezone awareness
                 if stop.actual_departure:
                     current_time = now_et()
-                    # Make comparison timezone-aware
-                    if stop.actual_departure.tzinfo is None:
-                        # If actual_departure is naive, compare without timezone
-                        if stop.actual_departure <= current_time.replace(tzinfo=None):
-                            last_departed_station = stop.station_code
-                            stops_completed = i + 1
-                            continue
-                    else:
-                        # Both are timezone-aware
-                        if stop.actual_departure <= current_time:
-                            last_departed_station = stop.station_code
-                            stops_completed = i + 1
-                            continue
+                    # Ensure both datetimes are timezone-aware
+                    actual_dep = ensure_timezone_aware(stop.actual_departure)
+                    if actual_dep <= current_time:
+                        last_departed_station = stop.station_code
+                        stops_completed = i + 1
+                        continue
 
                 next_station = stop.station_code
                 break
@@ -552,7 +559,8 @@ class TransitAnalyzer:
         if stops and stops[0].actual_departure and stops[0].scheduled_departure:
             initial_delay_minutes = int(
                 (
-                    stops[0].actual_departure - stops[0].scheduled_departure
+                    ensure_timezone_aware(stops[0].actual_departure)
+                    - ensure_timezone_aware(stops[0].scheduled_departure)
                 ).total_seconds()
                 / 60
             )
@@ -564,7 +572,8 @@ class TransitAnalyzer:
             if last_stop.actual_arrival and last_stop.scheduled_arrival:
                 arrival_delay = int(
                     (
-                        last_stop.actual_arrival - last_stop.scheduled_arrival
+                        ensure_timezone_aware(last_stop.actual_arrival)
+                        - ensure_timezone_aware(last_stop.scheduled_arrival)
                     ).total_seconds()
                     / 60
                 )
@@ -572,7 +581,8 @@ class TransitAnalyzer:
             elif last_stop.updated_arrival and last_stop.scheduled_arrival:
                 arrival_delay = int(
                     (
-                        last_stop.updated_arrival - last_stop.scheduled_arrival
+                        ensure_timezone_aware(last_stop.updated_arrival)
+                        - ensure_timezone_aware(last_stop.scheduled_arrival)
                     ).total_seconds()
                     / 60
                 )
