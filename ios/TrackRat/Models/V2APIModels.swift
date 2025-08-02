@@ -474,12 +474,22 @@ struct SegmentTrainDetail: Codable, Identifiable {
     }
     
     // Computed properties for display
+    var transitTime: TimeInterval {
+        actualArrival.timeIntervalSince(actualDeparture)
+    }
+
+    var transitTimeDisplay: String {
+        let minutes = Int(transitTime / 60)
+        return "\(minutes) min transit"
+    }
+
     var delayCategoryDisplay: String {
         switch delayCategory {
         case "on_time": return "On Time"
         case "slight_delay": return "Slight Delay"
         case "delayed": return "Delayed"
         case "significantly_delayed": return "Significantly Delayed"
+        case "no": return ""
         default: return delayCategory.capitalized
         }
     }
@@ -595,8 +605,7 @@ extension CongestionSegment {
     }
     
     var averageTransitTimeText: String {
-        let minutes = Int(currentAverageMinutes.rounded())
-        return "\(minutes) min avg"
+        return ""
     }
     
     var sampleCountText: String {
@@ -604,12 +613,7 @@ extension CongestionSegment {
     }
     
     var delayText: String {
-        let delayMinutes = Int(averageDelayMinutes.rounded())
-        if delayMinutes > 0 {
-            return " (+\(delayMinutes)m delay in past \(sampleCount) trains)"
-        } else {
-            return " (on time in past \(sampleCount) trains)"
-        }
+        return ""
     }
     
     var congestionFactorDisplay: String {

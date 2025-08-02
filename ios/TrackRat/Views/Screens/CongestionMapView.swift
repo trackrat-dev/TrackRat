@@ -547,9 +547,7 @@ struct SegmentTrainDetailsView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                     
-                    Text("vs normal time")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+
                 }
             }
             .padding()
@@ -571,28 +569,16 @@ struct SegmentTrainDetailsView: View {
                 
                 Spacer()
                 
-                Text("\(summary.returnedTrains) of \(summary.totalTrains) trains")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+
             }
+
+
             
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: 16) {
-                SegmentStatCard(
-                    title: "On-Time Performance",
-                    value: "\(summary.onTimePercentage.formatted(.number.precision(.fractionLength(1))))%",
-                    color: summary.onTimePercentage >= 80 ? .green : summary.onTimePercentage >= 60 ? .orange : .red,
-                    icon: "clock.fill"
-                )
-                
-                SegmentStatCard(
-                    title: "Avg Congestion",
-                    value: "\(Int((summary.averageCongestionFactor - 1) * 100))%",
-                    color: summary.averageCongestionFactor < 1.05 ? .green : summary.averageCongestionFactor < 1.25 ? .yellow : .orange,
-                    icon: "gauge.medium"
-                )
+
                 
                 SegmentStatCard(
                     title: "Avg Departure Delay",
@@ -740,20 +726,20 @@ private struct SegmentTrainDetailCard: View {
                 Spacer()
                 
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(train.delayCategoryDisplay)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundColor(train.delayCategoryColor)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(train.delayCategoryColor.opacity(0.2))
-                        )
+                    if !train.delayCategoryDisplay.isEmpty {
+                        Text(train.delayCategoryDisplay)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(train.delayCategoryColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(train.delayCategoryColor.opacity(0.2))
+                            )
+                    }
                     
-                    Text(train.congestionFactorDisplay)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    Text(train.transitTimeDisplay)
                 }
             }
             

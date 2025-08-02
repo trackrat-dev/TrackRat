@@ -603,18 +603,7 @@ struct CongestionDataView: View {
                             .padding(.horizontal)
                             
                             // Header info
-                            if let lastUpdated = viewModel.lastUpdated {
-                                HStack {
-                                    Image(systemName: "clock")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                    Text("Updated: \(lastUpdated, style: .relative) ago")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                    Spacer()
-                                }
-                                .padding(.horizontal)
-                            }
+
                             
                             // Route Cards Section
                             VStack(alignment: .leading, spacing: 12) {
@@ -730,7 +719,7 @@ struct CongestionSegmentCard: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            Text("\(segment.fromStationDisplayName) → \(segment.toStationDisplayName): \(segment.averageTransitTimeText)\(segment.delayText)")
+            Text("\(segment.fromStationDisplayName) → \(segment.toStationDisplayName)\(segment.averageTransitTimeText)\(segment.delayText)")
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .foregroundColor(.white)
