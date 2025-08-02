@@ -2,9 +2,12 @@
 Route congestion analysis service - On-the-fly calculation from journey data.
 """
 
+from __future__ import annotations
+
 import statistics
 from collections import defaultdict
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,9 +48,9 @@ class SegmentCongestion:
 
 class CongestionAnalyzer:
     """Analyzes route congestion in real-time from journey data."""
-    
-    def __init__(self):
-        self._cache = {}
+
+    def __init__(self) -> None:
+        self._cache: dict[str, tuple[list[SegmentCongestion], datetime]] = {}
         self._cache_ttl = 300  # 5 minutes cache
 
     async def get_network_congestion(
@@ -68,7 +71,10 @@ class CongestionAnalyzer:
         if cache_key in self._cache:
             cached_data, timestamp = self._cache[cache_key]
             if (now_et() - timestamp).total_seconds() < self._cache_ttl:
-                logger.debug("returning_cached_congestion_data", cache_age_seconds=(now_et() - timestamp).total_seconds())
+                logger.debug(
+                    "returning_cached_congestion_data",
+                    cache_age_seconds=(now_et() - timestamp).total_seconds(),
+                )
                 return cached_data
 
         cutoff_time = now_et() - timedelta(hours=time_window_hours)
@@ -79,7 +85,7 @@ class CongestionAnalyzer:
             .where(
                 and_(
                     TrainJourney.last_updated_at >= cutoff_time,
-                    TrainJourney.has_complete_journey == True
+                    # TrainJourney.has_complete_journey == True,
                 )
             )
             .options(selectinload(TrainJourney.stops))
@@ -92,12 +98,12 @@ class CongestionAnalyzer:
             "queried_journeys_for_congestion",
             journey_count=len(journeys),
             time_window_hours=time_window_hours,
-            cutoff_time=cutoff_time.isoformat()
+            cutoff_time=cutoff_time.isoformat(),
         )
 
         # Calculate segments from journey data
         segment_data = self._calculate_segments_from_journeys(journeys, cutoff_time)
-        
+
         # Analyze congestion for each segment
         congestion_results = self._analyze_segment_congestion(segment_data)
 
@@ -116,9 +122,11 @@ class CongestionAnalyzer:
 
     def _calculate_segments_from_journeys(
         self, journeys: list[TrainJourney], cutoff_time: datetime
-    ) -> dict[tuple[str, str, str], list[dict]]:
+    ) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
         """Extract segment data from journeys."""
-        segment_groups = defaultdict(list)
+        segment_groups: defaultdict[tuple[str, str, str], list[dict[str, Any]]] = (
+            defaultdict(list)
+        )
 
         for journey in journeys:
             if not journey.stops:
@@ -133,18 +141,24 @@ class CongestionAnalyzer:
                 to_stop = sorted_stops[i + 1]
 
                 # Skip if missing critical data
-                if not all([
-                    from_stop.station_code,
-                    to_stop.station_code,
-                    from_stop.actual_departure or from_stop.scheduled_departure,
-                    to_stop.actual_arrival or to_stop.scheduled_arrival
-                ]):
+                if not all(
+                    [
+                        from_stop.station_code,
+                        to_stop.station_code,
+                        from_stop.actual_departure or from_stop.scheduled_departure,
+                        to_stop.actual_arrival or to_stop.scheduled_arrival,
+                    ]
+                ):
                     continue
 
                 # Use actual times when available, fall back to scheduled
-                departure_time = from_stop.actual_departure or from_stop.scheduled_departure
+                departure_time = (
+                    from_stop.actual_departure or from_stop.scheduled_departure
+                )
                 arrival_time = to_stop.actual_arrival or to_stop.scheduled_arrival
 
+                if not departure_time or not arrival_time:
+                    continue
                 # Ensure timezone awareness
                 departure_time = ensure_timezone_aware(departure_time)
                 arrival_time = ensure_timezone_aware(arrival_time)
@@ -165,20 +179,30 @@ class CongestionAnalyzer:
                     sched_arr = ensure_timezone_aware(to_stop.scheduled_arrival)
                     scheduled_minutes = (sched_arr - sched_dep).total_seconds() / 60
 
+                assert from_stop.station_code
+                assert to_stop.station_code
+                assert journey.data_source
+
                 # Group by segment key
-                key = (from_stop.station_code, to_stop.station_code, journey.data_source)
-                segment_groups[key].append({
-                    'actual_minutes': actual_minutes,
-                    'scheduled_minutes': scheduled_minutes,
-                    'departure_time': departure_time,
-                    'journey_id': journey.id,
-                    'train_id': journey.train_id
-                })
+                key = (
+                    from_stop.station_code,
+                    to_stop.station_code,
+                    journey.data_source,
+                )
+                segment_groups[key].append(
+                    {
+                        "actual_minutes": actual_minutes,
+                        "scheduled_minutes": scheduled_minutes,
+                        "departure_time": departure_time,
+                        "journey_id": journey.id,
+                        "train_id": journey.train_id,
+                    }
+                )
 
         return segment_groups
 
     def _analyze_segment_congestion(
-        self, segment_groups: dict[tuple[str, str, str], list[dict]]
+        self, segment_groups: dict[tuple[str, str, str], list[dict[str, Any]]]
     ) -> list[SegmentCongestion]:
         """Analyze congestion for each segment."""
         congestion_data = []
@@ -189,24 +213,31 @@ class CongestionAnalyzer:
                 continue
 
             # Calculate baseline (scheduled average or median of actuals)
-            scheduled_times = [s['scheduled_minutes'] for s in segments 
-                              if s['scheduled_minutes'] is not None]
+            scheduled_times = [
+                s["scheduled_minutes"]
+                for s in segments
+                if s["scheduled_minutes"] is not None
+            ]
 
             if scheduled_times:
                 baseline_minutes = statistics.mean(scheduled_times)
             else:
                 # Use median of actual times as baseline
-                actual_times = [s['actual_minutes'] for s in segments]
+                actual_times = [s["actual_minutes"] for s in segments]
                 baseline_minutes = statistics.median(actual_times)
 
             # Calculate current average (recent 50 samples, sorted by time)
-            recent_segments = sorted(segments, 
-                                   key=lambda x: x['departure_time'], 
-                                   reverse=True)[:50]
-            current_avg = statistics.mean([s['actual_minutes'] for s in recent_segments])
+            recent_segments = sorted(
+                segments, key=lambda x: x["departure_time"], reverse=True
+            )[:50]
+            current_avg = statistics.mean(
+                [s["actual_minutes"] for s in recent_segments]
+            )
 
             # Calculate congestion factor
-            congestion_factor = current_avg / baseline_minutes if baseline_minutes > 0 else 1.0
+            congestion_factor = (
+                current_avg / baseline_minutes if baseline_minutes > 0 else 1.0
+            )
 
             # Calculate average delay
             average_delay_minutes = current_avg - baseline_minutes

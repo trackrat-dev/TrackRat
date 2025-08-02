@@ -30,7 +30,7 @@ STATION_NAMES: dict[str, str] = {
     "23": "New York Penn Track 23",
     "AH": "Asbury Park",
     "AM": "Aberdeen-Matawan",
-    "AN": "Annandale",  
+    "AN": "Annandale",
     "AP": "Allenhurst",
     "AS": "Atlantic Street",
     "AV": "Avenel",
@@ -340,11 +340,11 @@ STATION_COORDINATES = {
     "BW": {"lat": 40.1785, "lon": -74.0218},  # Belmar
     "BK": {"lat": 40.2037, "lon": -74.0187},  # Bradley Beach
     # Additional stations found through research - missing coordinates
-    "BH": {"lat": 40.0723, "lon": -74.0412},  # Bay Head
     "CH": {"lat": 39.9284, "lon": -75.0417},  # Cherry Hill
-    "DV": {"lat": 40.8834, "lon": -74.5559},  # Dover
-    "DO": {"lat": 40.8834, "lon": -74.5559},  # Dover (alternative code)
-    "TB": {"lat": 40.6156, "lon": -74.6789},  # Mount Tabor (corrected coordinate from existing)
+    "TB": {
+        "lat": 40.6156,
+        "lon": -74.6789,
+    },  # Mount Tabor (corrected coordinate from existing)
     "IF": {"lat": 40.6890, "lon": -74.0434},  # Irvington
     "RN": {"lat": 40.7580, "lon": -74.1644},  # Roselle
     "PS": {"lat": 40.6533, "lon": -74.2417},  # Perth Amboy South
@@ -378,7 +378,7 @@ STATION_COORDINATES = {
     "WF": {"lat": 40.7614, "lon": -74.0776},  # Westfield (similar to SE)
     "GW": {"lat": 40.7348, "lon": -74.1644},  # Gateway (similar to NP)
     "XC": {"lat": 40.7614, "lon": -74.0776},  # Cross (similar to SE)
-    "OD": {"lat": 40.6156, "lon": -74.6789},  # Odd (similar to TB) 
+    "OD": {"lat": 40.6156, "lon": -74.6789},  # Odd (similar to TB)
     "EN": {"lat": 40.7058, "lon": -74.1608},  # End (similar to NA)
     "RG": {"lat": 40.6890, "lon": -74.0434},  # Ridge (similar to IF)
     "NH": {"lat": 40.7348, "lon": -74.1644},  # North Hub (similar to NP)

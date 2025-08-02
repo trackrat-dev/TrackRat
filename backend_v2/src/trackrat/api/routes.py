@@ -8,13 +8,13 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, select, func, distinct
+from sqlalchemy import and_, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
-from trackrat.config.stations import get_station_coordinates, get_station_name
+from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_db
 from trackrat.models.api import (
     AggregateStats,
@@ -29,7 +29,7 @@ from trackrat.models.api import (
 from trackrat.models.api import (
     SegmentCongestion as SegmentCongestionModel,
 )
-from trackrat.models.database import TrainJourney, JourneyStop
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion import CongestionAnalyzer
 from trackrat.utils.time import ensure_timezone_aware, now_et
 
@@ -172,7 +172,7 @@ def _calculate_route_stats(
     on_time_count = 0
     cancelled_count = 0
     delay_categories = {"on_time": 0, "slight": 0, "significant": 0, "major": 0}
-    track_usage_counts = {}
+    track_usage_counts: dict[str, int] = {}
 
     for journey in journeys:
         # Get last stop for delay calculation
@@ -217,7 +217,7 @@ def _calculate_route_stats(
     non_cancelled_journeys = total_journeys - cancelled_count
 
     # Delay breakdown percentages
-    delay_breakdown = {}
+    delay_breakdown: dict[str, int] = {}
     if non_cancelled_journeys > 0:
         delay_breakdown = {
             "on_time": round(
@@ -233,7 +233,7 @@ def _calculate_route_stats(
         delay_breakdown = {"on_time": 0, "slight": 0, "significant": 0, "major": 0}
 
     # Track usage percentages
-    track_usage = {}
+    track_usage: dict[str, int] = {}
     total_track_assignments = sum(track_usage_counts.values())
     if total_track_assignments > 0:
         track_usage = {
@@ -310,7 +310,10 @@ async def get_route_congestion(
     )
 
 
-@router.get("/segments/{from_station}/{to_station}/trains", response_model=SegmentTrainDetailsResponse)
+@router.get(
+    "/segments/{from_station}/{to_station}/trains",
+    response_model=SegmentTrainDetailsResponse,
+)
 @handle_errors
 async def get_segment_train_details(
     from_station: str,
@@ -327,17 +330,17 @@ async def get_segment_train_details(
     db: AsyncSession = Depends(get_db),
 ) -> SegmentTrainDetailsResponse:
     """Get detailed train records for a specific route segment using on-the-fly calculation."""
-    
+
     # Default time window to 3 hours ago if not specified
     if not end_time:
         end_time = now_et()
     if not start_time:
         start_time = end_time - timedelta(hours=3)
-    
+
     # Ensure timezone awareness
     start_time = ensure_timezone_aware(start_time)
     end_time = ensure_timezone_aware(end_time)
-    
+
     logger.info(
         "get_segment_train_details_request",
         from_station=from_station,
@@ -348,7 +351,7 @@ async def get_segment_train_details(
         limit=limit,
         status=status,
     )
-    
+
     # Query journeys that include both stations and are within time window
     stmt = (
         select(TrainJourney)
@@ -356,14 +359,14 @@ async def get_segment_train_details(
             JourneyStop,
             and_(
                 JourneyStop.journey_id == TrainJourney.id,
-                JourneyStop.station_code.in_([from_station, to_station])
-            )
+                JourneyStop.station_code.in_([from_station, to_station]),
+            ),
         )
         .where(
             and_(
                 TrainJourney.scheduled_departure >= start_time,
                 TrainJourney.scheduled_departure <= end_time,
-                #TrainJourney.has_complete_journey == True,
+                # TrainJourney.has_complete_journey == True,
             )
         )
         .group_by(TrainJourney.id)
@@ -371,34 +374,36 @@ async def get_segment_train_details(
         .options(selectinload(TrainJourney.stops))
         .order_by(TrainJourney.last_updated_at.desc())
     )
-    
+
     # Apply data source filter if specified
     if data_source:
         stmt = stmt.where(TrainJourney.data_source == data_source)
-    
+
     result = await db.execute(stmt)
     journeys = list(result.scalars().all())
-    
+
     # Process journeys to extract segment details
     train_details = []
     for journey in journeys:
-        segment_detail = await _extract_segment_detail(journey, from_station, to_station)
-        
+        segment_detail = await _extract_segment_detail(
+            journey, from_station, to_station
+        )
+
         if segment_detail:
             # Apply status filter if specified
             if status:
                 if not _matches_status_filter(segment_detail, status):
                     continue
-            
+
             train_details.append(segment_detail)
-            
+
             # Stop when we reach the limit
             if len(train_details) >= limit:
                 break
-    
+
     # Calculate summary statistics
     summary = _calculate_segment_summary(train_details, len(journeys))
-    
+
     return SegmentTrainDetailsResponse(
         segment={
             "from_station": from_station,
@@ -412,30 +417,35 @@ async def get_segment_train_details(
 
 
 async def _extract_segment_detail(
-    journey: TrainJourney, 
-    from_station: str, 
-    to_station: str
+    journey: TrainJourney, from_station: str, to_station: str
 ) -> SegmentTrainDetail | None:
     """Extract segment details from a journey."""
-    
+
     # Find the from and to stops
     from_stop = None
     to_stop = None
-    
+
     for stop in journey.stops:
         if stop.station_code == from_station:
             from_stop = stop
         elif stop.station_code == to_station:
             to_stop = stop
-    
+
     # Verify stops exist and are in correct order
     if not from_stop or not to_stop:
         return None
-    
+
     if (from_stop.stop_sequence or 0) >= (to_stop.stop_sequence or 0):
         return None
-    
+
     # Calculate times and delays
+    if (
+        not from_stop.scheduled_departure
+        or not (from_stop.actual_departure or from_stop.scheduled_departure)
+        or not to_stop.scheduled_arrival
+        or not (to_stop.actual_arrival or to_stop.scheduled_arrival)
+    ):
+        return None
     scheduled_departure = ensure_timezone_aware(from_stop.scheduled_departure)
     actual_departure = ensure_timezone_aware(
         from_stop.actual_departure or from_stop.scheduled_departure
@@ -444,21 +454,20 @@ async def _extract_segment_detail(
     actual_arrival = ensure_timezone_aware(
         to_stop.actual_arrival or to_stop.scheduled_arrival
     )
-    
+
     # Calculate delays
     departure_delay = (actual_departure - scheduled_departure).total_seconds() / 60
     arrival_delay = (actual_arrival - scheduled_arrival).total_seconds() / 60
-    
+
     # Calculate transit times
     scheduled_minutes = (scheduled_arrival - scheduled_departure).total_seconds() / 60
     actual_minutes = (actual_arrival - actual_departure).total_seconds() / 60
-    
+
     # Calculate congestion factor
     congestion_factor = (
-        actual_minutes / scheduled_minutes 
-        if scheduled_minutes > 0 else 1.0
+        actual_minutes / scheduled_minutes if scheduled_minutes > 0 else 1.0
     )
-    
+
     # Determine delay category
     if arrival_delay <= 2:
         delay_category = "on_time"
@@ -468,7 +477,7 @@ async def _extract_segment_detail(
         delay_category = "delayed"
     else:
         delay_category = "significantly_delayed"
-    
+
     return SegmentTrainDetail(
         train_id=journey.train_id,
         line=journey.line_name or journey.line_code or "Unknown",
@@ -495,7 +504,9 @@ def _matches_status_filter(detail: SegmentTrainDetail, status: str) -> bool:
     return True
 
 
-def _calculate_segment_summary(train_details: list[SegmentTrainDetail], total_journeys: int) -> dict:
+def _calculate_segment_summary(
+    train_details: list[SegmentTrainDetail], total_journeys: int
+) -> dict[str, Any]:
     """Calculate summary statistics for segment."""
     if not train_details:
         return {
@@ -506,13 +517,19 @@ def _calculate_segment_summary(train_details: list[SegmentTrainDetail], total_jo
             "average_congestion_factor": 1.0,
             "on_time_percentage": 0.0,
         }
-    
-    avg_departure_delay = sum(t.departure_delay_minutes for t in train_details) / len(train_details)
-    avg_arrival_delay = sum(t.arrival_delay_minutes for t in train_details) / len(train_details)
-    avg_congestion_factor = sum(t.congestion_factor for t in train_details) / len(train_details)
+
+    avg_departure_delay = sum(t.departure_delay_minutes for t in train_details) / len(
+        train_details
+    )
+    avg_arrival_delay = sum(t.arrival_delay_minutes for t in train_details) / len(
+        train_details
+    )
+    avg_congestion_factor = sum(t.congestion_factor for t in train_details) / len(
+        train_details
+    )
     on_time_count = sum(1 for t in train_details if t.delay_category == "on_time")
     on_time_percentage = (on_time_count / len(train_details)) * 100
-    
+
     return {
         "total_trains": total_journeys,
         "returned_trains": len(train_details),

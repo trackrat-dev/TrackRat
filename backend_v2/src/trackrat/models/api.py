@@ -442,7 +442,9 @@ class SegmentTrainDetail(BaseModel):
     departure_delay_minutes: int
     arrival_delay_minutes: int
     congestion_factor: float = Field(..., ge=0.0)
-    delay_category: Literal["on_time", "slight_delay", "delayed", "significantly_delayed"]
+    delay_category: Literal[
+        "on_time", "slight_delay", "delayed", "significantly_delayed"
+    ]
     data_source: str
 
 

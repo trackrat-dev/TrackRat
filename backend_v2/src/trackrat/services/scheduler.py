@@ -1315,7 +1315,7 @@ class SchedulerService:
                     )
 
                     # Transit time analysis is now done on-the-fly in API endpoints
-                    
+
                     # Commit the journey updates with retry logic
                     for retry in range(max_retries):
                         try:
