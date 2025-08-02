@@ -714,16 +714,19 @@ class JourneyCollector(BaseJourneyCollector):
                         / 60,
                     )
             # Check for terminal station arrival inference (stations that have arrivals but no actual times)
-            elif (stop.scheduled_arrival and 
-                  not stop.actual_arrival and 
-                  sequence == len(stops_data) - 1):  # This is the last stop (terminal)
+            elif (
+                stop.scheduled_arrival
+                and not stop.actual_arrival
+                and sequence == len(stops_data) - 1
+            ):  # This is the last stop (terminal)
                 # Ensure scheduled_arrival is timezone-aware for comparison
                 scheduled_arr = stop.scheduled_arrival
                 if scheduled_arr.tzinfo is None:
                     # If naive, assume it's in UTC and convert to Eastern
                     from pytz import UTC
+
                     scheduled_arr = UTC.localize(scheduled_arr).astimezone(ET)
-                
+
                 current_time = now_et()
                 if current_time > scheduled_arr + timedelta(minutes=30):
                     # Infer arrival after 30 minutes past scheduled time for terminal station
@@ -735,7 +738,8 @@ class JourneyCollector(BaseJourneyCollector):
                         station_code=stop.station_code,
                         scheduled_arrival=scheduled_arr.isoformat(),
                         current_time=current_time.isoformat(),
-                        minutes_past=(current_time - scheduled_arr).total_seconds() / 60,
+                        minutes_past=(current_time - scheduled_arr).total_seconds()
+                        / 60,
                     )
             else:
                 stop.has_departed_station = False

@@ -132,7 +132,6 @@ STATION_COORDINATES = {
     "JA": {"lat": 40.4769, "lon": -74.4674},  # Jersey Avenue
     "HB": {"lat": 40.5544, "lon": -74.4093},  # Highland Beach
     "RA": {"lat": 40.7418, "lon": -74.2656},  # Raritan
-    
     # Additional NJT stations for complete map coverage
     "ED": {"lat": 40.5177, "lon": -74.4075},  # Edison
     "MU": {"lat": 40.5378, "lon": -74.3562},  # Metuchen
@@ -141,7 +140,6 @@ STATION_COORDINATES = {
     "EL": {"lat": 40.6640, "lon": -74.2107},  # Elizabeth
     "NZ": {"lat": 40.6968, "lon": -74.1733},  # North Elizabeth
     "EZ": {"lat": 40.7121, "lon": -74.1589},  # East Newark
-    
     # More NJT stations from congestion data
     "RB": {"lat": 40.3483, "lon": -74.0745},  # Red Bank
     "AV": {"lat": 40.5781, "lon": -74.2842},  # Avenel
@@ -166,7 +164,6 @@ STATION_COORDINATES = {
     "SQ": {"lat": 40.5245, "lon": -74.4845},  # Spring Lake
     "PP": {"lat": 40.5356, "lon": -74.4956},  # Point Pleasant
     "BH": {"lat": 40.5467, "lon": -74.5067},  # Bay Head
-    
     # Additional stations from congestion API data
     "CH": {"lat": 40.6247, "lon": -74.7239},  # Chester
     "DV": {"lat": 40.6156, "lon": -74.6789},  # Dover
