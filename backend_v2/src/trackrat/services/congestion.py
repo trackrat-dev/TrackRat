@@ -24,24 +24,20 @@ class SegmentCongestion:
         data_source: str,
         congestion_factor: float,
         congestion_level: str,
-        color: str,
         avg_transit_minutes: float,
         baseline_minutes: float,
         sample_count: int,
-        last_updated: datetime,
+        average_delay_minutes: float,
     ):
         self.from_station = from_station
         self.to_station = to_station
         self.data_source = data_source
         self.congestion_factor = congestion_factor
         self.congestion_level = congestion_level
-        self.color = color
         self.avg_transit_minutes = avg_transit_minutes
         self.baseline_minutes = baseline_minutes
         self.sample_count = sample_count
-        self.last_updated = last_updated
-        self.from_station_coords: dict[str, float] | None = None
-        self.to_station_coords: dict[str, float] | None = None
+        self.average_delay_minutes = average_delay_minutes
 
 
 class CongestionAnalyzer:
@@ -131,20 +127,19 @@ class CongestionAnalyzer:
             congestion_factor = (
                 current_avg / baseline_minutes if baseline_minutes > 0 else 1.0
             )
+            
+            # Calculate average delay
+            average_delay_minutes = current_avg - baseline_minutes
 
-            # Determine congestion level and color
+            # Determine congestion level
             if congestion_factor <= 1.1:
                 level = "normal"
-                color = "#00ff00"  # Green
             elif congestion_factor <= 1.25:
                 level = "moderate"
-                color = "#ffff00"  # Yellow
             elif congestion_factor <= 1.5:
                 level = "heavy"
-                color = "#ff8800"  # Orange
             else:
                 level = "severe"
-                color = "#ff0000"  # Red
 
             congestion_data.append(
                 SegmentCongestion(
@@ -153,15 +148,10 @@ class CongestionAnalyzer:
                     data_source=data_source,
                     congestion_factor=congestion_factor,
                     congestion_level=level,
-                    color=color,
                     avg_transit_minutes=current_avg,
                     baseline_minutes=baseline_minutes,
                     sample_count=len(recent_times),
-                    last_updated=(
-                        ensure_timezone_aware(segments[0].departure_time)
-                        if segments[0].departure_time
-                        else now_et()
-                    ),
+                    average_delay_minutes=average_delay_minutes,
                 )
             )
 

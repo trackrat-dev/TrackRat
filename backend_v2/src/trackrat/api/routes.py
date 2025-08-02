@@ -4,7 +4,7 @@ Route API endpoints for TrackRat V2.
 Provides route-based historical analysis independent of specific trains.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
-from trackrat.config.stations import get_station_coordinates
+from trackrat.config.stations import get_station_coordinates, get_station_name
 from trackrat.db.engine import get_db
 from trackrat.models.api import (
     AggregateStats,
@@ -23,13 +23,15 @@ from trackrat.models.api import (
     HighlightedTrain,
     HistoricalRouteInfo,
     RouteHistoryResponse,
+    SegmentTrainDetail,
+    SegmentTrainDetailsResponse,
 )
 from trackrat.models.api import (
     SegmentCongestion as SegmentCongestionModel,
 )
-from trackrat.models.database import TrainJourney
+from trackrat.models.database import SegmentTransitTime, TrainJourney
 from trackrat.services.congestion import CongestionAnalyzer
-from trackrat.utils.time import now_et
+from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger()
 
@@ -272,22 +274,21 @@ async def get_route_congestion(
     if data_source:
         congestion_data = [c for c in congestion_data if c.data_source == data_source]
 
-    # Convert to API models and add station coordinates
+    # Convert to API models and add station names
     segments = []
     for segment in congestion_data:
         segment_model = SegmentCongestionModel(
             from_station=segment.from_station,
             to_station=segment.to_station,
+            from_station_name=get_station_name(segment.from_station),
+            to_station_name=get_station_name(segment.to_station),
             data_source=segment.data_source,
-            congestion_factor=segment.congestion_factor,
             congestion_level=segment.congestion_level,
-            color=segment.color,
-            avg_transit_minutes=segment.avg_transit_minutes,
-            baseline_minutes=segment.baseline_minutes,
+            congestion_factor=segment.congestion_factor,
+            average_delay_minutes=segment.average_delay_minutes,
             sample_count=segment.sample_count,
-            last_updated=segment.last_updated,
-            from_station_coords=get_station_coordinates(segment.from_station),
-            to_station_coords=get_station_coordinates(segment.to_station),
+            baseline_minutes=segment.baseline_minutes,
+            current_average_minutes=segment.avg_transit_minutes,
         )
         segments.append(segment_model)
 
@@ -305,5 +306,180 @@ async def get_route_congestion(
                 "heavy": len([s for s in segments if s.congestion_level == "heavy"]),
                 "severe": len([s for s in segments if s.congestion_level == "severe"]),
             },
+        },
+    )
+
+
+@router.get("/segments/{from_station}/{to_station}/trains", response_model=SegmentTrainDetailsResponse)
+@handle_errors
+async def get_segment_train_details(
+    from_station: str,
+    to_station: str,
+    data_source: str | None = Query(None, description="Filter by NJT or AMTRAK"),
+    start_time: datetime | None = Query(None, description="Start time (ISO format)"),
+    end_time: datetime | None = Query(None, description="End time (ISO format)"),
+    limit: int = Query(50, ge=1, le=200, description="Maximum trains to return"),
+    status: str | None = Query(
+        None,
+        description="Filter by delay status: on_time, delayed, significantly_delayed",
+        regex="^(on_time|delayed|significantly_delayed)$",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> SegmentTrainDetailsResponse:
+    """Get detailed train records for a specific route segment."""
+    
+    # Default time window to 3 hours ago if not specified
+    if not end_time:
+        end_time = now_et()
+    if not start_time:
+        start_time = end_time - timedelta(hours=3)
+    
+    # Ensure timezone awareness
+    start_time = ensure_timezone_aware(start_time)
+    end_time = ensure_timezone_aware(end_time)
+    
+    logger.info(
+        "get_segment_train_details_request",
+        from_station=from_station,
+        to_station=to_station,
+        data_source=data_source,
+        start_time=start_time.isoformat(),
+        end_time=end_time.isoformat(),
+        limit=limit,
+        status=status,
+    )
+    
+    # Query segment transit times
+    stmt = (
+        select(SegmentTransitTime)
+        .where(
+            and_(
+                SegmentTransitTime.from_station_code == from_station,
+                SegmentTransitTime.to_station_code == to_station,
+                SegmentTransitTime.departure_time >= start_time,
+                SegmentTransitTime.departure_time <= end_time,
+            )
+        )
+        .order_by(SegmentTransitTime.departure_time.desc())
+    )
+    
+    # Apply data source filter if specified
+    if data_source:
+        stmt = stmt.where(SegmentTransitTime.data_source == data_source)
+    
+    result = await db.execute(stmt)
+    segments = list(result.scalars().all())
+    
+    # Get journey IDs to fetch train details
+    journey_ids = [s.journey_id for s in segments[:limit]]
+    
+    # Fetch train journey details
+    train_details = []
+    if journey_ids:
+        journey_stmt = (
+            select(TrainJourney)
+            .where(TrainJourney.id.in_(journey_ids))
+            .options(selectinload(TrainJourney.stops))
+        )
+        journey_result = await db.execute(journey_stmt)
+        journeys = {j.id: j for j in journey_result.scalars().all()}
+        
+        for segment in segments[:limit]:
+            journey = journeys.get(segment.journey_id)
+            if not journey:
+                continue
+                
+            # Calculate departure and arrival delays
+            departure_delay = segment.delay_minutes if segment.delay_minutes is not None else 0
+            
+            # Calculate arrival delay from segment data
+            # arrival_delay = departure_delay + (actual_minutes - scheduled_minutes)
+            arrival_delay = departure_delay
+            if segment.scheduled_minutes and segment.actual_minutes:
+                arrival_delay = departure_delay + (segment.actual_minutes - segment.scheduled_minutes)
+            
+            # Calculate congestion factor
+            congestion_factor = 1.0
+            if segment.scheduled_minutes and segment.scheduled_minutes > 0:
+                congestion_factor = segment.actual_minutes / segment.scheduled_minutes
+            
+            # Determine delay category based on arrival delay
+            if arrival_delay <= 2:
+                delay_category = "on_time"
+            elif arrival_delay <= 10:
+                delay_category = "slight_delay"
+            elif arrival_delay <= 30:
+                delay_category = "delayed"
+            else:
+                delay_category = "significantly_delayed"
+            
+            # Apply status filter if specified
+            if status:
+                if status == "on_time" and delay_category != "on_time":
+                    continue
+                elif status == "delayed" and delay_category not in ["delayed", "significantly_delayed"]:
+                    continue
+                elif status == "significantly_delayed" and delay_category != "significantly_delayed":
+                    continue
+            
+            # Find the actual departure and arrival times from journey stops
+            from_stop = None
+            to_stop = None
+            for stop in journey.stops:
+                if stop.station_code == from_station:
+                    from_stop = stop
+                elif stop.station_code == to_station:
+                    to_stop = stop
+            
+            if from_stop and to_stop:
+                train_detail = SegmentTrainDetail(
+                    train_id=journey.train_id,
+                    line=journey.line_name or journey.line_code or "Unknown",
+                    scheduled_departure=ensure_timezone_aware(from_stop.scheduled_departure),
+                    actual_departure=ensure_timezone_aware(segment.departure_time),
+                    scheduled_arrival=ensure_timezone_aware(to_stop.scheduled_arrival),
+                    actual_arrival=ensure_timezone_aware(
+                        to_stop.actual_arrival or to_stop.scheduled_arrival
+                    ),
+                    departure_delay_minutes=departure_delay,
+                    arrival_delay_minutes=arrival_delay,
+                    congestion_factor=congestion_factor,
+                    delay_category=delay_category,
+                    data_source=journey.data_source,
+                )
+                train_details.append(train_detail)
+    
+    # Calculate summary statistics
+    total_trains = len(segments)
+    returned_trains = len(train_details)
+    
+    avg_departure_delay = 0.0
+    avg_arrival_delay = 0.0
+    avg_congestion_factor = 1.0
+    on_time_count = 0
+    
+    if train_details:
+        avg_departure_delay = sum(t.departure_delay_minutes for t in train_details) / len(train_details)
+        avg_arrival_delay = sum(t.arrival_delay_minutes for t in train_details) / len(train_details)
+        avg_congestion_factor = sum(t.congestion_factor for t in train_details) / len(train_details)
+        on_time_count = sum(1 for t in train_details if t.delay_category == "on_time")
+    
+    on_time_percentage = (on_time_count / returned_trains * 100) if returned_trains > 0 else 0.0
+    
+    return SegmentTrainDetailsResponse(
+        segment={
+            "from_station": from_station,
+            "to_station": to_station,
+            "from_station_name": get_station_name(from_station),
+            "to_station_name": get_station_name(to_station),
+        },
+        trains=train_details,
+        summary={
+            "total_trains": total_trains,
+            "returned_trains": returned_trains,
+            "average_departure_delay": round(avg_departure_delay, 1),
+            "average_arrival_delay": round(avg_arrival_delay, 1),
+            "average_congestion_factor": round(avg_congestion_factor, 2),
+            "on_time_percentage": round(on_time_percentage, 1),
         },
     )

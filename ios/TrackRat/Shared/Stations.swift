@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 struct Stations {
     static let all: [String] = [
@@ -249,6 +250,27 @@ struct Stations {
         "Roanoke": "ROA"
     ]
     
+    // Station coordinates for mapping
+    static let stationCoordinates: [String: CLLocationCoordinate2D] = [
+        // Major NJ Transit/Amtrak stations
+        "NY": CLLocationCoordinate2D(latitude: 40.7505, longitude: -73.9934),   // New York Penn Station
+        "NP": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Newark Penn Station
+        "MP": CLLocationCoordinate2D(latitude: 40.5459, longitude: -74.3240),   // Metropark
+        "PJ": CLLocationCoordinate2D(latitude: 40.3180, longitude: -74.6754),   // Princeton Junction
+        "TR": CLLocationCoordinate2D(latitude: 40.2206, longitude: -74.7565),   // Trenton
+        "PH": CLLocationCoordinate2D(latitude: 39.9566, longitude: -75.1820),   // Philadelphia
+        "WI": CLLocationCoordinate2D(latitude: 39.7370, longitude: -75.5516),   // Wilmington
+        "BL": CLLocationCoordinate2D(latitude: 39.3078, longitude: -76.6155),   // Baltimore
+        "WS": CLLocationCoordinate2D(latitude: 38.8977, longitude: -77.0065),   // Washington Union Station
+        "BOS": CLLocationCoordinate2D(latitude: 42.3522, longitude: -71.0552),  // Boston South Station
+        "NB": CLLocationCoordinate2D(latitude: 40.4969, longitude: -74.4518),   // New Brunswick
+        "SE": CLLocationCoordinate2D(latitude: 40.7894, longitude: -74.0565),   // Secaucus
+        "EZ": CLLocationCoordinate2D(latitude: 40.6647, longitude: -74.2107),   // Elizabeth
+        "RH": CLLocationCoordinate2D(latitude: 40.6084, longitude: -74.2765),   // Rahway
+        "LI": CLLocationCoordinate2D(latitude: 40.6270, longitude: -74.2448),   // Linden
+        "HL": CLLocationCoordinate2D(latitude: 40.2206, longitude: -74.6730),   // Hamilton
+    ]
+    
     // Supported departure stations
     static let departureStations: [(name: String, code: String)] = [
         ("New York Penn Station", "NY"),
@@ -344,5 +366,9 @@ struct Stations {
         }
         
         return nil
+    }
+    
+    static func getCoordinates(for code: String) -> CLLocationCoordinate2D? {
+        return stationCoordinates[code]
     }
 }

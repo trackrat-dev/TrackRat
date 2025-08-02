@@ -407,16 +407,15 @@ class SegmentCongestion(BaseModel):
 
     from_station: str
     to_station: str
+    from_station_name: str
+    to_station_name: str
     data_source: str
-    congestion_factor: float = Field(..., ge=0.0)
     congestion_level: Literal["normal", "moderate", "heavy", "severe"]
-    color: str = Field(..., pattern="^#[0-9A-Fa-f]{6}$")
-    avg_transit_minutes: float = Field(..., ge=0.0)
-    baseline_minutes: float = Field(..., ge=0.0)
+    congestion_factor: float = Field(..., ge=0.0)
+    average_delay_minutes: float
     sample_count: int = Field(..., ge=0)
-    last_updated: datetime
-    from_station_coords: dict[str, float] | None = None
-    to_station_coords: dict[str, float] | None = None
+    baseline_minutes: float = Field(..., ge=0.0)
+    current_average_minutes: float = Field(..., ge=0.0)
 
 
 class CongestionMapResponse(BaseModel):
@@ -426,3 +425,52 @@ class CongestionMapResponse(BaseModel):
     generated_at: datetime
     time_window_hours: int
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+# Segment Train Details API Models
+
+
+class SegmentTrainDetail(BaseModel):
+    """Individual train detail for a segment."""
+
+    train_id: str
+    line: str
+    scheduled_departure: datetime
+    actual_departure: datetime
+    scheduled_arrival: datetime
+    actual_arrival: datetime
+    departure_delay_minutes: int
+    arrival_delay_minutes: int
+    congestion_factor: float = Field(..., ge=0.0)
+    delay_category: Literal["on_time", "slight_delay", "delayed", "significantly_delayed"]
+    data_source: str
+
+
+class SegmentTrainDetailsResponse(BaseModel):
+    """Response for segment train details endpoint."""
+
+    segment: dict[str, str] = Field(
+        ...,
+        examples=[
+            {
+                "from_station": "NY",
+                "to_station": "NP",
+                "from_station_name": "New York Penn Station",
+                "to_station_name": "Newark Penn Station",
+            }
+        ],
+    )
+    trains: list[SegmentTrainDetail]
+    summary: dict[str, Any] = Field(
+        ...,
+        examples=[
+            {
+                "total_trains": 127,
+                "returned_trains": 50,
+                "average_departure_delay": 2.8,
+                "average_arrival_delay": 3.2,
+                "average_congestion_factor": 1.15,
+                "on_time_percentage": 68.5,
+            }
+        ],
+    )

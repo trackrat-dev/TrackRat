@@ -713,7 +713,7 @@ struct CongestionDataView: View {
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .sheet(item: $viewModel.selectedSegment) { segment in
-                SegmentDetailSheet(segment: segment)
+                SegmentTrainDetailsView(segment: segment)
                     .presentationDetents([.height(600), .large])
                     .presentationDragIndicator(.visible)
             }
@@ -755,7 +755,7 @@ struct CongestionComparisonBar: View {
     let segment: CongestionSegment
     
     private var delayMinutes: Int {
-        Int((segment.avgTransitMinutes - segment.baselineMinutes).rounded())
+        Int(segment.averageDelayMinutes.rounded())
     }
     
     private var delayText: String {
@@ -791,7 +791,7 @@ struct CongestionComparisonBar: View {
                     // Baseline indicator
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Color.gray.opacity(0.4))
-                        .frame(width: geometry.size.width * (segment.baselineMinutes / segment.avgTransitMinutes), height: 8)
+                        .frame(width: geometry.size.width * (segment.baselineMinutes / segment.currentAverageMinutes), height: 8)
                     
                     // Current time bar
                     RoundedRectangle(cornerRadius: 4)

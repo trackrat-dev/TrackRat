@@ -364,30 +364,28 @@ struct CongestionResponse: Codable {
 struct CongestionSegment: Codable, Identifiable {
     let fromStation: String
     let toStation: String
+    let fromStationName: String
+    let toStationName: String
     let dataSource: String
     let congestionFactor: Double
     let congestionLevel: String
-    let color: String
-    let avgTransitMinutes: Double
+    let averageDelayMinutes: Double
     let baselineMinutes: Double
+    let currentAverageMinutes: Double
     let sampleCount: Int
-    let lastUpdated: Date
-    let fromStationCoords: StationCoordinates?
-    let toStationCoords: StationCoordinates?
     
     enum CodingKeys: String, CodingKey {
         case fromStation = "from_station"
         case toStation = "to_station"
+        case fromStationName = "from_station_name"
+        case toStationName = "to_station_name"
         case dataSource = "data_source"
         case congestionFactor = "congestion_factor"
         case congestionLevel = "congestion_level"
-        case color
-        case avgTransitMinutes = "avg_transit_minutes"
+        case averageDelayMinutes = "average_delay_minutes"
         case baselineMinutes = "baseline_minutes"
+        case currentAverageMinutes = "current_average_minutes"
         case sampleCount = "sample_count"
-        case lastUpdated = "last_updated"
-        case fromStationCoords = "from_station_coords"
-        case toStationCoords = "to_station_coords"
     }
     
     // Identifiable
@@ -441,20 +439,163 @@ struct CongestionLevelCounts: Codable {
     let severe: Int
 }
 
+// MARK: - Segment Train Details Models
+
+struct SegmentTrainDetail: Codable, Identifiable {
+    let trainId: String
+    let line: String
+    let scheduledDeparture: Date
+    let actualDeparture: Date
+    let scheduledArrival: Date
+    let actualArrival: Date
+    let departureDelayMinutes: Int
+    let arrivalDelayMinutes: Int
+    let congestionFactor: Double
+    let delayCategory: String
+    let dataSource: String
+    
+    enum CodingKeys: String, CodingKey {
+        case trainId = "train_id"
+        case line
+        case scheduledDeparture = "scheduled_departure"
+        case actualDeparture = "actual_departure"
+        case scheduledArrival = "scheduled_arrival"
+        case actualArrival = "actual_arrival"
+        case departureDelayMinutes = "departure_delay_minutes"
+        case arrivalDelayMinutes = "arrival_delay_minutes"
+        case congestionFactor = "congestion_factor"
+        case delayCategory = "delay_category"
+        case dataSource = "data_source"
+    }
+    
+    // Identifiable
+    var id: String {
+        "\(trainId)-\(scheduledDeparture.timeIntervalSince1970)"
+    }
+    
+    // Computed properties for display
+    var delayCategoryDisplay: String {
+        switch delayCategory {
+        case "on_time": return "On Time"
+        case "slight_delay": return "Slight Delay"
+        case "delayed": return "Delayed"
+        case "significantly_delayed": return "Significantly Delayed"
+        default: return delayCategory.capitalized
+        }
+    }
+    
+    var delayCategoryColor: Color {
+        switch delayCategory {
+        case "on_time": return .green
+        case "slight_delay": return .yellow
+        case "delayed": return .orange
+        case "significantly_delayed": return .red
+        default: return .gray
+        }
+    }
+    
+    var congestionFactorDisplay: String {
+        let percentage = Int((congestionFactor - 1) * 100)
+        if percentage > 0 {
+            return "+\(percentage)% slower"
+        } else {
+            return "Normal time"
+        }
+    }
+    
+    var departureDelayDisplay: String {
+        if departureDelayMinutes > 0 {
+            return "+\(departureDelayMinutes)m late"
+        } else if departureDelayMinutes < 0 {
+            return "\(abs(departureDelayMinutes))m early"
+        } else {
+            return "On time"
+        }
+    }
+    
+    var arrivalDelayDisplay: String {
+        if arrivalDelayMinutes > 0 {
+            return "+\(arrivalDelayMinutes)m late"
+        } else if arrivalDelayMinutes < 0 {
+            return "\(abs(arrivalDelayMinutes))m early"
+        } else {
+            return "On time"
+        }
+    }
+}
+
+struct SegmentInfo: Codable {
+    let fromStation: String
+    let toStation: String
+    let fromStationName: String
+    let toStationName: String
+    
+    enum CodingKeys: String, CodingKey {
+        case fromStation = "from_station"
+        case toStation = "to_station"
+        case fromStationName = "from_station_name"
+        case toStationName = "to_station_name"
+    }
+}
+
+struct SegmentSummary: Codable {
+    let totalTrains: Int
+    let returnedTrains: Int
+    let averageDepartureDelay: Double
+    let averageArrivalDelay: Double
+    let averageCongestionFactor: Double
+    let onTimePercentage: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case totalTrains = "total_trains"
+        case returnedTrains = "returned_trains"
+        case averageDepartureDelay = "average_departure_delay"
+        case averageArrivalDelay = "average_arrival_delay"
+        case averageCongestionFactor = "average_congestion_factor"
+        case onTimePercentage = "on_time_percentage"
+    }
+}
+
+struct SegmentTrainDetailsResponse: Codable {
+    let segment: SegmentInfo
+    let trains: [SegmentTrainDetail]
+    let summary: SegmentSummary
+    let timeWindow: TimeWindowInfo?
+    
+    enum CodingKeys: String, CodingKey {
+        case segment
+        case trains
+        case summary
+        case timeWindow = "time_window"
+    }
+}
+
+struct TimeWindowInfo: Codable {
+    let startTime: Date
+    let endTime: Date
+    let generatedAt: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case generatedAt = "generated_at"
+    }
+}
+
 
 // MARK: - Extensions for Display
 
 extension CongestionSegment {
     var fromStationDisplayName: String {
-        Stations.displayNameForCode(fromStation)
+        fromStationName.isEmpty ? Stations.displayNameForCode(fromStation) : fromStationName
     }
     
     var toStationDisplayName: String {
-        Stations.displayNameForCode(toStation)
+        toStationName.isEmpty ? Stations.displayNameForCode(toStation) : toStationName
     }
     
     var averageTransitTimeText: String {
-        let minutes = Int(avgTransitMinutes.rounded())
+        let minutes = Int(currentAverageMinutes.rounded())
         return "\(minutes) min avg"
     }
     
@@ -463,11 +604,20 @@ extension CongestionSegment {
     }
     
     var delayText: String {
-        let delayMinutes = Int((avgTransitMinutes - baselineMinutes).rounded())
+        let delayMinutes = Int(averageDelayMinutes.rounded())
         if delayMinutes > 0 {
             return " (+\(delayMinutes)m delay in past \(sampleCount) trains)"
         } else {
             return " (on time in past \(sampleCount) trains)"
+        }
+    }
+    
+    var congestionFactorDisplay: String {
+        let percentage = Int((congestionFactor - 1) * 100)
+        if percentage > 0 {
+            return "+\(percentage)% slower"
+        } else {
+            return "Normal time"
         }
     }
 }

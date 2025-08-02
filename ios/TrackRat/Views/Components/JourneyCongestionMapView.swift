@@ -87,7 +87,7 @@ struct JourneyCongestionMapView: View {
             }
         }
         .sheet(item: $selectedSegment) { segment in
-            SegmentDetailSheet(segment: segment)
+            SegmentTrainDetailsView(segment: segment)
         }
         .task {
             await viewModel.loadCongestionData()
@@ -196,22 +196,8 @@ class JourneyCongestionViewModel: ObservableObject {
         let journeyStationCodes = getJourneyStationCodes()
         
         for stop in stops where journeyStationCodes.contains(stop.stationCode) {
-            // Find coordinates from congestion segments
-            var coordinate: CLLocationCoordinate2D?
-            
-            for segment in filteredSegments {
-                if segment.fromStation == stop.stationCode,
-                   let coords = segment.fromStationCoords {
-                    coordinate = CLLocationCoordinate2D(latitude: coords.lat, longitude: coords.lon)
-                    break
-                } else if segment.toStation == stop.stationCode,
-                          let coords = segment.toStationCoords {
-                    coordinate = CLLocationCoordinate2D(latitude: coords.lat, longitude: coords.lon)
-                    break
-                }
-            }
-            
-            if let coordinate = coordinate {
+            // Get coordinates directly from the Stations utility
+            if let coordinate = Stations.getCoordinates(for: stop.stationCode) {
                 let isDestination: Bool
                 if let destinationCode = Stations.getStationCode(destinationName) {
                     isDestination = stop.stationCode.uppercased() == destinationCode.uppercased()
@@ -312,12 +298,9 @@ struct CongestionMapKitView: UIViewRepresentable {
         
         // Add congestion polylines
         for segment in segments {
-            if let fromCoords = segment.fromStationCoords,
-               let toCoords = segment.toStationCoords {
-                let coordinates = [
-                    CLLocationCoordinate2D(latitude: fromCoords.lat, longitude: fromCoords.lon),
-                    CLLocationCoordinate2D(latitude: toCoords.lat, longitude: toCoords.lon)
-                ]
+            if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
+               let toCoords = Stations.getCoordinates(for: segment.toStation) {
+                let coordinates = [fromCoords, toCoords]
                 
                 let polyline = CongestionPolyline(coordinates: coordinates, count: coordinates.count)
                 polyline.segment = segment
