@@ -594,7 +594,11 @@ struct CongestionDataView: View {
                             JourneyCongestionMapView(
                                 train: train,
                                 userOrigin: viewModel.userOrigin,
-                                userDestination: viewModel.userDestination
+                                userDestination: viewModel.userDestination,
+                                onSegmentTap: { segment in
+                                    viewModel.selectedSegment = segment
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
                             )
                             .padding(.horizontal)
                             
@@ -610,6 +614,29 @@ struct CongestionDataView: View {
                                     Spacer()
                                 }
                                 .padding(.horizontal)
+                            }
+                            
+                            // Route Cards Section
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Text("Route Segments")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                }
+                                .padding(.horizontal)
+                                
+                                ForEach(segments, id: \.id) { segment in
+                                    Button {
+                                        viewModel.selectedSegment = segment
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    } label: {
+                                        CongestionSegmentCard(segment: segment)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.horizontal)
+                                }
                             }
                             
                             // Instructions
@@ -685,6 +712,11 @@ struct CongestionDataView: View {
             }
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .sheet(item: $viewModel.selectedSegment) { segment in
+                SegmentDetailSheet(segment: segment)
+                    .presentationDetents([.height(600), .large])
+                    .presentationDragIndicator(.visible)
+            }
         }
         .task {
             await viewModel.loadCongestionData()
@@ -780,6 +812,7 @@ class CongestionDataViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var lastUpdated: Date?
+    @Published var selectedSegment: CongestionSegment?
     
     private let train: TrainV2
     let userOrigin: String?

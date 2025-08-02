@@ -169,7 +169,7 @@ struct TripSelectionView: View {
                                         .font(.system(size: 14))
                                         .foregroundColor(.gray)
                                     
-                                    Text("View Train Traffic (beta)")
+                                    Text("View Live Traffic (beta)")
                                         .font(.caption)
                                         .foregroundColor(.white.opacity(0.7))
                                     

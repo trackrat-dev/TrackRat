@@ -318,6 +318,11 @@ struct SegmentDetailSheet: View {
                     )
                     
                     StatRow(
+                        label: "Time Difference",
+                        value: segment.delayText
+                    )
+                    
+                    StatRow(
                         label: "Sample Size",
                         value: segment.sampleCountText
                     )
@@ -328,23 +333,7 @@ struct SegmentDetailSheet: View {
                     )
                 }
                 
-                // Recent Trains Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Recent Trains")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                    
-                    ScrollView {
-                        LazyVStack(spacing: 8) {
-                            ForEach(segment.sampleTrains) { train in
-                                TrainSampleCard(train: train)
-                            }
-                        }
-                        .padding(.bottom, 8)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Spacer()
             }
             .padding()
             .navigationTitle("Segment Details")
@@ -375,76 +364,6 @@ struct StatRow: View {
     }
 }
 
-struct TrainSampleCard: View {
-    let train: TrainSample
-    
-    private var delayStatus: String {
-        if train.delayMinutes == 0 {
-            return "On time"
-        } else {
-            return "\(train.delayMinutes) min delay"
-        }
-    }
-    
-    private var delayColor: Color {
-        if train.delayMinutes == 0 {
-            return .green
-        } else if train.delayMinutes < 5 {
-            return .orange
-        } else {
-            return .red
-        }
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Header with train number and delay status
-            HStack {
-                Text("Train \(train.trainNumber)")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                
-                Spacer()
-                
-                Text(delayStatus)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(delayColor)
-            }
-            
-            // Scheduled times
-            HStack {
-                Text("Scheduled:")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                
-                Text("\(train.scheduledDeparture.formatted(date: .omitted, time: .shortened)) → \(train.scheduledArrival.formatted(date: .omitted, time: .shortened))")
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                
-                Spacer()
-            }
-            
-            // Actual times
-            HStack {
-                Text("Actual:")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                
-                Text("\((train.actualDeparture ?? train.scheduledDeparture).formatted(date: .omitted, time: .shortened)) → \((train.actualArrival ?? train.scheduledArrival).formatted(date: .omitted, time: .shortened))")
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                
-                Spacer()
-            }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(.ultraThinMaterial)
-        )
-    }
-}
 
 // MARK: - MapKit-based System Congestion Map View
 struct SystemCongestionMapView: UIViewRepresentable {

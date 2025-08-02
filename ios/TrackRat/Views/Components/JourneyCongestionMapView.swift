@@ -9,11 +9,13 @@ struct JourneyCongestionMapView: View {
     let train: TrainV2
     let userOrigin: String?
     let userDestination: String?
+    let onSegmentTap: ((CongestionSegment) -> Void)?
     
-    init(train: TrainV2, userOrigin: String?, userDestination: String?) {
+    init(train: TrainV2, userOrigin: String?, userDestination: String?, onSegmentTap: ((CongestionSegment) -> Void)? = nil) {
         self.train = train
         self.userOrigin = userOrigin
         self.userDestination = userDestination
+        self.onSegmentTap = onSegmentTap
         self._viewModel = StateObject(wrappedValue: JourneyCongestionViewModel(
             train: train,
             userOrigin: userOrigin,
@@ -39,8 +41,13 @@ struct JourneyCongestionMapView: View {
                         segments: viewModel.filteredSegments,
                         stations: viewModel.journeyStations,
                         onSegmentTap: { segment in
-                            selectedSegment = segment
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            // Call parent callback if provided, otherwise handle locally
+                            if let onSegmentTap = onSegmentTap {
+                                onSegmentTap(segment)
+                            } else {
+                                selectedSegment = segment
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
                         }
                     )
                     .frame(height: 200)
