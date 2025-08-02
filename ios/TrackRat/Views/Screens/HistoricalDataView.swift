@@ -589,14 +589,14 @@ struct CongestionDataView: View {
                         TrackRatLoadingView(message: "Loading congestion data...")
                             .frame(maxWidth: .infinity, minHeight: 400)
                     } else if let segments = viewModel.relevantSegments, !segments.isEmpty {
-                        VStack(spacing: 24) {
+                        VStack(spacing: 16) {
                             // Map view
                             JourneyCongestionMapView(
                                 train: train,
                                 userOrigin: viewModel.userOrigin,
                                 userDestination: viewModel.userDestination
                             )
-                            .padding([.leading, .trailing])
+                            .padding(.horizontal)
                             
                             // Header info
                             if let lastUpdated = viewModel.lastUpdated {
@@ -612,13 +612,12 @@ struct CongestionDataView: View {
                                 .padding(.horizontal)
                             }
                             
-                            // Congestion segments
-                            VStack(spacing: 16) {
-                                ForEach(segments) { segment in
-                                    CongestionSegmentCard(segment: segment)
-                                }
-                            }
-                            .padding()
+                            // Instructions
+                            Text("Tap any route segment to see congestion details")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
                         }
                         .padding(.top)
                     } else if viewModel.error != nil {
@@ -833,19 +832,19 @@ class CongestionDataViewModel: ObservableObject {
         // Get station codes from the journey segment
         let stationCodes = journeyStops.map { $0.stationCode.uppercased() }
         
-        // Filter segments that are part of the journey segment AND match the train type
+        // Filter segments that are consecutive stations in the journey AND match the train type
         let filtered = congestionData.segments.filter { segment in
             // First check if data source matches train type
             guard segment.dataSource.uppercased() == expectedDataSource else {
                 return false
             }
             
-            // Check if both stations are in the journey segment
+            // Check if stations are consecutive in the journey
             let fromIndex = stationCodes.firstIndex(of: segment.fromStation.uppercased())
             let toIndex = stationCodes.firstIndex(of: segment.toStation.uppercased())
             
-            // Ensure the segment is in the correct direction (from appears before to)
-            if let fromIdx = fromIndex, let toIdx = toIndex, fromIdx < toIdx {
+            // Only include segments where stations are consecutive
+            if let fromIdx = fromIndex, let toIdx = toIndex, toIdx == fromIdx + 1 {
                 return true
             }
             return false

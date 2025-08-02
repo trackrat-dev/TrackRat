@@ -114,11 +114,17 @@ class JourneyCongestionViewModel: ObservableObject {
             // Fetch congestion data
             let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 3)
             
-            // Filter segments to only those in the user's journey
+            // Filter segments to only consecutive stations in the user's journey
             let journeyStationCodes = getJourneyStationCodes()
             filteredSegments = congestionData.segments.filter { segment in
-                journeyStationCodes.contains(segment.fromStation) && 
-                journeyStationCodes.contains(segment.toStation)
+                // Find indices of from and to stations
+                guard let fromIndex = journeyStationCodes.firstIndex(of: segment.fromStation),
+                      let toIndex = journeyStationCodes.firstIndex(of: segment.toStation) else {
+                    return false
+                }
+                
+                // Only include segments where stations are consecutive
+                return toIndex == fromIndex + 1
             }
             
             // Create journey stations for map annotations
@@ -134,7 +140,7 @@ class JourneyCongestionViewModel: ObservableObject {
         isLoading = false
     }
     
-    private func getJourneyStationCodes() -> Set<String> {
+    private func getJourneyStationCodes() -> [String] {
         guard let stops = train.stops,
               let originCode = userOrigin,
               let destinationName = userDestination else {
@@ -154,9 +160,9 @@ class JourneyCongestionViewModel: ObservableObject {
             return []
         }
         
-        // Get all station codes in the journey
+        // Get all station codes in the journey (ordered)
         let journeyStops = stops[startIdx...endIdx]
-        return Set(journeyStops.compactMap { $0.stationCode })
+        return journeyStops.compactMap { $0.stationCode }
     }
     
     private func createJourneyStations() {
@@ -240,8 +246,6 @@ struct JourneyStation: Identifiable {
     let isDestination: Bool
 }
 
-// MARK: - Preview
-
 // MARK: - MapKit-based Congestion Map View
 struct CongestionMapKitView: UIViewRepresentable {
     @Binding var region: MKCoordinateRegion
@@ -259,6 +263,10 @@ struct CongestionMapKitView: UIViewRepresentable {
         mapView.mapType = .standard
         mapView.showsCompass = false
         mapView.showsScale = false
+        
+        // Add tap gesture recognizer for polyline interaction
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
+        mapView.addGestureRecognizer(tapGesture)
         
         return mapView
     }
@@ -279,6 +287,9 @@ struct CongestionMapKitView: UIViewRepresentable {
         mapView.removeOverlays(mapView.overlays)
         mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
         
+        // Clear stored polylines
+        context.coordinator.polylines.removeAll()
+        
         // Add congestion polylines
         for segment in segments {
             if let fromCoords = segment.fromStationCoords,
@@ -291,22 +302,15 @@ struct CongestionMapKitView: UIViewRepresentable {
                 let polyline = CongestionPolyline(coordinates: coordinates, count: coordinates.count)
                 polyline.segment = segment
                 mapView.addOverlay(polyline)
+                context.coordinator.polylines.append(polyline)
             }
         }
         
-        // Add station annotations
-        for station in stations {
-            let annotation = StationAnnotation()
-            annotation.coordinate = station.coordinate
-            annotation.title = station.code
-            annotation.subtitle = station.name
-            annotation.station = station
-            mapView.addAnnotation(annotation)
-        }
         
         // Update coordinator with current segments for tap handling
         context.coordinator.segments = segments
         context.coordinator.onSegmentTap = onSegmentTap
+        context.coordinator.mapView = mapView
     }
     
     func makeCoordinator() -> Coordinator {
@@ -316,6 +320,8 @@ struct CongestionMapKitView: UIViewRepresentable {
     class Coordinator: NSObject, MKMapViewDelegate {
         var segments: [CongestionSegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
+        var polylines: [CongestionPolyline] = []
+        weak var mapView: MKMapView?
         
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
@@ -391,21 +397,82 @@ struct CongestionMapKitView: UIViewRepresentable {
         }
         
         private func createStationPinView(for station: JourneyStation) -> UIView {
-            let containerView = UIView(frame: CGRect(x: 0, y: 0, width: 40, height: 16))
+            let size: CGFloat = 12
+            let containerView = UIView(frame: CGRect(x: 0, y: 0, width: size, height: size))
             
-            // Only label for station code (no circle)
-            let label = UILabel(frame: CGRect(x: 0, y: 0, width: 40, height: 16))
-            label.text = station.code
-            label.font = UIFont.systemFont(ofSize: 10, weight: .semibold)
-            label.textColor = .white
-            label.textAlignment = .center
-            label.backgroundColor = UIColor.black.withAlphaComponent(0.8)
-            label.layer.cornerRadius = 8
-            label.clipsToBounds = true
+            // Create a simple circle dot
+            let dotView = UIView(frame: CGRect(x: 0, y: 0, width: size, height: size))
+            dotView.backgroundColor = UIColor.white
+            dotView.layer.cornerRadius = size / 2
+            dotView.layer.borderWidth = 2
+            dotView.layer.borderColor = UIColor.black.cgColor
             
-            containerView.addSubview(label)
+            // Special styling for origin and destination
+            if station.isOrigin || station.isDestination {
+                dotView.backgroundColor = UIColor.orange
+                dotView.layer.borderColor = UIColor.white.cgColor
+            }
+            
+            containerView.addSubview(dotView)
             
             return containerView
+        }
+        
+        // MARK: - Tap Handling
+        @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
+            guard let mapView = mapView else { return }
+            
+            let tapPoint = gesture.location(in: mapView)
+            let tapCoordinate = mapView.convert(tapPoint, toCoordinateFrom: mapView)
+            
+            // Check each polyline to see if tap is near it
+            for polyline in polylines {
+                if isCoordinate(tapCoordinate, nearPolyline: polyline, inMapView: mapView) {
+                    if let segment = polyline.segment {
+                        onSegmentTap(segment)
+                        break
+                    }
+                }
+            }
+        }
+        
+        private func isCoordinate(_ coordinate: CLLocationCoordinate2D, nearPolyline polyline: MKPolyline, inMapView mapView: MKMapView) -> Bool {
+            // Convert polyline points to screen points
+            guard polyline.pointCount >= 2 else { return false }
+            
+            let points = polyline.points()
+            let coord1 = points[0].coordinate
+            let coord2 = points[1].coordinate
+            
+            let screenPoint1 = mapView.convert(coord1, toPointTo: mapView)
+            let screenPoint2 = mapView.convert(coord2, toPointTo: mapView)
+            let tapPoint = mapView.convert(coordinate, toPointTo: mapView)
+            
+            // Calculate distance from tap point to line segment
+            let distance = distanceFromPoint(tapPoint, toLineSegmentBetween: screenPoint1, and: screenPoint2)
+            
+            // Consider tap "near" if within 30 points
+            return distance <= 30
+        }
+        
+        private func distanceFromPoint(_ point: CGPoint, toLineSegmentBetween p1: CGPoint, and p2: CGPoint) -> CGFloat {
+            let dx = p2.x - p1.x
+            let dy = p2.y - p1.y
+            let lengthSquared = dx * dx + dy * dy
+            
+            if lengthSquared == 0 {
+                // p1 and p2 are the same point
+                return hypot(point.x - p1.x, point.y - p1.y)
+            }
+            
+            // Calculate parameter t for closest point on line segment
+            let t = max(0, min(1, ((point.x - p1.x) * dx + (point.y - p1.y) * dy) / lengthSquared))
+            
+            // Calculate closest point on line segment
+            let closestPoint = CGPoint(x: p1.x + t * dx, y: p1.y + t * dy)
+            
+            // Return distance from tap point to closest point
+            return hypot(point.x - closestPoint.x, point.y - closestPoint.y)
         }
     }
 }
@@ -432,6 +499,7 @@ extension UIView {
         }
     }
 }
+
 
 #Preview {
     JourneyCongestionMapView(

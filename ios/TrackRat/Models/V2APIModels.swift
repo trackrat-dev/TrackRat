@@ -441,6 +441,25 @@ struct CongestionLevelCounts: Codable {
     let severe: Int
 }
 
+struct TrainSample: Codable, Identifiable {
+    let id = UUID()
+    let trainNumber: String
+    let scheduledDeparture: Date
+    let actualDeparture: Date?
+    let scheduledArrival: Date
+    let actualArrival: Date?
+    let delayMinutes: Int
+    
+    enum CodingKeys: String, CodingKey {
+        case trainNumber = "train_number"
+        case scheduledDeparture = "scheduled_departure"
+        case actualDeparture = "actual_departure"
+        case scheduledArrival = "scheduled_arrival"
+        case actualArrival = "actual_arrival"
+        case delayMinutes = "delay_minutes"
+    }
+}
+
 // MARK: - Extensions for Display
 
 extension CongestionSegment {
@@ -468,5 +487,39 @@ extension CongestionSegment {
         } else {
             return " (on time in past \(sampleCount) trains)"
         }
+    }
+    
+    // Generate sample train data for demonstration
+    // TODO: Replace with actual API data when available
+    var sampleTrains: [TrainSample] {
+        var trains: [TrainSample] = []
+        let now = Date()
+        let calendar = Calendar.current
+        let trainNumbers = ["3923", "3847", "3759", "3691", "3623", "3555", "3487", "3419", "3351", "3283"]
+        
+        for i in 0..<min(sampleCount, 10) {
+            let trainNumber = trainNumbers[i % trainNumbers.count]
+            let hoursAgo = Double(i + 1)
+            let scheduledDep = calendar.date(byAdding: .hour, value: -Int(hoursAgo), to: now)!
+            let scheduledArr = calendar.date(byAdding: .minute, value: Int(baselineMinutes), to: scheduledDep)!
+            
+            // Generate realistic delays based on congestion factor
+            let maxDelayMinutes = Int((congestionFactor - 1.0) * baselineMinutes) + Int.random(in: -2...5)
+            let actualDelayMinutes = max(0, maxDelayMinutes)
+            
+            let actualDep = calendar.date(byAdding: .minute, value: Int.random(in: 0...2), to: scheduledDep)
+            let actualArr = calendar.date(byAdding: .minute, value: actualDelayMinutes, to: scheduledArr)
+            
+            trains.append(TrainSample(
+                trainNumber: trainNumber,
+                scheduledDeparture: scheduledDep,
+                actualDeparture: actualDep,
+                scheduledArrival: scheduledArr,
+                actualArrival: actualArr,
+                delayMinutes: actualDelayMinutes
+            ))
+        }
+        
+        return trains.sorted { $0.scheduledDeparture > $1.scheduledDeparture }
     }
 }
