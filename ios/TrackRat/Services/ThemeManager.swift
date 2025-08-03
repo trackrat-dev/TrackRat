@@ -28,9 +28,13 @@ final class AppIconManager: ObservableObject {
         let currentIconName = UIApplication.shared.alternateIconName
         
         // Don't change if already using the target icon
+        // Note: nil means default icon, so we need to handle this comparison carefully
         if currentIconName == targetIconName {
+            print("🔄 Already using target icon: \(targetIconName ?? "default")")
             return
         }
+        
+        print("🔄 Changing app icon from: \(currentIconName ?? "default") to: \(targetIconName ?? "default")")
         
         isChangingIcon = true
         

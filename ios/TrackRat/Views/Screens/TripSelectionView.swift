@@ -25,8 +25,13 @@ struct TripSelectionView: View {
     }
     
     var body: some View {
-        ScrollView {
-                VStack(spacing: 20) {
+        ZStack {
+            // Theme background
+            TrackRatTheme.Colors.surface
+                .ignoresSafeArea()
+            
+            ScrollView {
+                VStack(spacing: 8) {
                         // Top navigation bar with search and icons
                         HStack(spacing: 16) {
                             // Search field - left aligned
@@ -44,8 +49,8 @@ struct TripSelectionView: View {
                                     }
                                     .onChange(of: searchFieldFocused) { _, newValue in
                                         if newValue {
-                                            // When search field gains focus, expand to 75%
-                                            onBottomSheetPositionChange?(.seventyFive)
+                                            // When search field gains focus, expand to 50%
+                                            onBottomSheetPositionChange?(.medium)
                                         }
                                         // DON'T reset position when search field loses focus
                                         // Let user maintain their preferred bottom sheet height
@@ -72,8 +77,8 @@ struct TripSelectionView: View {
                             HStack(spacing: 16) {
                                 // Advanced Configuration button - icon only
                                 Button {
-                                    // Expand bottom sheet to 75% height when settings is tapped
-                                    onBottomSheetPositionChange?(.seventyFive)
+                                    // Expand bottom sheet to 100% height when settings is tapped
+                                    onBottomSheetPositionChange?(.expanded)
                                     appState.navigationPath.append(NavigationDestination.advancedConfiguration)
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 } label: {
@@ -94,9 +99,11 @@ struct TripSelectionView: View {
                                         .foregroundColor(.white.opacity(0.8))
                                 }
                                 
-                                // Profile/Head icon - placeholder for future profile functionality
+                                // Profile/Head icon - opens My Profile view
                                 Button {
-                                    // Future profile functionality
+                                    // Expand bottom sheet to 100% height when profile is tapped
+                                    onBottomSheetPositionChange?(.expanded)
+                                    appState.navigationPath.append(NavigationDestination.myProfile)
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 } label: {
                                     Image(systemName: "person.circle.fill")
@@ -110,12 +117,12 @@ struct TripSelectionView: View {
                         
                         // Welcome message - hide when search is focused or there are active Live Activities
                         if !searchFieldFocused && !(liveActivityService.isActivityActive) {
-                            Text("Welcome!")
+                            Text("Where would you like to go?")
                                 .font(.title2)
                                 .fontWeight(.medium)
                                 .foregroundColor(.white.opacity(0.9))
                                 .padding(.horizontal)
-                                .padding(.top, 8)
+                                .padding(.top, 24)
                         }
                         
                         // Origin station search results
@@ -199,6 +206,7 @@ struct TripSelectionView: View {
                 }
                 .padding(.bottom, 40)
             }
+        }
         .onAppear {
             appState.loadRecentTrips()
             appState.loadFavoriteStations()
@@ -230,6 +238,10 @@ struct TripSelectionView: View {
         appState.departureStationCode = code
         // Clear any existing route so map focuses on single station
         appState.selectedRoute = nil
+        
+        // Snap bottom sheet to medium (50%) position for better map visibility
+        onBottomSheetPositionChange?(.medium)
+        
         appState.navigationPath.append(NavigationDestination.destinationPicker)
         
         // Reset search with animation
@@ -238,9 +250,6 @@ struct TripSelectionView: View {
             isSearching = false
             searchFieldFocused = false
         }
-        
-        // DON'T reset bottom sheet position - maintain current height
-        // onBottomSheetPositionChange?(.compact)
         
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -306,4 +315,5 @@ struct FavoriteStationButton: View {
 #Preview {
     TripSelectionView()
         .environmentObject(AppState())
+        .environmentObject(ThemeManager.shared)
 }

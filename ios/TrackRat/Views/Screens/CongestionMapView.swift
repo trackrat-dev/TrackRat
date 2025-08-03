@@ -211,11 +211,9 @@ class CongestionMapViewModel: ObservableObject {
     private var journeyStations: [String] = []
     
     init() {
-        // Start loading congestion data immediately
-        print("🚦 CongestionMapViewModel init - starting immediate data load")
-        Task {
-            await fetchCongestionData()
-        }
+        // Don't start loading data immediately - wait for explicit trigger
+        // This prevents blocking the UI during app startup and navigation
+        print("🚦 CongestionMapViewModel init - data loading deferred")
     }
     
     func fetchCongestionData(timeWindowHours: Int = 3, dataSource: String? = nil) async {
@@ -532,50 +530,18 @@ struct SystemCongestionMapView: UIViewRepresentable {
             mapView.setRegion(region, animated: true)
         }
         
-        // Clear existing overlays and annotations
-        mapView.removeOverlays(mapView.overlays)
-        mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
-        
-        // Add individual journey segments with offsets to prevent overlap
-        print("🗺️ Adding \(individualSegments.count) individual journey segments to map")
-        var segmentCounts: [String: Int] = [:]
-        
-        for individualSegment in individualSegments {
-            if let fromCoords = Stations.getCoordinates(for: individualSegment.fromStation),
-               let toCoords = Stations.getCoordinates(for: individualSegment.toStation) {
-                
-                let segmentKey = "\(individualSegment.fromStation)-\(individualSegment.toStation)"
-                let offsetIndex = segmentCounts[segmentKey, default: 0]
-                segmentCounts[segmentKey] = offsetIndex + 1
-                
-                // Create slightly offset coordinates to prevent overlap
-                let offsetCoords = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: offsetIndex)
-                
-                let polyline = IndividualJourneyPolyline(coordinates: offsetCoords, count: offsetCoords.count)
-                polyline.individualSegment = individualSegment
-                polyline.offsetIndex = offsetIndex
-                mapView.addOverlay(polyline)
-                print("🗺️ Added individual segment: \(individualSegment.fromStation) → \(individualSegment.toStation) (train: \(individualSegment.trainId), offset: \(offsetIndex))")
-            }
-        }
-        
-        // Add aggregated segments (dimmed when showing individual)
-        if !individualSegments.isEmpty {
-            print("🗺️ Adding \(segments.count) aggregated segments (dimmed)")
-        } else {
-            print("🗺️ Adding \(segments.count) aggregated segments")
-        }
-        
-        for segment in segments {
-            if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
-               let toCoords = Stations.getCoordinates(for: segment.toStation) {
-                let coordinates = [fromCoords, toCoords]
-                
-                let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
-                polyline.segment = segment
-                polyline.isDimmed = !individualSegments.isEmpty // Dim when showing individual segments
-                mapView.addOverlay(polyline)
-            }
+        // Defer heavy map processing to prevent UI blocking
+        DispatchQueue.main.async { [weak mapView] in
+            guard let mapView = mapView else { return }
+            
+            // Clear existing overlays and annotations
+            mapView.removeOverlays(mapView.overlays)
+            mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
+            
+            // Add individual journey segments with offsets to prevent overlap
+            self.addSegmentsToMapAsync(mapView: mapView, 
+                                     individualSegments: individualSegments, 
+                                     aggregatedSegments: segments)
         }
         
         // Station annotations removed - only showing train segments
@@ -592,6 +558,53 @@ struct SystemCongestionMapView: UIViewRepresentable {
         Coordinator()
     }
     
+    // Process map segments asynchronously to prevent UI blocking
+    private func addSegmentsToMapAsync(mapView: MKMapView, 
+                                     individualSegments: [IndividualJourneySegment], 
+                                     aggregatedSegments: [CongestionSegment]) {
+        
+        // Process aggregated segments first (these go under individual segments)
+        for segment in aggregatedSegments {
+            if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
+               let toCoords = Stations.getCoordinates(for: segment.toStation) {
+                let coordinates = [fromCoords, toCoords]
+                
+                let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
+                polyline.segment = segment
+                polyline.isDimmed = !individualSegments.isEmpty // Dim when showing individual segments
+                mapView.addOverlay(polyline)
+            }
+        }
+        
+        var segmentCounts: [String: Int] = [:]
+        
+        // Sort individual segments by recency (oldest first, so newest are added last and appear on top)
+        let sortedIndividualSegments = individualSegments.sorted { segment1, segment2 in
+            segment1.actualDeparture < segment2.actualDeparture
+        }
+        
+        // Process individual segments in sorted order (oldest to newest)
+        // This ensures the most recent trains appear on top while still using offsets to prevent overlap
+        // Z-order: Aggregated segments (bottom) -> Older individual segments -> Newer individual segments (top)
+        for individualSegment in sortedIndividualSegments {
+            if let fromCoords = Stations.getCoordinates(for: individualSegment.fromStation),
+               let toCoords = Stations.getCoordinates(for: individualSegment.toStation) {
+                
+                let segmentKey = "\(individualSegment.fromStation)-\(individualSegment.toStation)"
+                let offsetIndex = segmentCounts[segmentKey, default: 0]
+                segmentCounts[segmentKey] = offsetIndex + 1
+                
+                // Create slightly offset coordinates to prevent overlap
+                let offsetCoords = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: offsetIndex)
+                
+                let polyline = IndividualJourneyPolyline(coordinates: offsetCoords, count: offsetCoords.count)
+                polyline.individualSegment = individualSegment
+                polyline.offsetIndex = offsetIndex
+                mapView.addOverlay(polyline)
+            }
+        }
+    }
+    
     class Coordinator: NSObject, MKMapViewDelegate {
         var segments: [CongestionSegment] = []
         var individualSegments: [IndividualJourneySegment] = []
@@ -606,16 +619,22 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 
                 if let segment = polyline.individualSegment {
-                    renderer.strokeColor = getUIColor(for: segment.congestionFactor)
-                    renderer.lineWidth = 3.0 // Thinner for individual journeys
-                    renderer.alpha = 0.9
-                    
-                    // Add slight variation based on offset index for visual distinction
-                    let alphaMod = CGFloat(polyline.offsetIndex % 3) * 0.1
-                    renderer.alpha = max(0.7, 0.9 - alphaMod)
-                    
+                    // Check if this individual train is cancelled - make it stand out
                     if segment.isCancelled {
+                        renderer.strokeColor = UIColor.systemRed
+                        renderer.lineWidth = 5.0 // Wider than normal individual lines
                         renderer.lineDashPattern = [3, 3]
+                        renderer.alpha = 0.9 // Keep cancelled trains highly visible
+                    } else {
+                        renderer.strokeColor = getUIColor(for: segment.congestionFactor)
+                        renderer.lineWidth = 3.0 // Thinner for individual journeys
+                        
+                        // Calculate opacity based on recency of departure
+                        renderer.alpha = getRecencyBasedAlpha(for: segment.actualDeparture)
+                        
+                        // Add slight variation based on offset index for visual distinction
+                        let alphaMod = CGFloat(polyline.offsetIndex % 3) * 0.05 // Reduced from 0.1 to preserve recency effect
+                        renderer.alpha = max(0.3, renderer.alpha - alphaMod)
                     }
                 }
                 
@@ -627,14 +646,20 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 
                 if let segment = polyline.segment {
-                    renderer.strokeColor = getUIColor(for: segment.congestionFactor)
-                    renderer.lineWidth = getCongestionLineWidth(segment.congestionFactor)
-                    renderer.alpha = polyline.isDimmed ? 0.3 : 0.8 // Dim when showing individual segments
-                    
-                    // Add dashed pattern for cancellations
-                    if let dashPattern = segment.dashPattern {
-                        renderer.lineDashPattern = dashPattern
+                    // Check if this segment has cancellations - treat as severe + dashed
+                    if segment.cancellationRate > 0 {
+                        renderer.strokeColor = UIColor.systemRed
+                        renderer.lineWidth = 11 // Same as severe congestion
+                        renderer.lineDashPattern = [3, 3]
+                    } else {
+                        renderer.strokeColor = getUIColor(for: segment.congestionFactor)
+                        renderer.lineWidth = getCongestionLineWidth(segment.congestionFactor)
+                        // Add dashed pattern for other types of cancellations
+                        if let dashPattern = segment.dashPattern {
+                            renderer.lineDashPattern = dashPattern
+                        }
                     }
+                    renderer.alpha = polyline.isDimmed ? 0.3 : 0.8 // Dim when showing individual segments
                 } else {
                     renderer.strokeColor = UIColor.gray
                     renderer.alpha = polyline.isDimmed ? 0.3 : 0.8
@@ -716,6 +741,35 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 return UIColor.systemOrange
             } else {
                 return UIColor.systemRed
+            }
+        }
+        
+        private func getRecencyBasedAlpha(for departureTime: Date) -> CGFloat {
+            let now = Date()
+            let timeSinceDeparture = now.timeIntervalSince(departureTime)
+            let hoursAgo = timeSinceDeparture / 3600.0
+            
+            // Scale opacity based on how long ago the train departed
+            // Most recent (0-1 hours): 0.9 alpha (most opaque)
+            // 1-3 hours ago: 0.7-0.9 alpha (linear fade)
+            // 3-6 hours ago: 0.4-0.7 alpha (more fade)
+            // 6+ hours ago: 0.3 alpha (most transparent)
+            
+            if hoursAgo < 0 {
+                // Future departure or very recent - most opaque
+                return 0.9
+            } else if hoursAgo <= 1.0 {
+                // 0-1 hours ago: 0.9 to 0.8
+                return 0.9 - CGFloat(hoursAgo) * 0.1
+            } else if hoursAgo <= 3.0 {
+                // 1-3 hours ago: 0.8 to 0.6
+                return 0.8 - CGFloat((hoursAgo - 1.0) / 2.0) * 0.2
+            } else if hoursAgo <= 6.0 {
+                // 3-6 hours ago: 0.6 to 0.4
+                return 0.6 - CGFloat((hoursAgo - 3.0) / 3.0) * 0.2
+            } else {
+                // 6+ hours ago: minimum opacity
+                return 0.3
             }
         }
         

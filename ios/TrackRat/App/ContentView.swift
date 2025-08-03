@@ -17,6 +17,7 @@ enum NavigationDestination: Hashable {
     case trainDetailsFlexible(trainNumber: String, fromStation: String?)  // New train number navigation
     case trainNumberSearch
     case advancedConfiguration
+    case myProfile
     case congestionMap
 }
 

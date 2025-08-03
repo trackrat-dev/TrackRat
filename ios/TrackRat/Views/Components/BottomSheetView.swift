@@ -52,7 +52,7 @@ struct BottomSheetView<Content: View>: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(Color.black)
+                    .fill(TrackRatTheme.Colors.surface)
                     .ignoresSafeArea()
             )
             .offset(y: position.offsetFor(screenHeight: geometry.size.height))

@@ -359,7 +359,7 @@ struct RatRaceProgressView: View {
 
 #Preview("Rat Race Progress") {
     ZStack {
-        Color.black.ignoresSafeArea()
+        TrackRatTheme.Colors.surface.ignoresSafeArea()
         
         VStack(spacing: 30) {
             RatRaceProgressView(progress: 0.0, fromStation: "NY", toStation: "NP")

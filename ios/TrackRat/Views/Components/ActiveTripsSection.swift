@@ -46,6 +46,19 @@ struct ActiveTripsSection: View {
                         appState.selectedDeparture = activity.attributes.origin  
                         appState.departureStationCode = activity.attributes.originStationCode
                         
+                        // Set current train ID for bottom sheet expansion
+                        appState.currentTrainId = activity.attributes.trainId
+                        
+                        // Set the route context for bottom sheet expansion
+                        appState.selectedRoute = TripPair(
+                            departureCode: activity.attributes.originStationCode,
+                            departureName: activity.attributes.origin,
+                            destinationCode: activity.attributes.destinationStationCode,
+                            destinationName: activity.attributes.destination,
+                            lastUsed: Date(),
+                            isFavorite: false
+                        )
+                        
                         // Navigate to train details using flexible navigation
                         appState.navigationPath.append(
                             NavigationDestination.trainDetailsFlexible(

@@ -394,13 +394,18 @@ struct CongestionMapKitView: UIViewRepresentable {
             if let polyline = overlay as? CongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 
-                // Convert congestion factor to color
-                if let segment = polyline.segment {
+                // Check if this segment has cancellations - treat as severe + dashed
+                if let segment = polyline.segment, segment.cancellationRate > 0 {
+                    renderer.strokeColor = UIColor.systemRed
+                    renderer.lineWidth = 11 // Same as severe congestion
+                    renderer.lineDashPattern = [3, 3]
+                } else if let segment = polyline.segment {
                     renderer.strokeColor = getUIColor(for: segment.congestionFactor)
+                    renderer.lineWidth = getCongestionLineWidth(segment.congestionFactor)
                 } else {
                     renderer.strokeColor = UIColor.gray
+                    renderer.lineWidth = getCongestionLineWidth(1.0)
                 }
-                renderer.lineWidth = getCongestionLineWidth(polyline.segment?.congestionFactor ?? 1.0)
                 renderer.alpha = 0.8
                 return renderer
             }
@@ -1355,5 +1360,5 @@ private struct SegmentTimeDetailRow: View {
         userDestination: "New York Penn Station"
     )
     .padding()
-    .background(Color.black)
+    .background(TrackRatTheme.Colors.surface)
 }

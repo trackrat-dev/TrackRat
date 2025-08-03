@@ -15,31 +15,44 @@ struct MapContainerView: View {
     
     var body: some View {
         ZStack {
-            // Background map with loading state
+            // Always show the map, just without congestion data when loading
+            SystemCongestionMapView(
+                region: $mapRegion,
+                segments: mapViewModel.segments,
+                individualSegments: mapViewModel.individualSegments,
+                stations: mapViewModel.stations,
+                selectedRoute: appState.selectedRoute,
+                onSegmentTap: { segment in
+                    selectedSegment = segment
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                },
+                onIndividualSegmentTap: { individualSegment in
+                    print("Tapped individual segment: \(individualSegment.trainDisplayName)")
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            )
+            .ignoresSafeArea()
+            
+            // Optional: Show subtle loading indicator when data is loading
             if mapViewModel.isLoading && mapViewModel.segments.isEmpty {
-                // Show skeleton during initial load
-                MapSkeletonView(region: mapRegion)
-                    .ignoresSafeArea()
-            } else {
-                // Show actual map with data
-                SystemCongestionMapView(
-                    region: $mapRegion,
-                    segments: mapViewModel.segments,
-                    individualSegments: mapViewModel.individualSegments,
-                    stations: mapViewModel.stations,
-                    selectedRoute: appState.selectedRoute,
-                    onSegmentTap: { segment in
-                        selectedSegment = segment
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    },
-                    onIndividualSegmentTap: { individualSegment in
-                        print("Tapped individual segment: \(individualSegment.trainDisplayName)")
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                VStack {
+                    Spacer()
+                    HStack {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                            .scaleEffect(0.8)
+                        
+                        Text("Loading traffic data...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
-                )
-                .ignoresSafeArea()
-                .opacity(mapViewModel.segments.isEmpty ? 0.6 : 1.0)
-                .animation(.easeInOut(duration: 0.3), value: mapViewModel.segments.count)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(.ultraThinMaterial)
+                    )
+                    .padding(.bottom, 120) // Above bottom sheet
+                }
             }
             
             // Gradient overlay at top for better readability
@@ -69,6 +82,11 @@ struct MapContainerView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task {
+            // Load congestion data when map container appears
+            // This restores data loading that was removed from ViewModel init for performance
+            await mapViewModel.fetchCongestionData()
+        }
         .onAppear {
             // Ensure we start with overall congestion view
             appState.mapDisplayMode = .overallCongestion
@@ -77,14 +95,16 @@ struct MapContainerView: View {
         .onChange(of: appState.selectedRoute) { _, newRoute in
             // Animate map to show selected route when it changes
             if let route = newRoute {
-                animateMapToRoute(route)
+                // Use current bottom sheet position since we're not changing it here
+                animateMapToRoute(route, targetSheetPosition: bottomSheetPosition)
             }
         }
         .onChange(of: appState.departureStationCode) { _, newDepartureCode in
             // Animate map to show departure station when it changes (origin selection)
             if let departureCode = newDepartureCode, appState.selectedRoute == nil {
                 // Only animate to single station if no full route is selected yet
-                animateMapToStation(departureCode)
+                // Use current bottom sheet position since we're not changing it here
+                animateMapToStation(departureCode, targetSheetPosition: bottomSheetPosition)
             }
         }
         .onChange(of: appState.navigationPath) { _, newPath in
@@ -113,13 +133,36 @@ struct MapContainerView: View {
             // Clear route filter from map view model
             mapViewModel.setRouteFilter(nil)
             bottomSheetPosition = .compact
+        } else {
+            // Check if we're navigating to train details
+            if isNavigatingToTrainDetails(navigationPath) {
+                // Animate map FIRST using target position to avoid race condition
+                if let route = appState.selectedRoute {
+                    animateMapToRoute(route, targetSheetPosition: .expanded)
+                }
+                
+                // Then snap bottom sheet to full screen (100%) when navigating to train details
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    bottomSheetPosition = .expanded
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+            
+            // Handle train details for map mode switching
+            if isOnTrainDetails(navigationPath) {
+                switchToJourneyFocus()
+            }
         }
-        // Don't automatically expand bottom sheet for any navigation
-        // Let users manually control the bottom sheet position
-        // Only handle train details for map mode switching
-        if isOnTrainDetails(navigationPath) {
-            switchToJourneyFocus()
-        }
+    }
+    
+    private func isNavigatingToTrainDetails(_ navigationPath: NavigationPath) -> Bool {
+        // Check if we just navigated to train details by looking at current train context
+        // This will be true when a train is selected and we have navigation context
+        // Also check if we have the required route information for proper train details display
+        return appState.currentTrainId != nil && 
+               !navigationPath.isEmpty && 
+               appState.departureStationCode != nil && 
+               appState.selectedDestination != nil
     }
     
     private func isOnTrainDetails(_ navigationPath: NavigationPath) -> Bool {
@@ -188,8 +231,8 @@ struct MapContainerView: View {
             }
         }
         
-        // Animate map to focus on the journey area immediately
-        animateMapToRoute(route)
+        // Animate map to focus on the journey area immediately using expanded position
+        animateMapToRoute(route, targetSheetPosition: .expanded)
     }
     
     private func extractTrainNumber(from fullTrainId: String) -> String {
@@ -246,7 +289,7 @@ struct MapContainerView: View {
         return stationCodes
     }
     
-    private func animateMapToRoute(_ route: TripPair) {
+    private func animateMapToRoute(_ route: TripPair, targetSheetPosition: BottomSheetPosition? = nil) {
         // Get coordinates for departure and destination
         guard let fromCoords = Stations.getCoordinates(for: route.departureCode),
               let toCoords = Stations.getCoordinates(for: route.destinationCode) else {
@@ -257,8 +300,19 @@ struct MapContainerView: View {
         let centerLat = (fromCoords.latitude + toCoords.latitude) / 2
         let centerLon = (fromCoords.longitude + toCoords.longitude) / 2
         
-        // Calculate offset based on current bottom sheet position
-        let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
+        let latDelta = abs(fromCoords.latitude - toCoords.latitude) * 2.0
+        let lonDelta = abs(fromCoords.longitude - toCoords.longitude) * 2.0
+        
+        // Ensure minimum zoom level
+        let minDelta: Double = 0.3
+        let finalSpan = MKCoordinateSpan(
+            latitudeDelta: max(latDelta, minDelta),
+            longitudeDelta: max(lonDelta, minDelta)
+        )
+        
+        // Calculate zoom-aware offset based on target sheet position and actual zoom level
+        let sheetPosition = targetSheetPosition ?? bottomSheetPosition
+        let offset = calculateZoomAwareOffset(for: sheetPosition, span: finalSpan)
         
         // Adjust center to account for bottom sheet coverage
         let adjustedCenter = CLLocationCoordinate2D(
@@ -266,48 +320,49 @@ struct MapContainerView: View {
             longitude: centerLon
         )
         
-        let latDelta = abs(fromCoords.latitude - toCoords.latitude) * 2.0
-        let lonDelta = abs(fromCoords.longitude - toCoords.longitude) * 2.0
-        
-        // Ensure minimum zoom level
-        let minDelta: Double = 0.3
-        
         withAnimation(.easeInOut(duration: 0.5)) {
             mapRegion = MKCoordinateRegion(
                 center: adjustedCenter,
-                span: MKCoordinateSpan(
-                    latitudeDelta: max(latDelta, minDelta),
-                    longitudeDelta: max(lonDelta, minDelta)
-                )
+                span: finalSpan
             )
         }
     }
     
     private func calculateVisibleAreaOffset(for position: BottomSheetPosition) -> Double {
-        // Calculate latitude offset to center content in visible map area
-        // Offset values in degrees (approximate, works well for northeast corridor)
+        // Calculate latitude offset to center content in the actual visible map area
+        // Negative offsets move map center south (down), positioning stations in visible area above bottom sheet
+        // Values tuned for northeast corridor geography (roughly 25 miles per 0.1°)
         switch position {
-        case .compact:      // 25% coverage
-            return 0.05     // Small upward offset
-        case .medium:       // 50% coverage  
-            return 0.10     // Medium upward offset
-        case .seventyFive:  // 75% coverage
-            return 0.15     // Medium-large upward offset
-        case .large:        // 90% coverage
-            return 0.20     // Large upward offset
-        case .expanded:     // 100% coverage
-            return 0.25     // Maximum upward offset
+        case .compact:      // 75% visible area, center should be at 37.5% from top
+            return -0.08    // Small adjustment south (~5 miles)
+        case .medium:       // 50% visible area, center should be at 25% from top
+            return -0.10    // Small-medium adjustment south (~7 miles)
+        case .seventyFive:  // 25% visible area, center should be at 12.5% from top
+            return -0.22    // Moderate adjustment south (~15 miles)
+        case .large:        // 10% visible area, center should be at 5% from top
+            return -0.30    // Larger adjustment south (~20 miles)
+        case .expanded:     // 0% visible area - position in off-screen area
+            return -0.38    // Significant adjustment south (~25 miles) to keep stations at very top
         }
     }
     
-    private func animateMapToStation(_ stationCode: String) {
+    private func calculateZoomAwareOffset(for position: BottomSheetPosition, span: MKCoordinateSpan) -> Double {
+        let baseOffset = calculateVisibleAreaOffset(for: position)
+        let avgSpan = (span.latitudeDelta + span.longitudeDelta) / 2
+        let scaleFactor = max(1.0, avgSpan / 0.3) // Scale based on span vs minimum zoom
+        let cappedScale = min(scaleFactor, 3.0) // Cap at 3x to prevent extreme offsets
+        return baseOffset * cappedScale
+    }
+    
+    private func animateMapToStation(_ stationCode: String, targetSheetPosition: BottomSheetPosition? = nil) {
         // Get coordinates for the station
         guard let coords = Stations.getCoordinates(for: stationCode) else {
             return
         }
         
-        // Calculate offset based on current bottom sheet position
-        let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
+        // Calculate offset based on target sheet position (or current if not provided)
+        let sheetPosition = targetSheetPosition ?? bottomSheetPosition
+        let offset = calculateVisibleAreaOffset(for: sheetPosition)
         
         // Adjust center to account for bottom sheet coverage
         let adjustedCenter = CLLocationCoordinate2D(
@@ -346,6 +401,8 @@ struct MapContainerView: View {
             TrainNumberSearchView()
         case .advancedConfiguration:
             AdvancedConfigurationView()
+        case .myProfile:
+            MyProfileView()
         case .congestionMap:
             // Since map is always visible, show map controls and expand bottom sheet
             CongestionMapControlsView(
@@ -471,93 +528,6 @@ struct CongestionMapControlsView: View {
     }
 }
 
-// MARK: - Map Loading Skeleton
-
-struct MapSkeletonView: View {
-    let region: MKCoordinateRegion
-    @State private var animationPhase = 0.0
-    
-    var body: some View {
-        ZStack {
-            // Base map background
-            Rectangle()
-                .fill(Color(UIColor.systemGray6))
-            
-            // Animated skeleton lines representing train routes
-            VStack(spacing: 0) {
-                ForEach(0..<6, id: \.self) { index in
-                    HStack {
-                        // Animated placeholder line
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(UIColor.systemGray4).opacity(0.3),
-                                        Color(UIColor.systemGray3).opacity(0.6),
-                                        Color(UIColor.systemGray4).opacity(0.3)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(height: 3)
-                            .scaleEffect(x: 0.7 + 0.3 * sin(animationPhase + Double(index) * 0.5), y: 1.0)
-                            .animation(
-                                Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: true),
-                                value: animationPhase
-                            )
-                        
-                        Spacer()
-                    }
-                    .padding(.leading, CGFloat(20 + index * 15))
-                    .padding(.trailing, CGFloat(20 + (5 - index) * 10))
-                    
-                    Spacer()
-                        .frame(height: CGFloat(30 + index * 20))
-                }
-            }
-            .padding(.top, 100)
-            .padding(.bottom, 100)
-            
-            // Station dots skeleton
-            ForEach(0..<5, id: \.self) { index in
-                Circle()
-                    .fill(Color(UIColor.systemGray3))
-                    .frame(width: 8, height: 8)
-                    .opacity(0.4 + 0.3 * sin(animationPhase + Double(index) * 0.8))
-                    .position(
-                        x: CGFloat(50 + index * 80),
-                        y: CGFloat(120 + index * 30)
-                    )
-            }
-            
-            // Loading indicator overlay
-            VStack {
-                Spacer()
-                HStack {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .orange))
-                        .scaleEffect(0.8)
-                    
-                    Text("Loading train data...")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(.ultraThinMaterial)
-                )
-                .padding(.bottom, 20)
-            }
-        }
-        .onAppear {
-            withAnimation {
-                animationPhase = 1.0
-            }
-        }
-    }
-}
 
 #Preview {
     MapContainerView()

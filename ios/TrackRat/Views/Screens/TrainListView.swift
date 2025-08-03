@@ -12,17 +12,6 @@ struct TrainListView: View {
     @State private var departureStationCode: String
     @State private var departureName: String
     
-    private var isCurrentRouteFavorited: Bool {
-        guard let destinationCode = Stations.getStationCode(destination) else {
-            return false
-        }
-        
-        return appState.getFavoriteTrips().contains { trip in
-            // Check both directions since routes are stored bidirectionally
-            (trip.departureCode == departureStationCode && trip.destinationCode == destinationCode) ||
-            (trip.departureCode == destinationCode && trip.destinationCode == departureStationCode)
-        }
-    }
     
     init(destination: String) {
         self._destination = State(initialValue: destination)
@@ -63,6 +52,19 @@ struct TrainListView: View {
                                     onTap: {
                                         appState.currentTrainId = train.id
                                         appState.currentTrain = train  // Store the full train object
+                                        
+                                        // Set the route context for bottom sheet expansion
+                                        if let destinationCode = Stations.getStationCode(destination) {
+                                            appState.selectedRoute = TripPair(
+                                                departureCode: departureStationCode,
+                                                departureName: departureName,
+                                                destinationCode: destinationCode,
+                                                destinationName: destination,
+                                                lastUsed: Date(),
+                                                isFavorite: false
+                                            )
+                                        }
+                                        
                                         // Use flexible navigation with train number
                                         appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                                             trainNumber: train.trainId,
@@ -101,24 +103,12 @@ struct TrainListView: View {
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 12) {
-                    // Reverse button
-                    Button {
-                        reverseRoute()
-                    } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 18))
-                            .foregroundColor(.orange)
-                    }
-                    
-                    // Favorite button
-                    Button {
-                        toggleCurrentRouteFavorite()
-                    } label: {
-                        Image(systemName: isCurrentRouteFavorited ? "heart.fill" : "heart")
-                            .font(.system(size: 20))
-                            .foregroundColor(.orange)
-                    }
+                Button {
+                    reverseRoute()
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 18))
+                        .foregroundColor(.orange)
                 }
             }
         }
@@ -142,25 +132,6 @@ struct TrainListView: View {
         }
     }
     
-    private func toggleCurrentRouteFavorite() {
-        guard let destinationCode = Stations.getStationCode(destination),
-              !departureName.isEmpty else {
-            return
-        }
-        
-        // Create the trip pair - it will be normalized internally
-        let currentTrip = TripPair(
-            departureCode: departureStationCode,
-            departureName: departureName,
-            destinationCode: destinationCode,
-            destinationName: destination,
-            lastUsed: Date(),
-            isFavorite: isCurrentRouteFavorited // Use current favorite status
-        )
-        
-        appState.toggleFavorite(currentTrip)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
     
     private func reverseRoute() {
         guard let currentDestinationCode = Stations.getStationCode(destination),

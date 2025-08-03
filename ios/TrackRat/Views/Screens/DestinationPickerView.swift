@@ -30,7 +30,7 @@ struct DestinationPickerView: View {
     
     // Computed property for dynamic spacing - keep consistent spacing
     private var topPadding: CGFloat {
-        20
+        0
     }
     
     var body: some View {
@@ -39,63 +39,58 @@ struct DestinationPickerView: View {
             TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
-            
-            VStack(spacing: 16) {
-                Spacer()
-                    .frame(height: topPadding)
-                
-                VStack(spacing: 20) {
-                    // Search bar - moved to top
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.white.opacity(0.6))
+            ScrollView {
+                VStack(spacing: 8) {
+                    // Top navigation bar with search and close button
+                    HStack(spacing: 16) {
+                        // Search field - left aligned
+                        HStack {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.white.opacity(0.6))
+                            
+                            TextField("Select destination", text: $searchText)
+                                .foregroundColor(.white)
+                                .focused($searchFieldFocused)
+                                .onChange(of: searchText) { _, newValue in
+                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                        isSearching = !newValue.isEmpty
+                                    }
+                                }
+                                .onSubmit {
+                                    if let firstResult = searchResults.first {
+                                        selectDestination(firstResult)
+                                    }
+                                }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                .fill(TrackRatTheme.Colors.surfaceCard)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                                )
+                        )
                         
-                        TextField("Where would you like to go?", text: $searchText)
-                            .foregroundColor(.white)
-                            .focused($searchFieldFocused)
-                            .onTapGesture {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    isSearching = true
-                                }
-                            }
-                            .onChange(of: searchText) { _, newValue in
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    isSearching = !newValue.isEmpty
-                                }
-                            }
-                            .onChange(of: searchFieldFocused) { _, newValue in
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    navigationBarVisible = newValue
-                                }
-                            }
-                        
-                        if isSearching {
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    searchText = ""
-                                    isSearching = false
-                                    searchFieldFocused = false
-                                }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.white.opacity(0.6))
-                            }
+                        // Close button
+                        Button {
+                            // Navigate back to the root (TripSelectionView)
+                            appState.navigationPath.removeLast(appState.navigationPath.count)
+                        } label: {
+                            Text("Close")
+                                .foregroundColor(.white)
+                                .font(.body)
                         }
                     }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.white.opacity(0.2))
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(.white.opacity(0.3), lineWidth: 1)
-                            )
-                    )
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal)
+                    .padding(.top, 10)
                     
-                    // Search results - take full page when searching
-                    if isSearching {
-                        ScrollView {
+                    
+                    // Search results and favorite stations container
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Search results - take full page when searching
+                        if isSearching {
                             VStack(spacing: 8) {
                                 ForEach(searchResults, id: \.self) { station in
                                     HStack {
@@ -128,58 +123,45 @@ struct DestinationPickerView: View {
                                     }
                                     .padding()
                                     .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(.white.opacity(0.15))
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .stroke(.white.opacity(0.2), lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                            .fill(TrackRatTheme.Colors.surfaceCard)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                                    .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
                                             )
                                     )
-                                    .padding(.horizontal, 24)
+                                    .padding(.horizontal)
                                 }
                             }
-                            .padding(.bottom, 50) // Add bottom padding for better scrolling
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    } else {
-                        // Favorite stations - only show when not searching
-                        if !favoriteStations.isEmpty {
+                        
+                        // Favorite stations - show when not typing in search
+                        if !favoriteStations.isEmpty && !isSearching {
                             VStack(alignment: .leading, spacing: 16) {
                                 Text("FAVORITE STATIONS")
                                     .font(TrackRatTheme.Typography.caption)
                                     .fontWeight(.semibold)
                                     .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
-                                    .padding(.horizontal, 24)
+                                    .padding(.horizontal)
                                 
                                 ForEach(favoriteStations) { station in
                                     FavoriteDestinationButton(station: station) {
                                         selectDestination(station.name)
                                     }
-                                    .padding(.horizontal, 24)
+                                    .padding(.horizontal)
                                 }
                             }
-                            .padding(.top, 20)
+                            .padding(.top, 8)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
+                    .padding(.top, searchFieldFocused ? 8 : 12)
                 }
-                
-                Spacer()
+                .padding(.bottom, 40)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .scrollAwareNavigationBar(isVisible: navigationBarVisible)
-        .tint(.orange)
-        .toolbar {
-            
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Close") {
-                    // Navigate back to the root (TripSelectionView)
-                    appState.navigationPath.removeLast(appState.navigationPath.count)
-                }
-                .foregroundColor(.white)
-            }
-        }
+        .navigationBarHidden(true)
         .onAppear {
             // Load favorite stations when view appears
             appState.loadFavoriteStations()
@@ -187,33 +169,39 @@ struct DestinationPickerView: View {
     }
     
     private func selectDestination(_ destination: String) {
+        // Immediate UI state updates - these happen instantly for responsive feedback
         appState.selectedDestination = destination
         appState.destinationStationCode = Stations.getStationCode(destination)
         
-        // Create and set the selected route for map highlighting
-        if let departureCode = appState.departureStationCode,
-           let departureName = appState.selectedDeparture,
-           let destinationCode = appState.destinationStationCode {
-            appState.selectedRoute = TripPair(
-                departureCode: departureCode,
-                departureName: departureName,
-                destinationCode: destinationCode,
-                destinationName: destination,
-                isFavorite: false
-            )
-        }
-        
+        // Immediate navigation - this should happen right away
         appState.navigationPath.append(NavigationDestination.trainList(destination: destination))
         
-        // Reset search with animation
+        // Immediate UI feedback - provides instant user response
         withAnimation(.easeInOut(duration: 0.3)) {
             searchText = ""
             isSearching = false
             searchFieldFocused = false
         }
         
-        // Haptic feedback
+        // Immediate haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        
+        // DEFER the heavy map route setting to happen after UI updates
+        // This prevents the map processing from blocking the station selection UI
+        DispatchQueue.main.async {
+            // Create and set the selected route for map highlighting
+            if let departureCode = self.appState.departureStationCode,
+               let departureName = self.appState.selectedDeparture,
+               let destinationCode = self.appState.destinationStationCode {
+                self.appState.selectedRoute = TripPair(
+                    departureCode: departureCode,
+                    departureName: departureName,
+                    destinationCode: destinationCode,
+                    destinationName: destination,
+                    isFavorite: false
+                )
+            }
+        }
     }
 }
 

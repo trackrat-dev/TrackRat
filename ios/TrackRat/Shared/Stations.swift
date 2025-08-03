@@ -4,26 +4,11 @@ import CoreLocation
 struct Stations {
     static let all: [String] = [
         // NJ Transit stations (corrected codes to match API)
-        "New York Penn Station", "Newark Penn Station", "Secaucus Upper Lvl", "Woodbridge",
+        "New York Penn Station", "Newark Penn Station", "Secaucus Upper Lvl",
         "Metropark", "New Brunswick", "Princeton Junction", "Trenton", "Hamilton",
-        "Morristown", "Madison", "Summit", "Millburn", "Short Hills", "Newark Airport",
-        "Elizabeth", "Linden", "Rahway", "Metuchen", "Edison", "Iselin", "Perth Amboy",
-        "South Amboy", "Aberdeen-Matawan", "Hazlet", "Red Bank", "Little Silver", "Monmouth Park",
-        "Long Branch", "Asbury Park", "Bradley Beach", "Belmar", "Spring Lake", "Manasquan",
-        "Point Pleasant Beach", "Bay Head", "Montclair State University", "Montclair Heights",
-        "Upper Montclair", "Mountain Avenue", "Orange", "East Orange", "Brick Church",
-        "Newark Broad Street", "Bloomfield", "Watsessing", "Walnut Street", "Glen Ridge",
-        "Ridgewood", "Ho-Ho-Kus", "Waldwick", "Allendale", "Ramsey Route 17", "Ramsey Main Street",
-        "Mahwah", "Suffern", "Sloatsburg", "Tuxedo", "Harriman", "Goshen", "Campbell Hall",
-        "Salisbury Mills-Cornwall", "New Hampton", "Middletown NJ", "Otisville", "Port Jervis",
-        "Denville", "Mount Tabor", "Parsippany", "Boonton", "Mountain Lakes", "Convent Station",
-        "Chatham", "New Providence", "Murray Hill", "Berkeley Heights",
-        "Gillette", "Stirling", "Millington", "Lyons", "Basking Ridge", "Bernardsville",
-        "Far Hills", "Peapack", "Gladstone", "Annandale", "Lebanon", "White House",
-        "North Branch", "Raritan", "Somerville", "Bound Brook", "Dunellen", "Plainfield",
-        "Netherwood", "Fanwood", "Westfield", "Garwood", "Cranford", "Roselle Park",
-        "Union", "Jersey Avenue", "Avenel", "Highland Avenue", "Mountain Station", "North Elizabeth",
-        "Bay Street", "Watchung Avenue", "Watsessing Avenue",
+        "Newark Airport",
+        "Elizabeth", "Linden", "Rahway", "Metuchen", "Edison", "Iselin",
+        "Jersey Avenue", "North Elizabeth",
         
         // Missing Keystone Service stations (PA)
         "Middletown", "Elizabethtown", "Mount Joy", "Lancaster", "Parkesburg", "Coatesville",
