@@ -855,7 +855,7 @@ class CongestionDataViewModel: ObservableObject {
         let stationCodes = journeyStops.map { $0.stationCode.uppercased() }
         
         // Filter segments that are valid forward paths in the journey AND match the train type
-        let filtered = congestionData.segments.filter { segment in
+        let filtered = congestionData.aggregatedSegments.filter { segment in
             // First check if data source matches train type
             guard segment.dataSource.uppercased() == expectedDataSource else {
                 return false

@@ -18,14 +18,6 @@ struct TrainNumberSearchView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 32) {
-                    // Title
-                    Text("What's your train number?")
-                        .font(.largeTitle)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 60)
-                
                 VStack(spacing: 24) {
                     // Input field
                     VStack(alignment: .leading, spacing: 8) {

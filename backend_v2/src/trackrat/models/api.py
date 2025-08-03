@@ -427,8 +427,31 @@ class TrainLocationData(BaseModel):
     heading: str | None = None
 
 
+class IndividualJourneySegment(BaseModel):
+    """Individual journey segment data for visualization."""
+
+    journey_id: str
+    train_id: str
+    from_station: str
+    to_station: str
+    from_station_name: str
+    to_station_name: str
+    data_source: str
+    scheduled_departure: datetime
+    actual_departure: datetime
+    scheduled_arrival: datetime
+    actual_arrival: datetime
+    scheduled_minutes: float = Field(..., ge=0.0)
+    actual_minutes: float = Field(..., ge=0.0)
+    delay_minutes: float
+    congestion_factor: float = Field(..., ge=0.0)
+    congestion_level: Literal["normal", "moderate", "heavy", "severe"]
+    is_cancelled: bool
+    journey_date: date
+
+
 class SegmentCongestion(BaseModel):
-    """Congestion data for a route segment."""
+    """Aggregated congestion data for a route segment."""
 
     from_station: str
     to_station: str
@@ -448,10 +471,12 @@ class SegmentCongestion(BaseModel):
 class CongestionMapResponse(BaseModel):
     """Response for congestion map endpoint."""
 
-    segments: list[SegmentCongestion]
+    individual_segments: list[IndividualJourneySegment]
+    aggregated_segments: list[SegmentCongestion]
     train_positions: list[TrainLocationData] = Field(default_factory=list)
     generated_at: datetime
     time_window_hours: int
+    max_per_segment: int = Field(default=100, ge=1, le=500)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

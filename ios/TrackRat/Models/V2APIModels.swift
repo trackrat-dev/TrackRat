@@ -387,19 +387,142 @@ struct TrainLocationData: Codable, Identifiable {
     }
 }
 
+struct IndividualJourneySegment: Codable, Identifiable {
+    let journeyId: String
+    let trainId: String
+    let fromStation: String
+    let toStation: String
+    let fromStationName: String
+    let toStationName: String
+    let dataSource: String
+    let scheduledDeparture: Date
+    let actualDeparture: Date
+    let scheduledArrival: Date
+    let actualArrival: Date
+    let scheduledMinutes: Double
+    let actualMinutes: Double
+    let delayMinutes: Double
+    let congestionFactor: Double
+    let congestionLevel: String
+    let isCancelled: Bool
+    let journeyDate: String  // Changed from Date to String since backend sends "YYYY-MM-DD" format
+    
+    enum CodingKeys: String, CodingKey {
+        case journeyId = "journey_id"
+        case trainId = "train_id"
+        case fromStation = "from_station"
+        case toStation = "to_station"
+        case fromStationName = "from_station_name"
+        case toStationName = "to_station_name"
+        case dataSource = "data_source"
+        case scheduledDeparture = "scheduled_departure"
+        case actualDeparture = "actual_departure"
+        case scheduledArrival = "scheduled_arrival"
+        case actualArrival = "actual_arrival"
+        case scheduledMinutes = "scheduled_minutes"
+        case actualMinutes = "actual_minutes"
+        case delayMinutes = "delay_minutes"
+        case congestionFactor = "congestion_factor"
+        case congestionLevel = "congestion_level"
+        case isCancelled = "is_cancelled"
+        case journeyDate = "journey_date"
+    }
+    
+    // Identifiable
+    var id: String {
+        "\(journeyId)-\(fromStation)-\(toStation)"
+    }
+}
+
 struct CongestionMapResponse: Codable {
-    let segments: [CongestionSegment]
+    let individualSegments: [IndividualJourneySegment]
+    let aggregatedSegments: [CongestionSegment]
     let trainPositions: [TrainLocationData]
     let generatedAt: Date
     let timeWindowHours: Int
-    let metadata: CongestionMetadata
+    let maxPerSegment: Int
+    
+    // Use a custom metadata structure that matches what backend actually sends
+    private let rawMetadata: [String: CodableValue]
     
     enum CodingKeys: String, CodingKey {
-        case segments
+        case individualSegments = "individual_segments"
+        case aggregatedSegments = "aggregated_segments"
         case trainPositions = "train_positions"
         case generatedAt = "generated_at"
         case timeWindowHours = "time_window_hours"
-        case metadata
+        case maxPerSegment = "max_per_segment"
+        case rawMetadata = "metadata"
+    }
+    
+    // Computed properties to access metadata fields safely
+    var totalIndividualSegments: Int {
+        rawMetadata["total_individual_segments"]?.intValue ?? 0
+    }
+    
+    var totalAggregatedSegments: Int {
+        rawMetadata["total_aggregated_segments"]?.intValue ?? 0
+    }
+    
+    var totalTrains: Int {
+        rawMetadata["total_trains"]?.intValue ?? 0
+    }
+}
+
+// Helper enum to handle different value types in metadata
+enum CodableValue: Codable {
+    case int(Int)
+    case string(String)
+    case double(Double)
+    case bool(Bool)
+    case dictionary([String: CodableValue])
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        
+        if let intValue = try? container.decode(Int.self) {
+            self = .int(intValue)
+        } else if let stringValue = try? container.decode(String.self) {
+            self = .string(stringValue)
+        } else if let doubleValue = try? container.decode(Double.self) {
+            self = .double(doubleValue)
+        } else if let boolValue = try? container.decode(Bool.self) {
+            self = .bool(boolValue)
+        } else if let dictValue = try? container.decode([String: CodableValue].self) {
+            self = .dictionary(dictValue)
+        } else {
+            throw DecodingError.typeMismatch(CodableValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unsupported type"))
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .int(let value):
+            try container.encode(value)
+        case .string(let value):
+            try container.encode(value)
+        case .double(let value):
+            try container.encode(value)
+        case .bool(let value):
+            try container.encode(value)
+        case .dictionary(let value):
+            try container.encode(value)
+        }
+    }
+    
+    var intValue: Int? {
+        if case .int(let value) = self {
+            return value
+        }
+        return nil
+    }
+    
+    var stringValue: String? {
+        if case .string(let value) = self {
+            return value
+        }
+        return nil
     }
 }
 
@@ -501,22 +624,8 @@ struct StationCoordinates: Codable {
     let lon: Double
 }
 
-struct CongestionMetadata: Codable {
-    let totalSegments: Int
-    let congestionLevels: CongestionLevelCounts
-    
-    enum CodingKeys: String, CodingKey {
-        case totalSegments = "total_segments"
-        case congestionLevels = "congestion_levels"
-    }
-}
-
-struct CongestionLevelCounts: Codable {
-    let normal: Int
-    let moderate: Int
-    let heavy: Int
-    let severe: Int
-}
+// Removed CongestionMetadata and CongestionLevelCounts structs
+// Backend sends metadata as generic dictionary, handled by CodableValue in CongestionMapResponse
 
 // MARK: - Segment Train Details Models
 
@@ -673,6 +782,52 @@ struct TimeWindowInfo: Codable {
 
 
 // MARK: - Extensions for Display
+
+extension IndividualJourneySegment {
+    var displayColor: Color {
+        if congestionFactor < 1.05 {
+            return .green
+        } else if congestionFactor < 1.25 {
+            return .yellow
+        } else if congestionFactor < 2.0 {
+            return .orange
+        } else {
+            return .red
+        }
+    }
+    
+    /// Convert the journey date string to a Date object
+    var journeyDateAsDate: Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.date(from: journeyDate)
+    }
+    
+    var displayCongestionLevel: String {
+        switch congestionLevel {
+        case "normal": return "Normal"
+        case "moderate": return "Moderate"
+        case "heavy": return "Heavy"
+        case "severe": return "Severe"
+        default: return congestionLevel.capitalized
+        }
+    }
+    
+    var delayText: String {
+        if delayMinutes > 0 {
+            return "+\(Int(delayMinutes))m"
+        } else if delayMinutes < 0 {
+            return "\(Int(delayMinutes))m"
+        } else {
+            return "On time"
+        }
+    }
+    
+    var trainDisplayName: String {
+        "Train \(trainId)"
+    }
+}
 
 extension CongestionSegment {
     var fromStationDisplayName: String {

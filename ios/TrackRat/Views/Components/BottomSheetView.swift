@@ -3,7 +3,8 @@ import SwiftUI
 // MARK: - Bottom Sheet Position
 enum BottomSheetPosition: CaseIterable {
     case compact    // 25% of screen height
-    case medium     // 50% of screen height  
+    case medium     // 50% of screen height
+    case seventyFive // 75% of screen height
     case large      // 90% of screen height
     case expanded   // 100% of screen height
     
@@ -13,6 +14,8 @@ enum BottomSheetPosition: CaseIterable {
             return screenHeight * 0.75  // Show 25%
         case .medium:
             return screenHeight * 0.5   // Show 50%
+        case .seventyFive:
+            return screenHeight * 0.25  // Show 75%
         case .large:
             return screenHeight * 0.1   // Show 90%
         case .expanded:
@@ -121,6 +124,8 @@ struct BottomSheetView<Content: View>: View {
         case .compact:
             position = .medium
         case .medium:
+            position = .seventyFive
+        case .seventyFive:
             position = .large
         case .large:
             position = .expanded

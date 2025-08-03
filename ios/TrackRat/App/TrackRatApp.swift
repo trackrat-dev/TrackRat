@@ -490,8 +490,12 @@ final class AppState: ObservableObject {
     // Recent trips
     @Published var recentTrips: [TripPair] = []
     
+    // Favorite stations
+    @Published var favoriteStations: [FavoriteStation] = []
+    
     init() {
         loadRecentTrips()
+        loadFavoriteStations()
         
         // Migrate existing data
         storageService.migrateRecentDestinations()
@@ -547,6 +551,20 @@ final class AppState: ObservableObject {
     func reverseFavoriteDirection(_ trip: TripPair) {
         storageService.reverseFavoriteDirection(trip)
         loadRecentTrips()
+    }
+    
+    // MARK: - Favorite Stations
+    func loadFavoriteStations() {
+        favoriteStations = storageService.loadFavoriteStations()
+    }
+    
+    func toggleFavoriteStation(code: String, name: String) {
+        storageService.toggleFavoriteStation(code: code, name: name)
+        loadFavoriteStations()
+    }
+    
+    func isStationFavorited(code: String) -> Bool {
+        return storageService.isStationFavorited(code: code)
     }
     
 }

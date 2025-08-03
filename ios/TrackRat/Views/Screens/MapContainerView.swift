@@ -19,10 +19,15 @@ struct MapContainerView: View {
             SystemCongestionMapView(
                 region: $mapRegion,
                 segments: mapViewModel.segments,
+                individualSegments: mapViewModel.individualSegments,
                 stations: mapViewModel.stations,
                 selectedRoute: appState.selectedRoute,
                 onSegmentTap: { segment in
                     selectedSegment = segment
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                },
+                onIndividualSegmentTap: { individualSegment in
+                    print("Tapped individual segment: \(individualSegment.trainDisplayName)")
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             )
@@ -62,9 +67,8 @@ struct MapContainerView: View {
             .onChange(of: appState.mapDisplayMode) { _, newMode in
                 // Update map when display mode changes
                 print("🗺️ Map display mode changed to: \(newMode)")
-                Task {
-                    await mapViewModel.updateDisplayMode(newMode)
-                }
+                // Note: MapDisplayMode handles overall map focus, not congestion visualization
+                // Individual vs aggregated congestion is handled by CongestionMapView directly
             }
             
             // Gradient overlay at top for better readability
@@ -288,6 +292,8 @@ struct MapContainerView: View {
             return 0.05     // Small upward offset
         case .medium:       // 50% coverage  
             return 0.10     // Medium upward offset
+        case .seventyFive:  // 75% coverage
+            return 0.15     // Medium-large upward offset
         case .large:        // 90% coverage
             return 0.20     // Large upward offset
         case .expanded:     // 100% coverage

@@ -21,6 +21,13 @@ struct DestinationPickerView: View {
         }
     }
     
+    // Get favorite stations (filtered to exclude departure station)
+    private var favoriteStations: [FavoriteStation] {
+        return appState.favoriteStations.filter { station in
+            station.id != appState.departureStationCode
+        }
+    }
+    
     // Computed property for dynamic spacing - keep consistent spacing
     private var topPadding: CGFloat {
         20
@@ -91,28 +98,43 @@ struct DestinationPickerView: View {
                         ScrollView {
                             VStack(spacing: 8) {
                                 ForEach(searchResults, id: \.self) { station in
-                                    Button {
-                                        selectDestination(station)
-                                    } label: {
-                                        HStack {
-                                            Text(Stations.displayName(for: station))
-                                                .font(.body)
-                                                .foregroundColor(.white)
-                                            Spacer()
-                                            Image(systemName: "chevron.right")
-                                                .font(.system(size: 14, weight: .semibold))
-                                                .foregroundColor(.white.opacity(0.6))
+                                    HStack {
+                                        // Main station button
+                                        Button {
+                                            selectDestination(station)
+                                        } label: {
+                                            HStack {
+                                                Text(Stations.displayName(for: station))
+                                                    .font(.body)
+                                                    .foregroundColor(.white)
+                                                Spacer()
+                                            }
                                         }
-                                        .padding()
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .fill(.white.opacity(0.15))
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 12)
-                                                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                                                )
-                                        )
+                                        
+                                        // Heart button - separate from main button
+                                        if let code = Stations.getStationCode(station) {
+                                            Button {
+                                                withAnimation(.easeInOut(duration: 0.2)) {
+                                                    appState.toggleFavoriteStation(code: code, name: station)
+                                                }
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            } label: {
+                                                Image(systemName: appState.isStationFavorited(code: code) ? "heart.fill" : "heart")
+                                                    .font(.system(size: 16))
+                                                    .foregroundColor(.orange)
+                                            }
+                                            .padding(.leading, 8)
+                                        }
                                     }
+                                    .padding()
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(.white.opacity(0.15))
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(.white.opacity(0.2), lineWidth: 1)
+                                            )
+                                    )
                                     .padding(.horizontal, 24)
                                 }
                             }
@@ -120,41 +142,23 @@ struct DestinationPickerView: View {
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     } else {
-                        // Popular destinations - only show when not searching
-                        if !filteredPopularDestinations.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("POPULAR DESTINATIONS")
+                        // Favorite stations - only show when not searching
+                        if !favoriteStations.isEmpty {
+                            VStack(alignment: .leading, spacing: 16) {
+                                Text("FAVORITE STATIONS")
                                     .font(TrackRatTheme.Typography.caption)
                                     .fontWeight(.semibold)
                                     .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
-                                    .padding(.horizontal)
+                                    .padding(.horizontal, 24)
                                 
-                                VStack(spacing: 12) {
-                                    ForEach(filteredPopularDestinations, id: \.code) { destination in
-                                        Button {
-                                            selectDestination(destination.name)
-                                        } label: {
-                                            HStack {
-                                                Text(Stations.displayName(for: destination.name))
-                                                    .font(.headline)
-                                                    .foregroundColor(.white)
-                                                
-                                                Spacer()
-                                                
-                                                Image(systemName: "chevron.right")
-                                                    .foregroundColor(.white.opacity(0.7))
-                                                    .font(.caption)
-                                            }
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.horizontal, 20)
-                                            .padding(.vertical, 16)
-                                            .background(.white.opacity(0.2))
-                                            .cornerRadius(12)
-                                        }
+                                ForEach(favoriteStations) { station in
+                                    FavoriteDestinationButton(station: station) {
+                                        selectDestination(station.name)
                                     }
+                                    .padding(.horizontal, 24)
                                 }
-                                .padding(.horizontal, 24)
                             }
+                            .padding(.top, 20)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
@@ -177,7 +181,8 @@ struct DestinationPickerView: View {
             }
         }
         .onAppear {
-            // Initialize any view state if needed
+            // Load favorite stations when view appears
+            appState.loadFavoriteStations()
         }
     }
     
@@ -212,6 +217,55 @@ struct DestinationPickerView: View {
     }
 }
 
+// MARK: - Favorite Destination Button
+struct FavoriteDestinationButton: View {
+    let station: FavoriteStation
+    let onTap: () -> Void
+    @EnvironmentObject private var appState: AppState
+    
+    var body: some View {
+        Button {
+            onTap()
+        } label: {
+            HStack {
+                Text(Stations.displayName(for: station.name))
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                
+                Spacer()
+                
+                // Unfavorite button (heart icon)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        appState.toggleFavoriteStation(code: station.id, name: station.name)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.orange)
+                }
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        appState.toggleFavoriteStation(code: station.id, name: station.name)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.white.opacity(0.15))
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(.white.opacity(0.2), lineWidth: 1)
+                    )
+            )
+        }
+    }
+}
 
 #Preview {
     DestinationPickerView()

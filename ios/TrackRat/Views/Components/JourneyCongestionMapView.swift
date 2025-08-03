@@ -133,21 +133,31 @@ class JourneyCongestionViewModel: ObservableObject {
             
             // Filter segments to any valid forward path in the user's journey
             let journeyStationCodes = getJourneyStationCodes()
-            filteredSegments = congestionData.segments.filter { segment in
+            print("🚦 Journey station codes: \(journeyStationCodes)")
+            print("🚦 Expected data source: \(expectedDataSource)")
+            print("🚦 Total segments to filter: \(congestionData.aggregatedSegments.count)")
+            
+            filteredSegments = congestionData.aggregatedSegments.filter { segment in
                 // First check if data source matches train type
                 guard segment.dataSource.uppercased() == expectedDataSource else {
+                    print("🚦 ❌ Data source mismatch: \(segment.dataSource) != \(expectedDataSource)")
                     return false
                 }
                 
                 // Find indices of from and to stations
                 guard let fromIndex = journeyStationCodes.firstIndex(of: segment.fromStation),
                       let toIndex = journeyStationCodes.firstIndex(of: segment.toStation) else {
+                    print("🚦 ❌ Station not found in journey: \(segment.fromStation) → \(segment.toStation)")
                     return false
                 }
                 
                 // Include any segment where 'to' station comes after 'from' station
-                return toIndex > fromIndex
+                let isValid = toIndex > fromIndex
+                print("🚦 \(isValid ? "✅" : "❌") Segment: \(segment.fromStation) → \(segment.toStation) (indices: \(fromIndex) → \(toIndex))")
+                return isValid
             }
+            
+            print("🚦 Filtered segments result: \(filteredSegments.count) segments")
             
             // Filter train positions to only show the current train
             trainPositions = congestionData.trainPositions.filter { position in
@@ -821,7 +831,7 @@ class EmbeddedCongestionViewModel: ObservableObject {
             
             // Filter segments to user's journey path only
             let journeyStationCodes = getJourneyStationCodes()
-            let filteredSegments = congestionData.segments.filter { segment in
+            let filteredSegments = congestionData.aggregatedSegments.filter { segment in
                 // Check if data source matches train type
                 guard segment.dataSource.uppercased() == expectedDataSource else {
                     return false

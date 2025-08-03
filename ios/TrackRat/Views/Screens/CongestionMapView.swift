@@ -19,10 +19,17 @@ struct CongestionMapView: View {
             SystemCongestionMapView(
                 region: $region,
                 segments: viewModel.segments,
+                individualSegments: viewModel.individualSegments,
                 stations: viewModel.stations,
                 selectedRoute: nil,  // No route highlighting in standalone map view
                 onSegmentTap: { segment in
                     selectedSegment = segment
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                },
+                onIndividualSegmentTap: { individualSegment in
+                    // For now, we'll just show regular segment details
+                    // TODO: Create specific individual segment details view
+                    print("Tapped individual segment: \(individualSegment.trainDisplayName) \(individualSegment.fromStation) → \(individualSegment.toStation)")
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             )
@@ -50,19 +57,43 @@ struct CongestionMapView: View {
                     
                     Spacer()
                     
-                    // Filter button
-                    Button {
-                        showingFilters.toggle()
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.title2)
-                            .foregroundColor(.orange)
-                            .padding(10)
-                            .background(
-                                Circle()
-                                    .fill(.ultraThinMaterial)
-                            )
+                    HStack(spacing: 12) {
+                        // Display mode toggle
+                        Button {
+                            Task {
+                                switch viewModel.displayMode {
+                                case .aggregated:
+                                    await viewModel.updateDisplayMode(.individual)
+                                case .individual, .individualLimited:
+                                    await viewModel.updateDisplayMode(.aggregated)
+                                }
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            Image(systemName: viewModel.displayMode == .aggregated ? "line.horizontal.3" : "dot.square")
+                                .font(.title2)
+                                .foregroundColor(.orange)
+                                .padding(10)
+                                .background(
+                                    Circle()
+                                        .fill(.ultraThinMaterial)
+                                )
+                        }
+                        
+                        // Filter button
+                        Button {
+                            showingFilters.toggle()
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.title2)
+                                .foregroundColor(.orange)
+                                .padding(10)
+                                .background(
+                                    Circle()
+                                        .fill(.ultraThinMaterial)
+                                )
+                        }
                     }
                 }
                 .padding(.horizontal)
@@ -154,15 +185,24 @@ struct CongestionMapView: View {
 
 // MARK: - View Model
 
+enum CongestionDisplayMode: Equatable {
+    case aggregated
+    case individual
+    case individualLimited(maxPerSegment: Int)
+}
+
 @MainActor
 class CongestionMapViewModel: ObservableObject {
     @Published var segments: [CongestionSegment] = []
+    @Published var individualSegments: [IndividualJourneySegment] = []
     @Published var stations: [MapStation] = []
     @Published var isLoading = false
     @Published var error: String?
+    @Published var displayMode: CongestionDisplayMode = .individual
     
     // Store all segments and filter based on display mode
-    private var allSegments: [CongestionSegment] = []
+    private var allAggregatedSegments: [CongestionSegment] = []
+    private var allIndividualSegments: [IndividualJourneySegment] = []
     private var allStations: [MapStation] = []
     private var currentDisplayMode: MapDisplayMode = .overallCongestion
     
@@ -180,20 +220,43 @@ class CongestionMapViewModel: ObservableObject {
         error = nil
         
         do {
+            let maxPerSegment = switch displayMode {
+            case .aggregated: 0
+            case .individual: 100
+            case .individualLimited(let max): max
+            }
+            
             let response = try await APIService.shared.fetchCongestionData(
                 timeWindowHours: timeWindowHours,
+                maxPerSegment: maxPerSegment,
                 dataSource: dataSource
             )
             
-            print("🚦 API response received: \(response.segments.count) segments")
+            print("🚦 API response received: \(response.aggregatedSegments.count) aggregated, \(response.individualSegments.count) individual segments")
+            
+            // Debug: Print first few segments to see what we're getting
+            if !response.individualSegments.isEmpty {
+                print("🚦 Sample individual segments:")
+                for (index, segment) in response.individualSegments.prefix(3).enumerated() {
+                    print("  \(index): \(segment.fromStation) → \(segment.toStation) (\(segment.trainId))")
+                }
+            }
+            if !response.aggregatedSegments.isEmpty {
+                print("🚦 Sample aggregated segments:")
+                for (index, segment) in response.aggregatedSegments.prefix(3).enumerated() {
+                    print("  \(index): \(segment.fromStation) → \(segment.toStation)")
+                }
+            }
             
             // Store all segments
-            allSegments = response.segments
+            allAggregatedSegments = response.aggregatedSegments
+            allIndividualSegments = response.individualSegments
             
-            // Extract unique stations
+            // Extract unique stations from both segment types
             var stationMap: [String: MapStation] = [:]
             
-            for segment in allSegments {
+            // From aggregated segments
+            for segment in allAggregatedSegments {
                 if let coords = Stations.getCoordinates(for: segment.fromStation) {
                     stationMap[segment.fromStation] = MapStation(
                         code: segment.fromStation,
@@ -207,6 +270,28 @@ class CongestionMapViewModel: ObservableObject {
                         name: segment.toStationDisplayName,
                         coordinate: coords
                     )
+                }
+            }
+            
+            // From individual segments
+            for segment in allIndividualSegments {
+                if let coords = Stations.getCoordinates(for: segment.fromStation) {
+                    stationMap[segment.fromStation] = MapStation(
+                        code: segment.fromStation,
+                        name: segment.fromStationName,
+                        coordinate: coords
+                    )
+                } else {
+                    print("🚦 ⚠️ No coordinates for station: \(segment.fromStation)")
+                }
+                if let coords = Stations.getCoordinates(for: segment.toStation) {
+                    stationMap[segment.toStation] = MapStation(
+                        code: segment.toStation,
+                        name: segment.toStationName,
+                        coordinate: coords
+                    )
+                } else {
+                    print("🚦 ⚠️ No coordinates for station: \(segment.toStation)")
                 }
             }
             
@@ -225,99 +310,30 @@ class CongestionMapViewModel: ObservableObject {
         print("🚦 Congestion data fetch completed. Final segments: \(segments.count)")
     }
     
-    func updateDisplayMode(_ mode: MapDisplayMode) async {
+    func updateDisplayMode(_ mode: CongestionDisplayMode) async {
         print("🚦 Updating display mode to: \(mode)")
-        currentDisplayMode = mode
-        applyDisplayModeFilter()
+        displayMode = mode
+        await fetchCongestionData() // Re-fetch with new mode
     }
     
     private func applyDisplayModeFilter() {
-        switch currentDisplayMode {
-        case .overallCongestion:
-            // Show all segments and stations
-            segments = allSegments
+        switch displayMode {
+        case .aggregated:
+            // Show aggregated segments only
+            segments = allAggregatedSegments
+            individualSegments = []
             stations = allStations
-            print("🚦 Applied overall congestion filter: \(segments.count) segments")
+            print("🚦 Applied aggregated filter: \(segments.count) aggregated segments")
             
-        case .journeyFocus(_, let origin, let destination, let trainStops):
-            // Filter to show only segments relevant to this journey using actual train stops
-            let journeySegments = getJourneySegments(trainStops: trainStops)
-            let journeyStations = getJourneyStations(for: journeySegments)
-            
-            segments = journeySegments
-            stations = journeyStations
-            print("🚦 Applied journey focus filter: \(segments.count) segments for \(origin) → \(destination) with stops: \(trainStops)")
+        case .individual, .individualLimited:
+            // Show individual journey segments
+            segments = allAggregatedSegments // Keep aggregated for reference
+            individualSegments = allIndividualSegments
+            stations = allStations
+            print("🚦 Applied individual filter: \(individualSegments.count) individual segments")
         }
     }
     
-    private func getJourneySegments(trainStops: [String]) -> [CongestionSegment] {
-        print("🚦 Filtering segments for train stops: \(trainStops)")
-        print("🚦 Available segments: \(allSegments.map { "\($0.fromStation)→\($0.toStation)" })")
-        
-        // Filter segments that are part of this train's actual route
-        let journeySegments = allSegments.filter { segment in
-            if let fromIndex = trainStops.firstIndex(of: segment.fromStation),
-               let toIndex = trainStops.firstIndex(of: segment.toStation) {
-                // Include segments where stations are adjacent in the train's route
-                let isAdjacent = toIndex == fromIndex + 1
-                if isAdjacent {
-                    print("🚦 ✅ Including segment: \(segment.fromStation)→\(segment.toStation)")
-                }
-                return isAdjacent
-            }
-            return false
-        }
-        
-        print("🚦 Final journey segments: \(journeySegments.map { "\($0.fromStation)→\($0.toStation)" })")
-        return journeySegments
-    }
-    
-    // Keep the old method for backward compatibility
-    private func getJourneySegments(from origin: String, to destination: String) -> [CongestionSegment] {
-        // Get the route stations between origin and destination
-        let routeStations = getStationCodesInRoute(from: origin, to: destination)
-        
-        // Filter segments that are part of this route
-        return allSegments.filter { segment in
-            if let fromIndex = routeStations.firstIndex(of: segment.fromStation),
-               let toIndex = routeStations.firstIndex(of: segment.toStation) {
-                // Include segments where stations are adjacent in the route
-                return toIndex == fromIndex + 1
-            }
-            return false
-        }
-    }
-    
-    private func getJourneyStations(for segments: [CongestionSegment]) -> [MapStation] {
-        // Get unique stations from the journey segments
-        var stationCodes = Set<String>()
-        
-        for segment in segments {
-            stationCodes.insert(segment.fromStation)
-            stationCodes.insert(segment.toStation)
-        }
-        
-        return allStations.filter { station in
-            stationCodes.contains(station.code)
-        }
-    }
-    
-    private func getStationCodesInRoute(from: String, to: String) -> [String] {
-        // Use the same logic from the existing route highlighting
-        let necCorridor = ["NY", "NP", "TR", "PJ", "MP", "NBK", "MET", "EWR", "SECAUCUS", "HOB"]
-        
-        if let fromIndex = necCorridor.firstIndex(of: from),
-           let toIndex = necCorridor.firstIndex(of: to) {
-            if fromIndex < toIndex {
-                return Array(necCorridor[fromIndex...toIndex])
-            } else {
-                return Array(necCorridor[toIndex...fromIndex].reversed())
-            }
-        }
-        
-        // Fallback to just the two stations
-        return [from, to]
-    }
 }
 
 // MARK: - Supporting Views
@@ -415,9 +431,11 @@ struct FilterSheet: View {
 struct SystemCongestionMapView: UIViewRepresentable {
     @Binding var region: MKCoordinateRegion
     let segments: [CongestionSegment]
+    let individualSegments: [IndividualJourneySegment]
     let stations: [MapStation]
     let selectedRoute: TripPair?
     let onSegmentTap: (CongestionSegment) -> Void
+    let onIndividualSegmentTap: ((IndividualJourneySegment) -> Void)?
     
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -449,8 +467,36 @@ struct SystemCongestionMapView: UIViewRepresentable {
         mapView.removeOverlays(mapView.overlays)
         mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
         
-        // Add congestion polylines
-        print("🗺️ Adding \(segments.count) congestion segments to map")
+        // Add individual journey segments with offsets to prevent overlap
+        print("🗺️ Adding \(individualSegments.count) individual journey segments to map")
+        var segmentCounts: [String: Int] = [:]
+        
+        for individualSegment in individualSegments {
+            if let fromCoords = Stations.getCoordinates(for: individualSegment.fromStation),
+               let toCoords = Stations.getCoordinates(for: individualSegment.toStation) {
+                
+                let segmentKey = "\(individualSegment.fromStation)-\(individualSegment.toStation)"
+                let offsetIndex = segmentCounts[segmentKey, default: 0]
+                segmentCounts[segmentKey] = offsetIndex + 1
+                
+                // Create slightly offset coordinates to prevent overlap
+                let offsetCoords = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: offsetIndex)
+                
+                let polyline = IndividualJourneyPolyline(coordinates: offsetCoords, count: offsetCoords.count)
+                polyline.individualSegment = individualSegment
+                polyline.offsetIndex = offsetIndex
+                mapView.addOverlay(polyline)
+                print("🗺️ Added individual segment: \(individualSegment.fromStation) → \(individualSegment.toStation) (train: \(individualSegment.trainId), offset: \(offsetIndex))")
+            }
+        }
+        
+        // Add aggregated segments (dimmed when showing individual)
+        if !individualSegments.isEmpty {
+            print("🗺️ Adding \(segments.count) aggregated segments (dimmed)")
+        } else {
+            print("🗺️ Adding \(segments.count) aggregated segments")
+        }
+        
         for segment in segments {
             if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
                let toCoords = Stations.getCoordinates(for: segment.toStation) {
@@ -458,10 +504,8 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 
                 let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
                 polyline.segment = segment
+                polyline.isDimmed = !individualSegments.isEmpty // Dim when showing individual segments
                 mapView.addOverlay(polyline)
-                print("🗺️ Added segment: \(segment.fromStation) → \(segment.toStation) (congestion: \(segment.congestionFactor))")
-            } else {
-                print("🗺️ Missing coordinates for segment: \(segment.fromStation) → \(segment.toStation)")
             }
         }
         
@@ -469,7 +513,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
         
         // Update coordinator with current segments for tap handling
         context.coordinator.segments = segments
+        context.coordinator.individualSegments = individualSegments
         context.coordinator.onSegmentTap = onSegmentTap
+        context.coordinator.onIndividualSegmentTap = onIndividualSegmentTap ?? { _ in }
         context.coordinator.selectedRoute = selectedRoute
     }
     
@@ -479,24 +525,42 @@ struct SystemCongestionMapView: UIViewRepresentable {
     
     class Coordinator: NSObject, MKMapViewDelegate {
         var segments: [CongestionSegment] = []
+        var individualSegments: [IndividualJourneySegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
+        var onIndividualSegmentTap: (IndividualJourneySegment) -> Void = { _ in }
         var selectedRoute: TripPair?
         
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            // Handle individual journey polylines
+            if let polyline = overlay as? IndividualJourneyPolyline {
+                let renderer = MKPolylineRenderer(polyline: polyline)
+                
+                if let segment = polyline.individualSegment {
+                    renderer.strokeColor = getUIColor(for: segment.congestionFactor)
+                    renderer.lineWidth = 3.0 // Thinner for individual journeys
+                    renderer.alpha = 0.9
+                    
+                    // Add slight variation based on offset index for visual distinction
+                    let alphaMod = CGFloat(polyline.offsetIndex % 3) * 0.1
+                    renderer.alpha = max(0.7, 0.9 - alphaMod)
+                    
+                    if segment.isCancelled {
+                        renderer.lineDashPattern = [3, 3]
+                    }
+                }
+                
+                return renderer
+            }
+            
+            // Handle aggregated segment polylines
             if let polyline = overlay as? SystemCongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 
-                // Check if this segment is part of the selected route
-                let isSelectedSegment = isSegmentInSelectedRoute(polyline.segment)
-                
-                if let segment = polyline.segment {
-                    print("🎨 Rendering segment: \(segment.fromStation) → \(segment.toStation), congestion: \(segment.congestionFactor), selected: \(isSelectedSegment)")
-                }
-                
-                // Convert congestion factor to color
                 if let segment = polyline.segment {
                     renderer.strokeColor = getUIColor(for: segment.congestionFactor)
+                    renderer.lineWidth = getCongestionLineWidth(segment.congestionFactor)
+                    renderer.alpha = polyline.isDimmed ? 0.3 : 0.8 // Dim when showing individual segments
                     
                     // Add dashed pattern for cancellations
                     if let dashPattern = segment.dashPattern {
@@ -504,21 +568,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     }
                 } else {
                     renderer.strokeColor = UIColor.gray
-                }
-                
-                // Adjust appearance based on selection
-                if selectedRoute == nil {
-                    // No route selected - show all segments at full visibility
-                    renderer.lineWidth = getCongestionLineWidth(polyline.segment?.congestionFactor ?? 1.0)
-                    renderer.alpha = 0.8
-                } else if isSelectedSegment {
-                    // Route selected and this segment is part of it - emphasize
-                    renderer.lineWidth = getCongestionLineWidth(polyline.segment?.congestionFactor ?? 1.0) * 1.5
-                    renderer.alpha = 1.0
-                } else {
-                    // Route selected but this segment is not part of it - dim
-                    renderer.lineWidth = getCongestionLineWidth(polyline.segment?.congestionFactor ?? 1.0)
-                    renderer.alpha = 0.4
+                    renderer.alpha = polyline.isDimmed ? 0.3 : 0.8
                 }
                 
                 return renderer
@@ -603,9 +653,51 @@ struct SystemCongestionMapView: UIViewRepresentable {
     }
 }
 
-// MARK: - Custom Polyline Class for System Map
+// MARK: - Helper Functions
+
+func createOffsetCoordinates(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D, offsetIndex: Int) -> [CLLocationCoordinate2D] {
+    guard offsetIndex > 0 else { return [from, to] }
+    
+    // Calculate perpendicular offset (small distance to prevent overlap)
+    let offsetDistance = Double(offsetIndex) * 0.0001 // About 10 meters per offset
+    
+    // Calculate the perpendicular direction
+    let dx = to.longitude - from.longitude
+    let dy = to.latitude - from.latitude
+    
+    // Perpendicular vector (rotated 90 degrees)
+    let perpDx = -dy
+    let perpDy = dx
+    
+    // Normalize and apply offset
+    let length = sqrt(perpDx * perpDx + perpDy * perpDy)
+    guard length > 0 else { return [from, to] }
+    
+    let offsetLat = offsetDistance * (perpDy / length)
+    let offsetLon = offsetDistance * (perpDx / length)
+    
+    let offsetFrom = CLLocationCoordinate2D(
+        latitude: from.latitude + offsetLat,
+        longitude: from.longitude + offsetLon
+    )
+    let offsetTo = CLLocationCoordinate2D(
+        latitude: to.latitude + offsetLat,
+        longitude: to.longitude + offsetLon
+    )
+    
+    return [offsetFrom, offsetTo]
+}
+
+// MARK: - Custom Polyline Classes
+
 class SystemCongestionPolyline: MKPolyline {
     var segment: CongestionSegment?
+    var isDimmed: Bool = false
+}
+
+class IndividualJourneyPolyline: MKPolyline {
+    var individualSegment: IndividualJourneySegment?
+    var offsetIndex: Int = 0
 }
 
 // MARK: - Custom Annotation Class for System Map

@@ -58,18 +58,18 @@ class CongestionAnalyzer:
         self._cache_ttl = 300  # 5 minutes cache
 
     async def get_network_congestion_with_trains(
-        self, db: AsyncSession, time_window_hours: int = 3
-    ) -> tuple[list[SegmentCongestion], list[TrainJourney]]:
+        self, db: AsyncSession, time_window_hours: int = 3, max_per_segment: int = 100
+    ) -> tuple[list[SegmentCongestion], list[TrainJourney], list[Any]]:
         """
-        Get congestion data and train journeys.
+        Get congestion data, train journeys, and individual journey segments.
 
         Returns:
-            Tuple of (segment congestion data, train journeys)
+            Tuple of (aggregated segments, train journeys, individual segments)
         """
-        segments = await self.get_network_congestion(db, time_window_hours)
 
-        # Get the journeys from the last query (we need to re-query to get them)
         cutoff_time = now_et() - timedelta(hours=time_window_hours)
+
+        # Get journeys with full data
         stmt = (
             select(TrainJourney)
             .where(
@@ -85,7 +85,22 @@ class CongestionAnalyzer:
         result = await db.execute(stmt)
         journeys = list(result.scalars().all())
 
-        return segments, journeys
+        # Calculate segments and get individual journey data
+        segment_data, cancellation_data = self._calculate_segments_from_journeys(
+            journeys, cutoff_time
+        )
+
+        # Get aggregated segments
+        aggregated_segments = self._analyze_segment_congestion(
+            segment_data, cancellation_data
+        )
+
+        # Extract individual journey segments
+        individual_segments = self._extract_individual_segments(
+            segment_data, max_per_segment
+        )
+
+        return aggregated_segments, journeys, individual_segments
 
     async def get_network_congestion(
         self, db: AsyncSession, time_window_hours: int = 3
@@ -371,3 +386,79 @@ class CongestionAnalyzer:
             )
 
         return congestion_data
+
+    def _extract_individual_segments(
+        self,
+        segment_groups: dict[tuple[str, str, str], list[dict[str, Any]]],
+        max_per_segment: int = 100,
+    ) -> list[Any]:
+        """Extract individual journey segments for visualization."""
+        from trackrat.config.stations import get_station_name
+        from trackrat.models.api import IndividualJourneySegment
+
+        individual_segments = []
+
+        for segment_key, segments in segment_groups.items():
+            from_station, to_station, data_source = segment_key
+
+            # Sort by departure time (most recent first) and limit
+            recent_segments = sorted(
+                segments, key=lambda x: x["departure_time"], reverse=True
+            )[:max_per_segment]
+
+            for segment_data in recent_segments:
+                # Calculate congestion level
+                actual_minutes = segment_data["actual_minutes"]
+                scheduled_minutes = segment_data.get("scheduled_minutes")
+
+                if scheduled_minutes and scheduled_minutes > 0:
+                    congestion_factor = actual_minutes / scheduled_minutes
+                    delay_minutes = actual_minutes - scheduled_minutes
+                else:
+                    congestion_factor = 1.0
+                    delay_minutes = 0.0
+
+                # Determine congestion level
+                if congestion_factor <= 1.1:
+                    level = "normal"
+                elif congestion_factor <= 1.25:
+                    level = "moderate"
+                elif congestion_factor <= 1.5:
+                    level = "heavy"
+                else:
+                    level = "severe"
+
+                individual_segment = IndividualJourneySegment(
+                    journey_id=str(segment_data["journey_id"]),
+                    train_id=segment_data["train_id"],
+                    from_station=from_station,
+                    to_station=to_station,
+                    from_station_name=get_station_name(from_station),
+                    to_station_name=get_station_name(to_station),
+                    data_source=data_source,
+                    scheduled_departure=segment_data[
+                        "departure_time"
+                    ],  # Using actual as proxy for scheduled
+                    actual_departure=segment_data["departure_time"],
+                    scheduled_arrival=segment_data["departure_time"]
+                    + timedelta(
+                        minutes=(
+                            scheduled_minutes if scheduled_minutes else actual_minutes
+                        )
+                    ),
+                    actual_arrival=segment_data["departure_time"]
+                    + timedelta(minutes=actual_minutes),
+                    scheduled_minutes=(
+                        scheduled_minutes if scheduled_minutes else actual_minutes
+                    ),
+                    actual_minutes=actual_minutes,
+                    delay_minutes=delay_minutes,
+                    congestion_factor=congestion_factor,
+                    congestion_level=level,
+                    is_cancelled=False,  # These segments are from active journeys
+                    journey_date=segment_data["departure_time"].date(),
+                )
+
+                individual_segments.append(individual_segment)
+
+        return individual_segments

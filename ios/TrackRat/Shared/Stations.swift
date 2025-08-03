@@ -251,6 +251,11 @@ struct Stations {
         //"PL": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.1647),   // Plainfield
         //"LB": CLLocationCoordinate2D(latitude: 40.0849, longitude: -74.1990),   // Long Branch
         "JA": CLLocationCoordinate2D(latitude: 40.4769, longitude: -74.4674),   // Jersey Avenue
+        "US": CLLocationCoordinate2D(latitude: 40.6973, longitude: -74.1647),   // Union Station
+        "AZ": CLLocationCoordinate2D(latitude: 40.7127, longitude: -74.1634),   // Newark Airport (estimate)
+        "RY": CLLocationCoordinate2D(latitude: 40.6039, longitude: -74.2723),   // Rahway
+        "LA": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.1647),   // Plainfield (estimate)
+        "SQ": CLLocationCoordinate2D(latitude: 40.5849, longitude: -74.1990),   // Long Branch (estimate)
         //"HB": CLLocationCoordinate2D(latitude: 40.734843, longitude: -74.028043), // Hoboken Terminal - Updated GPS
         //"RA": CLLocationCoordinate2D(latitude: 40.5682, longitude: -74.6290),   // Raritan
         

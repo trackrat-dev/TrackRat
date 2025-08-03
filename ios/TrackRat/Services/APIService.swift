@@ -405,34 +405,7 @@ final class APIService: ObservableObject {
     // MARK: - Congestion Data
     
     func fetchCongestionData(timeWindowHours: Int = 3) async throws -> CongestionMapResponse {
-        var urlComponents = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
-        urlComponents.queryItems = [
-            URLQueryItem(name: "time_window_hours", value: String(timeWindowHours))
-        ]
-        
-        guard let url = urlComponents.url else {
-            throw APIError.invalidURL
-        }
-        
-        let (data, response) = try await session.data(from: url)
-        
-        if let httpResponse = response as? HTTPURLResponse {
-            if httpResponse.statusCode == 404 {
-                throw APIError.noData
-            } else if httpResponse.statusCode != 200 {
-                throw APIError.invalidParameters
-            }
-        }
-        
-        do {
-            return try decoder.decode(CongestionMapResponse.self, from: data)
-        } catch {
-            print("❌ Failed to decode congestion data: \(error)")
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("🔴 RAW CONGESTION DATA: \(jsonString.prefix(500))")
-            }
-            throw error
-        }
+        return try await fetchCongestionData(timeWindowHours: timeWindowHours, maxPerSegment: 100, dataSource: nil)
     }
     
     // MARK: - Push Notification Registration
@@ -632,10 +605,11 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 3, dataSource: String? = nil) async throws -> CongestionMapResponse {
+    func fetchCongestionData(timeWindowHours: Int = 3, maxPerSegment: Int = 100, dataSource: String? = nil) async throws -> CongestionMapResponse {
         var components = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
         components.queryItems = [
-            URLQueryItem(name: "time_window_hours", value: String(timeWindowHours))
+            URLQueryItem(name: "time_window_hours", value: String(timeWindowHours)),
+            URLQueryItem(name: "max_per_segment", value: String(maxPerSegment))
         ]
         
         if let dataSource = dataSource {

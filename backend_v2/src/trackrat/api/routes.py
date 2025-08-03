@@ -262,21 +262,31 @@ def _calculate_route_stats(
 @handle_errors
 async def get_route_congestion(
     time_window_hours: int = Query(3, ge=1, le=24, description="Hours to look back"),
+    max_per_segment: int = Query(
+        100, ge=1, le=500, description="Max individual journeys per segment"
+    ),
     data_source: str | None = Query(
         None, description="Filter by data source (NJT or AMTRAK)"
     ),
     db: AsyncSession = Depends(get_db),
 ) -> CongestionMapResponse:
-    """Get current congestion levels for all route segments."""
+    """Get current congestion levels with individual journey segments."""
 
     analyzer = CongestionAnalyzer()
-    congestion_data, journeys = await analyzer.get_network_congestion_with_trains(
-        db, time_window_hours
+    aggregated_segments, journeys, individual_segments = (
+        await analyzer.get_network_congestion_with_trains(
+            db, time_window_hours, max_per_segment
+        )
     )
 
     # Filter by data source if specified
     if data_source:
-        congestion_data = [c for c in congestion_data if c.data_source == data_source]
+        aggregated_segments = [
+            c for c in aggregated_segments if c.data_source == data_source
+        ]
+        individual_segments = [
+            s for s in individual_segments if s.data_source == data_source
+        ]
         journeys = [j for j in journeys if j.data_source == data_source]
 
     # Extract train positions from journeys
@@ -314,9 +324,9 @@ async def get_route_congestion(
 
         train_positions.append(location_data)
 
-    # Convert to API models and add station names
-    segments = []
-    for segment in congestion_data:
+    # Convert aggregated segments to API models
+    aggregated_api_segments = []
+    for segment in aggregated_segments:
         segment_model = SegmentCongestionModel(
             from_station=segment.from_station,
             to_station=segment.to_station,
@@ -332,22 +342,47 @@ async def get_route_congestion(
             cancellation_count=segment.cancellation_count,
             cancellation_rate=segment.cancellation_rate,
         )
-        segments.append(segment_model)
+        aggregated_api_segments.append(segment_model)
 
     return CongestionMapResponse(
-        segments=segments,
+        individual_segments=individual_segments,
+        aggregated_segments=aggregated_api_segments,
         train_positions=train_positions,
         generated_at=now_et(),
         time_window_hours=time_window_hours,
+        max_per_segment=max_per_segment,
         metadata={
-            "total_segments": len(segments),
+            "total_individual_segments": len(individual_segments),
+            "total_aggregated_segments": len(aggregated_api_segments),
             "congestion_levels": {
-                "normal": len([s for s in segments if s.congestion_level == "normal"]),
-                "moderate": len(
-                    [s for s in segments if s.congestion_level == "moderate"]
+                "normal": len(
+                    [
+                        s
+                        for s in aggregated_api_segments
+                        if s.congestion_level == "normal"
+                    ]
                 ),
-                "heavy": len([s for s in segments if s.congestion_level == "heavy"]),
-                "severe": len([s for s in segments if s.congestion_level == "severe"]),
+                "moderate": len(
+                    [
+                        s
+                        for s in aggregated_api_segments
+                        if s.congestion_level == "moderate"
+                    ]
+                ),
+                "heavy": len(
+                    [
+                        s
+                        for s in aggregated_api_segments
+                        if s.congestion_level == "heavy"
+                    ]
+                ),
+                "severe": len(
+                    [
+                        s
+                        for s in aggregated_api_segments
+                        if s.congestion_level == "severe"
+                    ]
+                ),
             },
             "total_trains": len(train_positions),
         },
