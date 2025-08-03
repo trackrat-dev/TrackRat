@@ -747,54 +747,6 @@ class JourneyCollector(BaseJourneyCollector):
                 stop.actual_arrival = stop.scheduled_arrival
                 stop.actual_departure = stop.scheduled_departure
                 stop.has_departed_station = True
-            elif stop.scheduled_departure:
-                # Ensure scheduled_departure is timezone-aware for comparison
-                scheduled_dep = stop.scheduled_departure
-                if scheduled_dep.tzinfo is None:
-                    # If naive, assume it's already in Eastern time
-                    scheduled_dep = ET.localize(scheduled_dep)
-
-                current_time = now_et()
-                if current_time > scheduled_dep + timedelta(minutes=30):
-                    # Infer departure after 30 minutes past scheduled time
-                    stop.actual_arrival = stop.scheduled_arrival
-                    stop.actual_departure = stop.scheduled_departure
-                    stop.has_departed_station = True
-                    logger.info(
-                        "departure_inferred",
-                        train_id=journey.train_id,
-                        station_code=stop.station_code,
-                        scheduled_departure=scheduled_dep.isoformat(),
-                        current_time=current_time.isoformat(),
-                        minutes_past=(current_time - scheduled_dep).total_seconds()
-                        / 60,
-                    )
-            # Check for terminal station arrival inference (stations that have arrivals but no actual times)
-            elif (
-                stop.scheduled_arrival
-                and not stop.actual_arrival
-                and sequence == len(stops_data) - 1
-            ):  # This is the last stop (terminal)
-                # Ensure scheduled_arrival is timezone-aware for comparison
-                scheduled_arr = stop.scheduled_arrival
-                if scheduled_arr.tzinfo is None:
-                    # If naive, assume it's already in Eastern time
-                    scheduled_arr = ET.localize(scheduled_arr)
-
-                current_time = now_et()
-                if current_time > scheduled_arr + timedelta(minutes=30):
-                    # Infer arrival after 30 minutes past scheduled time for terminal station
-                    stop.actual_arrival = stop.scheduled_arrival
-                    # Terminal stations don't have departures in practice, so don't set actual_departure
-                    logger.info(
-                        "terminal_arrival_inferred",
-                        train_id=journey.train_id,
-                        station_code=stop.station_code,
-                        scheduled_arrival=scheduled_arr.isoformat(),
-                        current_time=current_time.isoformat(),
-                        minutes_past=(current_time - scheduled_arr).total_seconds()
-                        / 60,
-                    )
             else:
                 stop.has_departed_station = False
 

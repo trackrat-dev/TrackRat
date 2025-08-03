@@ -247,8 +247,6 @@ class SchedulerService:
 
                 # Trains that need periodic updates (every 15 minutes)
                 await self.schedule_periodic_updates(session)
-                # Trains that need departure inference (30+ minutes past departure)
-                await self.check_departure_inference(session)
 
         except Exception as e:
             logger.error(
@@ -371,76 +369,6 @@ class SchedulerService:
                 ),
             )
 
-    async def check_departure_inference(self, session: AsyncSession) -> None:
-        """Check for trains that need departure time inference."""
-        # Find NJT trains that are 30+ minutes past departure without actual_departure
-        current_time = now_et()
-        inference_threshold = current_time - timedelta(minutes=30)
-
-        # First, get the trains we need to check
-        stmt = (
-            select(TrainJourney)
-            .where(
-                and_(
-                    TrainJourney.data_source == "NJT",
-                    TrainJourney.actual_departure.is_(None),
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.is_expired.is_not(True),
-                )
-            )
-            .limit(100)
-        )  # Get more candidates since we'll filter by time in Python
-
-        result = await session.execute(stmt)
-        all_trains = result.scalars().all()
-
-        # Filter trains in Python with proper timezone handling
-        trains_needing_inference = []
-        for train in all_trains:
-            if train.scheduled_departure:
-                # Ensure timezone-aware comparison
-                scheduled_dep = ensure_timezone_aware(train.scheduled_departure)
-                if scheduled_dep < inference_threshold:
-                    # Also check last_updated_at to avoid ancient trains
-                    if train.last_updated_at:
-                        last_updated = ensure_timezone_aware(train.last_updated_at)
-                        if last_updated > current_time - timedelta(hours=2):
-                            trains_needing_inference.append(train)
-
-        logger.info(
-            "departure_inference_check",
-            total_candidates=len(all_trains),
-            trains_needing_inference=len(trains_needing_inference),
-        )
-
-        for train in trains_needing_inference:
-            # Schedule immediate collection which will trigger inference
-            job_id = f"inference_collection_{train.train_id}_{train.journey_date}"
-
-            self.scheduler.add_job(
-                self.collect_journey,
-                trigger=DateTrigger(run_date=now_et()),
-                args=[train.train_id, train.journey_date],
-                id=job_id,
-                name=f"Inference collection for {train.train_id}",
-                replace_existing=True,
-                max_instances=1,
-            )
-
-            logger.info(
-                "scheduled_inference_collection",
-                train_id=train.train_id,
-                minutes_past_departure=(
-                    int(
-                        safe_datetime_subtract(
-                            now_et(), train.scheduled_departure
-                        ).total_seconds()
-                        / 60
-                    )
-                    if train.scheduled_departure
-                    else 0
-                ),
-            )
 
     async def collect_journey(self, train_id: str, journey_date: datetime) -> None:
         """Collect journey data for a specific train."""
