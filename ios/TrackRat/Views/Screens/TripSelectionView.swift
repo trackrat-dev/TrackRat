@@ -46,10 +46,9 @@ struct TripSelectionView: View {
                                         if newValue {
                                             // When search field gains focus, expand to 75%
                                             onBottomSheetPositionChange?(.seventyFive)
-                                        } else if !isSearching {
-                                            // When search field loses focus and not searching, return to compact
-                                            onBottomSheetPositionChange?(.compact)
                                         }
+                                        // DON'T reset position when search field loses focus
+                                        // Let user maintain their preferred bottom sheet height
                                     }
                                     .onSubmit {
                                         if let firstResult = searchResults.first,
@@ -170,7 +169,7 @@ struct TripSelectionView: View {
                                 }
                             }
                         }
-                        .padding(.top, searchFieldFocused ? 12 : 20)
+                        .padding(.top, searchFieldFocused ? 8 : 12)
                         
                         // Active trips (Live Activity) - now below search box
                         if #available(iOS 16.1, *) {

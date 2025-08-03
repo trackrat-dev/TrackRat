@@ -206,6 +206,10 @@ class CongestionMapViewModel: ObservableObject {
     private var allStations: [MapStation] = []
     private var currentDisplayMode: MapDisplayMode = .overallCongestion
     
+    // Current journey filter
+    private var selectedRoute: TripPair?
+    private var journeyStations: [String] = []
+    
     init() {
         // Start loading congestion data immediately
         print("🚦 CongestionMapViewModel init - starting immediate data load")
@@ -215,6 +219,12 @@ class CongestionMapViewModel: ObservableObject {
     }
     
     func fetchCongestionData(timeWindowHours: Int = 3, dataSource: String? = nil) async {
+        // Prevent duplicate fetches if already loading
+        guard !isLoading else {
+            print("🚦 Skipping duplicate fetch - already loading")
+            return
+        }
+        
         print("🚦 Starting congestion data fetch (timeWindow: \(timeWindowHours), dataSource: \(dataSource ?? "All"))")
         isLoading = true
         error = nil
@@ -317,21 +327,80 @@ class CongestionMapViewModel: ObservableObject {
     }
     
     private func applyDisplayModeFilter() {
+        // First apply route filter if we have one
+        let filteredAggregated = selectedRoute != nil ? filterSegmentsForRoute(allAggregatedSegments) : allAggregatedSegments
+        let filteredIndividual = selectedRoute != nil ? filterIndividualSegmentsForRoute(allIndividualSegments) : allIndividualSegments
+        
         switch displayMode {
         case .aggregated:
             // Show aggregated segments only
-            segments = allAggregatedSegments
+            segments = filteredAggregated
             individualSegments = []
             stations = allStations
             print("🚦 Applied aggregated filter: \(segments.count) aggregated segments")
             
         case .individual, .individualLimited:
             // Show individual journey segments
-            segments = allAggregatedSegments // Keep aggregated for reference
-            individualSegments = allIndividualSegments
+            segments = filteredAggregated // Keep aggregated for reference
+            individualSegments = filteredIndividual
             stations = allStations
             print("🚦 Applied individual filter: \(individualSegments.count) individual segments")
         }
+    }
+    
+    func setRouteFilter(_ route: TripPair?, journeyStations: [String] = []) {
+        print("🚦 Setting route filter: \(route?.departureCode ?? "none") → \(route?.destinationCode ?? "none")")
+        print("🚦 Journey stations: \(journeyStations)")
+        
+        self.selectedRoute = route
+        self.journeyStations = journeyStations
+        
+        // Re-apply filters with the new route
+        applyDisplayModeFilter()
+    }
+    
+    private func filterSegmentsForRoute(_ segments: [CongestionSegment]) -> [CongestionSegment] {
+        guard let route = selectedRoute, !journeyStations.isEmpty else {
+            return segments
+        }
+        
+        print("🚦 Filtering \(segments.count) aggregated segments for route \(route.departureCode) → \(route.destinationCode)")
+        
+        let filtered = segments.filter { segment in
+            // Find indices of from and to stations in the journey
+            guard let fromIndex = journeyStations.firstIndex(of: segment.fromStation),
+                  let toIndex = journeyStations.firstIndex(of: segment.toStation) else {
+                return false
+            }
+            
+            // Include segments where 'to' station comes after 'from' station in the journey
+            return toIndex > fromIndex
+        }
+        
+        print("🚦 Filtered aggregated segments: \(filtered.count) segments for journey")
+        return filtered
+    }
+    
+    private func filterIndividualSegmentsForRoute(_ segments: [IndividualJourneySegment]) -> [IndividualJourneySegment] {
+        guard let route = selectedRoute, !journeyStations.isEmpty else {
+            return segments
+        }
+        
+        print("🚦 Filtering \(segments.count) individual segments for route \(route.departureCode) → \(route.destinationCode)")
+        
+        let filtered = segments.filter { segment in
+            // Find indices of from and to stations in the journey
+            guard let fromIndex = journeyStations.firstIndex(of: segment.fromStation),
+                  let toIndex = journeyStations.firstIndex(of: segment.toStation) else {
+                return false
+            }
+            
+            // Include segments where 'to' station comes after 'from' station in the journey
+            return toIndex > fromIndex
+        }
+        
+        print("🚦 Filtered individual segments: \(filtered.count) segments for journey")
+        return filtered
     }
     
 }

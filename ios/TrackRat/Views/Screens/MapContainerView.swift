@@ -15,60 +15,31 @@ struct MapContainerView: View {
     
     var body: some View {
         ZStack {
-            // Background map - always visible
-            SystemCongestionMapView(
-                region: $mapRegion,
-                segments: mapViewModel.segments,
-                individualSegments: mapViewModel.individualSegments,
-                stations: mapViewModel.stations,
-                selectedRoute: appState.selectedRoute,
-                onSegmentTap: { segment in
-                    selectedSegment = segment
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                },
-                onIndividualSegmentTap: { individualSegment in
-                    print("Tapped individual segment: \(individualSegment.trainDisplayName)")
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            )
-            .id("congestion-map-\(mapViewModel.segments.count)")
-            .ignoresSafeArea()
-            .onAppear {
-                // Load congestion data when view appears
-                print("🗺️ MapContainerView appeared - loading congestion data...")
-                Task {
-                    await mapViewModel.fetchCongestionData()
-                    print("🗺️ Congestion data loaded: \(mapViewModel.segments.count) segments")
-                }
-            }
-            .task {
-                // Also load immediately when view is created
-                print("🗺️ MapContainerView task - loading congestion data...")
-                await mapViewModel.fetchCongestionData()
-                print("🗺️ Task congestion data loaded: \(mapViewModel.segments.count) segments")
-            }
-            .onChange(of: appState.selectedRoute) { _, newRoute in
-                // Animate map to show selected route when it changes
-                if let route = newRoute {
-                    animateMapToRoute(route)
-                }
-            }
-            .onChange(of: appState.departureStationCode) { _, newDepartureCode in
-                // Animate map to show departure station when it changes (origin selection)
-                if let departureCode = newDepartureCode, appState.selectedRoute == nil {
-                    // Only animate to single station if no full route is selected yet
-                    animateMapToStation(departureCode)
-                }
-            }
-            .onChange(of: appState.navigationPath) { _, newPath in
-                // Handle navigation-based map mode switching
-                handleNavigationChange(newPath)
-            }
-            .onChange(of: appState.mapDisplayMode) { _, newMode in
-                // Update map when display mode changes
-                print("🗺️ Map display mode changed to: \(newMode)")
-                // Note: MapDisplayMode handles overall map focus, not congestion visualization
-                // Individual vs aggregated congestion is handled by CongestionMapView directly
+            // Background map with loading state
+            if mapViewModel.isLoading && mapViewModel.segments.isEmpty {
+                // Show skeleton during initial load
+                MapSkeletonView(region: mapRegion)
+                    .ignoresSafeArea()
+            } else {
+                // Show actual map with data
+                SystemCongestionMapView(
+                    region: $mapRegion,
+                    segments: mapViewModel.segments,
+                    individualSegments: mapViewModel.individualSegments,
+                    stations: mapViewModel.stations,
+                    selectedRoute: appState.selectedRoute,
+                    onSegmentTap: { segment in
+                        selectedSegment = segment
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    },
+                    onIndividualSegmentTap: { individualSegment in
+                        print("Tapped individual segment: \(individualSegment.trainDisplayName)")
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                )
+                .ignoresSafeArea()
+                .opacity(mapViewModel.segments.isEmpty ? 0.6 : 1.0)
+                .animation(.easeInOut(duration: 0.3), value: mapViewModel.segments.count)
             }
             
             // Gradient overlay at top for better readability
@@ -103,6 +74,29 @@ struct MapContainerView: View {
             appState.mapDisplayMode = .overallCongestion
             appState.selectedRoute = nil
         }
+        .onChange(of: appState.selectedRoute) { _, newRoute in
+            // Animate map to show selected route when it changes
+            if let route = newRoute {
+                animateMapToRoute(route)
+            }
+        }
+        .onChange(of: appState.departureStationCode) { _, newDepartureCode in
+            // Animate map to show departure station when it changes (origin selection)
+            if let departureCode = newDepartureCode, appState.selectedRoute == nil {
+                // Only animate to single station if no full route is selected yet
+                animateMapToStation(departureCode)
+            }
+        }
+        .onChange(of: appState.navigationPath) { _, newPath in
+            // Handle navigation-based map mode switching
+            handleNavigationChange(newPath)
+        }
+        .onChange(of: appState.mapDisplayMode) { _, newMode in
+            // Update map when display mode changes
+            print("🗺️ Map display mode changed to: \(newMode)")
+            // Note: MapDisplayMode handles overall map focus, not congestion visualization
+            // Individual vs aggregated congestion is handled by CongestionMapView directly
+        }
         .sheet(item: $selectedSegment) { segment in
             SegmentTrainDetailsView(segment: segment)
                 .presentationDetents([.height(600), .large])
@@ -116,6 +110,8 @@ struct MapContainerView: View {
             appState.mapDisplayMode = .overallCongestion
             // Clear any route selection to show all congestion data
             appState.selectedRoute = nil
+            // Clear route filter from map view model
+            mapViewModel.setRouteFilter(nil)
             bottomSheetPosition = .compact
         }
         // Don't automatically expand bottom sheet for any navigation
@@ -178,6 +174,9 @@ struct MapContainerView: View {
                             destination: route.destinationCode,
                             trainStops: trainStops
                         )
+                        
+                        // Apply route filter to the map view model
+                        mapViewModel.setRouteFilter(route, journeyStations: trainStops)
                     }
                 } else {
                     print("🗺️ No valid train stops - staying in overall congestion mode")
@@ -468,6 +467,94 @@ struct CongestionMapControlsView: View {
                     }
                 }
             )
+        }
+    }
+}
+
+// MARK: - Map Loading Skeleton
+
+struct MapSkeletonView: View {
+    let region: MKCoordinateRegion
+    @State private var animationPhase = 0.0
+    
+    var body: some View {
+        ZStack {
+            // Base map background
+            Rectangle()
+                .fill(Color(UIColor.systemGray6))
+            
+            // Animated skeleton lines representing train routes
+            VStack(spacing: 0) {
+                ForEach(0..<6, id: \.self) { index in
+                    HStack {
+                        // Animated placeholder line
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(UIColor.systemGray4).opacity(0.3),
+                                        Color(UIColor.systemGray3).opacity(0.6),
+                                        Color(UIColor.systemGray4).opacity(0.3)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(height: 3)
+                            .scaleEffect(x: 0.7 + 0.3 * sin(animationPhase + Double(index) * 0.5), y: 1.0)
+                            .animation(
+                                Animation.easeInOut(duration: 1.5).repeatForever(autoreverses: true),
+                                value: animationPhase
+                            )
+                        
+                        Spacer()
+                    }
+                    .padding(.leading, CGFloat(20 + index * 15))
+                    .padding(.trailing, CGFloat(20 + (5 - index) * 10))
+                    
+                    Spacer()
+                        .frame(height: CGFloat(30 + index * 20))
+                }
+            }
+            .padding(.top, 100)
+            .padding(.bottom, 100)
+            
+            // Station dots skeleton
+            ForEach(0..<5, id: \.self) { index in
+                Circle()
+                    .fill(Color(UIColor.systemGray3))
+                    .frame(width: 8, height: 8)
+                    .opacity(0.4 + 0.3 * sin(animationPhase + Double(index) * 0.8))
+                    .position(
+                        x: CGFloat(50 + index * 80),
+                        y: CGFloat(120 + index * 30)
+                    )
+            }
+            
+            // Loading indicator overlay
+            VStack {
+                Spacer()
+                HStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                        .scaleEffect(0.8)
+                    
+                    Text("Loading train data...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(.ultraThinMaterial)
+                )
+                .padding(.bottom, 20)
+            }
+        }
+        .onAppear {
+            withAnimation {
+                animationPhase = 1.0
+            }
         }
     }
 }
