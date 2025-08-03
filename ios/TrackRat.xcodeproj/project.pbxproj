@@ -56,6 +56,8 @@
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
 		A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */; };
 		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
+		A19E912B2E3F8E2E0011F777 /* MapContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */; };
+		A19E912D2E3F8E4A0011F777 /* BottomSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912C2E3F8E4A0011F777 /* BottomSheetView.swift */; };
 		A1A2391B2E02E38500FE5A7D /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */; };
 		A1A2391C2E02E38500FE5A7D /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */; };
 		A1AA1BB12DEF00AA001FA904 /* LaunchScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB02DEF00AA001FA904 /* LaunchScreenView.swift */; };
@@ -169,6 +171,8 @@
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
 		A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityDebugView.swift; path = Views/Components/LiveActivityDebugView.swift; sourceTree = "<group>"; };
 		A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveTripsSection.swift; path = Views/Components/ActiveTripsSection.swift; sourceTree = "<group>"; };
+		A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MapContainerView.swift; path = Views/Screens/MapContainerView.swift; sourceTree = "<group>"; };
+		A19E912C2E3F8E4A0011F777 /* BottomSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BottomSheetView.swift; path = Views/Components/BottomSheetView.swift; sourceTree = "<group>"; };
 		A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendWakeupService.swift; path = TrackRat/Services/BackendWakeupService.swift; sourceTree = "<group>"; };
 		A1AA1BB02DEF00AA001FA904 /* LaunchScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LaunchScreenView.swift; path = Views/LaunchScreen/LaunchScreenView.swift; sourceTree = "<group>"; };
 		A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatTheme.swift; path = Theme/TrackRatTheme.swift; sourceTree = "<group>"; };
@@ -270,7 +274,9 @@
 				A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */,
 				A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */,
 				A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */,
+				A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */,
 				A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */,
+				A19E912C2E3F8E4A0011F777 /* BottomSheetView.swift */,
 				A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */,
 				A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */,
 				A126E5552E25BBC700958ABA /* DeepLink.swift */,
@@ -558,6 +564,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */,
+				A19E912D2E3F8E4A0011F777 /* BottomSheetView.swift in Sources */,
 				A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */,
 				A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */,
 				A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */,
@@ -590,6 +597,7 @@
 				A1AA1BB32DEF00BB001FA904 /* TrackRatTheme.swift in Sources */,
 				A1AA1BB52DEF00CC001FA904 /* TrackRatLoadingView.swift in Sources */,
 				A1AA1BB92DEF00EE001FA904 /* TrackRatMascot.swift in Sources */,
+				A19E912B2E3F8E2E0011F777 /* MapContainerView.swift in Sources */,
 				A11A2C332E27C1A400B74BB5 /* StaticTrackDistributionService.swift in Sources */,
 				A1AD0D0D2E106D32003DA39F /* LiveActivityModels.swift in Sources */,
 				A1A2391B2E02E38500FE5A7D /* BackendWakeupService.swift in Sources */,

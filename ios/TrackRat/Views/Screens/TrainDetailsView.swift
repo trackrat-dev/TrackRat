@@ -328,16 +328,6 @@ struct CombinedDetailsCard: View {
                     }
                 }
                 
-                // Journey congestion map section
-                if train.stops?.count ?? 0 > 1 {
-                    EmbeddedCongestionMapView(
-                        train: train,
-                        userOrigin: appState.departureStationCode,
-                        userDestination: appState.selectedDestination
-                    )
-                    .padding(.top, 12)
-                }
-                
                 // Track predictions section
                 if shouldShowPredictions {
                     SegmentedTrackPredictionView(train: train)

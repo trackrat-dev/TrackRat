@@ -37,7 +37,7 @@ enum ServerEnvironment: String, CaseIterable, Codable {
 }
 
 // MARK: - Trip Pair Model
-struct TripPair: Codable, Identifiable {
+struct TripPair: Codable, Identifiable, Equatable {
     let id: String  // Normalized: "MP-NY" (alphabetical order)
     private let stationA: (code: String, name: String)  // First station alphabetically
     private let stationB: (code: String, name: String)  // Second station alphabetically
@@ -119,6 +119,13 @@ struct TripPair: Codable, Identifiable {
         
         self.lastUsed = lastUsed
         self.isFavorite = isFavorite
+    }
+    
+    // MARK: - Equatable
+    static func == (lhs: TripPair, rhs: TripPair) -> Bool {
+        return lhs.id == rhs.id && 
+               lhs.preferredDirection == rhs.preferredDirection &&
+               lhs.isFavorite == rhs.isFavorite
     }
 }
 

@@ -197,8 +197,8 @@ async def get_train_details(
         route=RouteInfo(
             origin=get_first_stop_name(journey),
             destination=journey.destination,
-            origin_code=journey.origin_station_code,
-            destination_code=journey.terminal_station_code,
+            origin_code=get_first_stop_code(journey),
+            destination_code=get_last_stop_code(journey),
         ),
         train_position=train_position,
         stops=stops,
@@ -755,3 +755,25 @@ def get_first_stop_name(journey: TrainJourney) -> str:
         first_stop = min(journey.stops, key=lambda s: s.stop_sequence or 0)
         return first_stop.station_name or journey.origin_station_code or "Unknown"
     return journey.origin_station_code or "Unknown"
+
+
+def get_first_stop_code(journey: TrainJourney) -> str:
+    """Get the station code of the first stop from actual stops data.
+
+    This always reflects the true origin, even if discovery data was wrong.
+    """
+    if journey.stops:
+        first_stop = min(journey.stops, key=lambda s: s.stop_sequence or 0)
+        return first_stop.station_code or journey.origin_station_code or "Unknown"
+    return journey.origin_station_code or "Unknown"
+
+
+def get_last_stop_code(journey: TrainJourney) -> str:
+    """Get the station code of the last stop from actual stops data.
+
+    This always reflects the true destination, even if discovery data was wrong.
+    """
+    if journey.stops:
+        last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
+        return last_stop.station_code or journey.terminal_station_code or "Unknown"
+    return journey.terminal_station_code or "Unknown"

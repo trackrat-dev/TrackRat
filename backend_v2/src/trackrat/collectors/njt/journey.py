@@ -674,15 +674,48 @@ class JourneyCollector(BaseJourneyCollector):
         journey.destination = train_data.DESTINATION
         journey.line_color = train_data.BACKCOLOR.strip()
 
-        # Update terminal station (last stop)
+        # Update origin and terminal stations from actual journey data
         if train_data.STOPS:
-            journey.terminal_station_code = train_data.STOPS[-1].STATION_2CHAR
+            first_stop = train_data.STOPS[0]
+            last_stop = train_data.STOPS[-1]
 
-            # Update scheduled arrival if not set
-            if not journey.scheduled_arrival:
-                last_stop = train_data.STOPS[-1]
-                if last_stop.TIME:
-                    journey.scheduled_arrival = parse_njt_time(last_stop.TIME)
+            # CRITICAL FIX: Always update origin from actual first stop
+            # This corrects discovery errors where train was found at intermediate station
+            old_origin = journey.origin_station_code
+            journey.origin_station_code = first_stop.STATION_2CHAR
+
+            if old_origin != journey.origin_station_code:
+                logger.info(
+                    "corrected_journey_origin",
+                    train_id=journey.train_id,
+                    journey_id=journey.id,
+                    old_origin=old_origin,
+                    new_origin=journey.origin_station_code,
+                )
+
+            # CRITICAL FIX: Always update scheduled departure from actual first stop
+            # This corrects discovery departure time errors
+            if first_stop.DEP_TIME:
+                old_departure = journey.scheduled_departure
+                journey.scheduled_departure = parse_njt_time(first_stop.DEP_TIME)
+
+                if old_departure and old_departure != journey.scheduled_departure:
+                    logger.info(
+                        "corrected_journey_departure_time",
+                        train_id=journey.train_id,
+                        journey_id=journey.id,
+                        old_departure=(
+                            old_departure.isoformat() if old_departure else None
+                        ),
+                        new_departure=journey.scheduled_departure.isoformat(),
+                    )
+
+            # Update terminal station (last stop)
+            journey.terminal_station_code = last_stop.STATION_2CHAR
+
+            # Always update scheduled arrival from actual last stop
+            if last_stop.TIME:
+                journey.scheduled_arrival = parse_njt_time(last_stop.TIME)
 
         # Mark as having complete journey data
         journey.has_complete_journey = True
@@ -712,6 +745,31 @@ class JourneyCollector(BaseJourneyCollector):
             journey: Journey record
             stops_data: List of stop data from API
         """
+        # First, validate the API response for duplicate stations
+        station_codes = [
+            stop.STATION_2CHAR for stop in stops_data if stop.STATION_2CHAR
+        ]
+        duplicate_stations = {
+            code for code in station_codes if station_codes.count(code) > 1
+        }
+
+        if duplicate_stations:
+            logger.warning(
+                "api_response_contains_duplicate_stations",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+                duplicates=list(duplicate_stations),
+                total_stops=len(stops_data),
+            )
+            # Filter out duplicates, keeping only the first occurrence
+            seen_stations = set()
+            filtered_stops = []
+            for stop_data in stops_data:
+                if stop_data.STATION_2CHAR not in seen_stations:
+                    seen_stations.add(stop_data.STATION_2CHAR)
+                    filtered_stops.append(stop_data)
+            stops_data = filtered_stops
+
         for sequence, stop_data in enumerate(stops_data):
             # Find existing stop or create new
             stmt = select(JourneyStop).where(
@@ -731,6 +789,9 @@ class JourneyCollector(BaseJourneyCollector):
                     stop_sequence=sequence,
                 )
                 session.add(stop)
+            else:
+                # CRITICAL FIX: Always update stop_sequence to match current API order
+                stop.stop_sequence = sequence
 
             # Update scheduled times
             if stop_data.TIME:
@@ -770,6 +831,49 @@ class JourneyCollector(BaseJourneyCollector):
             # Update stop characteristics
             stop.pickup_only = bool(stop_data.PICKUP)
             stop.dropoff_only = bool(stop_data.DROPOFF)
+
+        # Validate that we don't have duplicate sequences after processing
+        await self._validate_stop_sequences(session, journey)
+
+    async def _validate_stop_sequences(
+        self, session: AsyncSession, journey: TrainJourney
+    ) -> None:
+        """Validate that no duplicate stop sequences exist for this journey.
+
+        Args:
+            session: Database session
+            journey: Journey to validate
+        """
+        # Simple validation using in-memory journey.stops to avoid async mock issues
+        if not journey.stops:
+            return
+
+        sequences = [
+            stop.stop_sequence
+            for stop in journey.stops
+            if stop.stop_sequence is not None
+        ]
+
+        # Find duplicates
+        duplicate_sequences = {seq for seq in sequences if sequences.count(seq) > 1}
+
+        if duplicate_sequences:
+            logger.error(
+                "duplicate_stop_sequences_detected",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+                duplicate_sequences=list(duplicate_sequences),
+                total_sequences=len(sequences),
+            )
+            # This shouldn't happen with our fix, but if it does, mark journey for review
+            journey.api_error_count = (journey.api_error_count or 0) + 1
+        else:
+            logger.debug(
+                "stop_sequence_validation_passed",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+                total_stops=len(sequences),
+            )
 
     async def check_journey_completion(
         self,

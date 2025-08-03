@@ -4,29 +4,7 @@ struct ContentView: View {
     @EnvironmentObject private var appState: AppState
     
     var body: some View {
-        NavigationStack(path: $appState.navigationPath) {
-            TripSelectionView()
-                .navigationDestination(for: NavigationDestination.self) { destination in
-                    switch destination {
-                    case .departureSelector:
-                        DeparturePickerView()
-                    case .destinationPicker:
-                        DestinationPickerView()
-                    case .trainList(let stationName):
-                        TrainListView(destination: stationName)
-                    case .trainDetails(let trainId):
-                        TrainDetailsView(trainId: trainId)
-                    case .trainDetailsFlexible(let trainNumber, let fromStation):
-                        TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation)
-                    case .trainNumberSearch:
-                        TrainNumberSearchView()
-                    case .advancedConfiguration:
-                        AdvancedConfigurationView()
-                    case .congestionMap:
-                        CongestionMapView()
-                    }
-                }
-        }
+        MapContainerView()
     }
 }
 

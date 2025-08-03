@@ -20,6 +20,7 @@ struct CongestionMapView: View {
                 region: $region,
                 segments: viewModel.segments,
                 stations: viewModel.stations,
+                selectedRoute: nil,  // No route highlighting in standalone map view
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -160,7 +161,21 @@ class CongestionMapViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     
+    // Store all segments and filter based on display mode
+    private var allSegments: [CongestionSegment] = []
+    private var allStations: [MapStation] = []
+    private var currentDisplayMode: MapDisplayMode = .overallCongestion
+    
+    init() {
+        // Start loading congestion data immediately
+        print("🚦 CongestionMapViewModel init - starting immediate data load")
+        Task {
+            await fetchCongestionData()
+        }
+    }
+    
     func fetchCongestionData(timeWindowHours: Int = 3, dataSource: String? = nil) async {
+        print("🚦 Starting congestion data fetch (timeWindow: \(timeWindowHours), dataSource: \(dataSource ?? "All"))")
         isLoading = true
         error = nil
         
@@ -170,12 +185,15 @@ class CongestionMapViewModel: ObservableObject {
                 dataSource: dataSource
             )
             
-            segments = response.segments
+            print("🚦 API response received: \(response.segments.count) segments")
+            
+            // Store all segments
+            allSegments = response.segments
             
             // Extract unique stations
             var stationMap: [String: MapStation] = [:]
             
-            for segment in segments {
+            for segment in allSegments {
                 if let coords = Stations.getCoordinates(for: segment.fromStation) {
                     stationMap[segment.fromStation] = MapStation(
                         code: segment.fromStation,
@@ -192,14 +210,113 @@ class CongestionMapViewModel: ObservableObject {
                 }
             }
             
-            stations = Array(stationMap.values)
+            allStations = Array(stationMap.values)
+            print("🚦 Processed \(allStations.count) stations from segments")
+            
+            // Filter based on current display mode
+            applyDisplayModeFilter()
             
         } catch {
             self.error = error.localizedDescription
-            print("Failed to fetch congestion data: \(error)")
+            print("🚦 Failed to fetch congestion data: \(error)")
         }
         
         isLoading = false
+        print("🚦 Congestion data fetch completed. Final segments: \(segments.count)")
+    }
+    
+    func updateDisplayMode(_ mode: MapDisplayMode) async {
+        print("🚦 Updating display mode to: \(mode)")
+        currentDisplayMode = mode
+        applyDisplayModeFilter()
+    }
+    
+    private func applyDisplayModeFilter() {
+        switch currentDisplayMode {
+        case .overallCongestion:
+            // Show all segments and stations
+            segments = allSegments
+            stations = allStations
+            print("🚦 Applied overall congestion filter: \(segments.count) segments")
+            
+        case .journeyFocus(_, let origin, let destination, let trainStops):
+            // Filter to show only segments relevant to this journey using actual train stops
+            let journeySegments = getJourneySegments(trainStops: trainStops)
+            let journeyStations = getJourneyStations(for: journeySegments)
+            
+            segments = journeySegments
+            stations = journeyStations
+            print("🚦 Applied journey focus filter: \(segments.count) segments for \(origin) → \(destination) with stops: \(trainStops)")
+        }
+    }
+    
+    private func getJourneySegments(trainStops: [String]) -> [CongestionSegment] {
+        print("🚦 Filtering segments for train stops: \(trainStops)")
+        print("🚦 Available segments: \(allSegments.map { "\($0.fromStation)→\($0.toStation)" })")
+        
+        // Filter segments that are part of this train's actual route
+        let journeySegments = allSegments.filter { segment in
+            if let fromIndex = trainStops.firstIndex(of: segment.fromStation),
+               let toIndex = trainStops.firstIndex(of: segment.toStation) {
+                // Include segments where stations are adjacent in the train's route
+                let isAdjacent = toIndex == fromIndex + 1
+                if isAdjacent {
+                    print("🚦 ✅ Including segment: \(segment.fromStation)→\(segment.toStation)")
+                }
+                return isAdjacent
+            }
+            return false
+        }
+        
+        print("🚦 Final journey segments: \(journeySegments.map { "\($0.fromStation)→\($0.toStation)" })")
+        return journeySegments
+    }
+    
+    // Keep the old method for backward compatibility
+    private func getJourneySegments(from origin: String, to destination: String) -> [CongestionSegment] {
+        // Get the route stations between origin and destination
+        let routeStations = getStationCodesInRoute(from: origin, to: destination)
+        
+        // Filter segments that are part of this route
+        return allSegments.filter { segment in
+            if let fromIndex = routeStations.firstIndex(of: segment.fromStation),
+               let toIndex = routeStations.firstIndex(of: segment.toStation) {
+                // Include segments where stations are adjacent in the route
+                return toIndex == fromIndex + 1
+            }
+            return false
+        }
+    }
+    
+    private func getJourneyStations(for segments: [CongestionSegment]) -> [MapStation] {
+        // Get unique stations from the journey segments
+        var stationCodes = Set<String>()
+        
+        for segment in segments {
+            stationCodes.insert(segment.fromStation)
+            stationCodes.insert(segment.toStation)
+        }
+        
+        return allStations.filter { station in
+            stationCodes.contains(station.code)
+        }
+    }
+    
+    private func getStationCodesInRoute(from: String, to: String) -> [String] {
+        // Use the same logic from the existing route highlighting
+        let necCorridor = ["NY", "NP", "TR", "PJ", "MP", "NBK", "MET", "EWR", "SECAUCUS", "HOB"]
+        
+        if let fromIndex = necCorridor.firstIndex(of: from),
+           let toIndex = necCorridor.firstIndex(of: to) {
+            if fromIndex < toIndex {
+                return Array(necCorridor[fromIndex...toIndex])
+            } else {
+                return Array(necCorridor[toIndex...fromIndex].reversed())
+            }
+        }
+        
+        // Fallback to just the two stations
+        return [from, to]
     }
 }
 
@@ -299,6 +416,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
     @Binding var region: MKCoordinateRegion
     let segments: [CongestionSegment]
     let stations: [MapStation]
+    let selectedRoute: TripPair?
     let onSegmentTap: (CongestionSegment) -> Void
     
     func makeUIView(context: Context) -> MKMapView {
@@ -332,6 +450,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
         
         // Add congestion polylines
+        print("🗺️ Adding \(segments.count) congestion segments to map")
         for segment in segments {
             if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
                let toCoords = Stations.getCoordinates(for: segment.toStation) {
@@ -340,22 +459,18 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
                 polyline.segment = segment
                 mapView.addOverlay(polyline)
+                print("🗺️ Added segment: \(segment.fromStation) → \(segment.toStation) (congestion: \(segment.congestionFactor))")
+            } else {
+                print("🗺️ Missing coordinates for segment: \(segment.fromStation) → \(segment.toStation)")
             }
         }
         
-        // Add station annotations
-        for station in stations {
-            let annotation = SystemStationAnnotation()
-            annotation.coordinate = station.coordinate
-            annotation.title = station.code
-            annotation.subtitle = station.name
-            annotation.station = station
-            mapView.addAnnotation(annotation)
-        }
+        // Station annotations removed - only showing train segments
         
         // Update coordinator with current segments for tap handling
         context.coordinator.segments = segments
         context.coordinator.onSegmentTap = onSegmentTap
+        context.coordinator.selectedRoute = selectedRoute
     }
     
     func makeCoordinator() -> Coordinator {
@@ -365,11 +480,19 @@ struct SystemCongestionMapView: UIViewRepresentable {
     class Coordinator: NSObject, MKMapViewDelegate {
         var segments: [CongestionSegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
+        var selectedRoute: TripPair?
         
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? SystemCongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
+                
+                // Check if this segment is part of the selected route
+                let isSelectedSegment = isSegmentInSelectedRoute(polyline.segment)
+                
+                if let segment = polyline.segment {
+                    print("🎨 Rendering segment: \(segment.fromStation) → \(segment.toStation), congestion: \(segment.congestionFactor), selected: \(isSelectedSegment)")
+                }
                 
                 // Convert congestion factor to color
                 if let segment = polyline.segment {
@@ -382,8 +505,22 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 } else {
                     renderer.strokeColor = UIColor.gray
                 }
-                renderer.lineWidth = getCongestionLineWidth(polyline.segment?.congestionFactor ?? 1.0)
-                renderer.alpha = 0.8
+                
+                // Adjust appearance based on selection
+                if selectedRoute == nil {
+                    // No route selected - show all segments at full visibility
+                    renderer.lineWidth = getCongestionLineWidth(polyline.segment?.congestionFactor ?? 1.0)
+                    renderer.alpha = 0.8
+                } else if isSelectedSegment {
+                    // Route selected and this segment is part of it - emphasize
+                    renderer.lineWidth = getCongestionLineWidth(polyline.segment?.congestionFactor ?? 1.0) * 1.5
+                    renderer.alpha = 1.0
+                } else {
+                    // Route selected but this segment is not part of it - dim
+                    renderer.lineWidth = getCongestionLineWidth(polyline.segment?.congestionFactor ?? 1.0)
+                    renderer.alpha = 0.4
+                }
+                
                 return renderer
             }
             return MKOverlayRenderer(overlay: overlay)
@@ -391,35 +528,54 @@ struct SystemCongestionMapView: UIViewRepresentable {
         
         // MARK: - Annotation Rendering
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            // Only show default user location, no station annotations
             if annotation is MKUserLocation {
                 return nil // Use default user location view
             }
-            
-            guard let stationAnnotation = annotation as? SystemStationAnnotation else {
-                return nil
-            }
-            
-            let identifier = "SystemStationAnnotation"
-            var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
-            
-            if annotationView == nil {
-                annotationView = MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-                annotationView?.canShowCallout = true
-            } else {
-                annotationView?.annotation = annotation
-            }
-            
-            // Create custom station pin (without circles)
-            if let station = stationAnnotation.station {
-                let pinView = createSystemStationPinView(for: station)
-                annotationView?.image = pinView.asUIImage()
-                annotationView?.centerOffset = CGPoint(x: 0, y: -pinView.frame.height / 2)
-            }
-            
-            return annotationView
+            return nil
         }
         
         // MARK: - Helper Methods
+        private func isSegmentInSelectedRoute(_ segment: CongestionSegment?) -> Bool {
+            guard let segment = segment,
+                  let route = selectedRoute else {
+                return false
+            }
+            
+            // Get all station codes that are part of the route
+            let routeStations = getStationCodesInRoute(from: route.departureCode, to: route.destinationCode)
+            
+            // Check if both segment stations are in the route and adjacent
+            if let fromIndex = routeStations.firstIndex(of: segment.fromStation),
+               let toIndex = routeStations.firstIndex(of: segment.toStation) {
+                // Segment is part of route if stations are adjacent in the correct order
+                return toIndex == fromIndex + 1
+            }
+            
+            return false
+        }
+        
+        private func getStationCodesInRoute(from: String, to: String) -> [String] {
+            // For now, return a simple path between stations
+            // In a real implementation, this would use actual route data
+            // This is a simplified version that assumes direct routes
+            
+            // Define major corridor routes
+            let necCorridor = ["NY", "NP", "TR", "PJ", "MP", "NBK", "MET", "EWR", "SECAUCUS", "HOB"]
+            
+            if let fromIndex = necCorridor.firstIndex(of: from),
+               let toIndex = necCorridor.firstIndex(of: to) {
+                if fromIndex < toIndex {
+                    return Array(necCorridor[fromIndex...toIndex])
+                } else {
+                    return Array(necCorridor[toIndex...fromIndex].reversed())
+                }
+            }
+            
+            // Fallback to just the two stations
+            return [from, to]
+        }
+        
         private func getCongestionLineWidth(_ factor: Double) -> CGFloat {
             if factor < 1.05 {
                 return 5
@@ -444,23 +600,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
         
-        private func createSystemStationPinView(for station: MapStation) -> UIView {
-            let containerView = UIView(frame: CGRect(x: 0, y: 0, width: 50, height: 18))
-            
-            // Only label for station code (no circle)
-            let label = UILabel(frame: CGRect(x: 0, y: 0, width: 50, height: 18))
-            label.text = station.code
-            label.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
-            label.textColor = .white
-            label.textAlignment = .center
-            label.backgroundColor = UIColor.black.withAlphaComponent(0.8)
-            label.layer.cornerRadius = 9
-            label.clipsToBounds = true
-            
-            containerView.addSubview(label)
-            
-            return containerView
-        }
     }
 }
 

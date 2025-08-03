@@ -39,12 +39,6 @@ struct ActiveTripsSection: View {
         Group {
             if liveActivityService.isActivityActive, let activity = liveActivityService.currentActivity {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("ACTIVE TRIPS")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white.opacity(0.7))
-                        .padding(.horizontal)
-                    
                     Button {
                         // Set the route context from Live Activity (like train cards do)
                         appState.selectedDestination = activity.attributes.destination

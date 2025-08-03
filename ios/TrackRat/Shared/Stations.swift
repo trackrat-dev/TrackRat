@@ -248,11 +248,11 @@ struct Stations {
         "NFK": CLLocationCoordinate2D(latitude: 36.8583, longitude: -76.2876),  // Norfolk, VA
         "RVR": CLLocationCoordinate2D(latitude: 37.6143, longitude: -77.4966),  // Richmond Main Street, VA
         "RNK": CLLocationCoordinate2D(latitude: 37.3077, longitude: -79.9803),  // Roanoke, VA
-        "PL": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.1647),   // Plainfield
-        "LB": CLLocationCoordinate2D(latitude: 40.0849, longitude: -74.1990),   // Long Branch
+        //"PL": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.1647),   // Plainfield
+        //"LB": CLLocationCoordinate2D(latitude: 40.0849, longitude: -74.1990),   // Long Branch
         "JA": CLLocationCoordinate2D(latitude: 40.4769, longitude: -74.4674),   // Jersey Avenue
-        "HB": CLLocationCoordinate2D(latitude: 40.734843, longitude: -74.028043), // Hoboken Terminal - Updated GPS
-        "RA": CLLocationCoordinate2D(latitude: 40.5682, longitude: -74.6290),   // Raritan
+        //"HB": CLLocationCoordinate2D(latitude: 40.734843, longitude: -74.028043), // Hoboken Terminal - Updated GPS
+        //"RA": CLLocationCoordinate2D(latitude: 40.5682, longitude: -74.6290),   // Raritan
         
         // Additional NJT stations for complete map coverage - Updated GPS
         "ED": CLLocationCoordinate2D(latitude: 40.5177, longitude: -74.4075),   // Edison - Updated GPS
@@ -262,7 +262,8 @@ struct Stations {
         "EL": CLLocationCoordinate2D(latitude: 40.667859, longitude: -74.215171), // Elizabeth - Updated GPS
         "EZ": CLLocationCoordinate2D(latitude: 40.667859, longitude: -74.215171), // Elizabeth - Updated GPS
         "NZ": CLLocationCoordinate2D(latitude: 40.6968, longitude: -74.1733),   // North Elizabeth
-        
+       
+        /* 
         // Bergen County Line (Main Line) - New GPS coordinates
         "LY": CLLocationCoordinate2D(latitude: 40.8123, longitude: -74.1246),   // Lyndhurst
         "DL": CLLocationCoordinate2D(latitude: 40.8180, longitude: -74.1370),   // Delawanna
@@ -328,6 +329,7 @@ struct Stations {
         "MS": CLLocationCoordinate2D(latitude: 40.8695, longitude: -74.1975),   // Montclair State University
         "DO": CLLocationCoordinate2D(latitude: 40.883417, longitude: -74.555884), // Dover
         "BO": CLLocationCoordinate2D(latitude: 40.903378, longitude: -74.407733)  // Boonton
+        */
     ]
     
     // Supported departure stations

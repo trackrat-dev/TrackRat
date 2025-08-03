@@ -62,6 +62,7 @@ struct TrainListView: View {
                                     departureStationCode: departureStationCode,
                                     onTap: {
                                         appState.currentTrainId = train.id
+                                        appState.currentTrain = train  // Store the full train object
                                         // Use flexible navigation with train number
                                         appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                                             trainNumber: train.trainId,

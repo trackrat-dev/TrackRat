@@ -465,6 +465,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 }
 
+// MARK: - Map Display Mode
+enum MapDisplayMode: Equatable {
+    case overallCongestion
+    case journeyFocus(trainId: String, origin: String, destination: String, trainStops: [String])
+}
+
 // MARK: - App State
 @MainActor
 final class AppState: ObservableObject {
@@ -474,6 +480,9 @@ final class AppState: ObservableObject {
     @Published var departureStationCode: String?
     @Published var currentTrainId: String?
     @Published var navigationPath = NavigationPath()
+    @Published var selectedRoute: TripPair?  // Currently selected route for map highlighting
+    @Published var mapDisplayMode: MapDisplayMode = .overallCongestion
+    @Published var currentTrain: TrainV2?  // Currently selected train for journey focus
     
     private let apiService = APIService()
     private let storageService = StorageService()
@@ -496,6 +505,9 @@ final class AppState: ObservableObject {
         selectedDeparture = nil
         departureStationCode = nil
         currentTrainId = nil
+        selectedRoute = nil
+        mapDisplayMode = .overallCongestion
+        currentTrain = nil
     }
     
     // MARK: - Trip Management

@@ -369,7 +369,6 @@ class SchedulerService:
                 ),
             )
 
-
     async def collect_journey(self, train_id: str, journey_date: datetime) -> None:
         """Collect journey data for a specific train."""
         task_id = f"journey_{train_id}_{now_et().isoformat()}"

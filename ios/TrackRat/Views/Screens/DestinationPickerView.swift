@@ -21,14 +21,9 @@ struct DestinationPickerView: View {
         }
     }
     
-    // Computed property for dynamic spacing
+    // Computed property for dynamic spacing - keep consistent spacing
     private var topPadding: CGFloat {
-        (searchFieldFocused || isSearching) ? 20 : 100
-    }
-    
-    // Computed property to determine if title should be shown
-    private var shouldShowTitle: Bool {
-        !searchFieldFocused && !isSearching
+        20
     }
     
     var body: some View {
@@ -39,16 +34,8 @@ struct DestinationPickerView: View {
             
             
             VStack(spacing: 16) {
-                // Conditional title with spacing - only show when not searching
-                if shouldShowTitle {
-                    Text("Where to?")
-                        .font(TrackRatTheme.Typography.title1)
-                        .foregroundColor(TrackRatTheme.Colors.onSurface)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-                
                 Spacer()
-                    .frame(height: shouldShowTitle ? 0 : topPadding)
+                    .frame(height: topPadding)
                 
                 VStack(spacing: 20) {
                     // Search bar - moved to top
@@ -56,7 +43,7 @@ struct DestinationPickerView: View {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.white.opacity(0.6))
                         
-                        TextField("Type station name...", text: $searchText)
+                        TextField("Where would you like to go?", text: $searchText)
                             .foregroundColor(.white)
                             .focused($searchFieldFocused)
                             .onTapGesture {
@@ -197,6 +184,20 @@ struct DestinationPickerView: View {
     private func selectDestination(_ destination: String) {
         appState.selectedDestination = destination
         appState.destinationStationCode = Stations.getStationCode(destination)
+        
+        // Create and set the selected route for map highlighting
+        if let departureCode = appState.departureStationCode,
+           let departureName = appState.selectedDeparture,
+           let destinationCode = appState.destinationStationCode {
+            appState.selectedRoute = TripPair(
+                departureCode: departureCode,
+                departureName: departureName,
+                destinationCode: destinationCode,
+                destinationName: destination,
+                isFavorite: false
+            )
+        }
+        
         appState.navigationPath.append(NavigationDestination.trainList(destination: destination))
         
         // Reset search with animation
