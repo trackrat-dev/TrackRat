@@ -29,21 +29,14 @@ struct Stations {
         "Middletown", "Elizabethtown", "Mount Joy", "Lancaster", "Parkesburg", "Coatesville",
         "Downingtown", "Exton", "Paoli",
         
-        // Amtrak stations (Northeast Corridor and beyond)
+        // Amtrak stations (Northeast Corridor and beyond) - Updated with new stations
         "Boston South", "Boston Back Bay", "Providence", "New Haven", "Bridgeport",
-        "Stamford", "New Rochelle", "Yonkers", "Croton-Harmon", "Poughkeepsie", "Rhinecliff",
-        "Hudson", "Albany-Rensselaer", "Schenectady", "Amsterdam", "Utica", "Rome", "Syracuse",
-        "Rochester", "Buffalo-Depew", "Buffalo Exchange Street", "Niagara Falls",
+        "Stamford", "Hartford", "Meriden", "New London", "Old Saybrook", "Wallingford", 
+        "Windsor Locks", "Springfield", "Claremont", "Dover", "Durham-UNH", "Exeter",
         "Philadelphia", "Baltimore Station", "Washington Union Station", "BWI Thurgood Marshall Airport",
-        "Wilmington Station", "New Carrollton Station",
-        "Aberdeen", "Alexandria", "Fredericksburg", "Richmond Staples Mill",
-        "Richmond Main Street", "Petersburg", "Rocky Mount", "Wilson", "Selma-Smithfield",
-        "Raleigh", "Cary", "Southern Pines", "Hamlet", "Fayetteville", "Dillon", "Florence",
-        "Kingstree", "Charleston", "Columbia", "Camden", "Denmark", "Savannah", "Jesup",
-        "Jacksonville", "Palatka", "DeLand", "Winter Park", "Orlando", "Kissimmee",
-        "Lakeland", "Tampa", "Sebring", "Okeechobee", "West Palm Beach", "Delray Beach",
-        "Deerfield Beach", "Fort Lauderdale", "Hollywood", "Hallandale Beach", "Aventura",
-        "Miami", "Hialeah Market", "Miami Airport", "Toronto Union", "Pittsburgh", "New Orleans", "Norfolk", "Roanoke"
+        "Wilmington Station", "New Carrollton", "Aberdeen", "Alexandria", "Charlottesville",
+        "Lorton", "Norfolk", "Richmond Main Street", "Roanoke", "Harrisburg", "Lancaster",
+        "Kingston", "Westerly"
     ].sorted()
     
     // Station name to code mapping
@@ -164,242 +157,177 @@ struct Stations {
         "Middletown": "MIDPA",
         "Elizabethtown": "ELT",
         "Mount Joy": "MJY",
-        "Lancaster": "LNC",
         "Parkesburg": "PKB",
         "Coatesville": "COT",
         "Downingtown": "DOW",
         "Exton": "EXT",
         "Paoli": "PAO",
         
-        // Amtrak stations (corrected)
+        // Amtrak stations (corrected with updated codes to match backend)
         "Boston South": "BOS",
         "Boston Back Bay": "BBY",
         "Providence": "PVD",
         "New Haven": "NHV",
         "Bridgeport": "BRP",
         "Stamford": "STM",
-        "New Rochelle": "NRO",
-        "Yonkers": "YNY",
-        "Croton-Harmon": "CRT",
-        "Poughkeepsie": "POU",
-        "Rhinecliff": "RHI",
-        "Hudson": "HUD",
-        "Albany-Rensselaer": "ALB",
-        "Schenectady": "SCH",
-        "Amsterdam": "AMS",
-        "Utica": "UTS",
-        "Rome": "ROM",
-        "Syracuse": "SYR",
-        "Rochester": "ROC",
-        "Buffalo-Depew": "BUF",
-        "Buffalo Exchange Street": "BFX",
-        "Niagara Falls": "NFL",
+        "Hartford": "HFD",
+        "Meriden": "MDN",
+        "New London": "NLC",
+        "Old Saybrook": "OSB",
+        "Wallingford": "WFD",
+        "Windsor Locks": "WNL",
+        "Springfield": "SPG",
+        "Claremont": "CLA",
+        "Dover": "DOV",
+        "Durham-UNH": "DHM",
+        "Exeter": "EXR",
         "Philadelphia": "PH",
         "Baltimore Station": "BL",
         "Washington Union Station": "WS",
         "BWI Thurgood Marshall Airport": "BA",
         "Wilmington Station": "WI",
-        "New Carrollton Station": "NC",
+        "New Carrollton": "NCR",
         "Aberdeen": "ABE",
-        "Alexandria": "AXA",
-        "Fredericksburg": "FRB",
-        "Richmond Staples Mill": "RSM",
-        "Richmond Main Street": "RVM",
-        "Petersburg": "PTB",
-        "Rocky Mount": "RMT",
-        "Wilson": "WIL2",
-        "Selma-Smithfield": "SSM",
-        "Raleigh": "RAL",
-        "Cary": "CAR",
-        "Southern Pines": "SPN",
-        "Hamlet": "HAM2",
-        "Fayetteville": "FAY",
-        "Dillon": "DIL",
-        "Florence": "FLO",
-        "Kingstree": "KTR",
-        "Charleston": "CHS",
-        "Columbia": "COL",
-        "Camden": "CAM2",
-        "Denmark": "DEN2",
-        "Savannah": "SAV",
-        "Jesup": "JES",
-        "Jacksonville": "JAX",
-        "Palatka": "PAL",
-        "DeLand": "DEL",
-        "Winter Park": "WPK",
-        "Orlando": "ORL",
-        "Kissimmee": "KIS",
-        "Lakeland": "LAK",
-        "Tampa": "TPA",
-        "Sebring": "SEB",
-        "Okeechobee": "OKE",
-        "West Palm Beach": "WPB",
-        "Delray Beach": "DRB",
-        "Deerfield Beach": "DFB",
-        "Fort Lauderdale": "FTL",
-        "Hollywood": "HOL",
-        "Hallandale Beach": "HLB",
-        "Aventura": "AVE",
-        "Miami": "MIA",
-        "Hialeah Market": "HIA",
-        "Miami Airport": "MIP",
-        "Toronto Union": "TOR",
-        "Pittsburgh": "PIT",
-        "New Orleans": "NOL",
+        "Alexandria": "ALX",
+        "Charlottesville": "CVS",
+        "Lorton": "LOR",
         "Norfolk": "NFK",
-        "Roanoke": "ROA"
+        "Richmond Main Street": "RVR",
+        "Roanoke": "RNK",
+        "Harrisburg": "HAR",
+        "Lancaster": "LNC",
+        "Kingston": "KIN",
+        "Westerly": "WLY"
     ]
     
     // Station coordinates for mapping - synced with backend_v2/src/trackrat/config/stations.py
     static let stationCoordinates: [String: CLLocationCoordinate2D] = [
-        // Core NJ Transit/Amtrak stations
-        "NY": CLLocationCoordinate2D(latitude: 40.7505, longitude: -73.9934),   // NY Penn
-        "NP": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Newark Penn
-        "TR": CLLocationCoordinate2D(latitude: 40.2206, longitude: -74.7597),   // Trenton
-        "PJ": CLLocationCoordinate2D(latitude: 40.3170, longitude: -74.6225),   // Princeton Junction
-        "MP": CLLocationCoordinate2D(latitude: 40.5686, longitude: -74.3284),   // Metropark
+        // Core NJ Transit/Amtrak stations - Updated GPS coordinates
+        "NY": CLLocationCoordinate2D(latitude: 40.7506, longitude: -73.9939),   // New York Penn Station - Updated GPS
+        "NP": CLLocationCoordinate2D(latitude: 40.7347, longitude: -74.1644),   // Newark Penn Station - Updated GPS
+        "TR": CLLocationCoordinate2D(latitude: 40.218518, longitude: -74.753923), // Trenton Transit Center - Updated GPS
+        "HL": CLLocationCoordinate2D(latitude: 40.2547, longitude: -74.7036),   // Hamilton
+        "PJ": CLLocationCoordinate2D(latitude: 40.3167, longitude: -74.6233),   // Princeton Junction - Updated GPS
+        "MP": CLLocationCoordinate2D(latitude: 40.5378, longitude: -74.3562),   // Metropark - Updated GPS
         "NA": CLLocationCoordinate2D(latitude: 40.7058, longitude: -74.1608),   // Newark Airport
         "NB": CLLocationCoordinate2D(latitude: 40.4862, longitude: -74.4518),   // New Brunswick
-        "SE": CLLocationCoordinate2D(latitude: 40.7614, longitude: -74.0776),   // Secaucus
-        "PH": CLLocationCoordinate2D(latitude: 39.9566, longitude: -75.1820),   // Philadelphia
-        "WI": CLLocationCoordinate2D(latitude: 39.7391, longitude: -75.5516),   // Wilmington
-        "BA": CLLocationCoordinate2D(latitude: 39.3076, longitude: -76.6159),   // BWI Airport
-        "BL": CLLocationCoordinate2D(latitude: 39.3072, longitude: -76.6200),   // Baltimore
-        "WS": CLLocationCoordinate2D(latitude: 38.8977, longitude: -77.0063),   // Washington Union
-        "BOS": CLLocationCoordinate2D(latitude: 42.3519, longitude: -71.0552),  // Boston South Station
-        "BBY": CLLocationCoordinate2D(latitude: 42.3475, longitude: -71.0754),  // Boston Back Bay
+        "SE": CLLocationCoordinate2D(latitude: 40.7612, longitude: -74.0758),   // Secaucus Junction - Updated GPS
+        "PH": CLLocationCoordinate2D(latitude: 39.9570, longitude: -75.1820),   // Philadelphia 30th Street Station - Updated GPS
+        "WI": CLLocationCoordinate2D(latitude: 39.7369, longitude: -75.5522),   // Wilmington - Updated GPS
+        "BA": CLLocationCoordinate2D(latitude: 39.1896, longitude: -76.6934),   // BWI Airport Rail Station - Updated GPS
+        "BL": CLLocationCoordinate2D(latitude: 39.3081, longitude: -76.6175),   // Baltimore Penn Station - Updated GPS
+        "WS": CLLocationCoordinate2D(latitude: 38.8973, longitude: -77.0064),   // Washington Union Station - Updated GPS
+        "BOS": CLLocationCoordinate2D(latitude: 42.3520, longitude: -71.0552),  // Boston South Station - Updated GPS
+        "BBY": CLLocationCoordinate2D(latitude: 42.3473, longitude: -71.0764),  // Boston Back Bay - Updated GPS
+        
+        // Additional Amtrak stations with GPS coordinates
+        "BRP": CLLocationCoordinate2D(latitude: 41.1767, longitude: -73.1874),  // Bridgeport, CT
+        "HFD": CLLocationCoordinate2D(latitude: 41.7678, longitude: -72.6821),  // Hartford, CT
+        "MDN": CLLocationCoordinate2D(latitude: 41.5390, longitude: -72.8012),  // Meriden, CT
+        "NHV": CLLocationCoordinate2D(latitude: 41.2987, longitude: -72.9259),  // New Haven, CT
+        "NLC": CLLocationCoordinate2D(latitude: 41.3543, longitude: -72.0939),  // New London, CT
+        "OSB": CLLocationCoordinate2D(latitude: 41.3005, longitude: -72.3760),  // Old Saybrook, CT
+        "STM": CLLocationCoordinate2D(latitude: 41.0462, longitude: -73.5427),  // Stamford, CT
+        "WFD": CLLocationCoordinate2D(latitude: 41.4571, longitude: -72.8254),  // Wallingford, CT
+        "WNL": CLLocationCoordinate2D(latitude: 41.9272, longitude: -72.6286),  // Windsor Locks, CT
+        "ABE": CLLocationCoordinate2D(latitude: 39.5095, longitude: -76.1630),  // Aberdeen, MD
+        "NCR": CLLocationCoordinate2D(latitude: 38.9533, longitude: -76.8644),  // New Carrollton, MD
+        "SPG": CLLocationCoordinate2D(latitude: 42.1060, longitude: -72.5936),  // Springfield, MA
+        "CLA": CLLocationCoordinate2D(latitude: 43.3688, longitude: -72.3793),  // Claremont, NH
+        "DOV": CLLocationCoordinate2D(latitude: 43.1979, longitude: -70.8737),  // Dover, NH
+        "DHM": CLLocationCoordinate2D(latitude: 43.1340, longitude: -70.9267),  // Durham-UNH, NH
+        "EXR": CLLocationCoordinate2D(latitude: 42.9809, longitude: -70.9478),  // Exeter, NH
+        "HAR": CLLocationCoordinate2D(latitude: 40.2616, longitude: -76.8782),  // Harrisburg, PA
+        "LNC": CLLocationCoordinate2D(latitude: 40.0538, longitude: -76.3076),  // Lancaster, PA
+        "KIN": CLLocationCoordinate2D(latitude: 41.4885, longitude: -71.5204),  // Kingston, RI
+        "PVD": CLLocationCoordinate2D(latitude: 41.8256, longitude: -71.4160),  // Providence, RI
+        "WLY": CLLocationCoordinate2D(latitude: 41.3770, longitude: -71.8307),  // Westerly, RI
+        "ALX": CLLocationCoordinate2D(latitude: 38.8062, longitude: -77.0626),  // Alexandria, VA
+        "CVS": CLLocationCoordinate2D(latitude: 38.0320, longitude: -78.4921),  // Charlottesville, VA
+        "LOR": CLLocationCoordinate2D(latitude: 38.7060, longitude: -77.2214),  // Lorton, VA
+        "NFK": CLLocationCoordinate2D(latitude: 36.8583, longitude: -76.2876),  // Norfolk, VA
+        "RVR": CLLocationCoordinate2D(latitude: 37.6143, longitude: -77.4966),  // Richmond Main Street, VA
+        "RNK": CLLocationCoordinate2D(latitude: 37.3077, longitude: -79.9803),  // Roanoke, VA
         "PL": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.1647),   // Plainfield
         "LB": CLLocationCoordinate2D(latitude: 40.0849, longitude: -74.1990),   // Long Branch
         "JA": CLLocationCoordinate2D(latitude: 40.4769, longitude: -74.4674),   // Jersey Avenue
-        "HB": CLLocationCoordinate2D(latitude: 40.5544, longitude: -74.4093),   // Highland Beach
+        "HB": CLLocationCoordinate2D(latitude: 40.734843, longitude: -74.028043), // Hoboken Terminal - Updated GPS
         "RA": CLLocationCoordinate2D(latitude: 40.5682, longitude: -74.6290),   // Raritan
         
-        // Additional NJT stations for complete map coverage
-        "ED": CLLocationCoordinate2D(latitude: 40.5177, longitude: -74.4075),   // Edison
-        "MU": CLLocationCoordinate2D(latitude: 40.5378, longitude: -74.3562),   // Metuchen
-        "RH": CLLocationCoordinate2D(latitude: 40.6063, longitude: -74.2767),   // Rahway
-        "LI": CLLocationCoordinate2D(latitude: 40.6295, longitude: -74.2518),   // Linden
-        "EL": CLLocationCoordinate2D(latitude: 40.6640, longitude: -74.2107),   // Elizabeth
+        // Additional NJT stations for complete map coverage - Updated GPS
+        "ED": CLLocationCoordinate2D(latitude: 40.5177, longitude: -74.4075),   // Edison - Updated GPS
+        "MU": CLLocationCoordinate2D(latitude: 40.5378, longitude: -74.3562),   // Metuchen - Updated GPS
+        "RH": CLLocationCoordinate2D(latitude: 40.6039, longitude: -74.2723),   // Rahway - Updated GPS
+        "LI": CLLocationCoordinate2D(latitude: 40.629487, longitude: -74.251772), // Linden - Updated GPS
+        "EL": CLLocationCoordinate2D(latitude: 40.667859, longitude: -74.215171), // Elizabeth - Updated GPS
+        "EZ": CLLocationCoordinate2D(latitude: 40.667859, longitude: -74.215171), // Elizabeth - Updated GPS
         "NZ": CLLocationCoordinate2D(latitude: 40.6968, longitude: -74.1733),   // North Elizabeth
         
-        // More NJT stations from congestion data
-        "RB": CLLocationCoordinate2D(latitude: 40.3483, longitude: -74.0745),   // Red Bank
-        "AV": CLLocationCoordinate2D(latitude: 40.5781, longitude: -74.2842),   // Avenel
-        "WB": CLLocationCoordinate2D(latitude: 40.5576, longitude: -74.2840),   // Woodbridge
-        "PE": CLLocationCoordinate2D(latitude: 40.5063, longitude: -74.2658),   // Perth Amboy
-        "SA": CLLocationCoordinate2D(latitude: 40.4816, longitude: -74.2968),   // South Amboy
-        "AM": CLLocationCoordinate2D(latitude: 40.4163, longitude: -74.2208),   // Aberdeen-Matawan
-        "HZ": CLLocationCoordinate2D(latitude: 40.4235, longitude: -74.1549),   // Hazlet
-        "MI": CLLocationCoordinate2D(latitude: 40.3945, longitude: -74.1132),   // Middletown
-        "LS": CLLocationCoordinate2D(latitude: 40.2445, longitude: -74.0735),   // Little Silver
-        "MK": CLLocationCoordinate2D(latitude: 40.1967, longitude: -74.0218),   // Monmouth Park
-        "LY": CLLocationCoordinate2D(latitude: 40.4295, longitude: -74.0687),   // Long Branch (alternate code)
-        "BV": CLLocationCoordinate2D(latitude: 40.2836, longitude: -74.0148),   // Belmar
-        "FH": CLLocationCoordinate2D(latitude: 40.2148, longitude: -74.0034),   // Spring Lake
-        "PC": CLLocationCoordinate2D(latitude: 40.1925, longitude: -74.0158),   // Point Pleasant
-        "GL": CLLocationCoordinate2D(latitude: 40.1836, longitude: -74.0621),   // Point Pleasant Beach
-        "AP": CLLocationCoordinate2D(latitude: 40.4986, longitude: -74.4412),   // Allenhurst
-        "AH": CLLocationCoordinate2D(latitude: 40.4798, longitude: -74.4156),   // Asbury Park
-        "BB": CLLocationCoordinate2D(latitude: 40.4912, longitude: -74.4521),   // Bradley Beach
-        "BS": CLLocationCoordinate2D(latitude: 40.5023, longitude: -74.4623),   // Belmar South
-        "LA": CLLocationCoordinate2D(latitude: 40.5134, longitude: -74.4734),   // Long Allenhurst
-        "SQ": CLLocationCoordinate2D(latitude: 40.5245, longitude: -74.4845),   // Spring Lake
-        "PP": CLLocationCoordinate2D(latitude: 40.5356, longitude: -74.4956),   // Point Pleasant
-        "BH": CLLocationCoordinate2D(latitude: 40.5467, longitude: -74.5067),   // Bay Head
+        // Bergen County Line (Main Line) - New GPS coordinates
+        "LY": CLLocationCoordinate2D(latitude: 40.8123, longitude: -74.1246),   // Lyndhurst
+        "DL": CLLocationCoordinate2D(latitude: 40.8180, longitude: -74.1370),   // Delawanna
+        "PA": CLLocationCoordinate2D(latitude: 40.8570, longitude: -74.1294),   // Passaic
+        "CL": CLLocationCoordinate2D(latitude: 40.8584, longitude: -74.1637),   // Clifton
+        "PT": CLLocationCoordinate2D(latitude: 40.9166, longitude: -74.1710),   // Paterson
+        "HT": CLLocationCoordinate2D(latitude: 40.9494, longitude: -74.1527),   // Hawthorne
+        "GR": CLLocationCoordinate2D(latitude: 40.9633, longitude: -74.1269),   // Glen Rock
+        "RW": CLLocationCoordinate2D(latitude: 40.9808, longitude: -74.1168),   // Ridgewood
+        "HH": CLLocationCoordinate2D(latitude: 40.9956, longitude: -74.1115),   // Ho-Ho-Kus
+        "WA": CLLocationCoordinate2D(latitude: 41.0108, longitude: -74.1267),   // Waldwick
+        "AL": CLLocationCoordinate2D(latitude: 41.0312, longitude: -74.1306),   // Allendale
+        "RM": CLLocationCoordinate2D(latitude: 41.0571, longitude: -74.1413),   // Ramsey
+        "R17": CLLocationCoordinate2D(latitude: 41.0615, longitude: -74.1456),  // Ramsey-Route 17
+        "MH": CLLocationCoordinate2D(latitude: 41.0886, longitude: -74.1438),   // Mahwah
+        "SF": CLLocationCoordinate2D(latitude: 41.1144, longitude: -74.1496),   // Suffern, NY
         
-        // Additional stations from congestion API data
-        "DV": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.6789),   // Dover
-        "DO": CLLocationCoordinate2D(latitude: 40.6023, longitude: -74.6456),   // Denville
-        "MX": CLLocationCoordinate2D(latitude: 40.5890, longitude: -74.6123),   // Mount Tabor
-        "MR": CLLocationCoordinate2D(latitude: 40.5757, longitude: -74.5790),   // Morristown
-        "CN": CLLocationCoordinate2D(latitude: 40.5624, longitude: -74.5457),   // Convent Station
-        "MA": CLLocationCoordinate2D(latitude: 40.5491, longitude: -74.5124),   // Madison
-        "CM": CLLocationCoordinate2D(latitude: 40.5358, longitude: -74.4791),   // Chatham
-        "ST": CLLocationCoordinate2D(latitude: 40.5225, longitude: -74.4458),   // Summit
-        "RT": CLLocationCoordinate2D(latitude: 40.5092, longitude: -74.4125),   // New Providence
-        "MW": CLLocationCoordinate2D(latitude: 40.4959, longitude: -74.3792),   // Murray Hill
-        "SO": CLLocationCoordinate2D(latitude: 40.4826, longitude: -74.3459),   // Stirling
-        "MT": CLLocationCoordinate2D(latitude: 40.4693, longitude: -74.3126),   // Millington
-        "MB": CLLocationCoordinate2D(latitude: 40.4560, longitude: -74.2793),   // Lyons
-        "UV": CLLocationCoordinate2D(latitude: 40.4427, longitude: -74.2460),   // Basking Ridge
-        "HS": CLLocationCoordinate2D(latitude: 40.4294, longitude: -74.2127),   // Bernardsville
-        "MS": CLLocationCoordinate2D(latitude: 40.4161, longitude: -74.1794),   // Far Hills
-        "UM": CLLocationCoordinate2D(latitude: 40.4028, longitude: -74.1461),   // Peapack
-        "WG": CLLocationCoordinate2D(latitude: 40.3895, longitude: -74.1128),   // Gladstone
-        "BY": CLLocationCoordinate2D(latitude: 40.3762, longitude: -74.0795),   // Bay Head
-        "GI": CLLocationCoordinate2D(latitude: 40.3629, longitude: -74.0462),   // Spring Lake Heights
-        "SG": CLLocationCoordinate2D(latitude: 40.3496, longitude: -74.0129),   // Sea Girt
-        "GO": CLLocationCoordinate2D(latitude: 40.3363, longitude: -73.9796),   // Manasquan
-        "BI": CLLocationCoordinate2D(latitude: 40.3230, longitude: -73.9463),   // Brielle
-        "AN": CLLocationCoordinate2D(latitude: 40.3097, longitude: -73.9130),   // Point Pleasant Beach
-        "HG": CLLocationCoordinate2D(latitude: 40.2964, longitude: -73.8797),   // Bay Head
-        "ON": CLLocationCoordinate2D(latitude: 40.2831, longitude: -73.8464),   // Brick Township
-        "WH": CLLocationCoordinate2D(latitude: 40.2698, longitude: -73.8131),   // Lakewood
-        "OR": CLLocationCoordinate2D(latitude: 40.2565, longitude: -73.7798),   // Bay Head
-        "SM": CLLocationCoordinate2D(latitude: 40.1505, longitude: -74.0353),   // Spring Lake
-        "BW": CLLocationCoordinate2D(latitude: 40.1785, longitude: -74.0218),   // Belmar
-        "BK": CLLocationCoordinate2D(latitude: 40.2037, longitude: -74.0187),   // Bradley Beach
+        // Bergen County Line (Ridgewood Branch)
+        "RT": CLLocationCoordinate2D(latitude: 40.8267, longitude: -74.1069),   // Rutherford
+        "WE": CLLocationCoordinate2D(latitude: 40.8356, longitude: -74.0989),   // Wesmont
+        "GA": CLLocationCoordinate2D(latitude: 40.8815, longitude: -74.1133),   // Garfield
+        "PLD": CLLocationCoordinate2D(latitude: 40.8879, longitude: -74.1202),  // Plauderville
+        "BW": CLLocationCoordinate2D(latitude: 40.9188, longitude: -74.1316),   // Broadway (Fair Lawn)
+        "RB": CLLocationCoordinate2D(latitude: 40.9405, longitude: -74.1320),   // Radburn
+        "GB": CLLocationCoordinate2D(latitude: 40.9595, longitude: -74.1329),   // Glen Rock–Boro Hall
         
-        // Additional stations found through research
-        "CH": CLLocationCoordinate2D(latitude: 39.9284, longitude: -75.0417),   // Cherry Hill
-        "TB": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.6789),   // Mount Tabor (corrected coordinate)
-        "IF": CLLocationCoordinate2D(latitude: 40.6890, longitude: -74.0434),   // Irvington
-        "RN": CLLocationCoordinate2D(latitude: 40.7580, longitude: -74.1644),   // Roselle
-        "PS": CLLocationCoordinate2D(latitude: 40.6533, longitude: -74.2417),   // Perth Amboy South
-        "DL": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.0789),   // Delawanna
-        "LN": CLLocationCoordinate2D(latitude: 40.7058, longitude: -74.2108),   // Linden
-        "TS": CLLocationCoordinate2D(latitude: 40.5544, longitude: -74.4093),   // Towaco
-        "MZ": CLLocationCoordinate2D(latitude: 40.6295, longitude: -74.2518),   // Metuchen South
-        "SF": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.0789),   // South Ferry
-        "17": CLLocationCoordinate2D(latitude: 40.7505, longitude: -73.9934),   // Track 17 at NY Penn
-        "23": CLLocationCoordinate2D(latitude: 40.7505, longitude: -73.9934),   // Track 23 at NY Penn
-        "OS": CLLocationCoordinate2D(latitude: 40.8434, longitude: -74.3559),   // Orange Street
-        "PO": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.2789),   // Port Reading
-        "RY": CLLocationCoordinate2D(latitude: 40.6063, longitude: -74.2767),   // Rahway (same as RH)
-        "AZ": CLLocationCoordinate2D(latitude: 40.5781, longitude: -74.2842),   // Avenel Zone
-        "NN": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Newark North
-        "SV": CLLocationCoordinate2D(latitude: 40.6890, longitude: -74.0434),   // South Village
-        "DN": CLLocationCoordinate2D(latitude: 40.3483, longitude: -74.0745),   // Dunellen
-        "WK": CLLocationCoordinate2D(latitude: 40.7614, longitude: -74.0776),   // Walkway
-        "PQ": CLLocationCoordinate2D(latitude: 40.7058, longitude: -74.1608),   // Park Queue
-        "UF": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Upper Floor
-        "ZM": CLLocationCoordinate2D(latitude: 40.6968, longitude: -74.1733),   // Zone M
-        "RW": CLLocationCoordinate2D(latitude: 40.6063, longitude: -74.2767),   // Railway
-        "NE": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Newark East
-        "PF": CLLocationCoordinate2D(latitude: 40.614, longitude: -74.1647),    // Platform
-        "WL": CLLocationCoordinate2D(latitude: 40.6295, longitude: -74.2518),   // West Line
-        "PV": CLLocationCoordinate2D(latitude: 40.6968, longitude: -74.1733),   // Private Platform
-        "HD": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.6789),   // Head Platform
-        "HW": CLLocationCoordinate2D(latitude: 40.8634, longitude: -74.8359),   // Hackettstown
-        "RS": CLLocationCoordinate2D(latitude: 40.6890, longitude: -74.0434),   // Roselle South
-        "FW": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Forward Platform
-        "WF": CLLocationCoordinate2D(latitude: 40.7614, longitude: -74.0776),   // Westfield
-        "GW": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Gateway
-        "XC": CLLocationCoordinate2D(latitude: 40.7614, longitude: -74.0776),   // Cross Platform
-        "OD": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.6789),   // Odd Platform
-        "EN": CLLocationCoordinate2D(latitude: 40.7058, longitude: -74.1608),   // End Station
-        "RG": CLLocationCoordinate2D(latitude: 40.6890, longitude: -74.0434),   // Ridge
-        "NH": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // North Hub
-        "AS": CLLocationCoordinate2D(latitude: 40.7614, longitude: -74.0776),   // Atlantic Street
-        "EX": CLLocationCoordinate2D(latitude: 40.7058, longitude: -74.1608),   // Exit Platform
-        "EZ": CLLocationCoordinate2D(latitude: 40.664, longitude: -74.2107),    // Elizabeth Zone
-        "TE": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.6789),   // Terminal East
-        "WR": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.6789),   // West Rail
-        "ND": CLLocationCoordinate2D(latitude: 40.7614, longitude: -74.0776),   // North Deck
-        "WT": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.6789),   // West Terminal
-        "BM": CLLocationCoordinate2D(latitude: 40.6890, longitude: -74.0434),   // Belmar
-        "GG": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Gate G
-        "MC": CLLocationCoordinate2D(latitude: 40.6156, longitude: -74.6789),   // Main Concourse
-        "RM": CLLocationCoordinate2D(latitude: 40.8634, longitude: -74.8359),   // Ramsey
-        "CW": CLLocationCoordinate2D(latitude: 40.8434, longitude: -74.8359),   // Cranford West
-        "TC": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Terminal C
-        "XG": CLLocationCoordinate2D(latitude: 40.7614, longitude: -74.0776),   // Cross Gate
-        "US": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644),   // Upper Station
-        "RL": CLLocationCoordinate2D(latitude: 40.7614, longitude: -74.0776),   // Rail Line
-        "MD": CLLocationCoordinate2D(latitude: 40.8434, longitude: -74.8359),   // Madison
-        "CB": CLLocationCoordinate2D(latitude: 40.8334, longitude: -74.8259),   // Convent Branch
-        "NF": CLLocationCoordinate2D(latitude: 40.2206, longitude: -74.7597),   // North Field
-        "HL": CLLocationCoordinate2D(latitude: 40.2547, longitude: -74.7036),   // Hamilton
+        // Pascack Valley Line
+        "WR": CLLocationCoordinate2D(latitude: 40.8449, longitude: -74.0883),   // Wood-Ridge
+        "TB": CLLocationCoordinate2D(latitude: 40.8602, longitude: -74.0639),   // Teterboro
+        "ES": CLLocationCoordinate2D(latitude: 40.8836, longitude: -74.0436),   // Essex Street
+        "AN": CLLocationCoordinate2D(latitude: 40.8944, longitude: -74.0447),   // Anderson Street
+        "NBL": CLLocationCoordinate2D(latitude: 40.9079, longitude: -74.0384),  // New Bridge Landing
+        "RE": CLLocationCoordinate2D(latitude: 40.9264, longitude: -74.0413),   // River Edge
+        "OR": CLLocationCoordinate2D(latitude: 40.9545, longitude: -74.0369),   // Oradell
+        "EM": CLLocationCoordinate2D(latitude: 40.9758, longitude: -74.0281),   // Emerson
+        "WW": CLLocationCoordinate2D(latitude: 40.9909, longitude: -74.0336),   // Westwood
+        "WL": CLLocationCoordinate2D(latitude: 41.0230, longitude: -74.0569),   // Woodcliff Lake
+        "PR": CLLocationCoordinate2D(latitude: 41.0375, longitude: -74.0406),   // Park Ridge
+        "MV": CLLocationCoordinate2D(latitude: 41.0521, longitude: -74.0372),   // Montvale
+        "PER": CLLocationCoordinate2D(latitude: 41.0595, longitude: -74.0197),  // Pearl River, NY
+        "NU": CLLocationCoordinate2D(latitude: 41.0869, longitude: -74.0130),   // Nanuet, NY
+        "SV": CLLocationCoordinate2D(latitude: 41.1130, longitude: -74.0436),   // Spring Valley, NY
+        
+        // Port Jervis Line (from Suffern)
+        "SL": CLLocationCoordinate2D(latitude: 41.1568, longitude: -74.1937),   // Sloatsburg, NY
+        "TX": CLLocationCoordinate2D(latitude: 41.1970, longitude: -74.1885),   // Tuxedo, NY
+        "HR": CLLocationCoordinate2D(latitude: 41.3098, longitude: -74.1526),   // Harriman, NY
+        "SM": CLLocationCoordinate2D(latitude: 41.4426, longitude: -74.1351),   // Salisbury Mills–Cornwall, NY
+        "CH": CLLocationCoordinate2D(latitude: 41.4446, longitude: -74.2452),   // Campbell Hall, NY
+        "MD": CLLocationCoordinate2D(latitude: 41.4459, longitude: -74.4222),   // Middletown, NY
+        "OT": CLLocationCoordinate2D(latitude: 41.4783, longitude: -74.5336),   // Otisville, NY
+        "PJV": CLLocationCoordinate2D(latitude: 41.3746, longitude: -74.6927),  // Port Jervis, NY
+        
+        // Morris & Essex Line / Gladstone Branch - Updated GPS
+        "ML": CLLocationCoordinate2D(latitude: 40.725667, longitude: -74.303694), // Millburn
+        "ST": CLLocationCoordinate2D(latitude: 40.7099, longitude: -74.3546),   // Summit
+        "ND": CLLocationCoordinate2D(latitude: 40.7418, longitude: -74.1698),   // Newark Broad Street
+        "DV": CLLocationCoordinate2D(latitude: 40.8837, longitude: -74.4753),   // Denville
+        "PE": CLLocationCoordinate2D(latitude: 40.7052, longitude: -74.6550),   // Peapack
+        
+        // Montclair-Boonton Line - Updated GPS
+        "MHT": CLLocationCoordinate2D(latitude: 40.857538, longitude: -74.202493), // Montclair Heights
+        "MS": CLLocationCoordinate2D(latitude: 40.8695, longitude: -74.1975),   // Montclair State University
+        "DO": CLLocationCoordinate2D(latitude: 40.883417, longitude: -74.555884), // Dover
+        "BO": CLLocationCoordinate2D(latitude: 40.903378, longitude: -74.407733)  // Boonton
     ]
     
     // Supported departure stations

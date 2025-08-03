@@ -348,6 +348,52 @@ class JourneyCollector(BaseJourneyCollector):
 
         return has_actual_times
 
+    def _normalize_destination(self, destination: str) -> str:
+        """Normalize destination name for comparison.
+
+        Handles variations like:
+        - "New York -SEC &#9992" -> "new york"
+        - "Penn Station New York" -> "new york"
+        - "Trenton" -> "trenton"
+        """
+        if not destination:
+            return ""
+
+        # Convert to lowercase and remove special characters
+        normalized = destination.lower()
+
+        # Handle New York variations
+        if any(variant in normalized for variant in ["new york", "penn station"]):
+            return "new york"
+
+        # Remove common suffixes and prefixes
+        normalized = normalized.replace(" -sec", "").replace("&#9992", "")
+        normalized = normalized.replace("penn station ", "")
+
+        # Remove extra whitespace
+        normalized = " ".join(normalized.split())
+
+        return normalized.strip()
+
+    def _normalize_line_code(self, line_code: str) -> str:
+        """Normalize line code for comparison.
+
+        Handles variations like:
+        - "No" -> "ne" (Northeast Corridor)
+        - "NE" -> "ne" (Northeast Corridor)
+        - "M&E" -> "me" (Morris & Essex)
+        """
+        if not line_code:
+            return ""
+
+        normalized = line_code.lower().strip()
+
+        # Handle Northeast Corridor variations
+        if normalized in ["no", "ne"]:
+            return "ne"
+
+        return normalized
+
     async def _is_same_journey(
         self, stored_journey: TrainJourney, api_train_data: NJTransitTrainData
     ) -> bool:
@@ -355,29 +401,45 @@ class JourneyCollector(BaseJourneyCollector):
         Verify if API data represents the same journey as our stored record.
 
         Uses key signals to detect journey changes:
-        - Destination must match exactly
+        - Destination must match (after normalization)
         - Line code must match exactly
         - First stop departure time should be similar (±10 min tolerance)
         """
-        # Signal 1: Destination must match
-        if stored_journey.destination != api_train_data.DESTINATION:
+        # Signal 1: Destination must match (after normalization)
+        stored_dest_normalized = self._normalize_destination(
+            stored_journey.destination or ""
+        )
+        api_dest_normalized = self._normalize_destination(
+            api_train_data.DESTINATION or ""
+        )
+
+        if stored_dest_normalized != api_dest_normalized:
             logger.warning(
                 "journey_mismatch_destination",
                 journey_id=stored_journey.id,
                 train_id=stored_journey.train_id,
                 stored_destination=stored_journey.destination,
                 api_destination=api_train_data.DESTINATION,
+                stored_normalized=stored_dest_normalized,
+                api_normalized=api_dest_normalized,
             )
             return False
 
-        # Signal 2: Line code must match
-        if stored_journey.line_code != api_train_data.LINECODE:
+        # Signal 2: Line code must match (after normalization)
+        stored_line_normalized = self._normalize_line_code(
+            stored_journey.line_code or ""
+        )
+        api_line_normalized = self._normalize_line_code(api_train_data.LINECODE or "")
+
+        if stored_line_normalized != api_line_normalized:
             logger.warning(
                 "journey_mismatch_line_code",
                 journey_id=stored_journey.id,
                 train_id=stored_journey.train_id,
                 stored_line=stored_journey.line_code,
                 api_line=api_train_data.LINECODE,
+                stored_normalized=stored_line_normalized,
+                api_normalized=api_line_normalized,
             )
             return False
 
@@ -388,11 +450,13 @@ class JourneyCollector(BaseJourneyCollector):
             if dep_time is not None:
                 api_departure = parse_njt_time(dep_time)
                 if stored_journey.scheduled_departure is not None:
-                    time_diff = abs(
-                        (
-                            api_departure - stored_journey.scheduled_departure
-                        ).total_seconds()
-                    )
+                    # Ensure stored departure is timezone-aware for comparison
+                    stored_departure = stored_journey.scheduled_departure
+                    if stored_departure.tzinfo is None:
+                        # If naive, assume it's already in Eastern time
+                        stored_departure = ET.localize(stored_departure)
+
+                    time_diff = abs((api_departure - stored_departure).total_seconds())
                 else:
                     time_diff = 0  # If no stored departure, consider it a match
 
@@ -687,10 +751,8 @@ class JourneyCollector(BaseJourneyCollector):
                 # Ensure scheduled_departure is timezone-aware for comparison
                 scheduled_dep = stop.scheduled_departure
                 if scheduled_dep.tzinfo is None:
-                    # If naive, assume it's in UTC and convert to Eastern
-                    from pytz import UTC
-
-                    scheduled_dep = UTC.localize(scheduled_dep).astimezone(ET)
+                    # If naive, assume it's already in Eastern time
+                    scheduled_dep = ET.localize(scheduled_dep)
 
                 current_time = now_et()
                 if current_time > scheduled_dep + timedelta(minutes=30):
@@ -716,10 +778,8 @@ class JourneyCollector(BaseJourneyCollector):
                 # Ensure scheduled_arrival is timezone-aware for comparison
                 scheduled_arr = stop.scheduled_arrival
                 if scheduled_arr.tzinfo is None:
-                    # If naive, assume it's in UTC and convert to Eastern
-                    from pytz import UTC
-
-                    scheduled_arr = UTC.localize(scheduled_arr).astimezone(ET)
+                    # If naive, assume it's already in Eastern time
+                    scheduled_arr = ET.localize(scheduled_arr)
 
                 current_time = now_et()
                 if current_time > scheduled_arr + timedelta(minutes=30):
