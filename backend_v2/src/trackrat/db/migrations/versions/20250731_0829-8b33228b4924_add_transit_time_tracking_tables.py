@@ -1,7 +1,7 @@
 """add transit time tracking tables
 
 Revision ID: 8b33228b4924
-Revises: add_updated_times_and_raw_status_fields
+Revises: updated_times_raw_status
 Create Date: 2025-07-31 08:29:35.911167
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "8b33228b4924"
-down_revision = "add_updated_times_and_raw_status_fields"
+down_revision = "updated_times_raw_status"
 branch_labels = None
 depends_on = None
 

@@ -44,8 +44,8 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = Field(
-        default="sqlite+aiosqlite:///trackrat.db",
-        description="SQLite database file path",
+        default="postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb",
+        description="PostgreSQL database connection URL",
     )
 
     # NJ Transit API
@@ -134,32 +134,23 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, v: str) -> str:
-        """Validate and normalize database URL."""
-        # Handle SQLite URLs
-        if v.startswith("sqlite://") or not v.startswith(("sqlite+", "postgresql")):
-            if not v.startswith("sqlite+aiosqlite"):
-                if v.startswith("sqlite://"):
-                    v = v.replace("sqlite://", "sqlite+aiosqlite://")
-                else:
-                    # If it's just a file path, create proper SQLite URL
-                    v = f"sqlite+aiosqlite:///{v}"
-        # Handle PostgreSQL URLs
-        elif v.startswith("postgresql://"):
+        """Validate and normalize PostgreSQL database URL."""
+        if not v.startswith("postgresql"):
+            raise ValueError(
+                f"Only PostgreSQL databases are supported. Got: {v[:50]}..."
+            )
+        
+        # Ensure async driver is used
+        if not v.startswith("postgresql+asyncpg://"):
             v = v.replace("postgresql://", "postgresql+asyncpg://")
+        
         return v
 
     @property
     def database_url_sync(self) -> str:
-        """Get synchronous database URL for Alembic migrations."""
-        url = str(self.database_url)
-        # Remove async drivers
-        url = url.replace("+aiosqlite", "").replace("+asyncpg", "")
-        return url
+        """Get synchronous PostgreSQL URL for Alembic migrations."""
+        return str(self.database_url).replace("+asyncpg", "")
 
-    @property
-    def is_sqlite(self) -> bool:
-        """Check if database is SQLite."""
-        return self.database_url.startswith("sqlite")
 
 
 @lru_cache

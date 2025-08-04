@@ -391,24 +391,24 @@ jobs:
             exit 0
           fi
 
-          # Test trains endpoint
-          TRAINS_URL="${{ env.SERVICE_URL }}/api/trains/?limit=5"
+          # Test V2 trains endpoint
+          TRAINS_URL="${{ env.SERVICE_URL }}/api/v2/trains/departures?from=NY&limit=5"
           echo "Testing: $TRAINS_URL"
 
           if curl -f -s "$TRAINS_URL" > /dev/null; then
-            echo "✅ Trains API endpoint is responding"
+            echo "✅ V2 Trains API endpoint is responding"
           else
-            echo "⚠️ Trains API endpoint check failed (may be expected if no data)"
+            echo "⚠️ V2 Trains API endpoint check failed (may be expected if no data)"
           fi
 
-          # Test stops endpoint
-          STOPS_URL="${{ env.SERVICE_URL }}/api/stops/"
-          echo "Testing: $STOPS_URL"
+          # Test health endpoint
+          HEALTH_URL="${{ env.SERVICE_URL }}/health"
+          echo "Testing: $HEALTH_URL"
 
-          if curl -f -s "$STOPS_URL" > /dev/null; then
-            echo "✅ Stops API endpoint is responding"
+          if curl -f -s "$HEALTH_URL" > /dev/null; then
+            echo "✅ Health endpoint is responding"
           else
-            echo "⚠️ Stops API endpoint check failed (may be expected if no data)"
+            echo "⚠️ Health endpoint check failed"
           fi
 
       # Step 7: Deployment summary
@@ -422,8 +422,8 @@ jobs:
           echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
           echo "🏥 **Health Check**: [${{ env.SERVICE_URL }}/health](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
           echo "📊 **API Endpoints**:" >> $GITHUB_STEP_SUMMARY
-          echo "- [Trains API](${{ env.SERVICE_URL }}/api/trains/)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Stops API](${{ env.SERVICE_URL }}/api/stops/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [V2 Trains API](${{ env.SERVICE_URL }}/api/v2/trains/departures?from=NY&limit=5)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Health API](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version**: \`${{ env.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
@@ -594,24 +594,24 @@ jobs:
             exit 0
           fi
 
-          # Test trains endpoint
-          TRAINS_URL="${{ env.SERVICE_URL }}/api/trains/?limit=5"
+          # Test V2 trains endpoint
+          TRAINS_URL="${{ env.SERVICE_URL }}/api/v2/trains/departures?from=NY&limit=5"
           echo "Testing: $TRAINS_URL"
 
           if curl -f -s "$TRAINS_URL" > /dev/null; then
-            echo "✅ Trains API endpoint is responding"
+            echo "✅ V2 Trains API endpoint is responding"
           else
-            echo "⚠️ Trains API endpoint check failed (may be expected if no data)"
+            echo "⚠️ V2 Trains API endpoint check failed (may be expected if no data)"
           fi
 
-          # Test stops endpoint
-          STOPS_URL="${{ env.SERVICE_URL }}/api/stops/"
-          echo "Testing: $STOPS_URL"
+          # Test health endpoint
+          HEALTH_URL="${{ env.SERVICE_URL }}/health"
+          echo "Testing: $HEALTH_URL"
 
-          if curl -f -s "$STOPS_URL" > /dev/null; then
-            echo "✅ Stops API endpoint is responding"
+          if curl -f -s "$HEALTH_URL" > /dev/null; then
+            echo "✅ Health endpoint is responding"
           else
-            echo "⚠️ Stops API endpoint check failed (may be expected if no data)"
+            echo "⚠️ Health endpoint check failed"
           fi
 
       # Step 7: Deployment summary
@@ -625,8 +625,8 @@ jobs:
           echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
           echo "🏥 **Health Check**: [${{ env.SERVICE_URL }}/health](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
           echo "📊 **API Endpoints**:" >> $GITHUB_STEP_SUMMARY
-          echo "- [Trains API](${{ env.SERVICE_URL }}/api/trains/)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Stops API](${{ env.SERVICE_URL }}/api/stops/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [V2 Trains API](${{ env.SERVICE_URL }}/api/v2/trains/departures?from=NY&limit=5)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Health API](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version**: \`${{ env.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY

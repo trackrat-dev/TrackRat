@@ -44,6 +44,12 @@ variable "private_service_connection_ip_range" {
   default     = "10.100.0.0/20"
 }
 
+variable "vpc_connector_cidr" {
+  description = "The CIDR range for the VPC connector. Must be /28 and not overlap with any existing subnets."
+  type        = string
+  default     = "10.8.0.0/28"
+}
+
 # db_password is now auto-generated in the database module
 
 variable "artifact_registry_repository_name" {

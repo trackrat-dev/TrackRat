@@ -797,7 +797,7 @@ class SchedulerService:
 
             logger.info("amtrak_trains_found_for_collection", count=len(target_trains))
 
-            # Process trains sequentially to avoid SQLite concurrency issues
+            # Process trains sequentially for consistent performance
             # This eliminates all database transaction conflicts
             all_results: list[Any] = []
 
@@ -1000,15 +1000,11 @@ class SchedulerService:
 
             # Create synchronous database connection
             db_url = str(self.settings.database_url).replace(
-                "sqlite+aiosqlite", "sqlite"
+                "postgresql+asyncpg", "postgresql"
             )
             sync_engine = create_engine(
                 db_url,
-                connect_args={
-                    "check_same_thread": False,
-                    "timeout": 30,  # 30 second timeout for busy database
-                    "isolation_level": "DEFERRED",  # Use DEFERRED transactions to reduce lock conflicts
-                },
+                # PostgreSQL doesn't need special connect_args for basic operations
             )
             SyncSession = sessionmaker(sync_engine)
 
@@ -1752,15 +1748,11 @@ class SchedulerService:
             from sqlalchemy.orm import sessionmaker
 
             db_url = str(self.settings.database_url).replace(
-                "sqlite+aiosqlite", "sqlite"
+                "postgresql+asyncpg", "postgresql"
             )
             sync_engine = create_engine(
                 db_url,
-                connect_args={
-                    "check_same_thread": False,
-                    "timeout": 30,  # 30 second timeout for busy database
-                    "isolation_level": "DEFERRED",  # Use DEFERRED transactions to reduce lock conflicts
-                },
+                # PostgreSQL doesn't need special connect_args for basic operations
             )
             SyncSession = sessionmaker(sync_engine)
 
@@ -1814,15 +1806,11 @@ class SchedulerService:
             # Use synchronous database access to avoid greenlet issues in scheduler context
             # This is a workaround for APScheduler's async executor not properly initializing greenlets
             db_url = str(self.settings.database_url).replace(
-                "sqlite+aiosqlite", "sqlite"
+                "postgresql+asyncpg", "postgresql"
             )
             sync_engine = create_engine(
                 db_url,
-                connect_args={
-                    "check_same_thread": False,
-                    "timeout": 30,  # 30 second timeout for busy database
-                    "isolation_level": "DEFERRED",  # Use DEFERRED transactions to reduce lock conflicts
-                },
+                # PostgreSQL doesn't need special connect_args for basic operations
             )
             SyncSession = sessionmaker(sync_engine)
 

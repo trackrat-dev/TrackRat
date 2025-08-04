@@ -33,6 +33,7 @@ module "infrastructure" {
   vpc_cidr                            = "10.2.0.0/16"
   subnet_cidr                         = "10.2.1.0/24"
   private_service_connection_ip_range = "10.2.16.0/20"
+  vpc_connector_cidr                  = "10.2.8.0/28"
   artifact_registry_repository_name   = "trackrat-staging"
 }
 
@@ -58,8 +59,8 @@ module "trackrat_api_service" {
   liveness_probe_path           = "/health"
   liveness_probe_period_seconds = 30
 
-  vpc_connector_id       = null
-  enable_cloudsql_access = false
+  vpc_connector_id       = module.infrastructure.vpc_connector_id
+  enable_cloudsql_access = true
   enable_backup_access   = true
 
   # Environment variables (non-sensitive)
@@ -84,6 +85,7 @@ module "trackrat_api_service" {
 
   # Secret environment variables (sensitive data from Secret Manager)
   secret_environment_variables = {
+    TRACKRAT_DATABASE_URL  = "${module.infrastructure.database_url_secret_name}:latest"
     TRACKRAT_NJT_API_TOKEN = "${module.infrastructure.njt_token_secret_name}:latest"
     APNS_TEAM_ID           = "${module.infrastructure.apns_team_id_secret_name}:latest"
     APNS_KEY_ID            = "${module.infrastructure.apns_key_id_secret_name}:latest"
