@@ -541,7 +541,8 @@ struct SystemCongestionMapView: UIViewRepresentable {
             // Add individual journey segments with offsets to prevent overlap
             self.addSegmentsToMapAsync(mapView: mapView, 
                                      individualSegments: individualSegments, 
-                                     aggregatedSegments: segments)
+                                     aggregatedSegments: segments,
+                                     selectedRoute: selectedRoute)
         }
         
         // Station annotations removed - only showing train segments
@@ -561,7 +562,8 @@ struct SystemCongestionMapView: UIViewRepresentable {
     // Process map segments asynchronously to prevent UI blocking
     private func addSegmentsToMapAsync(mapView: MKMapView, 
                                      individualSegments: [IndividualJourneySegment], 
-                                     aggregatedSegments: [CongestionSegment]) {
+                                     aggregatedSegments: [CongestionSegment],
+                                     selectedRoute: TripPair?) {
         
         // Process aggregated segments first (these go under individual segments)
         for segment in aggregatedSegments {
@@ -603,6 +605,23 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 mapView.addOverlay(polyline)
             }
         }
+        
+        // Add route highlight on top of everything else
+        if let route = selectedRoute {
+            addRouteHighlight(mapView: mapView, route: route)
+        }
+    }
+    
+    // Add blue route highlight line
+    private func addRouteHighlight(mapView: MKMapView, route: TripPair) {
+        guard let fromCoords = Stations.getCoordinates(for: route.departureCode),
+              let toCoords = Stations.getCoordinates(for: route.destinationCode) else {
+            return
+        }
+        
+        let coordinates = [fromCoords, toCoords]
+        let polyline = RouteHighlightPolyline(coordinates: coordinates, count: coordinates.count)
+        mapView.addOverlay(polyline, level: .aboveLabels)  // Ensure it's rendered on top
     }
     
     class Coordinator: NSObject, MKMapViewDelegate {
@@ -614,6 +633,15 @@ struct SystemCongestionMapView: UIViewRepresentable {
         
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            // Handle route highlight polyline (blue line for selected route)
+            if let polyline = overlay as? RouteHighlightPolyline {
+                let renderer = MKPolylineRenderer(polyline: polyline)
+                renderer.strokeColor = UIColor.systemBlue
+                renderer.lineWidth = 7.0  // Thicker than segments but not too thick
+                renderer.alpha = 0.9  // High opacity to stand out
+                return renderer
+            }
+            
             // Handle individual journey polylines
             if let polyline = overlay as? IndividualJourneyPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
@@ -821,6 +849,10 @@ class SystemCongestionPolyline: MKPolyline {
 class IndividualJourneyPolyline: MKPolyline {
     var individualSegment: IndividualJourneySegment?
     var offsetIndex: Int = 0
+}
+
+class RouteHighlightPolyline: MKPolyline {
+    var isRouteHighlight: Bool = true
 }
 
 // MARK: - Custom Annotation Class for System Map
