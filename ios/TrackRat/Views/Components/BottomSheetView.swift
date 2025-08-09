@@ -46,9 +46,27 @@ struct BottomSheetView<Content: View>: View {
                     .padding(.top, 12)
                     .padding(.bottom, 8)
                 
-                // Content
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Content with clipping and gradient overlay
+                ZStack(alignment: .bottom) {
+                    content
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                    
+                    // Gradient overlay to indicate hidden content (only when not fully expanded)
+                    if position != .expanded {
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color.clear,
+                                TrackRatTheme.Colors.surface.opacity(0.8),
+                                TrackRatTheme.Colors.surface
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 40)
+                        .allowsHitTesting(false) // Allow gestures to pass through
+                    }
+                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 20)

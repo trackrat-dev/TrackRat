@@ -30,8 +30,7 @@ struct TripSelectionView: View {
             TrackRatTheme.Colors.surface
                 .ignoresSafeArea()
             
-            ScrollView {
-                VStack(spacing: 8) {
+            VStack(spacing: 8) {
                         // Top navigation bar with search and icons
                         HStack(spacing: 16) {
                             // Search field - left aligned
@@ -203,9 +202,8 @@ struct TripSelectionView: View {
                         }
                         
                         
-                }
-                .padding(.bottom, 40)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .onAppear {
             appState.loadRecentTrips()
