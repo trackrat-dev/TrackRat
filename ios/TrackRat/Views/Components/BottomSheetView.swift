@@ -27,11 +27,11 @@ enum BottomSheetPosition: CaseIterable {
 // MARK: - Bottom Sheet View
 struct BottomSheetView<Content: View>: View {
     @Binding var position: BottomSheetPosition
+    @EnvironmentObject private var appState: AppState
     let content: Content
     
     // Drag gesture state
     @GestureState private var translation: CGFloat = 0
-    @State private var isDragging = false
     
     init(position: Binding<BottomSheetPosition>, @ViewBuilder content: () -> Content) {
         self._position = position
@@ -65,10 +65,10 @@ struct BottomSheetView<Content: View>: View {
                         state = value.translation.height
                     }
                     .onChanged { _ in
-                        isDragging = true
+                        appState.isBottomSheetDragging = true
                     }
                     .onEnded { value in
-                        isDragging = false
+                        appState.isBottomSheetDragging = false
                         snapToNearestPosition(
                             dragOffset: value.translation.height,
                             velocity: value.predictedEndTranslation.height,

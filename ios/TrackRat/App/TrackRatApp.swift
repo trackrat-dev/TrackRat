@@ -483,6 +483,7 @@ final class AppState: ObservableObject {
     @Published var selectedRoute: TripPair?  // Currently selected route for map highlighting
     @Published var mapDisplayMode: MapDisplayMode = .overallCongestion
     @Published var currentTrain: TrainV2?  // Currently selected train for journey focus
+    @Published var isBottomSheetDragging = false
     
     private let apiService = APIService()
     private let storageService = StorageService()

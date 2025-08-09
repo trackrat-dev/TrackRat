@@ -199,6 +199,7 @@ struct TripSelectionView: View {
                 }
                 .padding(.bottom, 40)
             }
+            .scrollDisabled(appState.isBottomSheetDragging)
         .onAppear {
             appState.loadRecentTrips()
             appState.loadFavoriteStations()
