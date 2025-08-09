@@ -261,9 +261,18 @@ final class StorageService {
     func loadFavoriteStations() -> [FavoriteStation] {
         guard let data = userDefaults.data(forKey: favoriteStationsKey),
               let stations = try? JSONDecoder().decode([FavoriteStation].self, from: data) else {
-            return []
+            // No saved favorites - return NYC as default
+            return [FavoriteStation(code: "NY", name: "New York Penn Station")]
         }
-        return stations.sorted { $0.lastUsed > $1.lastUsed }
+        
+        var favoritesList = stations.sorted { $0.lastUsed > $1.lastUsed }
+        
+        // Always ensure NYC is in favorites if not already present
+        if !favoritesList.contains(where: { $0.id == "NY" }) {
+            favoritesList.append(FavoriteStation(code: "NY", name: "New York Penn Station"))
+        }
+        
+        return favoritesList
     }
     
     func toggleFavoriteStation(code: String, name: String) {
