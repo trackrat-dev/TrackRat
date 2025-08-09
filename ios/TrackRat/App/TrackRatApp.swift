@@ -481,6 +481,7 @@ final class AppState: ObservableObject {
     @Published var currentTrainId: String?
     @Published var navigationPath = NavigationPath()
     @Published var selectedRoute: TripPair?  // Currently selected route for map highlighting
+    @Published var activeTrainRoute: TripPair?  // Route from active Live Activity (persistent blue line)
     @Published var mapDisplayMode: MapDisplayMode = .overallCongestion
     @Published var currentTrain: TrainV2?  // Currently selected train for journey focus
     

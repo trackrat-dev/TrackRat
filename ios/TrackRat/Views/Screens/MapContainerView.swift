@@ -6,6 +6,7 @@ struct MapContainerView: View {
     @State private var bottomSheetPosition: BottomSheetPosition = .compact
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @State private var selectedSegment: CongestionSegment?
+    @StateObject private var liveActivityService = LiveActivityService.shared
     
     // Map region state - DC to Boston corridor view
     @State private var mapRegion = MKCoordinateRegion(
@@ -21,7 +22,7 @@ struct MapContainerView: View {
                 segments: mapViewModel.segments,
                 individualSegments: mapViewModel.individualSegments,
                 stations: mapViewModel.stations,
-                selectedRoute: appState.selectedRoute,
+                selectedRoute: appState.activeTrainRoute,  // Use activeTrainRoute for persistent blue line
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -88,8 +89,12 @@ struct MapContainerView: View {
             await mapViewModel.fetchCongestionData()
         }
         .onAppear {
-            // Ensure we start with overall congestion view
+            // Check for active Live Activity first
+            checkForActiveLiveActivity()
+            
+            // Always ensure we start with overall congestion view (but preserve activeTrainRoute)
             appState.mapDisplayMode = .overallCongestion
+            // Only clear selectedRoute, not activeTrainRoute (that persists independently)
             appState.selectedRoute = nil
         }
         .onChange(of: appState.selectedRoute) { _, newRoute in
@@ -116,6 +121,16 @@ struct MapContainerView: View {
             print("🗺️ Map display mode changed to: \(newMode)")
             // Note: MapDisplayMode handles overall map focus, not congestion visualization
             // Individual vs aggregated congestion is handled by CongestionMapView directly
+        }
+        .onChange(of: liveActivityService.isActivityActive) { _, isActive in
+            // When Live Activity status changes, update the route highlight
+            if isActive {
+                checkForActiveLiveActivity()
+            } else {
+                // Clear the active train route when Live Activity ends
+                appState.activeTrainRoute = nil
+                appState.mapDisplayMode = .overallCongestion
+            }
         }
         .sheet(item: $selectedSegment) { segment in
             SegmentTrainDetailsView(segment: segment)
@@ -352,6 +367,28 @@ struct MapContainerView: View {
         let scaleFactor = max(1.0, avgSpan / 0.3) // Scale based on span vs minimum zoom
         let cappedScale = min(scaleFactor, 3.0) // Cap at 3x to prevent extreme offsets
         return baseOffset * cappedScale
+    }
+    
+    private func checkForActiveLiveActivity() {
+        // Check if there's an active Live Activity
+        if liveActivityService.isActivityActive,
+           let activity = liveActivityService.currentActivity {
+            // Create a TripPair from the Live Activity attributes
+            let route = TripPair(
+                departureCode: activity.attributes.originStationCode,
+                departureName: activity.attributes.origin,
+                destinationCode: activity.attributes.destinationStationCode,
+                destinationName: activity.attributes.destination,
+                lastUsed: Date(),
+                isFavorite: false
+            )
+            
+            // Set the active train route - this will trigger the persistent blue line
+            appState.activeTrainRoute = route
+            
+            // Optionally animate map to show the route
+            animateMapToRoute(route, targetSheetPosition: bottomSheetPosition)
+        }
     }
     
     private func animateMapToStation(_ stationCode: String, targetSheetPosition: BottomSheetPosition? = nil) {
