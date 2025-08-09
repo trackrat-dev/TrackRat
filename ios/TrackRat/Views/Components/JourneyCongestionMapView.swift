@@ -339,6 +339,11 @@ struct CongestionMapKitView: UIViewRepresentable {
             }
         }
         
+        // Add the main route polyline
+        let routeCoordinates = stations.map { $0.coordinate }
+        let routePolyline = RoutePolyline(coordinates: routeCoordinates, count: routeCoordinates.count)
+        mapView.addOverlay(routePolyline)
+
         // Add station annotations
         for station in stations {
             let annotation = StationAnnotation()
@@ -391,6 +396,16 @@ struct CongestionMapKitView: UIViewRepresentable {
         
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let routePolyline = overlay as? RoutePolyline {
+                let renderer = MKPolylineRenderer(polyline: routePolyline)
+                renderer.strokeColor = UIColor.blue
+                renderer.lineWidth = 4
+                renderer.lineCap = .round
+                renderer.lineJoin = .round
+                renderer.zPosition = 1 // Ensure it's on top of congestion
+                return renderer
+            }
+
             if let polyline = overlay as? CongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 
@@ -402,6 +417,7 @@ struct CongestionMapKitView: UIViewRepresentable {
                 }
                 renderer.lineWidth = getCongestionLineWidth(polyline.segment?.congestionFactor ?? 1.0)
                 renderer.alpha = 0.8
+                renderer.zPosition = 0 // Ensure it's below the route line
                 return renderer
             }
             return MKOverlayRenderer(overlay: overlay)
@@ -578,10 +594,12 @@ struct CongestionMapKitView: UIViewRepresentable {
     }
 }
 
-// MARK: - Custom Polyline Class
+// MARK: - Custom Polyline Classes
 class CongestionPolyline: MKPolyline {
     var segment: CongestionSegment?
 }
+
+class RoutePolyline: MKPolyline {}
 
 // MARK: - Custom Annotation Class
 class StationAnnotation: NSObject, MKAnnotation {
