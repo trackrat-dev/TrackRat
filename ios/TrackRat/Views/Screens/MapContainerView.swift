@@ -352,10 +352,6 @@ struct MapContainerView: View {
             return -0.08    // Small adjustment south (~5 miles)
         case .medium:       // 50% visible area, center should be at 25% from top
             return -0.10    // Small-medium adjustment south (~7 miles)
-        case .seventyFive:  // 25% visible area, center should be at 12.5% from top
-            return -0.22    // Moderate adjustment south (~15 miles)
-        case .large:        // 10% visible area, center should be at 5% from top
-            return -0.30    // Larger adjustment south (~20 miles)
         case .expanded:     // 0% visible area - position in off-screen area
             return -0.38    // Significant adjustment south (~25 miles) to keep stations at very top
         }
