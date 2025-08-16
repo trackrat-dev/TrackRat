@@ -1,0 +1,173 @@
+STATION NAME    2CHAR
+Aberdeen-Matawan AM
+Absecon AB
+Allendale AZ
+Allenhurst AH
+Anderson Street AS
+Annandale AN
+Asbury Park AP
+Atco AO
+Atlantic City Rail Terminal AC
+Avenel AV
+BWI Thurgood Marshall Airport BA
+Baltimore Station BL
+Basking Ridge BI
+Bay Head BH
+Bay Street MC
+Belmar BS
+Berkeley Heights BY
+Bernardsville BV
+Bloomfield BM
+Boonton BN
+Bound Brook BK
+Bradley Beach BB
+Brick Church BU
+Bridgewater BW
+Broadway Fair Lawn BF
+Campbell Hall CB
+Chatham CM
+Cherry Hill CY
+Clifton IF
+Convent Station CN
+Cranford XC
+Delawanna DL
+Denville DV
+Dover DO
+Dunellen DN
+East Orange EO
+Edison ED
+Egg Harbor City EH
+Elberon EL
+Elizabeth EZ
+Emerson EN
+Essex Street EX
+Fanwood FW
+Far Hills FH
+Finderne FE
+Garfield GD
+Garwood GW
+Gillette GI
+Gladstone GL
+Glen Ridge GG
+Glen Rock Boro Hall GK
+Glen Rock Main Line RS
+Great Notch GA
+Hackettstown HQ
+Hamilton HL
+Hammonton HN
+Harriman RM
+Hawthorne HW
+Hazlet HZ
+High Bridge HG
+Highland Avenue HI
+Hillsdale HD
+Hoboken HB
+Hohokus UF
+Jersey Avenue JA
+Kingsland KG
+Lake Hopatcong HP
+Lebanon ON
+Lincoln Park LP
+Linden LI
+Lindenwold LW
+Little Falls FA
+Little Silver LS
+Long Branch LB
+Lyndhurst LN
+Lyons LY
+Madison MA
+Mahwah MZ
+Manasquan SQ
+Maplewood MW
+Metropark MP
+Metuchen MU
+Middletown MI
+Millburn MB
+Millington GO
+Monmouth Park MK
+Montclair Heights HS
+Montclair State U UV
+Montvale ZM
+Morris Plains MX
+Morristown MR
+Mount Arlington HV
+Mount Olive OL
+Mount Tabor TB
+Mountain Avenue MS
+Mountain Lakes ML
+Mountain Station MT
+Mountain View MV
+Murray Hill MH
+Nanuet NN
+Netcong NT
+Netherwood NE
+New Bridge Landing NH
+New Brunswick NB
+New Carrollton Station NC
+New Providence NV
+New York Penn Station NY
+Newark Airport NA
+Newark Broad Street ND
+Newark Penn Station NP
+North Branch OR
+North Elizabeth NZ
+North Philadelphia NF
+Oradell OD
+Orange OG
+Otisville OS
+Park Ridge PV
+Passaic PS
+Paterson RN
+Peapack PC
+Pearl River PQ
+Pennsauken PN
+Perth Amboy PE
+Philadelphia PH
+Plainfield PF
+Plauderville PL
+Point Pleasant Beach PP
+Port Jervis PO
+Princeton PR
+Princeton Junction PJ
+Radburn Fair Lawn FZ
+Rahway RH
+Ramsey Main St RY
+Ramsey Route 17 17
+Raritan RA
+Red Bank RB
+Ridgewood RW
+River Edge RG
+Roselle Park RL
+Rutherford RF
+Salisbury Mills-Cornwall CW
+Secaucus Concourse SC
+Secaucus Lower Lvl TS
+Secaucus Upper Lvl SE
+Short Hills RT
+Sloatsburg XG
+Somerville SM
+South Amboy CH
+South Orange SO
+Spring Lake LA
+Spring Valley SV
+Stirling SG
+Suffern SF
+Summit ST
+Teterboro TE
+Towaco TO
+Trenton TR
+Tuxedo TC
+Union US
+Upper Montclair UM
+Waldwick WK
+Watchung Avenue WG
+Watsessing Avenue WT
+Wayne-Route 23 23
+Wesmont WM
+Westfield WF
+Westwood WW
+White House WH
+Wilmington Station WI
+Wood Ridge WR
+Woodbridge WB
+Woodcliff Lake WL
