@@ -24,11 +24,6 @@ struct TripSelectionView: View {
         Stations.search(searchText)
     }
     
-    // Only allow scrolling when search field is focused
-    // This preserves swipe-anywhere functionality when not searching
-    private var shouldAllowScrolling: Bool {
-        return searchFieldFocused
-    }
     
     var body: some View {
         ZStack {
@@ -36,9 +31,7 @@ struct TripSelectionView: View {
             TrackRatTheme.Colors.surface
                 .ignoresSafeArea()
             
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: 8) {
+            VStack(spacing: 8) {
                             // Top navigation bar with search and icons
                             HStack(spacing: 16) {
                             // Search field - left aligned
@@ -56,12 +49,8 @@ struct TripSelectionView: View {
                                     }
                                     .onChange(of: searchFieldFocused) { _, newValue in
                                         if newValue {
-                                            // When search field gains focus, expand to 50% and scroll to top
+                                            // When search field gains focus, expand to 50%
                                             onBottomSheetPositionChange?(.medium)
-                                            // Scroll to ensure search field is visible
-                                            withAnimation(.easeInOut(duration: 0.3)) {
-                                                proxy.scrollTo("searchField", anchor: .top)
-                                            }
                                         }
                                         // DON'T reset position when search field loses focus
                                         // Let user maintain their preferred bottom sheet height
@@ -214,13 +203,10 @@ struct TripSelectionView: View {
                             .padding(.top, 8)
                         }
                         
-                        
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
-                    .padding(.bottom, 100) // Add bottom padding for scrolling
-                }
-                .scrollDisabled(!shouldAllowScrolling)
+                        // Spacer to push content to top and fill remaining space
+                        Spacer()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .onAppear {
             appState.loadRecentTrips()

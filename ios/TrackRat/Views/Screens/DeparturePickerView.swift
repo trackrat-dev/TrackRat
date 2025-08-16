@@ -85,8 +85,7 @@ struct DeparturePickerView: View {
                     
                     // Search results - take full page when searching
                     if isSearching {
-                        ScrollView {
-                            VStack(spacing: 8) {
+                        VStack(spacing: 8) {
                                 ForEach(searchResults, id: \.self) { station in
                                     HStack {
                                         // Main station button
@@ -132,8 +131,6 @@ struct DeparturePickerView: View {
                                     )
                                     .padding(.horizontal, 24)
                                 }
-                            }
-                            .padding(.bottom, 50) // Add bottom padding for better scrolling
                         }
                     } else {
                         // Popular stations - only show when not searching

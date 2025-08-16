@@ -39,8 +39,7 @@ struct DestinationPickerView: View {
             TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
-            ScrollView {
-                VStack(spacing: 8) {
+            VStack(spacing: 8) {
                     // Top navigation bar with search and close button
                     HStack(spacing: 16) {
                         // Search field - left aligned
@@ -157,9 +156,11 @@ struct DestinationPickerView: View {
                         }
                     }
                     .padding(.top, searchFieldFocused ? 8 : 12)
-                }
-                .padding(.bottom, 40)
+                
+                // Spacer to push content to top and fill remaining space
+                Spacer()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .navigationBarHidden(true)
         .onAppear {
