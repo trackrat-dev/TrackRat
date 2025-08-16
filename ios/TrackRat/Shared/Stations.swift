@@ -11,136 +11,185 @@ struct Stations {
         "Jersey Avenue", "North Elizabeth",
         
         // Missing Keystone Service stations (PA)
-        "Middletown", "Elizabethtown", "Mount Joy", "Lancaster", "Parkesburg", "Coatesville",
+        "Middletown PA", "Elizabethtown", "Mount Joy", "Lancaster", "Parkesburg", "Coatesville",
         "Downingtown", "Exton", "Paoli",
         
         // Amtrak stations (Northeast Corridor and beyond) - Updated with new stations
         "Boston South", "Boston Back Bay", "Providence", "New Haven", "Bridgeport",
         "Stamford", "Hartford", "Meriden", "New London", "Old Saybrook", "Wallingford", 
-        "Windsor Locks", "Springfield", "Claremont", "Dover", "Durham-UNH", "Exeter",
+        "Windsor Locks", "Springfield", "Claremont", "Dover NH", "Durham-UNH", "Exeter",
         "Philadelphia", "Baltimore Station", "Washington Union Station", "BWI Thurgood Marshall Airport",
         "Wilmington Station", "New Carrollton", "Aberdeen", "Alexandria", "Charlottesville",
         "Lorton", "Norfolk", "Richmond Main Street", "Roanoke", "Harrisburg", "Lancaster",
         "Kingston", "Westerly"
     ].sorted()
     
-    // Station name to code mapping
+    // Station name to code mapping - Updated to match backend STATION_CODES.txt
     static let stationCodes: [String: String] = [
-        // NJ Transit stations
+        // NJ Transit stations from authoritative STATION_CODES.txt
         "New York Penn Station": "NY",
         "Newark Penn Station": "NP",
         "Secaucus Upper Lvl": "SE",
+        "Secaucus Lower Lvl": "TS",
+        "Secaucus Concourse": "SC",
         "Woodbridge": "WB",
         "Metropark": "MP",
         "New Brunswick": "NB",
         "Princeton Junction": "PJ",
+        "Princeton": "PR",
         "Trenton": "TR",
-        "Trenton Transit Center": "TR",
+        "Trenton Transit Center": "TR",  // Alias for Trenton
         "Hamilton": "HL",
-        "Morristown": "MOR",
-        "Madison": "MAD",
+        "Morristown": "MR",
+        "Madison": "MA",
         "Summit": "ST",
         "Millburn": "MB",
         "Short Hills": "RT",
         "Newark Airport": "NA",
+        "Newark Broad Street": "ND",
         "Elizabeth": "EZ",
+        "North Elizabeth": "NZ",
         "Linden": "LI",
         "Rahway": "RH",
         "Metuchen": "MU",
         "Edison": "ED",
-        "Iselin": "ISE",
         "Perth Amboy": "PE",
         "South Amboy": "CH",
         "Aberdeen-Matawan": "AM",
         "Hazlet": "HZ",
+        "Middletown": "MI",
         "Red Bank": "RB",
         "Little Silver": "LS",
         "Monmouth Park": "MK",
         "Long Branch": "LB",
-        "Asbury Park": "ASB",
-        "Bradley Beach": "BRB",
-        "Belmar": "BEL",
-        "Spring Lake": "SPL",
-        "Manasquan": "MAN",
-        "Point Pleasant Beach": "PPB",
-        "Bay Head": "BAY",
-        "Montclair State University": "MSU",
-        "Montclair Heights": "MCH",
-        "Upper Montclair": "UMC",
-        "Mountain Avenue": "MVA",
+        "Elberon": "EL",
+        "Allenhurst": "AH",
+        "Asbury Park": "AP",
+        "Bradley Beach": "BB",
+        "Belmar": "BS",
+        "Spring Lake": "LA",
+        "Manasquan": "SQ",
+        "Point Pleasant Beach": "PP",
+        "Bay Head": "BH",
+        "Montclair State U": "UV",
+        "Montclair Heights": "HS",
+        "Upper Montclair": "UM",
+        "Mountain Avenue": "MS",
+        "Watchung Avenue": "WG",
+        "Watsessing Avenue": "WT",
         "Orange": "OG",
-        "East Orange": "EOR",
+        "East Orange": "EO",
+        "Highland Avenue": "HI",
+        "Mountain View": "MV",
         "Brick Church": "BU",
-        "Newark Broad Street": "ND",
-        "Bloomfield": "BLO",
-        "Watsessing": "WAT",
-        "Walnut Street": "WNS",
-        "Glen Ridge": "GLR",
-        "Ridgewood": "RID",
-        "Ho-Ho-Kus": "HHK",
-        "Waldwick": "WAL",
-        "Allendale": "ALL",
-        "Ramsey Route 17": "RR17",
-        "Ramsey Main Street": "RMS",
-        "Mahwah": "MAH",
-        "Suffern": "SUF",
-        "Sloatsburg": "SLO",
-        "Tuxedo": "TUX",
-        "Harriman": "HAR",
-        "Goshen": "GOS",
-        "Campbell Hall": "CAM",
-        "Salisbury Mills-Cornwall": "SMC",
-        "New Hampton": "NHA",
-        "Middletown NJ": "MI",
-        "Otisville": "OTI",
-        "Port Jervis": "PJE",
-        "Denville": "DEN",
-        "Mount Tabor": "MTA",
-        "Parsippany": "PAR",
-        "Boonton": "BOO",
-        "Mountain Lakes": "MLA",
-        "Convent Station": "CON",
-        "Chatham": "CHA",
-        "New Providence": "NPR",
-        "Murray Hill": "MUR",
-        "Berkeley Heights": "BER",
-        "Gillette": "GIL",
-        "Stirling": "STI",
-        "Millington": "MIL2",
-        "Lyons": "LYO",
-        "Basking Ridge": "BAS",
-        "Bernardsville": "BER2",
-        "Far Hills": "FAR",
-        "Peapack": "PEA",
-        "Gladstone": "GLA",
-        "Annandale": "ANN",
-        "Lebanon": "LEB",
-        "White House": "WHI",
-        "North Branch": "NBR",
+        "Bloomfield": "BM",
+        "Glen Ridge": "GG",
+        "Bay Street": "MC",
+        "Walnut Street": "WS",  // Note: WS conflicts with Washington Union Station
+        "Ridgewood": "RW",
+        "Hohokus": "UF",
+        "Waldwick": "WK",
+        "Allendale": "AZ",
+        "Ramsey Route 17": "17",
+        "Ramsey Main St": "RY",
+        "Mahwah": "MZ",
+        "Suffern": "SF",
+        "Sloatsburg": "XG",
+        "Tuxedo": "TC",
+        "Harriman": "RM",
+        "Campbell Hall": "CB",
+        "Salisbury Mills-Cornwall": "CW",
+        "Otisville": "OS",
+        "Port Jervis": "PO",
+        "Denville": "DV",
+        "Dover": "DO",
+        "Mount Tabor": "TB",
+        "Mount Arlington": "HV",
+        "Lake Hopatcong": "HP",
+        "Netcong": "NT",
+        "Mount Olive": "OL",
+        "Hackettstown": "HQ",
+        "Boonton": "BN",
+        "Mountain Lakes": "ML",
+        "Lincoln Park": "LP",
+        "Towaco": "TO",
+        "Montclair-Boonton Line": "MO",  // Generic
+        "Little Falls": "FA",
+        "Wayne-Route 23": "23",
+        "Mountain Station": "MT",
+        "Convent Station": "CN",
+        "Chatham": "CM",
+        "New Providence": "NV",
+        "Murray Hill": "MH",
+        "Berkeley Heights": "BY",
+        "Gillette": "GI",
+        "Stirling": "SG",
+        "Millington": "GO",
+        "Lyons": "LY",
+        "Basking Ridge": "BI",
+        "Bernardsville": "BV",
+        "Far Hills": "FH",
+        "Peapack": "PC",
+        "Gladstone": "GL",
+        "High Bridge": "HG",
+        "Annandale": "AN",
+        "Lebanon": "ON",
+        "White House": "WH",
+        "North Branch": "OR",
         "Raritan": "RA",
-        "Somerville": "SOM",
-        "Bound Brook": "BU",
+        "Somerville": "SM",
+        "Bridgewater": "BW",
+        "Bound Brook": "BK",
         "Dunellen": "DN",
-        "Plainfield": "PL",
+        "Plainfield": "PF",
         "Netherwood": "NE",
         "Fanwood": "FW",
         "Westfield": "WF",
-        "Garwood": "GAR",
-        "Cranford": "CRA",
-        "Roselle Park": "ROP",
+        "Garwood": "GW",
+        "Cranford": "XC",
+        "Roselle Park": "RL",
         "Union": "US",
+        "Avenel": "AV",
         "Jersey Avenue": "JA",
         "Hoboken": "HB",
-        "Avenel": "AV",
-        "Highland Avenue": "HI",
-        "Mountain Station": "MT",
-        "North Elizabeth": "NZ",
-        "Bay Street": "MC",
-        "Watchung Avenue": "WG",
-        "Watsessing Avenue": "WT",
+        "Kingsland": "KG",
+        "Lyndhurst": "LN",
+        "Delawanna": "DL",
+        "Passaic": "PS",
+        "Clifton": "IF",
+        "Paterson": "RN",
+        "Hawthorne": "HW",
+        "Glen Rock Main Line": "RS",
+        "Glen Rock Boro Hall": "GK",
+        "Fair Lawn-Broadway": "BF",
+        "Radburn Fair Lawn": "FZ",
+        "Garfield": "GD",
+        "Plauderville": "PL",
+        "Rutherford": "RF",
+        "Wood Ridge": "WR",
+        "Wesmont": "WM",
+        "Teterboro": "TE",
+        "Essex Street": "EX",
+        "Anderson Street": "AS",
+        "New Bridge Landing": "NH",
+        "River Edge": "RG",
+        "Oradell": "OD",
+        "Emerson": "EN",
+        "Westwood": "WW",
+        "Hillsdale": "HD",
+        "Woodcliff Lake": "WL",
+        "Park Ridge": "PV",
+        "Montvale": "ZM",
+        "Pearl River": "PQ",
+        "Nanuet": "NN",
+        "Spring Valley": "SV",
+        "Maplewood": "MW",
+        "South Orange": "SO",
+        "Morris Plains": "MX",
+        "Great Notch": "GA",
         
         // Missing Keystone Service stations (PA)
-        "Middletown": "MIDPA",
+        "Middletown PA": "MIDPA",  // Renamed to avoid conflict with Middletown NJ
         "Elizabethtown": "ELT",
         "Mount Joy": "MJY",
         "Parkesburg": "PKB",
@@ -164,7 +213,7 @@ struct Stations {
         "Windsor Locks": "WNL",
         "Springfield": "SPG",
         "Claremont": "CLA",
-        "Dover": "DOV",
+        "Dover NH": "DOV",  // Renamed to avoid conflict with Dover NJ
         "Durham-UNH": "DHM",
         "Exeter": "EXR",
         "Philadelphia": "PH",
@@ -233,32 +282,32 @@ struct Stations {
         "NFK": CLLocationCoordinate2D(latitude: 36.8583, longitude: -76.2876),  // Norfolk, VA
         "RVR": CLLocationCoordinate2D(latitude: 37.6143, longitude: -77.4966),  // Richmond Main Street, VA
         "RNK": CLLocationCoordinate2D(latitude: 37.3077, longitude: -79.9803),  // Roanoke, VA
-        "PL": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.4147),   // Plainfield
+        "PF": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.4147),   // Plainfield (corrected code from PL to PF)
         "LB": CLLocationCoordinate2D(latitude: 40.2970, longitude: -73.9883),   // Long Branch
         "JA": CLLocationCoordinate2D(latitude: 40.4769, longitude: -74.4674),   // Jersey Avenue
         "US": CLLocationCoordinate2D(latitude: 40.683542211, longitude: -74.23800686),   // Union Station 40.683542211783646, -74.2380068698304
-        "AZ": CLLocationCoordinate2D(latitude: 40.7044941, longitude: -74.1909959),   // Newark Airport (estimate) 40.704494136878324, -74.1909959640888
+        "AZ": CLLocationCoordinate2D(latitude: 41.0308516, longitude: -74.13104499),  // Allendale 41.030851610302, -74.13104499027673
         "NA": CLLocationCoordinate2D(latitude: 40.7044941, longitude: -74.1909959),   // Newark Airport
-        "RY": CLLocationCoordinate2D(latitude: 40.6039, longitude: -74.2723),   // Rahway
+        "RH": CLLocationCoordinate2D(latitude: 40.6039, longitude: -74.2723),   // Rahway (corrected code from RY to RH)
         "HB": CLLocationCoordinate2D(latitude: 40.734843, longitude: -74.028043), // Hoboken Terminal - Updated GPS
-        "RA": CLLocationCoordinate2D(latitude: 40.5682, longitude: -74.6290),   // Raritan
+        "RA": CLLocationCoordinate2D(latitude: 40.57091522, longitude: -74.6344244),   // Raritan  40.5709152209129, -74.63442444281485
         "DN": CLLocationCoordinate2D(latitude: 40.5892, longitude: -74.4719),   // Dunellen
         
         // Additional NJT stations for complete map coverage - Updated GPS
         "ED": CLLocationCoordinate2D(latitude: 40.5177, longitude: -74.4075),   // Edison - Updated GPS
         "MU": CLLocationCoordinate2D(latitude: 40.5378, longitude: -74.3562),   // Metuchen - Updated GPS
-        "RH": CLLocationCoordinate2D(latitude: 40.6039, longitude: -74.2723),   // Rahway - Updated GPS
         "LI": CLLocationCoordinate2D(latitude: 40.629487, longitude: -74.251772), // Linden - Updated GPS
-        "EL": CLLocationCoordinate2D(latitude: 40.667859, longitude: -74.215171), // Elizabeth - Updated GPS
+        "EL": CLLocationCoordinate2D(latitude: 40.265251, longitude: -73.997479), // Elberon - Updated GPS 40.265251400000004, -73.99747922393298
         "EZ": CLLocationCoordinate2D(latitude: 40.667859, longitude: -74.215171), // Elizabeth - Updated GPS
         "NZ": CLLocationCoordinate2D(latitude: 40.6968, longitude: -74.1733),   // North Elizabeth
         
         // Additional stations for Raritan Valley and North Jersey Coast Lines
-        "BU": CLLocationCoordinate2D(latitude: 40.5682, longitude: -74.6290),   // Bound Brook
-        "WF": CLLocationCoordinate2D(latitude: 40.6588, longitude: -74.3488),   // Westfield
+        "BK": CLLocationCoordinate2D(latitude: 40.5612539, longitude: -74.53021426),   // Bound Brook 40.56125391599582, -74.53021426346963
+        "WF": CLLocationCoordinate2D(latitude: 40.64944139, longitude: -74.34758901),   // Westfield  40.649441391496225, -74.34758901567885
         "AV": CLLocationCoordinate2D(latitude: 40.5778386, longitude: -74.2773454),   // Avenale 40.57783860099064, -74.27734540034069
-        "FW": CLLocationCoordinate2D(latitude: 40.6415, longitude: -74.3826),   // Fanwood
-        "NE": CLLocationCoordinate2D(latitude: 40.6344, longitude: -74.4182),   // Netherwood
+        "FW": CLLocationCoordinate2D(latitude: 40.64061996, longitude: -74.384423727),   // Fanwood  40.64061996072567, -74.38442372790603
+        "GW": CLLocationCoordinate2D(latitude: 40.65255335, longitude: -74.325004422),   // Garwood 40.65255335293603, -74.3250044226773
+        "NE": CLLocationCoordinate2D(latitude: 40.62921816688, longitude: -74.403226634),   // Netherwood  40.62921816688348, -74.40322663407635
         "LS": CLLocationCoordinate2D(latitude: 40.32654188, longitude: -74.040546829),   // Little Silver 40.32654188152892, -74.04054682918307
         "MK": CLLocationCoordinate2D(latitude: 40.3086, longitude: -74.0253),   // Monmouth Park
         "HZ": CLLocationCoordinate2D(latitude: 40.41515409, longitude: -74.190629424),   // Hazlet 40.41515409414224, -74.19062942410835
@@ -267,26 +316,53 @@ struct Stations {
         "RB": CLLocationCoordinate2D(latitude: 40.348271404, longitude: -74.074151249),   // Red Banka 40.34827140444035, -74.0741512494248
         "PE": CLLocationCoordinate2D(latitude: 40.509372, longitude: -74.27381259),   // 40.509372943783205, -74.27381259301205
         "CH": CLLocationCoordinate2D(latitude: 40.48490168, longitude: -74.2804993),   // South Amboy is mislabelled as Cherry Hill 40.48490168088479, -74.28049932024226
-        "AM": CLLocationCoordinate2D(latitude: 40.419773943, longitude: -74.22209923),   // 40.41977394340468, -74.22209923287113
-       
-        /* 
-        // Bergen County Line (Main Line) - New GPS coordinates
-        "LY": CLLocationCoordinate2D(latitude: 40.8123, longitude: -74.1246),   // Lyndhurst
-        "DL": CLLocationCoordinate2D(latitude: 40.8180, longitude: -74.1370),   // Delawanna
-        "PA": CLLocationCoordinate2D(latitude: 40.8570, longitude: -74.1294),   // Passaic
-        "CL": CLLocationCoordinate2D(latitude: 40.8584, longitude: -74.1637),   // Clifton
-        "PT": CLLocationCoordinate2D(latitude: 40.9166, longitude: -74.1710),   // Paterson
-        "HT": CLLocationCoordinate2D(latitude: 40.9494, longitude: -74.1527),   // Hawthorne
-        "GR": CLLocationCoordinate2D(latitude: 40.9633, longitude: -74.1269),   // Glen Rock
+        "AM": CLLocationCoordinate2D(latitude: 40.419773943, longitude: -74.22209923),   // Aberdeen-Matawan - 40.41977394340468, -74.22209923287113
+        
+        // Additional NJ Transit stations from STATION_CODES.txt
+        "AH": CLLocationCoordinate2D(latitude: 40.2301, longitude: -74.0063),   // Allenhurst
+        "AP": CLLocationCoordinate2D(latitude: 40.2202, longitude: -74.0120),   // Asbury Park
+        "BB": CLLocationCoordinate2D(latitude: 40.1929, longitude: -74.0218),   // Bradley Beach
+        "BS": CLLocationCoordinate2D(latitude: 40.1784, longitude: -74.0276),   // Belmar
+        "LA": CLLocationCoordinate2D(latitude: 40.1530, longitude: -74.0340),   // Spring Lake
+        "SQ": CLLocationCoordinate2D(latitude: 40.1057, longitude: -74.0500),   // Manasquan
+        "PP": CLLocationCoordinate2D(latitude: 40.0917, longitude: -74.0680),   // Point Pleasant Beach
+        "BH": CLLocationCoordinate2D(latitude: 40.0585, longitude: -74.1066),   // Bay Head
+        "SC": CLLocationCoordinate2D(latitude: 40.7612, longitude: -74.0758),   // Secaucus Concourse (same as SE/TS)
+        "TS": CLLocationCoordinate2D(latitude: 40.7612, longitude: -74.0758),   // Secaucus Lower Lvl (same location)
+        "BW": CLLocationCoordinate2D(latitude: 40.561009, longitude: -74.55175689),   // Bridgewater 40.56100944598027, -74.55175688984208
+        "SM": CLLocationCoordinate2D(latitude: 40.56608, longitude: -74.6138659),   // Somerville 40.56608372758163, -74.61386593713499
+        "XC": CLLocationCoordinate2D(latitude: 40.6559, longitude: -74.3004),   // Cranford
+        "RL": CLLocationCoordinate2D(latitude: 40.6642, longitude: -74.2687),   // Roselle Park
         "RW": CLLocationCoordinate2D(latitude: 40.9808, longitude: -74.1168),   // Ridgewood
-        "HH": CLLocationCoordinate2D(latitude: 40.9956, longitude: -74.1115),   // Ho-Ho-Kus
+        "RS": CLLocationCoordinate2D(latitude: 40.9808, longitude: -74.1168),   // Glen Rock Main Line
+        "UF": CLLocationCoordinate2D(latitude: 40.9956, longitude: -74.1115),   // Hohokus
+        "WK": CLLocationCoordinate2D(latitude: 41.0108, longitude: -74.1267),   // Waldwick
+        "17": CLLocationCoordinate2D(latitude: 41.0615, longitude: -74.1456),   // Ramsey Route 17
+        "RY": CLLocationCoordinate2D(latitude: 41.0571, longitude: -74.1413),   // Ramsey Main St
+        "MZ": CLLocationCoordinate2D(latitude: 41.0886, longitude: -74.1438),   // Mahwah
+        "SF": CLLocationCoordinate2D(latitude: 41.1144, longitude: -74.1496),   // Suffern
+        "XG": CLLocationCoordinate2D(latitude: 41.1568, longitude: -74.1937),   // Sloatsburg
+        "TC": CLLocationCoordinate2D(latitude: 41.1970, longitude: -74.1885),   // Tuxedo
+        "RM": CLLocationCoordinate2D(latitude: 41.3098, longitude: -74.1526),   // Harriman
+        "CB": CLLocationCoordinate2D(latitude: 41.4446, longitude: -74.2452),   // Campbell Hall
+        "CW": CLLocationCoordinate2D(latitude: 41.4426, longitude: -74.1351),   // Salisbury Mills-Cornwall
+        "OS": CLLocationCoordinate2D(latitude: 41.4783, longitude: -74.5336),   // Otisville
+        "PO": CLLocationCoordinate2D(latitude: 41.3753, longitude: -74.6897),   // Port Jervis
+       
+        
+        // Bergen County Line (Main Line) - New GPS coordinates
+        "KG": CLLocationCoordinate2D(latitude: 40.8123, longitude: -74.1246),   // Kingsland
+        "LN": CLLocationCoordinate2D(latitude: 40.8123, longitude: -74.1246),   // Lyndhurst
+        "DL": CLLocationCoordinate2D(latitude: 40.8180, longitude: -74.1370),   // Delawanna
+        "PS": CLLocationCoordinate2D(latitude: 40.8570, longitude: -74.1294),   // Passaic
+        "IF": CLLocationCoordinate2D(latitude: 40.8584, longitude: -74.1637),   // Clifton
+        "RN": CLLocationCoordinate2D(latitude: 40.9166, longitude: -74.1710),   // Paterson
+        "HW": CLLocationCoordinate2D(latitude: 40.9494, longitude: -74.1527),   // Hawthorne
+        "GR": CLLocationCoordinate2D(latitude: 40.9633, longitude: -74.1269),   // Glen Rock
         "WA": CLLocationCoordinate2D(latitude: 41.0108, longitude: -74.1267),   // Waldwick
         "AL": CLLocationCoordinate2D(latitude: 41.0312, longitude: -74.1306),   // Allendale
-        "RM": CLLocationCoordinate2D(latitude: 41.0571, longitude: -74.1413),   // Ramsey
-        "R17": CLLocationCoordinate2D(latitude: 41.0615, longitude: -74.1456),  // Ramsey-Route 17
         "MH": CLLocationCoordinate2D(latitude: 41.0886, longitude: -74.1438),   // Mahwah
-        "SF": CLLocationCoordinate2D(latitude: 41.1144, longitude: -74.1496),   // Suffern, NY
-        
+        /*
         // Bergen County Line (Ridgewood Branch)
         "RT": CLLocationCoordinate2D(latitude: 40.8267, longitude: -74.1069),   // Rutherford
         "WE": CLLocationCoordinate2D(latitude: 40.8356, longitude: -74.0989),   // Wesmont
@@ -336,7 +412,7 @@ struct Stations {
         */
     ]
     
-    // Supported departure stations
+    // Supported departure stations - Updated to match backend
     static let departureStations: [(name: String, code: String)] = [
         ("New York Penn Station", "NY"),
         ("Hoboken", "HB"),
@@ -345,7 +421,7 @@ struct Stations {
         ("Hamilton", "HL"),
         ("Trenton", "TR"),
         ("Long Branch", "LB"),
-        ("Plainfield", "PL"),
+        ("Plainfield", "PF"),  // Changed from PL to PF
         ("Dunellen", "DN"),
         ("Raritan", "RA"),
         ("Philadelphia", "PH"),

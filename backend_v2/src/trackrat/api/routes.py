@@ -261,7 +261,7 @@ def _calculate_route_stats(
 @router.get("/congestion", response_model=CongestionMapResponse)
 @handle_errors
 async def get_route_congestion(
-    time_window_hours: int = Query(3, ge=1, le=24, description="Hours to look back"),
+    time_window_hours: int = Query(24, ge=1, le=24, description="Hours to look back"),
     max_per_segment: int = Query(
         100, ge=1, le=500, description="Max individual journeys per segment"
     ),
@@ -410,11 +410,11 @@ async def get_segment_train_details(
 ) -> SegmentTrainDetailsResponse:
     """Get detailed train records for a specific route segment using on-the-fly calculation."""
 
-    # Default time window to 3 hours ago if not specified
+    # Default time window to 24 hours ago if not specified
     if not end_time:
         end_time = now_et()
     if not start_time:
-        start_time = end_time - timedelta(hours=3)
+        start_time = end_time - timedelta(hours=24)
 
     # Ensure timezone awareness
     start_time = ensure_timezone_aware(start_time)
