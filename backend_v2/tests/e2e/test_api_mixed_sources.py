@@ -9,18 +9,16 @@ import pytest
 from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from trackrat.models.database import TrainJourney, JourneyStop
 from trackrat.utils.time import now_et
 from tests.factories.amtrak import create_amtrak_journey, create_amtrak_journey_stop
 
 
-@pytest.mark.asyncio
 class TestAPIMixedSources:
     """Test suite for API endpoints with mixed data sources."""
 
-    async def test_departures_endpoint_mixed_sources(
-        self, client: TestClient, db_session: AsyncSession
+    def test_departures_endpoint_mixed_sources(
+        self, e2e_client: TestClient, sync_session
     ):
         """Test /api/trains/departures with both Amtrak and NJT trains."""
 
@@ -97,12 +95,12 @@ class TestAPIMixedSources:
         njt_journey.stops = [ny_stop_njt, tr_stop_njt]
 
         # Add both to database
-        db_session.add(amtrak_journey)
-        db_session.add(njt_journey)
-        await db_session.commit()
+        sync_session.add(amtrak_journey)
+        sync_session.add(njt_journey)
+        sync_session.commit()
 
         # Query API
-        response = client.get("/api/v2/trains/departures?from=NY&to=TR")
+        response = e2e_client.get("/api/v2/trains/departures?from=NY&to=TR")
 
         assert response.status_code == 200
         data = response.json()
@@ -147,8 +145,8 @@ class TestAPIMixedSources:
         assert metadata["to_station"]["code"] == "TR"
         assert metadata["count"] == 2
 
-    async def test_departures_endpoint_amtrak_only(
-        self, client: TestClient, db_session: AsyncSession
+    def test_departures_endpoint_amtrak_only(
+        self, e2e_client: TestClient, sync_session
     ):
         """Test departures endpoint with only Amtrak trains."""
 
@@ -170,11 +168,11 @@ class TestAPIMixedSources:
             )
             journey.stops = [ny_stop]
 
-            db_session.add(journey)
+            sync_session.add(journey)
 
-        await db_session.commit()
+        sync_session.commit()
 
-        response = client.get("/api/v2/trains/departures?from=NY")
+        response = e2e_client.get("/api/v2/trains/departures?from=NY")
 
         assert response.status_code == 200
         data = response.json()
@@ -183,8 +181,8 @@ class TestAPIMixedSources:
         assert all(dep["data_source"] == "AMTRAK" for dep in data["departures"])
         assert all(dep["line"]["code"] == "AM" for dep in data["departures"])
 
-    async def test_departures_sorting_mixed_sources(
-        self, client: TestClient, db_session: AsyncSession
+    def test_departures_sorting_mixed_sources(
+        self, e2e_client: TestClient, sync_session
     ):
         """Test that departures are sorted by time across sources."""
 
@@ -224,11 +222,11 @@ class TestAPIMixedSources:
         )
         njt_journey.stops = [njt_stop]
 
-        db_session.add(amtrak_journey)
-        db_session.add(njt_journey)
-        await db_session.commit()
+        sync_session.add(amtrak_journey)
+        sync_session.add(njt_journey)
+        sync_session.commit()
 
-        response = client.get("/api/v2/trains/departures?from=NY")
+        response = e2e_client.get("/api/v2/trains/departures?from=NY")
 
         assert response.status_code == 200
         data = response.json()
@@ -239,9 +237,7 @@ class TestAPIMixedSources:
         assert data["departures"][0]["train_id"] == "3840"  # Earlier departure
         assert data["departures"][1]["train_id"] == "A2150"  # Later departure
 
-    async def test_api_pagination_mixed_sources(
-        self, client: TestClient, db_session: AsyncSession
-    ):
+    def test_api_pagination_mixed_sources(self, e2e_client: TestClient, sync_session):
         """Test API pagination with mixed data sources."""
 
         base_time = now_et() + timedelta(hours=1)
@@ -260,7 +256,7 @@ class TestAPIMixedSources:
                 stop_sequence=0,
             )
             amtrak_journey.stops = [amtrak_stop]
-            db_session.add(amtrak_journey)
+            sync_session.add(amtrak_journey)
 
             # NJT trains
             njt_journey = TrainJourney(
@@ -285,12 +281,12 @@ class TestAPIMixedSources:
                 stop_sequence=0,
             )
             njt_journey.stops = [njt_stop]
-            db_session.add(njt_journey)
+            sync_session.add(njt_journey)
 
-        await db_session.commit()
+        sync_session.commit()
 
         # Test with limit
-        response = client.get("/api/v2/trains/departures?from=NY&limit=6")
+        response = e2e_client.get("/api/v2/trains/departures?from=NY&limit=6")
 
         assert response.status_code == 200
         data = response.json()
@@ -303,9 +299,7 @@ class TestAPIMixedSources:
         assert "AMTRAK" in data_sources
         assert "NJT" in data_sources
 
-    async def test_data_freshness_mixed_sources(
-        self, client: TestClient, db_session: AsyncSession
-    ):
+    def test_data_freshness_mixed_sources(self, e2e_client: TestClient, sync_session):
         """Test data freshness indicators in API response."""
 
         old_time = now_et() - timedelta(hours=2)
@@ -349,11 +343,11 @@ class TestAPIMixedSources:
         )
         njt_journey.stops = [njt_stop]
 
-        db_session.add(amtrak_journey)
-        db_session.add(njt_journey)
-        await db_session.commit()
+        sync_session.add(amtrak_journey)
+        sync_session.add(njt_journey)
+        sync_session.commit()
 
-        response = client.get("/api/v2/trains/departures?from=NY")
+        response = e2e_client.get("/api/v2/trains/departures?from=NY")
 
         assert response.status_code == 200
         data = response.json()
@@ -374,9 +368,7 @@ class TestAPIMixedSources:
                 # NJT data should be newer
                 assert freshness["age_seconds"] < 400  # < 7 minutes
 
-    async def test_journey_info_mixed_sources(
-        self, client: TestClient, db_session: AsyncSession
-    ):
+    def test_journey_info_mixed_sources(self, e2e_client: TestClient, sync_session):
         """Test journey information in API responses."""
 
         base_time = now_et() + timedelta(hours=1)
@@ -409,10 +401,10 @@ class TestAPIMixedSources:
         ]
         journey.stops = stops
 
-        db_session.add(journey)
-        await db_session.commit()
+        sync_session.add(journey)
+        sync_session.commit()
 
-        response = client.get("/api/v2/trains/departures?from=NY&to=TR")
+        response = e2e_client.get("/api/v2/trains/departures?from=NY&to=TR")
 
         assert response.status_code == 200
         data = response.json()

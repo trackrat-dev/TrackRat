@@ -162,19 +162,61 @@ def client(test_settings) -> TestClient:
 
 
 @pytest.fixture
-def real_client(test_settings, db_session) -> TestClient:
-    """Create a test client that uses real database sessions for data-dependent tests."""
+def sync_engine(test_settings):
+    """Create a synchronous database engine for e2e tests."""
+    from sqlalchemy import create_engine
+
+    # Convert async URL to sync URL
+    sync_url = TEST_DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    engine = create_engine(sync_url)
+
+    # Create tables
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+
+    yield engine
+
+    # Clean up
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+@pytest.fixture
+def sync_session(sync_engine):
+    """Create a synchronous database session for e2e tests."""
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=sync_engine)
+    session = Session()
+
+    yield session
+
+    session.close()
+
+
+@pytest.fixture
+def e2e_client(test_settings, sync_engine):
+    """Create a test client for e2e tests that uses real database but sync operations."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
     # Clear settings cache and override settings
     get_settings.cache_clear()
     app.dependency_overrides[get_settings] = lambda: test_settings
 
-    # Override database dependency with the real db_session
-    async def get_real_test_db():
-        yield db_session
+    # Create async engine for the app to use
+    async_engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
+    sessionmaker = async_sessionmaker(
+        async_engine, expire_on_commit=False, class_=AsyncSession
+    )
 
-    app.dependency_overrides[get_db] = get_real_test_db
+    # Override database dependency with real async session maker
+    async def get_e2e_test_db():
+        async with sessionmaker() as session:
+            yield session
 
-    # Disable scheduler for tests but use real database
+    app.dependency_overrides[get_db] = get_e2e_test_db
+
+    # Disable scheduler for tests
     with (
         patch("trackrat.main.get_scheduler") as mock_scheduler,
         patch("trackrat.api.health.get_scheduler") as mock_health_scheduler,
@@ -202,7 +244,7 @@ def real_client(test_settings, db_session) -> TestClient:
         with TestClient(app) as client:
             yield client
 
-    # Clean up dependency overrides and cache
+    # Clean up
     app.dependency_overrides.clear()
     get_settings.cache_clear()
 
