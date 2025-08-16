@@ -27,7 +27,7 @@ The V2 backend eliminates the complexity of V1 by:
 - **Single source of truth**: One database record per train journey per day
 - **Minimal API calls**: ~95% reduction through smart caching and scheduling
 - **No consolidation needed**: Unified data model from the start
-- **SQLite-only**: Zero configuration database with built-in concurrency handling
+- **PostgreSQL**: Production-ready database with async driver and connection pooling
 
 ### System Architecture
 
@@ -44,7 +44,7 @@ The V2 backend eliminates the complexity of V1 by:
                                  │
                         ┌────────▼────────┐
                         │   Database      │
-                        │   (SQLite)      │
+                        │  (PostgreSQL)   │
                         └─────────────────┘
 ```
 
@@ -219,7 +219,7 @@ make lint
 ### Testing
 
 ```bash
-# Unit tests (fast, uses SQLite)
+# Unit tests (requires PostgreSQL test database)
 poetry run pytest tests/unit/
 
 # Integration tests (requires PostgreSQL)
@@ -237,8 +237,8 @@ poetry run pytest --cov=trackrat
 # Required
 TRACKRAT_NJT_API_TOKEN=your_nj_transit_api_token
 
-# Optional
-TRACKRAT_DATABASE_URL=sqlite:///trackrat.db
+# Optional (defaults to PostgreSQL)
+TRACKRAT_DATABASE_URL=postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb
 TRACKRAT_LOG_LEVEL=INFO
 TRACKRAT_ENVIRONMENT=development
 
@@ -266,7 +266,7 @@ Settings are managed via Pydantic in `settings.py`:
 ### 1. Async Everything
 
 The backend uses async/await throughout:
-- `aiosqlite` for SQLite database access
+- `asyncpg` for PostgreSQL database access
 - `httpx` for API calls
 - FastAPI async endpoints
 
@@ -300,8 +300,8 @@ Comprehensive error handling with:
 # Start the development server
 poetry run uvicorn trackrat.main:app --reload
 
-# Use a custom database file
-DATABASE_URL=sqlite:///custom_path.db poetry run uvicorn trackrat.main:app
+# Use a custom database URL
+TRACKRAT_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/custom_db poetry run uvicorn trackrat.main:app
 
 # Run scheduler only
 poetry run python -m trackrat.scheduler
@@ -416,8 +416,8 @@ curl http://localhost:8000/health | jq .scheduler
 1. **No Redis**: Simplicity over caching performance
 2. **No message queue**: Direct execution over distributed processing
 3. **Single deployment**: Monolith over microservices
-4. **SQLite-only**: Zero configuration over horizontal scaling
-5. **Single writer**: Natural serialization over concurrent writes
+4. **PostgreSQL-only**: Reliability over configuration simplicity
+5. **Connection pooling**: Efficient database access over naive connections
 
 ## Future Enhancements
 

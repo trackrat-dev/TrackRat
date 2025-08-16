@@ -247,7 +247,7 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 ## Deployment Considerations
 
 ### Backend V2 Deployment
-- **Database**: SQLite with zero configuration (development) or Cloud SQL (production)
+- **Database**: PostgreSQL with asyncpg driver for development and production
 - **Scheduler**: APScheduler runs in-process, starts automatically
 - **Docker**: Container with APNS validation at startup
 - **Scaling**: Simplified architecture with reduced API calls (~95% reduction)
@@ -277,7 +277,7 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 
 ### Backend V2
 - Just-in-time updates reduce API calls by ~95%
-- SQLite database with efficient queries
+- PostgreSQL database with efficient queries
 - Async processing throughout the stack
 - Smart caching and staleness checks
 
