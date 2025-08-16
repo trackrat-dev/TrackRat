@@ -3,13 +3,8 @@ import SwiftUI
 struct TrackRatTheme {
     // MARK: - Colors
     struct Colors {
-        // Brand Colors - Dynamic based on theme
-        static var surface: Color {
-            switch ThemeManager.shared.selectedTheme {
-            case .blue: return Color(hex: "#0e5c8d")
-            case .black: return Color.black
-            }
-        }
+        // Brand Colors - Midnight Black theme
+        static let surface: Color = Color.black
         
         static var surfaceSecondary: Color {
             surface.opacity(0.8)
@@ -27,10 +22,8 @@ struct TrackRatTheme {
         static let accent = Color.orange
         static let accentSecondary = Color.orange.opacity(0.8)
         
-        // Background - Dynamic
-        static var primaryBackground: Color {
-            surface
-        }
+        // Background
+        static let primaryBackground: Color = surface
         
         static var cardGradient: LinearGradient {
             return LinearGradient(
@@ -40,10 +33,8 @@ struct TrackRatTheme {
             )
         }
         
-        // Text Colors - Dynamic based on theme
-        static var onSurface: Color {
-            return Color.white
-        }
+        // Text Colors
+        static let onSurface: Color = Color.white
         
         static var onSurfaceSecondary: Color {
             onSurface.opacity(0.7)
@@ -72,20 +63,9 @@ struct TrackRatTheme {
         static let departed = Color.blue
         static let cancelled = Color.gray
         
-        // Border Colors - Dynamic opacity based on theme
-        static var border: Color {
-            switch ThemeManager.shared.selectedTheme {
-            case .black: return Color.white.opacity(0.3)
-            default: return Color.white.opacity(0.2)
-            }
-        }
-        
-        static var borderSecondary: Color {
-            switch ThemeManager.shared.selectedTheme {
-            case .black: return Color.white.opacity(0.2)
-            default: return Color.white.opacity(0.1)
-            }
-        }
+        // Border Colors
+        static let border: Color = Color.white.opacity(0.3)
+        static let borderSecondary: Color = Color.white.opacity(0.2)
     }
     
     // MARK: - Typography
