@@ -139,18 +139,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"Only PostgreSQL databases are supported. Got: {v[:50]}..."
             )
-        
+
         # Ensure async driver is used
         if not v.startswith("postgresql+asyncpg://"):
             v = v.replace("postgresql://", "postgresql+asyncpg://")
-        
+
         return v
 
     @property
     def database_url_sync(self) -> str:
         """Get synchronous PostgreSQL URL for Alembic migrations."""
         return str(self.database_url).replace("+asyncpg", "")
-
 
 
 @lru_cache

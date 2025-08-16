@@ -10,7 +10,7 @@ from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from typing import Any, TypeVar
 
-from sqlalchemy import event, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -34,7 +34,7 @@ _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 def _is_postgresql_concurrency_error(error: Exception) -> bool:
     """Check if an error is a PostgreSQL concurrency issue that should be retried."""
     error_msg = str(error).lower()
-    
+
     # PostgreSQL-specific error conditions that warrant retry
     postgresql_retry_conditions = [
         # Connection issues
@@ -42,18 +42,16 @@ def _is_postgresql_concurrency_error(error: Exception) -> bool:
         "server closed the connection unexpectedly",
         "connection to server was lost",
         "could not receive data from server",
-        
         # Concurrency/locking issues
         "deadlock detected",
         "could not serialize access due to concurrent update",
         "could not serialize access due to read/write dependencies",
-        
         # Temporary resource issues
         "too many connections",
         "connection pool exhausted",
         "temporary failure in name resolution",
     ]
-    
+
     return any(condition in error_msg for condition in postgresql_retry_conditions)
 
 
@@ -67,7 +65,10 @@ def with_db_retry(max_attempts: int = 3, base_delay: float = 0.5) -> Callable[[F
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
-                    if _is_postgresql_concurrency_error(e) and attempt < max_attempts - 1:
+                    if (
+                        _is_postgresql_concurrency_error(e)
+                        and attempt < max_attempts - 1
+                    ):
                         # Wait with exponential backoff
                         wait_time = base_delay * (2**attempt)
                         logger.debug(
@@ -115,7 +116,6 @@ def get_engine() -> AsyncEngine:
         }
 
         _engine = create_async_engine(db_url, **engine_kwargs)
-
 
     return _engine
 

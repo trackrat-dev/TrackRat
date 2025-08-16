@@ -10,19 +10,12 @@ from trackrat.config import Settings
 
 def test_settings_database_url_normalization():
     """Test that database URLs are normalized correctly."""
-    # SQLite URL should be normalized
-    settings = Settings(database_url="sqlite:///test.db", njt_api_token="token")
-    assert settings.database_url == "sqlite+aiosqlite:///test.db"
-    assert settings.database_url_sync == "sqlite:///test.db"
-    assert settings.is_sqlite is True
-
-    # PostgreSQL URL should be normalized
+    # PostgreSQL URL should be normalized to use asyncpg
     settings = Settings(
         database_url="postgresql://user:pass@localhost/db", njt_api_token="token"
     )
     assert settings.database_url == "postgresql+asyncpg://user:pass@localhost/db"
     assert settings.database_url_sync == "postgresql://user:pass@localhost/db"
-    assert settings.is_sqlite is False
 
 
 def test_settings_missing_required_fields():
@@ -77,7 +70,7 @@ def test_settings_validation():
     # Test port range validation
     with pytest.raises(ValidationError):
         Settings(
-            database_url="sqlite:///test.db",
+            database_url="postgresql://user:pass@localhost/db",
             njt_api_token="token",
             api_port=70000,  # Invalid port
         )
@@ -85,7 +78,17 @@ def test_settings_validation():
     # Test interval validation
     with pytest.raises(ValidationError):
         Settings(
-            database_url="sqlite:///test.db",
+            database_url="postgresql://user:pass@localhost/db",
             njt_api_token="token",
             discovery_interval_minutes=0,  # Must be >= 1
         )
+
+
+def test_sqlite_url_rejected():
+    """Test that SQLite URLs are rejected."""
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(
+            database_url="sqlite:///test.db",
+            njt_api_token="token",
+        )
+    assert "Only PostgreSQL databases are supported" in str(exc_info.value)

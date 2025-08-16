@@ -218,7 +218,9 @@ class TestAmtrakJourneyCollector:
 
                 # Make _convert_to_journey fail once with busy error, then succeed
                 mock_convert.side_effect = [
-                    Exception("database is locked"),  # First attempt fails
+                    Exception(
+                        "deadlock detected"
+                    ),  # First attempt fails (PostgreSQL error)
                     mock_journey,  # Second attempt succeeds
                 ]
 

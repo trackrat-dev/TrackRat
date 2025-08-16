@@ -41,23 +41,20 @@ def test_calculate_delay():
 
 def test_settings_creation():
     """Test that settings can be created with required fields."""
-    settings = Settings(database_url="sqlite:///test.db", njt_api_token="test_token")
+    settings = Settings(
+        database_url="postgresql://user:pass@localhost/testdb",
+        njt_api_token="test_token",
+    )
 
-    assert settings.database_url == "sqlite+aiosqlite:///test.db"
+    assert settings.database_url == "postgresql+asyncpg://user:pass@localhost/testdb"
     assert settings.njt_api_token == "test_token"
     assert settings.environment == "development"
 
 
 def test_database_url_normalization():
     """Test database URL normalization."""
-    # SQLite
-    settings = Settings(database_url="sqlite:///test.db", njt_api_token="token")
-    assert settings.database_url == "sqlite+aiosqlite:///test.db"
-    assert settings.is_sqlite is True
-
-    # PostgreSQL
+    # PostgreSQL - should add asyncpg driver
     settings = Settings(
         database_url="postgresql://user:pass@host/db", njt_api_token="token"
     )
     assert "postgresql+asyncpg://" in settings.database_url
-    assert settings.is_sqlite is False

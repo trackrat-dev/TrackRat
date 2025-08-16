@@ -28,7 +28,7 @@ async def init_database() -> None:
 async def shutdown_database() -> None:
     """Shutdown database connections."""
     from .engine import close_engine
-    
+
     logger.info("Shutting down database connections")
     await close_engine()
     logger.info("Database shutdown completed")

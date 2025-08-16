@@ -2,7 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from trackrat.models.database import Base, TrainJourney, JourneyStop, JourneySnapshot
@@ -12,8 +12,21 @@ from trackrat.utils.time import ET, now_et
 @pytest.fixture
 def db_session():
     """Create a test database session."""
-    engine = create_engine("sqlite:///:memory:")
+    # Use PostgreSQL for testing instead of SQLite
+    engine = create_engine(
+        "postgresql://trackratuser:password@localhost:5432/trackratdb_test"
+    )
+
+    # Create tables first
     Base.metadata.create_all(engine)
+
+    # Clean existing data after tables exist
+    with engine.connect() as conn:
+        conn.execute(text("TRUNCATE TABLE journey_stops CASCADE"))
+        conn.execute(text("TRUNCATE TABLE journey_snapshots CASCADE"))
+        conn.execute(text("TRUNCATE TABLE train_journeys CASCADE"))
+        conn.commit()
+
     Session = sessionmaker(bind=engine)
     session = Session()
     yield session
