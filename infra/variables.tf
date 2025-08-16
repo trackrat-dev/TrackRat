@@ -115,3 +115,15 @@ variable "scheduler_image_url" {
   default     = ""
 }
 
+variable "critical_alert_email" {
+  description = "Email address for critical database alerts"
+  type        = string
+  default     = ""
+}
+
+variable "warning_alert_email" {
+  description = "Email address for warning database alerts"
+  type        = string
+  default     = ""
+}
+

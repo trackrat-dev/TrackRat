@@ -130,14 +130,16 @@ module "vpc_connector" {
 
 # Create Cloud SQL PostgreSQL database
 module "database" {
-  source                      = "./modules/database"
-  project_id                  = var.project_id
-  region                      = var.region
-  instance_name               = "${var.app_name}-${var.environment}-db"
-  database_version            = "POSTGRES_17"
-  instance_tier               = "db-g1-small"
-  network_self_link           = module.vpc.network_self_link
+  source                        = "./modules/database"
+  project_id                    = var.project_id
+  region                        = var.region
+  instance_name                 = "${var.app_name}-${var.environment}-db"
+  database_version              = "POSTGRES_17"
+  instance_tier                 = "db-g1-small"
+  network_self_link             = module.vpc.network_self_link
   service_networking_connection = module.vpc.service_networking_connection
+  critical_alert_email          = var.critical_alert_email
+  warning_alert_email           = var.warning_alert_email
 
   depends_on = [module.vpc]
 }
