@@ -22,7 +22,7 @@ struct MapContainerView: View {
                 segments: mapViewModel.segments,
                 individualSegments: mapViewModel.individualSegments,
                 stations: mapViewModel.stations,
-                selectedRoute: appState.activeTrainRoute,  // Use activeTrainRoute for persistent blue line
+                selectedRoute: appState.activeTrainRoute ?? appState.selectedRoute,  // Show route for Live Activity or selected route
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
