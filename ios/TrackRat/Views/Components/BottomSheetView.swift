@@ -51,13 +51,13 @@ struct BottomSheetView<Content: View>: View {
                         LinearGradient(
                             gradient: Gradient(colors: [
                                 Color.clear,
-                                TrackRatTheme.Colors.surface.opacity(0.8),
+                                TrackRatTheme.Colors.surface.opacity(0.6),
                                 TrackRatTheme.Colors.surface
                             ]),
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                        .frame(height: 40)
+                        .frame(height: position == .compact ? 20 : 30)
                         .allowsHitTesting(false) // Allow gestures to pass through
                     }
                 }

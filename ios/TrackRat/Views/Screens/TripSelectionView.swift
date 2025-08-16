@@ -30,9 +30,11 @@ struct TripSelectionView: View {
             TrackRatTheme.Colors.surface
                 .ignoresSafeArea()
             
-            VStack(spacing: 8) {
-                        // Top navigation bar with search and icons
-                        HStack(spacing: 16) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 8) {
+                            // Top navigation bar with search and icons
+                            HStack(spacing: 16) {
                             // Search field - left aligned
                             HStack {
                                 Image(systemName: "magnifyingglass")
@@ -48,8 +50,12 @@ struct TripSelectionView: View {
                                     }
                                     .onChange(of: searchFieldFocused) { _, newValue in
                                         if newValue {
-                                            // When search field gains focus, expand to 50%
+                                            // When search field gains focus, expand to 50% and scroll to top
                                             onBottomSheetPositionChange?(.medium)
+                                            // Scroll to ensure search field is visible
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                proxy.scrollTo("searchField", anchor: .top)
+                                            }
                                         }
                                         // DON'T reset position when search field loses focus
                                         // Let user maintain their preferred bottom sheet height
@@ -71,6 +77,7 @@ struct TripSelectionView: View {
                                             .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
                                     )
                             )
+                            .id("searchField")
                             
                             // Right side icons
                             HStack(spacing: 16) {
@@ -112,7 +119,7 @@ struct TripSelectionView: View {
                             }
                         }
                         .padding(.horizontal)
-                        .padding(.top, 10)
+                        .padding(.top, 20)
                         
                         // Welcome message - hide when search is focused or there are active Live Activities
                         if !searchFieldFocused && !(liveActivityService.isActivityActive) {
@@ -202,8 +209,11 @@ struct TripSelectionView: View {
                         }
                         
                         
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .padding(.bottom, 100) // Add bottom padding for scrolling
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .onAppear {
             appState.loadRecentTrips()
