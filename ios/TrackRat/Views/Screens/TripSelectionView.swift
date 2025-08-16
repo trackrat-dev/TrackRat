@@ -24,6 +24,12 @@ struct TripSelectionView: View {
         Stations.search(searchText)
     }
     
+    // Only allow scrolling when search field is focused
+    // This preserves swipe-anywhere functionality when not searching
+    private var shouldAllowScrolling: Bool {
+        return searchFieldFocused
+    }
+    
     var body: some View {
         ZStack {
             // Theme background
@@ -213,6 +219,7 @@ struct TripSelectionView: View {
                     .frame(maxWidth: .infinity, alignment: .top)
                     .padding(.bottom, 100) // Add bottom padding for scrolling
                 }
+                .scrollDisabled(!shouldAllowScrolling)
             }
         }
         .onAppear {
