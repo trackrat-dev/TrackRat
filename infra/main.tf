@@ -119,12 +119,11 @@ resource "google_storage_bucket" "db_backup" {
 
 # Create VPC Connector for Cloud Run private networking
 module "vpc_connector" {
-  source         = "./modules/vpc-connector"
-  project_id     = var.project_id
-  region         = var.region
-  connector_name = "${var.app_name}-${var.environment}-vpc"
-  ip_cidr_range  = var.vpc_connector_cidr
-  network        = module.vpc.network_name
+  source        = "./modules/vpc-connector"
+  name          = "${var.app_name}-${var.environment}-vpc"
+  region        = var.region
+  network_name  = module.vpc.network_name
+  ip_cidr_range = var.vpc_connector_cidr
 
   depends_on = [module.vpc]
 }

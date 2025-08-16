@@ -109,3 +109,9 @@ variable "apns_auth_key" {
   sensitive   = true
 }
 
+variable "scheduler_image_url" {
+  description = "Docker image URL for the scheduler service"
+  type        = string
+  default     = ""
+}
+
