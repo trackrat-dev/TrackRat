@@ -404,7 +404,7 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 3) async throws -> CongestionMapResponse {
+    func fetchCongestionData(timeWindowHours: Int = 24) async throws -> CongestionMapResponse {
         return try await fetchCongestionData(timeWindowHours: timeWindowHours, maxPerSegment: 100, dataSource: nil)
     }
     
@@ -605,7 +605,7 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 3, maxPerSegment: Int = 100, dataSource: String? = nil) async throws -> CongestionMapResponse {
+    func fetchCongestionData(timeWindowHours: Int = 24, maxPerSegment: Int = 100, dataSource: String? = nil) async throws -> CongestionMapResponse {
         var components = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
         components.queryItems = [
             URLQueryItem(name: "time_window_hours", value: String(timeWindowHours)),

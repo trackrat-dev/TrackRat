@@ -30,7 +30,7 @@ struct Stations {
         "New York Penn Station": "NY",
         "Newark Penn Station": "NP",
         "Secaucus Upper Lvl": "SE",
-        "Woodbridge": "WDB",
+        "Woodbridge": "WB",
         "Metropark": "MP",
         "New Brunswick": "NB",
         "Princeton Junction": "PJ",
@@ -49,14 +49,14 @@ struct Stations {
         "Metuchen": "MU",
         "Edison": "ED",
         "Iselin": "ISE",
-        "Perth Amboy": "PAM",
-        "South Amboy": "SAM",
-        "Aberdeen-Matawan": "ABM",
-        "Hazlet": "HAZ",
-        "Red Bank": "RBK",
-        "Little Silver": "LIS",
-        "Monmouth Park": "MPK",
-        "Long Branch": "LBR",
+        "Perth Amboy": "PE",
+        "South Amboy": "CH",
+        "Aberdeen-Matawan": "AM",
+        "Hazlet": "HZ",
+        "Red Bank": "RB",
+        "Little Silver": "LS",
+        "Monmouth Park": "MK",
+        "Long Branch": "LB",
         "Asbury Park": "ASB",
         "Bradley Beach": "BRB",
         "Belmar": "BEL",
@@ -91,7 +91,7 @@ struct Stations {
         "Campbell Hall": "CAM",
         "Salisbury Mills-Cornwall": "SMC",
         "New Hampton": "NHA",
-        "Middletown NJ": "MTN",
+        "Middletown NJ": "MI",
         "Otisville": "OTI",
         "Port Jervis": "PJE",
         "Denville": "DEN",
@@ -117,19 +117,20 @@ struct Stations {
         "Lebanon": "LEB",
         "White House": "WHI",
         "North Branch": "NBR",
-        "Raritan": "RAR",
+        "Raritan": "RA",
         "Somerville": "SOM",
-        "Bound Brook": "BBK",
-        "Dunellen": "DUN",
-        "Plainfield": "PLA",
-        "Netherwood": "NET",
-        "Fanwood": "FAN",
-        "Westfield": "WES",
+        "Bound Brook": "BU",
+        "Dunellen": "DN",
+        "Plainfield": "PL",
+        "Netherwood": "NE",
+        "Fanwood": "FW",
+        "Westfield": "WF",
         "Garwood": "GAR",
         "Cranford": "CRA",
         "Roselle Park": "ROP",
         "Union": "US",
         "Jersey Avenue": "JA",
+        "Hoboken": "HB",
         "Avenel": "AV",
         "Highland Avenue": "HI",
         "Mountain Station": "MT",
@@ -194,7 +195,6 @@ struct Stations {
         "HL": CLLocationCoordinate2D(latitude: 40.2547, longitude: -74.7036),   // Hamilton
         "PJ": CLLocationCoordinate2D(latitude: 40.3167, longitude: -74.6233),   // Princeton Junction - Updated GPS
         "MP": CLLocationCoordinate2D(latitude: 40.5378, longitude: -74.3562),   // Metropark - Updated GPS
-        "NA": CLLocationCoordinate2D(latitude: 40.7058, longitude: -74.1608),   // Newark Airport
         "NB": CLLocationCoordinate2D(latitude: 40.4862, longitude: -74.4518),   // New Brunswick
         "SE": CLLocationCoordinate2D(latitude: 40.7612, longitude: -74.0758),   // Secaucus Junction - Updated GPS
         "PH": CLLocationCoordinate2D(latitude: 39.9570, longitude: -75.1820),   // Philadelphia 30th Street Station - Updated GPS
@@ -233,16 +233,16 @@ struct Stations {
         "NFK": CLLocationCoordinate2D(latitude: 36.8583, longitude: -76.2876),  // Norfolk, VA
         "RVR": CLLocationCoordinate2D(latitude: 37.6143, longitude: -77.4966),  // Richmond Main Street, VA
         "RNK": CLLocationCoordinate2D(latitude: 37.3077, longitude: -79.9803),  // Roanoke, VA
-        //"PL": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.1647),   // Plainfield
-        //"LB": CLLocationCoordinate2D(latitude: 40.0849, longitude: -74.1990),   // Long Branch
+        "PL": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.4147),   // Plainfield
+        "LB": CLLocationCoordinate2D(latitude: 40.2970, longitude: -73.9883),   // Long Branch
         "JA": CLLocationCoordinate2D(latitude: 40.4769, longitude: -74.4674),   // Jersey Avenue
-        "US": CLLocationCoordinate2D(latitude: 40.6973, longitude: -74.1647),   // Union Station
-        "AZ": CLLocationCoordinate2D(latitude: 40.7127, longitude: -74.1634),   // Newark Airport (estimate)
+        "US": CLLocationCoordinate2D(latitude: 40.683542211, longitude: -74.23800686),   // Union Station 40.683542211783646, -74.2380068698304
+        "AZ": CLLocationCoordinate2D(latitude: 40.7044941, longitude: -74.1909959),   // Newark Airport (estimate) 40.704494136878324, -74.1909959640888
+        "NA": CLLocationCoordinate2D(latitude: 40.7044941, longitude: -74.1909959),   // Newark Airport
         "RY": CLLocationCoordinate2D(latitude: 40.6039, longitude: -74.2723),   // Rahway
-        "LA": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.1647),   // Plainfield (estimate)
-        "SQ": CLLocationCoordinate2D(latitude: 40.5849, longitude: -74.1990),   // Long Branch (estimate)
-        //"HB": CLLocationCoordinate2D(latitude: 40.734843, longitude: -74.028043), // Hoboken Terminal - Updated GPS
-        //"RA": CLLocationCoordinate2D(latitude: 40.5682, longitude: -74.6290),   // Raritan
+        "HB": CLLocationCoordinate2D(latitude: 40.734843, longitude: -74.028043), // Hoboken Terminal - Updated GPS
+        "RA": CLLocationCoordinate2D(latitude: 40.5682, longitude: -74.6290),   // Raritan
+        "DN": CLLocationCoordinate2D(latitude: 40.5892, longitude: -74.4719),   // Dunellen
         
         // Additional NJT stations for complete map coverage - Updated GPS
         "ED": CLLocationCoordinate2D(latitude: 40.5177, longitude: -74.4075),   // Edison - Updated GPS
@@ -252,6 +252,22 @@ struct Stations {
         "EL": CLLocationCoordinate2D(latitude: 40.667859, longitude: -74.215171), // Elizabeth - Updated GPS
         "EZ": CLLocationCoordinate2D(latitude: 40.667859, longitude: -74.215171), // Elizabeth - Updated GPS
         "NZ": CLLocationCoordinate2D(latitude: 40.6968, longitude: -74.1733),   // North Elizabeth
+        
+        // Additional stations for Raritan Valley and North Jersey Coast Lines
+        "BU": CLLocationCoordinate2D(latitude: 40.5682, longitude: -74.6290),   // Bound Brook
+        "WF": CLLocationCoordinate2D(latitude: 40.6588, longitude: -74.3488),   // Westfield
+        "AV": CLLocationCoordinate2D(latitude: 40.5778386, longitude: -74.2773454),   // Avenale 40.57783860099064, -74.27734540034069
+        "FW": CLLocationCoordinate2D(latitude: 40.6415, longitude: -74.3826),   // Fanwood
+        "NE": CLLocationCoordinate2D(latitude: 40.6344, longitude: -74.4182),   // Netherwood
+        "LS": CLLocationCoordinate2D(latitude: 40.32654188, longitude: -74.040546829),   // Little Silver 40.32654188152892, -74.04054682918307
+        "MK": CLLocationCoordinate2D(latitude: 40.3086, longitude: -74.0253),   // Monmouth Park
+        "HZ": CLLocationCoordinate2D(latitude: 40.41515409, longitude: -74.190629424),   // Hazlet 40.41515409414224, -74.19062942410835
+        "MI": CLLocationCoordinate2D(latitude: 40.39082051, longitude: -74.116794),   // Middletown 40.39082051439342, -74.11679433408341
+        "WB": CLLocationCoordinate2D(latitude: 40.5559, longitude: -74.2780),   // Woodbridge
+        "RB": CLLocationCoordinate2D(latitude: 40.348271404, longitude: -74.074151249),   // Red Banka 40.34827140444035, -74.0741512494248
+        "PE": CLLocationCoordinate2D(latitude: 40.509372, longitude: -74.27381259),   // 40.509372943783205, -74.27381259301205
+        "CH": CLLocationCoordinate2D(latitude: 40.48490168, longitude: -74.2804993),   // South Amboy is mislabelled as Cherry Hill 40.48490168088479, -74.28049932024226
+        "AM": CLLocationCoordinate2D(latitude: 40.419773943, longitude: -74.22209923),   // 40.41977394340468, -74.22209923287113
        
         /* 
         // Bergen County Line (Main Line) - New GPS coordinates
@@ -277,7 +293,6 @@ struct Stations {
         "GA": CLLocationCoordinate2D(latitude: 40.8815, longitude: -74.1133),   // Garfield
         "PLD": CLLocationCoordinate2D(latitude: 40.8879, longitude: -74.1202),  // Plauderville
         "BW": CLLocationCoordinate2D(latitude: 40.9188, longitude: -74.1316),   // Broadway (Fair Lawn)
-        "RB": CLLocationCoordinate2D(latitude: 40.9405, longitude: -74.1320),   // Radburn
         "GB": CLLocationCoordinate2D(latitude: 40.9595, longitude: -74.1329),   // Glen Rock–Boro Hall
         
         // Pascack Valley Line
@@ -302,7 +317,6 @@ struct Stations {
         "TX": CLLocationCoordinate2D(latitude: 41.1970, longitude: -74.1885),   // Tuxedo, NY
         "HR": CLLocationCoordinate2D(latitude: 41.3098, longitude: -74.1526),   // Harriman, NY
         "SM": CLLocationCoordinate2D(latitude: 41.4426, longitude: -74.1351),   // Salisbury Mills–Cornwall, NY
-        "CH": CLLocationCoordinate2D(latitude: 41.4446, longitude: -74.2452),   // Campbell Hall, NY
         "MD": CLLocationCoordinate2D(latitude: 41.4459, longitude: -74.4222),   // Middletown, NY
         "OT": CLLocationCoordinate2D(latitude: 41.4783, longitude: -74.5336),   // Otisville, NY
         "PJV": CLLocationCoordinate2D(latitude: 41.3746, longitude: -74.6927),  // Port Jervis, NY
@@ -325,10 +339,15 @@ struct Stations {
     // Supported departure stations
     static let departureStations: [(name: String, code: String)] = [
         ("New York Penn Station", "NY"),
+        ("Hoboken", "HB"),
         ("Metropark", "MP"),
         ("Princeton Junction", "PJ"),
         ("Hamilton", "HL"),
         ("Trenton", "TR"),
+        ("Long Branch", "LB"),
+        ("Plainfield", "PL"),
+        ("Dunellen", "DN"),
+        ("Raritan", "RA"),
         ("Philadelphia", "PH"),
         ("Wilmington Station", "WI")
     ]
