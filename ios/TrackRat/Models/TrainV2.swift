@@ -222,6 +222,38 @@ struct TrainV2: Identifiable, Codable {
         // Check if departure is in the future and within the specified time window
         return timeUntilDeparture > 0 && timeUntilDeparture <= Double(withinMinutes * 60)
     }
+    
+    // Check if train has already departed from the specified station
+    func hasAlreadyDeparted(fromStationCode: String) -> Bool {
+        let now = Date()
+        
+        // First priority: Use existing stop data method (most accurate)
+        if hasTrainDepartedFromStation(fromStationCode) {
+            return true
+        }
+        
+        // Second priority: Check actual departure time from stop data
+        if let stop = stops?.first(where: { $0.stationCode == fromStationCode }),
+           let actualDeparture = stop.actualDeparture {
+            return actualDeparture < now
+        }
+        
+        // Third priority: Check station timing actual time (for origin station)
+        if fromStationCode == originStationCode,
+           let actualDeparture = departure.actualTime {
+            return actualDeparture < now
+        }
+        
+        // Fallback: Use scheduled time with buffer for delays
+        if let scheduledDeparture = getDepartureTime(fromStationCode: fromStationCode) {
+            // Allow 15 minutes past scheduled time for delays/late boarding
+            let departureWithBuffer = scheduledDeparture.addingTimeInterval(15 * 60)
+            return departureWithBuffer < now
+        }
+        
+        // If no departure time available, don't filter out (safe default)
+        return false
+    }
 }
 
 // MARK: - Supporting Models

@@ -40,9 +40,30 @@ struct DestinationPickerView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 8) {
-                    // Top navigation bar with search and close button
+                    // Top navigation bar with back button and search
                     HStack(spacing: 16) {
-                        // Search field - left aligned
+                        // Back button
+                        Button {
+                            // Navigate back one step to origin selection
+                            if !appState.navigationPath.isEmpty {
+                                appState.navigationPath.removeLast()
+                            }
+                            
+                            // Clear destination selection but keep origin
+                            appState.selectedDestination = nil
+                            appState.destinationStationCode = nil
+                            appState.selectedRoute = nil
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Back")
+                            }
+                            .foregroundColor(.white)
+                            .font(.body)
+                        }
+                        
+                        // Search field - takes remaining space
                         HStack {
                             Image(systemName: "magnifyingglass")
                                 .foregroundColor(.white.opacity(0.6))
@@ -71,16 +92,6 @@ struct DestinationPickerView: View {
                                         .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
                                 )
                         )
-                        
-                        // Close button
-                        Button {
-                            // Navigate back to the root (TripSelectionView)
-                            appState.navigationPath.removeLast(appState.navigationPath.count)
-                        } label: {
-                            Text("Close")
-                                .foregroundColor(.white)
-                                .font(.body)
-                        }
                     }
                     .padding(.horizontal)
                     .padding(.top, 10)

@@ -103,13 +103,11 @@ struct TrainListView: View {
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    reverseRoute()
-                } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 18))
-                        .foregroundColor(.orange)
+                Button("Close") {
+                    appState.navigationPath = NavigationPath()
                 }
+                .foregroundColor(.white)
+                .font(.body)
             }
         }
         .task {
@@ -130,44 +128,6 @@ struct TrainListView: View {
                 departureName = appState.selectedDeparture ?? ""
             }
         }
-    }
-    
-    
-    private func reverseRoute() {
-        guard let currentDestinationCode = Stations.getStationCode(destination),
-              !departureName.isEmpty else {
-            return
-        }
-        
-        // Store current values
-        let oldDepartureName = departureName
-        let oldDepartureCode = departureStationCode
-        let oldDestination = destination
-        
-        // Swap the stations in local state
-        departureName = oldDestination
-        departureStationCode = currentDestinationCode
-        destination = oldDepartureName
-        
-        // Also update app state for consistency
-        appState.departureStationCode = currentDestinationCode
-        appState.selectedDeparture = oldDestination
-        appState.selectedDestination = oldDepartureName
-        appState.destinationStationCode = oldDepartureCode
-        
-        // Clear existing trains immediately to avoid confusion
-        viewModel.trains = []
-        
-        // Reload trains with swapped stations
-        Task {
-            await viewModel.loadTrains(
-                destination: oldDepartureName,
-                fromStationCode: currentDestinationCode
-            )
-        }
-        
-        // Haptic feedback
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
 
@@ -446,13 +406,16 @@ class TrainListViewModel: ObservableObject {
                 toStationCode: toStationCode
             )
             
-            // Filter out trains departing more than 6 hours from now
+            // Filter trains: within 6 hours and haven't already departed
             let now = Date()
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
             let filteredTrains = fetchedTrains.filter { train in
                 let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
-                return departureTime <= sixHoursFromNow
+                let isWithinTimeWindow = departureTime <= sixHoursFromNow
+                let hasNotDeparted = !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
+                
+                return isWithinTimeWindow && hasNotDeparted
             }
             
             // Deduplicate trains by ID to prevent ForEach crashes
@@ -485,7 +448,10 @@ class TrainListViewModel: ObservableObject {
             
             let filteredTrains = fetchedTrains.filter { train in
                 let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
-                return departureTime <= sixHoursFromNow
+                let isWithinTimeWindow = departureTime <= sixHoursFromNow
+                let hasNotDeparted = !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
+                
+                return isWithinTimeWindow && hasNotDeparted
             }
             
             // Deduplicate trains by ID to prevent ForEach crashes
