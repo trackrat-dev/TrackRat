@@ -19,6 +19,7 @@ from trackrat.models.api import (
     DataFreshness,
     DeparturesResponse,
     HistoricalJourney,
+    JourneyProgress,
     LineInfo,
     OccupiedTracksResponse,
     RawStopStatus,
@@ -33,6 +34,7 @@ from trackrat.models.api import (
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
 from trackrat.services.jit import JustInTimeUpdateService
+from trackrat.services.predictions import JourneyPredictor
 from trackrat.utils.time import now_et, safe_datetime_subtract
 from trackrat.utils.train import is_amtrak_train
 
@@ -84,6 +86,7 @@ async def get_train_details(
     train_id: str = Path(..., description="Train ID"),
     date: date | None = Query(None, description="Journey date (YYYY-MM-DD)"),
     refresh: bool = Query(False, description="Force data refresh"),
+    include_predictions: bool = Query(True, description="Include arrival predictions"),
     db: AsyncSession = Depends(get_db),
 ) -> TrainDetailsResponse:
     """Get detailed information for a specific train."""
@@ -143,6 +146,45 @@ async def get_train_details(
     # Calculate train position
     train_position = calculate_train_position(journey)
 
+    # Calculate journey progress
+    progress = None
+    if journey.progress_snapshots:
+        # Get the latest progress snapshot (filter out None captured_at)
+        valid_snapshots = [
+            p for p in journey.progress_snapshots if p.captured_at is not None
+        ]
+        if valid_snapshots:
+            latest_progress = max(
+                valid_snapshots, key=lambda p: p.captured_at or datetime.min
+            )
+            progress = JourneyProgress(
+                stops_completed=latest_progress.stops_completed,
+                stops_total=latest_progress.stops_total,
+                journey_percent=latest_progress.journey_percent,
+                minutes_to_arrival=None,  # Will be calculated from prediction
+                last_departed=latest_progress.last_departed_station,
+                next_arrival=latest_progress.next_station,
+            )
+
+    # Get arrival prediction if requested
+    predicted_arrival = None
+    arrival_confidence = None
+    if include_predictions and journey.terminal_station_code:
+        predictor = JourneyPredictor()
+        prediction = await predictor.predict_arrival(
+            db, journey, journey.terminal_station_code
+        )
+        if prediction:
+            predicted_arrival = prediction.predicted_arrival
+            arrival_confidence = prediction.confidence_score
+
+            # Update minutes to arrival in progress
+            if progress:
+                minutes_to_arrival = int(
+                    (predicted_arrival - now_et()).total_seconds() / 60
+                )
+                progress.minutes_to_arrival = max(0, minutes_to_arrival)
+
     # Build response
     train_details = TrainDetails(
         train_id=journey.train_id,
@@ -155,8 +197,8 @@ async def get_train_details(
         route=RouteInfo(
             origin=get_first_stop_name(journey),
             destination=journey.destination,
-            origin_code=journey.origin_station_code,
-            destination_code=journey.terminal_station_code,
+            origin_code=get_first_stop_code(journey),
+            destination_code=get_last_stop_code(journey),
         ),
         train_position=train_position,
         stops=stops,
@@ -175,6 +217,9 @@ async def get_train_details(
         raw_train_state="Active" if journey.data_source == "AMTRAK" else None,
         is_cancelled=journey.is_cancelled,
         is_completed=journey.is_completed,
+        progress=progress,
+        predicted_arrival=predicted_arrival,
+        arrival_confidence=arrival_confidence,
     )
 
     return TrainDetailsResponse(train=train_details)
@@ -710,3 +755,25 @@ def get_first_stop_name(journey: TrainJourney) -> str:
         first_stop = min(journey.stops, key=lambda s: s.stop_sequence or 0)
         return first_stop.station_name or journey.origin_station_code or "Unknown"
     return journey.origin_station_code or "Unknown"
+
+
+def get_first_stop_code(journey: TrainJourney) -> str:
+    """Get the station code of the first stop from actual stops data.
+
+    This always reflects the true origin, even if discovery data was wrong.
+    """
+    if journey.stops:
+        first_stop = min(journey.stops, key=lambda s: s.stop_sequence or 0)
+        return first_stop.station_code or journey.origin_station_code or "Unknown"
+    return journey.origin_station_code or "Unknown"
+
+
+def get_last_stop_code(journey: TrainJourney) -> str:
+    """Get the station code of the last stop from actual stops data.
+
+    This always reflects the true destination, even if discovery data was wrong.
+    """
+    if journey.stops:
+        last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
+        return last_stop.station_code or journey.terminal_station_code or "Unknown"
+    return journey.terminal_station_code or "Unknown"

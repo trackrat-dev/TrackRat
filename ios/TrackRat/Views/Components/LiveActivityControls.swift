@@ -125,5 +125,5 @@ struct LiveActivityControls: View {
     )
     .preferredColorScheme(.dark)
     .padding()
-    .background(.black)
+    .background(TrackRatTheme.Colors.surface)
 }

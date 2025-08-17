@@ -30,7 +30,7 @@ def setup_logging() -> None:
     # Disable verbose database operation logs
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
-    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+    logging.getLogger("asyncpg").setLevel(logging.WARNING)
 
     # Processors for structlog
     processors: list[Processor] = [
@@ -50,7 +50,7 @@ def setup_logging() -> None:
     if settings.environment == "production":
         processors.append(structlog.processors.JSONRenderer())
     else:
-        processors.append(structlog.dev.ConsoleRenderer())
+        processors.append(structlog.dev.ConsoleRenderer(colors=False))
 
     structlog.configure(
         processors=processors,

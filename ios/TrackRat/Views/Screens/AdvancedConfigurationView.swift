@@ -19,7 +19,6 @@ struct AdvancedConfigurationView: View {
         let backgroundView = TrackRatTheme.Colors.primaryBackground
             .ignoresSafeArea()
         
-        let themeSelectionSection = createThemeSelectionSection()
         let serverEnvironmentSection = createServerEnvironmentSection()
         let healthCheckSection = createHealthCheckSection()
         
@@ -28,7 +27,6 @@ struct AdvancedConfigurationView: View {
             
             ScrollView {
                 VStack(spacing: 24) {
-                    themeSelectionSection
                     serverEnvironmentSection
                     healthCheckSection
                 }
@@ -270,92 +268,8 @@ struct AdvancedConfigurationView: View {
         }
     }
     
-    @ViewBuilder
-    private func createThemeSelectionSection() -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("App Theme")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(TrackRatTheme.Colors.onSurface)
-            
-            Text("Choose your preferred color theme. App icon will change automatically.")
-                .font(.caption)
-                .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
-            
-            VStack(spacing: 12) {
-                ForEach(AppTheme.allCases, id: \.self) { theme in
-                    ThemeRow(
-                        theme: theme,
-                        isSelected: themeManager.selectedTheme == theme
-                    ) {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            themeManager.selectedTheme = theme
-                        }
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(TrackRatTheme.Colors.surfaceCard)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
-                )
-        )
-    }
 }
 
-struct ThemeRow: View {
-    let theme: AppTheme
-    let isSelected: Bool
-    let onTap: () -> Void
-    @EnvironmentObject private var themeManager: ThemeManager
-    
-    var body: some View {
-        Button(action: {
-            onTap()
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }) {
-            HStack {
-                Circle()
-                    .fill(themeColor)
-                    .frame(width: 24, height: 24)
-                    .overlay(
-                        Circle()
-                            .stroke(TrackRatTheme.Colors.border, lineWidth: 2)
-                    )
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(theme.displayName)
-                        .font(.body)
-                        .foregroundColor(TrackRatTheme.Colors.onSurface)
-                }
-                
-                Spacer()
-                
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(TrackRatTheme.Colors.accent)
-                }
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? TrackRatTheme.Colors.accent.opacity(0.2) : Color.clear)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    private var themeColor: Color {
-        switch theme {
-        case .blue: return Color(hex: "#0e5c8d")
-        case .black: return Color.black
-        }
-    }
-}
 
 struct ServerEnvironmentRow: View {
     let environment: ServerEnvironment

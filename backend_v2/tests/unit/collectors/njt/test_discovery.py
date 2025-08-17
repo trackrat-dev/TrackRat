@@ -185,7 +185,7 @@ class TestTrainDiscoveryCollector:
     async def test_collect_aggregates_all_train_ids(self, discovery_collector):
         """Test that collect method aggregates train IDs from all stations."""
         # Mock discover_station_trains to return different results for each station
-        # Need to include all discovery stations: NY, NP, PJ, TR, LB, PL, DN
+        # Need to include all discovery stations: NY, NP, TR, LB, PL, DN, JA, HB, RA
         station_results = {
             "NY": {
                 "trains_discovered": 3,
@@ -198,12 +198,6 @@ class TestTrainDiscoveryCollector:
                 "new_trains": 0,
                 "new_train_ids": [],
                 "all_train_ids": ["3737", "4501"],  # 3737 overlaps
-            },
-            "PJ": {
-                "trains_discovered": 1,
-                "new_trains": 1,
-                "new_train_ids": ["5201"],
-                "all_train_ids": ["5201"],
             },
             "TR": {
                 "trains_discovered": 0,
@@ -229,6 +223,24 @@ class TestTrainDiscoveryCollector:
                 "new_train_ids": [],
                 "all_train_ids": [],
             },
+            "JA": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "HB": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "RA": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
         }
 
         mock_session = AsyncMock()
@@ -244,16 +256,16 @@ class TestTrainDiscoveryCollector:
             result = await discovery_collector.collect(mock_session)
 
         # Verify aggregation
-        assert result["stations_processed"] == 7  # Default discovery stations
-        assert result["total_discovered"] == 6  # 3 + 2 + 1
-        assert result["total_new"] == 2  # 1 + 0 + 1
+        assert result["stations_processed"] == 9  # Updated discovery stations count
+        assert result["total_discovered"] == 5  # 3 + 2 (PJ removed)
+        assert result["total_new"] == 1  # 1 + 0 (PJ removed)
 
         # Verify station_results contains all station data
         assert "station_results" in result
-        assert len(result["station_results"]) == 7
+        assert len(result["station_results"]) == 9
 
         # Verify discover_station_trains was called for each discovery station
-        assert mock_discover.call_count == 7
+        assert mock_discover.call_count == 9
 
     @pytest.mark.asyncio
     async def test_process_discovered_trains_creates_journey_records(

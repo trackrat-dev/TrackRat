@@ -10,6 +10,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -35,8 +36,8 @@ class TrainJourney(Base):
     line_name = Column(String(100))
     line_color = Column(String(7))
     destination = Column(String(100), nullable=False)
-    origin_station_code = Column(String(2), nullable=False)
-    terminal_station_code = Column(String(2), nullable=False)
+    origin_station_code = Column(String(3), nullable=False)
+    terminal_station_code = Column(String(3), nullable=False)
     data_source = Column(String(10), nullable=False, default="NJT")
 
     # Discovery metadata
@@ -66,7 +67,7 @@ class TrainJourney(Base):
 
     # Discovery track information (temporary storage)
     discovery_track = Column(String(5))
-    discovery_station_code = Column(String(2))
+    discovery_station_code = Column(String(3))
 
     # Relationships
     stops: Mapped[list["JourneyStop"]] = relationship(
@@ -74,6 +75,24 @@ class TrainJourney(Base):
     )
     snapshots: Mapped[list["JourneySnapshot"]] = relationship(
         "JourneySnapshot", back_populates="journey", cascade="all, delete-orphan"
+    )
+    progress: Mapped["JourneyProgress"] = relationship(
+        "JourneyProgress",
+        back_populates="journey",
+        uselist=False,
+        primaryjoin="and_(TrainJourney.id==JourneyProgress.journey_id)",
+    )
+    segment_times: Mapped[list["SegmentTransitTime"]] = relationship(
+        "SegmentTransitTime", back_populates="journey", cascade="all, delete-orphan"
+    )
+    dwell_times: Mapped[list["StationDwellTime"]] = relationship(
+        "StationDwellTime", back_populates="journey", cascade="all, delete-orphan"
+    )
+    progress_snapshots: Mapped[list["JourneyProgress"]] = relationship(
+        "JourneyProgress",
+        back_populates="journey",
+        cascade="all, delete-orphan",
+        overlaps="progress",
     )
 
     __table_args__ = (
@@ -95,7 +114,7 @@ class JourneyStop(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
-    station_code = Column(String(2), nullable=False)
+    station_code = Column(String(3), nullable=False)
     station_name = Column(String(100), nullable=False)
     stop_sequence = Column(Integer, nullable=False)
 
@@ -182,7 +201,7 @@ class DiscoveryRun(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     run_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    station_code = Column(String(2), nullable=False)
+    station_code = Column(String(3), nullable=False)
     trains_discovered = Column(Integer)
     new_trains = Column(Integer)
     duration_ms = Column(Integer)
@@ -201,8 +220,8 @@ class LiveActivityToken(Base):
     push_token = Column(String, unique=True, nullable=False)  # APNS token
     activity_id = Column(String, nullable=False)  # iOS Activity ID
     train_number = Column(String(10), nullable=False)  # e.g., "A2205"
-    origin_code = Column(String(2), nullable=False)  # e.g., "NY"
-    destination_code = Column(String(2), nullable=False)  # e.g., "WAS"
+    origin_code = Column(String(3), nullable=False)  # e.g., "NY"
+    destination_code = Column(String(3), nullable=False)  # e.g., "WAS"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True))  # Auto-expire after journey
     is_active = Column(Boolean, default=True, nullable=False)
@@ -211,3 +230,128 @@ class LiveActivityToken(Base):
         Index("idx_active_tokens", "is_active", "train_number"),
         Index("idx_token_expiry", "expires_at"),
     )
+
+
+class SegmentTransitTime(Base):
+    """Track transit times between consecutive stations."""
+
+    __tablename__ = "segment_transit_times"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
+    from_station_code = Column(String(3), nullable=False)
+    to_station_code = Column(String(3), nullable=False)
+    data_source = Column(String(10), nullable=False)
+    line_code = Column(String(2))
+
+    # Timing data
+    scheduled_minutes = Column(Integer, nullable=False)
+    actual_minutes = Column(Integer, nullable=False)
+    delay_minutes = Column(Integer, nullable=False)
+
+    # Context for analysis
+    departure_time = Column(DateTime(timezone=True), nullable=False)
+    hour_of_day = Column(Integer, nullable=False)
+    day_of_week = Column(Integer, nullable=False)
+
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Relationships
+    journey: Mapped["TrainJourney"] = relationship(
+        "TrainJourney", back_populates="segment_times"
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_segment_lookup",
+            "from_station_code",
+            "to_station_code",
+            "data_source",
+            "departure_time",
+        ),
+        Index(
+            "idx_recent_segments", "from_station_code", "to_station_code", "created_at"
+        ),
+    )
+
+
+class StationDwellTime(Base):
+    """Track time spent at stations."""
+
+    __tablename__ = "station_dwell_times"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
+    station_code = Column(String(3), nullable=False)
+    data_source = Column(String(10), nullable=False)
+    line_code = Column(String(2))
+
+    # Timing data
+    scheduled_minutes = Column(Integer)  # Can be NULL for unscheduled stops
+    actual_minutes = Column(Integer, nullable=False)
+    excess_dwell_minutes = Column(Integer, nullable=False)
+
+    # Station type flags
+    is_origin = Column(Boolean, default=False, nullable=False)
+    is_terminal = Column(Boolean, default=False, nullable=False)
+
+    # Context
+    arrival_time = Column(DateTime(timezone=True))
+    departure_time = Column(DateTime(timezone=True), nullable=False)
+    hour_of_day = Column(Integer, nullable=False)
+    day_of_week = Column(Integer, nullable=False)
+
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Relationships
+    journey: Mapped["TrainJourney"] = relationship(
+        "TrainJourney", back_populates="dwell_times"
+    )
+
+    __table_args__ = (
+        Index("idx_station_dwell", "station_code", "data_source", "departure_time"),
+        Index("idx_recent_dwell", "station_code", "created_at"),
+    )
+
+
+class JourneyProgress(Base):
+    """Journey progress snapshots for real-time tracking."""
+
+    __tablename__ = "journey_progress"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
+    captured_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Current position
+    last_departed_station = Column(String(3))
+    next_station = Column(String(3))
+
+    # Progress metrics
+    stops_completed = Column(Integer, nullable=False)
+    stops_total = Column(Integer, nullable=False)
+    journey_percent = Column(Float, nullable=False)
+
+    # Delay tracking
+    initial_delay_minutes = Column(Integer, default=0, nullable=False)
+    cumulative_transit_delay = Column(Integer, default=0, nullable=False)
+    cumulative_dwell_delay = Column(Integer, default=0, nullable=False)
+    total_delay_minutes = Column(Integer, nullable=False)
+
+    # Predictions (when available)
+    predicted_arrival = Column(DateTime(timezone=True))
+    prediction_confidence = Column(Float)
+    prediction_based_on = Column(Text)  # JSON array of train_ids
+
+    # Relationships
+    journey: Mapped["TrainJourney"] = relationship(
+        "TrainJourney", back_populates="progress"
+    )
+
+    __table_args__ = (Index("idx_journey_progress", "journey_id", "captured_at"),)

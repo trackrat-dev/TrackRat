@@ -465,6 +465,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 }
 
+// MARK: - Map Display Mode
+enum MapDisplayMode: Equatable {
+    case overallCongestion
+    case journeyFocus(trainId: String, origin: String, destination: String, trainStops: [String])
+}
+
 // MARK: - App State
 @MainActor
 final class AppState: ObservableObject {
@@ -474,6 +480,10 @@ final class AppState: ObservableObject {
     @Published var departureStationCode: String?
     @Published var currentTrainId: String?
     @Published var navigationPath = NavigationPath()
+    @Published var selectedRoute: TripPair?  // Currently selected route for map highlighting
+    @Published var activeTrainRoute: TripPair?  // Route from active Live Activity (persistent blue line)
+    @Published var mapDisplayMode: MapDisplayMode = .overallCongestion
+    @Published var currentTrain: TrainV2?  // Currently selected train for journey focus
     
     private let apiService = APIService()
     private let storageService = StorageService()
@@ -481,8 +491,12 @@ final class AppState: ObservableObject {
     // Recent trips
     @Published var recentTrips: [TripPair] = []
     
+    // Favorite stations
+    @Published var favoriteStations: [FavoriteStation] = []
+    
     init() {
         loadRecentTrips()
+        loadFavoriteStations()
         
         // Migrate existing data
         storageService.migrateRecentDestinations()
@@ -496,6 +510,9 @@ final class AppState: ObservableObject {
         selectedDeparture = nil
         departureStationCode = nil
         currentTrainId = nil
+        selectedRoute = nil
+        mapDisplayMode = .overallCongestion
+        currentTrain = nil
     }
     
     // MARK: - Trip Management
@@ -535,6 +552,20 @@ final class AppState: ObservableObject {
     func reverseFavoriteDirection(_ trip: TripPair) {
         storageService.reverseFavoriteDirection(trip)
         loadRecentTrips()
+    }
+    
+    // MARK: - Favorite Stations
+    func loadFavoriteStations() {
+        favoriteStations = storageService.loadFavoriteStations()
+    }
+    
+    func toggleFavoriteStation(code: String, name: String) {
+        storageService.toggleFavoriteStation(code: code, name: name)
+        loadFavoriteStations()
+    }
+    
+    func isStationFavorited(code: String) -> Bool {
+        return storageService.isStationFavorited(code: code)
     }
     
 }

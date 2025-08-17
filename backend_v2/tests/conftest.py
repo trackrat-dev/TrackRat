@@ -19,8 +19,10 @@ from trackrat.models.database import Base
 from trackrat.collectors.njt.client import NJTransitClient
 
 
-# Test database URL
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Test database URL - use a separate test database
+TEST_DATABASE_URL = (
+    "postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb_test"
+)
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -67,17 +69,19 @@ async def db_engine(test_settings):
     """Create a test database engine."""
     engine = create_async_engine(
         TEST_DATABASE_URL,
-        connect_args={"check_same_thread": False},
         poolclass=None,
     )
 
     # Create tables
     async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
     # Clean up
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 
@@ -95,15 +99,33 @@ async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest.fixture
-def client(test_settings, db_session) -> TestClient:
+def client(test_settings) -> TestClient:
     """Create a test client with dependency overrides."""
     # Clear settings cache and override settings
     get_settings.cache_clear()
     app.dependency_overrides[get_settings] = lambda: test_settings
 
-    # Override database dependency
+    # Create a mock async db session with specific return values
+    from unittest.mock import AsyncMock, Mock
+
+    mock_db = AsyncMock()
+
+    # Mock the result object that SQLAlchemy returns
+    mock_result = Mock()
+    # Handle the full chain: result.scalars().unique().all()
+    mock_scalars = Mock()
+    mock_scalars.unique.return_value.all.return_value = []  # Empty list for no data
+    mock_scalars.all.return_value = []  # For direct .scalars().all() calls
+    mock_result.scalars.return_value = mock_scalars
+    mock_result.scalar.return_value = None
+
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    mock_db.scalar = AsyncMock(return_value=None)
+    mock_db.commit = AsyncMock()
+
+    # Override database dependency with async mock
     async def get_test_db():
-        yield db_session
+        yield mock_db
 
     app.dependency_overrides[get_db] = get_test_db
 
@@ -135,6 +157,94 @@ def client(test_settings, db_session) -> TestClient:
             yield client
 
     # Clean up dependency overrides and cache
+    app.dependency_overrides.clear()
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def sync_engine(test_settings):
+    """Create a synchronous database engine for e2e tests."""
+    from sqlalchemy import create_engine
+
+    # Convert async URL to sync URL
+    sync_url = TEST_DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    engine = create_engine(sync_url)
+
+    # Create tables
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+
+    yield engine
+
+    # Clean up
+    Base.metadata.drop_all(engine)
+    engine.dispose()
+
+
+@pytest.fixture
+def sync_session(sync_engine):
+    """Create a synchronous database session for e2e tests."""
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=sync_engine)
+    session = Session()
+
+    yield session
+
+    session.close()
+
+
+@pytest.fixture
+def e2e_client(test_settings, sync_engine):
+    """Create a test client for e2e tests that uses real database but sync operations."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    # Clear settings cache and override settings
+    get_settings.cache_clear()
+    app.dependency_overrides[get_settings] = lambda: test_settings
+
+    # Create async engine for the app to use
+    async_engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
+    sessionmaker = async_sessionmaker(
+        async_engine, expire_on_commit=False, class_=AsyncSession
+    )
+
+    # Override database dependency with real async session maker
+    async def get_e2e_test_db():
+        async with sessionmaker() as session:
+            yield session
+
+    app.dependency_overrides[get_db] = get_e2e_test_db
+
+    # Disable scheduler for tests
+    with (
+        patch("trackrat.main.get_scheduler") as mock_scheduler,
+        patch("trackrat.api.health.get_scheduler") as mock_health_scheduler,
+        patch("trackrat.api.trains.NJTransitClient") as mock_njt_client,
+    ):
+        scheduler = Mock()
+        scheduler.start = AsyncMock()
+        scheduler.stop = AsyncMock()
+        scheduler.get_status = Mock(
+            return_value={"running": True, "jobs_count": 0, "active_tasks": []}
+        )
+        scheduler.scheduler = Mock()
+        scheduler.scheduler.running = True
+
+        mock_scheduler.return_value = scheduler
+        mock_health_scheduler.return_value = scheduler
+
+        # Mock NJTransit client
+        mock_client = AsyncMock(spec=NJTransitClient)
+        mock_client.close = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_njt_client.return_value = mock_client
+
+        with TestClient(app) as client:
+            yield client
+
+    # Clean up
     app.dependency_overrides.clear()
     get_settings.cache_clear()
 

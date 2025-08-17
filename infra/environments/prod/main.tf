@@ -73,10 +73,10 @@ module "trackrat_api_service" {
     APNS_LIVE_ACTIVITY_BUNDLE_ID             = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
     MODEL_PATH                               = "/app/models"
     TRACKRAT_SCHEDULER_MODE                  = "cloud_native"
-    GOOGLE_CLOUD_PROJECT                     = var.project_id       # Automatically enable GCP Cloud Trace and Metrics
-    OTEL_SAMPLE_RATE                         = "0.05"               # Lower sampling for production cost optimization
-    OTEL_SERVICE_NAME                        = "trackrat-api-prod"  # Environment-specific service name
-    GCP_METRICS_EXPORT_INTERVAL              = "60"                 # Export metrics to GCP every 60 seconds
+    GOOGLE_CLOUD_PROJECT                     = var.project_id      # Automatically enable GCP Cloud Trace and Metrics
+    OTEL_SAMPLE_RATE                         = "0.05"              # Lower sampling for production cost optimization
+    OTEL_SERVICE_NAME                        = "trackrat-api-prod" # Environment-specific service name
+    GCP_METRICS_EXPORT_INTERVAL              = "60"                # Export metrics to GCP every 60 seconds
     TRACKRAT_GCS_BACKUP_BUCKET               = "trackrat-prod-periodic-db-backup"
     TRACKRAT_DISCOVERY_INTERVAL_MINUTES      = "20"
     TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES = "30"

@@ -13,7 +13,7 @@ from prometheus_client import make_asgi_app
 from structlog import get_logger
 
 from trackrat.api import health, live_activities, routes, trains
-from trackrat.db.database import init_database_with_backup, shutdown_database
+from trackrat.db.database import init_database, shutdown_database
 from trackrat.db.engine import close_engine
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.scheduler import get_scheduler
@@ -34,9 +34,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "starting_trackrat_v2", environment=settings.environment, debug=settings.debug
     )
 
-    # Initialize database with backup support
+    # Initialize PostgreSQL database
     logger.info("starting_database_initialization")
-    await init_database_with_backup()
+    await init_database()
     logger.info("database_initialization_complete")
 
     # Initialize APNS service

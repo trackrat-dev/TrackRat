@@ -28,7 +28,15 @@ output "db_backup_bucket_name" {
   value       = google_storage_bucket.db_backup.name
 }
 
-# Database URL secret name is now output by the database module
+output "database_url_secret_name" {
+  description = "Name of the database URL secret"
+  value       = module.database.database_url_secret_name
+}
+
+output "vpc_connector_id" {
+  description = "ID of the VPC connector for Cloud Run"
+  value       = module.vpc_connector.id
+}
 
 output "njt_username_secret_name" {
   description = "Name of the NJ Transit username secret"

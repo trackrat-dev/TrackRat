@@ -1,6 +1,6 @@
 """add_updated_times_and_raw_status_fields
 
-Revision ID: add_updated_times_and_raw_status_fields
+Revision ID: updated_times_raw_status
 Revises: 900093cd1ced
 Create Date: 2025-07-16 12:00:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "add_updated_times_and_raw_status_fields"
+revision = "updated_times_raw_status"
 down_revision = "900093cd1ced"
 branch_labels = None
 depends_on = None

@@ -115,7 +115,7 @@ resource "google_secret_manager_secret" "database_url" {
 
 resource "google_secret_manager_secret_version" "database_url_version" {
   secret      = google_secret_manager_secret.database_url.id
-  secret_data = "postgresql://${var.database_user_name}:${random_password.database_user_password.result}@${google_sql_database_instance.default.private_ip_address}:5432/${var.database_name}"
+  secret_data = "postgresql+asyncpg://${var.database_user_name}:${random_password.database_user_password.result}@${google_sql_database_instance.default.private_ip_address}:5432/${var.database_name}"
 }
 
 # Create a user for the database

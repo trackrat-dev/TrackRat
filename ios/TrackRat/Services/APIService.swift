@@ -402,6 +402,12 @@ final class APIService: ObservableObject {
         )
     }
     
+    // MARK: - Congestion Data
+    
+    func fetchCongestionData(timeWindowHours: Int = 6) async throws -> CongestionMapResponse {
+        return try await fetchCongestionData(timeWindowHours: timeWindowHours, maxPerSegment: 100, dataSource: nil)
+    }
+    
     // MARK: - Push Notification Registration
     
     /// Register device token for push notifications
@@ -590,6 +596,99 @@ final class APIService: ObservableObject {
             return response
         } catch {
             print("🔴 V2 DECODING ERROR (fetchOccupiedTracks for station: \(stationCode)): \(error)")
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+            }
+            throw error
+        }
+    }
+    
+    // MARK: - Congestion Data
+    
+    func fetchCongestionData(timeWindowHours: Int = 6, maxPerSegment: Int = 100, dataSource: String? = nil) async throws -> CongestionMapResponse {
+        var components = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
+        components.queryItems = [
+            URLQueryItem(name: "time_window_hours", value: String(timeWindowHours)),
+            URLQueryItem(name: "max_per_segment", value: String(maxPerSegment))
+        ]
+        
+        if let dataSource = dataSource {
+            components.queryItems?.append(URLQueryItem(name: "data_source", value: dataSource))
+        }
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        let (data, _) = try await session.data(from: url)
+        
+        do {
+            let response = try decoder.decode(CongestionMapResponse.self, from: data)
+            return response
+        } catch {
+            print("🔴 DECODING ERROR (fetchCongestionData): \(error)")
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+            }
+            throw error
+        }
+    }
+    
+    func fetchSegmentTrainDetails(
+        fromStation: String,
+        toStation: String,
+        dataSource: String? = nil,
+        startTime: Date? = nil,
+        endTime: Date? = nil,
+        limit: Int = 50,
+        status: String? = nil
+    ) async throws -> SegmentTrainDetailsResponse {
+        var components = URLComponents(string: "\(baseURL)/v2/routes/segments/\(fromStation)/\(toStation)/trains")!
+        var queryItems: [URLQueryItem] = []
+        
+        if let dataSource = dataSource {
+            queryItems.append(URLQueryItem(name: "data_source", value: dataSource))
+        }
+        
+        if let startTime = startTime {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            queryItems.append(URLQueryItem(name: "start_time", value: formatter.string(from: startTime)))
+        }
+        
+        if let endTime = endTime {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            queryItems.append(URLQueryItem(name: "end_time", value: formatter.string(from: endTime)))
+        }
+        
+        queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+        
+        if let status = status {
+            queryItems.append(URLQueryItem(name: "status", value: status))
+        }
+        
+        components.queryItems = queryItems.isEmpty ? nil : queryItems
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        let (data, response) = try await session.data(from: url)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            if httpResponse.statusCode == 404 {
+                throw APIError.noData
+            } else if httpResponse.statusCode != 200 {
+                throw APIError.invalidParameters
+            }
+        }
+        
+        do {
+            let response = try decoder.decode(SegmentTrainDetailsResponse.self, from: data)
+            return response
+        } catch {
+            print("🔴 DECODING ERROR (fetchSegmentTrainDetails): \(error)")
             if let jsonString = String(data: data, encoding: .utf8) {
                 print("🔴 RAW DATA: \(jsonString.prefix(500))")
             }

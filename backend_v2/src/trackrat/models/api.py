@@ -109,6 +109,10 @@ class TrainDeparture(BaseModel):
     is_cancelled: bool = Field(
         default=False, description="Whether the train is cancelled"
     )
+    # Progress and prediction fields
+    progress: JourneyProgress | None = None
+    predicted_arrival: datetime | None = None
+    arrival_confidence: float | None = Field(None, ge=0.0, le=1.0)
 
 
 class DeparturesResponse(BaseModel):
@@ -182,6 +186,10 @@ class TrainDetails(BaseModel):
     is_completed: bool = Field(
         default=False, description="Whether the train has completed its journey"
     )
+    # Progress and prediction fields
+    progress: JourneyProgress | None = None
+    predicted_arrival: datetime | None = None
+    arrival_confidence: float | None = Field(None, ge=0.0, le=1.0)
 
     @field_serializer("journey_date")
     def serialize_journey_date(self, journey_date: date) -> str:
@@ -389,3 +397,135 @@ class RouteHistoryResponse(BaseModel):
     route: HistoricalRouteInfo
     aggregate_stats: AggregateStats
     highlighted_train: HighlightedTrain | None = None
+
+
+# Congestion API Models
+
+
+class TrainLocationData(BaseModel):
+    """Current train location data for map display."""
+
+    train_id: str
+    line: str
+    data_source: Literal["NJT", "AMTRAK"]
+
+    # GPS coordinates (Amtrak only)
+    lat: float | None = None
+    lon: float | None = None
+
+    # Station-based position (NJT and fallback for Amtrak)
+    last_departed_station: str | None = None
+    at_station: str | None = None
+    next_station: str | None = None
+    between_stations: bool = False
+
+    # Progress tracking
+    journey_percent: float | None = Field(None, ge=0.0, le=100.0)
+
+    # Movement data (Amtrak only)
+    velocity: float | None = None
+    heading: str | None = None
+
+
+class IndividualJourneySegment(BaseModel):
+    """Individual journey segment data for visualization."""
+
+    journey_id: str
+    train_id: str
+    from_station: str
+    to_station: str
+    from_station_name: str
+    to_station_name: str
+    data_source: str
+    scheduled_departure: datetime
+    actual_departure: datetime
+    scheduled_arrival: datetime
+    actual_arrival: datetime
+    scheduled_minutes: float = Field(..., ge=0.0)
+    actual_minutes: float = Field(..., ge=0.0)
+    delay_minutes: float
+    congestion_factor: float = Field(..., ge=0.0)
+    congestion_level: Literal["normal", "moderate", "heavy", "severe"]
+    is_cancelled: bool
+    journey_date: date
+
+
+class SegmentCongestion(BaseModel):
+    """Aggregated congestion data for a route segment."""
+
+    from_station: str
+    to_station: str
+    from_station_name: str
+    to_station_name: str
+    data_source: str
+    congestion_level: Literal["normal", "moderate", "heavy", "severe"]
+    congestion_factor: float = Field(..., ge=0.0)
+    average_delay_minutes: float
+    sample_count: int = Field(..., ge=0)
+    baseline_minutes: float = Field(..., ge=0.0)
+    current_average_minutes: float = Field(..., ge=0.0)
+    cancellation_count: int = Field(default=0, ge=0)
+    cancellation_rate: float = Field(default=0.0, ge=0.0, le=100.0)
+
+
+class CongestionMapResponse(BaseModel):
+    """Response for congestion map endpoint."""
+
+    individual_segments: list[IndividualJourneySegment]
+    aggregated_segments: list[SegmentCongestion]
+    train_positions: list[TrainLocationData] = Field(default_factory=list)
+    generated_at: datetime
+    time_window_hours: int
+    max_per_segment: int = Field(default=100, ge=1, le=500)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+# Segment Train Details API Models
+
+
+class SegmentTrainDetail(BaseModel):
+    """Individual train detail for a segment."""
+
+    train_id: str
+    line: str
+    scheduled_departure: datetime
+    actual_departure: datetime
+    scheduled_arrival: datetime
+    actual_arrival: datetime
+    departure_delay_minutes: int
+    arrival_delay_minutes: int
+    congestion_factor: float = Field(..., ge=0.0)
+    delay_category: Literal[
+        "on_time", "slight_delay", "delayed", "significantly_delayed"
+    ]
+    data_source: str
+
+
+class SegmentTrainDetailsResponse(BaseModel):
+    """Response for segment train details endpoint."""
+
+    segment: dict[str, str] = Field(
+        ...,
+        examples=[
+            {
+                "from_station": "NY",
+                "to_station": "NP",
+                "from_station_name": "New York Penn Station",
+                "to_station_name": "Newark Penn Station",
+            }
+        ],
+    )
+    trains: list[SegmentTrainDetail]
+    summary: dict[str, Any] = Field(
+        ...,
+        examples=[
+            {
+                "total_trains": 127,
+                "returned_trains": 50,
+                "average_departure_delay": 2.8,
+                "average_arrival_delay": 3.2,
+                "average_congestion_factor": 1.15,
+                "on_time_percentage": 68.5,
+            }
+        ],
+    )

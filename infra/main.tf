@@ -116,3 +116,30 @@ resource "google_storage_bucket" "db_backup" {
 
   depends_on = [module.apis]
 }
+
+# Create VPC Connector for Cloud Run private networking
+module "vpc_connector" {
+  source        = "./modules/vpc-connector"
+  name          = "${var.app_name}-${var.environment}-vpc"
+  region        = var.region
+  network_name  = module.vpc.network_name
+  ip_cidr_range = var.vpc_connector_cidr
+
+  depends_on = [module.vpc]
+}
+
+# Create Cloud SQL PostgreSQL database
+module "database" {
+  source                        = "./modules/database"
+  project_id                    = var.project_id
+  region                        = var.region
+  instance_name                 = "${var.app_name}-${var.environment}-db"
+  database_version              = "POSTGRES_17"
+  instance_tier                 = "db-g1-small"
+  network_self_link             = module.vpc.network_self_link
+  service_networking_connection = module.vpc.service_networking_connection
+  critical_alert_email          = var.critical_alert_email
+  warning_alert_email           = var.warning_alert_email
+
+  depends_on = [module.vpc]
+}

@@ -49,9 +49,12 @@ output "trackrat_api_custom_domain_mapping_status" {
 }
 
 
-# Database outputs removed - using SQLite in backend_v2
+output "database_url_secret_name" {
+  description = "Name of the database URL secret in Secret Manager"
+  value       = module.infrastructure.database_url_secret_name
+}
 
 output "app_secrets_name" {
-  description = "Name of the main application secrets"
+  description = "Name of the main application secrets"  
   value       = "trackrat-staging-secrets"
 }

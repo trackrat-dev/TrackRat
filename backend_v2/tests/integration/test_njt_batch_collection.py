@@ -23,7 +23,7 @@ def mock_settings():
         njt_api_url="https://test.api.com",
         njt_api_token="test_token",
         discovery_interval_minutes=60,
-        database_url="sqlite:///test_njt_batch.db",
+        database_url="postgresql://trackratuser:password@localhost:5432/trackratdb_test",
     )
 
 

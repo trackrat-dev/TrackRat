@@ -1,5 +1,130 @@
 #!/bin/bash
 #
+# TrackRat V2 Backend Startup Script
+# Starts PostgreSQL (if needed) and the TrackRat backend server
+
+# Function to check PostgreSQL availability
+check_postgresql() {
+    echo "🔍 Checking PostgreSQL connection..."
+    
+    # Try to connect to PostgreSQL using the configured database URL
+    if [ -n "$TRACKRAT_DATABASE_URL" ]; then
+        # Extract connection details from the URL for testing
+        # This is a simple check - the app will do full validation
+        if poetry run python -c "
+import asyncio
+import asyncpg
+import os
+from urllib.parse import urlparse
+
+async def test_connection():
+    try:
+        # Parse the database URL
+        db_url = os.getenv('TRACKRAT_DATABASE_URL', '')
+        if not db_url.startswith('postgresql'):
+            print('❌ TRACKRAT_DATABASE_URL must be a PostgreSQL URL')
+            exit(1)
+            
+        # Convert asyncpg URL to basic postgres URL for connection test
+        url = db_url.replace('postgresql+asyncpg://', 'postgresql://')
+        parsed = urlparse(url)
+        
+        # Test connection
+        conn = await asyncpg.connect(
+            host=parsed.hostname or 'localhost',
+            port=parsed.port or 5433,
+            user=parsed.username,
+            password=parsed.password,
+            database=parsed.path.lstrip('/') if parsed.path else 'postgres'
+        )
+        await conn.execute('SELECT 1')
+        await conn.close()
+        print('✅ PostgreSQL connection successful')
+        
+    except Exception as e:
+        print(f'❌ PostgreSQL connection failed: {e}')
+        exit(1)
+
+asyncio.run(test_connection())
+" 2>/dev/null; then
+            return 0
+        else
+            return 1
+        fi
+    else
+        echo "❌ TRACKRAT_DATABASE_URL not set"
+        return 1
+    fi
+}
+
+# Function to start local PostgreSQL (if needed)
+start_local_postgresql() {
+    echo "🐘 Starting local PostgreSQL..."
+    
+    # Check if Docker is available
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "❌ Docker not found. Please install Docker or set up PostgreSQL manually."
+        exit 1
+    fi
+    
+    # Check if PostgreSQL container is already running
+    if docker ps --format "table {{.Names}}" | grep -q "trackrat-postgres"; then
+        echo "✅ PostgreSQL container already running"
+        return 0
+    fi
+    
+    # Remove any existing stopped container
+    if docker ps -a --format "table {{.Names}}" | grep -q "trackrat-postgres"; then
+        echo "🗑️  Removing existing PostgreSQL container..."
+        docker rm trackrat-postgres >/dev/null 2>&1
+    fi
+    
+    # Start PostgreSQL container with default postgres user on port 5433 to avoid conflicts
+    echo "🚀 Starting PostgreSQL container on port 5433..."
+    docker run -d \
+        --name trackrat-postgres \
+        -e POSTGRES_DB=trackratdb \
+        -e POSTGRES_PASSWORD=password \
+        -p 5433:5432 \
+        postgres:15
+    
+    # Wait for PostgreSQL to be ready
+    echo "⏳ Waiting for PostgreSQL to be ready..."
+    for i in {1..30}; do
+        if docker exec trackrat-postgres pg_isready -U postgres -d trackratdb >/dev/null 2>&1; then
+            echo "✅ PostgreSQL is ready"
+            
+            # Create the trackratuser if it doesn't exist
+            echo "👤 Creating trackratuser..."
+            docker exec trackrat-postgres psql -U postgres -d trackratdb -c "
+                DO \$\$
+                BEGIN
+                    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'trackratuser') THEN
+                        CREATE USER trackratuser WITH PASSWORD 'password';
+                        GRANT ALL PRIVILEGES ON DATABASE trackratdb TO trackratuser;
+                        GRANT ALL PRIVILEGES ON SCHEMA public TO trackratuser;
+                        ALTER USER trackratuser CREATEDB;
+                    END IF;
+                END
+                \$\$;
+            " >/dev/null 2>&1
+            
+            # Verify the user can connect
+            if docker exec trackrat-postgres psql -U trackratuser -d trackratdb -c "SELECT 1;" >/dev/null 2>&1; then
+                echo "✅ Database user created and verified"
+                return 0
+            else
+                echo "❌ User verification failed"
+                return 1
+            fi
+        fi
+        echo -n "."
+        sleep 1
+    done
+    
+    echo "❌ PostgreSQL failed to start within 30 seconds"
+    exit 1
+}
 
 # Function to validate APNS configuration
 validate_apns_config() {
@@ -104,6 +229,27 @@ except Exception as e:
     fi
 }
 
+echo "🚀 TrackRat V2 Backend Startup"
+echo "================================"
+
+# Set database URL for local development (if not already set)
+if [ -z "$TRACKRAT_DATABASE_URL" ]; then
+    echo "📝 Setting local PostgreSQL database URL..."
+    export TRACKRAT_DATABASE_URL="postgresql+asyncpg://trackratuser:password@127.0.0.1:5433/trackratdb"
+fi
+
+# Check PostgreSQL connection, start local container if needed
+if ! check_postgresql; then
+    echo "🐘 PostgreSQL not available, attempting to start local container..."
+    start_local_postgresql
+    
+    # Recheck connection after starting container
+    if ! check_postgresql; then
+        echo "❌ FATAL: Could not establish PostgreSQL connection"
+        exit 1
+    fi
+fi
+
 # Set APNS environment variables (without TRACKRAT_ prefix for compatibility with V1)
 export APNS_TEAM_ID="D5RZZ55J9R"
 export APNS_KEY_ID="4WC3F645FR"
@@ -117,9 +263,13 @@ if ! validate_apns_config; then
     exit 1
 fi
 
-# Run database migrations
-#poetry run alembic upgrade head
+echo "✅ All prerequisites validated successfully!"
+echo ""
+echo "🔗 Database: $TRACKRAT_DATABASE_URL"
+echo "📱 APNS Environment: $APNS_ENVIRONMENT"
+echo ""
 
-# Start the application (scheduler starts automatically)
+# Start the application (database migrations and scheduler start automatically)
 export TRACKRAT_LOG_LEVEL=INFO
+echo "🎯 Starting TrackRat V2 Backend..."
 poetry run uvicorn trackrat.main:app --reload

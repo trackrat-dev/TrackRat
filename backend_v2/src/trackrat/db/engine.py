@@ -1,7 +1,7 @@
 """
 Database connection management for TrackRat V2.
 
-Uses SQLite with aiosqlite for simple, zero-configuration database access.
+Uses PostgreSQL with asyncpg for scalable, concurrent database access.
 """
 
 import asyncio
@@ -10,14 +10,13 @@ from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from typing import Any, TypeVar
 
-from sqlalchemy import event, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.pool import StaticPool
 from structlog import get_logger
 
 from trackrat.settings import get_settings
@@ -32,24 +31,32 @@ _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
-def _is_concurrency_error(error: Exception) -> bool:
-    """Check if an error is related to SQLite concurrency issues."""
+def _is_postgresql_concurrency_error(error: Exception) -> bool:
+    """Check if an error is a PostgreSQL concurrency issue that should be retried."""
     error_msg = str(error).lower()
-    return any(
-        msg in error_msg
-        for msg in [
-            "database is locked",
-            "database is busy",
-            "resource temporarily unavailable",
-            "could not obtain lock",
-            "unique constraint failed",
-            "cannot commit transaction",
-        ]
-    )
+
+    # PostgreSQL-specific error conditions that warrant retry
+    postgresql_retry_conditions = [
+        # Connection issues
+        "connection reset by peer",
+        "server closed the connection unexpectedly",
+        "connection to server was lost",
+        "could not receive data from server",
+        # Concurrency/locking issues
+        "deadlock detected",
+        "could not serialize access due to concurrent update",
+        "could not serialize access due to read/write dependencies",
+        # Temporary resource issues
+        "too many connections",
+        "connection pool exhausted",
+        "temporary failure in name resolution",
+    ]
+
+    return any(condition in error_msg for condition in postgresql_retry_conditions)
 
 
 def with_db_retry(max_attempts: int = 3, base_delay: float = 0.5) -> Callable[[F], F]:
-    """Decorator for database operations with retry logic for concurrency errors."""
+    """Decorator for PostgreSQL operations with retry logic for transient errors."""
 
     def decorator(func: F) -> F:
         @functools.wraps(func)
@@ -58,11 +65,14 @@ def with_db_retry(max_attempts: int = 3, base_delay: float = 0.5) -> Callable[[F
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
-                    if _is_concurrency_error(e) and attempt < max_attempts - 1:
+                    if (
+                        _is_postgresql_concurrency_error(e)
+                        and attempt < max_attempts - 1
+                    ):
                         # Wait with exponential backoff
                         wait_time = base_delay * (2**attempt)
                         logger.debug(
-                            "database_retry",
+                            "postgresql_retry",
                             function=func.__name__,
                             attempt=attempt + 1,
                             wait_time=wait_time,
@@ -71,7 +81,7 @@ def with_db_retry(max_attempts: int = 3, base_delay: float = 0.5) -> Callable[[F
                         await asyncio.sleep(wait_time)
                         continue
                     else:
-                        # Re-raise if not a concurrency error or max attempts reached
+                        # Re-raise if not a PostgreSQL retry condition or max attempts reached
                         raise
             return None  # This shouldn't be reached
 
@@ -87,37 +97,25 @@ def get_engine() -> AsyncEngine:
         settings = get_settings()
         db_url = str(settings.database_url)
 
-        # SQLite configuration for better concurrency
-        connect_args = {
-            "check_same_thread": False,
-            "timeout": 30,  # 30 second timeout for busy database
-        }
+        # PostgreSQL configuration for optimal performance
         engine_kwargs = {
-            "connect_args": connect_args,
-            "poolclass": StaticPool,
+            "pool_size": 10,  # Connection pool size
+            "max_overflow": 20,  # Additional connections beyond pool_size
+            "pool_timeout": 30,  # Timeout when getting connection from pool
+            "pool_recycle": 3600,  # Recycle connections after 1 hour
+            "pool_pre_ping": True,  # Validate connections before use
             "echo": settings.enable_sql_logging,
+            "connect_args": {
+                "command_timeout": 60,  # Query timeout in seconds
+                "server_settings": {
+                    "application_name": "trackrat-v2",  # For monitoring
+                    "jit": "off",  # Disable JIT for faster connections
+                    "timezone": "America/New_York",  # Match app timezone
+                },
+            },
         }
 
         _engine = create_async_engine(db_url, **engine_kwargs)
-
-        # Enable SQLite optimizations on new connections
-        @event.listens_for(_engine.sync_engine, "connect")
-        def enable_sqlite_optimizations(
-            dbapi_connection: Any, connection_record: Any
-        ) -> None:
-            """Enable WAL mode and other SQLite optimizations."""
-            cursor = dbapi_connection.cursor()
-
-            # Enable WAL mode for better concurrent performance
-            cursor.execute("PRAGMA journal_mode=WAL")
-
-            # Performance optimizations
-            cursor.execute("PRAGMA synchronous=NORMAL")  # Faster than FULL, still safe
-            cursor.execute("PRAGMA cache_size=10000")  # 10MB cache (negative = KB)
-            cursor.execute("PRAGMA temp_store=MEMORY")  # Store temp tables in memory
-            cursor.execute("PRAGMA mmap_size=268435456")  # 256MB memory-mapped I/O
-
-            cursor.close()
 
     return _engine
 
@@ -165,21 +163,21 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def health_check() -> dict[str, str]:
-    """Database health check with SQLite optimization status."""
+    """Database health check with PostgreSQL connection status."""
     try:
         async with get_session() as session:
             # Test basic connectivity
             result = await session.execute(text("SELECT 1"))
             result.fetchone()
 
-            # Check if WAL mode is enabled
-            wal_result = await session.execute(text("PRAGMA journal_mode"))
-            journal_mode = wal_result.scalar()
+            # Get PostgreSQL version
+            version_result = await session.execute(text("SELECT version()"))
+            version = version_result.scalar()
 
             return {
                 "status": "healthy",
-                "journal_mode": journal_mode or "unknown",
-                "wal_enabled": str(journal_mode == "wal").lower(),
+                "database_type": "postgresql",
+                "version": version or "unknown",
             }
     except Exception as e:
         return {"status": "unhealthy", "error": str(e), "error_type": type(e).__name__}

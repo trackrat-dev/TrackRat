@@ -36,8 +36,21 @@ enum ServerEnvironment: String, CaseIterable, Codable {
     }
 }
 
+// MARK: - Favorite Station Model
+struct FavoriteStation: Codable, Identifiable, Equatable {
+    let id: String  // Station code (e.g., "NY", "TR")
+    let name: String  // Station name
+    let lastUsed: Date
+    
+    init(code: String, name: String, lastUsed: Date = Date()) {
+        self.id = code
+        self.name = name
+        self.lastUsed = lastUsed
+    }
+}
+
 // MARK: - Trip Pair Model
-struct TripPair: Codable, Identifiable {
+struct TripPair: Codable, Identifiable, Equatable {
     let id: String  // Normalized: "MP-NY" (alphabetical order)
     private let stationA: (code: String, name: String)  // First station alphabetically
     private let stationB: (code: String, name: String)  // Second station alphabetically
@@ -120,14 +133,23 @@ struct TripPair: Codable, Identifiable {
         self.lastUsed = lastUsed
         self.isFavorite = isFavorite
     }
+    
+    // MARK: - Equatable
+    static func == (lhs: TripPair, rhs: TripPair) -> Bool {
+        return lhs.id == rhs.id && 
+               lhs.preferredDirection == rhs.preferredDirection &&
+               lhs.isFavorite == rhs.isFavorite
+    }
 }
 
 
 // MARK: - Storage Service
 final class StorageService {
     private let recentTripsKey = "trackrat.recentTrips"
+    private let favoriteStationsKey = "trackrat.favoriteStations"
     private let serverEnvironmentKey = "trackrat.serverEnvironment"
     private let maxRecentTrips = 10
+    private let maxFavoriteStations = 10
     
     private let userDefaults = UserDefaults.standard
     
@@ -233,6 +255,50 @@ final class StorageService {
     
     func clearRecentTrips() {
         userDefaults.removeObject(forKey: recentTripsKey)
+    }
+    
+    // MARK: - Favorite Stations
+    func loadFavoriteStations() -> [FavoriteStation] {
+        guard let data = userDefaults.data(forKey: favoriteStationsKey),
+              let stations = try? JSONDecoder().decode([FavoriteStation].self, from: data) else {
+            // No saved favorites - return NYC as default
+            return [FavoriteStation(code: "NY", name: "New York Penn Station")]
+        }
+        
+        var favoritesList = stations.sorted { $0.lastUsed > $1.lastUsed }
+        
+        // Always ensure NYC is in favorites if not already present
+        if !favoritesList.contains(where: { $0.id == "NY" }) {
+            favoritesList.append(FavoriteStation(code: "NY", name: "New York Penn Station"))
+        }
+        
+        return favoritesList
+    }
+    
+    func toggleFavoriteStation(code: String, name: String) {
+        var stations = loadFavoriteStations()
+        
+        if let index = stations.firstIndex(where: { $0.id == code }) {
+            // Remove from favorites
+            stations.remove(at: index)
+        } else {
+            // Add to favorites
+            let newStation = FavoriteStation(code: code, name: name)
+            stations.insert(newStation, at: 0)
+            
+            // Keep only max items
+            if stations.count > maxFavoriteStations {
+                stations = Array(stations.prefix(maxFavoriteStations))
+            }
+        }
+        
+        if let data = try? JSONEncoder().encode(stations) {
+            userDefaults.set(data, forKey: favoriteStationsKey)
+        }
+    }
+    
+    func isStationFavorited(code: String) -> Bool {
+        return loadFavoriteStations().contains { $0.id == code }
     }
     
     

@@ -85,37 +85,52 @@ struct DeparturePickerView: View {
                     
                     // Search results - take full page when searching
                     if isSearching {
-                        ScrollView {
-                            VStack(spacing: 8) {
+                        VStack(spacing: 8) {
                                 ForEach(searchResults, id: \.self) { station in
-                                    Button {
+                                    HStack {
+                                        // Main station button
+                                        Button {
+                                            if let code = Stations.getStationCode(station) {
+                                                selectDeparture(name: station, code: code)
+                                            }
+                                        } label: {
+                                            HStack {
+                                                Text(station)
+                                                    .font(.body)
+                                                    .foregroundColor(.white)
+                                                Spacer()
+                                                Image(systemName: "chevron.right")
+                                                    .font(.system(size: 14, weight: .semibold))
+                                                    .foregroundColor(.white.opacity(0.6))
+                                            }
+                                        }
+                                        
+                                        // Heart button - separate from main button
                                         if let code = Stations.getStationCode(station) {
-                                            selectDeparture(name: station, code: code)
+                                            Button {
+                                                withAnimation(.easeInOut(duration: 0.2)) {
+                                                    appState.toggleFavoriteStation(code: code, name: station)
+                                                }
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            } label: {
+                                                Image(systemName: appState.isStationFavorited(code: code) ? "heart.fill" : "heart")
+                                                    .font(.system(size: 16))
+                                                    .foregroundColor(.orange)
+                                            }
+                                            .padding(.leading, 8)
                                         }
-                                    } label: {
-                                        HStack {
-                                            Text(station)
-                                                .font(.body)
-                                                .foregroundColor(.white)
-                                            Spacer()
-                                            Image(systemName: "chevron.right")
-                                                .font(.system(size: 14, weight: .semibold))
-                                                .foregroundColor(.white.opacity(0.6))
-                                        }
-                                        .padding()
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .fill(.white.opacity(0.15))
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 12)
-                                                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                                                )
-                                        )
                                     }
+                                    .padding()
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(.white.opacity(0.15))
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(.white.opacity(0.2), lineWidth: 1)
+                                            )
+                                    )
                                     .padding(.horizontal, 24)
                                 }
-                            }
-                            .padding(.bottom, 50) // Add bottom padding for better scrolling
                         }
                     } else {
                         // Popular stations - only show when not searching
@@ -173,28 +188,43 @@ struct DepartureButton: View {
     let name: String
     let code: String
     let onTap: () -> Void
+    @EnvironmentObject private var appState: AppState
     
     var body: some View {
-        Button {
-            onTap()
-        } label: {
-            HStack {
-                Text(Stations.displayName(for: name))
-                    .font(.headline)
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.white.opacity(0.7))
-                    .font(.caption)
+        HStack {
+            // Main station button
+            Button {
+                onTap()
+            } label: {
+                HStack {
+                    Text(Stations.displayName(for: name))
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(.white.opacity(0.7))
+                        .font(.caption)
+                }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(.white.opacity(0.2))
-            .cornerRadius(12)
+            
+            // Heart button - separate from main button
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    appState.toggleFavoriteStation(code: code, name: name)
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                Image(systemName: appState.isStationFavorited(code: code) ? "heart.fill" : "heart")
+                    .font(.system(size: 18))
+                    .foregroundColor(.orange)
+            }
+            .padding(.leading, 8)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background(.white.opacity(0.2))
+        .cornerRadius(12)
     }
 }
 

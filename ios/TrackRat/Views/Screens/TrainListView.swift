@@ -12,17 +12,6 @@ struct TrainListView: View {
     @State private var departureStationCode: String
     @State private var departureName: String
     
-    private var isCurrentRouteFavorited: Bool {
-        guard let destinationCode = Stations.getStationCode(destination) else {
-            return false
-        }
-        
-        return appState.getFavoriteTrips().contains { trip in
-            // Check both directions since routes are stored bidirectionally
-            (trip.departureCode == departureStationCode && trip.destinationCode == destinationCode) ||
-            (trip.departureCode == destinationCode && trip.destinationCode == departureStationCode)
-        }
-    }
     
     init(destination: String) {
         self._destination = State(initialValue: destination)
@@ -62,6 +51,20 @@ struct TrainListView: View {
                                     departureStationCode: departureStationCode,
                                     onTap: {
                                         appState.currentTrainId = train.id
+                                        appState.currentTrain = train  // Store the full train object
+                                        
+                                        // Set the route context for bottom sheet expansion
+                                        if let destinationCode = Stations.getStationCode(destination) {
+                                            appState.selectedRoute = TripPair(
+                                                departureCode: departureStationCode,
+                                                departureName: departureName,
+                                                destinationCode: destinationCode,
+                                                destinationName: destination,
+                                                lastUsed: Date(),
+                                                isFavorite: false
+                                            )
+                                        }
+                                        
                                         // Use flexible navigation with train number
                                         appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                                             trainNumber: train.trainId,
@@ -100,25 +103,11 @@ struct TrainListView: View {
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 12) {
-                    // Reverse button
-                    Button {
-                        reverseRoute()
-                    } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 18))
-                            .foregroundColor(.orange)
-                    }
-                    
-                    // Favorite button
-                    Button {
-                        toggleCurrentRouteFavorite()
-                    } label: {
-                        Image(systemName: isCurrentRouteFavorited ? "heart.fill" : "heart")
-                            .font(.system(size: 20))
-                            .foregroundColor(.orange)
-                    }
+                Button("Close") {
+                    appState.navigationPath = NavigationPath()
                 }
+                .foregroundColor(.white)
+                .font(.body)
             }
         }
         .task {
@@ -139,63 +128,6 @@ struct TrainListView: View {
                 departureName = appState.selectedDeparture ?? ""
             }
         }
-    }
-    
-    private func toggleCurrentRouteFavorite() {
-        guard let destinationCode = Stations.getStationCode(destination),
-              !departureName.isEmpty else {
-            return
-        }
-        
-        // Create the trip pair - it will be normalized internally
-        let currentTrip = TripPair(
-            departureCode: departureStationCode,
-            departureName: departureName,
-            destinationCode: destinationCode,
-            destinationName: destination,
-            lastUsed: Date(),
-            isFavorite: isCurrentRouteFavorited // Use current favorite status
-        )
-        
-        appState.toggleFavorite(currentTrip)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-    
-    private func reverseRoute() {
-        guard let currentDestinationCode = Stations.getStationCode(destination),
-              !departureName.isEmpty else {
-            return
-        }
-        
-        // Store current values
-        let oldDepartureName = departureName
-        let oldDepartureCode = departureStationCode
-        let oldDestination = destination
-        
-        // Swap the stations in local state
-        departureName = oldDestination
-        departureStationCode = currentDestinationCode
-        destination = oldDepartureName
-        
-        // Also update app state for consistency
-        appState.departureStationCode = currentDestinationCode
-        appState.selectedDeparture = oldDestination
-        appState.selectedDestination = oldDepartureName
-        appState.destinationStationCode = oldDepartureCode
-        
-        // Clear existing trains immediately to avoid confusion
-        viewModel.trains = []
-        
-        // Reload trains with swapped stations
-        Task {
-            await viewModel.loadTrains(
-                destination: oldDepartureName,
-                fromStationCode: currentDestinationCode
-            )
-        }
-        
-        // Haptic feedback
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
 
@@ -474,13 +406,16 @@ class TrainListViewModel: ObservableObject {
                 toStationCode: toStationCode
             )
             
-            // Filter out trains departing more than 6 hours from now
+            // Filter trains: within 6 hours and haven't already departed
             let now = Date()
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             
             let filteredTrains = fetchedTrains.filter { train in
                 let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
-                return departureTime <= sixHoursFromNow
+                let isWithinTimeWindow = departureTime <= sixHoursFromNow
+                let hasNotDeparted = !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
+                
+                return isWithinTimeWindow && hasNotDeparted
             }
             
             // Deduplicate trains by ID to prevent ForEach crashes
@@ -513,7 +448,10 @@ class TrainListViewModel: ObservableObject {
             
             let filteredTrains = fetchedTrains.filter { train in
                 let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
-                return departureTime <= sixHoursFromNow
+                let isWithinTimeWindow = departureTime <= sixHoursFromNow
+                let hasNotDeparted = !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
+                
+                return isWithinTimeWindow && hasNotDeparted
             }
             
             // Deduplicate trains by ID to prevent ForEach crashes

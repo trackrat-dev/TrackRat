@@ -10,7 +10,6 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.db.database import get_backup_service
 from trackrat.db.engine import get_db
 from trackrat.models.database import DiscoveryRun, TrainJourney
 from trackrat.services.scheduler import get_scheduler
@@ -123,33 +122,12 @@ async def health_check(
     except Exception as e:
         health_status["checks"]["discovery"] = {"status": "unhealthy", "error": str(e)}
 
-    # Backup status check
-    backup_service = get_backup_service()
-    if backup_service:
-        try:
-            # Check if backup is configured and running
-            backup_running = (
-                backup_service._backup_task is not None
-                and not backup_service._backup_task.done()
-            )
-            health_status["checks"]["backup"] = {
-                "status": "healthy" if backup_running else "warning",
-                "enabled": True,
-                "bucket": backup_service.bucket_name,
-                "running": backup_running,
-            }
-        except Exception as e:
-            health_status["checks"]["backup"] = {
-                "status": "unhealthy",
-                "enabled": True,
-                "error": str(e),
-            }
-    else:
-        health_status["checks"]["backup"] = {
-            "status": "info",
-            "enabled": False,
-            "message": "Backup not configured",
-        }
+    # PostgreSQL with Cloud SQL provides automated backups
+    health_status["checks"]["backup"] = {
+        "status": "info",
+        "enabled": True,
+        "message": "Cloud SQL automated backups enabled",
+    }
 
     # Overall status
     if any(

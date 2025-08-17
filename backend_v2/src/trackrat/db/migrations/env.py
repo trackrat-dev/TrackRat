@@ -1,7 +1,7 @@
 """
 Alembic environment configuration for TrackRat V2.
 
-Handles SQLite database migrations using synchronous connections.
+Handles PostgreSQL database migrations using synchronous connections.
 """
 
 from logging.config import fileConfig

@@ -42,6 +42,7 @@ variable "warning_alert_email" {
 
 # --- Notification Channels ---
 resource "google_monitoring_notification_channel" "email_critical" {
+  count        = var.critical_alert_email != "" ? 1 : 0
   project      = var.project_id
   display_name = "Critical Alerts Email"
   type         = "email"
@@ -52,6 +53,7 @@ resource "google_monitoring_notification_channel" "email_critical" {
 }
 
 resource "google_monitoring_notification_channel" "email_warning" {
+  count        = var.warning_alert_email != "" ? 1 : 0
   project      = var.project_id
   display_name = "Warning Alerts Email"
   type         = "email"
@@ -84,7 +86,7 @@ resource "google_monitoring_alert_policy" "db_high_cpu" {
       }
     }
   }
-  notification_channels = [google_monitoring_notification_channel.email_warning.id]
+  notification_channels = var.warning_alert_email != "" ? [google_monitoring_notification_channel.email_warning[0].id] : []
   documentation {
     content   = "The Cloud SQL instance ${var.instance_name} is experiencing high CPU utilization."
     mime_type = "text/markdown"
@@ -116,7 +118,7 @@ resource "google_monitoring_alert_policy" "db_low_memory" {
       }
     }
   }
-  notification_channels = [google_monitoring_notification_channel.email_warning.id]
+  notification_channels = var.warning_alert_email != "" ? [google_monitoring_notification_channel.email_warning[0].id] : []
   documentation {
     content   = "The Cloud SQL instance ${var.instance_name} is running low on available memory."
     mime_type = "text/markdown"
@@ -156,7 +158,7 @@ resource "google_monitoring_alert_policy" "db_low_memory" {
 #       }
 #     }
 #   }
-#   notification_channels = [google_monitoring_notification_channel.email_critical.id]
+#   notification_channels = var.critical_alert_email != "" ? [google_monitoring_notification_channel.email_critical[0].id] : []
 #   documentation {
 #     content = "The Cloud SQL replica for \${var.instance_name} is experiencing high replication lag."
 #     mime_type = "text/markdown"
@@ -189,7 +191,7 @@ resource "google_monitoring_alert_policy" "db_connectivity_lost" {
   alert_strategy {
     auto_close = "3600s" # Auto-close after 1 hour if condition is no longer met
   }
-  notification_channels = [google_monitoring_notification_channel.email_critical.id]
+  notification_channels = var.critical_alert_email != "" ? [google_monitoring_notification_channel.email_critical[0].id] : []
   documentation {
     content   = "The Cloud SQL instance ${var.instance_name} has not reported any disk read activity for over 5 minutes, suggesting a potential connectivity issue or instance outage."
     mime_type = "text/markdown"
@@ -236,7 +238,7 @@ resource "google_monitoring_alert_policy" "db_connectivity_lost" {
 #       }
 #     }
 #   }
-#   notification_channels = [google_monitoring_notification_channel.email_warning.id]
+#   notification_channels = var.warning_alert_email != "" ? [google_monitoring_notification_channel.email_warning[0].id] : []
 #   documentation {
 #     content = "The Cloud SQL instance \${var.instance_name} has a high number of active connections."
 #     mime_type = "text/markdown"

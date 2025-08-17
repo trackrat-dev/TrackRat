@@ -558,3 +558,356 @@ class HistoricalDataViewModel: ObservableObject {
         stops: nil
     ))
 }
+
+// MARK: - Congestion Data View
+
+struct CongestionDataView: View {
+    @EnvironmentObject private var appState: AppState
+    @StateObject private var viewModel: CongestionDataViewModel
+    @Environment(\.dismiss) private var dismiss
+    
+    let train: TrainV2
+    
+    init(train: TrainV2, userOrigin: String? = nil, userDestination: String? = nil) {
+        self.train = train
+        self._viewModel = StateObject(wrappedValue: CongestionDataViewModel(
+            train: train,
+            userOrigin: userOrigin,
+            userDestination: userDestination
+        ))
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                // Black gradient background
+                TrackRatTheme.Colors.primaryBackground
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    if viewModel.isLoading {
+                        TrackRatLoadingView(message: "Loading congestion data...")
+                            .frame(maxWidth: .infinity, minHeight: 400)
+                    } else if let segments = viewModel.relevantSegments, !segments.isEmpty {
+                        VStack(spacing: 16) {
+                            // Map view
+                            JourneyCongestionMapView(
+                                train: train,
+                                userOrigin: viewModel.userOrigin,
+                                userDestination: viewModel.userDestination,
+                                onSegmentTap: { segment in
+                                    viewModel.selectedSegment = segment
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                            )
+                            .padding(.horizontal)
+                            
+                            // Header info
+
+                            
+                            // Route Cards Section
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Text("Route Segments")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                    Spacer()
+                                }
+                                .padding(.horizontal)
+                                
+                                ForEach(segments, id: \.id) { segment in
+                                    Button {
+                                        viewModel.selectedSegment = segment
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    } label: {
+                                        CongestionSegmentCard(segment: segment)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.horizontal)
+                                }
+                            }
+                            
+                            // Instructions
+                            Text("Tap any route segment to see congestion details")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                        .padding(.top)
+                    } else if viewModel.error != nil {
+                        VStack(spacing: 16) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 60))
+                                .foregroundColor(.orange)
+                            
+                            Text("Unable to load congestion data")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            
+                            Text("Please try again later")
+                                .font(.body)
+                                .foregroundColor(.white.opacity(0.8))
+                            
+                            Button("Try Again") {
+                                Task {
+                                    await viewModel.loadCongestionData()
+                                }
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color.orange)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                            .font(.body.bold())
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 400)
+                        .padding()
+                    } else {
+                        VStack(spacing: 16) {
+                            Image(systemName: "arrow.triangle.branch")
+                                .font(.system(size: 60))
+                                .foregroundColor(.white.opacity(0.6))
+                            
+                            Text("No Route Data")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            
+                            Text("Congestion data is not available for this route.")
+                                .font(.body)
+                                .foregroundColor(.white.opacity(0.8))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 400)
+                    }
+                }
+                .refreshable {
+                    await viewModel.loadCongestionData()
+                }
+            }
+            .navigationTitle("Route Congestion (beta)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundColor(.white)
+                }
+            }
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .sheet(item: $viewModel.selectedSegment) { segment in
+                SegmentTrainDetailsView(segment: segment)
+                    .presentationDetents([.height(600), .large])
+                    .presentationDragIndicator(.visible)
+            }
+        }
+        .task {
+            await viewModel.loadCongestionData()
+        }
+    }
+}
+
+// MARK: - Congestion Segment Card
+struct CongestionSegmentCard: View {
+    let segment: CongestionSegment
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("\(segment.fromStationDisplayName) → \(segment.toStationDisplayName)\(segment.averageTransitTimeText)\(segment.delayText)")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(segment.displayColor.opacity(0.2))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(segment.displayColor.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Congestion Comparison Bar
+struct CongestionComparisonBar: View {
+    let segment: CongestionSegment
+    
+    private var delayMinutes: Int {
+        Int(segment.averageDelayMinutes.rounded())
+    }
+    
+    private var delayText: String {
+        if delayMinutes > 0 {
+            return "+\(delayMinutes) min delay"
+        } else {
+            return "On time"
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Baseline: \(Int(segment.baselineMinutes.rounded())) min")
+                    .font(.caption)
+                    .foregroundColor(.black.opacity(0.6))
+                
+                Spacer()
+                
+                Text(delayText)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(segment.displayColor)
+            }
+            
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    // Background bar
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 8)
+                    
+                    // Baseline indicator
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.4))
+                        .frame(width: geometry.size.width * (segment.baselineMinutes / segment.currentAverageMinutes), height: 8)
+                    
+                    // Current time bar
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(segment.displayColor.opacity(0.8))
+                        .frame(width: geometry.size.width, height: 8)
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+}
+
+// MARK: - Congestion Data View Model
+@MainActor
+class CongestionDataViewModel: ObservableObject {
+    @Published var congestionData: CongestionMapResponse?
+    @Published var relevantSegments: [CongestionSegment]?
+    @Published var isLoading = false
+    @Published var error: String?
+    @Published var lastUpdated: Date?
+    @Published var selectedSegment: CongestionSegment?
+    
+    private let train: TrainV2
+    let userOrigin: String?
+    let userDestination: String?
+    private let apiService = APIService.shared
+    
+    init(train: TrainV2, userOrigin: String? = nil, userDestination: String? = nil) {
+        self.train = train
+        self.userOrigin = userOrigin
+        self.userDestination = userDestination
+    }
+    
+    func loadCongestionData() async {
+        isLoading = true
+        error = nil
+        
+        do {
+            let response = try await apiService.fetchCongestionData(timeWindowHours: 3)
+            congestionData = response
+            lastUpdated = Date()
+            
+            // Filter segments relevant to the train's route
+            filterRelevantSegments()
+        } catch {
+            print("❌ Error loading congestion data: \(error)")
+            self.error = error.localizedDescription
+        }
+        
+        isLoading = false
+    }
+    
+    private func filterRelevantSegments() {
+        guard let congestionData = congestionData,
+              let allStops = train.stops else {
+            relevantSegments = nil
+            return
+        }
+        
+        // Determine expected data source based on train type
+        let expectedDataSource: String
+        if train.trainClass == "Amtrak" {
+            expectedDataSource = "AMTRAK"
+        } else {
+            expectedDataSource = "NJT"
+        }
+        
+        // Extract user's journey segment if available, otherwise use full route
+        let journeyStops = extractUserJourneyStops(from: allStops) ?? allStops
+        
+        // Get station codes from the journey segment
+        let stationCodes = journeyStops.map { $0.stationCode.uppercased() }
+        
+        // Filter segments that are valid forward paths in the journey AND match the train type
+        let filtered = congestionData.aggregatedSegments.filter { segment in
+            // First check if data source matches train type
+            guard segment.dataSource.uppercased() == expectedDataSource else {
+                return false
+            }
+            
+            // Check if stations are in the journey with proper ordering
+            let fromIndex = stationCodes.firstIndex(of: segment.fromStation.uppercased())
+            let toIndex = stationCodes.firstIndex(of: segment.toStation.uppercased())
+            
+            // Include any segment where 'to' station comes after 'from' station
+            if let fromIdx = fromIndex, let toIdx = toIndex, toIdx > fromIdx {
+                return true
+            }
+            return false
+        }
+        
+        // Sort segments by their appearance in the journey
+        let sorted = filtered.sorted { seg1, seg2 in
+            let idx1 = stationCodes.firstIndex(of: seg1.fromStation.uppercased()) ?? 0
+            let idx2 = stationCodes.firstIndex(of: seg2.fromStation.uppercased()) ?? 0
+            return idx1 < idx2
+        }
+        
+        relevantSegments = sorted
+    }
+    
+    private func extractUserJourneyStops(from allStops: [StopV2]) -> [StopV2]? {
+        // If we don't have user journey info, return nil to use full route
+        guard let userOrigin = userOrigin, let userDestination = userDestination else {
+            return nil
+        }
+        
+        // Find origin stop by station code
+        guard let originIndex = allStops.firstIndex(where: { stop in
+            stop.stationCode.uppercased() == userOrigin.uppercased()
+        }) else {
+            return nil
+        }
+        
+        // Find destination stop by station name
+        guard let destinationIndex = allStops.firstIndex(where: { stop in
+            stop.stationName.lowercased() == userDestination.lowercased()
+        }) else {
+            return nil
+        }
+        
+        // Ensure origin comes before destination
+        guard originIndex <= destinationIndex else {
+            return nil
+        }
+        
+        // Return the journey segment (inclusive of both origin and destination)
+        return Array(allStops[originIndex...destinationIndex])
+    }
+}

@@ -39,18 +39,25 @@ struct ActiveTripsSection: View {
         Group {
             if liveActivityService.isActivityActive, let activity = liveActivityService.currentActivity {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("ACTIVE TRIPS")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white.opacity(0.7))
-                        .padding(.horizontal)
-                    
                     Button {
                         // Set the route context from Live Activity (like train cards do)
                         appState.selectedDestination = activity.attributes.destination
                         appState.destinationStationCode = activity.attributes.destinationStationCode
                         appState.selectedDeparture = activity.attributes.origin  
                         appState.departureStationCode = activity.attributes.originStationCode
+                        
+                        // Set current train ID for bottom sheet expansion
+                        appState.currentTrainId = activity.attributes.trainId
+                        
+                        // Set the route context for bottom sheet expansion
+                        appState.selectedRoute = TripPair(
+                            departureCode: activity.attributes.originStationCode,
+                            departureName: activity.attributes.origin,
+                            destinationCode: activity.attributes.destinationStationCode,
+                            destinationName: activity.attributes.destination,
+                            lastUsed: Date(),
+                            isFavorite: false
+                        )
                         
                         // Navigate to train details using flexible navigation
                         appState.navigationPath.append(

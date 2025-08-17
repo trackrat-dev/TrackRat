@@ -61,6 +61,11 @@ async def test_train_expiry_after_two_failures():
 async def test_api_error_count_reset_on_success():
     """Test that api_error_count is reset when train data is successfully retrieved."""
     # Create a mock journey with existing error count
+    # Use a departure time that matches the mock API data (10:02 AM)
+    from trackrat.utils.time import parse_njt_time
+
+    scheduled_departure = parse_njt_time("10:02 AM")
+
     journey = TrainJourney(
         id=1,
         train_id="1234",
@@ -69,7 +74,7 @@ async def test_api_error_count_reset_on_success():
         destination="New York",
         origin_station_code="TR",
         terminal_station_code="NY",
-        scheduled_departure=now_et() - timedelta(hours=1),
+        scheduled_departure=scheduled_departure,
         data_source="NJT",
         has_complete_journey=True,
         api_error_count=1,  # Previous error
@@ -79,8 +84,17 @@ async def test_api_error_count_reset_on_success():
     # Mock session
     session = AsyncMock(spec=AsyncSession)
     session.flush = AsyncMock()
-    session.scalar = AsyncMock(return_value=None)  # No existing stops
     session.add = Mock()  # session.add is synchronous, not async
+
+    # Mock for multiple session.execute calls - need to handle many calls for stops, deletes, etc.
+    mock_result_generic = AsyncMock()
+    mock_result_generic.scalar = AsyncMock(return_value=None)
+
+    # For scalars(), return a mock that directly returns an empty list (not awaitable)
+    mock_result_generic.scalars = lambda: []
+
+    # Just return the same generic mock for all execute calls
+    session.execute = AsyncMock(return_value=mock_result_generic)
 
     # Mock successful API response
     from trackrat.models.api import NJTransitTrainData, NJTransitStopData
@@ -199,11 +213,19 @@ async def test_train_not_found_counted_as_success_in_batch():
     # Mock session
     session = AsyncMock(spec=AsyncSession)
     session.flush = AsyncMock()
+
+    # First mock_result for the journey selection query
     mock_result = AsyncMock()
     scalars_mock = AsyncMock()
     scalars_mock.all = lambda: [journey1, journey2]
     mock_result.scalars = lambda: scalars_mock
-    session.execute = AsyncMock(return_value=mock_result)
+
+    # Second mock_result for the expire query (with rowcount)
+    mock_expire_result = AsyncMock()
+    mock_expire_result.rowcount = 0  # No rows expired
+
+    # Set up session.execute to return different results for different calls
+    session.execute = AsyncMock(side_effect=[mock_result, mock_expire_result])
 
     # Mock NJT client - first train succeeds, second train not found
     njt_client = AsyncMock()
@@ -251,7 +273,15 @@ async def test_train_not_found_counted_as_success_in_batch():
                 with patch.object(
                     collector, "check_journey_completion", new_callable=AsyncMock
                 ):
-                    results = await collector.collect(session)
+                    with patch.object(
+                        collector,
+                        "find_historical_trains_for_backfill",
+                        new_callable=AsyncMock,
+                    ) as mock_historical:
+                        mock_historical.return_value = (
+                            []
+                        )  # No historical trains to process
+                        results = await collector.collect(session)
 
     # Both should be counted as successful
     assert results["trains_processed"] == 2
