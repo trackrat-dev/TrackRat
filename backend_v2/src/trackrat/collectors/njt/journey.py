@@ -403,7 +403,7 @@ class JourneyCollector(BaseJourneyCollector):
         Uses key signals to detect journey changes:
         - Destination must match (after normalization)
         - First stop departure time should be similar (±10 min tolerance)
-        
+
         NOTE: Line code validation removed as it's unreliable across different API calls
         """
         # Signal 1: Destination must match (after normalization)
@@ -427,7 +427,11 @@ class JourneyCollector(BaseJourneyCollector):
                 stored_origin=stored_journey.origin_station_code,
                 stored_line=stored_journey.line_code,
                 api_line=api_train_data.LINECODE,
-                journey_date=stored_journey.journey_date.isoformat() if stored_journey.journey_date else None,
+                journey_date=(
+                    stored_journey.journey_date.isoformat()
+                    if stored_journey.journey_date
+                    else None
+                ),
                 has_complete_journey=stored_journey.has_complete_journey,
             )
             return False
@@ -435,9 +439,12 @@ class JourneyCollector(BaseJourneyCollector):
         # NOTE: Line code check removed - NJT API returns inconsistent line codes
         # between discovery (e.g., "No") and journey details (e.g., "NC")
         # The destination and departure time are sufficient to identify the journey
-        
+
         # Update line code if API provides a different one (likely more accurate)
-        if api_train_data.LINECODE and api_train_data.LINECODE != stored_journey.line_code:
+        if (
+            api_train_data.LINECODE
+            and api_train_data.LINECODE != stored_journey.line_code
+        ):
             logger.info(
                 "updating_line_code",
                 journey_id=stored_journey.id,
@@ -463,7 +470,9 @@ class JourneyCollector(BaseJourneyCollector):
                             # If naive, assume it's already in Eastern time
                             stored_departure = ET.localize(stored_departure)
 
-                        time_diff = abs((api_departure - stored_departure).total_seconds())
+                        time_diff = abs(
+                            (api_departure - stored_departure).total_seconds()
+                        )
                     else:
                         time_diff = 0  # If no stored departure, consider it a match
 
@@ -472,19 +481,25 @@ class JourneyCollector(BaseJourneyCollector):
                     # Before rejecting, check if stored origin appears as an intermediate stop
                     # This happens when discovery finds a train at an intermediate station
                     stored_origin_found_in_stops = False
-                    
+
                     if stored_journey.origin_station_code:
                         for stop in api_train_data.STOPS:
                             if stop.STATION_2CHAR == stored_journey.origin_station_code:
                                 # Found the stored origin as an intermediate stop
                                 # Check if its departure time matches what we have stored
                                 if stop.DEP_TIME:
-                                    intermediate_departure = parse_njt_time(stop.DEP_TIME)
-                                    intermediate_time_diff = abs(
-                                        (intermediate_departure - stored_departure).total_seconds()
+                                    intermediate_departure = parse_njt_time(
+                                        stop.DEP_TIME
                                     )
-                                    
-                                    if intermediate_time_diff <= 600:  # Within 10-minute tolerance
+                                    intermediate_time_diff = abs(
+                                        (
+                                            intermediate_departure - stored_departure
+                                        ).total_seconds()
+                                    )
+
+                                    if (
+                                        intermediate_time_diff <= 600
+                                    ):  # Within 10-minute tolerance
                                         # This is the same journey, just discovered at wrong station
                                         logger.info(
                                             "journey_discovered_at_intermediate_station",
@@ -495,13 +510,15 @@ class JourneyCollector(BaseJourneyCollector):
                                             stored_departure=stored_departure.isoformat(),
                                             intermediate_stop_departure=intermediate_departure.isoformat(),
                                             actual_first_departure=api_departure.isoformat(),
-                                            time_diff_minutes=int(intermediate_time_diff / 60),
+                                            time_diff_minutes=int(
+                                                intermediate_time_diff / 60
+                                            ),
                                         )
                                         stored_origin_found_in_stops = True
                                         # Reset has_complete_journey so correction can happen
                                         stored_journey.has_complete_journey = False
                                         break
-                    
+
                     # If we found the stored origin as an intermediate stop, continue processing
                     # so the journey correction logic can fix the origin
                     if stored_origin_found_in_stops:
@@ -528,7 +545,11 @@ class JourneyCollector(BaseJourneyCollector):
                             api_destination=api_train_data.DESTINATION,
                             stored_line_code=stored_journey.line_code,
                             api_line_code=api_train_data.LINECODE,
-                            journey_date=stored_journey.journey_date.isoformat() if stored_journey.journey_date else None,
+                            journey_date=(
+                                stored_journey.journey_date.isoformat()
+                                if stored_journey.journey_date
+                                else None
+                            ),
                             has_complete_journey=stored_journey.has_complete_journey,
                             stored_departure_tz_info=str(stored_departure.tzinfo),
                             api_departure_tz_info=str(api_departure.tzinfo),
@@ -552,9 +573,13 @@ class JourneyCollector(BaseJourneyCollector):
             train_id=stored_journey.train_id,
             destinations_matched=f"{stored_dest_normalized} == {api_dest_normalized}",
             departure_time_check_skipped=not stored_journey.has_complete_journey,
-            line_code_updated=(api_train_data.LINECODE != stored_journey.line_code) if api_train_data.LINECODE else False,
+            line_code_updated=(
+                (api_train_data.LINECODE != stored_journey.line_code)
+                if api_train_data.LINECODE
+                else False
+            ),
         )
-        
+
         return True
 
     async def collect_journey_details(
@@ -625,8 +650,14 @@ class JourneyCollector(BaseJourneyCollector):
             api_destination=train_data.DESTINATION,
             stored_line_code=journey.line_code,
             api_line_code=train_data.LINECODE,
-            stored_departure=journey.scheduled_departure.isoformat() if journey.scheduled_departure else None,
-            api_first_departure=train_data.STOPS[0].DEP_TIME if train_data.STOPS else None,
+            stored_departure=(
+                journey.scheduled_departure.isoformat()
+                if journey.scheduled_departure
+                else None
+            ),
+            api_first_departure=(
+                train_data.STOPS[0].DEP_TIME if train_data.STOPS else None
+            ),
             has_complete_journey=journey.has_complete_journey,
             api_stops_count=len(train_data.STOPS),
         )
@@ -649,9 +680,17 @@ class JourneyCollector(BaseJourneyCollector):
                 stored_destination=journey.destination,
                 api_destination=train_data.DESTINATION,
                 stored_origin=journey.origin_station_code,
-                api_first_station=train_data.STOPS[0].STATION_2CHAR if train_data.STOPS else None,
-                stored_departure=journey.scheduled_departure.isoformat() if journey.scheduled_departure else None,
-                api_first_departure=train_data.STOPS[0].DEP_TIME if train_data.STOPS else None,
+                api_first_station=(
+                    train_data.STOPS[0].STATION_2CHAR if train_data.STOPS else None
+                ),
+                stored_departure=(
+                    journey.scheduled_departure.isoformat()
+                    if journey.scheduled_departure
+                    else None
+                ),
+                api_first_departure=(
+                    train_data.STOPS[0].DEP_TIME if train_data.STOPS else None
+                ),
                 stored_line=journey.line_code,
                 api_line=train_data.LINECODE,
                 has_complete_journey=journey.has_complete_journey,

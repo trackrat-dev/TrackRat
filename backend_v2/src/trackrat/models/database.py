@@ -89,7 +89,10 @@ class TrainJourney(Base):
         "StationDwellTime", back_populates="journey", cascade="all, delete-orphan"
     )
     progress_snapshots: Mapped[list["JourneyProgress"]] = relationship(
-        "JourneyProgress", back_populates="journey", cascade="all, delete-orphan", overlaps="progress"
+        "JourneyProgress",
+        back_populates="journey",
+        cascade="all, delete-orphan",
+        overlaps="progress",
     )
 
     __table_args__ = (
