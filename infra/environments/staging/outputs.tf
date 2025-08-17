@@ -55,6 +55,6 @@ output "database_url_secret_name" {
 }
 
 output "app_secrets_name" {
-  description = "Name of the main application secrets"  
+  description = "Name of the main application secrets"
   value       = "trackrat-staging-secrets"
 }

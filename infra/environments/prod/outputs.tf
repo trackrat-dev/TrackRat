@@ -48,6 +48,11 @@ output "trackrat_api_custom_domain_mapping_status" {
   value       = module.trackrat_api_service.custom_domain_mapping_status
 }
 
+output "database_url_secret_name" {
+  description = "Name of the database URL secret in Secret Manager"
+  value       = module.infrastructure.database_url_secret_name
+}
+
 output "app_secrets_name" {
   description = "Name of the main application secrets"
   value       = "trackrat-prod-secrets"
