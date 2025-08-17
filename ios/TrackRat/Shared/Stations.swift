@@ -299,7 +299,7 @@ struct Stations {
         "LI": CLLocationCoordinate2D(latitude: 40.629487, longitude: -74.251772), // Linden - Updated GPS
         "EL": CLLocationCoordinate2D(latitude: 40.265251, longitude: -73.997479), // Elberon - Updated GPS 40.265251400000004, -73.99747922393298
         "EZ": CLLocationCoordinate2D(latitude: 40.667859, longitude: -74.215171), // Elizabeth - Updated GPS
-        "NZ": CLLocationCoordinate2D(latitude: 40.6968, longitude: -74.1733),   // North Elizabeth
+        "NZ": CLLocationCoordinate2D(latitude: 40.680341475, longitude: -74.2061729014),   // North Elizabeth 40.68034147548386, -74.20617290142303
         
         // Additional stations for Raritan Valley and North Jersey Coast Lines
         "BK": CLLocationCoordinate2D(latitude: 40.5612539, longitude: -74.53021426),   // Bound Brook 40.56125391599582, -74.53021426346963
@@ -325,8 +325,8 @@ struct Stations {
         "BS": CLLocationCoordinate2D(latitude: 40.1784, longitude: -74.0276),   // Belmar
         "LA": CLLocationCoordinate2D(latitude: 40.1530, longitude: -74.0340),   // Spring Lake
         "SQ": CLLocationCoordinate2D(latitude: 40.1057, longitude: -74.0500),   // Manasquan
-        "PP": CLLocationCoordinate2D(latitude: 40.0917, longitude: -74.0680),   // Point Pleasant Beach
-        "BH": CLLocationCoordinate2D(latitude: 40.0585, longitude: -74.1066),   // Bay Head
+        "PP": CLLocationCoordinate2D(latitude: 40.0928885, longitude: -74.048128),   // Point Pleasant Beach 40.092888539579086, -74.04812800404557
+        "BH": CLLocationCoordinate2D(latitude: 40.0771313, longitude: -74.046189485),   // Bay Head 40.077131308867386, -74.04618948520402
         "SC": CLLocationCoordinate2D(latitude: 40.7612, longitude: -74.0758),   // Secaucus Concourse (same as SE/TS)
         "TS": CLLocationCoordinate2D(latitude: 40.7612, longitude: -74.0758),   // Secaucus Lower Lvl (same location)
         "BW": CLLocationCoordinate2D(latitude: 40.561009, longitude: -74.55175689),   // Bridgewater 40.56100944598027, -74.55175688984208
@@ -345,49 +345,52 @@ struct Stations {
         "TC": CLLocationCoordinate2D(latitude: 41.1970, longitude: -74.1885),   // Tuxedo
         "RM": CLLocationCoordinate2D(latitude: 41.3098, longitude: -74.1526),   // Harriman
         "CB": CLLocationCoordinate2D(latitude: 41.4446, longitude: -74.2452),   // Campbell Hall
-        "CW": CLLocationCoordinate2D(latitude: 41.4426, longitude: -74.1351),   // Salisbury Mills-Cornwall
+        "CW": CLLocationCoordinate2D(latitude: 41.436533265, longitude: -74.101601729),   // Salisbury Mills-Cornwall 41.436533265171164, -74.10160172915069
         "OS": CLLocationCoordinate2D(latitude: 41.4783, longitude: -74.5336),   // Otisville
         "PO": CLLocationCoordinate2D(latitude: 41.3753, longitude: -74.6897),   // Port Jervis
+        "MD": CLLocationCoordinate2D(latitude: 41.45748, longitude: -74.370408),   // Middletown NY 41.4574804003699, -74.37040800377328
        
         
         // Bergen County Line (Main Line) - New GPS coordinates
         "KG": CLLocationCoordinate2D(latitude: 40.8123, longitude: -74.1246),   // Kingsland
         "LN": CLLocationCoordinate2D(latitude: 40.8123, longitude: -74.1246),   // Lyndhurst
-        "DL": CLLocationCoordinate2D(latitude: 40.8180, longitude: -74.1370),   // Delawanna
-        "PS": CLLocationCoordinate2D(latitude: 40.8570, longitude: -74.1294),   // Passaic
-        "IF": CLLocationCoordinate2D(latitude: 40.8584, longitude: -74.1637),   // Clifton
+        "DL": CLLocationCoordinate2D(latitude: 40.8318187, longitude: -74.1314617),   // Delawanna 40.83181871791698, -74.13146171567368
+        "PS": CLLocationCoordinate2D(latitude: 40.8494377, longitude: -74.133866768),   // Passaic 40.84943770250315, -74.13386676844108
+        "IF": CLLocationCoordinate2D(latitude: 40.867912098, longitude: -74.15326859),   // Clifton 40.86791209797451, -74.15326859173946
         "RN": CLLocationCoordinate2D(latitude: 40.9166, longitude: -74.1710),   // Paterson
-        "HW": CLLocationCoordinate2D(latitude: 40.9494, longitude: -74.1527),   // Hawthorne
+        "HW": CLLocationCoordinate2D(latitude: 40.942528946, longitude: -74.152399138),   // Hawthorne 40.94252894598973, -74.15239913775797
         "GR": CLLocationCoordinate2D(latitude: 40.9633, longitude: -74.1269),   // Glen Rock
         "WA": CLLocationCoordinate2D(latitude: 41.0108, longitude: -74.1267),   // Waldwick
         "AL": CLLocationCoordinate2D(latitude: 41.0312, longitude: -74.1306),   // Allendale
         "MH": CLLocationCoordinate2D(latitude: 41.0886, longitude: -74.1438),   // Mahwah
-        /*
+        
         // Bergen County Line (Ridgewood Branch)
-        "RT": CLLocationCoordinate2D(latitude: 40.8267, longitude: -74.1069),   // Rutherford
-        "WE": CLLocationCoordinate2D(latitude: 40.8356, longitude: -74.0989),   // Wesmont
-        "GA": CLLocationCoordinate2D(latitude: 40.8815, longitude: -74.1133),   // Garfield
-        "PLD": CLLocationCoordinate2D(latitude: 40.8879, longitude: -74.1202),  // Plauderville
-        "BW": CLLocationCoordinate2D(latitude: 40.9188, longitude: -74.1316),   // Broadway (Fair Lawn)
-        "GB": CLLocationCoordinate2D(latitude: 40.9595, longitude: -74.1329),   // Glen Rock–Boro Hall
+        "RF": CLLocationCoordinate2D(latitude: 40.8267, longitude: -74.1069),   // Rutherford
+        "WM": CLLocationCoordinate2D(latitude: 40.8356, longitude: -74.0989),   // Wesmont
+        "GD": CLLocationCoordinate2D(latitude: 40.8815, longitude: -74.1133),   // Garfield
+        "PL": CLLocationCoordinate2D(latitude: 40.8879, longitude: -74.1202),  // Plauderville
+        "BF": CLLocationCoordinate2D(latitude: 40.9188, longitude: -74.1316),   // Broadway (Fair Lawn)
+        "GK": CLLocationCoordinate2D(latitude: 40.9595, longitude: -74.1329),   // Glen Rock–Boro Hall
+        "FZ": CLLocationCoordinate2D(latitude: 40.939645, longitude: -74.12154647),   // Radburn Fiar Lawn 40.93964512609563, -74.12154647334052
         
         // Pascack Valley Line
         "WR": CLLocationCoordinate2D(latitude: 40.8449, longitude: -74.0883),   // Wood-Ridge
-        "TB": CLLocationCoordinate2D(latitude: 40.8602, longitude: -74.0639),   // Teterboro
-        "ES": CLLocationCoordinate2D(latitude: 40.8836, longitude: -74.0436),   // Essex Street
-        "AN": CLLocationCoordinate2D(latitude: 40.8944, longitude: -74.0447),   // Anderson Street
-        "NBL": CLLocationCoordinate2D(latitude: 40.9079, longitude: -74.0384),  // New Bridge Landing
-        "RE": CLLocationCoordinate2D(latitude: 40.9264, longitude: -74.0413),   // River Edge
-        "OR": CLLocationCoordinate2D(latitude: 40.9545, longitude: -74.0369),   // Oradell
-        "EM": CLLocationCoordinate2D(latitude: 40.9758, longitude: -74.0281),   // Emerson
+        "TE": CLLocationCoordinate2D(latitude: 40.8602, longitude: -74.0639),   // Teterboro
+        "EX": CLLocationCoordinate2D(latitude: 40.8836, longitude: -74.0436),   // Essex Street
+        "AS": CLLocationCoordinate2D(latitude: 40.8944, longitude: -74.0447),   // Anderson Street
+        "NH": CLLocationCoordinate2D(latitude: 40.9079, longitude: -74.0384),  // New Bridge Landing
+        "RG": CLLocationCoordinate2D(latitude: 40.9264, longitude: -74.0413),   // River Edge
+        "OD": CLLocationCoordinate2D(latitude: 40.9545, longitude: -74.0369),   // Oradell
+        "EN": CLLocationCoordinate2D(latitude: 40.9758, longitude: -74.0281),   // Emerson
+        "HD": CLLocationCoordinate2D(latitude: 41.00241888, longitude: -74.040956),   // Hillsdale 41.002418880662276, -74.0409560175139
         "WW": CLLocationCoordinate2D(latitude: 40.9909, longitude: -74.0336),   // Westwood
         "WL": CLLocationCoordinate2D(latitude: 41.0230, longitude: -74.0569),   // Woodcliff Lake
-        "PR": CLLocationCoordinate2D(latitude: 41.0375, longitude: -74.0406),   // Park Ridge
-        "MV": CLLocationCoordinate2D(latitude: 41.0521, longitude: -74.0372),   // Montvale
-        "PER": CLLocationCoordinate2D(latitude: 41.0595, longitude: -74.0197),  // Pearl River, NY
-        "NU": CLLocationCoordinate2D(latitude: 41.0869, longitude: -74.0130),   // Nanuet, NY
+        "PV": CLLocationCoordinate2D(latitude: 41.0375, longitude: -74.0406),   // Park Ridge
+        "ZM": CLLocationCoordinate2D(latitude: 41.0521, longitude: -74.0372),   // Montvale
+        "PQ": CLLocationCoordinate2D(latitude: 41.0595, longitude: -74.0197),  // Pearl River, NY
+        "NN": CLLocationCoordinate2D(latitude: 41.0869, longitude: -74.0130),   // Nanuet, NY
         "SV": CLLocationCoordinate2D(latitude: 41.1130, longitude: -74.0436),   // Spring Valley, NY
-        
+        /*
         // Port Jervis Line (from Suffern)
         "SL": CLLocationCoordinate2D(latitude: 41.1568, longitude: -74.1937),   // Sloatsburg, NY
         "TX": CLLocationCoordinate2D(latitude: 41.1970, longitude: -74.1885),   // Tuxedo, NY
@@ -396,20 +399,39 @@ struct Stations {
         "MD": CLLocationCoordinate2D(latitude: 41.4459, longitude: -74.4222),   // Middletown, NY
         "OT": CLLocationCoordinate2D(latitude: 41.4783, longitude: -74.5336),   // Otisville, NY
         "PJV": CLLocationCoordinate2D(latitude: 41.3746, longitude: -74.6927),  // Port Jervis, NY
+        */
         
         // Morris & Essex Line / Gladstone Branch - Updated GPS
-        "ML": CLLocationCoordinate2D(latitude: 40.725667, longitude: -74.303694), // Millburn
-        "ST": CLLocationCoordinate2D(latitude: 40.7099, longitude: -74.3546),   // Summit
+        "MB": CLLocationCoordinate2D(latitude: 40.7256749, longitude: -74.3036915), // Millburn 40.72567492520069, -74.30369154451178
+        "BU": CLLocationCoordinate2D(latitude: 40.765656, longitude: -74.21909888), // Brick Church 40.76565601951543, -74.2190988886858
+        "EO": CLLocationCoordinate2D(latitude: 40.76089825, longitude: -74.2107669), // East Orange 40.7608982536601, -74.2107669015754
+        "OG": CLLocationCoordinate2D(latitude: 40.771899, longitude: -74.2331103), // Orange 40.77189922949034, -74.23311030419556
+        "HI": CLLocationCoordinate2D(latitude: 40.7668668, longitude: -74.24370939), // Highland Avenue 40.76686685018996, -74.24370939011305
+        "SO": CLLocationCoordinate2D(latitude: 40.74598917, longitude: -74.260345), // South Orange 40.745989173313006, -74.26034504763733
+        "MW": CLLocationCoordinate2D(latitude: 40.731052531, longitude: -74.275368), // Maplewood 40.73105253148527, -74.27536805310443
+        "RT": CLLocationCoordinate2D(latitude: 40.725183794, longitude: -74.323772644), // Short Hills 40.72518379457189, -74.32377264451166
+        "CM": CLLocationCoordinate2D(latitude: 40.740191597, longitude: -74.384824495), // Chatham 40.740191597353025, -74.38482449543406
+        "MA": CLLocationCoordinate2D(latitude: 40.757040225, longitude: -74.415224486), // Madison 40.75704022512916, -74.41522448684061
+        "CN": CLLocationCoordinate2D(latitude: 40.778934247, longitude: -74.4433639138), // Convent Station 40.778934247012046, -74.4433639138298
+        "MR": CLLocationCoordinate2D(latitude: 40.7971792932, longitude: -74.474198069), // Morristown 40.797179293283016, -74.47419806965395
+        "MX": CLLocationCoordinate2D(latitude: 40.828603425, longitude: -74.4782465138), // Morris Plains 40.82860342578615, -74.47824651382828
+        "TB": CLLocationCoordinate2D(latitude: 40.875882396, longitude: -74.481767307079), // Mount Tabor 40.87588239601982, -74.48176730707961
+        "ST": CLLocationCoordinate2D(latitude: 40.716664548, longitude: -74.3576803),   // Summit  40.71666454825247, -74.35768030218206
         "ND": CLLocationCoordinate2D(latitude: 40.7418, longitude: -74.1698),   // Newark Broad Street
         "DV": CLLocationCoordinate2D(latitude: 40.8837, longitude: -74.4753),   // Denville
-        "PE": CLLocationCoordinate2D(latitude: 40.7052, longitude: -74.6550),   // Peapack
+        "PC": CLLocationCoordinate2D(latitude: 40.7052, longitude: -74.6550),   // Peapack
         
+        // Montclair Boonton Line (TODO!)
+        "WT": CLLocationCoordinate2D(latitude: 40.78291485, longitude: -74.19856522),   // Watsessing Ave 40.78291485164349, -74.1985652261131
+        "BM": CLLocationCoordinate2D(latitude: 40.792818916, longitude: -74.1999969),   // Bloomfield 40.792818916372745, -74.19999693101497
+        "GG": CLLocationCoordinate2D(latitude: 40.800468228, longitude: -74.2044936377),   // Glenn Ridge 40.800468228026226, -74.20449363776208
+        "MC": CLLocationCoordinate2D(latitude: 40.8081880919, longitude: -74.20858344),   // Bay Street 40.808188091934255, -74.20858344266387
+
         // Montclair-Boonton Line - Updated GPS
-        "MHT": CLLocationCoordinate2D(latitude: 40.857538, longitude: -74.202493), // Montclair Heights
-        "MS": CLLocationCoordinate2D(latitude: 40.8695, longitude: -74.1975),   // Montclair State University
+        "HS": CLLocationCoordinate2D(latitude: 40.857538, longitude: -74.202493), // Montclair Heights
+        "UV": CLLocationCoordinate2D(latitude: 40.8695, longitude: -74.1975),   // Montclair State University
         "DO": CLLocationCoordinate2D(latitude: 40.883417, longitude: -74.555884), // Dover
-        "BO": CLLocationCoordinate2D(latitude: 40.903378, longitude: -74.407733)  // Boonton
-        */
+        "BN": CLLocationCoordinate2D(latitude: 40.903378, longitude: -74.407733)  // Boonton
     ]
     
     // Supported departure stations - Updated to match backend
