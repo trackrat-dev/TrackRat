@@ -402,8 +402,9 @@ class JourneyCollector(BaseJourneyCollector):
 
         Uses key signals to detect journey changes:
         - Destination must match (after normalization)
-        - Line code must match exactly
         - First stop departure time should be similar (±10 min tolerance)
+        
+        NOTE: Line code validation removed as it's unreliable across different API calls
         """
         # Signal 1: Destination must match (after normalization)
         stored_dest_normalized = self._normalize_destination(
@@ -422,60 +423,138 @@ class JourneyCollector(BaseJourneyCollector):
                 api_destination=api_train_data.DESTINATION,
                 stored_normalized=stored_dest_normalized,
                 api_normalized=api_dest_normalized,
-            )
-            return False
-
-        # Signal 2: Line code must match (after normalization)
-        stored_line_normalized = self._normalize_line_code(
-            stored_journey.line_code or ""
-        )
-        api_line_normalized = self._normalize_line_code(api_train_data.LINECODE or "")
-
-        if stored_line_normalized != api_line_normalized:
-            logger.warning(
-                "journey_mismatch_line_code",
-                journey_id=stored_journey.id,
-                train_id=stored_journey.train_id,
+                # Additional context
+                stored_origin=stored_journey.origin_station_code,
                 stored_line=stored_journey.line_code,
                 api_line=api_train_data.LINECODE,
-                stored_normalized=stored_line_normalized,
-                api_normalized=api_line_normalized,
+                journey_date=stored_journey.journey_date.isoformat() if stored_journey.journey_date else None,
+                has_complete_journey=stored_journey.has_complete_journey,
             )
             return False
 
-        # Signal 3: First stop departure time should match (with tolerance)
-        if api_train_data.STOPS and api_train_data.STOPS[0].DEP_TIME:
-            first_stop = api_train_data.STOPS[0]
-            dep_time = first_stop.DEP_TIME
-            if dep_time is not None:
-                api_departure = parse_njt_time(dep_time)
-                if stored_journey.scheduled_departure is not None:
-                    # Ensure stored departure is timezone-aware for comparison
-                    stored_departure = stored_journey.scheduled_departure
-                    if stored_departure.tzinfo is None:
-                        # If naive, assume it's already in Eastern time
-                        stored_departure = ET.localize(stored_departure)
+        # NOTE: Line code check removed - NJT API returns inconsistent line codes
+        # between discovery (e.g., "No") and journey details (e.g., "NC")
+        # The destination and departure time are sufficient to identify the journey
+        
+        # Update line code if API provides a different one (likely more accurate)
+        if api_train_data.LINECODE and api_train_data.LINECODE != stored_journey.line_code:
+            logger.info(
+                "updating_line_code",
+                journey_id=stored_journey.id,
+                train_id=stored_journey.train_id,
+                old_line_code=stored_journey.line_code,
+                new_line_code=api_train_data.LINECODE,
+            )
+            stored_journey.line_code = api_train_data.LINECODE
 
-                    time_diff = abs((api_departure - stored_departure).total_seconds())
-                else:
-                    time_diff = 0  # If no stored departure, consider it a match
+        # Signal 2: First stop departure time should match (with tolerance)
+        # IMPORTANT: If the journey doesn't have complete data yet, skip this check
+        # because discovery might have recorded the wrong origin/departure time
+        if stored_journey.has_complete_journey:
+            if api_train_data.STOPS and api_train_data.STOPS[0].DEP_TIME:
+                first_stop = api_train_data.STOPS[0]
+                dep_time = first_stop.DEP_TIME
+                if dep_time is not None:
+                    api_departure = parse_njt_time(dep_time)
+                    if stored_journey.scheduled_departure is not None:
+                        # Ensure stored departure is timezone-aware for comparison
+                        stored_departure = stored_journey.scheduled_departure
+                        if stored_departure.tzinfo is None:
+                            # If naive, assume it's already in Eastern time
+                            stored_departure = ET.localize(stored_departure)
 
-            # Allow 10 minute tolerance for schedule adjustments
-            if time_diff > 600:
-                logger.warning(
-                    "journey_mismatch_departure_time",
-                    journey_id=stored_journey.id,
-                    train_id=stored_journey.train_id,
-                    stored_departure=(
-                        stored_journey.scheduled_departure.isoformat()
-                        if stored_journey.scheduled_departure
-                        else None
-                    ),
-                    api_departure=api_departure.isoformat(),
-                    difference_minutes=int(time_diff / 60),
-                )
-                return False
+                        time_diff = abs((api_departure - stored_departure).total_seconds())
+                    else:
+                        time_diff = 0  # If no stored departure, consider it a match
 
+                # Allow 10 minute tolerance for schedule adjustments
+                if time_diff > 600:
+                    # Before rejecting, check if stored origin appears as an intermediate stop
+                    # This happens when discovery finds a train at an intermediate station
+                    stored_origin_found_in_stops = False
+                    
+                    if stored_journey.origin_station_code:
+                        for stop in api_train_data.STOPS:
+                            if stop.STATION_2CHAR == stored_journey.origin_station_code:
+                                # Found the stored origin as an intermediate stop
+                                # Check if its departure time matches what we have stored
+                                if stop.DEP_TIME:
+                                    intermediate_departure = parse_njt_time(stop.DEP_TIME)
+                                    intermediate_time_diff = abs(
+                                        (intermediate_departure - stored_departure).total_seconds()
+                                    )
+                                    
+                                    if intermediate_time_diff <= 600:  # Within 10-minute tolerance
+                                        # This is the same journey, just discovered at wrong station
+                                        logger.info(
+                                            "journey_discovered_at_intermediate_station",
+                                            journey_id=stored_journey.id,
+                                            train_id=stored_journey.train_id,
+                                            stored_origin=stored_journey.origin_station_code,
+                                            actual_origin=first_stop.STATION_2CHAR,
+                                            stored_departure=stored_departure.isoformat(),
+                                            intermediate_stop_departure=intermediate_departure.isoformat(),
+                                            actual_first_departure=api_departure.isoformat(),
+                                            time_diff_minutes=int(intermediate_time_diff / 60),
+                                        )
+                                        stored_origin_found_in_stops = True
+                                        # Reset has_complete_journey so correction can happen
+                                        stored_journey.has_complete_journey = False
+                                        break
+                    
+                    # If we found the stored origin as an intermediate stop, continue processing
+                    # so the journey correction logic can fix the origin
+                    if stored_origin_found_in_stops:
+                        # Don't return False - let the journey continue to be processed
+                        pass
+                    else:
+                        # This is actually a different journey
+                        logger.warning(
+                            "journey_mismatch_departure_time",
+                            journey_id=stored_journey.id,
+                            train_id=stored_journey.train_id,
+                            stored_departure=(
+                                stored_journey.scheduled_departure.isoformat()
+                                if stored_journey.scheduled_departure
+                                else None
+                            ),
+                            api_departure=api_departure.isoformat(),
+                            difference_minutes=int(time_diff / 60),
+                            # Additional debugging context
+                            stored_origin=stored_journey.origin_station_code,
+                            api_first_station=first_stop.STATION_2CHAR,
+                            api_first_station_name=first_stop.STATIONNAME,
+                            stored_destination=stored_journey.destination,
+                            api_destination=api_train_data.DESTINATION,
+                            stored_line_code=stored_journey.line_code,
+                            api_line_code=api_train_data.LINECODE,
+                            journey_date=stored_journey.journey_date.isoformat() if stored_journey.journey_date else None,
+                            has_complete_journey=stored_journey.has_complete_journey,
+                            stored_departure_tz_info=str(stored_departure.tzinfo),
+                            api_departure_tz_info=str(api_departure.tzinfo),
+                            raw_api_dep_time=dep_time,
+                        )
+                        return False
+        else:
+            # Journey doesn't have complete data yet - likely discovered at an intermediate station
+            # The journey collector will fix the origin and departure time
+            logger.info(
+                "skipping_departure_time_check_for_incomplete_journey",
+                journey_id=stored_journey.id,
+                train_id=stored_journey.train_id,
+                has_complete_journey=stored_journey.has_complete_journey,
+            )
+
+        # Log successful validation for debugging patterns
+        logger.debug(
+            "journey_validation_successful",
+            journey_id=stored_journey.id,
+            train_id=stored_journey.train_id,
+            destinations_matched=f"{stored_dest_normalized} == {api_dest_normalized}",
+            departure_time_check_skipped=not stored_journey.has_complete_journey,
+            line_code_updated=(api_train_data.LINECODE != stored_journey.line_code) if api_train_data.LINECODE else False,
+        )
+        
         return True
 
     async def collect_journey_details(
@@ -537,6 +616,21 @@ class JourneyCollector(BaseJourneyCollector):
             await session.flush()
             return
 
+        # Debug: Log journey validation inputs
+        logger.debug(
+            "validating_journey_match",
+            journey_id=journey.id,
+            train_id=journey.train_id,
+            stored_destination=journey.destination,
+            api_destination=train_data.DESTINATION,
+            stored_line_code=journey.line_code,
+            api_line_code=train_data.LINECODE,
+            stored_departure=journey.scheduled_departure.isoformat() if journey.scheduled_departure else None,
+            api_first_departure=train_data.STOPS[0].DEP_TIME if train_data.STOPS else None,
+            has_complete_journey=journey.has_complete_journey,
+            api_stops_count=len(train_data.STOPS),
+        )
+
         # Verify this API data matches our stored journey
         if not await self._is_same_journey(journey, train_data):
             # API returned data for a different journey - mark this one as expired
@@ -551,6 +645,18 @@ class JourneyCollector(BaseJourneyCollector):
                     journey.journey_date.isoformat() if journey.journey_date else None
                 ),
                 reason="API returned data for different journey",
+                # Additional context about what mismatched
+                stored_destination=journey.destination,
+                api_destination=train_data.DESTINATION,
+                stored_origin=journey.origin_station_code,
+                api_first_station=train_data.STOPS[0].STATION_2CHAR if train_data.STOPS else None,
+                stored_departure=journey.scheduled_departure.isoformat() if journey.scheduled_departure else None,
+                api_first_departure=train_data.STOPS[0].DEP_TIME if train_data.STOPS else None,
+                stored_line=journey.line_code,
+                api_line=train_data.LINECODE,
+                has_complete_journey=journey.has_complete_journey,
+                update_count=journey.update_count,
+                api_error_count=journey.api_error_count,
             )
 
             await session.flush()
@@ -692,6 +798,8 @@ class JourneyCollector(BaseJourneyCollector):
                     old_origin=old_origin,
                     new_origin=journey.origin_station_code,
                 )
+                # Reset complete journey flag so future validations are more lenient
+                journey.has_complete_journey = False
 
             # CRITICAL FIX: Always update scheduled departure from actual first stop
             # This corrects discovery departure time errors
@@ -709,6 +817,8 @@ class JourneyCollector(BaseJourneyCollector):
                         ),
                         new_departure=journey.scheduled_departure.isoformat(),
                     )
+                    # Reset complete journey flag so future validations are more lenient
+                    journey.has_complete_journey = False
 
             # Update terminal station (last stop)
             journey.terminal_station_code = last_stop.STATION_2CHAR

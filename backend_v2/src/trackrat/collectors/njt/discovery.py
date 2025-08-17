@@ -302,15 +302,18 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     continue
 
                 # Create new journey
+                # NOTE: We temporarily use the discovery station as origin, but this might be
+                # an intermediate stop. The journey collector will correct this when it fetches
+                # the full journey details (see journey.py lines 685-694).
                 journey = TrainJourney(
                     train_id=train_id,
                     journey_date=journey_date,
                     line_code=train_data.get("LINE", "").strip()[:2],
                     line_name=train_data.get("LINE_NAME", ""),
                     destination=train_data.get("DESTINATION", "").strip(),
-                    origin_station_code=station_code,
+                    origin_station_code=station_code,  # May be wrong - journey collector will fix
                     terminal_station_code=station_code,  # Will be updated later
-                    scheduled_departure=scheduled_departure,
+                    scheduled_departure=scheduled_departure,  # May be wrong - journey collector will fix
                     data_source="NJT",
                     first_seen_at=now_et(),
                     last_updated_at=now_et(),
