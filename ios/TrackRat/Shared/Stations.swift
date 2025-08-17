@@ -3,25 +3,89 @@ import CoreLocation
 
 struct Stations {
     static let all: [String] = [
-        // NJ Transit stations (corrected codes to match API)
-        "New York Penn Station", "Newark Penn Station", "Secaucus Upper Lvl",
-        "Metropark", "New Brunswick", "Princeton Junction", "Trenton", "Hamilton",
-        "Newark Airport",
-        "Elizabeth", "Linden", "Rahway", "Metuchen", "Edison", "Iselin",
-        "Jersey Avenue", "North Elizabeth",
+        // Major Hub Stations
+        "New York Penn Station", "Newark Penn Station", "Hoboken",
+        "Secaucus Upper Lvl", "Secaucus Lower Lvl", "Secaucus Concourse",
+        "Trenton", "Trenton Transit Center", "Philadelphia",
         
-        // Missing Keystone Service stations (PA)
-        "Middletown PA", "Elizabethtown", "Mount Joy", "Lancaster", "Parkesburg", "Coatesville",
-        "Downingtown", "Exton", "Paoli",
+        // Northeast Corridor Line
+        "Princeton Junction", "Princeton", "Hamilton",
+        "Metropark", "New Brunswick", "Edison", "Metuchen",
+        "Rahway", "Linden", "Elizabeth", "North Elizabeth",
+        "Newark Airport", "Newark Broad Street",
         
-        // Amtrak stations (Northeast Corridor and beyond) - Updated with new stations
-        "Boston South", "Boston Back Bay", "Providence", "New Haven", "Bridgeport",
-        "Stamford", "Hartford", "Meriden", "New London", "Old Saybrook", "Wallingford", 
-        "Windsor Locks", "Springfield", "Claremont", "Dover NH", "Durham-UNH", "Exeter",
-        "Philadelphia", "Baltimore Station", "Washington Union Station", "BWI Thurgood Marshall Airport",
-        "Wilmington Station", "New Carrollton", "Aberdeen", "Alexandria", "Charlottesville",
-        "Lorton", "Norfolk", "Richmond Main Street", "Roanoke", "Harrisburg", "Lancaster",
-        "Kingston", "Westerly"
+        // North Jersey Coast Line  
+        "Woodbridge", "Perth Amboy", "South Amboy", "Aberdeen-Matawan",
+        "Hazlet", "Middletown", "Red Bank", "Little Silver",
+        "Monmouth Park", "Long Branch", "Elberon", "Allenhurst",
+        "Asbury Park", "Bradley Beach", "Belmar", "Spring Lake",
+        "Manasquan", "Point Pleasant Beach", "Bay Head",
+        
+        // Morris & Essex Lines
+        "Summit", "Chatham", "Madison", "Convent Station",
+        "Morristown", "Morris Plains", "Denville", "Dover",
+        "Mount Tabor", "Mount Arlington", "Lake Hopatcong", "Netcong",
+        "Mount Olive", "Hackettstown", "Millburn", "Short Hills",
+        "South Orange", "Maplewood", "Orange", "East Orange",
+        "Brick Church", "Highland Avenue", "Mountain View",
+        
+        // Gladstone Branch
+        "Murray Hill", "New Providence", "Berkeley Heights", "Gillette",
+        "Stirling", "Millington", "Lyons", "Basking Ridge",
+        "Bernardsville", "Far Hills", "Peapack", "Gladstone",
+        
+        // Raritan Valley Line
+        "Union", "Roselle Park", "Cranford", "Garwood", "Westfield",
+        "Fanwood", "Netherwood", "Plainfield", "Dunellen",
+        "Bound Brook", "Bridgewater", "Somerville", "Raritan",
+        "High Bridge", "Annandale", "Lebanon", "White House",
+        "North Branch",
+        
+        // Main/Bergen County Lines
+        "Kingsland", "Lyndhurst", "Delawanna", "Passaic", "Clifton",
+        "Paterson", "Hawthorne", "Glen Rock Main Line", "Glen Rock Boro Hall",
+        "Ridgewood", "Hohokus", "Waldwick", "Allendale",
+        "Ramsey Main St", "Ramsey Route 17", "Mahwah", "Suffern",
+        "Fair Lawn-Broadway", "Radburn Fair Lawn", "Garfield", "Plauderville",
+        "Rutherford", "Wesmont",
+        
+        // Montclair-Boonton Line
+        "Bloomfield", "Glen Ridge", "Bay Street", "Walnut Street",
+        "Montclair Heights", "Montclair State U", "Upper Montclair",
+        "Mountain Avenue", "Watchung Avenue", "Watsessing Avenue",
+        "Little Falls", "Wayne-Route 23", "Mountain Station",
+        "Boonton", "Mountain Lakes", "Lincoln Park", "Towaco",
+        "Great Notch",
+        
+        // Pascack Valley Line
+        "Wood Ridge", "Teterboro", "Essex Street", "Anderson Street",
+        "New Bridge Landing", "River Edge", "Oradell", "Emerson",
+        "Westwood", "Hillsdale", "Woodcliff Lake", "Park Ridge",
+        "Montvale", "Pearl River", "Nanuet", "Spring Valley",
+        
+        // Port Jervis Line
+        "Sloatsburg", "Tuxedo", "Harriman", "Salisbury Mills-Cornwall",
+        "Campbell Hall", "Otisville", "Port Jervis",
+        
+        // Additional NJ Transit Stations
+        "Avenel", "Jersey Avenue",
+        
+        // Pennsylvania Stations (Keystone Service)
+        "Middletown PA", "Elizabethtown", "Mount Joy", "Parkesburg",
+        "Coatesville", "Downingtown", "Exton", "Paoli",
+        
+        // Amtrak Northeast Corridor
+        "Boston South", "Boston Back Bay", "Providence", "Kingston", "Westerly",
+        "New London", "Old Saybrook", "New Haven", "Bridgeport", "Stamford",
+        "Baltimore Station", "BWI Thurgood Marshall Airport",
+        "Washington Union Station", "Wilmington Station",
+        
+        // Additional Amtrak Stations
+        "Hartford", "Meriden", "Wallingford", "Windsor Locks", "Springfield",
+        "Claremont", "Dover NH", "Durham-UNH", "Exeter",
+        "New Carrollton", "Aberdeen", "Alexandria", "Charlottesville",
+        "Lorton", "Norfolk", "Richmond Main Street", "Roanoke",
+        "Harrisburg", "Lancaster"
     ].sorted()
     
     // Station name to code mapping - Updated to match backend STATION_CODES.txt
