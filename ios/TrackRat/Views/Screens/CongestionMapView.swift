@@ -544,9 +544,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
                                      aggregatedSegments: segments,
                                      selectedRoute: selectedRoute)
             
-            // Add station code debug markers AFTER segments (for debugging station mapping)
-            // This ensures they appear on top of all polylines
-            self.addStationCodeMarkers(mapView: mapView, stations: stations)
+            // Station markers removed - only showing route lines
         }
         
         // Update coordinator with current segments for tap handling
@@ -557,28 +555,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
         context.coordinator.selectedRoute = selectedRoute
     }
     
-    // Add station code markers for debugging - bright red markers on top of everything
-    private func addStationCodeMarkers(mapView: MKMapView, stations: [MapStation]) {
-        // Remove existing station code annotations to prevent duplicates
-        let existingStationAnnotations = mapView.annotations.compactMap { $0 as? StationCodeAnnotation }
-        mapView.removeAnnotations(existingStationAnnotations)
-        
-        // Add new station code annotations with highest priority
-        for station in stations {
-            let annotation = StationCodeAnnotation()
-            annotation.coordinate = station.coordinate
-            annotation.stationCode = station.code
-            annotation.title = station.code
-            
-            // Add annotation and ensure it's visible
-            mapView.addAnnotation(annotation)
-            
-            // Debug: Print each station being added
-            print("🔍 Adding debug marker for station \(station.code) at \(station.coordinate.latitude), \(station.coordinate.longitude)")
-        }
-        
-        print("🔍 Added \(stations.count) station debug markers to map")
-    }
     
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -730,29 +706,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 return nil // Use default user location view
             }
             
-            // Handle station code debug annotations
-            if let stationAnnotation = annotation as? StationCodeAnnotation {
-                print("🔍 Creating marker view for station \(stationAnnotation.stationCode)")
-                
-                let identifier = "StationCodeAnnotation"
-                let annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
-                    ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-                
-                annotationView.annotation = annotation
-                annotationView.markerTintColor = UIColor.systemRed // Bright red for high visibility
-                annotationView.glyphText = stationAnnotation.stationCode
-                annotationView.titleVisibility = .hidden
-                annotationView.subtitleVisibility = .hidden
-                
-                // Make it clearly visible and on top
-                annotationView.transform = CGAffineTransform.identity // Full size
-                annotationView.alpha = 1.0 // Fully opaque
-                annotationView.displayPriority = .required // Highest priority
-                annotationView.zPriority = .max // On top of everything
-                
-                print("🔍 Station marker configured: \(stationAnnotation.stationCode) - Red, Full size, Max priority")
-                return annotationView
-            }
             
             return nil
         }
@@ -1322,11 +1275,3 @@ class SegmentTrainDetailsViewModel: ObservableObject {
     }
 }
 
-// MARK: - Station Code Debug Annotation
-/// Small gray markers that show station codes on the map for debugging purposes.
-/// These help verify that all stations have proper coordinates and are positioned correctly.
-class StationCodeAnnotation: NSObject, MKAnnotation {
-    var coordinate: CLLocationCoordinate2D = CLLocationCoordinate2D()
-    var stationCode: String = ""
-    var title: String?
-}
