@@ -185,7 +185,7 @@ class TestTrainDiscoveryCollector:
     async def test_collect_aggregates_all_train_ids(self, discovery_collector):
         """Test that collect method aggregates train IDs from all stations."""
         # Mock discover_station_trains to return different results for each station
-        # Need to include all discovery stations: NY, NP, TR, LB, PL, DN, JA, HB, RA
+        # Need to include all discovery stations: NY, NP, TR, LB, PL, DN, MP, HB, HG, GL, ND, HQ, DV, JA, RA, ST
         station_results = {
             "NY": {
                 "trains_discovered": 3,
@@ -223,7 +223,7 @@ class TestTrainDiscoveryCollector:
                 "new_train_ids": [],
                 "all_train_ids": [],
             },
-            "JA": {
+            "MP": {
                 "trains_discovered": 0,
                 "new_trains": 0,
                 "new_train_ids": [],
@@ -235,7 +235,49 @@ class TestTrainDiscoveryCollector:
                 "new_train_ids": [],
                 "all_train_ids": [],
             },
+            "HG": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "GL": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "ND": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "HQ": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "DV": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "JA": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
             "RA": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "ST": {
                 "trains_discovered": 0,
                 "new_trains": 0,
                 "new_train_ids": [],
@@ -256,16 +298,16 @@ class TestTrainDiscoveryCollector:
             result = await discovery_collector.collect(mock_session)
 
         # Verify aggregation
-        assert result["stations_processed"] == 9  # Updated discovery stations count
-        assert result["total_discovered"] == 5  # 3 + 2 (PJ removed)
-        assert result["total_new"] == 1  # 1 + 0 (PJ removed)
+        assert result["stations_processed"] == 16  # Updated discovery stations count
+        assert result["total_discovered"] == 5  # 3 + 2 (from NY and NP stations)
+        assert result["total_new"] == 1  # 1 (from NY station)
 
         # Verify station_results contains all station data
         assert "station_results" in result
-        assert len(result["station_results"]) == 9
+        assert len(result["station_results"]) == 16
 
         # Verify discover_station_trains was called for each discovery station
-        assert mock_discover.call_count == 9
+        assert mock_discover.call_count == 16
 
     @pytest.mark.asyncio
     async def test_process_discovered_trains_creates_journey_records(
