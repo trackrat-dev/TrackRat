@@ -70,9 +70,7 @@ struct BottomSheetView<Content: View>: View {
                     .fill(TrackRatTheme.Colors.surface)
                     .ignoresSafeArea()
             )
-            .offset(y: position.offsetFor(screenHeight: geometry.size.height))
-            .offset(y: translation)
-            .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8, blendDuration: 0.25), value: translation)
+            .offset(y: safeOffset(for: geometry.size.height))
             .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.8, blendDuration: 0.25), value: position)
             .gesture(
                 DragGesture()
@@ -92,6 +90,18 @@ struct BottomSheetView<Content: View>: View {
                     }
             )
         }
+    }
+    
+    // Helper function to safely combine position offset and drag translation
+    private func safeOffset(for screenHeight: CGFloat) -> CGFloat {
+        let baseOffset = position.offsetFor(screenHeight: screenHeight)
+        let combinedOffset = baseOffset + translation
+        
+        // Prevent sheet from going above screen (offset < 0) or too far below
+        let minOffset: CGFloat = 0  // Top of screen
+        let maxOffset = screenHeight * 0.95  // Leave 5% at bottom as safety margin
+        
+        return max(minOffset, min(maxOffset, combinedOffset))
     }
     
     private var dragIndicator: some View {
