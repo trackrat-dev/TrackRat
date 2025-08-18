@@ -210,7 +210,9 @@ struct TripSelectionView: View {
         appState.selectedRoute = nil
         
         // Snap bottom sheet to medium (50%) position for better map visibility
-        onBottomSheetPositionChange?(.medium)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            onBottomSheetPositionChange?(.medium)
+        }
         
         appState.navigationPath.append(NavigationDestination.destinationPicker)
         

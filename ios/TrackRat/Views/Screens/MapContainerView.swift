@@ -6,7 +6,7 @@ struct MapContainerView: View {
     @State private var bottomSheetPosition: BottomSheetPosition = .compact
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @State private var selectedSegment: CongestionSegment?
-    @StateObject private var liveActivityService = LiveActivityService.shared
+    @ObservedObject private var liveActivityService = LiveActivityService.shared
     
     // Map region state - DC to Boston corridor view
     @State private var mapRegion = MKCoordinateRegion(
@@ -331,7 +331,7 @@ struct MapContainerView: View {
             longitude: centerLon
         )
         
-        withAnimation(.easeInOut(duration: 0.5)) {
+        withAnimation(.easeInOut(duration: 0.25)) {
             mapRegion = MKCoordinateRegion(
                 center: adjustedCenter,
                 span: finalSpan
@@ -362,7 +362,7 @@ struct MapContainerView: View {
     }
     
     private func resetToDefaultMapView() {
-        withAnimation(.easeInOut(duration: 0.5)) {
+        withAnimation(.easeInOut(duration: 0.25)) {
             mapRegion = .newarkPennDefault
         }
         
@@ -413,7 +413,7 @@ struct MapContainerView: View {
         // Set zoom level for single station view
         let zoomDelta: Double = 0.2
         
-        withAnimation(.easeInOut(duration: 0.5)) {
+        withAnimation(.easeInOut(duration: 0.25)) {
             mapRegion = MKCoordinateRegion(
                 center: adjustedCenter,
                 span: MKCoordinateSpan(

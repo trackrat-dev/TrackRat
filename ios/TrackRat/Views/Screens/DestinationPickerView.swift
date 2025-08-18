@@ -200,7 +200,8 @@ struct DestinationPickerView: View {
         
         // DEFER the heavy map route setting to happen after UI updates
         // This prevents the map processing from blocking the station selection UI
-        DispatchQueue.main.async {
+        // Simple 100ms delay to let UI updates complete first
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             // Create and set the selected route for map highlighting
             if let departureCode = self.appState.departureStationCode,
                let departureName = self.appState.selectedDeparture,
