@@ -83,7 +83,7 @@ struct TripSelectionView: View {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {
                             Image(systemName: "person.circle.fill")
-                                .font(.system(size: 20))
+                                .font(.system(size: 28))
                                 .foregroundColor(.white.opacity(0.8))
                         }
                     }
