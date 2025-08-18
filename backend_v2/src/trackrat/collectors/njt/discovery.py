@@ -14,6 +14,7 @@ from trackrat.collectors.base import BaseDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, JourneyStop, TrainJourney
+from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time
 
 logger = get_logger(__name__)
@@ -206,33 +207,37 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         if stop:
             # Stop exists - update track if not already set
             if not stop.track:
-                stop.track = str(track)
-                stop.track_assigned_at = now_et()
-                logger.info(
-                    "updated_existing_stop_track_during_discovery",
-                    train_id=journey.train_id,
-                    station_code=station_code,
-                    track=track,
-                )
+                sanitized_track = sanitize_track(track)
+                if sanitized_track:
+                    stop.track = sanitized_track
+                    stop.track_assigned_at = now_et()
+                    logger.info(
+                        "updated_existing_stop_track_during_discovery",
+                        train_id=journey.train_id,
+                        station_code=station_code,
+                        track=sanitized_track,
+                    )
         else:
             # Stop doesn't exist - create it with the track
             from trackrat.config.stations import get_station_name
 
-            stop = JourneyStop(
-                journey_id=journey.id,
-                station_code=station_code,
-                station_name=get_station_name(station_code),
-                stop_sequence=0,  # Will be updated later by journey collector
-                track=str(track),
-                track_assigned_at=now_et(),
-            )
-            session.add(stop)
-            logger.info(
-                "created_stop_with_track_during_discovery",
-                train_id=journey.train_id,
-                station_code=station_code,
-                track=track,
-            )
+            sanitized_track = sanitize_track(track)
+            if sanitized_track:
+                stop = JourneyStop(
+                    journey_id=journey.id,
+                    station_code=station_code,
+                    station_name=get_station_name(station_code),
+                    stop_sequence=0,  # Will be updated later by journey collector
+                    track=sanitized_track,
+                    track_assigned_at=now_et(),
+                )
+                session.add(stop)
+                logger.info(
+                    "created_stop_with_track_during_discovery",
+                    train_id=journey.train_id,
+                    station_code=station_code,
+                    track=sanitized_track,
+                )
 
     async def process_discovered_trains(
         self,
