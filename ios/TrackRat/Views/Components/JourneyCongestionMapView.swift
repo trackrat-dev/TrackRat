@@ -121,7 +121,7 @@ class JourneyCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 3)
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 2)
             
             // Determine expected data source based on train type
             let expectedDataSource: String
@@ -394,9 +394,9 @@ struct CongestionMapKitView: UIViewRepresentable {
             if let polyline = overlay as? CongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 
-                // Check if this segment has cancellations - treat as severe + dashed
+                // Check if this segment has cancellations - dark gray + dashed
                 if let segment = polyline.segment, segment.cancellationRate > 0 {
-                    renderer.strokeColor = UIColor.systemRed
+                    renderer.strokeColor = UIColor.darkGray
                     renderer.lineWidth = 11 // Same as severe congestion
                     renderer.lineDashPattern = [3, 3]
                 } else if let segment = polyline.segment {
@@ -481,9 +481,9 @@ struct CongestionMapKitView: UIViewRepresentable {
         private func getCongestionLineWidth(_ factor: Double) -> CGFloat {
             if factor < 1.05 {
                 return 5
-            } else if factor < 1.25 {
+            } else if factor < 1.2 {
                 return 7
-            } else if factor < 2.0 {
+            } else if factor < 1.5 {
                 return 9
             } else {
                 return 11
@@ -493,9 +493,9 @@ struct CongestionMapKitView: UIViewRepresentable {
         private func getUIColor(for congestionFactor: Double) -> UIColor {
             if congestionFactor < 1.05 {
                 return UIColor.systemGreen
-            } else if congestionFactor < 1.25 {
+            } else if congestionFactor < 1.2 {
                 return UIColor.systemYellow
-            } else if congestionFactor < 2.0 {
+            } else if congestionFactor < 1.5 {
                 return UIColor.systemOrange
             } else {
                 return UIColor.systemRed
@@ -824,7 +824,7 @@ class EmbeddedCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data using existing API
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 3)
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 2)
             
             // Determine expected data source based on train type
             let expectedDataSource: String

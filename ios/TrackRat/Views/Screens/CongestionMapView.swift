@@ -213,7 +213,7 @@ class CongestionMapViewModel: ObservableObject {
         print("🚦 CongestionMapViewModel init - data loading deferred")
     }
     
-    func fetchCongestionData(timeWindowHours: Int = 3, dataSource: String? = nil) async {
+    func fetchCongestionData(timeWindowHours: Int = 2, dataSource: String? = nil) async {
         // Prevent duplicate fetches if already loading
         guard !isLoading else {
             print("🚦 Skipping duplicate fetch - already loading")
