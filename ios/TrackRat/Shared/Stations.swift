@@ -151,7 +151,6 @@ struct Stations {
         "Bloomfield": "BM",
         "Glen Ridge": "GG",
         "Bay Street": "MC",
-        "Walnut Street": "WS",  // Note: WS conflicts with Washington Union Station
         "Ridgewood": "RW",
         "Hohokus": "UF",
         "Waldwick": "WK",
