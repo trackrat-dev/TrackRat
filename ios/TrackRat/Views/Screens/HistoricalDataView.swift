@@ -819,7 +819,7 @@ class CongestionDataViewModel: ObservableObject {
         error = nil
         
         do {
-            let response = try await apiService.fetchCongestionData(timeWindowHours: 2)
+            let response = try await apiService.fetchCongestionData(timeWindowHours: 3)
             congestionData = response
             lastUpdated = Date()
             

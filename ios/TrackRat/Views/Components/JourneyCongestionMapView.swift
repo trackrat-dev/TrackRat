@@ -121,7 +121,7 @@ class JourneyCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 2)
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 3)
             
             // Determine expected data source based on train type
             let expectedDataSource: String
@@ -824,7 +824,7 @@ class EmbeddedCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data using existing API
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 2)
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 3)
             
             // Determine expected data source based on train type
             let expectedDataSource: String
