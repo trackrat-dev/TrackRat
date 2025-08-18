@@ -40,7 +40,7 @@ struct TripSelectionView: View {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.white.opacity(0.6))
                         
-                        TextField(searchFieldFocused ? "Select origin station" : "Find your train", text: $searchText)
+                        TextField("Select origin station", text: $searchText)
                             .foregroundColor(.white)
                             .focused($searchFieldFocused)
                             .onChange(of: searchText) { _, newValue in
@@ -115,17 +115,6 @@ struct TripSelectionView: View {
                 .padding(.horizontal)
                 .padding(.top, 20)
                 
-                // Welcome message - hide when search is focused or there are active Live Activities
-                if !searchFieldFocused && !(liveActivityService.isActivityActive) {
-                    Text("Where would you like to go?")
-                        .font(.title2)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white.opacity(0.9))
-                        .padding(.horizontal)
-                        .padding(.top, 12)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-                
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
                     // Search results
@@ -184,8 +173,8 @@ struct TripSelectionView: View {
                         }
                     }
                     
-                    // Favorite stations - show when search field is focused AND not typing
-                    if searchFieldFocused && !favoriteStations.isEmpty && !isSearching {
+                    // Favorite stations - show when not searching
+                    if !favoriteStations.isEmpty && !isSearching {
                         VStack(alignment: .leading, spacing: 16) {
                             Text("FAVORITE STATIONS")
                                 .font(TrackRatTheme.Typography.caption)
@@ -204,7 +193,7 @@ struct TripSelectionView: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
-                .padding(.top, searchFieldFocused ? 8 : 12)
+                .padding(.top, 12)
                 
                 // Spacer to push content to top and fill remaining space
                 Spacer()
