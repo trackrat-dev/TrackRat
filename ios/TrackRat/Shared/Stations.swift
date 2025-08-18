@@ -140,6 +140,7 @@ struct Stations {
         "Montclair Heights": "HS",
         "Upper Montclair": "UM",
         "Mountain Avenue": "MS",
+        "Walnut Street": "WA",
         "Watchung Avenue": "WG",
         "Watsessing Avenue": "WT",
         "Orange": "OG",
@@ -425,9 +426,7 @@ struct Stations {
         "RN": CLLocationCoordinate2D(latitude: 40.9166, longitude: -74.1710),   // Paterson
         "HW": CLLocationCoordinate2D(latitude: 40.942528946, longitude: -74.152399138),   // Hawthorne 40.94252894598973, -74.15239913775797
         "GR": CLLocationCoordinate2D(latitude: 40.9633, longitude: -74.1269),   // Glen Rock
-        "WA": CLLocationCoordinate2D(latitude: 41.0108, longitude: -74.1267),   // Waldwick
         "AL": CLLocationCoordinate2D(latitude: 41.0312, longitude: -74.1306),   // Allendale
-        "MH": CLLocationCoordinate2D(latitude: 41.0886, longitude: -74.1438),   // Mahwah
         
         // Bergen County Line (Ridgewood Branch)
         "RF": CLLocationCoordinate2D(latitude: 40.8267, longitude: -74.1069),   // Rutherford
@@ -472,6 +471,7 @@ struct Stations {
         "EO": CLLocationCoordinate2D(latitude: 40.76089825, longitude: -74.2107669), // East Orange 40.7608982536601, -74.2107669015754
         "OG": CLLocationCoordinate2D(latitude: 40.771899, longitude: -74.2331103), // Orange 40.77189922949034, -74.23311030419556
         "HI": CLLocationCoordinate2D(latitude: 40.7668668, longitude: -74.24370939), // Highland Avenue 40.76686685018996, -74.24370939011305
+        "MT": CLLocationCoordinate2D(latitude: 40.7553832255, longitude: -74.2529918156), // Mountain Station 40.75538322553456, -74.25299181567573
         "SO": CLLocationCoordinate2D(latitude: 40.74598917, longitude: -74.260345), // South Orange 40.745989173313006, -74.26034504763733
         "MW": CLLocationCoordinate2D(latitude: 40.731052531, longitude: -74.275368), // Maplewood 40.73105253148527, -74.27536805310443
         "RT": CLLocationCoordinate2D(latitude: 40.725183794, longitude: -74.323772644), // Short Hills 40.72518379457189, -74.32377264451166
@@ -485,18 +485,47 @@ struct Stations {
         "ND": CLLocationCoordinate2D(latitude: 40.7418, longitude: -74.1698),   // Newark Broad Street
         "DV": CLLocationCoordinate2D(latitude: 40.8837, longitude: -74.4753),   // Denville
         "PC": CLLocationCoordinate2D(latitude: 40.7052, longitude: -74.6550),   // Peapack
-        
-        // Montclair Boonton Line (TODO!)
-        "WT": CLLocationCoordinate2D(latitude: 40.78291485, longitude: -74.19856522),   // Watsessing Ave 40.78291485164349, -74.1985652261131
-        "BM": CLLocationCoordinate2D(latitude: 40.792818916, longitude: -74.1999969),   // Bloomfield 40.792818916372745, -74.19999693101497
-        "GG": CLLocationCoordinate2D(latitude: 40.800468228, longitude: -74.2044936377),   // Glenn Ridge 40.800468228026226, -74.20449363776208
-        "MC": CLLocationCoordinate2D(latitude: 40.8081880919, longitude: -74.20858344),   // Bay Street 40.808188091934255, -74.20858344266387
+        "NV": CLLocationCoordinate2D(latitude: 40.71207692699218, longitude: -74.3865321865084),   // New Providence
+	"MH": CLLocationCoordinate2D(latitude: 40.69498340590801, longitude: -74.40318790190945),   // Murray Hill
+	"BY": CLLocationCoordinate2D(latitude: 40.68239885512966, longitude: -74.44270357307379),   // Berkeley Heights
+	"GI": CLLocationCoordinate2D(latitude: 40.67823715581587, longitude: -74.4682388381484),   // Gillette
+	"SG": CLLocationCoordinate2D(latitude: 40.67468000927561, longitude: -74.49339662637885),   // Stirling
+	"GO": CLLocationCoordinate2D(latitude: 40.67356917492084, longitude: -74.52362581672504),   // Millington
+	"LY": CLLocationCoordinate2D(latitude: 40.68483490714862, longitude: -74.54952358841823),   // Lyons
+	"BI": CLLocationCoordinate2D(latitude: 40.711327481896824, longitude: -74.55527314719112),   // Basking Ridge
+	"BV": CLLocationCoordinate2D(latitude: 40.716945533975355, longitude: -74.57125871486349),   // Bernardsville
+	"FH": CLLocationCoordinate2D(latitude: 40.685599814033345, longitude: -74.6337807442374),   // Far Hills
+         // Montclair-Boonton Line - Updated GPS
+	"WT": CLLocationCoordinate2D(latitude: 40.78291485164349, longitude: -74.1985652261131),   // Watsessing Ave
+	"BM": CLLocationCoordinate2D(latitude: 40.792818916372745, longitude: -74.19999693101497),   // Bloomfield
+	"GG": CLLocationCoordinate2D(latitude: 40.800468228026226, longitude: -74.20449363776208),   // Glenn Ridge
+	"MC": CLLocationCoordinate2D(latitude: 40.808188091934255, longitude: -74.20858344266387),   // Bay Street
+	"WA": CLLocationCoordinate2D(latitude: 40.81716518884647, longitude: -74.20955720561183),   // Walnut street
+	"WG": CLLocationCoordinate2D(latitude: 40.82971140825341, longitude: -74.20705692883614),   // Watchung
+	"UM": CLLocationCoordinate2D(latitude: 40.8420714374858, longitude: -74.20941682888828),   // Upper Montclair
+	"MS": CLLocationCoordinate2D(latitude: 40.84886257848428, longitude: -74.20572784233256),   // Mountain Avenue
+	"HS": CLLocationCoordinate2D(latitude: 40.85778632525093, longitude: -74.20258147801873), // Montclair Heights
+	"UV": CLLocationCoordinate2D(latitude: 40.869877328760076, longitude: -74.1973970868374),   // Montclair State University
+	"FA": CLLocationCoordinate2D(latitude: 40.880597100429924, longitude: -74.23527448868244),   // Little Falls
+	"23": CLLocationCoordinate2D(latitude: 40.90014887124657, longitude: -74.25698821936236),   // Wayne Rt 23
+	"MV": CLLocationCoordinate2D(latitude: 40.913900511412734, longitude: -74.26769562647546),   // Mountain View
+	"LP": CLLocationCoordinate2D(latitude: 40.924111086002696, longitude: -74.3018546214956),   // Lincoln Park
+	"TO": CLLocationCoordinate2D(latitude: 40.9231266856343, longitude: -74.34342958314522),   // Towaco
+	"DO": CLLocationCoordinate2D(latitude: 40.88350334976419, longitude: -74.55552377794903), // Dover
+	"ML": CLLocationCoordinate2D(latitude: 40.88593889355365, longitude: -74.43361065984737),   // Mountain Lakes
+	"BN": CLLocationCoordinate2D(latitude: 40.90337853269087, longitude: -74.4077830932363),  // Boonton
 
-        // Montclair-Boonton Line - Updated GPS
-        "HS": CLLocationCoordinate2D(latitude: 40.857538, longitude: -74.202493), // Montclair Heights
-        "UV": CLLocationCoordinate2D(latitude: 40.8695, longitude: -74.1975),   // Montclair State University
-        "DO": CLLocationCoordinate2D(latitude: 40.883417, longitude: -74.555884), // Dover
-        "BN": CLLocationCoordinate2D(latitude: 40.903378, longitude: -74.407733)  // Boonton
+	"HV": CLLocationCoordinate2D(latitude: 40.89659277960788, longitude: -74.63275424450669),  // Mount Arlington
+	"HP": CLLocationCoordinate2D(latitude: 40.90408226231908, longitude: -74.66561057518699),  // Lake Hopatcong
+	"NT": CLLocationCoordinate2D(latitude: 40.897623899501745, longitude: -74.70742034940882),  // Netcong
+	"OL": CLLocationCoordinate2D(latitude: 40.90739863717089, longitude: -74.73084167518675),  // Mount Olive
+	"HQ": CLLocationCoordinate2D(latitude: 40.851897810525074, longitude: -74.83489363939469),  // Hackettstown
+	"GL": CLLocationCoordinate2D(latitude: 40.72024745131554, longitude: -74.66637267519233),  // Gladstone
+	"OR": CLLocationCoordinate2D(latitude: 40.592500971292836, longitude: -74.68422484941766),  // North Branch
+	"WH": CLLocationCoordinate2D(latitude: 40.615644648058776, longitude: -74.77069208869021),  //  White House
+	"ON": CLLocationCoordinate2D(latitude: 40.63685173471974, longitude: -74.83598194792847),  // Lebanon
+	"AN": CLLocationCoordinate2D(latitude: 40.645122790094504, longitude: -74.87893201752432),  // Annandale
+	"HG": CLLocationCoordinate2D(latitude: 40.666798999008535, longitude: -74.89591082917332)  // High Bridge
     ]
     
     // Supported departure stations - Updated to match backend
@@ -528,7 +557,7 @@ struct Stations {
             .map { $0 }
     }
     
-    static func getStationCode(_ stationName: String) -> String? {
+   static func getStationCode(_ stationName: String) -> String? { 
         // First try exact match
         if let code = stationCodes[stationName] {
             return code
