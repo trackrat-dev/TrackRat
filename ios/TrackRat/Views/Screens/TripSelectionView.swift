@@ -75,30 +75,6 @@ struct TripSelectionView: View {
                     
                     // Right side icons
                     HStack(spacing: 16) {
-                        // Advanced Configuration button - icon only
-                        Button {
-                            // Expand bottom sheet to 100% height when settings is tapped
-                            onBottomSheetPositionChange?(.expanded)
-                            appState.navigationPath.append(NavigationDestination.advancedConfiguration)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            Image(systemName: "gearshape.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        
-                        // Report Issues & Request Features button - icon only
-                        Button {
-                            if let signalURL = URL(string: "https://signal.me/#eu/iG3LNnu-IycTUbwrWF1nwrlR-u-TN5gtBO0tXtJk3Nder7TtfzFPa6On6N9dl3e-") {
-                                openURL(signalURL)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        } label: {
-                            Image(systemName: "exclamationmark.bubble.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        
                         // Profile/Head icon - opens My Profile view
                         Button {
                             // Expand bottom sheet to 100% height when profile is tapped
