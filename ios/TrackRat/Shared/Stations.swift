@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 
 struct Stations {
     static let all: [String] = [
@@ -603,4 +604,15 @@ struct Stations {
     static func getCoordinates(for code: String) -> CLLocationCoordinate2D? {
         return stationCoordinates[code]
     }
+}
+
+// MARK: - Default Map Region
+
+extension MKCoordinateRegion {
+    /// Default map region centered on Newark Penn Station with appropriate zoom level
+    /// for viewing the NJ Transit network. Used as the consistent "home" view.
+    static let newarkPennDefault = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644), // Newark Penn Station
+        span: MKCoordinateSpan(latitudeDelta: 1.5, longitudeDelta: 1.5)
+    )
 }

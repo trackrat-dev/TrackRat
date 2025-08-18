@@ -141,12 +141,8 @@ struct MapContainerView: View {
     
     private func handleNavigationChange(_ navigationPath: NavigationPath) {
         if navigationPath.isEmpty {
-            // Back to home - switch to overall mode and reset bottom sheet
-            appState.mapDisplayMode = .overallCongestion
-            // Clear any route selection to show all congestion data
-            appState.selectedRoute = nil
-            // Clear route filter from map view model
-            mapViewModel.setRouteFilter(nil)
+            // Back to home - reset to default Newark Penn view
+            resetToDefaultMapView()
             bottomSheetPosition = .compact
         } else {
             // Check if we're navigating to train details
@@ -365,6 +361,17 @@ struct MapContainerView: View {
         return baseOffset * cappedScale
     }
     
+    private func resetToDefaultMapView() {
+        withAnimation(.easeInOut(duration: 0.5)) {
+            mapRegion = .newarkPennDefault
+        }
+        
+        // Clear any active filters/routes
+        appState.selectedRoute = nil
+        appState.mapDisplayMode = .overallCongestion
+        mapViewModel.setRouteFilter(nil)
+    }
+    
     private func checkForActiveLiveActivity() {
         // Check if there's an active Live Activity
         if liveActivityService.isActivityActive,
@@ -442,6 +449,7 @@ struct MapContainerView: View {
                 mapViewModel: mapViewModel,
                 onDismiss: {
                     // Reset to default map view and collapse bottom sheet
+                    resetToDefaultMapView()
                     bottomSheetPosition = .medium
                 }
             )
