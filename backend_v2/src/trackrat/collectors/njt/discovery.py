@@ -24,7 +24,24 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
     """Discovers active trains from station schedules."""
 
     # Stations to poll for discovery - using major stations from config
-    DISCOVERY_STATIONS = ["NY", "NP", "TR", "LB", "PL", "DN", "JA", "HB", "RA"]
+    DISCOVERY_STATIONS = [
+        "NY",  # New York Penn Station
+        "NP",  # Newark Penn Station
+        "TR",  # Trenton
+        "LB",  # Long Branch
+        "PL",  # Plauderville
+        "DN",  # Denville
+        "MP",  # Metropark
+        "HB",  # Hoboken
+        "HG",  # High Bridge
+        "GL",  # Gladstone
+        "ND",  # Newark Broad Street
+        "HQ",  # Hackettstown
+        "DV",  # Dover
+        "JA",  # Jersey Avenue
+        "RA",  # Raritan
+        "ST",  # Summit - major Morris & Essex terminal for inbound trains
+    ]
 
     def __init__(self, njt_client: NJTransitClient) -> None:
         """Initialize the discovery collector.
