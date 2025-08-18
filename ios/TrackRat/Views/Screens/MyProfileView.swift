@@ -24,7 +24,7 @@ struct MyProfileView: View {
                     
                     // Coming Soon content
                     VStack(spacing: 16) {
-                        Text("Profile & Points Coming Soon...")
+                        Text("Profile (& Points) Coming Soon...")
                             .font(.title2)
                             .fontWeight(.medium)
                             .foregroundColor(.white)
