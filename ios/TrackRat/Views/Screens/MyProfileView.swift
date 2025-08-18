@@ -3,6 +3,7 @@ import SwiftUI
 struct MyProfileView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
+    @Environment(\.openURL) private var openURL
     
     var body: some View {
         let backgroundView = TrackRatTheme.Colors.primaryBackground
@@ -23,7 +24,7 @@ struct MyProfileView: View {
                     
                     // Coming Soon content
                     VStack(spacing: 16) {
-                        Text("Coming Soon...")
+                        Text("Profile & Points Coming Soon...")
                             .font(.title2)
                             .fontWeight(.medium)
                             .foregroundColor(.white)
@@ -31,13 +32,102 @@ struct MyProfileView: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity)
+                    
+                    // Settings & Support section
+                    VStack(spacing: 16) {
+                        // Section header
+                        HStack {
+                            Text("Settings & Support")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        
+                        // Advanced Configuration
+                        Button {
+                            appState.navigationPath.append(NavigationDestination.advancedConfiguration)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Advanced Configuration")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                    
+                                    Text("Server settings & health checks")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
+                                        .multilineTextAlignment(.leading)
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                        
+                        // Report Issues & Request Features
+                        Button {
+                            if let signalURL = URL(string: "https://signal.me/#eu/iG3LNnu-IycTUbwrWF1nwrlR-u-TN5gtBO0tXtJk3Nder7TtfzFPa6On6N9dl3e-") {
+                                openURL(signalURL)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.bubble.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Report Issues & Request Features")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                    
+                                    Text("Get help via Signal messenger")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
+                                        .multilineTextAlignment(.leading)
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                    }
                 }
                 .padding()
                 .padding(.bottom, 40)
             }
         }
-        .navigationTitle("My Profile")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

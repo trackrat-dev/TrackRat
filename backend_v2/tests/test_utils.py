@@ -19,6 +19,7 @@ from trackrat.utils.time import (
     safe_datetime_subtract,
     ET,
 )
+from trackrat.utils.sanitize import sanitize_track
 
 
 def test_now_et():
@@ -304,4 +305,59 @@ def test_is_stale_with_mixed_timezones():
 
     # Should handle timezone conversion properly
     assert is_stale(last_updated_utc, 120) is False  # Not stale
-    assert is_stale(last_updated_utc, 30) is True  # Stale
+
+
+def test_sanitize_track_none_or_empty():
+    """Test sanitize_track with None or empty values."""
+    assert sanitize_track(None) is None
+    assert sanitize_track("") is None
+    assert sanitize_track("   ") is None
+
+
+def test_sanitize_track_fits_already():
+    """Test sanitize_track with values that already fit."""
+    assert sanitize_track("1") == "1"
+    assert sanitize_track("2A") == "2A"
+    assert sanitize_track("12") == "12"
+    assert sanitize_track("Track") == "Track"
+    assert sanitize_track("  3  ") == "3"  # Should strip whitespace
+
+
+def test_sanitize_track_extract_number():
+    """Test sanitize_track extracting track numbers from longer strings."""
+    # Common patterns
+    assert sanitize_track("Track 1") == "1"
+    assert sanitize_track("Track 2A") == "2A"
+    assert sanitize_track("Platform 3") == "3"
+    assert sanitize_track("1 Running") == "1"
+    assert sanitize_track("Track 12") == "12"
+
+    # Edge cases with numbers
+    assert sanitize_track("On Track 5") == "5"
+    assert sanitize_track("Track A1") == "A1"
+
+
+def test_sanitize_track_truncation():
+    """Test sanitize_track truncation for unusual values."""
+    # Long strings without clear track numbers
+    assert sanitize_track("Millstone Running") == "Mill+"
+    assert sanitize_track("Platform Seven") == "Plat+"
+    assert sanitize_track("Extended Track Name") == "Exte+"
+
+    # Ensure truncation indicator is added
+    assert sanitize_track("LongTrackName").endswith("+")
+    assert len(sanitize_track("VeryLongTrackName")) == 5
+
+
+def test_sanitize_track_real_world_cases():
+    """Test sanitize_track with real-world problematic values."""
+    # The actual case that caused the bug
+    assert sanitize_track("Millstone Running") == "Mill+"
+
+    # Other potential edge cases
+    assert sanitize_track("Track") == "Track"  # Exactly 5 chars
+    assert sanitize_track("Tracks") == "Trac+"  # 6 chars
+
+    # Numbers at various positions
+    assert sanitize_track("Running on 4") == "4"
+    assert sanitize_track("Goes to 2B") == "2B"

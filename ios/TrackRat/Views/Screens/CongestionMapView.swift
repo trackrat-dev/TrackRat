@@ -4,10 +4,7 @@ import UIKit
 
 struct CongestionMapView: View {
     @StateObject private var viewModel = CongestionMapViewModel()
-    @State private var region = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644), // Newark Penn as default
-        span: MKCoordinateSpan(latitudeDelta: 1.5, longitudeDelta: 1.5)
-    )
+    @State private var region = MKCoordinateRegion.newarkPennDefault
     @State private var selectedSegment: CongestionSegment?
     @State private var showingFilters = false
     @State private var timeWindow = 3

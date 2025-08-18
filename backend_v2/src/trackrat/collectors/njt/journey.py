@@ -17,6 +17,7 @@ from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import ET, now_et, parse_njt_time
 
 logger = get_logger(__name__)
@@ -965,9 +966,11 @@ class JourneyCollector(BaseJourneyCollector):
 
             # Update track if available - but don't overwrite existing track from discovery
             if stop_data.TRACK:
-                stop.track = stop_data.TRACK
-                if not stop.track_assigned_at:
-                    stop.track_assigned_at = now_et()
+                sanitized_track = sanitize_track(stop_data.TRACK)
+                if sanitized_track:
+                    stop.track = sanitized_track
+                    if not stop.track_assigned_at:
+                        stop.track_assigned_at = now_et()
             elif not stop_data.TRACK and stop.track:
                 # Preserve track from discovery if API doesn't provide it
                 logger.debug(
@@ -1133,12 +1136,14 @@ class JourneyCollector(BaseJourneyCollector):
         """
         # Update track if available in departure board
         if "TRACK" in train_entry and train_entry["TRACK"]:
-            stop.TRACK = str(train_entry["TRACK"])
-            logger.debug(
-                "enhanced_stop_with_departure_board_track",
-                station=stop.STATION_2CHAR,
-                track=stop.TRACK,
-            )
+            sanitized_track = sanitize_track(train_entry["TRACK"])
+            if sanitized_track:
+                stop.TRACK = sanitized_track
+                logger.debug(
+                    "enhanced_stop_with_departure_board_track",
+                    station=stop.STATION_2CHAR,
+                    track=stop.TRACK,
+                )
 
         # Could add other fields here if needed in the future
         # e.g., real-time status, departure time updates, etc.
