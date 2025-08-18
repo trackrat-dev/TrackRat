@@ -84,9 +84,11 @@ struct MapContainerView: View {
         }
         .preferredColorScheme(.dark)
         .task {
-            // Load congestion data when map container appears
-            // This restores data loading that was removed from ViewModel init for performance
-            await mapViewModel.fetchCongestionData()
+            // Load congestion data when map container appears, but don't block UI
+            // Use detached task to prevent UI lag during origin station selection
+            Task.detached(priority: .utility) { [weak mapViewModel] in
+                await mapViewModel?.fetchCongestionDataIfNeeded()
+            }
         }
         .onAppear {
             // Check for active Live Activity first
@@ -104,17 +106,22 @@ struct MapContainerView: View {
                 animateMapToRoute(route, targetSheetPosition: bottomSheetPosition)
             }
         }
-        .onChange(of: appState.departureStationCode) { _, newDepartureCode in
-            // Animate map to show departure station when it changes (origin selection)
-            if let departureCode = newDepartureCode, appState.selectedRoute == nil {
-                // Only animate to single station if no full route is selected yet
-                // Use current bottom sheet position since we're not changing it here
-                animateMapToStation(departureCode, targetSheetPosition: bottomSheetPosition)
-            }
-        }
+        // Removed automatic map animation when user selects origin station
+        // This was causing the map to change location/zoom after origin selection
+        // .onChange(of: appState.departureStationCode) { _, newDepartureCode in
+        //     // Animate map to show departure station when it changes (origin selection)
+        //     if let departureCode = newDepartureCode, appState.selectedRoute == nil {
+        //         // Only animate to single station if no full route is selected yet
+        //         // Use current bottom sheet position since we're not changing it here
+        //         animateMapToStation(departureCode, targetSheetPosition: bottomSheetPosition)
+        //     }
+        // }
         .onChange(of: appState.navigationPath) { _, newPath in
-            // Handle navigation-based map mode switching
-            handleNavigationChange(newPath)
+            // Handle navigation-based map mode switching, but don't block UI
+            // Use async dispatch to prevent navigation lag
+            Task { @MainActor in
+                handleNavigationChange(newPath)
+            }
         }
         .onChange(of: appState.mapDisplayMode) { _, newMode in
             // Update map when display mode changes
@@ -362,14 +369,19 @@ struct MapContainerView: View {
     }
     
     private func resetToDefaultMapView() {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            mapRegion = .newarkPennDefault
-        }
-        
-        // Clear any active filters/routes
+        // Clear state immediately (non-blocking)
         appState.selectedRoute = nil
         appState.mapDisplayMode = .overallCongestion
-        mapViewModel.setRouteFilter(nil)
+        
+        // Do map operations asynchronously to avoid blocking navigation
+        Task { @MainActor in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                mapRegion = .newarkPennDefault
+            }
+            
+            // Clear route filter in background to avoid blocking
+            mapViewModel.setRouteFilter(nil)
+        }
     }
     
     private func checkForActiveLiveActivity() {

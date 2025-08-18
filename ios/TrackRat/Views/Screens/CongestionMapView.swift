@@ -213,6 +213,16 @@ class CongestionMapViewModel: ObservableObject {
         print("🚦 CongestionMapViewModel init - data loading deferred")
     }
     
+    func fetchCongestionDataIfNeeded(timeWindowHours: Int = 3, dataSource: String? = nil) async {
+        // Only fetch if we don't already have data and we're not currently loading
+        guard allAggregatedSegments.isEmpty && !isLoading else {
+            print("🚦 Skipping congestion data fetch - already have data or loading")
+            return
+        }
+        
+        await fetchCongestionData(timeWindowHours: timeWindowHours, dataSource: dataSource)
+    }
+    
     func fetchCongestionData(timeWindowHours: Int = 3, dataSource: String? = nil) async {
         // Prevent duplicate fetches if already loading
         guard !isLoading else {
@@ -527,21 +537,33 @@ struct SystemCongestionMapView: UIViewRepresentable {
             mapView.setRegion(region, animated: true)
         }
         
-        // Defer heavy map processing to prevent UI blocking
-        DispatchQueue.main.async { [weak mapView] in
-            guard let mapView = mapView else { return }
+        // Only update map overlays if segments have actually changed
+        // This prevents expensive map rebuilds during navigation
+        let segmentIds = segments.map { "\($0.fromStation)-\($0.toStation)" }.sorted()
+        let individualSegmentIds = individualSegments.map { "\($0.fromStation)-\($0.toStation)-\($0.trainId)" }.sorted()
+        let currentMapState = "\(segmentIds.joined())-\(individualSegmentIds.joined())"
+        
+        // Check if we need to update (store last state in coordinator)
+        if context.coordinator.lastMapState != currentMapState {
+            context.coordinator.lastMapState = currentMapState
             
-            // Clear existing overlays and annotations
-            mapView.removeOverlays(mapView.overlays)
-            mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
-            
-            // Add individual journey segments with offsets to prevent overlap
-            self.addSegmentsToMapAsync(mapView: mapView, 
-                                     individualSegments: individualSegments, 
-                                     aggregatedSegments: segments,
-                                     selectedRoute: selectedRoute)
-            
-            // Station markers removed - only showing route lines
+            // Use background queue for heavy map processing to prevent UI blocking
+            DispatchQueue.global(qos: .userInitiated).async { [weak mapView] in
+                guard let mapView = mapView else { return }
+                
+                // Move back to main queue only for UI updates
+                DispatchQueue.main.async {
+                    // Clear existing overlays and annotations
+                    mapView.removeOverlays(mapView.overlays)
+                    mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
+                    
+                    // Add individual journey segments with offsets to prevent overlap
+                    self.addSegmentsToMapAsync(mapView: mapView, 
+                                             individualSegments: individualSegments, 
+                                             aggregatedSegments: segments,
+                                             selectedRoute: selectedRoute)
+                }
+            }
         }
         
         // Update coordinator with current segments for tap handling
@@ -628,6 +650,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
         var onIndividualSegmentTap: (IndividualJourneySegment) -> Void = { _ in }
         var selectedRoute: TripPair?
+        var lastMapState: String = "" // Track when map content actually changes
         
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
