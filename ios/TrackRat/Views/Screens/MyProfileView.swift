@@ -25,35 +25,6 @@ struct MyProfileView: View {
                     
                     // My Profile section
                     VStack(spacing: 16) {
-                        // Profile card
-                        HStack(spacing: 16) {
-                            Image(systemName: "person.fill")
-                                .font(.title2)
-                                .foregroundColor(.orange)
-                                .frame(width: 24, height: 24)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Profile")
-                                    .font(.headline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.white)
-                                    .multilineTextAlignment(.leading)
-                                
-                                Text("Coming soon...")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.7))
-                                    .multilineTextAlignment(.leading)
-                            }
-                            
-                            Spacer()
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(.ultraThinMaterial)
-                        )
-                        
                         // My Cheese Points card
                         HStack(spacing: 16) {
                             Image(systemName: "star.fill")
