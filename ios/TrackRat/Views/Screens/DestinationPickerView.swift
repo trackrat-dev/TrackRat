@@ -40,35 +40,52 @@ struct DestinationPickerView: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 8) {
-                    // Top navigation bar with back button and search
-                    HStack(spacing: 16) {
-                        // Back button
-                        Button {
-                            // Navigate back one step to origin selection
-                            if !appState.navigationPath.isEmpty {
-                                appState.navigationPath.removeLast()
+                    // Top navigation bar with back button and title
+                    ZStack {
+                        // Centered Title/Question
+                        Text("Where would you like to go?")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                        
+                        // Back button aligned to the left
+                        HStack {
+                            // Back button
+                            Button {
+                                // Navigate back one step to origin selection
+                                if !appState.navigationPath.isEmpty {
+                                    appState.navigationPath.removeLast()
+                                }
+                                
+                                // Clear destination selection but keep origin
+                                appState.selectedDestination = nil
+                                appState.destinationStationCode = nil
+                                appState.selectedRoute = nil
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text("Back")
+                                }
+                                .foregroundColor(.white)
+                                .font(.body)
                             }
                             
-                            // Clear destination selection but keep origin
-                            appState.selectedDestination = nil
-                            appState.destinationStationCode = nil
-                            appState.selectedRoute = nil
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Back")
-                            }
-                            .foregroundColor(.white)
-                            .font(.body)
+                            Spacer()
                         }
-                        
-                        // Search field - takes remaining space
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+                    
+                    
+                    // Search results and favorite stations container
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Search field
                         HStack {
                             Image(systemName: "magnifyingglass")
                                 .foregroundColor(.white.opacity(0.6))
                             
-                            TextField("Select destination", text: $searchText)
+                            TextField("Search for a station", text: $searchText)
                                 .foregroundColor(.white)
                                 .focused($searchFieldFocused)
                                 .onChange(of: searchText) { _, newValue in
@@ -92,13 +109,8 @@ struct DestinationPickerView: View {
                                         .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
                                 )
                         )
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 10)
-                    
-                    
-                    // Search results and favorite stations container
-                    VStack(alignment: .leading, spacing: 16) {
+                        .padding(.horizontal)
+                        
                         // Search results - take full page when searching
                         if isSearching {
                             VStack(spacing: 8) {
@@ -149,12 +161,6 @@ struct DestinationPickerView: View {
                         // Favorite stations - show when not typing in search
                         if !favoriteStations.isEmpty && !isSearching {
                             VStack(alignment: .leading, spacing: 16) {
-                                Text("Where would you like to go?")
-                                    .font(TrackRatTheme.Typography.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
-                                    .padding(.horizontal)
-                                
                                 ForEach(favoriteStations) { station in
                                     FavoriteDestinationButton(station: station) {
                                         selectDestination(station.name)

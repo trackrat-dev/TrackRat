@@ -33,14 +33,42 @@ struct TripSelectionView: View {
             
             GeometryReader { geometry in
                 VStack(spacing: 8) {
-                // Top navigation bar with search and icons
-                HStack(spacing: 16) {
-                    // Search field - left aligned
+                // Top navigation bar with profile icon
+                ZStack {
+                    // Centered Title/Question
+                    Text("Where would you like to leave from?")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                    
+                    // Profile icon aligned to the right
+                    HStack {
+                        Spacer()
+                        
+                        // Profile/Head icon - opens My Profile view
+                        Button {
+                            // Expand bottom sheet to 100% height when profile is tapped
+                            onBottomSheetPositionChange?(.expanded)
+                            appState.navigationPath.append(NavigationDestination.myProfile)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            Image(systemName: "person.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 20)
+                
+                // Search results and content container
+                VStack(alignment: .leading, spacing: 16) {
+                    // Search field
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.white.opacity(0.6))
                         
-                        TextField("Select origin station", text: $searchText)
+                        TextField("Search for a station", text: $searchText)
                             .foregroundColor(.white)
                             .focused($searchFieldFocused)
                             .onChange(of: searchText) { _, newValue in
@@ -71,28 +99,9 @@ struct TripSelectionView: View {
                                     .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
                             )
                     )
+                    .padding(.horizontal)
                     .id("searchField")
                     
-                    // Right side icons
-                    HStack(spacing: 16) {
-                        // Profile/Head icon - opens My Profile view
-                        Button {
-                            // Expand bottom sheet to 100% height when profile is tapped
-                            onBottomSheetPositionChange?(.expanded)
-                            appState.navigationPath.append(NavigationDestination.myProfile)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            Image(systemName: "person.circle.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top, 20)
-                
-                // Search results and content container
-                VStack(alignment: .leading, spacing: 16) {
                     // Search results
                     if isSearching {
                         VStack(spacing: 8) {
@@ -152,12 +161,6 @@ struct TripSelectionView: View {
                     // Favorite stations - show when not searching
                     if !favoriteStations.isEmpty && !isSearching {
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("Where would you like to leave from?")
-                                .font(TrackRatTheme.Typography.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
-                                .padding(.horizontal)
-                            
                             ForEach(favoriteStations) { station in
                                 FavoriteStationButton(station: station) {
                                     selectOriginStation(name: station.name, code: station.id)
