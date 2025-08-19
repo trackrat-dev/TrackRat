@@ -3,14 +3,14 @@ import MapKit
 
 struct MapContainerView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var bottomSheetPosition: BottomSheetPosition = .compact
+    @State private var bottomSheetPosition: BottomSheetPosition = .medium
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @State private var selectedSegment: CongestionSegment?
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     
-    // Map region state - DC to Boston corridor view
+    // Map region state - will be set dynamically based on bottom sheet position
     @State private var mapRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 40.6, longitude: -74.5), // Center between DC and Boston
+        center: CLLocationCoordinate2D(latitude: 40.6, longitude: -74.5), // Base center - will be adjusted on appear
         span: MKCoordinateSpan(latitudeDelta: 4.5, longitudeDelta: 3.0)   // Wide enough to show DC to Boston
     )
     
@@ -91,6 +91,16 @@ struct MapContainerView: View {
             }
         }
         .onAppear {
+            // Apply proper offset for initial bottom sheet position
+            let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
+            mapRegion = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(
+                    latitude: 40.6 + offset,  // Base DC-Boston center with dynamic offset
+                    longitude: -74.5
+                ),
+                span: MKCoordinateSpan(latitudeDelta: 4.5, longitudeDelta: 3.0)
+            )
+            
             // Check for active Live Activity first
             checkForActiveLiveActivity()
             
@@ -150,7 +160,7 @@ struct MapContainerView: View {
         if navigationPath.isEmpty {
             // Back to home - reset to default Newark Penn view
             resetToDefaultMapView()
-            bottomSheetPosition = .compact
+            bottomSheetPosition = .medium
         } else {
             // Check if we're navigating to train details
             if isNavigatingToTrainDetails(navigationPath) {
@@ -352,9 +362,9 @@ struct MapContainerView: View {
         // Values tuned for northeast corridor geography (roughly 25 miles per 0.1°)
         switch position {
         case .compact:      // 75% visible area, center should be at 37.5% from top
-            return -0.08    // Small adjustment south (~5 miles)
+            return -0.60    // Large adjustment south (~45 miles)
         case .medium:       // 50% visible area, center should be at 25% from top
-            return -0.10    // Small-medium adjustment south (~7 miles)
+            return -1.20    // Extreme adjustment south (~90 miles)
         case .expanded:     // 0% visible area - position in off-screen area
             return -0.38    // Significant adjustment south (~25 miles) to keep stations at very top
         }
@@ -376,7 +386,16 @@ struct MapContainerView: View {
         // Do map operations asynchronously to avoid blocking navigation
         Task { @MainActor in
             withAnimation(.easeInOut(duration: 0.25)) {
-                mapRegion = .newarkPennDefault
+                // Use Newark Penn default region with medium position offset applied
+                let baseRegion = MKCoordinateRegion.newarkPennDefault
+                let mediumOffset = calculateVisibleAreaOffset(for: .medium)
+                mapRegion = MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(
+                        latitude: baseRegion.center.latitude + mediumOffset,
+                        longitude: baseRegion.center.longitude
+                    ),
+                    span: baseRegion.span
+                )
             }
             
             // Clear route filter in background to avoid blocking

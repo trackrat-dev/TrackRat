@@ -149,7 +149,7 @@ struct DestinationPickerView: View {
                         // Favorite stations - show when not typing in search
                         if !favoriteStations.isEmpty && !isSearching {
                             VStack(alignment: .leading, spacing: 16) {
-                                Text("FAVORITE STATIONS")
+                                Text("Where would you like to go?")
                                     .font(TrackRatTheme.Typography.caption)
                                     .fontWeight(.semibold)
                                     .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)

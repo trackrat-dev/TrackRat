@@ -152,7 +152,7 @@ struct TripSelectionView: View {
                     // Favorite stations - show when not searching
                     if !favoriteStations.isEmpty && !isSearching {
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("FAVORITE STATIONS")
+                            Text("Where would you like to leave from?")
                                 .font(TrackRatTheme.Typography.caption)
                                 .fontWeight(.semibold)
                                 .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
