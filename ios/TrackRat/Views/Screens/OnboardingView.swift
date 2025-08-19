@@ -1,9 +1,12 @@
 import SwiftUI
+import AVKit
+import AVFoundation
 
 struct OnboardingView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     
+    @State private var showVideo = true
     @State private var currentPage = 0
     @State private var homeStation: Station? = nil
     @State private var workStation: Station? = nil
@@ -20,6 +23,8 @@ struct OnboardingView: View {
     
     init(isRepeating: Bool = false) {
         self.isRepeating = isRepeating
+        // Show video for both first-time and repeat onboarding
+        self._showVideo = State(initialValue: true)
     }
     
     var body: some View {
@@ -28,23 +33,32 @@ struct OnboardingView: View {
             Color.black
                 .ignoresSafeArea()
             
-            VStack(spacing: 0) {
-                // Content area
-                TabView(selection: $currentPage) {
-                    // Screen 1: Welcome + Station Setup
-                    welcomeAndSetupView()
-                        .tag(0)
-                    
-                    // Screen 2: Your Favorite Stations
-                    favoriteStationsView()
-                        .tag(1)
-                    
-                    // Screen 3: Key Features
-                    keyFeaturesView()
-                        .tag(2)
+            if showVideo {
+                // Show intro video first
+                OnboardingVideoView {
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        showVideo = false
+                    }
                 }
-                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                .animation(.easeInOut, value: currentPage)
+            } else {
+                // Show onboarding screens after video
+                VStack(spacing: 0) {
+                    // Content area
+                    TabView(selection: $currentPage) {
+                        // Screen 1: Welcome + Station Setup
+                        welcomeAndSetupView()
+                            .tag(0)
+                        
+                        // Screen 2: Your Favorite Stations
+                        favoriteStationsView()
+                            .tag(1)
+                        
+                        // Screen 3: Key Features
+                        keyFeaturesView()
+                            .tag(2)
+                    }
+                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                    .animation(.easeInOut, value: currentPage)
                 
                 // Page indicator and navigation
                 VStack(spacing: 20) {
@@ -98,6 +112,7 @@ struct OnboardingView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 40)
+                }
             }
         }
         .sheet(isPresented: $showStationPicker) {
@@ -546,6 +561,225 @@ struct StationPickerSheet: View {
     }
 }
 
+
+// MARK: - Video Components
+
+struct OnboardingVideoView: View {
+    @State private var videoEnded = false
+    @State private var videoFailed = false
+    @State private var fadeToBlackOpacity: Double = 0
+    @State private var videoViewOpacity: Double = 0
+    @State private var isReadyToPlay = false
+    @State private var hasStartedPlaying = false
+    let onComplete: () -> Void
+    
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            
+            if !videoFailed {
+                if let videoURL = Bundle.main.url(forResource: "intro_animation", withExtension: "mp4") {
+                    VideoPlayerView(
+                        url: videoURL,
+                        shouldPlay: isReadyToPlay
+                    ) {
+                        // Video ended successfully
+                        videoEnded = true
+                        
+                        // Success haptic feedback
+                        let notification = UINotificationFeedbackGenerator()
+                        notification.notificationOccurred(.success)
+                        
+                        // Auto-advance to onboarding after brief pause
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            onComplete()
+                        }
+                    } onError: { error in
+                        print("Video playback error: \(error)")
+                        videoFailed = true
+                    } onStart: {
+                        // Only trigger once when actually playing
+                        if !hasStartedPlaying {
+                            hasStartedPlaying = true
+                            
+                            // Video started playing - light haptic feedback
+                            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                            impactFeedback.impactOccurred()
+                            
+                            // Start fade to black delayed by 0.5s more (at 4.2 seconds into 4.2 second video)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 4.2) {
+                                withAnimation(.easeInOut(duration: 0.5)) {
+                                    fadeToBlackOpacity = 1.0
+                                }
+                            }
+                        }
+                    }
+                    .ignoresSafeArea()
+                    .opacity(videoViewOpacity)
+                    
+                    // Fade to black overlay
+                    Color.black
+                        .opacity(fadeToBlackOpacity)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                } else {
+                    // Video file not found - skip directly to onboarding
+                    Color.black
+                        .ignoresSafeArea()
+                        .onAppear {
+                            print("Video file not found, skipping to onboarding")
+                            onComplete()
+                        }
+                }
+            } else {
+                // Video failed - skip directly to onboarding
+                Color.black
+                    .ignoresSafeArea()
+                    .onAppear {
+                        onComplete()
+                    }
+            }
+        }
+        .onAppear {
+            // Phase 1: Let the modal settle (0.3s)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                // Phase 2: Fade in the video view (0.3s animation)
+                withAnimation(.easeIn(duration: 0.3)) {
+                    videoViewOpacity = 1.0
+                }
+                
+                // Phase 3: Start playing after fade begins (0.1s into fade)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isReadyToPlay = true
+                }
+            }
+        }
+    }
+}
+
+struct VideoPlayerView: UIViewRepresentable {
+    let url: URL
+    var shouldPlay: Bool = true
+    var onEnd: (() -> Void)?
+    var onError: ((Error) -> Void)?
+    var onStart: (() -> Void)?
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .black
+        
+        // Create player item first to ensure we start from beginning
+        let playerItem = AVPlayerItem(url: url)
+        let player = AVPlayer(playerItem: playerItem)
+        
+        // Ensure we start from the beginning
+        player.seek(to: .zero)
+        
+        let playerLayer = AVPlayerLayer(player: player)
+        playerLayer.videoGravity = .resizeAspectFill
+        playerLayer.frame = view.bounds
+        view.layer.addSublayer(playerLayer)
+        
+        context.coordinator.player = player
+        context.coordinator.playerLayer = playerLayer
+        context.coordinator.shouldPlay = shouldPlay
+        
+        // Set up end notification
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.playerDidFinishPlaying),
+            name: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem
+        )
+        
+        // Set up error observation
+        playerItem.addObserver(
+            context.coordinator,
+            forKeyPath: "status",
+            options: [.new, .initial],
+            context: nil
+        )
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.playerLayer?.frame = uiView.bounds
+        
+        // Update shouldPlay state and trigger playback if needed
+        if shouldPlay != context.coordinator.shouldPlay {
+            context.coordinator.shouldPlay = shouldPlay
+            if shouldPlay && context.coordinator.isReadyToPlay && !context.coordinator.hasStartedPlaying {
+                context.coordinator.startPlayback()
+            }
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject {
+        let parent: VideoPlayerView
+        var player: AVPlayer?
+        var playerLayer: AVPlayerLayer?
+        var shouldPlay: Bool = false
+        var isReadyToPlay: Bool = false
+        var hasStartedPlaying: Bool = false
+        
+        init(_ parent: VideoPlayerView) {
+            self.parent = parent
+            self.shouldPlay = parent.shouldPlay
+        }
+        
+        @objc func playerDidFinishPlaying() {
+            parent.onEnd?()
+        }
+        
+        func startPlayback() {
+            guard !hasStartedPlaying else { return }
+            hasStartedPlaying = true
+            
+            player?.seek(to: .zero) { _ in
+                self.player?.play()
+                // Notify that playback has started
+                self.parent.onStart?()
+            }
+        }
+        
+        override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+            if keyPath == "status",
+               let item = object as? AVPlayerItem {
+                switch item.status {
+                case .failed:
+                    if let error = item.error {
+                        parent.onError?(error)
+                    }
+                case .readyToPlay:
+                    isReadyToPlay = true
+                    // Preroll the video for smoother start
+                    player?.preroll(atRate: 1.0) { finished in
+                        if finished {
+                            // Only start playing when both ready and should play
+                            if self.shouldPlay && !self.hasStartedPlaying {
+                                self.startPlayback()
+                            }
+                        }
+                    }
+                case .unknown:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
+        
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+            player?.currentItem?.removeObserver(self, forKeyPath: "status")
+        }
+    }
+}
 
 #Preview {
     OnboardingView()

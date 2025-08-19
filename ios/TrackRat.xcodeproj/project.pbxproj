@@ -41,6 +41,7 @@
 		A17329642E54A8A2006BF187 /* FavoriteStationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329622E54A8A2006BF187 /* FavoriteStationsView.swift */; };
 		A17329652E54A8A2006BF187 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329632E54A8A2006BF187 /* OnboardingView.swift */; };
 		A17329672E54A8B1006BF187 /* StationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329662E54A8B1006BF187 /* StationRow.swift */; };
+		A17329692E54D46E006BF187 /* intro_animation.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A17329682E54D46E006BF187 /* intro_animation.mp4 */; };
 		A17B9F392E17FD0A00B370A6 /* RatRaceLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F362E17FD0A00B370A6 /* RatRaceLoadingView.swift */; };
 		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
 		A1875C7F2E400F4F00FCC7FC /* MyProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */; };
@@ -148,6 +149,7 @@
 		A17329622E54A8A2006BF187 /* FavoriteStationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FavoriteStationsView.swift; path = Views/Screens/FavoriteStationsView.swift; sourceTree = "<group>"; };
 		A17329632E54A8A2006BF187 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = Views/Screens/OnboardingView.swift; sourceTree = "<group>"; };
 		A17329662E54A8B1006BF187 /* StationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationRow.swift; path = Views/Components/StationRow.swift; sourceTree = "<group>"; };
+		A17329682E54D46E006BF187 /* intro_animation.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro_animation.mp4; sourceTree = "<group>"; };
 		A17B9F362E17FD0A00B370A6 /* RatRaceLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RatRaceLoadingView.swift; path = Views/Components/RatRaceLoadingView.swift; sourceTree = "<group>"; };
 		A17B9F372E17FD0A00B370A6 /* StationButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationButton.swift; path = Views/Components/StationButton.swift; sourceTree = "<group>"; };
 		A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyProfileView.swift; path = Views/Screens/MyProfileView.swift; sourceTree = "<group>"; };
@@ -261,6 +263,7 @@
 				A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */,
 				A17329622E54A8A2006BF187 /* FavoriteStationsView.swift */,
 				A17329632E54A8A2006BF187 /* OnboardingView.swift */,
+				A17329682E54D46E006BF187 /* intro_animation.mp4 */,
 				A17329662E54A8B1006BF187 /* StationRow.swift */,
 				A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */,
 				A19E912C2E3F8E4A0011F777 /* BottomSheetView.swift */,
@@ -498,6 +501,7 @@
 				A16D6EF12E1703C7008C6996 /* rat-train-icon@3x.png in Resources */,
 				A16D6EF22E1703C7008C6996 /* Contents.json in Resources */,
 				A16D6EF32E1703C7008C6996 /* rat-train-icon.png in Resources */,
+				A17329692E54D46E006BF187 /* intro_animation.mp4 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
