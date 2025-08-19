@@ -632,6 +632,10 @@ struct Stations {
     static func getCoordinates(for code: String) -> CLLocationCoordinate2D? {
         return stationCoordinates[code]
     }
+    
+    static func displayName(for stationCode: String) -> String? {
+        return stationCodes.first(where: { $0.value == stationCode })?.key
+    }
 }
 
 // MARK: - Default Map Region

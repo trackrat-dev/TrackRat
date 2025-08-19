@@ -12,18 +12,25 @@ struct TrackRatApp: App {
     @ObservedObject private var themeManager = ThemeManager.shared
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(appState)
-                .environmentObject(themeManager)
-                .preferredColorScheme(themeManager.colorScheme)
-                .tint(themeManager.tintColor)
-                .onOpenURL { url in
-                    print("🔗 App received URL: \(url)")
-                    DeepLinkService.shared.handleOpenURL(url, appState: appState)
+            Group {
+                if hasCompletedOnboarding {
+                    ContentView()
+                } else {
+                    OnboardingView()
                 }
+            }
+            .environmentObject(appState)
+            .environmentObject(themeManager)
+            .preferredColorScheme(themeManager.colorScheme)
+            .tint(themeManager.tintColor)
+            .onOpenURL { url in
+                print("🔗 App received URL: \(url)")
+                DeepLinkService.shared.handleOpenURL(url, appState: appState)
+            }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
                 case .active:
