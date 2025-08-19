@@ -7,7 +7,7 @@ struct Stations {
         // Major Hub Stations
         "New York Penn Station", "Newark Penn Station", "Hoboken",
         "Secaucus Upper Lvl", "Secaucus Lower Lvl", "Secaucus Concourse",
-        "Trenton", "Trenton Transit Center", "Philadelphia",
+        "Trenton", "Philadelphia",
         
         // Northeast Corridor Line
         "Princeton Junction", "Princeton", "Hamilton",
@@ -103,7 +103,6 @@ struct Stations {
         "Princeton Junction": "PJ",
         "Princeton": "PR",
         "Trenton": "TR",
-        "Trenton Transit Center": "TR",  // Alias for Trenton
         "Hamilton": "HL",
         "Morristown": "MR",
         "Madison": "MA",
