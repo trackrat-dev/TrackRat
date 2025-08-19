@@ -39,18 +39,19 @@ struct DestinationPickerView: View {
             TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
-            VStack(spacing: 8) {
-                    // Top navigation bar with back button and title
-                    ZStack {
-                        // Centered Title/Question
-                        Text("Where would you like to go?")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                        
-                        // Back button aligned to the left
-                        HStack {
-                            // Back button
+            VStack(spacing: 16) {
+                    // Simple centered title
+                    Text("Where would you like to go?")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 10)
+                    
+                    // Search results and favorite stations container
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Back button and search field in horizontal stack
+                        HStack(spacing: 8) {
+                            // Minimal back button with chevron only
                             Button {
                                 // Navigate back one step to origin selection
                                 if !appState.navigationPath.isEmpty {
@@ -62,53 +63,51 @@ struct DestinationPickerView: View {
                                 appState.destinationStationCode = nil
                                 appState.selectedRoute = nil
                             } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    Text("Back")
-                                }
-                                .foregroundColor(.white)
-                                .font(.body)
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 40, height: 40)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                            .fill(TrackRatTheme.Colors.surfaceCard)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                                    .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                                            )
+                                    )
                             }
                             
-                            Spacer()
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 10)
-                    
-                    
-                    // Search results and favorite stations container
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Search field
-                        HStack {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundColor(.white.opacity(0.6))
-                            
-                            TextField("Search for a station", text: $searchText)
-                                .foregroundColor(.white)
-                                .focused($searchFieldFocused)
-                                .onChange(of: searchText) { _, newValue in
-                                    withAnimation(.easeInOut(duration: 0.3)) {
-                                        isSearching = !newValue.isEmpty
+                            // Search field
+                            HStack {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundColor(.white.opacity(0.6))
+                                
+                                TextField("Search for a station", text: $searchText)
+                                    .foregroundColor(.white)
+                                    .focused($searchFieldFocused)
+                                    .onChange(of: searchText) { _, newValue in
+                                        withAnimation(.easeInOut(duration: 0.3)) {
+                                            isSearching = !newValue.isEmpty
+                                        }
                                     }
-                                }
-                                .onSubmit {
-                                    if let firstResult = searchResults.first {
-                                        selectDestination(firstResult)
+                                    .onSubmit {
+                                        if let firstResult = searchResults.first {
+                                            selectDestination(firstResult)
+                                        }
                                     }
-                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                    .fill(TrackRatTheme.Colors.surfaceCard)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                            .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                                    )
+                            )
+                            .frame(maxWidth: .infinity)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                .fill(TrackRatTheme.Colors.surfaceCard)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
-                                )
-                        )
                         .padding(.horizontal)
                         
                         // Search results - take full page when searching
