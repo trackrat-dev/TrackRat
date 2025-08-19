@@ -43,12 +43,8 @@ struct FavoriteStationsView: View {
     var body: some View {
         ZStack {
             // Background
-            LinearGradient(
-                gradient: Gradient(colors: [Color.purple, Color.blue]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            Color.black
+                .ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Header
@@ -125,7 +121,7 @@ struct FavoriteStationsView: View {
                         // Add more stations section
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
-                                Text(searchText.isEmpty ? "Popular stations" : "Search results")
+                                Text(searchText.isEmpty ? "All Stations" : "Search results")
                                     .font(.headline)
                                     .fontWeight(.semibold)
                                     .foregroundColor(.white)

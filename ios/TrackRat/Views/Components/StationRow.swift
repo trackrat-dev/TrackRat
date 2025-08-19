@@ -13,9 +13,6 @@ struct StationRow: View {
                 Text(station.name)
                     .font(.headline)
                     .foregroundColor(.primary)
-                Text(station.id)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
             
             Spacer()
@@ -71,9 +68,6 @@ struct SearchStationRow: View {
                 Text(stationName)
                     .font(.headline)
                     .foregroundColor(.primary)
-                Text(stationCode)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
             
             Spacer()
