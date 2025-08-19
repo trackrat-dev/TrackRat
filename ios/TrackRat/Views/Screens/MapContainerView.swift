@@ -10,7 +10,7 @@ struct MapContainerView: View {
     
     // Map region state - will be set dynamically based on bottom sheet position
     @State private var mapRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 40.6, longitude: -74.5), // Base center - will be adjusted on appear
+        center: CLLocationCoordinate2D(latitude: 39.55, longitude: -74.5), // Base center shifted south ~75 miles - will be adjusted on appear
         span: MKCoordinateSpan(latitudeDelta: 4.5, longitudeDelta: 3.0)   // Wide enough to show DC to Boston
     )
     
@@ -95,7 +95,7 @@ struct MapContainerView: View {
             let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
             mapRegion = MKCoordinateRegion(
                 center: CLLocationCoordinate2D(
-                    latitude: 40.6 + offset,  // Base DC-Boston center with dynamic offset
+                    latitude: 39.55 + offset,  // Base DC-Boston center shifted south ~75 miles with dynamic offset
                     longitude: -74.5
                 ),
                 span: MKCoordinateSpan(latitudeDelta: 4.5, longitudeDelta: 3.0)
@@ -362,9 +362,9 @@ struct MapContainerView: View {
         // Values tuned for northeast corridor geography (roughly 25 miles per 0.1°)
         switch position {
         case .compact:      // 75% visible area, center should be at 37.5% from top
-            return -0.60    // Large adjustment south (~45 miles)
+            return -0.08    // Small adjustment south (~5 miles)
         case .medium:       // 50% visible area, center should be at 25% from top
-            return -1.20    // Extreme adjustment south (~90 miles)
+            return -0.10    // Small-medium adjustment south (~7 miles)
         case .expanded:     // 0% visible area - position in off-screen area
             return -0.38    // Significant adjustment south (~25 miles) to keep stations at very top
         }
