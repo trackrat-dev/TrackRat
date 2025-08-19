@@ -122,11 +122,7 @@ struct OnboardingView: View {
             
             // Logo and title
             VStack(spacing: 16) {
-                Image(systemName: "tram.fill")
-                    .font(.system(size: 60))
-                    .foregroundColor(.orange)
-                
-                Text("Welcome to TrackRat")
+                Text("Welcome!")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
@@ -244,8 +240,9 @@ struct OnboardingView: View {
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
                 
-                Text("To add or remove favorites in the future, you can tap the heart icon")
+                Text("In future, if you'd ever like to update these, just click the heart icon while browsing stations!")
                     .font(.body)
                     .foregroundColor(.white.opacity(0.8))
                     .multilineTextAlignment(.center)
@@ -296,6 +293,7 @@ struct OnboardingView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             
             VStack(spacing: 16) {
@@ -307,13 +305,13 @@ struct OnboardingView: View {
                 
                 FeatureCard(
                     icon: "tram.fill",
-                    title: "Live Activities",
+                    title: "Live Progress Updates",
                     description: "Track trains on your Lock Screen\nwith real-time updates"
                 )
                 
                 FeatureCard(
                     icon: "map.fill",
-                    title: "Congestion Map",
+                    title: "Visualize Delays and Congestion",
                     description: "System-wide delay visualization\n🟢 On time  🟡 5-15m  🟠 15-30m  🔴 30m+"
                 )
                 
@@ -456,11 +454,6 @@ struct FeatureCard: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
                 
-                Text(description)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.8))
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             
             Spacer()

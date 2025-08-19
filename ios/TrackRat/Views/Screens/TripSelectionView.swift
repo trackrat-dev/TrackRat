@@ -33,37 +33,17 @@ struct TripSelectionView: View {
             
             GeometryReader { geometry in
                 VStack(spacing: 8) {
-                // Top navigation bar with profile icon
-                ZStack {
-                    // Centered Title/Question
-                    Text("Where would you like to leave from?")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                    
-                    // Profile icon aligned to the right
-                    HStack {
-                        Spacer()
-                        
-                        // Profile/Head icon - opens My Profile view
-                        Button {
-                            // Expand bottom sheet to 100% height when profile is tapped
-                            onBottomSheetPositionChange?(.expanded)
-                            appState.navigationPath.append(NavigationDestination.myProfile)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            Image(systemName: "person.circle.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top, 20)
+                // Top title only
+                Text("Where would you like to leave from?")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal)
+                    .padding(.top, 20)
                 
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
-                    // Search field
+                    // Search field with profile icon
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.white.opacity(0.6))
@@ -88,6 +68,19 @@ struct TripSelectionView: View {
                                     selectOriginStation(name: firstResult, code: code)
                                 }
                             }
+                        
+                        // Profile icon - moved from top navigation
+                        Button {
+                            // Expand bottom sheet to 100% height when profile is tapped
+                            onBottomSheetPositionChange?(.expanded)
+                            appState.navigationPath.append(NavigationDestination.myProfile)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            Image(systemName: "person.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        .padding(.leading, 8)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
