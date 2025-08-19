@@ -8,11 +8,14 @@ struct MapContainerView: View {
     @State private var selectedSegment: CongestionSegment?
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     
-    // Map region state - will be set dynamically based on bottom sheet position
-    @State private var mapRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 39.55, longitude: -74.5), // Base center shifted south ~75 miles - will be adjusted on appear
+    // Default DC-Boston wide view - used consistently for initial and reset scenarios
+    private static let defaultMapRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 39.55, longitude: -74.5), // Base center shifted south ~75 miles
         span: MKCoordinateSpan(latitudeDelta: 4.5, longitudeDelta: 3.0)   // Wide enough to show DC to Boston
     )
+    
+    // Map region state - will be set dynamically based on bottom sheet position
+    @State private var mapRegion = MapContainerView.defaultMapRegion
     
     var body: some View {
         ZStack {
@@ -95,10 +98,10 @@ struct MapContainerView: View {
             let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
             mapRegion = MKCoordinateRegion(
                 center: CLLocationCoordinate2D(
-                    latitude: 39.55 + offset,  // Base DC-Boston center shifted south ~75 miles with dynamic offset
-                    longitude: -74.5
+                    latitude: Self.defaultMapRegion.center.latitude + offset,
+                    longitude: Self.defaultMapRegion.center.longitude
                 ),
-                span: MKCoordinateSpan(latitudeDelta: 4.5, longitudeDelta: 3.0)
+                span: Self.defaultMapRegion.span
             )
             
             // Check for active Live Activity first
@@ -386,15 +389,14 @@ struct MapContainerView: View {
         // Do map operations asynchronously to avoid blocking navigation
         Task { @MainActor in
             withAnimation(.easeInOut(duration: 0.25)) {
-                // Use Newark Penn default region with medium position offset applied
-                let baseRegion = MKCoordinateRegion.newarkPennDefault
-                let mediumOffset = calculateVisibleAreaOffset(for: .medium)
+                // Use consistent DC-Boston default region with medium position offset
+                let offset = calculateVisibleAreaOffset(for: .medium)
                 mapRegion = MKCoordinateRegion(
                     center: CLLocationCoordinate2D(
-                        latitude: baseRegion.center.latitude + mediumOffset,
-                        longitude: baseRegion.center.longitude
+                        latitude: Self.defaultMapRegion.center.latitude + offset,
+                        longitude: Self.defaultMapRegion.center.longitude
                     ),
-                    span: baseRegion.span
+                    span: Self.defaultMapRegion.span
                 )
             }
             
