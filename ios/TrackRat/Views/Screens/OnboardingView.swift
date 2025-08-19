@@ -257,7 +257,7 @@ struct OnboardingView: View {
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                 
-                Text("In future, if you'd ever like to update these, just click the heart icon while browsing stations!")
+                Text("In the future, if you'd ever like to update these, just click the heart icon while browsing stations!")
                     .font(.body)
                     .foregroundColor(.white.opacity(0.8))
                     .multilineTextAlignment(.center)

@@ -109,10 +109,14 @@ struct MapContainerView: View {
             
             // Always ensure we start with overall congestion view (but preserve activeTrainRoute)
             appState.mapDisplayMode = .overallCongestion
-            // Only clear selectedRoute, not activeTrainRoute (that persists independently)
-            appState.selectedRoute = nil
+            
+            // IMPORTANT: Don't clear selectedRoute if we're navigating within the app
+            // Only clear it if we're at the root (no navigation path)
+            if appState.navigationPath.isEmpty {
+                appState.selectedRoute = nil
+            }
         }
-        .onChange(of: appState.selectedRoute) { _, newRoute in
+        .onChange(of: appState.selectedRoute) { oldRoute, newRoute in
             // Animate map to show selected route when it changes
             if let route = newRoute {
                 // Use current bottom sheet position since we're not changing it here

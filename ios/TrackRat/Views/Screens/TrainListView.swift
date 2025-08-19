@@ -127,6 +127,21 @@ struct TrainListView: View {
                 departureStationCode = appState.departureStationCode ?? "NY"
                 departureName = appState.selectedDeparture ?? ""
             }
+            
+            // Set the route for immediate blue line drawing on map
+            // Use appState values directly to ensure we have the correct values
+            if let destinationCode = Stations.getStationCode(destination),
+               let depCode = appState.departureStationCode,
+               let depName = appState.selectedDeparture {
+                appState.selectedRoute = TripPair(
+                    departureCode: depCode,
+                    departureName: depName,
+                    destinationCode: destinationCode,
+                    destinationName: destination,
+                    lastUsed: Date(),
+                    isFavorite: false
+                )
+            }
         }
     }
 }

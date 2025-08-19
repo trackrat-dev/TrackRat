@@ -537,11 +537,12 @@ struct SystemCongestionMapView: UIViewRepresentable {
             mapView.setRegion(region, animated: true)
         }
         
-        // Only update map overlays if segments have actually changed
+        // Only update map overlays if segments or route have actually changed
         // This prevents expensive map rebuilds during navigation
         let segmentIds = segments.map { "\($0.fromStation)-\($0.toStation)" }.sorted()
         let individualSegmentIds = individualSegments.map { "\($0.fromStation)-\($0.toStation)-\($0.trainId)" }.sorted()
-        let currentMapState = "\(segmentIds.joined())-\(individualSegmentIds.joined())"
+        let routeId = selectedRoute != nil ? "\(selectedRoute!.departureCode)-\(selectedRoute!.destinationCode)" : "no-route"
+        let currentMapState = "\(segmentIds.joined())-\(individualSegmentIds.joined())-route:\(routeId)"
         
         // Check if we need to update (store last state in coordinator)
         if context.coordinator.lastMapState != currentMapState {

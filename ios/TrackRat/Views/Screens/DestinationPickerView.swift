@@ -205,23 +205,8 @@ struct DestinationPickerView: View {
         // Immediate haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         
-        // DEFER the heavy map route setting to happen after UI updates
-        // This prevents the map processing from blocking the station selection UI
-        // Simple 100ms delay to let UI updates complete first
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            // Create and set the selected route for map highlighting
-            if let departureCode = self.appState.departureStationCode,
-               let departureName = self.appState.selectedDeparture,
-               let destinationCode = self.appState.destinationStationCode {
-                self.appState.selectedRoute = TripPair(
-                    departureCode: departureCode,
-                    departureName: departureName,
-                    destinationCode: destinationCode,
-                    destinationName: destination,
-                    isFavorite: false
-                )
-            }
-        }
+        // Route will be set by TrainListView when it appears
+        // This avoids race conditions and ensures proper initialization
     }
 }
 
