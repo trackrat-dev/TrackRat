@@ -204,9 +204,6 @@ struct DestinationPickerView: View {
         
         // Immediate haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        
-        // Route will be set by TrainListView when it appears
-        // This avoids race conditions and ensures proper initialization
     }
 }
 
