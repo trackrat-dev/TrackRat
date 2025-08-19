@@ -89,8 +89,10 @@ class DepartureService:
                 if stop.station_code == from_station and not from_stop:
                     from_stop = stop
                 elif to_station and stop.station_code == to_station and from_stop:
-                    to_stop = stop
-                    break
+                    # Ensure to_stop comes AFTER from_stop in the journey sequence
+                    if (stop.stop_sequence or 0) > (from_stop.stop_sequence or 0):
+                        to_stop = stop
+                        break
 
             # Skip if stops not found
             if not from_stop or (to_station and not to_stop):
