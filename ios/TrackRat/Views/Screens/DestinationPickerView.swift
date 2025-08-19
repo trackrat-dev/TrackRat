@@ -42,8 +42,10 @@ struct DestinationPickerView: View {
             VStack(spacing: 16) {
                     // Simple centered title
                     Text("Where would you like to go?")
-                        .font(.headline)
+                        .font(.system(size: 26, weight: .semibold))
                         .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 10)
                     

@@ -35,8 +35,10 @@ struct TripSelectionView: View {
                 VStack(spacing: 8) {
                 // Top title only
                 Text("Where would you like to leave from?")
-                    .font(.headline)
+                    .font(.system(size: 26, weight: .semibold))
                     .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal)
                     .padding(.top, 20)
