@@ -93,8 +93,11 @@ async def test_api_error_count_reset_on_success():
     # For scalars(), return a mock that directly returns an empty list (not awaitable)
     mock_result_generic.scalars = lambda: []
 
-    # Just return the same generic mock for all execute calls
+    # Mock both execute and scalar methods
     session.execute = AsyncMock(return_value=mock_result_generic)
+    session.scalar = AsyncMock(
+        return_value=None
+    )  # For queries that return a single object
 
     # Mock successful API response
     from trackrat.models.api import NJTransitTrainData, NJTransitStopData

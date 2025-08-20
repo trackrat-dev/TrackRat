@@ -940,8 +940,39 @@ class JourneyCollector(BaseJourneyCollector):
                 )
                 session.add(stop)
             else:
-                # CRITICAL FIX: Always update stop_sequence to match current API order
-                stop.stop_sequence = sequence
+                # Smart sequence update: only update if new sequence is more definitive
+                current_seq = stop.stop_sequence or 0
+
+                if current_seq == 0 and sequence > 0:
+                    # Upgrade from discovery placeholder (0) to real sequence
+                    logger.debug(
+                        "upgrading_stop_sequence_from_placeholder",
+                        train_id=journey.train_id,
+                        station_code=stop.station_code,
+                        old_sequence=current_seq,
+                        new_sequence=sequence,
+                    )
+                    stop.stop_sequence = sequence
+                elif sequence > current_seq:
+                    # Update to higher sequence (more accurate position in journey)
+                    logger.debug(
+                        "updating_stop_sequence_to_higher_value",
+                        train_id=journey.train_id,
+                        station_code=stop.station_code,
+                        old_sequence=current_seq,
+                        new_sequence=sequence,
+                    )
+                    stop.stop_sequence = sequence
+                elif current_seq > sequence:
+                    # Keep existing higher sequence - log for debugging
+                    logger.debug(
+                        "keeping_existing_higher_sequence",
+                        train_id=journey.train_id,
+                        station_code=stop.station_code,
+                        existing_sequence=current_seq,
+                        attempted_sequence=sequence,
+                    )
+                # else: sequences are equal, no change needed
 
             # Update scheduled times
             if stop_data.TIME:
