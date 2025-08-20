@@ -283,6 +283,12 @@ class TestTrainDiscoveryCollector:
                 "new_train_ids": [],
                 "all_train_ids": [],
             },
+            "SV": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
         }
 
         mock_session = AsyncMock()
@@ -298,16 +304,16 @@ class TestTrainDiscoveryCollector:
             result = await discovery_collector.collect(mock_session)
 
         # Verify aggregation
-        assert result["stations_processed"] == 16  # Updated discovery stations count
+        assert result["stations_processed"] == 17  # Updated discovery stations count
         assert result["total_discovered"] == 5  # 3 + 2 (from NY and NP stations)
         assert result["total_new"] == 1  # 1 (from NY station)
 
         # Verify station_results contains all station data
         assert "station_results" in result
-        assert len(result["station_results"]) == 16
+        assert len(result["station_results"]) == 17
 
         # Verify discover_station_trains was called for each discovery station
-        assert mock_discover.call_count == 16
+        assert mock_discover.call_count == 17
 
     @pytest.mark.asyncio
     async def test_process_discovered_trains_creates_journey_records(

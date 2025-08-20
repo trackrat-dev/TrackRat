@@ -41,6 +41,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         "JA",  # Jersey Avenue
         "RA",  # Raritan
         "ST",  # Summit - major Morris & Essex terminal for inbound trains
+        "SV",  # Spring Valley - Pascack Valley Line terminus
     ]
 
     def __init__(self, njt_client: NJTransitClient) -> None:
