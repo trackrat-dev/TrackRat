@@ -28,7 +28,7 @@ struct TrainListView: View {
             
             ScrollView {
                     VStack(spacing: 16) {
-                        if viewModel.isLoading && viewModel.trains.isEmpty {
+                        if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
                             TrackRatLoadingView(message: "Finding your trains...")
                                 .frame(maxWidth: .infinity, minHeight: 200)
                         } else if let error = viewModel.error {
@@ -343,6 +343,7 @@ struct StatusV2Badge: View {
 class TrainListViewModel: ObservableObject {
     @Published var trains: [TrainV2] = []
     @Published var isLoading = false
+    @Published var hasStartedLoading = false
     @Published var error: String?
     
     private var currentDestination: String?
@@ -407,6 +408,7 @@ class TrainListViewModel: ObservableObject {
         self.currentFromStationCode = fromStationCode
         
         isLoading = true
+        hasStartedLoading = true
         error = nil
         
         do {
