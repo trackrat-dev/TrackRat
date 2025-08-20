@@ -15,17 +15,49 @@ struct MyProfileView: View {
             
             ScrollView {
                 VStack(spacing: 24) {
-                    // Profile image
-                    Image("my-profile")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: 200, maxHeight: 200)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                    // Profile image - aligned to top
+                    VStack {
+                        Image("my-profile")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: 200, maxHeight: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .padding(.top, 0)
                     
-                    // My Profile section
+                    // Profile section
                     VStack(spacing: 16) {
-                        // My Cheese Points card
+                        // My Profile card
+                        HStack(spacing: 16) {
+                            Image(systemName: "person.fill")
+                                .font(.title2)
+                                .foregroundColor(.orange)
+                                .frame(width: 24, height: 24)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("My Profile")
+                                    .font(.headline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.white)
+                                    .multilineTextAlignment(.leading)
+                                
+                                Text("Coming soon...")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .multilineTextAlignment(.leading)
+                            }
+                            
+                            Spacer()
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.ultraThinMaterial)
+                        )
+                        
+                        // Reward Points card
                         HStack(spacing: 16) {
                             Image(systemName: "star.fill")
                                 .font(.title2)
@@ -33,7 +65,7 @@ struct MyProfileView: View {
                                 .frame(width: 24, height: 24)
                             
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Cheese Reward Points")
+                                Text("Reward Points (Cheese)")
                                     .font(.headline)
                                     .fontWeight(.medium)
                                     .foregroundColor(.white)
@@ -239,8 +271,6 @@ struct MyProfileView: View {
                 .padding(.bottom, 40)
             }
         }
-        .navigationTitle("My Profile")
-        .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView(isRepeating: true)
                 .environmentObject(appState)

@@ -142,7 +142,7 @@ struct OnboardingView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                 
-                Text("Let's personalize your experience by\nselecting your frequently used stations")
+                Text("Personalize your experience by\nselecting your frequently used stations")
                     .font(.body)
                     .foregroundColor(.white.opacity(0.8))
                     .multilineTextAlignment(.center)
@@ -251,13 +251,13 @@ struct OnboardingView: View {
             Spacer()
             
             VStack(spacing: 16) {
-                Text("Your Favorite Stations")
+                Text("Your Favorites")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                 
-                Text("In the future, if you'd ever like to update these, just click the heart icon while browsing stations!")
+                Text("To update these in the future, just click the heart icon while browsing stations!")
                     .font(.body)
                     .foregroundColor(.white.opacity(0.8))
                     .multilineTextAlignment(.center)
@@ -303,7 +303,7 @@ struct OnboardingView: View {
             Spacer()
             
             VStack(spacing: 16) {
-                Text("What Makes TrackRat Special")
+                Text("Why TrackRat?")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
@@ -314,7 +314,7 @@ struct OnboardingView: View {
             VStack(spacing: 16) {
                 FeatureCard(
                     icon: "bolt.fill",
-                    title: "Super Fast",
+                    title: "Fast!",
                     description: "Real-time updates every 30 seconds\nwith intelligent caching"
                 )
                 
@@ -326,21 +326,16 @@ struct OnboardingView: View {
                 
                 FeatureCard(
                     icon: "map.fill",
-                    title: "Visualize Delays and Congestion",
+                    title: "View Congestion & Delays",
                     description: "System-wide delay visualization\n🟢 On time  🟡 5-15m  🟠 15-30m  🔴 30m+"
                 )
                 
                 FeatureCard(
                     icon: "brain.head.profile",
-                    title: "Track Predictions",
+                    title: "Departure Track Predictions",
                     description: "AI-powered track assignments\nbefore official announcements"
                 )
                 
-                FeatureCard(
-                    icon: "lock.fill",
-                    title: "Privacy First",
-                    description: "No accounts, no tracking\nYour data stays on your device"
-                )
             }
             
             Spacer()
@@ -397,7 +392,7 @@ struct StationSelectionCard: View {
     
     var body: some View {
         Button(action: onTap) {
-            HStack {
+            HStack(spacing: 16) {
                 Image(systemName: icon)
                     .foregroundColor(.orange)
                     .frame(width: 24)
