@@ -476,7 +476,7 @@ class CongestionMapResponse(BaseModel):
     train_positions: list[TrainLocationData] = Field(default_factory=list)
     generated_at: datetime
     time_window_hours: int
-    max_per_segment: int = Field(default=100, ge=1, le=500)
+    max_per_segment: int = Field(default=100, ge=0, le=500)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

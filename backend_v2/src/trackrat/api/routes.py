@@ -263,7 +263,7 @@ def _calculate_route_stats(
 async def get_route_congestion(
     time_window_hours: int = Query(24, ge=1, le=24, description="Hours to look back"),
     max_per_segment: int = Query(
-        100, ge=1, le=500, description="Max individual journeys per segment"
+        100, ge=0, le=500, description="Max individual journeys per segment (0 = unlimited)"
     ),
     data_source: str | None = Query(
         None, description="Filter by data source (NJT or AMTRAK)"

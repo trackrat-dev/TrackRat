@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -62,6 +62,9 @@ class CongestionAnalyzer:
     ) -> tuple[list[SegmentCongestion], list[TrainJourney], list[Any]]:
         """
         Get congestion data, train journeys, and individual journey segments.
+        
+        This optimized version uses database aggregation for congestion calculation
+        while still providing journey data for train positions.
 
         Returns:
             Tuple of (aggregated segments, train journeys, individual segments)
@@ -69,36 +72,36 @@ class CongestionAnalyzer:
 
         cutoff_time = now_et() - timedelta(hours=time_window_hours)
 
-        # Get journeys with full data
+        # OPTIMIZATION: Use database aggregation for congestion segments
+        aggregated_segments = await self.get_network_congestion_optimized(
+            db, time_window_hours
+        )
+
+        # Still need to load journeys for train positions, but we can be selective
+        # Only load non-cancelled journeys that are actually moving
         stmt = (
             select(TrainJourney)
             .where(
                 and_(
                     TrainJourney.last_updated_at >= cutoff_time,
+                    TrainJourney.is_cancelled == False,  # Skip cancelled trains
                 )
             )
             .options(
-                selectinload(TrainJourney.stops), selectinload(TrainJourney.progress)
+                selectinload(TrainJourney.stops), 
+                selectinload(TrainJourney.progress)
             )
         )
 
         result = await db.execute(stmt)
         journeys = list(result.scalars().all())
 
-        # Calculate segments and get individual journey data
-        segment_data, cancellation_data = self._calculate_segments_from_journeys(
-            journeys, cutoff_time
-        )
-
-        # Get aggregated segments
-        aggregated_segments = self._analyze_segment_congestion(
-            segment_data, cancellation_data
-        )
-
-        # Extract individual journey segments
-        individual_segments = self._extract_individual_segments(
-            segment_data, max_per_segment
-        )
+        # Use SQL-based individual segments calculation for better performance and accuracy
+        individual_segments = []
+        if max_per_segment >= 0:  # 0 means unlimited, positive means limited
+            individual_segments = await self.get_individual_segments_optimized(
+                db, time_window_hours, max_per_segment
+            )
 
         return aggregated_segments, journeys, individual_segments
 
@@ -174,6 +177,428 @@ class CongestionAnalyzer:
         )
 
         return congestion_results
+
+    async def get_network_congestion_optimized(
+        self, db: AsyncSession, time_window_hours: int = 3
+    ) -> list[SegmentCongestion]:
+        """
+        Optimized congestion calculation using database-level aggregation.
+        
+        This method calculates congestion directly in PostgreSQL instead of
+        loading all journey data into memory, significantly reducing response time.
+        
+        Args:
+            db: Database session
+            time_window_hours: How many hours to look back
+            
+        Returns:
+            List of segment congestion data
+        """
+        # Check cache first (same as original)
+        cache_key = f"congestion_{time_window_hours}"
+        if cache_key in self._cache:
+            cached_data, timestamp = self._cache[cache_key]
+            if (now_et() - timestamp).total_seconds() < self._cache_ttl:
+                logger.debug(
+                    "returning_cached_congestion_data",
+                    cache_age_seconds=(now_et() - timestamp).total_seconds(),
+                )
+                return cached_data
+
+        cutoff_time = now_et() - timedelta(hours=time_window_hours)
+        
+        # SQL query that calculates segment times and aggregates in database
+        # This replaces loading thousands of objects into Python memory
+        query = text("""
+        WITH segment_data AS (
+            -- Calculate segment transit times by joining consecutive stops
+            SELECT 
+                js1.station_code as from_station,
+                js2.station_code as to_station,
+                tj.data_source,
+                tj.is_cancelled,
+                tj.id as journey_id,
+                tj.train_id,
+                -- Calculate actual transit time in minutes
+                EXTRACT(EPOCH FROM (
+                    COALESCE(js2.actual_arrival, js2.scheduled_arrival) - 
+                    COALESCE(js1.actual_departure, js1.scheduled_departure)
+                )) / 60.0 as actual_minutes,
+                -- Calculate scheduled transit time
+                CASE 
+                    WHEN js1.scheduled_departure IS NOT NULL 
+                     AND js2.scheduled_arrival IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (
+                        js2.scheduled_arrival - js1.scheduled_departure
+                    )) / 60.0
+                    ELSE NULL
+                END as scheduled_minutes,
+                -- Track when this segment departed for recency sorting
+                COALESCE(js1.actual_departure, js1.scheduled_departure) as departure_time
+            FROM train_journeys tj
+            JOIN journey_stops js1 ON js1.journey_id = tj.id
+            JOIN journey_stops js2 ON js2.journey_id = tj.id 
+            WHERE 
+                -- Consecutive stops only
+                js2.stop_sequence = js1.stop_sequence + 1
+                -- Within time window
+                AND tj.last_updated_at >= :cutoff_time
+                -- Valid stations
+                AND js1.station_code IS NOT NULL
+                AND js2.station_code IS NOT NULL
+                -- Valid times (at least scheduled times must exist)
+                AND js1.scheduled_departure IS NOT NULL
+                AND js2.scheduled_arrival IS NOT NULL
+        ),
+        segment_aggregates AS (
+            -- Aggregate by segment (from-to-datasource)
+            SELECT 
+                from_station,
+                to_station,
+                data_source,
+                -- Active journey metrics
+                COUNT(*) FILTER (WHERE NOT is_cancelled) as active_count,
+                AVG(actual_minutes) FILTER (WHERE NOT is_cancelled) as avg_actual,
+                AVG(scheduled_minutes) FILTER (WHERE NOT is_cancelled) as avg_scheduled,
+                -- For baseline: use scheduled if available, otherwise median of actuals
+                PERCENTILE_CONT(0.5) WITHIN GROUP (
+                    ORDER BY actual_minutes
+                ) FILTER (WHERE NOT is_cancelled) as median_actual,
+                -- Cancellation metrics
+                COUNT(*) FILTER (WHERE is_cancelled) as cancelled_count,
+                -- Recent samples (approximation - last 50 by departure time)
+                AVG(actual_minutes) FILTER (
+                    WHERE NOT is_cancelled 
+                    AND departure_time >= (
+                        SELECT MAX(departure_time) - INTERVAL '1 hour'
+                        FROM segment_data sd2
+                        WHERE sd2.from_station = segment_data.from_station
+                        AND sd2.to_station = segment_data.to_station
+                        AND sd2.data_source = segment_data.data_source
+                    )
+                ) as recent_avg
+            FROM segment_data
+            GROUP BY from_station, to_station, data_source
+        )
+        SELECT 
+            from_station,
+            to_station,
+            data_source,
+            active_count,
+            cancelled_count,
+            avg_actual,
+            avg_scheduled,
+            median_actual,
+            recent_avg,
+            -- Calculate baseline (scheduled avg if available, else median actual)
+            COALESCE(avg_scheduled, median_actual) as baseline_minutes,
+            -- Use recent average if available, otherwise overall average
+            COALESCE(recent_avg, avg_actual) as current_avg_minutes
+        FROM segment_aggregates
+        WHERE (active_count + cancelled_count) >= 2  -- Need at least 2 journeys
+        """)
+        
+        result = await db.execute(query, {"cutoff_time": cutoff_time})
+        rows = result.fetchall()
+        
+        congestion_results = []
+        for row in rows:
+            # Calculate derived metrics
+            total_journeys = row.active_count + row.cancelled_count
+            cancellation_rate = (row.cancelled_count / total_journeys * 100) if total_journeys > 0 else 0
+            
+            # Calculate congestion factor (convert Decimal to float)
+            baseline = float(row.baseline_minutes or row.median_actual or row.avg_actual or 1.0)
+            current_avg = float(row.current_avg_minutes or row.avg_actual or baseline)
+            congestion_factor = current_avg / baseline if baseline > 0 else 1.0
+            
+            # Determine congestion level based on factor
+            if congestion_factor <= 1.1:
+                level = "normal"
+            elif congestion_factor <= 1.25:
+                level = "moderate"
+            elif congestion_factor <= 1.5:
+                level = "heavy"
+            else:
+                level = "severe"
+            
+            # Calculate average delay
+            average_delay = current_avg - baseline
+            
+            congestion_results.append(
+                SegmentCongestion(
+                    from_station=row.from_station,
+                    to_station=row.to_station,
+                    data_source=row.data_source,
+                    congestion_factor=congestion_factor,
+                    congestion_level=level,
+                    avg_transit_minutes=current_avg,
+                    baseline_minutes=baseline,
+                    sample_count=row.active_count,
+                    average_delay_minutes=average_delay,
+                    cancellation_count=row.cancelled_count,
+                    cancellation_rate=cancellation_rate,
+                )
+            )
+        
+        # Cache the results
+        self._cache[cache_key] = (congestion_results, now_et())
+        
+        logger.info(
+            "network_congestion_calculated_optimized",
+            segment_count=len(congestion_results),
+            time_window_hours=time_window_hours,
+            method="database_aggregation",
+        )
+        
+        return congestion_results
+
+    async def get_individual_segments_optimized(
+        self, 
+        db: AsyncSession, 
+        time_window_hours: int = 3,
+        max_per_segment: int = 100
+    ) -> list[Any]:
+        """
+        Get individual journey segments using SQL-based approach.
+        
+        This calculates individual train segments directly in the database
+        instead of loading all journey objects into memory. Each segment
+        represents one train's journey between consecutive stations.
+        
+        Args:
+            db: Database session
+            time_window_hours: How many hours to look back
+            max_per_segment: Maximum segments per route (0 = unlimited)
+            
+        Returns:
+            List of IndividualJourneySegment objects for visualization
+        """
+        from trackrat.config.stations import get_station_name
+        from trackrat.models.api import IndividualJourneySegment
+        
+        cutoff_time = now_et() - timedelta(hours=time_window_hours)
+        
+        # SQL query to get individual segments with per-route limiting
+        if max_per_segment > 0:
+            # With per-route limiting using ROW_NUMBER()
+            query = text("""
+            WITH segment_data AS (
+                -- Calculate individual train segments between consecutive stops
+                SELECT 
+                    js1.station_code as from_station,
+                    js2.station_code as to_station,
+                    tj.data_source,
+                    tj.id as journey_id,
+                    tj.train_id,
+                    tj.journey_date,
+                    -- Timing data
+                    COALESCE(js1.actual_departure, js1.scheduled_departure) as departure_time,
+                    COALESCE(js2.actual_arrival, js2.scheduled_arrival) as arrival_time,
+                    js1.scheduled_departure,
+                    js2.scheduled_arrival,
+                    -- Calculate actual transit time in minutes
+                    EXTRACT(EPOCH FROM (
+                        COALESCE(js2.actual_arrival, js2.scheduled_arrival) - 
+                        COALESCE(js1.actual_departure, js1.scheduled_departure)
+                    )) / 60.0 as actual_minutes,
+                    -- Calculate scheduled transit time
+                    CASE 
+                        WHEN js1.scheduled_departure IS NOT NULL 
+                         AND js2.scheduled_arrival IS NOT NULL
+                        THEN EXTRACT(EPOCH FROM (
+                            js2.scheduled_arrival - js1.scheduled_departure
+                        )) / 60.0
+                        ELSE NULL
+                    END as scheduled_minutes
+                FROM train_journeys tj
+                JOIN journey_stops js1 ON js1.journey_id = tj.id
+                JOIN journey_stops js2 ON js2.journey_id = tj.id 
+                WHERE 
+                    -- Consecutive stops only
+                    js2.stop_sequence = js1.stop_sequence + 1
+                    -- Within time window
+                    AND tj.last_updated_at >= :cutoff_time
+                    -- Active journeys only (cancelled trains handled separately)
+                    AND NOT tj.is_cancelled
+                    -- Valid stations
+                    AND js1.station_code IS NOT NULL
+                    AND js2.station_code IS NOT NULL
+                    -- Valid times
+                    AND js1.scheduled_departure IS NOT NULL
+                    AND js2.scheduled_arrival IS NOT NULL
+            ),
+            ranked_segments AS (
+                -- Rank segments by recency within each route
+                SELECT *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY from_station, to_station, data_source
+                        ORDER BY departure_time DESC
+                    ) as rank_within_route
+                FROM segment_data
+                WHERE actual_minutes > 0  -- Valid positive transit times only
+            )
+            SELECT 
+                journey_id,
+                train_id,
+                from_station,
+                to_station,
+                data_source,
+                journey_date,
+                departure_time,
+                arrival_time,
+                scheduled_departure,
+                scheduled_arrival,
+                actual_minutes,
+                scheduled_minutes,
+                -- Calculate delay
+                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes,
+                -- Calculate congestion factor
+                CASE 
+                    WHEN scheduled_minutes > 0 
+                    THEN actual_minutes / scheduled_minutes 
+                    ELSE 1.0 
+                END as congestion_factor
+            FROM ranked_segments
+            WHERE rank_within_route <= :max_per_segment
+            ORDER BY departure_time DESC
+            """)
+        else:
+            # No per-route limiting - return ALL individual segments
+            query = text("""
+            WITH segment_data AS (
+                -- Calculate individual train segments between consecutive stops
+                SELECT 
+                    js1.station_code as from_station,
+                    js2.station_code as to_station,
+                    tj.data_source,
+                    tj.id as journey_id,
+                    tj.train_id,
+                    tj.journey_date,
+                    -- Timing data
+                    COALESCE(js1.actual_departure, js1.scheduled_departure) as departure_time,
+                    COALESCE(js2.actual_arrival, js2.scheduled_arrival) as arrival_time,
+                    js1.scheduled_departure,
+                    js2.scheduled_arrival,
+                    -- Calculate actual transit time in minutes
+                    EXTRACT(EPOCH FROM (
+                        COALESCE(js2.actual_arrival, js2.scheduled_arrival) - 
+                        COALESCE(js1.actual_departure, js1.scheduled_departure)
+                    )) / 60.0 as actual_minutes,
+                    -- Calculate scheduled transit time
+                    CASE 
+                        WHEN js1.scheduled_departure IS NOT NULL 
+                         AND js2.scheduled_arrival IS NOT NULL
+                        THEN EXTRACT(EPOCH FROM (
+                            js2.scheduled_arrival - js1.scheduled_departure
+                        )) / 60.0
+                        ELSE NULL
+                    END as scheduled_minutes
+                FROM train_journeys tj
+                JOIN journey_stops js1 ON js1.journey_id = tj.id
+                JOIN journey_stops js2 ON js2.journey_id = tj.id 
+                WHERE 
+                    -- Consecutive stops only
+                    js2.stop_sequence = js1.stop_sequence + 1
+                    -- Within time window
+                    AND tj.last_updated_at >= :cutoff_time
+                    -- Active journeys only
+                    AND NOT tj.is_cancelled
+                    -- Valid stations
+                    AND js1.station_code IS NOT NULL
+                    AND js2.station_code IS NOT NULL
+                    -- Valid times
+                    AND js1.scheduled_departure IS NOT NULL
+                    AND js2.scheduled_arrival IS NOT NULL
+                    -- Valid positive transit times
+                    AND EXTRACT(EPOCH FROM (
+                        COALESCE(js2.actual_arrival, js2.scheduled_arrival) - 
+                        COALESCE(js1.actual_departure, js1.scheduled_departure)
+                    )) > 0
+            )
+            SELECT 
+                journey_id,
+                train_id,
+                from_station,
+                to_station,
+                data_source,
+                journey_date,
+                departure_time,
+                arrival_time,
+                scheduled_departure,
+                scheduled_arrival,
+                actual_minutes,
+                scheduled_minutes,
+                -- Calculate delay
+                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes,
+                -- Calculate congestion factor
+                CASE 
+                    WHEN scheduled_minutes > 0 
+                    THEN actual_minutes / scheduled_minutes 
+                    ELSE 1.0 
+                END as congestion_factor
+            FROM segment_data
+            ORDER BY departure_time DESC
+            """)
+        
+        # Execute query
+        params = {"cutoff_time": cutoff_time}
+        if max_per_segment > 0:
+            params["max_per_segment"] = max_per_segment
+            
+        result = await db.execute(query, params)
+        rows = result.fetchall()
+        
+        # Convert to IndividualJourneySegment objects
+        individual_segments = []
+        for row in rows:
+            # Determine congestion level from factor (convert Decimal to float)
+            congestion_factor = float(row.congestion_factor)
+            if congestion_factor <= 1.1:
+                level = "normal"
+            elif congestion_factor <= 1.25:
+                level = "moderate"
+            elif congestion_factor <= 1.5:
+                level = "heavy"
+            else:
+                level = "severe"
+            
+            # Convert database types to Python types
+            actual_minutes = float(row.actual_minutes)
+            scheduled_minutes = float(row.scheduled_minutes) if row.scheduled_minutes else actual_minutes
+            delay_minutes = float(row.delay_minutes)
+            
+            segment = IndividualJourneySegment(
+                journey_id=str(row.journey_id),
+                train_id=row.train_id,
+                from_station=row.from_station,
+                to_station=row.to_station,
+                from_station_name=get_station_name(row.from_station),
+                to_station_name=get_station_name(row.to_station),
+                data_source=row.data_source,
+                scheduled_departure=row.scheduled_departure,
+                actual_departure=row.departure_time,
+                scheduled_arrival=row.scheduled_arrival,
+                actual_arrival=row.arrival_time,
+                scheduled_minutes=scheduled_minutes,
+                actual_minutes=actual_minutes,
+                delay_minutes=delay_minutes,
+                congestion_factor=congestion_factor,
+                congestion_level=level,
+                is_cancelled=False,  # We only process active journeys
+                journey_date=row.journey_date,
+            )
+            individual_segments.append(segment)
+        
+        logger.info(
+            "individual_segments_calculated_optimized",
+            segment_count=len(individual_segments),
+            time_window_hours=time_window_hours,
+            max_per_segment=max_per_segment,
+            method="sql_direct",
+        )
+        
+        return individual_segments
 
     def _calculate_segments_from_journeys(
         self, journeys: list[TrainJourney], cutoff_time: datetime
