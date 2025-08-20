@@ -228,6 +228,7 @@ class CongestionAnalyzer:
                 CASE
                     WHEN js1.scheduled_departure IS NOT NULL
                      AND js2.scheduled_arrival IS NOT NULL
+                     AND js2.scheduled_arrival > js1.scheduled_departure
                     THEN EXTRACT(EPOCH FROM (
                         js2.scheduled_arrival - js1.scheduled_departure
                     )) / 60.0
@@ -249,6 +250,9 @@ class CongestionAnalyzer:
                 -- Valid times (at least scheduled times must exist)
                 AND js1.scheduled_departure IS NOT NULL
                 AND js2.scheduled_arrival IS NOT NULL
+                -- Ensure arrival is after departure (positive transit time)
+                AND COALESCE(js2.actual_arrival, js2.scheduled_arrival) >
+                    COALESCE(js1.actual_departure, js1.scheduled_departure)
         ),
         segment_aggregates AS (
             -- Aggregate by segment (from-to-datasource)
@@ -256,19 +260,20 @@ class CongestionAnalyzer:
                 from_station,
                 to_station,
                 data_source,
-                -- Active journey metrics
-                COUNT(*) FILTER (WHERE NOT is_cancelled) as active_count,
-                AVG(actual_minutes) FILTER (WHERE NOT is_cancelled) as avg_actual,
-                AVG(scheduled_minutes) FILTER (WHERE NOT is_cancelled) as avg_scheduled,
+                -- Active journey metrics (only positive transit times)
+                COUNT(*) FILTER (WHERE NOT is_cancelled AND actual_minutes > 0) as active_count,
+                AVG(actual_minutes) FILTER (WHERE NOT is_cancelled AND actual_minutes > 0) as avg_actual,
+                AVG(scheduled_minutes) FILTER (WHERE NOT is_cancelled AND scheduled_minutes > 0) as avg_scheduled,
                 -- For baseline: use scheduled if available, otherwise median of actuals
                 PERCENTILE_CONT(0.5) WITHIN GROUP (
                     ORDER BY actual_minutes
-                ) FILTER (WHERE NOT is_cancelled) as median_actual,
+                ) FILTER (WHERE NOT is_cancelled AND actual_minutes > 0) as median_actual,
                 -- Cancellation metrics
                 COUNT(*) FILTER (WHERE is_cancelled) as cancelled_count,
                 -- Recent samples (approximation - last 50 by departure time)
                 AVG(actual_minutes) FILTER (
                     WHERE NOT is_cancelled
+                    AND actual_minutes > 0
                     AND departure_time >= (
                         SELECT MAX(departure_time) - INTERVAL '1 hour'
                         FROM segment_data sd2
@@ -411,6 +416,7 @@ class CongestionAnalyzer:
                     CASE
                         WHEN js1.scheduled_departure IS NOT NULL
                          AND js2.scheduled_arrival IS NOT NULL
+                         AND js2.scheduled_arrival > js1.scheduled_departure
                         THEN EXTRACT(EPOCH FROM (
                             js2.scheduled_arrival - js1.scheduled_departure
                         )) / 60.0
@@ -432,6 +438,9 @@ class CongestionAnalyzer:
                     -- Valid times
                     AND js1.scheduled_departure IS NOT NULL
                     AND js2.scheduled_arrival IS NOT NULL
+                    -- Ensure arrival is after departure (positive transit time)
+                    AND COALESCE(js2.actual_arrival, js2.scheduled_arrival) >
+                        COALESCE(js1.actual_departure, js1.scheduled_departure)
             ),
             ranked_segments AS (
                 -- Rank segments by recency within each route
@@ -496,6 +505,7 @@ class CongestionAnalyzer:
                     CASE
                         WHEN js1.scheduled_departure IS NOT NULL
                          AND js2.scheduled_arrival IS NOT NULL
+                         AND js2.scheduled_arrival > js1.scheduled_departure
                         THEN EXTRACT(EPOCH FROM (
                             js2.scheduled_arrival - js1.scheduled_departure
                         )) / 60.0
