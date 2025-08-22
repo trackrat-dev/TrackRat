@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 from structlog import get_logger
 
-from trackrat.api import health, live_activities, routes, trains
+from trackrat.api import health, live_activities, predictions, routes, trains
 from trackrat.db.database import init_database, shutdown_database
 from trackrat.db.engine import close_engine
 from trackrat.services.apns import SimpleAPNSService
@@ -98,7 +98,7 @@ app.add_middleware(
 app.include_router(trains.router)
 app.include_router(health.router)
 app.include_router(live_activities.router)
-
+app.include_router(predictions.router)
 app.include_router(routes.router)
 
 # Mount Prometheus metrics endpoint if enabled

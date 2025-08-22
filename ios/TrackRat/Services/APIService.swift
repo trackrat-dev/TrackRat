@@ -603,6 +603,54 @@ final class APIService: ObservableObject {
         }
     }
     
+    // MARK: - ML Track Predictions
+    
+    func fetchMLTrackPrediction(
+        stationCode: String,
+        trainId: String,
+        journeyDate: Date
+    ) async throws -> MLTrackPredictionResponse {
+        var components = URLComponents(string: "\(baseURL)/v2/predictions/track")!
+        
+        // Format date as YYYY-MM-DD
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
+        let dateString = dateFormatter.string(from: journeyDate)
+        
+        components.queryItems = [
+            URLQueryItem(name: "station_code", value: stationCode),
+            URLQueryItem(name: "train_id", value: trainId),
+            URLQueryItem(name: "journey_date", value: dateString)
+        ]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        let (data, response) = try await session.data(from: url)
+        
+        if let httpResponse = response as? HTTPURLResponse {
+            if httpResponse.statusCode == 404 {
+                throw APIError.noData
+            }
+            if httpResponse.statusCode != 200 {
+                throw APIError.invalidParameters
+            }
+        }
+        
+        do {
+            let prediction = try decoder.decode(MLTrackPredictionResponse.self, from: data)
+            return prediction
+        } catch {
+            print("🔴 ML PREDICTION DECODING ERROR (train: \(trainId)): \(error)")
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+            }
+            throw error
+        }
+    }
+    
     // MARK: - Congestion Data
     
     func fetchCongestionData(timeWindowHours: Int = 3, maxPerSegment: Int = 100, dataSource: String? = nil) async throws -> CongestionMapResponse {
