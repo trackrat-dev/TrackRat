@@ -59,7 +59,7 @@ async def predict_track(
     """
 
     logger.info(
-        "track_prediction_request",
+        "track_prediction_request_start",
         station_code=station_code,
         train_id=train_id,
         journey_date=journey_date,
@@ -84,19 +84,40 @@ async def predict_track(
             detail=f"Train {train_id} not found for date {journey_date}",
         )
 
-    # Generate prediction
-    prediction = track_predictor.predict(station_code, features)
+    # Generate prediction with timing
+    import time
+    prediction_start = time.time()
+    prediction = await track_predictor.predict(db, station_code, features)
+    prediction_duration = time.time() - prediction_start
+    
+    logger.info(
+        "ml_prediction_timing",
+        station_code=station_code,
+        train_id=train_id,
+        prediction_duration_ms=round(prediction_duration * 1000, 2),
+    )
 
     if not prediction:
         # Fallback: return uniform distribution
         logger.warning(
-            "prediction_fallback", station_code=station_code, train_id=train_id
+            "prediction_fallback_used", 
+            station_code=station_code, 
+            train_id=train_id,
+            reason="ml_model_failed"
         )
 
         # Default platforms for NY Penn
         default_platforms = ["1 & 2", "3 & 4", "5 & 6", "7 & 8", "9 & 10", "11 & 12", "13 & 14", "15 & 16", "17", "18 & 19", "20 & 21"]
         uniform_prob = 1.0 / len(default_platforms)
 
+        logger.info(
+            "fallback_prediction_returned",
+            station_code=station_code,
+            train_id=train_id,
+            fallback_confidence=uniform_prob,
+            platforms_count=len(default_platforms),
+        )
+        
         return TrackPredictionResponse(
             platform_probabilities={platform: uniform_prob for platform in default_platforms},
             primary_prediction="7 & 8",  # Most common platform
@@ -107,6 +128,26 @@ async def predict_track(
             train_id=train_id,
             features_used=None,
         )
+
+    # Log successful prediction details
+    logger.info(
+        "track_prediction_success",
+        station_code=station_code,
+        train_id=train_id,
+        primary_prediction=prediction["primary_prediction"],
+        confidence=prediction["confidence"],
+        top_3_platforms=prediction["top_3"],
+        model_version=prediction["model_version"],
+        features_count=len(prediction.get("features_used", {})),
+        prediction_distribution={
+            platform: round(prob, 3)
+            for platform, prob in sorted(
+                prediction["platform_probabilities"].items(), 
+                key=lambda x: x[1], 
+                reverse=True
+            )
+        },
+    )
 
     # Return prediction
     return TrackPredictionResponse(

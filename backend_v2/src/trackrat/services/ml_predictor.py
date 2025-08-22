@@ -30,7 +30,7 @@ class TrackPredictor:
         if not hasattr(self, "initialized") or not self.initialized:
             self.models: dict[str, Any] = {}
             self.encoders: dict[str, Any] = {}
-            self.platform_classes: dict[str, list[str]] = {}
+            self.track_classes: dict[str, list[str]] = {}
             self.initialized: bool = True
 
             # Pre-load NY Penn model
@@ -76,19 +76,19 @@ class TrackPredictor:
             with open(encoders_path, "rb") as f:
                 self.encoders[station_code] = pickle.load(f)
 
-            # Load platform classes
+            # Load track classes
             classes_path = base_path / f"{model_prefix}_track_classes.pkl"
             if not classes_path.exists():
                 logger.error("classes_file_not_found", path=str(classes_path))
                 return False
 
             with open(classes_path, "rb") as f:
-                self.platform_classes[station_code] = pickle.load(f)
+                self.track_classes[station_code] = pickle.load(f)
 
             logger.info(
                 "model_loaded",
                 station_code=station_code,
-                n_platforms=len(self.platform_classes[station_code]),
+                n_tracks=len(self.track_classes[station_code]),
             )
 
             return True
@@ -97,8 +97,8 @@ class TrackPredictor:
             logger.error("model_load_error", station_code=station_code, error=str(e))
             return False
 
-    def predict(
-        self, station_code: str, features: dict[str, Any]
+    async def predict(
+        self, db, station_code: str, features: dict[str, Any]
     ) -> dict[str, Any] | None:
         """
         Generate platform prediction from features.
@@ -126,67 +126,75 @@ class TrackPredictor:
             # Get model and encoders
             model = self.models[station_code]
             encoders = self.encoders[station_code]
-            platform_classes = self.platform_classes[station_code]
+            track_classes = self.track_classes[station_code]
 
             # Encode categorical features
             line_code = features.get("line_code", "UNKNOWN")
             destination = features.get("destination", "UNKNOWN")
 
-            # Handle unknown values
+            # Handle unknown values with logging
             if line_code not in encoders["line_code"].classes_:
                 line_code_encoded = -1  # Unknown line
+                logger.info(
+                    "unknown_line_code_encountered",
+                    station_code=station_code,
+                    line_code=line_code,
+                    known_lines=list(encoders["line_code"].classes_)[:5],  # First 5 for brevity
+                )
             else:
                 line_code_encoded = encoders["line_code"].transform([line_code])[0]
 
             if destination not in encoders["destination"].classes_:
                 destination_encoded = -1  # Unknown destination
+                logger.info(
+                    "unknown_destination_encountered",
+                    station_code=station_code,
+                    destination=destination,
+                    known_destinations_count=len(encoders["destination"].classes_),
+                )
             else:
                 destination_encoded = encoders["destination"].transform([destination])[
                     0
                 ]
 
-            # Get track usage times
+            # Get track usage times for averaging  
             track_times = features.get("minutes_since_track_used", {})
-            platform_times = features.get("minutes_since_platform_used", {})
 
-            # For now, use average time since any track was used
-            # In the future, we could use track-specific times
             if track_times:
                 avg_track_time = np.mean(list(track_times.values()))
             else:
                 avg_track_time = -1  # Unknown
 
-            if platform_times:
-                avg_platform_time = np.mean(list(platform_times.values()))
-            else:
-                avg_platform_time = -1  # Unknown
+            # Prepare feature vector with 6 features only
+            feature_list = [
+                features["hour_of_day"],
+                features["day_of_week"],
+                features["is_amtrak"],
+                line_code_encoded,
+                destination_encoded,
+                avg_track_time,
+            ]
+            
+            feature_vector = np.array([feature_list])
 
-            # Prepare feature vector
-            feature_vector = np.array(
-                [
-                    [
-                        features["hour_of_day"],
-                        features["day_of_week"],
-                        features["is_amtrak"],
-                        line_code_encoded,
-                        destination_encoded,
-                        avg_track_time,
-                        avg_platform_time,
-                    ]
-                ]
-            )
-
-            # Get predictions
+            # Get raw ML predictions (now predicting tracks)
             probabilities = model.predict_proba(feature_vector)[0]
+            track_classes = self.track_classes[station_code]  # Now contains tracks
 
-            # Create platform probability dictionary
-            platform_probs = {}
-            for i, platform in enumerate(platform_classes):
-                platform_probs[platform] = float(probabilities[i])
+            # Create track probability dictionary
+            raw_track_probs = {}
+            for i, track in enumerate(track_classes):
+                raw_track_probs[track] = float(probabilities[i])
+
+            # Filter occupied tracks and aggregate to platforms
+            scheduled_departure = features["scheduled_departure"]
+            final_platform_probs = await self._predict_with_track_filtering(
+                db, raw_track_probs, station_code, scheduled_departure
+            )
 
             # Sort by probability
             sorted_platforms = sorted(
-                platform_probs.items(), key=lambda x: x[1], reverse=True
+                final_platform_probs.items(), key=lambda x: x[1], reverse=True
             )
 
             # Get top predictions
@@ -196,7 +204,7 @@ class TrackPredictor:
 
             # Prepare response
             result = {
-                "platform_probabilities": platform_probs,
+                "platform_probabilities": final_platform_probs,
                 "primary_prediction": primary_prediction,
                 "confidence": confidence,
                 "top_3": top_3,
@@ -208,15 +216,35 @@ class TrackPredictor:
                     "line_code": line_code,
                     "destination": destination,
                     "avg_minutes_since_track_used": avg_track_time,
-                    "avg_minutes_since_platform_used": avg_platform_time,
+                    "track_data_points": len(track_times),
                 },
             }
 
+            # Enhanced logging for prediction performance
             logger.info(
                 "prediction_generated",
                 station_code=station_code,
                 primary_prediction=primary_prediction,
                 confidence=confidence,
+                top_3_platforms=top_3,
+                platform_probabilities=final_platform_probs,
+                model_version="1.0.0",
+            )
+            
+            # Log confidence level category
+            if confidence >= 0.8:
+                confidence_level = "high"
+            elif confidence >= 0.5:
+                confidence_level = "medium"
+            else:
+                confidence_level = "low"
+                
+            logger.info(
+                "prediction_confidence_assessment",
+                station_code=station_code,
+                confidence_level=confidence_level,
+                confidence_score=confidence,
+                margin_to_second=confidence - sorted_platforms[1][1] if len(sorted_platforms) > 1 else 0,
             )
 
             return result
@@ -224,6 +252,164 @@ class TrackPredictor:
         except Exception as e:
             logger.error("prediction_error", station_code=station_code, error=str(e))
             return None
+
+    async def _predict_with_track_filtering(
+        self, db, raw_track_probs: dict[str, float], station_code: str, scheduled_departure
+    ) -> dict[str, float]:
+        """
+        Filter occupied tracks and aggregate remaining tracks to platforms.
+        
+        Args:
+            db: Database session
+            raw_track_probs: ML predictions for individual tracks
+            station_code: Station code (e.g., 'NY')
+            scheduled_departure: Scheduled departure time for occupancy check
+            
+        Returns:
+            Platform probabilities after filtering and aggregation
+        """
+        # Get occupied tracks
+        occupied_tracks = await self._get_occupied_tracks(db, station_code, scheduled_departure)
+        
+        # Filter out occupied tracks (convert track to string for comparison)
+        available_track_probs = {}
+        for track, probability in raw_track_probs.items():
+            track_str = str(track)
+            if track_str not in occupied_tracks:
+                available_track_probs[track] = probability
+        
+        # Renormalize track probabilities to sum to 100%
+        total_track_prob = sum(available_track_probs.values())
+        if total_track_prob > 0:
+            available_track_probs = {t: prob/total_track_prob for t, prob in available_track_probs.items()}
+        else:
+            # All tracks occupied - return uniform distribution of available tracks
+            track_count = len(raw_track_probs)
+            available_track_probs = {t: 1.0/track_count for t in raw_track_probs}
+            logger.warning(
+                "all_tracks_occupied_fallback", 
+                station_code=station_code,
+                scheduled_departure=scheduled_departure,
+                occupied_tracks=list(occupied_tracks)
+            )
+        
+        # Aggregate tracks to platforms
+        platform_probs = self._aggregate_tracks_to_platforms(available_track_probs, station_code)
+        
+        # Log filtering and aggregation results
+        filtered_count = len(raw_track_probs) - len(available_track_probs)
+        logger.info(
+            "track_filtering_and_aggregation",
+            station_code=station_code,
+            original_tracks=len(raw_track_probs),
+            filtered_tracks=filtered_count,
+            available_tracks=len(available_track_probs),
+            final_platforms=len(platform_probs),
+            occupied_tracks=sorted(occupied_tracks),
+        )
+        
+        return platform_probs
+
+    def _aggregate_tracks_to_platforms(self, track_probs: dict[str, float], station_code: str) -> dict[str, float]:
+        """
+        Aggregate individual track probabilities into platform probabilities.
+        
+        Args:
+            track_probs: Dictionary of track -> probability
+            station_code: Station code (e.g., 'NY')
+            
+        Returns:
+            Dictionary of platform -> aggregated probability
+        """
+        platform_probs = {}
+        
+        for track, probability in track_probs.items():
+            # Get platform for this track (convert track to string)
+            track_str = str(track)
+            platform = self._get_platform_for_track(station_code, track_str)
+            
+            # Add probability to platform total
+            if platform not in platform_probs:
+                platform_probs[platform] = 0.0
+            platform_probs[platform] += probability
+        
+        return platform_probs
+
+
+    async def _get_occupied_tracks(self, db, station_code: str, scheduled_departure) -> set[str]:
+        """Get set of occupied track numbers."""
+        from datetime import timedelta
+        from sqlalchemy import and_, select
+        from trackrat.models.database import JourneyStop, TrainJourney
+        
+        # Use same 12-minute window as before
+        window_start = scheduled_departure - timedelta(minutes=10)
+        window_end = scheduled_departure + timedelta(minutes=2)
+        
+        stmt = (
+            select(JourneyStop.track)
+            .join(TrainJourney)
+            .where(
+                and_(
+                    JourneyStop.station_code == station_code,
+                    JourneyStop.track.isnot(None),
+                    JourneyStop.track != "",
+                    JourneyStop.scheduled_departure >= window_start,
+                    JourneyStop.scheduled_departure <= window_end,
+                    TrainJourney.is_expired == False,
+                    TrainJourney.is_cancelled == False,
+                )
+            )
+        )
+        
+        result = await db.execute(stmt)
+        return {row.track for row in result}
+
+    def _get_platform_for_track(self, station_code: str, track: str) -> str:
+        """Get platform name for a given track number."""
+        if station_code != "NY":
+            # For non-NY stations, platform equals track
+            return track
+        
+        # NY Penn Station track-to-platform mappings
+        track_to_platform = {
+            "1": "1 & 2", "2": "1 & 2",
+            "3": "3 & 4", "4": "3 & 4", 
+            "5": "5 & 6", "6": "5 & 6",
+            "7": "7 & 8", "8": "7 & 8",
+            "9": "9 & 10", "10": "9 & 10",
+            "11": "11 & 12", "12": "11 & 12",
+            "13": "13 & 14", "14": "13 & 14",
+            "15": "15 & 16", "16": "15 & 16",
+            "17": "17",
+            "18": "18 & 19", "19": "18 & 19",
+            "20": "20 & 21", "21": "20 & 21",
+        }
+        
+        return track_to_platform.get(track, track)
+
+    def _get_tracks_for_platform(self, station_code: str, platform: str) -> list[str]:
+        """Get track numbers for a given platform."""
+        if station_code != "NY":
+            # For non-NY stations, platform equals track
+            return [platform]
+        
+        # NY Penn Station platform mappings
+        platform_to_tracks = {
+            "1 & 2": ["1", "2"],
+            "3 & 4": ["3", "4"], 
+            "5 & 6": ["5", "6"],
+            "7 & 8": ["7", "8"],
+            "9 & 10": ["9", "10"],
+            "11 & 12": ["11", "12"],
+            "13 & 14": ["13", "14"],
+            "15 & 16": ["15", "16"],
+            "17": ["17"],
+            "18 & 19": ["18", "19"],
+            "20 & 21": ["20", "21"],
+        }
+        
+        return platform_to_tracks.get(platform, [platform])
 
 
 # Global instance

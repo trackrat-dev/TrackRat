@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Train a Random Forest model for NY Penn Station track predictions.
+Train a Random Forest model for NY Penn Station individual track predictions.
 
 This script:
 1. Loads training data from CSV
 2. Encodes categorical features
-3. Trains a Random Forest model
+3. Trains a Random Forest model (predicting individual tracks)
 4. Evaluates performance
 5. Saves the model and encoders
 
@@ -37,12 +37,11 @@ def load_and_prepare_data(csv_path: str):
     print(f"Loaded {len(df)} samples")
     
     # Remove any samples with invalid data
-    df = df[df['platform'].notna()]
-    df = df[df['platform'] != '']
+    df = df[df['track'].notna()]
+    df = df[df['track'] != '']
     
     # Handle missing values
     df['minutes_since_track_used'] = df['minutes_since_track_used'].fillna(-1)
-    df['minutes_since_platform_used'] = df['minutes_since_platform_used'].fillna(-1)
     
     print(f"After cleaning: {len(df)} samples")
     
@@ -76,20 +75,21 @@ def encode_features(df):
 def prepare_features_and_target(df):
     """Extract feature matrix and target vector."""
     
-    # Define feature columns
+    # Define feature columns (6 features only)
     feature_columns = [
         'hour_of_day',
         'day_of_week', 
         'is_amtrak',
         'line_code_encoded',
         'destination_encoded',
-        'minutes_since_track_used',
-        'minutes_since_platform_used'
+        'minutes_since_track_used'
     ]
     
-    # Extract features and target (now predicting platform instead of track)
+    print(f"Using {len(feature_columns)} features: {feature_columns}")
+    
+    # Extract features and target (predicting individual tracks)
     X = df[feature_columns].values
-    y = df['platform'].values
+    y = df['track'].values
     
     return X, y, feature_columns
 
@@ -116,7 +116,7 @@ def train_model(X_train, y_train):
     return model
 
 
-def evaluate_model(model, X_test, y_test, platform_classes):
+def evaluate_model(model, X_test, y_test, track_classes):
     """Evaluate model performance."""
     
     print("\nEvaluating model...")
@@ -130,12 +130,12 @@ def evaluate_model(model, X_test, y_test, platform_classes):
     
     # Calculate top-3 accuracy
     top3_correct = 0
-    for i, true_platform in enumerate(y_test):
-        # Get top 3 predicted platforms
+    for i, true_track in enumerate(y_test):
+        # Get top 3 predicted tracks
         proba_row = y_proba[i]
         top3_indices = np.argsort(proba_row)[-3:]
-        top3_platforms = [platform_classes[idx] for idx in top3_indices]
-        if true_platform in top3_platforms:
+        top3_tracks = [track_classes[idx] for idx in top3_indices]
+        if true_track in top3_tracks:
             top3_correct += 1
     
     top3_accuracy = top3_correct / len(y_test)
@@ -147,14 +147,14 @@ def evaluate_model(model, X_test, y_test, platform_classes):
     print(f"\nTop-1 Accuracy: {accuracy:.3f}")
     print(f"Top-3 Accuracy: {top3_accuracy:.3f}")
     
-    # Performance by platform
-    print("\nPer-platform performance:")
-    for platform in sorted(set(y_test)):
-        if platform in report:
-            precision = report[platform]['precision']
-            recall = report[platform]['recall']
-            support = report[platform]['support']
-            print(f"  Platform {platform}: Precision={precision:.2f}, Recall={recall:.2f}, N={support}")
+    # Performance by track
+    print("\nPer-track performance:")
+    for track in sorted(set(y_test), key=lambda x: int(str(x)) if str(x).isdigit() else 999):
+        if track in report:
+            precision = report[track]['precision']
+            recall = report[track]['recall']
+            support = report[track]['support']
+            print(f"  Track {track}: Precision={precision:.2f}, Recall={recall:.2f}, N={support}")
     
     return {
         'top1_accuracy': float(accuracy),
@@ -179,7 +179,7 @@ def analyze_feature_importance(model, feature_names):
     return dict(feature_importance)
 
 
-def save_model_artifacts(model, encoders, platform_classes, performance, feature_importance):
+def save_model_artifacts(model, encoders, track_classes, performance, feature_importance):
     """Save all model artifacts."""
     
     models_dir = Path("ml/models")
@@ -201,11 +201,11 @@ def save_model_artifacts(model, encoders, platform_classes, performance, feature
         pickle.dump(encoders, f)
     print(f"Encoders saved to {encoders_path}")
     
-    # Save platform classes
+    # Save track classes
     classes_path = models_dir / "ny_track_classes.pkl"
     with open(classes_path, 'wb') as f:
-        pickle.dump(platform_classes, f)
-    print(f"Platform classes saved to {classes_path}")
+        pickle.dump(track_classes, f)
+    print(f"Track classes saved to {classes_path}")
     
     # Save performance report
     report = {
@@ -258,18 +258,18 @@ def main():
     print(f"\nTraining set: {len(X_train)} samples")
     print(f"Test set: {len(X_test)} samples")
     
-    # Get unique platform classes
-    platform_classes = sorted(set(y))
-    print(f"Number of platforms: {len(platform_classes)}")
+    # Get unique track classes
+    track_classes = sorted(set(y), key=lambda x: int(str(x)) if str(x).isdigit() else 999)
+    print(f"Number of tracks: {len(track_classes)}")
     
     # Train model
     model = train_model(X_train, y_train)
     
-    # Ensure model knows all platform classes
-    model.classes_ = np.array(platform_classes)
+    # Ensure model knows all track classes
+    model.classes_ = np.array(track_classes)
     
     # Evaluate model
-    performance = evaluate_model(model, X_test, y_test, platform_classes)
+    performance = evaluate_model(model, X_test, y_test, track_classes)
     performance['n_training_samples'] = len(X_train)
     performance['n_test_samples'] = len(X_test)
     
@@ -277,7 +277,7 @@ def main():
     feature_importance = analyze_feature_importance(model, feature_names)
     
     # Save everything
-    save_model_artifacts(model, encoders, platform_classes, performance, feature_importance)
+    save_model_artifacts(model, encoders, track_classes, performance, feature_importance)
     
     print("\n" + "=" * 60)
     print("Training complete!")
