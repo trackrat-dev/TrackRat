@@ -4,6 +4,7 @@ Test configuration and fixtures for TrackRat V2.
 
 import asyncio
 import logging
+import os
 import pytest
 import structlog
 from typing import AsyncGenerator, Generator
@@ -19,9 +20,10 @@ from trackrat.models.database import Base
 from trackrat.collectors.njt.client import NJTransitClient
 
 
-# Test database URL - use a separate test database
-TEST_DATABASE_URL = (
-    "postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb_test"
+# Test database URL - use environment variable or fallback to default
+TEST_DATABASE_URL = os.getenv(
+    "TRACKRAT_TEST_DATABASE_URL",
+    "postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb_test",
 )
 
 
