@@ -80,9 +80,11 @@ struct TrainV2: Identifiable, Codable {
         arrival?.code
     }
     
-    // Static track prediction data from local service
+    // Track prediction data - now handled async in UI components
     var predictionData: PredictionData? {
-        return StaticTrackDistributionService.shared.getPredictionData(for: self)
+        // Predictions are now fetched asynchronously using DynamicTrackPredictionService
+        // UI components should call DynamicTrackPredictionService.shared.getPrediction(for:) directly
+        return nil
     }
     
     // Enhanced display status using train position

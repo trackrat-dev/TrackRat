@@ -603,53 +603,6 @@ final class APIService: ObservableObject {
         }
     }
     
-    // MARK: - ML Track Predictions
-    
-    func fetchMLTrackPrediction(
-        stationCode: String,
-        trainId: String,
-        journeyDate: Date
-    ) async throws -> MLTrackPredictionResponse {
-        var components = URLComponents(string: "\(baseURL)/v2/predictions/track")!
-        
-        // Format date as YYYY-MM-DD
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
-        let dateString = dateFormatter.string(from: journeyDate)
-        
-        components.queryItems = [
-            URLQueryItem(name: "station_code", value: stationCode),
-            URLQueryItem(name: "train_id", value: trainId),
-            URLQueryItem(name: "journey_date", value: dateString)
-        ]
-        
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-        
-        let (data, response) = try await session.data(from: url)
-        
-        if let httpResponse = response as? HTTPURLResponse {
-            if httpResponse.statusCode == 404 {
-                throw APIError.noData
-            }
-            if httpResponse.statusCode != 200 {
-                throw APIError.invalidParameters
-            }
-        }
-        
-        do {
-            let prediction = try decoder.decode(MLTrackPredictionResponse.self, from: data)
-            return prediction
-        } catch {
-            print("🔴 ML PREDICTION DECODING ERROR (train: \(trainId)): \(error)")
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("🔴 RAW DATA: \(jsonString.prefix(500))")
-            }
-            throw error
-        }
-    }
     
     // MARK: - Congestion Data
     
@@ -886,6 +839,34 @@ final class APIService: ObservableObject {
             stops: stops
         )
     }
+    
+    // MARK: - Platform Predictions
+    
+    func getPlatformPrediction(
+        stationCode: String,
+        trainId: String,
+        journeyDate: Date
+    ) async throws -> PlatformPrediction {
+        var components = URLComponents(string: "\(baseURL)/v2/predictions/track")!
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
+        let dateString = dateFormatter.string(from: journeyDate)
+        
+        components.queryItems = [
+            URLQueryItem(name: "station_code", value: stationCode),
+            URLQueryItem(name: "train_id", value: trainId),
+            URLQueryItem(name: "journey_date", value: dateString)
+        ]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        let (data, _) = try await session.data(from: url)
+        return try decoder.decode(PlatformPrediction.self, from: data)
+    }
 }
 
 // MARK: - API Errors
@@ -904,5 +885,89 @@ enum APIError: LocalizedError {
         case .invalidParameters: return "Invalid parameters provided"
         case .encodingError: return "Failed to encode request body"
         }
+    }
+}
+
+// MARK: - Platform Prediction Models
+
+/// Response from the ML platform prediction API
+struct PlatformPrediction: Codable {
+    let platformProbabilities: [String: Double]
+    let primaryPrediction: String
+    let confidence: Double
+    let top3: [String]
+    let modelVersion: String
+    let stationCode: String
+    let trainId: String
+    let featuresUsed: PredictionFeatures?
+    
+    enum CodingKeys: String, CodingKey {
+        case platformProbabilities = "platform_probabilities"
+        case primaryPrediction = "primary_prediction"
+        case confidence
+        case top3 = "top_3"
+        case modelVersion = "model_version"
+        case stationCode = "station_code"
+        case trainId = "train_id"
+        case featuresUsed = "features_used"
+    }
+}
+
+/// Features used by the ML model for prediction
+struct PredictionFeatures: Codable {
+    let hourOfDay: Int
+    let dayOfWeek: Int
+    let isAmtrak: Int
+    let lineCode: String?
+    let destination: String?
+    let avgMinutesSinceTrackUsed: Double?
+    let avgMinutesSincePlatformUsed: Double?
+    
+    enum CodingKeys: String, CodingKey {
+        case hourOfDay = "hour_of_day"
+        case dayOfWeek = "day_of_week"
+        case isAmtrak = "is_amtrak"
+        case lineCode = "line_code"
+        case destination
+        case avgMinutesSinceTrackUsed = "avg_minutes_since_track_used"
+        case avgMinutesSincePlatformUsed = "avg_minutes_since_platform_used"
+    }
+}
+
+// MARK: - Platform to Track Mapping
+
+extension PlatformPrediction {
+    /// Convert platform probabilities to individual track probabilities
+    func convertToTrackProbabilities() -> [String: Double] {
+        var trackProbabilities: [String: Double] = [:]
+        
+        // Platform to tracks mapping for NY Penn Station
+        let platformToTracks: [String: [String]] = [
+            "1 & 2": ["1", "2"],
+            "3 & 4": ["3", "4"],
+            "5 & 6": ["5", "6"],
+            "7 & 8": ["7", "8"],
+            "9 & 10": ["9", "10"],
+            "11 & 12": ["11", "12"],
+            "13 & 14": ["13", "14"],
+            "15 & 16": ["15", "16"],
+            "17": ["17"],
+            "18 & 19": ["18", "19"],
+            "20 & 21": ["20", "21"]
+        ]
+        
+        // Convert platform probabilities to track probabilities
+        for (platform, probability) in platformProbabilities {
+            if let tracks = platformToTracks[platform] {
+                // Split probability evenly among tracks in the platform
+                let probabilityPerTrack = probability / Double(tracks.count)
+                
+                for track in tracks {
+                    trackProbabilities[track] = probabilityPerTrack
+                }
+            }
+        }
+        
+        return trackProbabilities
     }
 }
