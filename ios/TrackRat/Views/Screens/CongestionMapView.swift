@@ -7,7 +7,7 @@ struct CongestionMapView: View {
     @State private var region = MKCoordinateRegion.newarkPennDefault
     @State private var selectedSegment: CongestionSegment?
     @State private var showingFilters = false
-    @State private var timeWindow = 3
+    @State private var timeWindow = 2
     @State private var selectedDataSource: String = "All"
     
     var body: some View {
@@ -586,8 +586,13 @@ struct SystemCongestionMapView: UIViewRepresentable {
                                      aggregatedSegments: [CongestionSegment],
                                      selectedRoute: TripPair?) {
         
+        // Sort aggregated segments by congestion factor (ascending) so severe congestion is drawn last (on top)
+        let sortedAggregatedSegments = aggregatedSegments.sorted { segment1, segment2 in
+            segment1.congestionFactor < segment2.congestionFactor
+        }
+        
         // Process aggregated segments first (these go under individual segments)
-        for segment in aggregatedSegments {
+        for segment in sortedAggregatedSegments {
             if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
                let toCoords = Stations.getCoordinates(for: segment.toStation) {
                 let coordinates = [fromCoords, toCoords]
@@ -601,14 +606,19 @@ struct SystemCongestionMapView: UIViewRepresentable {
         
         var segmentCounts: [String: Int] = [:]
         
-        // Sort individual segments by recency (oldest first, so newest are added last and appear on top)
+        // Sort individual segments by congestion factor first, then by recency within each congestion level
+        // This ensures red lines are always on top, regardless of when they departed
         let sortedIndividualSegments = individualSegments.sorted { segment1, segment2 in
-            segment1.actualDeparture < segment2.actualDeparture
+            // First sort by congestion factor (lower values first, so severe congestion is added last)
+            if segment1.congestionFactor != segment2.congestionFactor {
+                return segment1.congestionFactor < segment2.congestionFactor
+            }
+            // Within same congestion level, sort by recency (older first)
+            return segment1.actualDeparture < segment2.actualDeparture
         }
         
-        // Process individual segments in sorted order (oldest to newest)
-        // This ensures the most recent trains appear on top while still using offsets to prevent overlap
-        // Z-order: Aggregated segments (bottom) -> Older individual segments -> Newer individual segments (top)
+        // Process individual segments in sorted order
+        // Z-order: Green segments (bottom) -> Yellow -> Orange -> Red segments (top)
         for individualSegment in sortedIndividualSegments {
             if let fromCoords = Stations.getCoordinates(for: individualSegment.fromStation),
                let toCoords = Stations.getCoordinates(for: individualSegment.toStation) {

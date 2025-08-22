@@ -121,7 +121,7 @@ class JourneyCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 3)
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 2)
             
             // Determine expected data source based on train type
             let expectedDataSource: String
@@ -326,8 +326,13 @@ struct CongestionMapKitView: UIViewRepresentable {
         // Clear stored polylines
         context.coordinator.polylines.removeAll()
         
-        // Add congestion polylines
-        for segment in segments {
+        // Sort segments by congestion factor (ascending) so severe congestion is drawn last (on top)
+        let sortedSegments = segments.sorted { segment1, segment2 in
+            segment1.congestionFactor < segment2.congestionFactor
+        }
+        
+        // Add congestion polylines in sorted order (green first, then yellow, orange, red last)
+        for segment in sortedSegments {
             if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
                let toCoords = Stations.getCoordinates(for: segment.toStation) {
                 let coordinates = [fromCoords, toCoords]
@@ -824,7 +829,7 @@ class EmbeddedCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data using existing API
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 3)
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 2)
             
             // Determine expected data source based on train type
             let expectedDataSource: String
