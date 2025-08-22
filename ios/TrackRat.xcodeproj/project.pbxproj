@@ -16,8 +16,8 @@
 		A10E97F52DE39EDD002F3214 /* Train.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F32DE39EDD002F3214 /* Train.swift */; };
 		A10E97F82DE39EF9002F3214 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F72DE39EF9002F3214 /* StorageService.swift */; };
 		A10E97F92DE39EF9002F3214 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F62DE39EF9002F3214 /* APIService.swift */; };
+		A10E97FA2DE39F0F002F3215 /* RatSenseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F92DE39F0F002F3215 /* RatSenseService.swift */; };
 		A10E97FB2DE39F0F002F3214 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FA2DE39F0F002F3214 /* Extensions.swift */; };
-		A10E98012DE39F23002F3214 /* TrainNumberSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E98002DE39F23002F3214 /* TrainNumberSearchView.swift */; };
 		A10E98022DE39F23002F3214 /* DestinationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */; };
 		A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */; };
 		A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FF2DE39F23002F3214 /* TrainListView.swift */; };
@@ -126,12 +126,12 @@
 		A10E97F32DE39EDD002F3214 /* Train.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Train.swift; path = Models/Train.swift; sourceTree = "<group>"; };
 		A10E97F62DE39EF9002F3214 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = APIService.swift; path = TrackRat/Services/APIService.swift; sourceTree = "<group>"; };
 		A10E97F72DE39EF9002F3214 /* StorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StorageService.swift; path = TrackRat/Services/StorageService.swift; sourceTree = "<group>"; };
+		A10E97F92DE39F0F002F3215 /* RatSenseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RatSenseService.swift; path = TrackRat/Services/RatSenseService.swift; sourceTree = "<group>"; };
 		A10E97FA2DE39F0F002F3214 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Extensions.swift; path = Utilities/Extensions.swift; sourceTree = "<group>"; };
 		A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DestinationPickerView.swift; path = Views/Screens/DestinationPickerView.swift; sourceTree = "<group>"; };
 		A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HistoricalDataView.swift; path = Views/Screens/HistoricalDataView.swift; sourceTree = "<group>"; };
 		A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDetailsView.swift; path = Views/Screens/TrainDetailsView.swift; sourceTree = "<group>"; };
 		A10E97FF2DE39F23002F3214 /* TrainListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainListView.swift; path = Views/Screens/TrainListView.swift; sourceTree = "<group>"; };
-		A10E98002DE39F23002F3214 /* TrainNumberSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainNumberSearchView.swift; path = Views/Screens/TrainNumberSearchView.swift; sourceTree = "<group>"; };
 		A10E98072DE39F23002F3214 /* DeparturePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeparturePickerView.swift; path = Views/Screens/DeparturePickerView.swift; sourceTree = "<group>"; };
 		A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripSelectionView.swift; path = Views/Screens/TripSelectionView.swift; sourceTree = "<group>"; };
 		A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StaticTrackDistributionService.swift; path = Services/StaticTrackDistributionService.swift; sourceTree = "<group>"; };
@@ -270,13 +270,13 @@
 				A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */,
 				A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */,
 				A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */,
+				A10E97F92DE39F0F002F3215 /* RatSenseService.swift */,
 				A126E5552E25BBC700958ABA /* DeepLink.swift */,
 				A126E5562E25BBC700958ABA /* TrainV2.swift */,
 				A126E5572E25BBC700958ABA /* V2APIModels.swift */,
 				A10E97FF2DE39F23002F3214 /* TrainListView.swift */,
 				A126E55B2E25BBD800958ABA /* DeepLinkService.swift */,
 				A126E55C2E25BBD800958ABA /* ShareService.swift */,
-				A10E98002DE39F23002F3214 /* TrainNumberSearchView.swift */,
 				A10E97EF2DE39EC1002F3214 /* TrackRatApp.swift */,
 				A1AA1BB02DEF00AA001FA904 /* LaunchScreenView.swift */,
 				A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */,
@@ -296,6 +296,7 @@
 			children = (
 				A10E97F72DE39EF9002F3214 /* StorageService.swift */,
 				A10E97F62DE39EF9002F3214 /* APIService.swift */,
+				A10E97F92DE39F0F002F3215 /* RatSenseService.swift */,
 				A10077AF2E01E0C0007C6022 /* AdvancedConfigurationView.swift */,
 				A1A2391A2E02E38500FE5A7D /* BackendWakeupService.swift */,
 			);
@@ -541,7 +542,6 @@
 				A126E55D2E25BBD800958ABA /* DeepLinkService.swift in Sources */,
 				A126E55E2E25BBD800958ABA /* ShareService.swift in Sources */,
 				A10E97F82DE39EF9002F3214 /* StorageService.swift in Sources */,
-				A10E98012DE39F23002F3214 /* TrainNumberSearchView.swift in Sources */,
 				A10E98022DE39F23002F3214 /* DestinationPickerView.swift in Sources */,
 				A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */,
 				A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */,
@@ -551,6 +551,7 @@
 				A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */,
 				A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */,
 				A10E97F92DE39EF9002F3214 /* APIService.swift in Sources */,
+				A10E97FA2DE39F0F002F3215 /* RatSenseService.swift in Sources */,
 				A10077B02E01E0C0007C6022 /* AdvancedConfigurationView.swift in Sources */,
 				A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,

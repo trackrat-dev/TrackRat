@@ -14,6 +14,7 @@ struct TripSelectionView: View {
     @State private var isSearching = false
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var liveActivityService = LiveActivityService.shared
+    @StateObject private var ratSenseService = RatSenseService.shared
     
     // Train validation state
     @State private var trainValidationState: TrainValidationState = .unknown
@@ -78,12 +79,34 @@ struct TripSelectionView: View {
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
-                    .padding(.top, 20)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
+                .padding(.top, 20)
                 
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
+                    // Rat Sense suggestion
+                    if let suggestion = ratSenseService.suggestedJourney {
+                        Button {
+                            selectRatSenseSuggestion(suggestion)
+                        } label: {
+                            Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color.orange.opacity(0.3))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
+                                        )
+                                )
+                        }
+                        .padding(.horizontal)
+                    }
+                    
                     // Search field with profile icon
                     HStack {
                         Image(systemName: "magnifyingglass")
@@ -223,6 +246,13 @@ struct TripSelectionView: View {
             }
         }
         .onAppear {
+            print("🐀🐀🐀 TripSelectionView appeared - updating Rat Sense")
+            
+            // Debug: Check what's in storage
+            print("🐀 DEBUG: Home station = \(ratSenseService.getHomeStation() ?? "nil")")
+            print("🐀 DEBUG: Work station = \(ratSenseService.getWorkStation() ?? "nil")")
+            
+            ratSenseService.updateSuggestion()
             appState.loadRecentTrips()
             appState.loadFavoriteStations()
         }
@@ -250,6 +280,25 @@ struct TripSelectionView: View {
         
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func selectRatSenseSuggestion(_ suggestion: RatSenseService.SuggestedJourney) {
+        print("🐀🐀🐀 Rat Sense suggestion selected: \(suggestion.fromStation) → \(suggestion.toStation)")
+        
+        // Record the journey search
+        ratSenseService.recordJourneySearch(from: suggestion.fromStation, to: suggestion.toStation)
+        
+        // Set both departure and destination
+        appState.selectedDeparture = suggestion.fromStationName
+        appState.departureStationCode = suggestion.fromStation
+        appState.selectedDestination = suggestion.toStationName
+        appState.destinationStationCode = suggestion.toStation
+        
+        // Navigate directly to train list
+        appState.navigationPath.append(NavigationDestination.trainList(destination: suggestion.toStationName))
+        
+        // Haptic feedback
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
     
     private func selectOriginStation(name: String, code: String) {

@@ -128,6 +128,12 @@ struct TrainListView: View {
                 departureName = appState.selectedDeparture ?? ""
             }
             
+            // Record journey search for Rat Sense
+            if let fromCode = appState.departureStationCode,
+               let toCode = appState.destinationStationCode {
+                RatSenseService.shared.recordJourneySearch(from: fromCode, to: toCode)
+            }
+            
             // Set the route for immediate blue line drawing on map
             // Use appState values directly to ensure we have the correct values
             if let destinationCode = Stations.getStationCode(destination),

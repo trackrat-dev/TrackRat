@@ -2,6 +2,12 @@ import SwiftUI
 
 struct DeparturePickerView: View {
     @EnvironmentObject private var appState: AppState
+    @StateObject private var ratSenseService = RatSenseService.shared
+    
+    init() {
+        print("🐀🐀🐀 DeparturePickerView init - ensuring RatSense is initialized")
+        _ = RatSenseService.shared
+    }
     @State private var searchText = ""
     @State private var isSearching = false
     @FocusState private var searchFieldFocused: Bool
@@ -111,10 +117,22 @@ struct DeparturePickerView: View {
     }
     
     var body: some View {
-        mainContent
+        let _ = print("🐀🐀🐀 DeparturePickerView body rendering")
+        return mainContent
             .navigationBarTitleDisplayMode(.inline)
             .scrollAwareNavigationBar(isVisible: navigationBarVisible)
             .tint(.orange)
+            .onAppear {
+                print("🐀🐀🐀 DeparturePickerView appeared - updating Rat Sense")
+                // Update Rat Sense suggestion when view appears
+                ratSenseService.updateSuggestion()
+                
+                // Uncomment to test Rat Sense with sample data
+                // ratSenseService.addTestData()
+                
+                // Uncomment to clear all Rat Sense data
+                // ratSenseService.clearAllData()
+            }
     }
     
     @ViewBuilder
@@ -158,11 +176,35 @@ struct DeparturePickerView: View {
     
     @ViewBuilder
     private var searchFieldSection: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.white.opacity(0.6))
+        VStack(spacing: 12) {
+            // Rat Sense suggestion
+            if let suggestion = ratSenseService.suggestedJourney {
+                Button {
+                    selectRatSenseSuggestion(suggestion)
+                } label: {
+                    Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.orange.opacity(0.3))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
+                                )
+                        )
+                }
+                .padding(.horizontal, 24)
+            }
             
-            TextField("Search stations or train number", text: $searchText)
+            // Search field
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.white.opacity(0.6))
+                
+                TextField("Search stations or train number", text: $searchText)
                 .foregroundColor(.white)
                 .focused($searchFieldFocused)
                 .onChange(of: searchText) { _, newValue in
@@ -184,17 +226,18 @@ struct DeparturePickerView: View {
                         selectDeparture(name: firstResult, code: code)
                     }
                 }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.white.opacity(0.2))
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(.white.opacity(0.3), lineWidth: 1)
+                    )
+            )
+            .padding(.horizontal, 24)
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.white.opacity(0.2))
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(.white.opacity(0.3), lineWidth: 1)
-                )
-        )
-        .padding(.horizontal, 24)
     }
     
     @ViewBuilder
@@ -299,6 +342,23 @@ struct DeparturePickerView: View {
         
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func selectRatSenseSuggestion(_ suggestion: RatSenseService.SuggestedJourney) {
+        // Record the journey search
+        ratSenseService.recordJourneySearch(from: suggestion.fromStation, to: suggestion.toStation)
+        
+        // Set both departure and destination
+        appState.selectedDeparture = suggestion.fromStationName
+        appState.departureStationCode = suggestion.fromStation
+        appState.selectedDestination = suggestion.toStationName
+        appState.destinationStationCode = suggestion.toStation
+        
+        // Navigate directly to train list
+        appState.navigationPath.append(NavigationDestination.trainList(destination: suggestion.toStationName))
+        
+        // Haptic feedback
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
     
     private func searchForTrain(_ trainNumber: String) {

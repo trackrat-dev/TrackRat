@@ -31,6 +31,9 @@ class LiveActivityService: ObservableObject {
         // End any existing activity first
         await endCurrentActivity()
         
+        // Record Live Activity start for Rat Sense
+        RatSenseService.shared.recordLiveActivityStart(from: originCode, to: destinationCode)
+        
         // Request notification permissions
         try await requestNotificationPermissions()
         

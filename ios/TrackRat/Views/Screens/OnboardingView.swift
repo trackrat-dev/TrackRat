@@ -366,9 +366,13 @@ struct OnboardingView: View {
         
         if let home = homeStation {
             favoriteStations.insert(home.code)
+            // Save home station to Rat Sense
+            RatSenseService.shared.setHomeStation(home.code)
         }
         if let work = workStation {
             favoriteStations.insert(work.code)
+            // Save work station to Rat Sense
+            RatSenseService.shared.setWorkStation(work.code)
         }
         for other in otherFavorites {
             favoriteStations.insert(other.code)
