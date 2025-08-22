@@ -184,12 +184,6 @@ struct FavoriteStationsView: View {
             }
         }
         
-        // Don't allow removing NY Penn Station (it should always be favorited)
-        if code == "NY" && isCurrentlyFavorite {
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
-            return
-        }
-        
         // Toggle the favorite
         appState.toggleFavoriteStation(code: code, name: name)
         

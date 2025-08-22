@@ -265,14 +265,7 @@ final class StorageService {
             return [FavoriteStation(code: "NY", name: "New York Penn Station")]
         }
         
-        var favoritesList = stations.sorted { $0.lastUsed > $1.lastUsed }
-        
-        // Always ensure NYC is in favorites if not already present
-        if !favoritesList.contains(where: { $0.id == "NY" }) {
-            favoritesList.append(FavoriteStation(code: "NY", name: "New York Penn Station"))
-        }
-        
-        return favoritesList
+        return stations.sorted { $0.lastUsed > $1.lastUsed }
     }
     
     func toggleFavoriteStation(code: String, name: String) {
