@@ -567,3 +567,25 @@ def get_station_coordinates(code: str) -> dict[str, float] | None:
         Dict with lat/lon or None if not found
     """
     return STATION_COORDINATES.get(code)
+
+
+# Discovery stations for train polling - centralized configuration
+DISCOVERY_STATIONS = [
+    "NY",  # New York Penn Station
+    "NP",  # Newark Penn Station
+    "TR",  # Trenton
+    "LB",  # Long Branch
+    "PL",  # Plauderville
+    "DN",  # Denville
+    "MP",  # Metropark
+    "HB",  # Hoboken
+    "HG",  # High Bridge
+    "GL",  # Gladstone
+    "ND",  # Newark Broad Street
+    "HQ",  # Hackettstown
+    "DV",  # Dover
+    "JA",  # Jersey Avenue
+    "RA",  # Raritan
+    "ST",  # Summit - major Morris & Essex terminal for inbound trains
+    "SV",  # Spring Valley - Pascack Valley Line terminus
+]

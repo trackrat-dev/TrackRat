@@ -12,6 +12,7 @@ from structlog import get_logger
 
 from trackrat.collectors.base import BaseDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.config.stations import DISCOVERY_STATIONS
 from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
@@ -22,27 +23,6 @@ logger = get_logger(__name__)
 
 class TrainDiscoveryCollector(BaseDiscoveryCollector):
     """Discovers active trains from station schedules."""
-
-    # Stations to poll for discovery - using major stations from config
-    DISCOVERY_STATIONS = [
-        "NY",  # New York Penn Station
-        "NP",  # Newark Penn Station
-        "TR",  # Trenton
-        "LB",  # Long Branch
-        "PL",  # Plauderville
-        "DN",  # Denville
-        "MP",  # Metropark
-        "HB",  # Hoboken
-        "HG",  # High Bridge
-        "GL",  # Gladstone
-        "ND",  # Newark Broad Street
-        "HQ",  # Hackettstown
-        "DV",  # Dover
-        "JA",  # Jersey Avenue
-        "RA",  # Raritan
-        "ST",  # Summit - major Morris & Essex terminal for inbound trains
-        "SV",  # Spring Valley - Pascack Valley Line terminus
-    ]
 
     def __init__(self, njt_client: NJTransitClient) -> None:
         """Initialize the discovery collector.
@@ -59,7 +39,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
             List of discovered train IDs
         """
         discovered_ids = []
-        for station_code in self.DISCOVERY_STATIONS:
+        for station_code in DISCOVERY_STATIONS:
             try:
                 schedule_response = await self.njt_client.get_train_schedule_with_stops(
                     station_code
@@ -97,13 +77,13 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         Returns:
             Discovery results summary
         """
-        logger.info("starting_train_discovery", stations=self.DISCOVERY_STATIONS)
+        logger.info("starting_train_discovery", stations=DISCOVERY_STATIONS)
 
         total_discovered = 0
         total_new = 0
         station_results = {}
 
-        for station_code in self.DISCOVERY_STATIONS:
+        for station_code in DISCOVERY_STATIONS:
             result = await self.discover_station_trains(session, station_code)
             station_results[station_code] = result
             total_discovered += result["trains_discovered"]
@@ -113,11 +93,11 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
             "train_discovery_complete",
             total_discovered=total_discovered,
             total_new=total_new,
-            stations_processed=len(self.DISCOVERY_STATIONS),
+            stations_processed=len(DISCOVERY_STATIONS),
         )
 
         return {
-            "stations_processed": len(self.DISCOVERY_STATIONS),
+            "stations_processed": len(DISCOVERY_STATIONS),
             "total_discovered": total_discovered,
             "total_new": total_new,
             "station_results": station_results,
