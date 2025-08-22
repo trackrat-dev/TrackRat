@@ -1137,8 +1137,8 @@ struct SegmentedTrackPredictionView: View {
             .overlay(
                 segment.labelPosition == .inside ? 
                 Text(segment.displayText)
-                    .font(.caption)
-                    .fontWeight(.semibold)
+                    .font(.caption2)
+                    .fontWeight(.medium)
                     .foregroundColor(.black)
                     .lineLimit(3)
                     .multilineTextAlignment(.center)
@@ -1203,7 +1203,7 @@ struct SegmentedTrackPredictionView: View {
                     let segmentWidth = geometry.size.width * segment.probability
                     
                     VStack {
-                        if segment.probability >= 0.20 {
+                        if segment.probability >= 0.16 {
                             Text("\(Int(segment.probability * 100))%")
                                 .font(.caption2)
                                 .fontWeight(.medium)
@@ -1309,8 +1309,8 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .inside
         }
         
-        // Only show labels for segments with >= 20% probability
-        if probability >= 0.2 {
+        // Only show labels for segments with >= 16% probability
+        if probability >= 0.16 {
             return .inside
         } else {
             return .none
