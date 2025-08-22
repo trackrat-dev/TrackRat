@@ -105,14 +105,6 @@ struct OnboardingView: View {
                         .frame(minWidth: 160)
                         .background(Color.orange)
                         .cornerRadius(12)
-                        
-                        if currentPage == 0 {
-                            Button("Skip Setup") {
-                                skipToFeatures()
-                            }
-                            .foregroundColor(.white.opacity(0.7))
-                            .padding(.leading, 16)
-                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -353,13 +345,6 @@ struct OnboardingView: View {
     }
     
     // MARK: - Helper Functions
-    private func skipToFeatures() {
-        // Just add NY Penn as favorite and skip to features
-        withAnimation {
-            currentPage = 2
-        }
-    }
-    
     private func completeOnboarding() {
         // Save selected stations as favorites
         var favoriteStations: Set<String> = []

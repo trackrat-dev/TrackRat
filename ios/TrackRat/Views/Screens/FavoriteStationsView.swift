@@ -7,9 +7,26 @@ struct FavoriteStationsView: View {
     @State private var searchText = ""
     @State private var favoriteStations: [FavoriteStation] = []
     @State private var showingLimitAlert = false
+    @State private var showOnboarding = false
+    
+    // Home and Work stations from RatSense
+    private var homeStation: String? {
+        RatSenseService.shared.getHomeStation()
+    }
+    
+    private var workStation: String? {
+        RatSenseService.shared.getWorkStation()
+    }
     
     private let maxFavorites = 20
     private let softLimit = 10
+    
+    // Filter out home/work stations from the favorites list
+    private var otherFavorites: [FavoriteStation] {
+        favoriteStations.filter { station in
+            station.id != homeStation && station.id != workStation
+        }
+    }
     
     private var filteredStations: [(String, String)] {
         let allStations = Stations.all.compactMap { name -> (String, String)? in
@@ -94,11 +111,56 @@ struct FavoriteStationsView: View {
                 // Content
                 ScrollView {
                     LazyVStack(spacing: 16) {
-                        // Current favorites section
-                        if !favoriteStations.isEmpty {
+                        // Home & Work Stations section
+                        if homeStation != nil || workStation != nil {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack {
-                                    Text("Your current favorites")
+                                    Text("Home & Work Stations")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                    
+                                    Spacer()
+                                    
+                                    Button {
+                                        showOnboarding = true
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    } label: {
+                                        Text("Edit")
+                                            .font(.subheadline)
+                                            .foregroundColor(.orange)
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                
+                                if let homeCode = homeStation,
+                                   let homeName = Stations.displayName(for: homeCode) {
+                                    HomeWorkStationRow(
+                                        stationName: homeName,
+                                        stationCode: homeCode,
+                                        isHome: true
+                                    )
+                                    .padding(.horizontal, 20)
+                                }
+                                
+                                if let workCode = workStation,
+                                   let workName = Stations.displayName(for: workCode) {
+                                    HomeWorkStationRow(
+                                        stationName: workName,
+                                        stationCode: workCode,
+                                        isHome: false
+                                    )
+                                    .padding(.horizontal, 20)
+                                }
+                            }
+                            .padding(.bottom, 24)
+                        }
+                        
+                        // Other favorites section (excluding home/work)
+                        if !otherFavorites.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Text("Other favorites")
                                         .font(.headline)
                                         .fontWeight(.semibold)
                                         .foregroundColor(.white)
@@ -106,7 +168,7 @@ struct FavoriteStationsView: View {
                                 }
                                 .padding(.horizontal, 20)
                                 
-                                ForEach(favoriteStations.sorted(by: { $0.lastUsed > $1.lastUsed })) { station in
+                                ForEach(otherFavorites.sorted(by: { $0.lastUsed > $1.lastUsed })) { station in
                                     StationRow(
                                         station: station,
                                         isFavorite: .constant(true),
@@ -161,6 +223,9 @@ struct FavoriteStationsView: View {
             Button("OK") { }
         } message: {
             Text("You can have up to \(maxFavorites) favorite stations. Having too many favorites may slow down the app.")
+        }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView()
         }
     }
     

@@ -291,7 +291,14 @@ final class StorageService {
     }
     
     func isStationFavorited(code: String) -> Bool {
-        return loadFavoriteStations().contains { $0.id == code }
+        // Check if it's in the favorites list
+        let isInFavorites = loadFavoriteStations().contains { $0.id == code }
+        
+        // Also check if it's home or work station (these are always treated as favorites)
+        let isHomeStation = RatSenseService.shared.getHomeStation() == code
+        let isWorkStation = RatSenseService.shared.getWorkStation() == code
+        
+        return isInFavorites || isHomeStation || isWorkStation
     }
     
     

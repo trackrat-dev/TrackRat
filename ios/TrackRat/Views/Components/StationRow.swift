@@ -108,8 +108,60 @@ struct SearchStationRow: View {
     }
 }
 
+// MARK: - Home/Work Station Row (Non-editable)
+struct HomeWorkStationRow: View {
+    let stationName: String
+    let stationCode: String
+    let isHome: Bool  // true for home, false for work
+    
+    var body: some View {
+        HStack {
+            // Icon
+            Image(systemName: isHome ? "house.fill" : "briefcase.fill")
+                .foregroundColor(.orange)
+                .font(.system(size: 16))
+            
+            // Station name
+            VStack(alignment: .leading, spacing: 4) {
+                Text(stationName)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text(isHome ? "Home Station" : "Work Station")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+        }
+        .padding()
+        .background(Material.ultraThin)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+        )
+    }
+}
+
 #Preview {
     VStack(spacing: 16) {
+        // Home & Work stations (non-editable)
+        HomeWorkStationRow(
+            stationName: "Orange",
+            stationCode: "OG",
+            isHome: true
+        )
+        
+        HomeWorkStationRow(
+            stationName: "New York Penn Station",
+            stationCode: "NY",
+            isHome: false
+        )
+        
+        Divider()
+        
+        // Regular favorite stations
         StationRow(
             station: FavoriteStation(code: "NY", name: "New York Penn Station"),
             isFavorite: .constant(true),
