@@ -14,6 +14,11 @@ struct OnboardingView: View {
     @State private var searchText = ""
     @State private var showStationPicker = false
     @State private var isPickingOtherStation = false
+    @State private var stationBeingEdited: StationType? = nil
+    
+    private enum StationType {
+        case home, work
+    }
     
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
@@ -117,7 +122,7 @@ struct OnboardingView: View {
         }
         .sheet(isPresented: $showStationPicker) {
             StationPickerSheet(
-                selectedStation: isPickingOtherStation ? .constant(nil) : (homeStation == nil ? $homeStation : $workStation),
+                selectedStation: isPickingOtherStation ? .constant(nil) : (stationBeingEdited == .home ? $homeStation : $workStation),
                 onStationSelected: { station in
                     if isPickingOtherStation {
                         if !otherFavorites.contains(where: { $0.code == station.code }) {
@@ -157,6 +162,7 @@ struct OnboardingView: View {
                     selectedStation: homeStation,
                     onTap: {
                         isPickingOtherStation = false
+                        stationBeingEdited = .home
                         showStationPicker = true
                     }
                 )
@@ -168,6 +174,7 @@ struct OnboardingView: View {
                     selectedStation: workStation,
                     onTap: {
                         isPickingOtherStation = false
+                        stationBeingEdited = .work
                         showStationPicker = true
                     }
                 )
@@ -186,6 +193,7 @@ struct OnboardingView: View {
                     if otherFavorites.isEmpty {
                         Button {
                             isPickingOtherStation = true
+                            stationBeingEdited = nil
                             showStationPicker = true
                         } label: {
                             HStack {
@@ -220,6 +228,7 @@ struct OnboardingView: View {
                         if otherFavorites.count < 3 {
                             Button {
                                 isPickingOtherStation = true
+                                stationBeingEdited = nil
                                 showStationPicker = true
                             } label: {
                                 HStack {
