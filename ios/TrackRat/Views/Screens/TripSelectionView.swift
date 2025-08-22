@@ -73,7 +73,30 @@ struct TripSelectionView: View {
             
             GeometryReader { geometry in
                 VStack(spacing: 8) {
-                // Top title only
+                // Rat Sense suggestion at the top
+                if let suggestion = ratSenseService.suggestedJourney {
+                    Button {
+                        selectRatSenseSuggestion(suggestion)
+                    } label: {
+                        Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.orange.opacity(0.3))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
+                                    )
+                            )
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+                }
+                
+                // Top title
                 Text("Where would you like to leave from?")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundColor(.white)
@@ -81,31 +104,10 @@ struct TripSelectionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
-                .padding(.top, 20)
+                .padding(.top, ratSenseService.suggestedJourney != nil ? 8 : 20)
                 
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
-                    // Rat Sense suggestion
-                    if let suggestion = ratSenseService.suggestedJourney {
-                        Button {
-                            selectRatSenseSuggestion(suggestion)
-                        } label: {
-                            Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.orange.opacity(0.3))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
-                                        )
-                                )
-                        }
-                        .padding(.horizontal)
-                    }
                     
                     // Search field with profile icon
                     HStack {
