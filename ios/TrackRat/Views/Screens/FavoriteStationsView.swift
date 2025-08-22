@@ -81,6 +81,8 @@ struct FavoriteStationsView: View {
                             .textFieldStyle(PlainTextFieldStyle())
                             .foregroundColor(.white)
                             .accentColor(.orange)
+                            .autocorrectionDisabled(true)
+                            .textInputAutocapitalization(.never)
                     }
                     .padding()
                     .background(Material.ultraThin)

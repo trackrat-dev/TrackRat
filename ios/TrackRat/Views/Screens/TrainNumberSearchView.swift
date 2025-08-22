@@ -26,6 +26,7 @@ struct TrainNumberSearchView: View {
                             .font(.title2)
                             .focused($isInputFocused)
                             .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled(true)
                             .keyboardType(.asciiCapable)
                             .padding()
                             .background(.ultraThinMaterial)

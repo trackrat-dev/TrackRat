@@ -87,6 +87,8 @@ struct DestinationPickerView: View {
                                 TextField("Search for a station", text: $searchText)
                                     .foregroundColor(.white)
                                     .focused($searchFieldFocused)
+                                    .autocorrectionDisabled(true)
+                                    .textInputAutocapitalization(.never)
                                     .onChange(of: searchText) { _, newValue in
                                         withAnimation(.easeInOut(duration: 0.3)) {
                                             isSearching = !newValue.isEmpty
