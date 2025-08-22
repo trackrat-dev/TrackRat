@@ -474,8 +474,6 @@ struct MapContainerView: View {
             TrainDetailsView(trainId: trainId)
         case .trainDetailsFlexible(let trainNumber, let fromStation):
             TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation)
-        case .trainNumberSearch:
-            TrainNumberSearchView()
         case .advancedConfiguration:
             AdvancedConfigurationView()
         case .myProfile:
