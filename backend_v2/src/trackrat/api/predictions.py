@@ -86,10 +86,11 @@ async def predict_track(
 
     # Generate prediction with timing
     import time
+
     prediction_start = time.time()
     prediction = await track_predictor.predict(db, station_code, features)
     prediction_duration = time.time() - prediction_start
-    
+
     logger.info(
         "ml_prediction_timing",
         station_code=station_code,
@@ -100,14 +101,26 @@ async def predict_track(
     if not prediction:
         # Fallback: return uniform distribution
         logger.warning(
-            "prediction_fallback_used", 
-            station_code=station_code, 
+            "prediction_fallback_used",
+            station_code=station_code,
             train_id=train_id,
-            reason="ml_model_failed"
+            reason="ml_model_failed",
         )
 
         # Default platforms for NY Penn
-        default_platforms = ["1 & 2", "3 & 4", "5 & 6", "7 & 8", "9 & 10", "11 & 12", "13 & 14", "15 & 16", "17", "18 & 19", "20 & 21"]
+        default_platforms = [
+            "1 & 2",
+            "3 & 4",
+            "5 & 6",
+            "7 & 8",
+            "9 & 10",
+            "11 & 12",
+            "13 & 14",
+            "15 & 16",
+            "17",
+            "18 & 19",
+            "20 & 21",
+        ]
         uniform_prob = 1.0 / len(default_platforms)
 
         logger.info(
@@ -117,9 +130,11 @@ async def predict_track(
             fallback_confidence=uniform_prob,
             platforms_count=len(default_platforms),
         )
-        
+
         return TrackPredictionResponse(
-            platform_probabilities={platform: uniform_prob for platform in default_platforms},
+            platform_probabilities={
+                platform: uniform_prob for platform in default_platforms
+            },
             primary_prediction="7 & 8",  # Most common platform
             confidence=uniform_prob,
             top_3=["7 & 8", "9 & 10", "11 & 12"],
@@ -142,9 +157,9 @@ async def predict_track(
         prediction_distribution={
             platform: round(prob, 3)
             for platform, prob in sorted(
-                prediction["platform_probabilities"].items(), 
-                key=lambda x: x[1], 
-                reverse=True
+                prediction["platform_probabilities"].items(),
+                key=lambda x: x[1],
+                reverse=True,
             )
         },
     )

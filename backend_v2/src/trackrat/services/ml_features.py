@@ -98,7 +98,7 @@ class TrackPredictionFeatures:
         platform_times = await self._get_minutes_since_platform_used(
             db, station_code, scheduled_departure
         )
-        
+
         features["minutes_since_track_used"] = track_times
         features["minutes_since_platform_used"] = platform_times
 
@@ -109,7 +109,7 @@ class TrackPredictionFeatures:
             train_id=train_id,
             features=features,
         )
-        
+
         # Log feature validation and quality
         feature_quality_score = self._assess_feature_quality(features)
         logger.info(
@@ -119,8 +119,8 @@ class TrackPredictionFeatures:
             quality_score=feature_quality_score,
             track_usage_data_points=len(track_times),
             platform_usage_data_points=len(platform_times),
-            scheduled_departure_hour=features.get('hour_of_day'),
-            is_weekend=features.get('day_of_week') in [0, 6],  # Sunday=0, Saturday=6
+            scheduled_departure_hour=features.get("hour_of_day"),
+            is_weekend=features.get("day_of_week") in [0, 6],  # Sunday=0, Saturday=6
         )
 
         return features
@@ -128,41 +128,41 @@ class TrackPredictionFeatures:
     def _assess_feature_quality(self, features: dict[str, Any]) -> float:
         """
         Assess the quality/completeness of extracted features.
-        
+
         Returns:
             Score from 0.0 to 1.0 indicating feature quality
         """
         quality_score = 0.0
         max_score = 6.0  # Total possible points
-        
+
         # Basic features (always available) - 2 points
-        if features.get('hour_of_day') is not None:
+        if features.get("hour_of_day") is not None:
             quality_score += 1.0
-        if features.get('day_of_week') is not None:
+        if features.get("day_of_week") is not None:
             quality_score += 1.0
-            
+
         # Train metadata - 2 points
-        if features.get('is_amtrak') is not None:
+        if features.get("is_amtrak") is not None:
             quality_score += 0.5
-        if features.get('line_code') and features['line_code'] != 'UNKNOWN':
+        if features.get("line_code") and features["line_code"] != "UNKNOWN":
             quality_score += 0.5
-        if features.get('destination') and features['destination'] != 'UNKNOWN':
+        if features.get("destination") and features["destination"] != "UNKNOWN":
             quality_score += 1.0
-            
+
         # Time-based usage data - 2 points
-        track_times = features.get('minutes_since_track_used', {})
-        platform_times = features.get('minutes_since_platform_used', {})
-        
+        track_times = features.get("minutes_since_track_used", {})
+        platform_times = features.get("minutes_since_platform_used", {})
+
         if len(track_times) >= 15:  # Good historical track data
             quality_score += 1.0
         elif len(track_times) >= 5:  # Some track data
             quality_score += 0.5
-            
+
         if len(platform_times) >= 8:  # Good platform usage data
             quality_score += 1.0
         elif len(platform_times) >= 3:  # Some platform data
             quality_score += 0.5
-            
+
         return round(quality_score / max_score, 2)
 
     async def _get_minutes_since_track_used(
@@ -208,11 +208,19 @@ class TrackPredictionFeatures:
             "track_usage_analysis",
             station_code=station_code,
             tracks_found=len(track_times),
-            avg_minutes_since_use=round(sum(track_times.values()) / len(track_times), 1) if track_times else 0,
-            most_recent_track=min(track_times.items(), key=lambda x: x[1]) if track_times else None,
-            oldest_usage=max(track_times.items(), key=lambda x: x[1]) if track_times else None,
+            avg_minutes_since_use=(
+                round(sum(track_times.values()) / len(track_times), 1)
+                if track_times
+                else 0
+            ),
+            most_recent_track=(
+                min(track_times.items(), key=lambda x: x[1]) if track_times else None
+            ),
+            oldest_usage=(
+                max(track_times.items(), key=lambda x: x[1]) if track_times else None
+            ),
         )
-        
+
         return track_times
 
     async def _get_minutes_since_platform_used(
@@ -269,11 +277,23 @@ class TrackPredictionFeatures:
             "platform_usage_analysis",
             station_code=station_code,
             platforms_found=len(platform_times),
-            avg_minutes_since_use=round(sum(platform_times.values()) / len(platform_times), 1) if platform_times else 0,
-            most_recent_platform=min(platform_times.items(), key=lambda x: x[1]) if platform_times else None,
-            oldest_platform_usage=max(platform_times.items(), key=lambda x: x[1]) if platform_times else None,
+            avg_minutes_since_use=(
+                round(sum(platform_times.values()) / len(platform_times), 1)
+                if platform_times
+                else 0
+            ),
+            most_recent_platform=(
+                min(platform_times.items(), key=lambda x: x[1])
+                if platform_times
+                else None
+            ),
+            oldest_platform_usage=(
+                max(platform_times.items(), key=lambda x: x[1])
+                if platform_times
+                else None
+            ),
         )
-        
+
         return platform_times
 
     async def _get_track_occupancy_flags(
@@ -281,17 +301,17 @@ class TrackPredictionFeatures:
     ) -> dict[str, int]:
         """
         Get binary occupancy flags for each track at the station.
-        
+
         A track is considered occupied if there's a train scheduled within
         a tight window around our departure time (10 min early + 2 min late).
-        
+
         Returns dict mapping 'is_track_X_occupied' -> 0 or 1
         """
-        
+
         # Tight window: 10 minutes early + 2 minutes late
         window_start = scheduled_departure - timedelta(minutes=10)
         window_end = scheduled_departure + timedelta(minutes=2)
-        
+
         # Find tracks with trains in the occupancy window
         stmt = (
             select(JourneyStop.track)
@@ -305,23 +325,46 @@ class TrackPredictionFeatures:
                     JourneyStop.scheduled_departure >= window_start,
                     JourneyStop.scheduled_departure <= window_end,
                     # Only consider active journeys (not expired/cancelled)
-                    TrainJourney.is_expired == False,
-                    TrainJourney.is_cancelled == False,
+                    TrainJourney.is_expired == False,  # noqa: E712
+                    TrainJourney.is_cancelled == False,  # noqa: E712
                 )
             )
         )
-        
+
         result = await db.execute(stmt)
         occupied_tracks = {row.track for row in result}
-        
+
         # Create binary flags for NY Penn tracks (all possible tracks)
         track_flags = {}
-        ny_tracks = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 
-                     '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21']
-        
+        ny_tracks = [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "11",
+            "12",
+            "13",
+            "14",
+            "15",
+            "16",
+            "17",
+            "18",
+            "19",
+            "20",
+            "21",
+        ]
+
         for track in ny_tracks:
-            track_flags[f'is_track_{track}_occupied'] = 1 if track in occupied_tracks else 0
-        
+            track_flags[f"is_track_{track}_occupied"] = (
+                1 if track in occupied_tracks else 0
+            )
+
         # Log occupancy analysis
         occupied_count = sum(track_flags.values())
         logger.info(
@@ -333,5 +376,5 @@ class TrackPredictionFeatures:
             occupied_count=occupied_count,
             total_tracks=len(ny_tracks),
         )
-        
+
         return track_flags

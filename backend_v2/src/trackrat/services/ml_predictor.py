@@ -5,10 +5,12 @@ Handles loading trained models and generating platform predictions.
 """
 
 import pickle
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Union
 
 import numpy as np
+from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 logger = get_logger()
@@ -98,7 +100,7 @@ class TrackPredictor:
             return False
 
     async def predict(
-        self, db, station_code: str, features: dict[str, Any]
+        self, db: AsyncSession, station_code: str, features: dict[str, Any]
     ) -> dict[str, Any] | None:
         """
         Generate platform prediction from features.
@@ -139,7 +141,9 @@ class TrackPredictor:
                     "unknown_line_code_encountered",
                     station_code=station_code,
                     line_code=line_code,
-                    known_lines=list(encoders["line_code"].classes_)[:5],  # First 5 for brevity
+                    known_lines=list(encoders["line_code"].classes_)[
+                        :5
+                    ],  # First 5 for brevity
                 )
             else:
                 line_code_encoded = encoders["line_code"].transform([line_code])[0]
@@ -157,7 +161,7 @@ class TrackPredictor:
                     0
                 ]
 
-            # Get track usage times for averaging  
+            # Get track usage times for averaging
             track_times = features.get("minutes_since_track_used", {})
 
             if track_times:
@@ -174,7 +178,7 @@ class TrackPredictor:
                 destination_encoded,
                 avg_track_time,
             ]
-            
+
             feature_vector = np.array([feature_list])
 
             # Get raw ML predictions (now predicting tracks)
@@ -230,7 +234,7 @@ class TrackPredictor:
                 platform_probabilities=final_platform_probs,
                 model_version="1.0.0",
             )
-            
+
             # Log confidence level category
             if confidence >= 0.8:
                 confidence_level = "high"
@@ -238,13 +242,17 @@ class TrackPredictor:
                 confidence_level = "medium"
             else:
                 confidence_level = "low"
-                
+
             logger.info(
                 "prediction_confidence_assessment",
                 station_code=station_code,
                 confidence_level=confidence_level,
                 confidence_score=confidence,
-                margin_to_second=confidence - sorted_platforms[1][1] if len(sorted_platforms) > 1 else 0,
+                margin_to_second=(
+                    confidence - sorted_platforms[1][1]
+                    if len(sorted_platforms) > 1
+                    else 0
+                ),
             )
 
             return result
@@ -254,48 +262,58 @@ class TrackPredictor:
             return None
 
     async def _predict_with_track_filtering(
-        self, db, raw_track_probs: dict[str, float], station_code: str, scheduled_departure
+        self,
+        db: AsyncSession,
+        raw_track_probs: dict[str, float],
+        station_code: str,
+        scheduled_departure: datetime,
     ) -> dict[str, float]:
         """
         Filter occupied tracks and aggregate remaining tracks to platforms.
-        
+
         Args:
             db: Database session
             raw_track_probs: ML predictions for individual tracks
             station_code: Station code (e.g., 'NY')
             scheduled_departure: Scheduled departure time for occupancy check
-            
+
         Returns:
             Platform probabilities after filtering and aggregation
         """
         # Get occupied tracks
-        occupied_tracks = await self._get_occupied_tracks(db, station_code, scheduled_departure)
-        
+        occupied_tracks = await self._get_occupied_tracks(
+            db, station_code, scheduled_departure
+        )
+
         # Filter out occupied tracks (convert track to string for comparison)
         available_track_probs = {}
         for track, probability in raw_track_probs.items():
             track_str = str(track)
             if track_str not in occupied_tracks:
                 available_track_probs[track] = probability
-        
+
         # Renormalize track probabilities to sum to 100%
         total_track_prob = sum(available_track_probs.values())
         if total_track_prob > 0:
-            available_track_probs = {t: prob/total_track_prob for t, prob in available_track_probs.items()}
+            available_track_probs = {
+                t: prob / total_track_prob for t, prob in available_track_probs.items()
+            }
         else:
             # All tracks occupied - return uniform distribution of available tracks
             track_count = len(raw_track_probs)
-            available_track_probs = {t: 1.0/track_count for t in raw_track_probs}
+            available_track_probs = {t: 1.0 / track_count for t in raw_track_probs}
             logger.warning(
-                "all_tracks_occupied_fallback", 
+                "all_tracks_occupied_fallback",
                 station_code=station_code,
                 scheduled_departure=scheduled_departure,
-                occupied_tracks=list(occupied_tracks)
+                occupied_tracks=list(occupied_tracks),
             )
-        
+
         # Aggregate tracks to platforms
-        platform_probs = self._aggregate_tracks_to_platforms(available_track_probs, station_code)
-        
+        platform_probs = self._aggregate_tracks_to_platforms(
+            available_track_probs, station_code
+        )
+
         # Log filtering and aggregation results
         filtered_count = len(raw_track_probs) - len(available_track_probs)
         logger.info(
@@ -307,45 +325,50 @@ class TrackPredictor:
             final_platforms=len(platform_probs),
             occupied_tracks=sorted(occupied_tracks),
         )
-        
+
         return platform_probs
 
-    def _aggregate_tracks_to_platforms(self, track_probs: dict[str, float], station_code: str) -> dict[str, float]:
+    def _aggregate_tracks_to_platforms(
+        self, track_probs: dict[str, float], station_code: str
+    ) -> dict[str, float]:
         """
         Aggregate individual track probabilities into platform probabilities.
-        
+
         Args:
             track_probs: Dictionary of track -> probability
             station_code: Station code (e.g., 'NY')
-            
+
         Returns:
             Dictionary of platform -> aggregated probability
         """
         platform_probs = {}
-        
+
         for track, probability in track_probs.items():
             # Get platform for this track (convert track to string)
             track_str = str(track)
             platform = self._get_platform_for_track(station_code, track_str)
-            
+
             # Add probability to platform total
             if platform not in platform_probs:
                 platform_probs[platform] = 0.0
             platform_probs[platform] += probability
-        
+
         return platform_probs
 
-
-    async def _get_occupied_tracks(self, db, station_code: str, scheduled_departure) -> set[str]:
+    async def _get_occupied_tracks(
+        self, db: AsyncSession, station_code: str, scheduled_departure: datetime
+    ) -> set[str]:
         """Get set of occupied track numbers."""
         from datetime import timedelta
+
         from sqlalchemy import and_, select
+
         from trackrat.models.database import JourneyStop, TrainJourney
-        
+
         # Use same 12-minute window as before
         window_start = scheduled_departure - timedelta(minutes=10)
         window_end = scheduled_departure + timedelta(minutes=2)
-        
+
         stmt = (
             select(JourneyStop.track)
             .join(TrainJourney)
@@ -356,12 +379,12 @@ class TrackPredictor:
                     JourneyStop.track != "",
                     JourneyStop.scheduled_departure >= window_start,
                     JourneyStop.scheduled_departure <= window_end,
-                    TrainJourney.is_expired == False,
-                    TrainJourney.is_cancelled == False,
+                    TrainJourney.is_expired == False,  # noqa: E712
+                    TrainJourney.is_cancelled == False,  # noqa: E712
                 )
             )
         )
-        
+
         result = await db.execute(stmt)
         return {row.track for row in result}
 
@@ -370,22 +393,32 @@ class TrackPredictor:
         if station_code != "NY":
             # For non-NY stations, platform equals track
             return track
-        
+
         # NY Penn Station track-to-platform mappings
         track_to_platform = {
-            "1": "1 & 2", "2": "1 & 2",
-            "3": "3 & 4", "4": "3 & 4", 
-            "5": "5 & 6", "6": "5 & 6",
-            "7": "7 & 8", "8": "7 & 8",
-            "9": "9 & 10", "10": "9 & 10",
-            "11": "11 & 12", "12": "11 & 12",
-            "13": "13 & 14", "14": "13 & 14",
-            "15": "15 & 16", "16": "15 & 16",
+            "1": "1 & 2",
+            "2": "1 & 2",
+            "3": "3 & 4",
+            "4": "3 & 4",
+            "5": "5 & 6",
+            "6": "5 & 6",
+            "7": "7 & 8",
+            "8": "7 & 8",
+            "9": "9 & 10",
+            "10": "9 & 10",
+            "11": "11 & 12",
+            "12": "11 & 12",
+            "13": "13 & 14",
+            "14": "13 & 14",
+            "15": "15 & 16",
+            "16": "15 & 16",
             "17": "17",
-            "18": "18 & 19", "19": "18 & 19",
-            "20": "20 & 21", "21": "20 & 21",
+            "18": "18 & 19",
+            "19": "18 & 19",
+            "20": "20 & 21",
+            "21": "20 & 21",
         }
-        
+
         return track_to_platform.get(track, track)
 
     def _get_tracks_for_platform(self, station_code: str, platform: str) -> list[str]:
@@ -393,11 +426,11 @@ class TrackPredictor:
         if station_code != "NY":
             # For non-NY stations, platform equals track
             return [platform]
-        
+
         # NY Penn Station platform mappings
         platform_to_tracks = {
             "1 & 2": ["1", "2"],
-            "3 & 4": ["3", "4"], 
+            "3 & 4": ["3", "4"],
             "5 & 6": ["5", "6"],
             "7 & 8": ["7", "8"],
             "9 & 10": ["9", "10"],
@@ -408,7 +441,7 @@ class TrackPredictor:
             "18 & 19": ["18", "19"],
             "20 & 21": ["20", "21"],
         }
-        
+
         return platform_to_tracks.get(platform, [platform])
 
 
