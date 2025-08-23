@@ -1,5 +1,54 @@
 import SwiftUI
 
+/// A view that displays the appropriate icon for a station based on whether it's a home station, work station, or regular favorite
+struct StationIconView: View {
+    let stationCode: String
+    let isStationFavorited: Bool
+    let fontSize: CGFloat
+    let onHeartTap: () -> Void
+    
+    // Convenience initializer with default font size
+    init(stationCode: String, isStationFavorited: Bool, fontSize: CGFloat = 16, onHeartTap: @escaping () -> Void) {
+        self.stationCode = stationCode
+        self.isStationFavorited = isStationFavorited
+        self.fontSize = fontSize
+        self.onHeartTap = onHeartTap
+    }
+    
+    private var isHomeStation: Bool {
+        RatSenseService.shared.getHomeStation() == stationCode
+    }
+    
+    private var isWorkStation: Bool {
+        RatSenseService.shared.getWorkStation() == stationCode
+    }
+    
+    private var isHomeOrWorkStation: Bool {
+        isHomeStation || isWorkStation
+    }
+    
+    var body: some View {
+        if isHomeStation {
+            // Home station icon
+            Image(systemName: "house.fill")
+                .font(.system(size: fontSize))
+                .foregroundColor(.orange)
+        } else if isWorkStation {
+            // Work station icon
+            Image(systemName: "building.2.fill")
+                .font(.system(size: fontSize))
+                .foregroundColor(.orange)
+        } else {
+            // Regular favorite heart icon - interactive
+            Button(action: onHeartTap) {
+                Image(systemName: isStationFavorited ? "heart.fill" : "heart")
+                    .font(.system(size: fontSize))
+                    .foregroundColor(.orange)
+            }
+        }
+    }
+}
+
 struct DeparturePickerView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var ratSenseService = RatSenseService.shared
@@ -280,20 +329,15 @@ struct DeparturePickerView: View {
                 }
                 
                 if let code = Stations.getStationCode(station) {
-                    let isHomeOrWork = RatSenseService.shared.isHomeOrWorkStation(code)
-                    Button {
-                        if !isHomeOrWork {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                appState.toggleFavoriteStation(code: code, name: station)
-                            }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    StationIconView(
+                        stationCode: code,
+                        isStationFavorited: appState.isStationFavorited(code: code)
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            appState.toggleFavoriteStation(code: code, name: station)
                         }
-                    } label: {
-                        Image(systemName: appState.isStationFavorited(code: code) ? "heart.fill" : "heart")
-                            .font(.system(size: 16))
-                            .foregroundColor(isHomeOrWork ? .orange.opacity(0.6) : .orange)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
-                    .disabled(isHomeOrWork)
                     .padding(.leading, 8)
                 }
             }
@@ -497,9 +541,6 @@ struct DepartureButton: View {
     let onTap: () -> Void
     @EnvironmentObject private var appState: AppState
     
-    private var isHomeOrWorkStation: Bool {
-        RatSenseService.shared.isHomeOrWorkStation(code)
-    }
     
     var body: some View {
         HStack {
@@ -518,20 +559,17 @@ struct DepartureButton: View {
                 }
             }
             
-            // Heart button - separate from main button, disabled for home/work stations
-            Button {
-                if !isHomeOrWorkStation {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        appState.toggleFavoriteStation(code: code, name: name)
-                    }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // Station icon - shows home/work icon or interactive heart
+            StationIconView(
+                stationCode: code,
+                isStationFavorited: appState.isStationFavorited(code: code),
+                fontSize: 18
+            ) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    appState.toggleFavoriteStation(code: code, name: name)
                 }
-            } label: {
-                Image(systemName: appState.isStationFavorited(code: code) ? "heart.fill" : "heart")
-                    .font(.system(size: 18))
-                    .foregroundColor(isHomeOrWorkStation ? .orange.opacity(0.6) : .orange)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
-            .disabled(isHomeOrWorkStation)
             .padding(.leading, 8)
         }
         .frame(maxWidth: .infinity)

@@ -190,22 +190,17 @@ struct TripSelectionView: View {
                                         }
                                     }
                                     
-                                    // Heart button - separate from main button
+                                    // Station icon - shows home/work icon or interactive heart
                                     if let code = Stations.getStationCode(station) {
-                                        let isHomeOrWork = RatSenseService.shared.isHomeOrWorkStation(code)
-                                        Button {
-                                            if !isHomeOrWork {
-                                                withAnimation(.easeInOut(duration: 0.2)) {
-                                                    appState.toggleFavoriteStation(code: code, name: station)
-                                                }
-                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        StationIconView(
+                                            stationCode: code,
+                                            isStationFavorited: appState.isStationFavorited(code: code)
+                                        ) {
+                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                appState.toggleFavoriteStation(code: code, name: station)
                                             }
-                                        } label: {
-                                            Image(systemName: appState.isStationFavorited(code: code) ? "heart.fill" : "heart")
-                                                .font(.system(size: 16))
-                                                .foregroundColor(isHomeOrWork ? .orange.opacity(0.6) : .orange)
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                         }
-                                        .disabled(isHomeOrWork)
                                         .padding(.leading, 8)
                                     }
                                 }
@@ -591,9 +586,6 @@ struct FavoriteStationButton: View {
     let onTap: () -> Void
     @EnvironmentObject private var appState: AppState
     
-    private var isHomeOrWorkStation: Bool {
-        RatSenseService.shared.isHomeOrWorkStation(station.id)
-    }
     
     var body: some View {
         Button {
@@ -607,20 +599,17 @@ struct FavoriteStationButton: View {
                 
                 Spacer()
                 
-                // Unfavorite button (heart icon) - disabled for home/work stations
-                Button {
-                    if !isHomeOrWorkStation {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            appState.toggleFavoriteStation(code: station.id, name: station.name)
-                        }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Station icon - shows home/work icon or interactive heart
+                StationIconView(
+                    stationCode: station.id,
+                    isStationFavorited: appState.isStationFavorited(code: station.id),
+                    fontSize: 20
+                ) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        appState.toggleFavoriteStation(code: station.id, name: station.name)
                     }
-                } label: {
-                    Image(systemName: appState.isStationFavorited(code: station.id) ? "heart.fill" : "heart")
-                        .font(.system(size: 20))
-                        .foregroundColor(isHomeOrWorkStation ? .orange.opacity(0.6) : .orange)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
-                .disabled(isHomeOrWorkStation)
                 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
