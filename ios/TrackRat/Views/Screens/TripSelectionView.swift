@@ -74,7 +74,7 @@ struct TripSelectionView: View {
             GeometryReader { geometry in
                 VStack(spacing: 8) {
                 // Rat Sense suggestion at the top
-                if let suggestion = ratSenseService.suggestedJourney {
+                if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive {
                     Button {
                         selectRatSenseSuggestion(suggestion)
                     } label: {
