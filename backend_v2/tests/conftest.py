@@ -23,7 +23,7 @@ from trackrat.collectors.njt.client import NJTransitClient
 # Test database URL - use environment variable or fallback to default
 TEST_DATABASE_URL = os.getenv(
     "TRACKRAT_TEST_DATABASE_URL",
-    "postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb_test",
+    "postgresql+asyncpg://trackratuser:password@localhost:5434/trackratdb_test",
 )
 
 

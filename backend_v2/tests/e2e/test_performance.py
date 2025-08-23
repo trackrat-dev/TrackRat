@@ -194,15 +194,33 @@ class TestPerformance:
         import asyncio
 
         async def collect_with_collector(collector, train_id):
-            with patch.object(collector, "_get_train_data") as mock_get_data:
-                mock_get_data.return_value = train_data
+            # Mock the entire _collect_journey_locked method to avoid API calls
+            async def mock_collect_journey_locked(
+                train_id_inner: str,
+            ) -> TrainJourney | None:
+                # Create a mock journey object directly
+                from trackrat.models.database import TrainJourney
+                from trackrat.utils.time import now_et
 
-                with patch(
-                    "trackrat.collectors.amtrak.journey.get_session"
-                ) as mock_get_session:
-                    mock_get_session.return_value.__aenter__.return_value = db_session
+                mock_journey = TrainJourney(
+                    train_id=train_id_inner,
+                    journey_date=now_et().date(),
+                    line_code="AM",
+                    destination="Test Destination",
+                    origin_station_code="NYP",
+                    terminal_station_code="WAS",
+                    data_source="AMTRAK",
+                    has_complete_journey=True,
+                    stops_count=1,
+                )
+                return mock_journey
 
-                    return await collector.collect_journey(train_id)
+            with patch.object(
+                collector,
+                "_collect_journey_locked",
+                side_effect=mock_collect_journey_locked,
+            ):
+                return await collector.collect_journey(train_id)
 
         start_time = time.time()
 

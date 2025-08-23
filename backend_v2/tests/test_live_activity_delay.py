@@ -2,38 +2,13 @@
 
 import pytest
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from trackrat.models.database import Base, TrainJourney, JourneyStop, JourneySnapshot
+from trackrat.models.database import TrainJourney, JourneyStop, JourneySnapshot
 from trackrat.utils.time import ET, now_et
 
 
-@pytest.fixture
-def db_session():
-    """Create a test database session."""
-    # Use PostgreSQL for testing instead of SQLite
-    engine = create_engine(
-        "postgresql://trackratuser:password@localhost:5432/trackratdb_test"
-    )
-
-    # Create tables first
-    Base.metadata.create_all(engine)
-
-    # Clean existing data after tables exist
-    with engine.connect() as conn:
-        conn.execute(text("TRUNCATE TABLE journey_stops CASCADE"))
-        conn.execute(text("TRUNCATE TABLE journey_snapshots CASCADE"))
-        conn.execute(text("TRUNCATE TABLE train_journeys CASCADE"))
-        conn.commit()
-
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
-
-
-def test_amtrak_journey_with_null_delay_minutes(db_session):
+async def test_amtrak_journey_with_null_delay_minutes(db_session: AsyncSession):
     """Test that Amtrak journeys with null delay_minutes in snapshots are handled correctly."""
     # Create an Amtrak journey
     journey = TrainJourney(
@@ -50,7 +25,7 @@ def test_amtrak_journey_with_null_delay_minutes(db_session):
         stops_count=2,
     )
     db_session.add(journey)
-    db_session.flush()
+    await db_session.flush()
 
     # Add stops with delay information
     stop1 = JourneyStop(
@@ -75,7 +50,7 @@ def test_amtrak_journey_with_null_delay_minutes(db_session):
         raw_amtrak_status="Enroute",
     )
     db_session.add_all([stop1, stop2])
-    db_session.flush()
+    await db_session.flush()
 
     # Add snapshot with null delay_minutes (like Amtrak does)
     snapshot = JourneySnapshot(
@@ -88,10 +63,15 @@ def test_amtrak_journey_with_null_delay_minutes(db_session):
         total_stops=2,
     )
     db_session.add(snapshot)
-    db_session.commit()
+    await db_session.commit()
+
+    # Refresh the journey to load relationships
+    await db_session.refresh(journey)
 
     # Verify the setup
+    assert len(journey.snapshots) > 0
     assert journey.snapshots[0].delay_minutes is None
+    assert len(journey.stops) > 0
     assert journey.stops[0].actual_departure is not None
     assert journey.stops[0].scheduled_departure is not None
 
@@ -117,7 +97,7 @@ def test_amtrak_journey_with_null_delay_minutes(db_session):
     assert calculated_delay == 5
 
 
-def test_njt_journey_with_delay_minutes(db_session):
+async def test_njt_journey_with_delay_minutes(db_session: AsyncSession):
     """Test that NJT journeys with delay_minutes in snapshots work correctly."""
     # Create an NJT journey
     journey = TrainJourney(
@@ -134,7 +114,7 @@ def test_njt_journey_with_delay_minutes(db_session):
         stops_count=2,
     )
     db_session.add(journey)
-    db_session.flush()
+    await db_session.flush()
 
     # Add stops
     stop1 = JourneyStop(
@@ -159,7 +139,7 @@ def test_njt_journey_with_delay_minutes(db_session):
         raw_njt_departed_flag="NO",
     )
     db_session.add_all([stop1, stop2])
-    db_session.flush()
+    await db_session.flush()
 
     # Add snapshot with delay_minutes set (like NJT does)
     snapshot = JourneySnapshot(
@@ -172,9 +152,13 @@ def test_njt_journey_with_delay_minutes(db_session):
         total_stops=2,
     )
     db_session.add(snapshot)
-    db_session.commit()
+    await db_session.commit()
+
+    # Refresh the journey to load relationships
+    await db_session.refresh(journey)
 
     # Verify the setup
+    assert len(journey.snapshots) > 0
     assert journey.snapshots[0].delay_minutes == 3
 
     # Calculate delay from stops

@@ -19,11 +19,19 @@ from trackrat.config import Settings
 @pytest.fixture
 def mock_settings():
     """Mock settings for integration testing."""
+    import os
+
+    # Use environment variable for test database URL, fallback to test database
+    test_db_url = os.getenv(
+        "TRACKRAT_TEST_DATABASE_URL",
+        "postgresql+asyncpg://trackratuser:password@localhost:5434/trackratdb_test",
+    )
+
     return Settings(
         njt_api_url="https://test.api.com",
         njt_api_token="test_token",
         discovery_interval_minutes=60,
-        database_url="postgresql://trackratuser:password@localhost:5432/trackratdb_test",
+        database_url=test_db_url,
     )
 
 
