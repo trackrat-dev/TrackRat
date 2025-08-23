@@ -274,8 +274,8 @@ final class RatSenseService: ObservableObject {
         let etHour = calendar.dateComponents(in: TimeZone(identifier: "America/New_York")!, from: now).hour ?? hour
         print("🐀 RatSense: Current time: \(formatter.string(from: now)) ET (hour in ET: \(etHour), weekday: \(isWeekday))")
         
-        // Morning commute (5am-10am ET) - weekdays and weekends
-        if etHour >= 5 && etHour < 10 {
+        // Morning commute (5am-9am ET) - weekdays and weekends
+        if etHour >= 5 && etHour < 9 {
             print("🐀 RatSense: Morning commute time (ET), suggesting home → work")
             return SuggestedJourney(from: home, to: work)
         }
