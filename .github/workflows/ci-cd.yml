@@ -40,7 +40,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         ports:
-          - 5432:5432
+          - 5434:5432
 
     steps:
       # Setup
@@ -89,15 +89,20 @@ jobs:
           # Install PostgreSQL client
           sudo apt-get update
           sudo apt-get install -y postgresql-client
-          # Create test database
-          PGPASSWORD=password createdb -h localhost -U trackratuser trackratdb_test
+          # Create test database on the correct port (5434)
+          PGPASSWORD=password createdb -h localhost -p 5434 -U trackratuser trackratdb_test
 
       - name: Run backend tests and checks
         working-directory: ./backend_v2
+        env:
+          TRACKRAT_DATABASE_URL: postgresql+asyncpg://trackratuser:password@localhost:5434/trackratdb_test
+          TRACKRAT_TEST_DATABASE_URL: postgresql+asyncpg://trackratuser:password@localhost:5434/trackratdb_test
         run: |
-          echo "🧪 Running tests and code quality checks..."
-          chmod +x run_tests.sh
-          ./run_tests.sh
+          echo "🧪 Running tests and code quality checks with optimized script..."
+          chmod +x run_tests_with_db.sh
+          # Skip database setup since it's already configured
+          export CLEANUP_DB=false
+          ./run_tests_with_db.sh
 
       - name: Clean up Python environment
         working-directory: ./backend_v2
