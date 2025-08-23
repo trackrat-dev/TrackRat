@@ -17,6 +17,7 @@ struct OnboardingView: View {
     @State private var stationBeingEdited: StationType? = nil
     @State private var hasLoadedExistingStations = false
     @State private var isCompletingOnboarding = false
+    @State private var hasClearedPreviousData = false
     
     private enum StationType {
         case home, work
@@ -116,6 +117,11 @@ struct OnboardingView: View {
             }
         }
         .onAppear {
+            // Always clear all previous data first for a fresh start
+            clearAllPreviousData()
+            
+            // Then load existing stations if this is a repeat onboarding
+            // (which will typically be empty after clearing)
             loadExistingStationsIfNeeded()
         }
         .sheet(isPresented: $showStationPicker) {
@@ -365,27 +371,67 @@ struct OnboardingView: View {
     
     // MARK: - Helper Functions
     
+    private func clearAllPreviousData() {
+        // Only clear once per onboarding session
+        guard !hasClearedPreviousData else {
+            print("🧹 OnboardingView: Previous data already cleared, skipping")
+            return
+        }
+        
+        hasClearedPreviousData = true
+        print("🧹 OnboardingView: Clearing all previous data for fresh start")
+        
+        // Clear RatSense data (home/work stations and all history)
+        let ratSense = RatSenseService.shared
+        ratSense.clearAllData()
+        
+        // Clear all favorite stations from AppState
+        let existingFavorites = Array(appState.favoriteStations)
+        for station in existingFavorites {
+            appState.removeFavoriteStation(code: station.id)
+        }
+        
+        // Force reload favorites to ensure UI reflects cleared state
+        appState.loadFavoriteStations()
+        
+        // Clear local state variables to ensure fresh start
+        homeStation = nil
+        workStation = nil
+        otherFavorites = []
+        
+        print("🧹 OnboardingView: All previous data cleared successfully")
+        print("🧹 Cleared: RatSense data, AppState favorites, local state")
+    }
+    
     private func loadExistingStationsIfNeeded() {
-        guard !hasLoadedExistingStations && isRepeating else { return }
+        // This method is now effectively obsolete since we always clear all data first
+        // Keeping it for backward compatibility but it should find no existing data
+        guard !hasLoadedExistingStations && isRepeating else { 
+            print("🔄 OnboardingView: Skipping existing station load (cleared=\(hasClearedPreviousData), repeating=\(isRepeating))")
+            return 
+        }
         
         hasLoadedExistingStations = true
         let ratSense = RatSenseService.shared
         
-        // Load existing home station
+        // This should typically be empty since we cleared all data
         if let homeCode = ratSense.getHomeStation(),
            let homeName = Stations.displayName(for: homeCode) {
+            print("⚠️ OnboardingView: Found unexpected home station after clear: \(homeCode)")
             DispatchQueue.main.async {
                 self.homeStation = Station(code: homeCode, name: homeName)
             }
         }
         
-        // Load existing work station
         if let workCode = ratSense.getWorkStation(),
            let workName = Stations.displayName(for: workCode) {
+            print("⚠️ OnboardingView: Found unexpected work station after clear: \(workCode)")
             DispatchQueue.main.async {
                 self.workStation = Station(code: workCode, name: workName)
             }
         }
+        
+        print("🔄 OnboardingView: Existing station load completed (should be empty)")
     }
     
     private func completeOnboarding() {
@@ -393,32 +439,28 @@ struct OnboardingView: View {
         guard !isCompletingOnboarding else { return }
         isCompletingOnboarding = true
         
-        // Create a copy of stations to avoid mutation during iteration
-        let existingFavorites = Array(appState.favoriteStations)
+        print("🎯 OnboardingView: Completing onboarding with selected stations")
         
-        // Clear existing favorites first to ensure clean state
-        for station in existingFavorites {
-            let shouldKeep = (station.id == homeStation?.code) ||
-                           (station.id == workStation?.code) ||
-                           otherFavorites.contains(where: { $0.code == station.id })
-            
-            if !shouldKeep {
-                // Remove old favorites not in current selection
-                appState.removeFavoriteStation(code: station.id)
-            }
-        }
-        
-        // Save selected stations as favorites (using add, not toggle)
+        // Save selected stations as favorites (data was already cleared at start)
         // Save to RatSense first to ensure persistence
         if let home = homeStation {
+            print("🏠 Setting home station: \(home.code) - \(home.name)")
             RatSenseService.shared.setHomeStation(home.code)
             appState.addFavoriteStation(code: home.code, name: home.name)
+        } else {
+            print("🏠 No home station selected")
         }
+        
         if let work = workStation {
+            print("🏢 Setting work station: \(work.code) - \(work.name)")
             RatSenseService.shared.setWorkStation(work.code)
             appState.addFavoriteStation(code: work.code, name: work.name)
+        } else {
+            print("🏢 No work station selected")
         }
+        
         for other in otherFavorites {
+            print("⭐ Adding other favorite: \(other.code) - \(other.name)")
             appState.addFavoriteStation(code: other.code, name: other.name)
         }
         
@@ -431,6 +473,7 @@ struct OnboardingView: View {
         // Mark onboarding as complete only after all data is saved
         // Use a slight delay to ensure all state updates are processed
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            print("✅ OnboardingView: Onboarding completed successfully")
             self.hasCompletedOnboarding = true
             self.dismiss()
         }
