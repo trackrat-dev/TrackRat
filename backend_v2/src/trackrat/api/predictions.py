@@ -15,8 +15,6 @@ from structlog import get_logger
 from trackrat.api.utils import handle_errors
 from trackrat.config.station_configs import (
     STATION_ML_CONFIGS,
-    get_platform_for_track,
-    get_station_config,
     get_tracks_for_station,
     station_has_ml_predictions,
 )
@@ -122,57 +120,18 @@ async def predict_track(
     )
 
     if not prediction:
-        # Fallback: return uniform distribution
-        logger.warning(
-            "prediction_fallback_used",
+        # ML model failed - return error instead of fallback
+        logger.error(
+            "ml_model_prediction_failed",
             station_code=station_code,
             train_id=train_id,
-            reason="ml_model_failed",
+            reason="model_unavailable_or_failed",
+            detail="ML model could not generate prediction - likely model files not found or loading error",
         )
 
-        # Get station-specific default platforms
-        config = get_station_config(station_code)
-        tracks = config.get("tracks", [])
-
-        # Convert tracks to platforms
-        default_platforms = []
-        seen_platforms = set()
-        for track in tracks:
-            platform = get_platform_for_track(station_code, track)
-            if platform not in seen_platforms:
-                default_platforms.append(platform)
-                seen_platforms.add(platform)
-
-        if not default_platforms:
-            # Shouldn't happen but fallback to single platform
-            default_platforms = ["1"]
-
-        uniform_prob = 1.0 / len(default_platforms)
-
-        logger.info(
-            "fallback_prediction_returned",
-            station_code=station_code,
-            train_id=train_id,
-            fallback_confidence=uniform_prob,
-            platforms_count=len(default_platforms),
-        )
-
-        # Pick reasonable defaults for top 3
-        top_3 = (
-            default_platforms[:3] if len(default_platforms) >= 3 else default_platforms
-        )
-
-        return TrackPredictionResponse(
-            platform_probabilities={
-                platform: uniform_prob for platform in default_platforms
-            },
-            primary_prediction=default_platforms[0],
-            confidence=uniform_prob,
-            top_3=top_3,
-            model_version="fallback",
-            station_code=station_code,
-            train_id=train_id,
-            features_used=None,
+        raise HTTPException(
+            status_code=400,
+            detail=f"Platform predictions temporarily unavailable for station {station_code}. Model not loaded.",
         )
 
     # Log successful prediction details
