@@ -209,13 +209,6 @@ final class RatSenseService: ObservableObject {
         }
         print("🐀 RatSense: No time-based suggestion available")
         
-        // 3. Use Frequency Intelligence (Fallback)
-        print("🐀 RatSense: Step 3 - Checking frequency intelligence...")
-        if let frequencySuggestion = useFrequencyIntelligence() {
-            print("🐀 RatSense: ✅ Found frequency-based suggestion")
-            return frequencySuggestion
-        }
-        print("🐀 RatSense: No frequency-based suggestion available")
         
         print("🐀 RatSense: ❌ No suggestion could be generated")
         return nil
@@ -230,9 +223,9 @@ final class RatSenseService: ObservableObject {
             let hours = timeSinceSearch / 3600
             print("🐀 RatSense: Last journey: \(lastJourney.fromStation) → \(lastJourney.toStation), \(String(format: "%.1f", hours)) hours ago")
             
-            // If searched within last 2 hours → Suggest same route
-            if timeSinceSearch < 7200 { // 2 hours
-                print("🐀 RatSense: Within 2 hours, suggesting same route")
+            // If searched within last 20 minutes → Suggest same route
+            if timeSinceSearch < 1200 { // 20 minutes
+                print("🐀 RatSense: Within 20 minutes, suggesting same route")
                 return SuggestedJourney(from: lastJourney.fromStation, to: lastJourney.toStation)
             }
         } else {
@@ -248,9 +241,9 @@ final class RatSenseService: ObservableObject {
             let hours = timeSinceLiveActivity / 3600
             print("🐀 RatSense: Live Activity: \(record.fromStation) → \(record.toStation), \(String(format: "%.1f", hours)) hours ago")
             
-            // If Live Activity activated 4-10 hours ago → Suggest reversed route
-            if timeSinceLiveActivity >= 14400 && timeSinceLiveActivity <= 36000 { // 4-10 hours
-                print("🐀 RatSense: Between 4-10 hours, suggesting reversed route")
+            // If Live Activity activated 2-8 hours ago → Suggest reversed route
+            if timeSinceLiveActivity >= 7200 && timeSinceLiveActivity <= 28800 { // 2-8 hours
+                print("🐀 RatSense: Between 2-8 hours, suggesting reversed route")
                 return SuggestedJourney(from: record.toStation, to: record.fromStation)
             }
         }
@@ -307,35 +300,6 @@ final class RatSenseService: ObservableObject {
         return nil
     }
     
-    private func useFrequencyIntelligence() -> SuggestedJourney? {
-        let frequency = getStationPairFrequency()
-        
-        print("🐀 RatSense: Station pair frequencies:")
-        for (pair, count) in frequency.sorted(by: { $0.value > $1.value }).prefix(5) {
-            print("🐀 RatSense:   \(pair): \(count) uses")
-        }
-        
-        // Find the most frequent pair
-        if let topPair = frequency.max(by: { $0.value < $1.value }) {
-            print("🐀 RatSense: Top pair: \(topPair.key) with \(topPair.value) uses")
-            
-            if topPair.value >= 1 { // At least 1 use (lowered for testing)
-                let components = topPair.key.split(separator: "_")
-                if components.count == 2 {
-                    let from = String(components[0])
-                    let to = String(components[1])
-                    print("🐀 RatSense: Suggesting frequent route: \(from) → \(to)")
-                    return SuggestedJourney(from: from, to: to)
-                }
-            } else {
-                print("🐀 RatSense: Top pair has less than 3 uses, not confident enough")
-            }
-        } else {
-            print("🐀 RatSense: No frequency data available")
-        }
-        
-        return nil
-    }
     
     private func getLastJourney() -> LastJourney? {
         guard let data = userDefaults.data(forKey: lastJourneyKey),
