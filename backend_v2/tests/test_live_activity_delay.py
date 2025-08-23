@@ -65,21 +65,37 @@ async def test_amtrak_journey_with_null_delay_minutes(db_session: AsyncSession):
     db_session.add(snapshot)
     await db_session.commit()
 
-    # Refresh the journey to load relationships
-    await db_session.refresh(journey)
+    # Query snapshots and stops explicitly to avoid lazy loading issues
+    from sqlalchemy import select
+
+    # Get snapshots using explicit query
+    snapshots_stmt = select(JourneySnapshot).where(
+        JourneySnapshot.journey_id == journey.id
+    )
+    snapshots_result = await db_session.execute(snapshots_stmt)
+    snapshots = list(snapshots_result.scalars().all())
+
+    # Get stops using explicit query
+    stops_stmt = (
+        select(JourneyStop)
+        .where(JourneyStop.journey_id == journey.id)
+        .order_by(JourneyStop.stop_sequence)
+    )
+    stops_result = await db_session.execute(stops_stmt)
+    stops = list(stops_result.scalars().all())
 
     # Verify the setup
-    assert len(journey.snapshots) > 0
-    assert journey.snapshots[0].delay_minutes is None
-    assert len(journey.stops) > 0
-    assert journey.stops[0].actual_departure is not None
-    assert journey.stops[0].scheduled_departure is not None
+    assert len(snapshots) > 0
+    assert snapshots[0].delay_minutes is None
+    assert len(stops) > 0
+    assert stops[0].actual_departure is not None
+    assert stops[0].scheduled_departure is not None
 
     # Calculate delay from stops using new fields
     from trackrat.utils.time import calculate_delay
 
     calculated_delay = 0
-    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+    sorted_stops = sorted(stops, key=lambda s: s.stop_sequence or 0)
     for stop in reversed(sorted_stops):
         if stop.has_departed_station:
             if stop.actual_departure and stop.scheduled_departure:
@@ -154,18 +170,34 @@ async def test_njt_journey_with_delay_minutes(db_session: AsyncSession):
     db_session.add(snapshot)
     await db_session.commit()
 
-    # Refresh the journey to load relationships
-    await db_session.refresh(journey)
+    # Query snapshots and stops explicitly to avoid lazy loading issues
+    from sqlalchemy import select
+
+    # Get snapshots using explicit query
+    snapshots_stmt = select(JourneySnapshot).where(
+        JourneySnapshot.journey_id == journey.id
+    )
+    snapshots_result = await db_session.execute(snapshots_stmt)
+    snapshots = list(snapshots_result.scalars().all())
+
+    # Get stops using explicit query
+    stops_stmt = (
+        select(JourneyStop)
+        .where(JourneyStop.journey_id == journey.id)
+        .order_by(JourneyStop.stop_sequence)
+    )
+    stops_result = await db_session.execute(stops_stmt)
+    stops = list(stops_result.scalars().all())
 
     # Verify the setup
-    assert len(journey.snapshots) > 0
-    assert journey.snapshots[0].delay_minutes == 3
+    assert len(snapshots) > 0
+    assert snapshots[0].delay_minutes == 3
 
     # Calculate delay from stops
     from trackrat.utils.time import calculate_delay
 
     calculated_delay = 0
-    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+    sorted_stops = sorted(stops, key=lambda s: s.stop_sequence or 0)
     for stop in reversed(sorted_stops):
         if stop.has_departed_station:
             if stop.actual_departure and stop.scheduled_departure:
