@@ -28,6 +28,18 @@ struct OnboardingView: View {
     
     init(isRepeating: Bool = false) {
         self.isRepeating = isRepeating
+        
+        // Load existing home/work stations when repeating onboarding
+        let ratSense = RatSenseService.shared
+        if let homeCode = ratSense.getHomeStation(),
+           let homeName = Stations.displayName(for: homeCode) {
+            self._homeStation = State(initialValue: Station(code: homeCode, name: homeName))
+        }
+        if let workCode = ratSense.getWorkStation(),
+           let workName = Stations.displayName(for: workCode) {
+            self._workStation = State(initialValue: Station(code: workCode, name: workName))
+        }
+        
         // Show video for both first-time and repeat onboarding
         self._showVideo = State(initialValue: true)
     }
@@ -114,7 +126,8 @@ struct OnboardingView: View {
         }
         .sheet(isPresented: $showStationPicker) {
             StationPickerSheet(
-                selectedStation: isPickingOtherStation ? .constant(nil) : (stationBeingEdited == .home ? $homeStation : $workStation),
+                selectedStation: binding(for: stationBeingEdited),
+                disabledStation: disabledStation(for: stationBeingEdited),
                 onStationSelected: { station in
                     if isPickingOtherStation {
                         if !otherFavorites.contains(where: { $0.code == station.code }) {
@@ -152,6 +165,7 @@ struct OnboardingView: View {
                     icon: "house.fill",
                     title: "Home Station",
                     selectedStation: homeStation,
+                    isDisabledOption: workStation,  // Can't be same as work
                     onTap: {
                         isPickingOtherStation = false
                         stationBeingEdited = .home
@@ -164,6 +178,7 @@ struct OnboardingView: View {
                     icon: "building.2.fill",
                     title: "Work Station",
                     selectedStation: workStation,
+                    isDisabledOption: homeStation,  // Can't be same as home
                     onTap: {
                         isPickingOtherStation = false
                         stationBeingEdited = .work
@@ -346,28 +361,29 @@ struct OnboardingView: View {
     
     // MARK: - Helper Functions
     private func completeOnboarding() {
-        // Save selected stations as favorites
-        var favoriteStations: Set<String> = []
+        // Clear existing favorites first to ensure clean state
+        for station in appState.favoriteStations {
+            let shouldKeep = (station.id == homeStation?.code) ||
+                           (station.id == workStation?.code) ||
+                           otherFavorites.contains(where: { $0.code == station.id })
+            
+            if !shouldKeep {
+                // Remove old favorites not in current selection
+                appState.removeFavoriteStation(code: station.id)
+            }
+        }
         
+        // Save selected stations as favorites (using add, not toggle)
         if let home = homeStation {
-            favoriteStations.insert(home.code)
-            // Save home station to Rat Sense
+            appState.addFavoriteStation(code: home.code, name: home.name)
             RatSenseService.shared.setHomeStation(home.code)
         }
         if let work = workStation {
-            favoriteStations.insert(work.code)
-            // Save work station to Rat Sense
+            appState.addFavoriteStation(code: work.code, name: work.name)
             RatSenseService.shared.setWorkStation(work.code)
         }
         for other in otherFavorites {
-            favoriteStations.insert(other.code)
-        }
-        
-        // Save to app state and storage
-        for stationCode in favoriteStations {
-            if let stationName = Stations.displayName(for: stationCode) {
-                appState.toggleFavoriteStation(code: stationCode, name: stationName)
-            }
+            appState.addFavoriteStation(code: other.code, name: other.name)
         }
         
         // Mark onboarding as complete
@@ -379,6 +395,30 @@ struct OnboardingView: View {
         // Dismiss
         dismiss()
     }
+    
+    // Helper method for cleaner binding
+    private func binding(for type: StationType?) -> Binding<Station?> {
+        switch type {
+        case .home:
+            return $homeStation
+        case .work:
+            return $workStation
+        case nil:
+            return .constant(nil)
+        }
+    }
+    
+    // Helper method to get disabled station
+    private func disabledStation(for type: StationType?) -> Station? {
+        switch type {
+        case .home:
+            return workStation
+        case .work:
+            return homeStation
+        case nil:
+            return nil
+        }
+    }
 }
 
 // MARK: - Supporting Views
@@ -386,6 +426,7 @@ struct StationSelectionCard: View {
     let icon: String
     let title: String
     let selectedStation: Station?
+    let isDisabledOption: Station?  // Station that can't be selected (e.g., home can't be work)
     let onTap: () -> Void
     
     var body: some View {
@@ -400,9 +441,23 @@ struct StationSelectionCard: View {
                         .font(.headline)
                         .foregroundColor(.white)
                     
-                    Text(selectedStation?.name ?? "Select Station...")
-                        .font(.subheadline)
-                        .foregroundColor(selectedStation == nil ? .white.opacity(0.6) : .orange)
+                    if let selected = selectedStation {
+                        Text(selected.name)
+                            .font(.subheadline)
+                            .foregroundColor(.orange)
+                    } else {
+                        Text("Select Station...")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    
+                    // Show warning if same as other station
+                    if let disabled = isDisabledOption,
+                       selectedStation?.code == disabled.code {
+                        Text("⚠️ Same as \(title == "Home Station" ? "work" : "home") station")
+                            .font(.caption)
+                            .foregroundColor(.yellow)
+                    }
                 }
                 
                 Spacer()
@@ -482,6 +537,7 @@ struct Station: Identifiable, Equatable {
 // MARK: - Station Picker Sheet
 struct StationPickerSheet: View {
     @Binding var selectedStation: Station?
+    let disabledStation: Station?  // Station that should be shown as disabled
     let onStationSelected: (Station) -> Void
     @Environment(\.dismiss) private var dismiss
     
@@ -524,20 +580,38 @@ struct StationPickerSheet: View {
                 .padding()
                 
                 List(filteredStations) { station in
+                    let isDisabled = disabledStation?.code == station.code
+                    
                     Button {
-                        selectedStation = station
-                        onStationSelected(station)
-                        dismiss()
+                        if !isDisabled {
+                            selectedStation = station
+                            onStationSelected(station)
+                            dismiss()
+                        }
                     } label: {
                         HStack {
-                            Text(station.name)
-                                .font(.headline)
-                                .foregroundColor(.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(station.name)
+                                    .font(.headline)
+                                    .foregroundColor(isDisabled ? .gray : .primary)
+                                
+                                if isDisabled {
+                                    Text("Already selected")
+                                        .font(.caption)
+                                        .foregroundColor(.orange)
+                                }
+                            }
                             Spacer()
+                            
+                            if station.code == selectedStation?.code {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.orange)
+                            }
                         }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .disabled(isDisabled)
                 }
             }
             .navigationTitle("Select Station")

@@ -95,8 +95,8 @@ final class RatSenseService: ObservableObject {
         // Update frequency
         updateStationPairFrequency(from: from, to: to)
         
-        // Update morning/evening patterns if applicable
-        detectCommutePatterns(from: from, to: to)
+        // Removed: detectCommutePatterns call that was causing issues
+        // The auto-detection was overwriting user's manual selections
     }
     
     /// Records when a Live Activity is started
@@ -357,32 +357,5 @@ final class RatSenseService: ObservableObject {
         let key = "\(from)_\(to)"
         frequency[key] = (frequency[key] ?? 0) + 1
         userDefaults.set(frequency, forKey: stationPairFrequencyKey)
-    }
-    
-    private func detectCommutePatterns(from: String, to: String) {
-        let calendar = Calendar.current
-        let now = Date()
-        let hour = calendar.component(.hour, from: now)
-        let isWeekday = !calendar.isDateInWeekend(now)
-        
-        if isWeekday {
-            // Detect morning commute pattern
-            if hour >= 5 && hour < 10 {
-                if let homeStation = getHomeStation(),
-                   from == homeStation {
-                    // Strengthen work station pattern
-                    setWorkStation(to)
-                }
-            }
-            
-            // Detect evening commute pattern
-            if hour >= 15 && hour < 20 {
-                if let workStation = getWorkStation(),
-                   from == workStation {
-                    // Strengthen home station pattern
-                    setHomeStation(to)
-                }
-            }
-        }
     }
 }

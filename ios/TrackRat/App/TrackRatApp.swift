@@ -575,4 +575,23 @@ final class AppState: ObservableObject {
         return storageService.isStationFavorited(code: code)
     }
     
+    /// Explicitly adds a station to favorites (doesn't toggle)
+    func addFavoriteStation(code: String, name: String) {
+        if !isStationFavorited(code: code) {
+            storageService.toggleFavoriteStation(code: code, name: name)
+            loadFavoriteStations()
+        }
+    }
+    
+    /// Explicitly removes a station from favorites
+    func removeFavoriteStation(code: String) {
+        if isStationFavorited(code: code) {
+            // Find the station name from our current favorites
+            if let station = favoriteStations.first(where: { $0.id == code }) {
+                storageService.toggleFavoriteStation(code: code, name: station.name)
+                loadFavoriteStations()
+            }
+        }
+    }
+    
 }
