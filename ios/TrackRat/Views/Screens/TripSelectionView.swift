@@ -16,10 +16,9 @@ struct TripSelectionView: View {
     @StateObject private var liveActivityService = LiveActivityService.shared
     @StateObject private var ratSenseService = RatSenseService.shared
     
-    // Train validation state
-    @State private var trainValidationState: TrainValidationState = .unknown
-    @State private var validatedTrainNumber: String = ""
-    @State private var validationTask: Task<Void, Never>?
+    // Train validation state - now supports multiple train results
+    @State private var trainValidationStates: [String: TrainValidationState] = [:]
+    @State private var validationTasks: [String: Task<Void, Never>] = [:]
     
     // Callback to control bottom sheet position
     let onBottomSheetPositionChange: ((BottomSheetPosition) -> Void)?
@@ -33,36 +32,38 @@ struct TripSelectionView: View {
         return appState.favoriteStations
     }
     
-    private var searchResults: (stations: [String], trainNumber: String?) {
+    private var searchResults: (stations: [String], trainNumbers: [String]) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
         
         // Always search stations
         let stationResults = Stations.search(query)
         
-        // Check if input also looks like a train number
-        let trainNumber = isLikelyTrainNumber(query) ? query : nil
+        // Generate potential train numbers for dual search
+        let trainNumbers = getPotentialTrainNumbers(query)
         
-        
-        return (stations: stationResults, trainNumber: trainNumber)
+        return (stations: stationResults, trainNumbers: trainNumbers)
     }
     
-    // Helper function to detect if input looks like a train number
-    private func isLikelyTrainNumber(_ input: String) -> Bool {
-        let trimmed = input.uppercased()
+    // Generate potential train numbers for both NJT and Amtrak
+    private func getPotentialTrainNumbers(_ input: String) -> [String] {
+        let trimmed = input.trimmingCharacters(in: .whitespaces).uppercased()
         
-        // Amtrak: A followed by 2+ digits
+        // If input already has "A" prefix, only search for that
         if trimmed.hasPrefix("A") && trimmed.count >= 3 {
             let remainder = String(trimmed.dropFirst())
-            return remainder.allSatisfy(\.isNumber)
+            if remainder.allSatisfy(\.isNumber) {
+                return [trimmed]
+            }
         }
         
-        // NJ Transit: 2+ digits only
+        // If input is numeric, search for both NJT and Amtrak variants
         if trimmed.count >= 2 && trimmed.allSatisfy(\.isNumber) {
-            return true
+            return [trimmed, "A\(trimmed)"]
         }
         
-        return false
+        return []
     }
+    
     
     
     var body: some View {
@@ -169,8 +170,8 @@ struct TripSelectionView: View {
                     // Search results
                     if isSearching {
                         VStack(spacing: 8) {
-                            // Train number result (if detected)
-                            if let trainNumber = searchResults.trainNumber {
+                            // Train number results (support for multiple trains)
+                            ForEach(searchResults.trainNumbers, id: \.self) { trainNumber in
                                 trainSearchCard(for: trainNumber)
                             }
                             
@@ -261,7 +262,10 @@ struct TripSelectionView: View {
         }
         .onDisappear {
             // Cancel any pending validation tasks
-            validationTask?.cancel()
+            for task in validationTasks.values {
+                task.cancel()
+            }
+            validationTasks.removeAll()
         }
     }
     
@@ -332,8 +336,7 @@ struct TripSelectionView: View {
     
     @ViewBuilder
     private func trainSearchCard(for trainNumber: String) -> some View {
-        let isValidated = validatedTrainNumber == trainNumber
-        let state = isValidated ? trainValidationState : .unknown
+        let state = trainValidationStates[trainNumber] ?? .unknown
         
         Button {
             if state == .found {
@@ -346,9 +349,24 @@ struct TripSelectionView: View {
                     .foregroundColor(cardColor(for: state))
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Train \(trainNumber)")
-                        .font(.headline)
-                        .foregroundColor(.white)
+                    HStack(spacing: 8) {
+                        Text("Train \(trainNumber)")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        
+                        // Train system badge
+                        Text(trainSystemName(for: trainNumber))
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(trainSystemColor(for: trainNumber))
+                            )
+                    }
+                    
                     Text(cardSubtitle(for: state))
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.7))
@@ -414,81 +432,65 @@ struct TripSelectionView: View {
         }
     }
     
+    // Helper methods for train system identification
+    private func trainSystemName(for trainNumber: String) -> String {
+        return trainNumber.hasPrefix("A") ? "AMTRAK" : "NJT"
+    }
+    
+    private func trainSystemColor(for trainNumber: String) -> Color {
+        return .gray
+    }
+    
     // MARK: - Train Validation
     
     private func startTrainValidation(for searchText: String) {
-        let query = searchText.trimmingCharacters(in: .whitespaces)
+        let potentialTrainNumbers = getPotentialTrainNumbers(searchText)
         
-        // Cancel any existing validation task
-        validationTask?.cancel()
+        // Cancel validation tasks for trains no longer in search results
+        let currentTasks = Set(validationTasks.keys)
+        let newTrains = Set(potentialTrainNumbers)
         
-        // Reset state if not a train number
-        guard isLikelyTrainNumber(query) else {
-            trainValidationState = .unknown
-            validatedTrainNumber = ""
-            return
+        for trainNumber in currentTasks.subtracting(newTrains) {
+            validationTasks[trainNumber]?.cancel()
+            validationTasks.removeValue(forKey: trainNumber)
+            trainValidationStates.removeValue(forKey: trainNumber)
         }
         
-        // Reset state if different train number
-        if validatedTrainNumber != query {
-            trainValidationState = .unknown
-            validatedTrainNumber = ""
-        }
-        
-        // Start validation with debouncing
-        validationTask = Task {
-            // Debounce for 500ms
-            try? await Task.sleep(for: .milliseconds(500))
-            
-            guard !Task.isCancelled else { return }
-            
-            await MainActor.run {
-                trainValidationState = .validating
-                validatedTrainNumber = query
+        // Start validation for new trains
+        for trainNumber in potentialTrainNumbers {
+            // Skip if already validating or validated
+            if validationTasks[trainNumber] != nil {
+                continue
             }
             
-            // Try to validate the train
-            do {
-                _ = try await attemptTrainSearch(trainNumber: query)
+            // Reset state for this train
+            trainValidationStates[trainNumber] = .unknown
+            
+            // Start validation with debouncing
+            validationTasks[trainNumber] = Task {
+                // Debounce for 500ms
+                try? await Task.sleep(for: .milliseconds(500))
                 
                 guard !Task.isCancelled else { return }
                 
                 await MainActor.run {
-                    if validatedTrainNumber == query {
-                        trainValidationState = .found
-                    }
+                    trainValidationStates[trainNumber] = .validating
                 }
-            } catch {
-                // Try with "A" prefix for numeric inputs
-                if isNumericInput(query) && isTrainNotFoundError(error) {
-                    let amtrakTrainNumber = "A\(query)"
-                    do {
-                        _ = try await attemptTrainSearch(trainNumber: amtrakTrainNumber)
-                        
-                        guard !Task.isCancelled else { return }
-                        
-                        await MainActor.run {
-                            if validatedTrainNumber == query {
-                                trainValidationState = .found
-                                validatedTrainNumber = amtrakTrainNumber // Update to the working format
-                            }
-                        }
-                    } catch {
-                        guard !Task.isCancelled else { return }
-                        
-                        await MainActor.run {
-                            if validatedTrainNumber == query {
-                                trainValidationState = .notFound
-                            }
-                        }
-                    }
-                } else {
+                
+                // Try to validate the train
+                do {
+                    _ = try await attemptTrainSearch(trainNumber: trainNumber)
+                    
                     guard !Task.isCancelled else { return }
                     
                     await MainActor.run {
-                        if validatedTrainNumber == query {
-                            trainValidationState = .notFound
-                        }
+                        trainValidationStates[trainNumber] = .found
+                    }
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    
+                    await MainActor.run {
+                        trainValidationStates[trainNumber] = .notFound
                     }
                 }
             }
@@ -500,34 +502,12 @@ struct TripSelectionView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         
         Task {
-            let trimmedInput = trainNumber.trimmingCharacters(in: .whitespaces)
-            var lastError: Error?
-            var foundTrain: TrainV2?
-            var successfulTrainNumber: String?
-            
-            // First attempt: Try user's exact input
             do {
-                foundTrain = try await attemptTrainSearch(trainNumber: trimmedInput)
-                successfulTrainNumber = trimmedInput
-            } catch {
-                lastError = error
+                let foundTrain = try await attemptTrainSearch(trainNumber: trainNumber)
                 
-                // Second attempt: If input is numeric and first attempt failed with "not found", try with "A" prefix
-                if isNumericInput(trimmedInput) && isTrainNotFoundError(error) {
-                    let amtrakTrainNumber = "A\(trimmedInput)"
-                    do {
-                        foundTrain = try await attemptTrainSearch(trainNumber: amtrakTrainNumber)
-                        successfulTrainNumber = amtrakTrainNumber
-                    } catch {
-                        lastError = error
-                    }
-                }
-            }
-            
-            await MainActor.run {
-                if let train = foundTrain, let trainNumber = successfulTrainNumber {
+                await MainActor.run {
                     // Success - navigate to train details
-                    appState.currentTrainId = train.id
+                    appState.currentTrainId = foundTrain.id
                     appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                         trainNumber: trainNumber,
                         fromStation: nil  // No specific departure station when searching globally
@@ -539,7 +519,9 @@ struct TripSelectionView: View {
                         isSearching = false
                         searchFieldFocused = false
                     }
-                } else if let error = lastError {
+                }
+            } catch {
+                await MainActor.run {
                     // For now, just print error - could add error state later
                     print("🔴 Train search failed: \(error)")
                 }
@@ -562,21 +544,6 @@ struct TripSelectionView: View {
         )
         
         return train
-    }
-    
-    private func isNumericInput(_ input: String) -> Bool {
-        let trimmedInput = input.trimmingCharacters(in: .whitespaces)
-        return !trimmedInput.isEmpty && trimmedInput.allSatisfy(\.isNumber)
-    }
-    
-    private func isTrainNotFoundError(_ error: Error) -> Bool {
-        if let apiError = error as? APIError {
-            return apiError == .noData
-        } else if let urlError = error as? URLError {
-            return urlError.localizedDescription == "No data received"
-        } else {
-            return error.localizedDescription == "No data received"
-        }
     }
 }
 
