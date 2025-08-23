@@ -75,7 +75,7 @@ struct TripSelectionView: View {
             GeometryReader { geometry in
                 VStack(spacing: 8) {
                 // Rat Sense suggestion at the top
-                if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive {
+                if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive, !isSearching {
                     Button {
                         selectRatSenseSuggestion(suggestion)
                     } label: {
@@ -105,7 +105,7 @@ struct TripSelectionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
-                .padding(.top, ratSenseService.suggestedJourney != nil ? 8 : 20)
+                .padding(.top, (ratSenseService.suggestedJourney != nil && !isSearching) ? 8 : 20)
                 
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
