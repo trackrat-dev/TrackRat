@@ -29,6 +29,7 @@ COPY --from=builder /build/requirements.txt .
 # Install build dependencies, Python packages, then remove build deps
 RUN apk add --no-cache --virtual .build-deps \
         gcc \
+        g++ \
         musl-dev \
         postgresql-dev \
         python3-dev && \
