@@ -389,6 +389,9 @@ struct OnboardingView: View {
         // Mark onboarding as complete
         hasCompletedOnboarding = true
         
+        // Force immediate synchronization of favorites
+        appState.loadFavoriteStations()
+        
         // Provide haptic feedback
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         

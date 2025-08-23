@@ -278,16 +278,20 @@ struct DeparturePickerView: View {
                 }
                 
                 if let code = Stations.getStationCode(station) {
+                    let isHomeOrWork = RatSenseService.shared.isHomeOrWorkStation(code)
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            appState.toggleFavoriteStation(code: code, name: station)
+                        if !isHomeOrWork {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                appState.toggleFavoriteStation(code: code, name: station)
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
                         Image(systemName: appState.isStationFavorited(code: code) ? "heart.fill" : "heart")
                             .font(.system(size: 16))
-                            .foregroundColor(.orange)
+                            .foregroundColor(isHomeOrWork ? .orange.opacity(0.6) : .orange)
                     }
+                    .disabled(isHomeOrWork)
                     .padding(.leading, 8)
                 }
             }
@@ -491,6 +495,10 @@ struct DepartureButton: View {
     let onTap: () -> Void
     @EnvironmentObject private var appState: AppState
     
+    private var isHomeOrWorkStation: Bool {
+        RatSenseService.shared.isHomeOrWorkStation(code)
+    }
+    
     var body: some View {
         HStack {
             // Main station button
@@ -508,17 +516,20 @@ struct DepartureButton: View {
                 }
             }
             
-            // Heart button - separate from main button
+            // Heart button - separate from main button, disabled for home/work stations
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    appState.toggleFavoriteStation(code: code, name: name)
+                if !isHomeOrWorkStation {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.toggleFavoriteStation(code: code, name: name)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 Image(systemName: appState.isStationFavorited(code: code) ? "heart.fill" : "heart")
                     .font(.system(size: 18))
-                    .foregroundColor(.orange)
+                    .foregroundColor(isHomeOrWorkStation ? .orange.opacity(0.6) : .orange)
             }
+            .disabled(isHomeOrWorkStation)
             .padding(.leading, 8)
         }
         .frame(maxWidth: .infinity)

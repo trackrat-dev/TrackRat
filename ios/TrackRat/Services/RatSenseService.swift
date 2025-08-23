@@ -154,6 +154,11 @@ final class RatSenseService: ObservableObject {
         userDefaults.string(forKey: workStationKey)
     }
     
+    /// Checks if a station code is the user's home or work station
+    func isHomeOrWorkStation(_ stationCode: String) -> Bool {
+        return getHomeStation() == stationCode || getWorkStation() == stationCode
+    }
+    
     /// Debug: Adds test data for development
     func addTestData() {
         print("🐀 RatSense: Adding test data...")

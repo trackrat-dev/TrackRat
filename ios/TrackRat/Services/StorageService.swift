@@ -259,10 +259,32 @@ final class StorageService {
     
     // MARK: - Favorite Stations
     func loadFavoriteStations() -> [FavoriteStation] {
-        guard let data = userDefaults.data(forKey: favoriteStationsKey),
-              let stations = try? JSONDecoder().decode([FavoriteStation].self, from: data) else {
-            // No saved favorites - return NYC as default
-            return [FavoriteStation(code: "NY", name: "New York Penn Station")]
+        // Load stored favorites from UserDefaults
+        var stations: [FavoriteStation] = []
+        if let data = userDefaults.data(forKey: favoriteStationsKey),
+           let decodedStations = try? JSONDecoder().decode([FavoriteStation].self, from: data) {
+            stations = decodedStations
+        }
+        
+        // Always include home station if set
+        if let homeCode = RatSenseService.shared.getHomeStation(),
+           !stations.contains(where: { $0.id == homeCode }) {
+            if let homeName = Stations.displayName(for: homeCode) {
+                stations.append(FavoriteStation(code: homeCode, name: homeName))
+            }
+        }
+        
+        // Always include work station if set
+        if let workCode = RatSenseService.shared.getWorkStation(),
+           !stations.contains(where: { $0.id == workCode }) {
+            if let workName = Stations.displayName(for: workCode) {
+                stations.append(FavoriteStation(code: workCode, name: workName))
+            }
+        }
+        
+        // If no stations at all (no stored favorites and no home/work), return NYC as default
+        if stations.isEmpty {
+            stations = [FavoriteStation(code: "NY", name: "New York Penn Station")]
         }
         
         return stations.sorted { $0.lastUsed > $1.lastUsed }

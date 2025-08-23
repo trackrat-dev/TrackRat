@@ -133,16 +133,20 @@ struct DestinationPickerView: View {
                                         
                                         // Heart button - separate from main button
                                         if let code = Stations.getStationCode(station) {
+                                            let isHomeOrWork = RatSenseService.shared.isHomeOrWorkStation(code)
                                             Button {
-                                                withAnimation(.easeInOut(duration: 0.2)) {
-                                                    appState.toggleFavoriteStation(code: code, name: station)
+                                                if !isHomeOrWork {
+                                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                                        appState.toggleFavoriteStation(code: code, name: station)
+                                                    }
+                                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                                 }
-                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             } label: {
                                                 Image(systemName: appState.isStationFavorited(code: code) ? "heart.fill" : "heart")
                                                     .font(.system(size: 16))
-                                                    .foregroundColor(.orange)
+                                                    .foregroundColor(isHomeOrWork ? .orange.opacity(0.6) : .orange)
                                             }
+                                            .disabled(isHomeOrWork)
                                             .padding(.leading, 8)
                                         }
                                     }
@@ -215,6 +219,10 @@ struct FavoriteDestinationButton: View {
     let onTap: () -> Void
     @EnvironmentObject private var appState: AppState
     
+    private var isHomeOrWorkStation: Bool {
+        RatSenseService.shared.isHomeOrWorkStation(station.id)
+    }
+    
     var body: some View {
         Button {
             onTap()
@@ -227,23 +235,20 @@ struct FavoriteDestinationButton: View {
                 
                 Spacer()
                 
-                // Unfavorite button (heart icon)
+                // Unfavorite button (heart icon) - disabled for home/work stations
                 Button {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        appState.toggleFavoriteStation(code: station.id, name: station.name)
+                    if !isHomeOrWorkStation {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            appState.toggleFavoriteStation(code: station.id, name: station.name)
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
                     Image(systemName: "heart.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(.orange)
+                        .foregroundColor(isHomeOrWorkStation ? .orange.opacity(0.6) : .orange)
                 }
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        appState.toggleFavoriteStation(code: station.id, name: station.name)
-                    }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
+                .disabled(isHomeOrWorkStation)
             }
             .padding()
             .frame(maxWidth: .infinity)
