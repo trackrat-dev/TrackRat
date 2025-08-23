@@ -15,6 +15,8 @@ struct OnboardingView: View {
     @State private var showStationPicker = false
     @State private var isPickingOtherStation = false
     @State private var stationBeingEdited: StationType? = nil
+    @State private var hasLoadedExistingStations = false
+    @State private var isCompletingOnboarding = false
     
     private enum StationType {
         case home, work
@@ -28,20 +30,6 @@ struct OnboardingView: View {
     
     init(isRepeating: Bool = false) {
         self.isRepeating = isRepeating
-        
-        // Load existing home/work stations when repeating onboarding
-        let ratSense = RatSenseService.shared
-        if let homeCode = ratSense.getHomeStation(),
-           let homeName = Stations.displayName(for: homeCode) {
-            self._homeStation = State(initialValue: Station(code: homeCode, name: homeName))
-        }
-        if let workCode = ratSense.getWorkStation(),
-           let workName = Stations.displayName(for: workCode) {
-            self._workStation = State(initialValue: Station(code: workCode, name: workName))
-        }
-        
-        // Show video for both first-time and repeat onboarding
-        self._showVideo = State(initialValue: true)
     }
     
     var body: some View {
@@ -104,7 +92,9 @@ struct OnboardingView: View {
                         
                         Button(currentPage == totalPages - 1 ? "Let's go!" : "Continue") {
                             if currentPage == totalPages - 1 {
-                                completeOnboarding()
+                                if !isCompletingOnboarding {
+                                    completeOnboarding()
+                                }
                             } else {
                                 withAnimation {
                                     currentPage += 1
@@ -117,6 +107,7 @@ struct OnboardingView: View {
                         .frame(minWidth: 160)
                         .background(Color.orange)
                         .cornerRadius(12)
+                        .disabled(isCompletingOnboarding)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -124,17 +115,30 @@ struct OnboardingView: View {
                 }
             }
         }
+        .onAppear {
+            loadExistingStationsIfNeeded()
+        }
         .sheet(isPresented: $showStationPicker) {
             StationPickerSheet(
                 selectedStation: binding(for: stationBeingEdited),
                 disabledStation: disabledStation(for: stationBeingEdited),
                 onStationSelected: { station in
-                    if isPickingOtherStation {
-                        if !otherFavorites.contains(where: { $0.code == station.code }) {
-                            otherFavorites.append(station)
+                    // Explicitly handle station assignment with proper state update
+                    DispatchQueue.main.async {
+                        switch stationBeingEdited {
+                        case .home:
+                            self.homeStation = station
+                        case .work:
+                            self.workStation = station
+                        case nil:
+                            if isPickingOtherStation {
+                                if !otherFavorites.contains(where: { $0.code == station.code }) {
+                                    otherFavorites.append(station)
+                                }
+                            }
                         }
+                        showStationPicker = false
                     }
-                    showStationPicker = false
                 }
             )
         }
@@ -360,9 +364,40 @@ struct OnboardingView: View {
     }
     
     // MARK: - Helper Functions
+    
+    private func loadExistingStationsIfNeeded() {
+        guard !hasLoadedExistingStations && isRepeating else { return }
+        
+        hasLoadedExistingStations = true
+        let ratSense = RatSenseService.shared
+        
+        // Load existing home station
+        if let homeCode = ratSense.getHomeStation(),
+           let homeName = Stations.displayName(for: homeCode) {
+            DispatchQueue.main.async {
+                self.homeStation = Station(code: homeCode, name: homeName)
+            }
+        }
+        
+        // Load existing work station
+        if let workCode = ratSense.getWorkStation(),
+           let workName = Stations.displayName(for: workCode) {
+            DispatchQueue.main.async {
+                self.workStation = Station(code: workCode, name: workName)
+            }
+        }
+    }
+    
     private func completeOnboarding() {
+        // Prevent double-taps
+        guard !isCompletingOnboarding else { return }
+        isCompletingOnboarding = true
+        
+        // Create a copy of stations to avoid mutation during iteration
+        let existingFavorites = Array(appState.favoriteStations)
+        
         // Clear existing favorites first to ensure clean state
-        for station in appState.favoriteStations {
+        for station in existingFavorites {
             let shouldKeep = (station.id == homeStation?.code) ||
                            (station.id == workStation?.code) ||
                            otherFavorites.contains(where: { $0.code == station.id })
@@ -374,20 +409,18 @@ struct OnboardingView: View {
         }
         
         // Save selected stations as favorites (using add, not toggle)
+        // Save to RatSense first to ensure persistence
         if let home = homeStation {
-            appState.addFavoriteStation(code: home.code, name: home.name)
             RatSenseService.shared.setHomeStation(home.code)
+            appState.addFavoriteStation(code: home.code, name: home.name)
         }
         if let work = workStation {
-            appState.addFavoriteStation(code: work.code, name: work.name)
             RatSenseService.shared.setWorkStation(work.code)
+            appState.addFavoriteStation(code: work.code, name: work.name)
         }
         for other in otherFavorites {
             appState.addFavoriteStation(code: other.code, name: other.name)
         }
-        
-        // Mark onboarding as complete
-        hasCompletedOnboarding = true
         
         // Force immediate synchronization of favorites
         appState.loadFavoriteStations()
@@ -395,17 +428,39 @@ struct OnboardingView: View {
         // Provide haptic feedback
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         
-        // Dismiss
-        dismiss()
+        // Mark onboarding as complete only after all data is saved
+        // Use a slight delay to ensure all state updates are processed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.hasCompletedOnboarding = true
+            self.dismiss()
+        }
     }
     
     // Helper method for cleaner binding
     private func binding(for type: StationType?) -> Binding<Station?> {
         switch type {
         case .home:
-            return $homeStation
+            return Binding(
+                get: { self.homeStation },
+                set: { newValue in
+                    // Explicitly update the state with proper transaction
+                    // @State already handles UI updates, but we ensure main queue
+                    DispatchQueue.main.async {
+                        self.homeStation = newValue
+                    }
+                }
+            )
         case .work:
-            return $workStation
+            return Binding(
+                get: { self.workStation },
+                set: { newValue in
+                    // Explicitly update the state with proper transaction
+                    // @State already handles UI updates, but we ensure main queue
+                    DispatchQueue.main.async {
+                        self.workStation = newValue
+                    }
+                }
+            )
         case nil:
             return .constant(nil)
         }
@@ -589,9 +644,11 @@ struct StationPickerSheet: View {
                     
                     Button {
                         if !isDisabled {
+                            // Update binding first
                             selectedStation = station
+                            // Then call the callback which handles dismissal
                             onStationSelected(station)
-                            dismiss()
+                            // Don't dismiss here - let the parent handle it
                         }
                     } label: {
                         HStack {
