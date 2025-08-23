@@ -207,6 +207,8 @@ struct DeparturePickerView: View {
                 TextField("Search stations or train number", text: $searchText)
                 .foregroundColor(.white)
                 .focused($searchFieldFocused)
+                .autocorrectionDisabled(true)
+                .textInputAutocapitalization(.never)
                 .onChange(of: searchText) { _, newValue in
                     withAnimation(.easeInOut(duration: 0.3)) {
                         isSearching = !newValue.isEmpty

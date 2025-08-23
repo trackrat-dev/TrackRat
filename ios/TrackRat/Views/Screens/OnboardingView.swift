@@ -579,6 +579,8 @@ struct StationPickerSheet: View {
                         .foregroundColor(.gray)
                     TextField("Search stations...", text: $searchText)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .autocorrectionDisabled(true)
+                        .textInputAutocapitalization(.never)
                 }
                 .padding()
                 
