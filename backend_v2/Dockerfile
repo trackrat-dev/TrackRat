@@ -11,30 +11,31 @@ RUN pip install --no-cache-dir poetry-plugin-export && \
     pip install --no-cache-dir poetry && \
     poetry export -f requirements.txt --output requirements.txt --without-hashes --only main
 
-# Runtime stage - using Alpine for smallest size
-FROM python:3.11-alpine AS runtime
+# Runtime stage - using Debian slim for better compatibility with ML libraries
+FROM python:3.11-slim AS runtime
 
-# Install runtime dependencies for PostgreSQL
-RUN apk add --no-cache \
-    postgresql-libs \
-    libstdc++
+# Install runtime dependencies for PostgreSQL and ML libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN adduser -D -u 1000 trackrat
+RUN useradd -m -u 1000 trackrat
 WORKDIR /app
 
 # Copy requirements from builder stage
 COPY --from=builder /build/requirements.txt .
 
 # Install build dependencies, Python packages, then remove build deps
-RUN apk add --no-cache --virtual .build-deps \
+RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc \
         g++ \
-        musl-dev \
-        postgresql-dev \
-        python3-dev && \
-    pip install --no-cache-dir -r requirements.txt && \
-    apk del .build-deps
+        libpq-dev \
+        python3-dev \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y --auto-remove gcc g++ libpq-dev python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy application code, certs, and entrypoint script
 COPY src/ ./src/
