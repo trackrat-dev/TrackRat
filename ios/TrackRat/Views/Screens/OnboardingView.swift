@@ -152,7 +152,7 @@ struct OnboardingView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                 
-                Text("Personalize your experience by\nselecting your frequently used stations")
+                Text("Help us recommend routes by\nselecting your stations")
                     .font(.body)
                     .foregroundColor(.white.opacity(0.8))
                     .multilineTextAlignment(.center)
