@@ -1,0 +1,180 @@
+station_code,track,hour_of_day,day_of_week,is_amtrak,line_code,destination,minutes_since_track_used
+TR,4,23,0,1,AM,Washington Union,-1.0
+TR,4,23,0,1,AM,Washington Union,18.0
+TR,1,23,0,1,AM,New York Penn,-1.0
+TR,1,0,1,1,AM,New York Penn,63.0
+TR,4,0,1,1,AM,Harrisburg,84.0
+TR,4,1,1,1,AM,Washington Union,23.0
+TR,4,2,1,1,AM,Philadelphia 30th Street,70.0
+TR,1,2,1,1,AM,New York Penn,106.0
+TR,4,9,1,1,AM,Roanoke,411.0
+TR,4,9,1,1,AM,Washington Union,44.0
+TR,1,10,1,1,AM,Boston South,477.0
+TR,4,10,1,1,AM,Washington Union,65.0
+TR,4,12,1,1,AM,Charlotte,66.0
+TR,4,12,1,1,AM,Washington Union,24.0
+TR,1,15,1,1,AM,Boston South,297.0
+TR,4,15,1,1,AM,Pittsburgh,198.0
+TR,4,16,1,1,AM,Washington Union,15.0
+TR,1,16,1,1,AM,New York Penn,60.0
+TR,1,16,1,1,AM,New York Penn,28.0
+TR,4,16,1,1,AM,Harrisburg,54.0
+TR,4,17,1,1,AM,Washington Union,20.0
+TR,1,17,1,1,AM,New York Penn,52.0
+TR,4,17,1,1,AM,Roanoke,31.0
+TR,4,17,1,1,AM,Harrisburg,7.0
+TR,4,18,1,1,AM,Washington Union,50.0
+TR,4,19,1,1,AM,Harrisburg,23.0
+TR,4,20,1,1,AM,Richmond Main Street,56.0
+TR,4,20,1,1,AM,Harrisburg,53.0
+TR,1,21,1,1,AM,New York Penn,229.0
+TR,4,21,1,1,AM,Washington Union,35.0
+TR,4,22,1,1,AM,Harrisburg,32.0
+TR,4,23,1,1,AM,Harrisburg,87.0
+TR,4,1,2,1,AM,Philadelphia 30th Street,147.0
+TR,4,9,2,1,AM,Roanoke,433.0
+TR,4,9,2,1,AM,Washington Union,44.0
+TR,1,10,2,1,AM,Boston South,774.0
+TR,4,10,2,1,AM,Savannah,65.0
+TR,4,12,2,1,AM,Charlotte,66.0
+TR,4,12,2,1,AM,Washington Union,24.0
+TR,2,13,2,0,No,New York -SEC &#9992,2264.0
+TR,2,14,2,0,No,New York -SEC &#9992,25.0
+TR,4,14,2,1,AM,Washington Union,117.0
+TR,2,15,2,0,No,New York -SEC &#9992,75.0
+TR,4,15,2,1,AM,Pittsburgh,81.0
+TR,2,15,2,0,No,New York -SEC &#9992,24.0
+TR,4,16,2,1,AM,Washington Union,15.0
+TR,1,16,2,1,AM,New York Penn,357.0
+TR,2,16,2,0,NE,New York,29.0
+TR,4,16,2,1,AM,Harrisburg,54.0
+TR,5,16,2,0,Se,Philadelphia,2395.0
+TR,1,17,2,0,No,New York -SEC &#9992,51.0
+TR,4,17,2,1,AM,Washington Union,20.0
+TR,2,17,2,0,No,New York -SEC &#9992,83.0
+TR,4,17,2,1,AM,Harrisburg,38.0
+TR,1,18,2,0,No,New York -SEC &#9992,63.0
+TR,4,18,2,1,AM,Washington Union,50.0
+TR,4,19,2,1,AM,Harrisburg,23.0
+TR,4,19,2,1,AM,Harrisburg,33.0
+TR,2,20,2,0,No,New York -SEC,177.0
+TR,4,20,2,1,AM,Harrisburg,76.0
+TR,4,21,2,1,AM,Washington Union,35.0
+TR,4,22,2,1,AM,Harrisburg,32.0
+TR,4,23,2,1,AM,Harrisburg,87.0
+TR,4,1,3,1,AM,Philadelphia 30th Street,147.0
+TR,2,3,3,0,No,New York,402.0
+TR,5,4,3,0,Se,Philadelphia,663.0
+TR,4,9,3,1,AM,Roanoke,433.0
+TR,4,9,3,1,AM,Washington Union,44.0
+TR,1,10,3,1,AM,Boston South,969.0
+TR,4,10,3,1,AM,Savannah,65.0
+TR,2,11,3,0,NE,New York,503.0
+TR,4,12,3,1,AM,Charlotte,66.0
+TR,4,12,3,1,AM,Washington Union,24.0
+TR,2,13,3,0,No,New York,95.0
+TR,2,13,3,0,No,New York -SEC &#9992,27.0
+TR,2,14,3,0,No,New York -SEC &#9992,25.0
+TR,4,14,3,1,AM,Washington Union,117.0
+TR,2,15,3,0,No,New York -SEC &#9992,75.0
+TR,4,15,3,1,AM,Pittsburgh,81.0
+TR,2,15,3,0,No,New York -SEC &#9992,24.0
+TR,4,16,3,1,AM,Washington Union,15.0
+TR,1,16,3,1,AM,New York Penn,357.0
+TR,2,16,3,0,NE,New York -SEC &#9992,29.0
+TR,1,16,3,1,AM,New York Penn,28.0
+TR,2,16,3,0,No,New York -SEC &#9992,29.0
+TR,4,16,3,1,AM,Harrisburg,54.0
+TR,1,17,3,1,AM,Boston South,17.0
+TR,1,17,3,0,No,New York -SEC &#9992,6.0
+TR,4,17,3,1,AM,Washington Union,20.0
+TR,2,17,3,0,No,New York -SEC &#9992,54.0
+TR,4,17,3,1,AM,Roanoke,31.0
+TR,4,17,3,1,AM,Harrisburg,7.0
+TR,1,18,3,0,No,New York -SEC &#9992,63.0
+TR,4,18,3,1,AM,Washington Union,50.0
+TR,2,18,3,0,No,New York,75.0
+TR,4,19,3,1,AM,Harrisburg,23.0
+TR,5,19,3,0,Se,Philadelphia,912.0
+TR,4,19,3,1,AM,Miami,28.0
+TR,2,19,3,0,No,New York,37.0
+TR,4,19,3,1,AM,Harrisburg,5.0
+TR,2,20,3,0,No,New York,65.0
+TR,4,20,3,1,AM,Harrisburg,76.0
+TR,5,21,3,0,Se,Philadelphia,111.0
+TR,4,21,3,1,AM,Washington Union,35.0
+TR,4,22,3,1,AM,Harrisburg,32.0
+TR,1,22,3,0,No,New York,274.0
+TR,5,22,3,0,Se,Philadelphia,114.0
+TR,4,23,3,1,AM,Harrisburg,87.0
+TR,5,23,3,0,Se,Philadelphia,31.0
+TR,2,23,3,0,No,New York,195.0
+TR,5,0,4,0,Se,Philadelphia,30.0
+TR,4,1,4,1,AM,Philadelphia 30th Street,147.0
+TR,2,2,4,0,No,New York,128.0
+TR,1,4,4,0,No,New York,316.0
+TR,2,4,4,0,No,New York -SEC &#9992,155.0
+TR,1,5,4,0,No,Newark Penn &#9992,69.0
+TR,2,7,4,0,No,New York -SEC &#9992,188.0
+TR,5,9,4,0,Se,North Phil,540.0
+TR,1,9,4,0,No,New York,235.0
+TR,4,9,4,1,AM,Roanoke,433.0
+TR,1,9,4,0,No,Penn Station New York,28.0
+TR,2,9,4,0,No,Penn Station New York,118.0
+TR,5,9,4,0,Se,North Phil,45.0
+TR,4,9,4,1,AM,Washington Union,44.0
+TR,1,10,4,0,No,Penn Station New York,31.0
+TR,1,10,4,1,AM,Boston South,16.0
+TR,4,10,4,1,AM,Savannah,65.0
+TR,5,11,4,0,Se,North Phil,76.0
+TR,2,11,4,0,No,New York,98.0
+TR,1,11,4,0,No,New York,72.0
+TR,2,11,4,0,No,New York,23.0
+TR,5,11,4,0,Se,North Phil,45.0
+TR,4,12,4,1,AM,Charlotte,66.0
+TR,1,12,4,0,NE,New York,33.0
+TR,1,12,4,0,No,New York -SEC,20.0
+TR,4,12,4,1,AM,Washington Union,24.0
+TR,2,12,4,0,No,New York -SEC &#9992,68.0
+TR,2,13,4,0,No,New York,27.0
+TR,5,13,4,0,Se,Philadelphia,133.0
+TR,2,14,4,0,No,New York -SEC &#9992,52.0
+TR,4,14,4,1,AM,Washington Union,117.0
+TR,2,14,4,0,No,New York,28.0
+TR,2,15,4,0,No,New York,47.0
+TR,4,15,4,1,AM,Pittsburgh,81.0
+TR,5,15,4,0,Se,Philadelphia,112.0
+TR,4,16,4,1,AM,Washington Union,15.0
+TR,1,16,4,1,AM,New York Penn,232.0
+TR,2,16,4,0,No,New York,53.0
+TR,2,16,4,0,No,New York,29.0
+TR,4,16,4,1,AM,Harrisburg,54.0
+TR,4,17,4,1,AM,Washington Union,20.0
+TR,2,17,4,0,No,New York -SEC &#9992,54.0
+TR,4,17,4,1,AM,Harrisburg,38.0
+TR,1,18,4,0,No,New York -SEC &#9992,114.0
+TR,4,18,4,1,AM,Washington Union,50.0
+TR,2,18,4,0,No,New York -SEC &#9992,75.0
+TR,4,19,4,1,AM,New Orleans,18.0
+TR,4,19,4,1,AM,Harrisburg,5.0
+TR,1,19,4,0,No,New York -SEC &#9992,57.0
+TR,5,19,4,0,Se,Philadelphia,203.0
+TR,4,19,4,1,AM,Miami,28.0
+TR,2,19,4,0,No,New York,37.0
+TR,4,19,4,1,AM,Harrisburg,5.0
+TR,2,20,4,0,No,New York,65.0
+TR,4,20,4,1,AM,Harrisburg,76.0
+TR,1,21,4,0,No,New York,113.0
+TR,5,21,4,0,Se,Philadelphia,111.0
+TR,1,21,4,1,AM,New York Penn,25.0
+TR,4,21,4,1,AM,Washington Union,35.0
+TR,5,21,4,0,Se,Philadelphia,51.0
+TR,4,22,4,1,AM,Harrisburg,32.0
+TR,2,22,4,0,No,New York &#9992,110.0
+TR,1,22,4,0,No,New York -SEC &#9992,79.0
+TR,5,22,4,0,Se,Philadelphia,63.0
+TR,2,23,4,0,No,New York -SEC &#9992,44.0
+TR,4,23,4,1,AM,Harrisburg,87.0
+TR,5,23,4,0,Se,Philadelphia,31.0
+TR,4,23,4,1,AM,Washington Union,9.0
+TR,5,0,5,0,Se,Philadelphia,30.0

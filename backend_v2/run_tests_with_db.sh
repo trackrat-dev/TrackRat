@@ -4,6 +4,7 @@
 # Starts a test PostgreSQL container and runs all code quality checks and tests
 #
 
+set -x
 set -e  # Exit on any error
 
 # Test database configuration

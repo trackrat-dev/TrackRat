@@ -1,21 +1,35 @@
 #!/usr/bin/env python3
 """
-Export training data for NY Penn Station track predictions.
+Export training data for track predictions across multiple stations.
 
 This script extracts historical track assignments and features from the database
-to create a CSV file for training a machine learning model.
+to create CSV files for training machine learning models.
 
-Output: data/ny_penn_track_training_data.csv
+Usage:
+    python export_track_training_data.py          # Export for all eligible stations
+    python export_track_training_data.py NY       # Export for specific station
+    python export_track_training_data.py NP TR    # Export for multiple stations
+
+Output: data/{station_code}_track_training_data.csv
 """
 
 import asyncio
 import csv
 import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import asyncpg
 from dotenv import load_dotenv
+
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from trackrat.config.station_configs import (
+    get_station_config,
+    get_ml_enabled_stations,
+)
 
 # Load environment variables
 load_dotenv()
@@ -45,14 +59,38 @@ async def get_database_connection():
         )
 
 
-async def export_training_data():
-    """Export track prediction training data for NY Penn Station."""
+async def export_training_data_for_station(conn, station_code: str):
+    """Export track prediction training data for a specific station."""
     
-    conn = await get_database_connection()
-    print("Connected to database")
+    config = get_station_config(station_code)
+    
+    # Check if station has ML enabled
+    if not config["ml_enabled"]:
+        print(f"Skipping {station_code}: ML not enabled")
+        return False
+    
+    # First check if station has enough data
+    count_query = """
+        SELECT COUNT(*) as count
+        FROM journey_stops js
+        JOIN train_journeys tj ON js.journey_id = tj.id
+        WHERE js.station_code = $1
+          AND js.track IS NOT NULL
+          AND js.track != ''
+          AND tj.is_expired = false
+          AND tj.is_cancelled = false
+    """
+    
+    result = await conn.fetchrow(count_query, station_code)
+    record_count = result['count']
+    
+    if record_count < config['min_samples_required']:
+        print(f"Skipping {station_code}: only {record_count} samples (minimum {config['min_samples_required']} required)")
+        return False
+    
+    print(f"\nExporting data for {station_code} ({record_count} samples available)")
     
     # Query to extract training data for track-level prediction
-    # Each row is a historical track assignment with features (target: track)
     query = """
     WITH track_usage AS (
         -- Calculate time since each track was last used
@@ -65,7 +103,7 @@ async def export_training_data():
                 ORDER BY js.scheduled_departure
             ) as prev_track_use_time
         FROM journey_stops js
-        WHERE js.station_code = 'NY'
+        WHERE js.station_code = $1
           AND js.track IS NOT NULL
           AND js.track != ''
           AND js.scheduled_departure >= NOW() - INTERVAL '90 days'
@@ -94,7 +132,7 @@ async def export_training_data():
         js.station_code = tu.station_code 
         AND js.track = tu.track 
         AND js.scheduled_departure = tu.scheduled_departure
-    WHERE js.station_code = 'NY'
+    WHERE js.station_code = $1
       AND js.track IS NOT NULL
       AND js.track != ''
       -- Use last 60 days for training (keeping 30 days for testing)
@@ -105,16 +143,17 @@ async def export_training_data():
     ORDER BY js.scheduled_departure
     """
     
-    print("Executing query...")
-    rows = await conn.fetch(query)
-    print(f"Found {len(rows)} training samples")
+    rows = await conn.fetch(query, station_code)
+    print(f"  Found {len(rows)} training samples")
     
-    # Create training data with 6 features (track-level prediction)
-    print("Processing training data...")
+    if len(rows) < config['min_samples_required']:
+        print(f"  Not enough training samples after filtering")
+        return False
+    
+    # Create training data
     training_data = []
     
     for row in rows:
-        # Create feature row with 6 features (no platform features)
         feature_row = {
             'station_code': row['station_code'],
             'track': row['track'],
@@ -133,10 +172,9 @@ async def export_training_data():
     output_dir.mkdir(exist_ok=True)
     
     # Write to CSV
-    output_file = output_dir / "ny_penn_track_training_data.csv"
+    output_file = output_dir / f"{station_code.lower()}_track_training_data.csv"
     
     with open(output_file, 'w', newline='') as csvfile:
-        # Define field names with 6 core features (track-level prediction)
         fieldnames = [
             'station_code', 'track', 'hour_of_day', 'day_of_week', 
             'is_amtrak', 'line_code', 'destination', 'minutes_since_track_used'
@@ -148,55 +186,68 @@ async def export_training_data():
         for feature_row in training_data:
             writer.writerow(feature_row)
     
-    print(f"Training data exported to {output_file}")
+    print(f"  Exported to {output_file}")
     
-    # Print some basic statistics
-    print("\n=== Data Statistics ===")
-    
-    # Track distribution (what we're now predicting)
+    # Print basic statistics
     track_counts = {}
     for feature_row in training_data:
         track = feature_row['track']
         track_counts[track] = track_counts.get(track, 0) + 1
     
-    print("\nTrack distribution (prediction target):")
-    for track in sorted(track_counts.keys(), key=lambda x: int(x) if x.isdigit() else 999):
-        count = track_counts[track]
-        percentage = (count / len(training_data)) * 100
-        print(f"  Track {track}: {count} samples ({percentage:.1f}%)")
+    # Sort tracks properly (numeric first, then alphabetic)
+    sorted_tracks = sorted(track_counts.keys(), 
+                          key=lambda x: (not x.isdigit(), int(x) if x.isdigit() else x))
     
-    # Hour distribution
-    hour_counts = {}
-    for feature_row in training_data:
-        hour = feature_row['hour_of_day']
-        hour_counts[hour] = hour_counts.get(hour, 0) + 1
+    print(f"  Track distribution: {', '.join(f'{t}:{track_counts[t]}' for t in sorted_tracks)}")
     
-    print("\nHour of day distribution:")
-    for hour in sorted(hour_counts.keys()):
-        count = hour_counts[hour]
-        print(f"  Hour {hour:02d}: {count} samples")
+    return True
+
+
+async def export_training_data(station_codes: list[str] = None):
+    """Export track prediction training data for specified stations or all eligible ones."""
     
-    # Line distribution
-    line_counts = {}
-    for feature_row in training_data:
-        line = feature_row['line_code']
-        line_counts[line] = line_counts.get(line, 0) + 1
+    conn = await get_database_connection()
+    print("Connected to database")
     
-    print("\nLine distribution:")
-    for line in sorted(line_counts.keys()):
-        count = line_counts[line]
-        percentage = (count / len(training_data)) * 100
-        print(f"  Line {line}: {count} samples ({percentage:.1f}%)")
+    # Determine which stations to export
+    if station_codes:
+        stations = station_codes
+        print(f"Exporting data for specified stations: {', '.join(stations)}")
+    else:
+        stations = get_ml_enabled_stations()
+        print(f"Exporting data for all {len(stations)} ML-enabled stations")
     
-    # Feature completeness statistics
-    print("\nFeature completeness:")
-    track_time_available = sum(1 for row in training_data if row['minutes_since_track_used'] != -1)
+    # Export data for each station
+    successful_exports = []
+    failed_exports = []
     
-    print(f"  Track usage times available: {track_time_available}/{len(training_data)} samples ({track_time_available/len(training_data)*100:.1f}%)")
+    for station_code in stations:
+        try:
+            success = await export_training_data_for_station(conn, station_code)
+            if success:
+                successful_exports.append(station_code)
+            else:
+                failed_exports.append(station_code)
+        except Exception as e:
+            print(f"Error exporting data for {station_code}: {e}")
+            failed_exports.append(station_code)
     
     await conn.close()
+    
+    # Print summary
+    print("\n=== Export Summary ===")
+    print(f"Successfully exported: {len(successful_exports)} stations")
+    if successful_exports:
+        print(f"  Stations: {', '.join(successful_exports)}")
+    
+    if failed_exports:
+        print(f"Failed/Skipped: {len(failed_exports)} stations")
+        print(f"  Stations: {', '.join(failed_exports)}")
+    
     print("\nExport complete!")
 
 
 if __name__ == "__main__":
-    asyncio.run(export_training_data())
+    # Get station codes from command line arguments
+    station_codes = sys.argv[1:] if len(sys.argv) > 1 else None
+    asyncio.run(export_training_data(station_codes))

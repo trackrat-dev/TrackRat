@@ -11,7 +11,10 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.config.platform_mappings import get_platform_for_track
+from trackrat.config.station_configs import (
+    get_platform_for_track,
+    get_tracks_for_station,
+)
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import ensure_timezone_aware
 
@@ -334,33 +337,11 @@ class TrackPredictionFeatures:
         result = await db.execute(stmt)
         occupied_tracks = {row.track for row in result}
 
-        # Create binary flags for NY Penn tracks (all possible tracks)
+        # Create binary flags for all tracks at this station
         track_flags = {}
-        ny_tracks = [
-            "1",
-            "2",
-            "3",
-            "4",
-            "5",
-            "6",
-            "7",
-            "8",
-            "9",
-            "10",
-            "11",
-            "12",
-            "13",
-            "14",
-            "15",
-            "16",
-            "17",
-            "18",
-            "19",
-            "20",
-            "21",
-        ]
+        station_tracks = get_tracks_for_station(station_code)
 
-        for track in ny_tracks:
+        for track in station_tracks:
             track_flags[f"is_track_{track}_occupied"] = (
                 1 if track in occupied_tracks else 0
             )
@@ -374,7 +355,7 @@ class TrackPredictionFeatures:
             window_end=window_end,
             occupied_tracks=sorted(occupied_tracks),
             occupied_count=occupied_count,
-            total_tracks=len(ny_tracks),
+            total_tracks=len(station_tracks),
         )
 
         return track_flags

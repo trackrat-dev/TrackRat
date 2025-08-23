@@ -13,6 +13,12 @@ import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
+from trackrat.config.station_configs import (
+    get_platform_for_track,
+    get_station_config,
+    station_has_ml_predictions,
+)
+
 logger = get_logger()
 
 
@@ -49,15 +55,16 @@ class TrackPredictor:
             True if model loaded successfully, False otherwise
         """
 
+        # Check if station has ML enabled
+        if not station_has_ml_predictions(station_code):
+            logger.info("ml_not_enabled_for_station", station_code=station_code)
+            return False
+
         # Model file paths
         base_path = Path("ml/models")
 
-        # Map station codes to model file prefixes
-        model_prefix = {"NY": "ny"}.get(station_code)
-
-        if not model_prefix:
-            logger.warning("no_model_for_station", station_code=station_code)
-            return False
+        # Use lowercase station code for file names
+        model_prefix = station_code.lower()
 
         try:
             # Load model
@@ -390,59 +397,23 @@ class TrackPredictor:
 
     def _get_platform_for_track(self, station_code: str, track: str) -> str:
         """Get platform name for a given track number."""
-        if station_code != "NY":
-            # For non-NY stations, platform equals track
-            return track
-
-        # NY Penn Station track-to-platform mappings
-        track_to_platform = {
-            "1": "1 & 2",
-            "2": "1 & 2",
-            "3": "3 & 4",
-            "4": "3 & 4",
-            "5": "5 & 6",
-            "6": "5 & 6",
-            "7": "7 & 8",
-            "8": "7 & 8",
-            "9": "9 & 10",
-            "10": "9 & 10",
-            "11": "11 & 12",
-            "12": "11 & 12",
-            "13": "13 & 14",
-            "14": "13 & 14",
-            "15": "15 & 16",
-            "16": "15 & 16",
-            "17": "17",
-            "18": "18 & 19",
-            "19": "18 & 19",
-            "20": "20 & 21",
-            "21": "20 & 21",
-        }
-
-        return track_to_platform.get(track, track)
+        # Use centralized configuration
+        return get_platform_for_track(station_code, track)
 
     def _get_tracks_for_platform(self, station_code: str, platform: str) -> list[str]:
         """Get track numbers for a given platform."""
-        if station_code != "NY":
-            # For non-NY stations, platform equals track
+        config = get_station_config(station_code)
+
+        if config["platform_mappings"]:
+            # Station has platform mappings - find tracks for this platform
+            tracks = []
+            for track, plat in config["platform_mappings"].items():
+                if plat == platform:
+                    tracks.append(track)
+            return tracks if tracks else [platform]
+        else:
+            # No platform mappings - platform is a single track
             return [platform]
-
-        # NY Penn Station platform mappings
-        platform_to_tracks = {
-            "1 & 2": ["1", "2"],
-            "3 & 4": ["3", "4"],
-            "5 & 6": ["5", "6"],
-            "7 & 8": ["7", "8"],
-            "9 & 10": ["9", "10"],
-            "11 & 12": ["11", "12"],
-            "13 & 14": ["13", "14"],
-            "15 & 16": ["15", "16"],
-            "17": ["17"],
-            "18 & 19": ["18", "19"],
-            "20 & 21": ["20", "21"],
-        }
-
-        return platform_to_tracks.get(platform, [platform])
 
 
 # Global instance

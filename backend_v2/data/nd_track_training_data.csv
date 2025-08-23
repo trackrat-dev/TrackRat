@@ -1,0 +1,161 @@
+station_code,track,hour_of_day,day_of_week,is_amtrak,line_code,destination,minutes_since_track_used
+ND,2,15,2,0,Gl,Hoboken,-1.0
+ND,2,16,2,0,Gl,Hoboken,53.2
+ND,3,17,2,0,Mo,MSU -SEC,-1.0
+ND,3,18,2,0,Mo,Dover -SEC,21.5
+ND,3,18,2,0,Mo,Dover -SEC,40.5
+ND,3,19,2,0,Mo,MSU -SEC,19.5
+ND,3,21,2,0,Mo,MSU,119.0
+ND,3,21,2,0,Mo,Summit,43.0
+ND,1,21,2,0,Mo,Dover -SEC,-1.0
+ND,3,22,2,0,Mo,MSU,37.0
+ND,1,22,2,0,Mo,Dover -SEC,45.0
+ND,3,23,2,0,Mo,MSU -SEC,31.5
+ND,1,23,2,0,Mo,Dover,29.0
+ND,3,23,2,0,Mo,Hackettstown,37.5
+ND,3,0,3,0,Mo,MSU -SEC,75.5
+ND,3,1,3,0,Mo,MSU -SEC,57.5
+ND,3,2,3,0,Mo,Dover -SEC,40.5
+ND,2,10,3,0,Mo,Hoboken,1109.0
+ND,2,11,3,0,Mo,New York,36.2
+ND,3,11,3,0,Mo,Summit,559.0
+ND,1,12,3,0,Mo,Hoboken,767.0
+ND,2,12,3,0,Gl,Hoboken,51.0
+ND,3,12,3,0,Mo,Dover,29.0
+ND,2,12,3,0,Mo,Hoboken,12.5
+ND,3,12,3,0,Mo,MSU,12.0
+ND,2,12,3,0,Mo,New York,15.5
+ND,2,12,3,0,Mo,Hoboken,7.0
+ND,3,12,3,0,Mo,Summit,14.5
+ND,2,13,3,0,Mo,New York,23.5
+ND,3,13,3,0,Mo,MSU -SEC,40.0
+ND,2,13,3,0,Mo,Hoboken,23.0
+ND,3,13,3,0,Mo,Summit -SEC,13.0
+ND,1,13,3,0,Gl,Hoboken,115.0
+ND,3,13,3,0,Gl,Gladstone,15.5
+ND,3,14,3,0,Mo,MSU -SEC,8.0
+ND,3,14,3,0,Mo,Dover,20.0
+ND,3,14,3,0,Mo,MSU -SEC,26.0
+ND,2,14,3,0,Mo,New York -SEC,85.0
+ND,3,14,3,0,Gl,Gladstone,6.0
+ND,3,15,3,0,ME,Dover,10.0
+ND,2,15,3,0,Gl,Hoboken,24.0
+ND,3,15,3,0,Mo,MSU -SEC,44.0
+ND,3,15,3,0,Gl,Gladstone,6.0
+ND,2,15,3,0,Mo,New York -SEC,37.5
+ND,3,16,3,0,Mo,Dover -SEC,10.0
+ND,2,16,3,0,Gl,Hoboken,15.8
+ND,2,16,3,0,Mo,New York,6.2
+ND,3,16,3,0,Mo,MSU -SEC,44.0
+ND,3,16,3,0,Gl,Gladstone,6.0
+ND,2,17,3,0,Mo,New York -SEC,45.0
+ND,3,17,3,0,Mo,Dover -SEC,11.0
+ND,2,17,3,0,Gl,Hoboken,8.8
+ND,3,17,3,0,Mo,MSU -SEC,43.0
+ND,3,17,3,0,Gl,Gladstone,6.0
+ND,3,18,3,0,Mo,Dover -SEC,15.5
+ND,3,18,3,0,Mo,Dover,5.8
+ND,1,18,3,0,Mo,Hackettstown,290.5
+ND,3,18,3,0,Mo,Dover -SEC,34.8
+ND,3,18,3,0,Gl,Gladstone,8.0
+ND,2,19,3,0,Mo,New York,111.2
+ND,3,19,3,0,Mo,MSU -SEC,11.5
+ND,2,19,3,0,Gl,Hoboken,8.8
+ND,2,19,3,0,Mo,New York,5.2
+ND,3,19,3,0,Mo,Summit,28.0
+ND,1,19,3,0,Mo,Dover,57.0
+ND,2,19,3,0,Mo,New York -SEC,29.0
+ND,1,19,3,0,Mo,Summit,4.5
+ND,3,20,3,0,Mo,MSU -SEC,28.5
+ND,3,20,3,0,Mo,Summit,16.5
+ND,3,21,3,0,Mo,Summit,37.5
+ND,1,21,3,0,Mo,Dover -SEC,79.0
+ND,3,21,3,0,Mo,MSU,8.5
+ND,2,21,3,0,Gl,Hoboken,90.8
+ND,3,21,3,0,Mo,Dover,8.5
+ND,1,21,3,0,Gl,Gladstone,16.5
+ND,3,21,3,0,Mo,Mount Olive,10.0
+ND,2,21,3,0,Mo,Hoboken,11.2
+ND,1,21,3,0,Mo,Dover,8.5
+ND,3,21,3,0,Mo,MSU,11.0
+ND,1,21,3,0,Mo,Lake Hopatcong,13.0
+ND,3,21,3,0,Mo,Summit,13.5
+ND,1,21,3,0,Mo,Dover -SEC,15.0
+ND,3,22,3,0,Mo,Dover,14.0
+ND,2,22,3,0,Mo,New York,54.5
+ND,3,22,3,0,Mo,MSU,23.0
+ND,3,23,3,0,Mo,MSU,31.5
+ND,3,23,3,0,Mo,Summit,8.0
+ND,3,23,3,0,Mo,Hackettstown,29.5
+ND,2,0,4,0,Mo,Hoboken,97.5
+ND,2,0,4,0,Mo,New York,35.0
+ND,2,1,4,0,Mo,New York,24.0
+ND,2,1,4,0,Mo,New York,44.0
+ND,3,1,4,0,Mo,MSU,133.0
+ND,2,2,4,0,Mo,New York,52.5
+ND,2,2,4,0,Mo,New York,16.5
+ND,2,3,4,0,Mo,Hoboken,43.5
+ND,2,3,4,0,Mo,New York,4.0
+ND,2,4,4,0,Gl,Hoboken,22.2
+ND,2,10,4,0,Mo,New York,363.2
+ND,2,10,4,0,Mo,Hoboken,35.8
+ND,2,10,4,0,Mo,Hoboken,13.0
+ND,3,11,4,0,Mo,Summit,549.5
+ND,3,11,4,0,Mo,MSU,8.0
+ND,1,11,4,0,Mo,New York,794.0
+ND,2,11,4,0,Mo,Hoboken,31.0
+ND,2,11,4,0,Mo,New York,15.8
+ND,3,11,4,0,Mo,Summit,42.0
+ND,1,12,4,0,Mo,Hoboken,47.0
+ND,2,12,4,0,Gl,Hoboken,27.5
+ND,3,12,4,0,Gl,Gladstone,20.5
+ND,3,12,4,0,Mo,Dover,8.5
+ND,3,12,4,0,Mo,MSU,12.0
+ND,2,12,4,0,Mo,New York,28.0
+ND,2,12,4,0,Mo,Hoboken,7.0
+ND,3,12,4,0,Mo,Summit,14.5
+ND,3,13,4,0,Gl,Gladstone,24.0
+ND,3,13,4,0,Mo,Hackettstown,20.5
+ND,3,13,4,0,Gl,Gladstone,24.0
+ND,3,14,4,0,Mo,MSU -SEC,8.0
+ND,2,14,4,0,Mo,Hoboken,88.2
+ND,3,14,4,0,Mo,Dover -SEC,20.0
+ND,3,14,4,0,Mo,MSU -SEC,26.0
+ND,3,15,4,0,Mo,Dover -SEC,16.0
+ND,3,15,4,0,Mo,MSU -SEC,44.0
+ND,3,15,4,0,Gl,Gladstone,6.0
+ND,3,16,4,0,Mo,Dover -SEC,10.0
+ND,2,16,4,0,Mo,New York,126.8
+ND,3,16,4,0,Mo,MSU -SEC,44.0
+ND,3,16,4,0,Gl,Gladstone,6.0
+ND,3,17,4,0,Mo,Dover -SEC,11.0
+ND,2,17,4,0,Mo,New York,60.0
+ND,3,17,4,0,Mo,MSU,43.0
+ND,2,18,4,0,Gl,Hoboken,53.8
+ND,3,18,4,0,Mo,Dover,27.2
+ND,3,18,4,0,Gl,Gladstone,42.8
+ND,1,19,4,0,Mo,Dover,462.5
+ND,1,19,4,0,Mo,Summit,4.5
+ND,3,19,4,0,Mo,Denville,51.5
+ND,3,20,4,0,Mo,MSU -SEC,16.5
+ND,3,20,4,0,Mo,Summit,16.5
+ND,2,20,4,0,Mo,New York,136.2
+ND,1,20,4,0,Mo,Dover,45.5
+ND,1,20,4,0,Gl,Gladstone,12.0
+ND,1,20,4,0,Mo,Dover,7.5
+ND,2,21,4,0,Mo,Hoboken,33.2
+ND,2,21,4,0,Mo,New York,5.8
+ND,3,21,4,0,Mo,MSU,46.0
+ND,2,21,4,0,Gl,Hoboken,9.8
+ND,2,21,4,0,Mo,Hoboken,11.2
+ND,2,22,4,0,Gl,Hoboken,39.0
+ND,3,22,4,0,Mo,Hackettstown,67.5
+ND,1,22,4,0,Gl,Gladstone,87.5
+ND,2,22,4,0,Mo,New York,15.5
+ND,1,22,4,0,Mo,Dover -SEC,24.5
+ND,3,23,4,0,Mo,MSU -SEC,44.0
+ND,3,23,4,0,Mo,Summit -SEC,8.0
+ND,1,23,4,0,Mo,Dover -SEC,29.0
+ND,3,23,4,0,Mo,Summit -SEC,24.5
+ND,1,23,4,0,Mo,Dover -SEC,29.5
+ND,3,23,4,0,Mo,MSU -SEC,22.5

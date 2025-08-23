@@ -13,6 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
+from trackrat.config.station_configs import (
+    STATION_ML_CONFIGS,
+    get_platform_for_track,
+    get_station_config,
+    get_tracks_for_station,
+    station_has_ml_predictions,
+)
 from trackrat.db.engine import get_db
 from trackrat.services.ml_features import TrackPredictionFeatures
 from trackrat.services.ml_predictor import track_predictor
@@ -35,6 +42,22 @@ class TrackPredictionResponse(BaseModel):
     features_used: dict[str, Any] | None = None
 
 
+class StationMLSupport(BaseModel):
+    """Information about ML prediction support for a station."""
+
+    code: str
+    name: str
+    ml_predictions_available: bool
+    track_count: int | None = None
+
+
+class SupportedStationsResponse(BaseModel):
+    """Response model for supported stations endpoint."""
+
+    stations: list[StationMLSupport]
+    total_ml_enabled: int
+
+
 @router.get("/track", response_model=TrackPredictionResponse)
 @handle_errors
 async def predict_track(
@@ -46,11 +69,11 @@ async def predict_track(
     """
     Get ML-based platform prediction for a train at a station.
 
-    Currently only supports NY Penn Station (station_code='NY').
+    Supports all stations with ML predictions enabled.
     Falls back to uniform distribution if model is unavailable.
 
     Args:
-        station_code: Station code (currently only 'NY' supported)
+        station_code: Station code (e.g., 'NY', 'NP', 'TR')
         train_id: Train identifier
         journey_date: Date of the journey
 
@@ -65,11 +88,11 @@ async def predict_track(
         journey_date=journey_date,
     )
 
-    # Currently only support NY Penn Station
-    if station_code != "NY":
+    # Check if station supports ML predictions
+    if not station_has_ml_predictions(station_code):
         raise HTTPException(
             status_code=400,
-            detail=f"Platform predictions not available for station {station_code}. Only 'NY' is currently supported.",
+            detail=f"Platform predictions not available for station {station_code}",
         )
 
     # Extract features
@@ -107,20 +130,23 @@ async def predict_track(
             reason="ml_model_failed",
         )
 
-        # Default platforms for NY Penn
-        default_platforms = [
-            "1 & 2",
-            "3 & 4",
-            "5 & 6",
-            "7 & 8",
-            "9 & 10",
-            "11 & 12",
-            "13 & 14",
-            "15 & 16",
-            "17",
-            "18 & 19",
-            "20 & 21",
-        ]
+        # Get station-specific default platforms
+        config = get_station_config(station_code)
+        tracks = config.get("tracks", [])
+
+        # Convert tracks to platforms
+        default_platforms = []
+        seen_platforms = set()
+        for track in tracks:
+            platform = get_platform_for_track(station_code, track)
+            if platform not in seen_platforms:
+                default_platforms.append(platform)
+                seen_platforms.add(platform)
+
+        if not default_platforms:
+            # Shouldn't happen but fallback to single platform
+            default_platforms = ["1"]
+
         uniform_prob = 1.0 / len(default_platforms)
 
         logger.info(
@@ -131,13 +157,18 @@ async def predict_track(
             platforms_count=len(default_platforms),
         )
 
+        # Pick reasonable defaults for top 3
+        top_3 = (
+            default_platforms[:3] if len(default_platforms) >= 3 else default_platforms
+        )
+
         return TrackPredictionResponse(
             platform_probabilities={
                 platform: uniform_prob for platform in default_platforms
             },
-            primary_prediction="7 & 8",  # Most common platform
+            primary_prediction=default_platforms[0],
             confidence=uniform_prob,
-            top_3=["7 & 8", "9 & 10", "11 & 12"],
+            top_3=top_3,
             model_version="fallback",
             station_code=station_code,
             train_id=train_id,
@@ -174,4 +205,65 @@ async def predict_track(
         station_code=station_code,
         train_id=train_id,
         features_used=prediction.get("features_used"),
+    )
+
+
+@router.get("/supported-stations", response_model=SupportedStationsResponse)
+@handle_errors
+async def get_supported_stations() -> SupportedStationsResponse:
+    """
+    Get list of stations that support ML track predictions.
+
+    Returns information about which stations have ML predictions available,
+    allowing clients to show/hide prediction features appropriately.
+    """
+
+    # Station name mappings
+    STATION_NAMES = {
+        "NY": "New York Penn",
+        "NP": "Newark Penn",
+        "ND": "Newark Broad",
+        "HB": "Hoboken",
+        "MP": "Metropark",
+        "ST": "Secaucus",
+        "TR": "Trenton",
+        "PH": "Philadelphia",
+        "DV": "Dover",
+        "DN": "Denville",
+        "PL": "Plainfield",
+        "LB": "Long Branch",
+        "JA": "Jamaica",
+    }
+
+    stations = []
+    ml_enabled_count = 0
+
+    for code, config in STATION_ML_CONFIGS.items():
+        if code == "_default":
+            continue
+
+        ml_enabled = config.get("ml_enabled", False)
+        if ml_enabled:
+            ml_enabled_count += 1
+
+        stations.append(
+            StationMLSupport(
+                code=code,
+                name=STATION_NAMES.get(code, code),
+                ml_predictions_available=ml_enabled,
+                track_count=len(get_tracks_for_station(code)) if ml_enabled else None,
+            )
+        )
+
+    # Sort by station code
+    stations.sort(key=lambda x: x.code)
+
+    logger.info(
+        "supported_stations_requested",
+        total_stations=len(stations),
+        ml_enabled=ml_enabled_count,
+    )
+
+    return SupportedStationsResponse(
+        stations=stations, total_ml_enabled=ml_enabled_count
     )

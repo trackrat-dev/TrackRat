@@ -3,59 +3,19 @@ Platform groupings for train stations.
 
 These mappings define which tracks belong to the same platform,
 used for calculating platform-level usage patterns in track predictions.
+
+This module now delegates to station_configs.py for centralized configuration.
 """
 
-# NY Penn Station platform groupings
-# Based on physical platform layout where tracks share a platform
-NY_PENN_PLATFORMS = {
-    "1": "1 & 2",
-    "2": "1 & 2",
-    "3": "3 & 4",
-    "4": "3 & 4",
-    "5": "5 & 6",
-    "6": "5 & 6",
-    "7": "7 & 8",
-    "8": "7 & 8",
-    "9": "9 & 10",
-    "10": "9 & 10",
-    "11": "11 & 12",
-    "12": "11 & 12",
-    "13": "13 & 14",
-    "14": "13 & 14",
-    "15": "15 & 16",
-    "16": "15 & 16",
-    "17": "17",  # Single track platform
-    "18": "18 & 19",
-    "19": "18 & 19",
-    "20": "20 & 21",
-    "21": "20 & 21",
-}
+from trackrat.config.station_configs import (
+    get_platform_for_track as _get_platform_for_track,
+)
+from trackrat.config.station_configs import (
+    get_station_config,
+)
 
-# Add other stations as needed in the future
-# Example:
-# NEWARK_PENN_PLATFORMS = {
-#     "1": "1",
-#     "2": "2",
-#     ...
-# }
-
-
-def get_platform_for_track(station_code: str, track: str) -> str:
-    """
-    Get the platform group for a given track at a station.
-
-    Args:
-        station_code: Station code (e.g., 'NY')
-        track: Track number/letter (e.g., '7', 'A')
-
-    Returns:
-        Platform group name, or the track itself if no mapping exists
-    """
-    if station_code == "NY":
-        return NY_PENN_PLATFORMS.get(track, track)
-
-    # Default: track is its own platform
-    return track
+# Re-export the function with the same name for backward compatibility
+get_platform_for_track = _get_platform_for_track
 
 
 def get_tracks_for_platform(station_code: str, platform: str) -> list[str]:
@@ -69,15 +29,15 @@ def get_tracks_for_platform(station_code: str, platform: str) -> list[str]:
     Returns:
         List of track numbers/letters in that platform group
     """
-    tracks = []
+    config = get_station_config(station_code)
 
-    if station_code == "NY":
-        for track, plat in NY_PENN_PLATFORMS.items():
+    if config["platform_mappings"]:
+        # Station has platform mappings - find tracks for this platform
+        tracks = []
+        for track, plat in config["platform_mappings"].items():
             if plat == platform:
                 tracks.append(track)
-
-    # If no tracks found, assume platform is a single track
-    if not tracks:
-        tracks = [platform]
-
-    return tracks
+        return tracks if tracks else [platform]
+    else:
+        # No platform mappings - platform is a single track
+        return [platform]

@@ -1,0 +1,43 @@
+{
+  "station_code": "MP",
+  "model_type": "RandomForestClassifier",
+  "n_training_samples": 156,
+  "n_test_samples": 40,
+  "top1_accuracy": 1.0,
+  "top3_accuracy": 1.0,
+  "feature_importance": {
+    "destination_encoded": 0.7276557520610505,
+    "minutes_since_track_used": 0.12177793889925935,
+    "hour_of_day": 0.0774567362305766,
+    "line_code_encoded": 0.03200548734760067,
+    "is_amtrak": 0.022485856915403175,
+    "day_of_week": 0.01861822854610976
+  },
+  "per_track_metrics": {
+    "1": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 17.0
+    },
+    "4": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 23.0
+    },
+    "accuracy": 1.0,
+    "macro avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 40.0
+    },
+    "weighted avg": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 40.0
+    }
+  }
+}

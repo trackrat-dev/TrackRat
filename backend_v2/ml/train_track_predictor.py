@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Train a Random Forest model for NY Penn Station individual track predictions.
+Train Random Forest models for track predictions across multiple stations.
 
 This script:
 1. Loads training data from CSV
@@ -9,16 +9,22 @@ This script:
 4. Evaluates performance
 5. Saves the model and encoders
 
-Input: data/ny_penn_track_training_data.csv
+Usage:
+    python train_track_predictor.py          # Train for all stations with data
+    python train_track_predictor.py NY       # Train for specific station
+    python train_track_predictor.py NP TR    # Train for multiple stations
+
+Input: data/{station_code}_track_training_data.csv
 Output: 
-  - ml/models/ny_track_predictor.pkl (trained model)
-  - ml/models/ny_label_encoders.pkl (feature encoders)
-  - ml/models/ny_track_classes.pkl (possible track values)
-  - ml/reports/ny_model_performance.json (performance metrics)
+  - ml/models/{station_code}_track_predictor.pkl (trained model)
+  - ml/models/{station_code}_label_encoders.pkl (feature encoders)
+  - ml/models/{station_code}_track_classes.pkl (possible track values)
+  - ml/reports/{station_code}_model_performance.json (performance metrics)
 """
 
 import json
 import pickle
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +33,14 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from trackrat.config.station_configs import (
+    get_station_config,
+    get_ml_enabled_stations,
+)
 
 
 def load_and_prepare_data(csv_path: str):
@@ -179,8 +193,8 @@ def analyze_feature_importance(model, feature_names):
     return dict(feature_importance)
 
 
-def save_model_artifacts(model, encoders, track_classes, performance, feature_importance):
-    """Save all model artifacts."""
+def save_model_artifacts(station_code, model, encoders, track_classes, performance, feature_importance):
+    """Save all model artifacts for a specific station."""
     
     models_dir = Path("ml/models")
     reports_dir = Path("ml/reports")
@@ -189,50 +203,65 @@ def save_model_artifacts(model, encoders, track_classes, performance, feature_im
     models_dir.mkdir(parents=True, exist_ok=True)
     reports_dir.mkdir(parents=True, exist_ok=True)
     
+    # Use lowercase station code for file names
+    station_prefix = station_code.lower()
+    
     # Save model
-    model_path = models_dir / "ny_track_predictor.pkl"
+    model_path = models_dir / f"{station_prefix}_track_predictor.pkl"
     with open(model_path, 'wb') as f:
         pickle.dump(model, f)
     print(f"\nModel saved to {model_path}")
     
     # Save encoders
-    encoders_path = models_dir / "ny_label_encoders.pkl"
+    encoders_path = models_dir / f"{station_prefix}_label_encoders.pkl"
     with open(encoders_path, 'wb') as f:
         pickle.dump(encoders, f)
     print(f"Encoders saved to {encoders_path}")
     
     # Save track classes
-    classes_path = models_dir / "ny_track_classes.pkl"
+    classes_path = models_dir / f"{station_prefix}_track_classes.pkl"
     with open(classes_path, 'wb') as f:
         pickle.dump(track_classes, f)
     print(f"Track classes saved to {classes_path}")
     
     # Save performance report
     report = {
+        'station_code': station_code,
         'model_type': 'RandomForestClassifier',
         'n_training_samples': performance.get('n_training_samples'),
         'n_test_samples': performance.get('n_test_samples'),
         'top1_accuracy': performance['top1_accuracy'],
         'top3_accuracy': performance['top3_accuracy'],
         'feature_importance': feature_importance,
-        'per_platform_metrics': performance['classification_report']
+        'per_track_metrics': performance['classification_report']
     }
     
-    report_path = reports_dir / "ny_model_performance.json"
+    report_path = reports_dir / f"{station_prefix}_model_performance.json"
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
     print(f"Performance report saved to {report_path}")
 
 
-def main():
-    """Main training pipeline."""
+def train_model_for_station(station_code: str):
+    """Train model for a specific station."""
     
+    print("\n" + "=" * 60)
+    print(f"{station_code} Station Track Predictor Training")
     print("=" * 60)
-    print("NY Penn Station Track Predictor Training")
-    print("=" * 60)
+    
+    # Check if CSV exists
+    csv_path = f"data/{station_code.lower()}_track_training_data.csv"
+    if not Path(csv_path).exists():
+        print(f"No training data found at {csv_path}")
+        print("Please run export_track_training_data.py first")
+        return False
     
     # Load data
-    df = load_and_prepare_data("data/ny_penn_track_training_data.csv")
+    df = load_and_prepare_data(csv_path)
+    
+    if len(df) < 100:
+        print(f"Not enough samples ({len(df)} < 100) for training")
+        return False
     
     # Encode features
     df, encoders = encode_features(df)
@@ -258,9 +287,10 @@ def main():
     print(f"\nTraining set: {len(X_train)} samples")
     print(f"Test set: {len(X_test)} samples")
     
-    # Get unique track classes
-    track_classes = sorted(set(y), key=lambda x: int(str(x)) if str(x).isdigit() else 999)
+    # Get unique track classes - sort properly (numeric first, then alphabetic)
+    track_classes = sorted(set(y), key=lambda x: (not str(x).isdigit(), int(str(x)) if str(x).isdigit() else str(x)))
     print(f"Number of tracks: {len(track_classes)}")
+    print(f"Tracks: {track_classes}")
     
     # Train model
     model = train_model(X_train, y_train)
@@ -277,19 +307,72 @@ def main():
     feature_importance = analyze_feature_importance(model, feature_names)
     
     # Save everything
-    save_model_artifacts(model, encoders, track_classes, performance, feature_importance)
-    
-    print("\n" + "=" * 60)
-    print("Training complete!")
-    print("=" * 60)
+    save_model_artifacts(station_code, model, encoders, track_classes, performance, feature_importance)
     
     # Print summary
-    print(f"\nModel Performance Summary:")
+    print(f"\nModel Performance Summary for {station_code}:")
     print(f"  Top-1 Accuracy: {performance['top1_accuracy']:.1%}")
     print(f"  Top-3 Accuracy: {performance['top3_accuracy']:.1%}")
-    print(f"\nMost important features:")
-    for feature, importance in list(feature_importance.items())[:3]:
-        print(f"  - {feature}: {importance:.3f}")
+    
+    return True
+
+
+def main():
+    """Main training pipeline for multiple stations."""
+    
+    # Get station codes from command line or use all with data
+    if len(sys.argv) > 1:
+        station_codes = sys.argv[1:]
+        print(f"Training models for specified stations: {', '.join(station_codes)}")
+    else:
+        # Find all stations with training data
+        data_dir = Path("data")
+        if not data_dir.exists():
+            print("No data directory found. Please run export_track_training_data.py first")
+            return
+        
+        # Look for CSV files
+        csv_files = list(data_dir.glob("*_track_training_data.csv"))
+        station_codes = []
+        for csv_file in csv_files:
+            # Extract station code from filename
+            station_code = csv_file.stem.replace("_track_training_data", "").upper()
+            if station_code != "NY_PENN":  # Handle old naming
+                station_codes.append(station_code)
+        
+        if not station_codes:
+            print("No training data files found in data/ directory")
+            return
+        
+        print(f"Found training data for {len(station_codes)} stations: {', '.join(sorted(station_codes))}")
+    
+    # Train models for each station
+    successful_trains = []
+    failed_trains = []
+    
+    for station_code in station_codes:
+        try:
+            success = train_model_for_station(station_code)
+            if success:
+                successful_trains.append(station_code)
+            else:
+                failed_trains.append(station_code)
+        except Exception as e:
+            print(f"Error training model for {station_code}: {e}")
+            failed_trains.append(station_code)
+    
+    # Print final summary
+    print("\n" + "=" * 60)
+    print("Training Complete!")
+    print("=" * 60)
+    
+    if successful_trains:
+        print(f"\nSuccessfully trained models: {len(successful_trains)}")
+        print(f"  Stations: {', '.join(successful_trains)}")
+    
+    if failed_trains:
+        print(f"\nFailed to train models: {len(failed_trains)}")
+        print(f"  Stations: {', '.join(failed_trains)}")
 
 
 if __name__ == "__main__":
