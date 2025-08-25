@@ -252,6 +252,11 @@ struct CombinedDetailsCard: View {
             return false
         }
         
+        // Don't show predictions if train has departed from user's origin station
+        if hasTrainDepartedFromOrigin() {
+            return false
+        }
+        
         // Show predictions only for NY Penn Station and when track is not assigned
         return StaticTrackDistributionService.shared.shouldShowPredictions(for: train)
     }
