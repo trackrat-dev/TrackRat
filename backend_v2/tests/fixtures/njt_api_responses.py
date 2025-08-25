@@ -34,14 +34,16 @@ class StopBuilder:
         Args:
             station_code: Station code (e.g., "NY")
             station_name: Full station name
-            dep_time: Departure time string (e.g., "10:30:00 AM")
-            arr_time: Arrival time string (optional)
-            departed: Whether stop has DEPARTED flag
+            dep_time: Scheduled departure time string → DEP_TIME field
+            arr_time: Estimated/actual arrival time string → TIME field (optional)
+            departed: Whether stop has DEPARTED="YES" flag
             track: Track assignment (optional)
             cancelled: Whether stop is cancelled
 
         Returns:
-            Mock object matching NJT API stop structure
+            Mock object matching NJT API stop structure with correct field semantics:
+            - TIME: arr_time (estimated/actual arrival) or dep_time for origin stations
+            - DEP_TIME: dep_time (scheduled departure, never changes)
         """
         stop = MagicMock()
 
@@ -50,10 +52,14 @@ class StopBuilder:
         stop.STATIONCODE = station_code
         stop.STATIONNAME = f"{station_name} Station"
 
-        # Time fields
-        stop.TIME = dep_time  # Display time
-        stop.DEP_TIME = dep_time
-        stop.ARR_TIME = arr_time
+        # Time fields - corrected to match actual NJT API semantics
+        # TIME: Estimated/actual arrival time (what passengers see)
+        # DEP_TIME: Scheduled departure time (fixed schedule)
+        stop.TIME = (
+            arr_time if arr_time else dep_time
+        )  # Arrival time (or dep for origin)
+        stop.DEP_TIME = dep_time  # Scheduled departure
+        stop.ARR_TIME = arr_time  # Legacy field
 
         # Status fields
         stop.DEPARTED = "YES" if departed else "NO"

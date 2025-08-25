@@ -928,32 +928,22 @@ class JourneyCollector(BaseJourneyCollector):
 
         # Second pass: Process each stop
         for sequence, stop_data in enumerate(stops_data):
-            # Parse current API times (might be adjusted from original schedule)
+            # NJ Transit API Field Mapping:
+            # - TIME: Estimated/actual arrival time (updates as journey progresses)
+            # - DEP_TIME: Scheduled departure time (fixed, never changes)
+            #
+            # Database Field Usage:
+            # - scheduled_*: Set once from first API response, never change
+            # - actual_*: Update with each API response, represent live estimates
+
+            # TIME field = estimated/actual arrival (live updating)
             api_arrival_time = (
                 parse_njt_time(stop_data.TIME) if stop_data.TIME else None
             )
-            api_departure_time = (
+            # DEP_TIME field = scheduled departure (fixed)
+            scheduled_dep_time = (
                 parse_njt_time(stop_data.DEP_TIME) if stop_data.DEP_TIME else None
             )
-
-            # Fix swapped times if needed (NJT API sometimes has arrival > departure)
-            if (
-                api_arrival_time
-                and api_departure_time
-                and api_arrival_time > api_departure_time
-            ):
-                # Swap them - NJT API has them backwards for intermediate stops
-                api_arrival_time, api_departure_time = (
-                    api_departure_time,
-                    api_arrival_time,
-                )
-                logger.warning(
-                    "swapped_njt_times",
-                    train_id=journey.train_id,
-                    station=stop_data.STATION_2CHAR,
-                    api_time=stop_data.TIME,
-                    api_dep_time=stop_data.DEP_TIME,
-                )
 
             # Find existing stop or create new
             stmt = select(JourneyStop).where(
@@ -966,15 +956,19 @@ class JourneyCollector(BaseJourneyCollector):
 
             if not stop:
                 # NEW STOP - Set scheduled times (immutable)
+                # For origin stations: scheduled_arrival often equals scheduled_departure
+                # For terminal stations: scheduled_departure may be NULL
                 stop = JourneyStop(
                     journey_id=journey.id,
                     station_code=stop_data.STATION_2CHAR,
                     station_name=stop_data.STATIONNAME
                     or get_station_name(stop_data.STATION_2CHAR or ""),
                     stop_sequence=sequence,
-                    # Set scheduled times ONLY on creation
+                    # Set scheduled times ONLY on creation (immutable)
+                    # TIME on first response = scheduled arrival (then becomes estimate)
                     scheduled_arrival=api_arrival_time,
-                    scheduled_departure=api_departure_time,
+                    # DEP_TIME = scheduled departure (never changes)
+                    scheduled_departure=scheduled_dep_time,
                 )
                 session.add(stop)
                 logger.debug(
@@ -985,7 +979,7 @@ class JourneyCollector(BaseJourneyCollector):
                         api_arrival_time.isoformat() if api_arrival_time else None
                     ),
                     scheduled_departure=(
-                        api_departure_time.isoformat() if api_departure_time else None
+                        scheduled_dep_time.isoformat() if scheduled_dep_time else None
                     ),
                 )
             else:
@@ -998,8 +992,8 @@ class JourneyCollector(BaseJourneyCollector):
                         station=stop_data.STATION_2CHAR,
                     )
 
-                if stop.scheduled_departure is None and api_departure_time:
-                    stop.scheduled_departure = api_departure_time
+                if stop.scheduled_departure is None and scheduled_dep_time:
+                    stop.scheduled_departure = scheduled_dep_time
                     logger.info(
                         "recovered_missing_scheduled_departure",
                         train_id=journey.train_id,
@@ -1029,23 +1023,29 @@ class JourneyCollector(BaseJourneyCollector):
                     )
                     stop.stop_sequence = sequence
 
-            # Update "updated" times (these CAN change - they might be estimates/actuals)
-            stop.updated_arrival = api_arrival_time
-            stop.updated_departure = api_departure_time
+            # Always update actual_arrival with latest TIME value (live estimate)
+            # This represents the current estimated/actual arrival time
+            stop.actual_arrival = api_arrival_time
 
-            # Three-tier actual time inference using LATEST API data
+            # Update "updated" times for backward compatibility (deprecated fields)
+            stop.updated_arrival = api_arrival_time
+            stop.updated_departure = scheduled_dep_time
+
+            # Three-tier actual DEPARTURE inference
+            # We infer departure because NJT API doesn't provide live departure estimates
             # Tier 1: Explicit DEPARTED flag from API (most reliable)
             if stop_data.DEPARTED == "YES":
-                stop.actual_arrival = api_arrival_time or stop.scheduled_arrival
-                stop.actual_departure = api_departure_time or stop.scheduled_departure
+                # Use actual arrival as departure (train has left)
+                # For most stops, actual departure ≈ actual arrival
+                stop.actual_departure = api_arrival_time or stop.scheduled_departure
                 stop.has_departed_station = True
                 stop.departure_source = "api_explicit"
 
             # Tier 2: Sequential inference (very reliable)
             elif sequence < max_departed_sequence:
                 # If a later stop has departed, this one must have too
-                stop.actual_arrival = api_arrival_time or stop.scheduled_arrival
-                stop.actual_departure = api_departure_time or stop.scheduled_departure
+                # Use actual arrival as departure estimate
+                stop.actual_departure = api_arrival_time or stop.scheduled_departure
                 stop.has_departed_station = True
                 stop.departure_source = "sequential_inference"
 
@@ -1055,18 +1055,16 @@ class JourneyCollector(BaseJourneyCollector):
                 and stop.scheduled_departure < now_et() - timedelta(minutes=5)
             ):
                 # Train should have departed by now (5-minute grace period)
-                stop.actual_arrival = api_arrival_time or stop.scheduled_arrival
-                stop.actual_departure = api_departure_time or stop.scheduled_departure
+                # Use actual arrival or scheduled departure as estimate
+                stop.actual_departure = api_arrival_time or stop.scheduled_departure
                 stop.has_departed_station = True
                 stop.departure_source = "time_inference"
 
             else:
-                # Not yet departed
+                # Not yet departed - keep actual_arrival (live estimate) but no departure
+                # actual_arrival continues to update with live estimates
                 stop.has_departed_station = False
                 stop.departure_source = None
-                # Clear any previously inferred actual times
-                stop.actual_arrival = None
-                stop.actual_departure = None
 
             # Update raw status information
             stop.raw_njt_departed_flag = stop_data.DEPARTED
