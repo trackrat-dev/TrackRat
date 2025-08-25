@@ -112,7 +112,6 @@ class TrainDeparture(BaseModel):
     # Progress and prediction fields
     progress: JourneyProgress | None = None
     predicted_arrival: datetime | None = None
-    arrival_confidence: float | None = Field(None, ge=0.0, le=1.0)
 
 
 class DeparturesResponse(BaseModel):
@@ -166,6 +165,10 @@ class StopDetails(BaseModel):
     track_assigned_at: datetime | None = None
     raw_status: RawStopStatus
     has_departed_station: bool = False
+    
+    # Prediction fields (added for arrival forecasting)
+    predicted_arrival: datetime | None = None
+    predicted_arrival_samples: int | None = Field(None, ge=0, description="Number of recent trains used for prediction")
 
 
 class TrainDetails(BaseModel):
@@ -189,7 +192,6 @@ class TrainDetails(BaseModel):
     # Progress and prediction fields
     progress: JourneyProgress | None = None
     predicted_arrival: datetime | None = None
-    arrival_confidence: float | None = Field(None, ge=0.0, le=1.0)
 
     @field_serializer("journey_date")
     def serialize_journey_date(self, journey_date: date) -> str:

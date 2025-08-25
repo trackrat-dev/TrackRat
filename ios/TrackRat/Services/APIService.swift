@@ -69,7 +69,8 @@ final class APIService: ObservableObject {
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(identifier: "America/New_York")
         components.queryItems = [
-            URLQueryItem(name: "date", value: formatter.string(from: Date()))
+            URLQueryItem(name: "date", value: formatter.string(from: Date())),
+            URLQueryItem(name: "include_predictions", value: "true")
         ]
         
         guard let url = components.url else {
@@ -765,7 +766,9 @@ final class APIService: ObservableObject {
                     amtrakStatus: stop.rawStatus.amtrakStatus, 
                     njtDepartedFlag: stop.rawStatus.njtDepartedFlag
                 ),
-                hasDepartedStation: stop.hasDepartedStation
+                hasDepartedStation: stop.hasDepartedStation,
+                predictedArrival: stop.predictedArrival,
+                predictedArrivalSamples: stop.predictedArrivalSamples
             )
         }
         

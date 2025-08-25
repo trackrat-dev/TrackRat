@@ -583,6 +583,23 @@ struct StopRowV2: View {
         return false
     }
     
+    // DEBUG: Helper to show why predictions aren't displayed
+    private func debugPredictionStatus() -> String {
+        if stop.predictedArrival == nil {
+            return "📊 No pred"
+        }
+        if stop.predictedArrivalSamples == nil {
+            return "📊 No samples"
+        }
+        if let samples = stop.predictedArrivalSamples, samples == 0 {
+            return "📊 0 samples"
+        }
+        if stop.hasDepartedStation {
+            return "📊 Departed"
+        }
+        return ""
+    }
+    
     private var enhancedTimeDisplay: (arrival: String?, departure: String?, details: [String]) {
         // For cancelled stops: Don't show any times
         if isCancelled {
@@ -716,6 +733,31 @@ struct StopRowV2: View {
             }
             
             Spacer()
+            
+            // Show prediction if available and samples > 0
+            if let predictedArrival = stop.predictedArrival,
+               let samples = stop.predictedArrivalSamples,
+               samples > 0,
+               !stop.hasDepartedStation {
+                HStack(spacing: 4) {
+                    Text("🐀✨")
+                        .font(.system(size: 16))
+                    Text(DateFormatter.easternTime(time: .short).string(from: predictedArrival))
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(predictionDelayColor(predicted: predictedArrival, scheduled: stop.scheduledArrival))
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+            } else if stop.sequence > 0 {
+                // DEBUG: Show debug info when predictions aren't displayed (skip for origin station)
+                let debugText = debugPredictionStatus()
+                if !debugText.isEmpty {
+                    Text(debugText)
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                        .frame(maxHeight: .infinity, alignment: .center)
+                }
+            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
@@ -734,6 +776,23 @@ struct StopRowV2: View {
         if isCancelled { return .gray }
         if stop.hasDepartedStation { return .gray }
         return .black
+    }
+    
+    private func predictionDelayColor(predicted: Date, scheduled: Date?) -> Color {
+        guard let scheduled = scheduled else {
+            return .black  // Default to black if no scheduled time
+        }
+        
+        let delaySeconds = predicted.timeIntervalSince(scheduled)
+        let delayMinutes = delaySeconds / 60.0
+        
+        if delayMinutes <= 4 {
+            return .black          // ≤4 minutes: black text
+        } else if delayMinutes <= 14 {
+            return Color(red: 0.8, green: 0.4, blue: 0)  // 5-14 minutes: slightly dark orange
+        } else {
+            return Color(red: 0.7, green: 0, blue: 0)    // ≥15 minutes: dark red
+        }
     }
     
     private var timeColor: Color {

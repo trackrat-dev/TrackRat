@@ -189,6 +189,8 @@ struct V2StopDetails: Codable {
     let trackAssignedAt: Date?
     let rawStatus: V2RawStopStatus
     let hasDepartedStation: Bool
+    let predictedArrival: Date?
+    let predictedArrivalSamples: Int?
     
     enum CodingKeys: String, CodingKey {
         case station, track
@@ -202,6 +204,8 @@ struct V2StopDetails: Codable {
         case trackAssignedAt = "track_assigned_at"
         case rawStatus = "raw_status"
         case hasDepartedStation = "has_departed_station"
+        case predictedArrival = "predicted_arrival"
+        case predictedArrivalSamples = "predicted_arrival_samples"
     }
 }
 

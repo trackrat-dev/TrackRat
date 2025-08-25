@@ -17,6 +17,7 @@ from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import ET, now_et, parse_njt_time
 
@@ -715,6 +716,19 @@ class JourneyCollector(BaseJourneyCollector):
         # Update stops
         await self.update_journey_stops(session, journey, train_data.STOPS)
 
+        # Analyze any newly completed segments (for real-time predictions)
+        # This runs immediately without waiting for journey completion
+        transit_analyzer = TransitAnalyzer()
+        segments_created = await transit_analyzer.analyze_new_segments(session, journey)
+        
+        if segments_created > 0:
+            logger.info(
+                "realtime_segments_analyzed",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+                segments_created=segments_created
+            )
+
         # Check if journey is complete
         await self.check_journey_completion(session, journey, train_data.STOPS)
 
@@ -1101,15 +1115,13 @@ class JourneyCollector(BaseJourneyCollector):
             session: Database session
             journey: Journey to validate
         """
-        # Simple validation using in-memory journey.stops to avoid async mock issues
-        if not journey.stops:
-            return
-
-        sequences = [
-            stop.stop_sequence
-            for stop in journey.stops
-            if stop.stop_sequence is not None
-        ]
+        # Query stops directly to avoid lazy loading issues
+        stops_stmt = (
+            select(JourneyStop.stop_sequence)
+            .where(JourneyStop.journey_id == journey.id)
+        )
+        result = await session.execute(stops_stmt)
+        sequences = [row[0] for row in result.fetchall() if row[0] is not None]
 
         # Find duplicates
         duplicate_sequences = {seq for seq in sequences if sequences.count(seq) > 1}
@@ -1162,6 +1174,15 @@ class JourneyCollector(BaseJourneyCollector):
                     if journey.actual_arrival
                     else "unknown"
                 ),
+            )
+            
+            # Run full analysis on completed journey (dwell times, progress, etc.)
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_journey(session, journey)
+            logger.info(
+                "completed_journey_analyzed",
+                train_id=journey.train_id,
+                journey_id=journey.id
             )
 
         # Check for cancellation (all stops cancelled)

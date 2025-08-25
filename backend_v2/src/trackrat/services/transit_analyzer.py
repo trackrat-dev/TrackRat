@@ -4,7 +4,7 @@ Transit time analysis service for TrackRat.
 Analyzes journey data to calculate segment transit times and station dwell times.
 """
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from structlog import get_logger
@@ -54,7 +54,7 @@ class TransitAnalyzer:
             return
 
         # Analyze segment transit times
-        await self._analyze_segments(db, journey, stops)
+        await self._analyze_segments(db, journey, stops, check_duplicates=False)
 
         # Analyze station dwell times
         await self._analyze_dwell_times(db, journey, stops)
@@ -69,10 +69,45 @@ class TransitAnalyzer:
             stop_count=len(stops),
         )
 
+    async def analyze_new_segments(
+        self, db: AsyncSession, journey: TrainJourney
+    ) -> int:
+        """
+        Analyze only new segments that have completed since last analysis.
+        This is designed to be called frequently during journey updates.
+        
+        Returns:
+            Number of new segments created
+        """
+        # Query stops directly to avoid lazy loading issues
+        stops_stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        result = await db.execute(stops_stmt)
+        stops = list(result.scalars())
+        
+        if len(stops) < 2:
+            return 0
+        
+        return await self._analyze_segments(db, journey, stops, check_duplicates=True)
+
     async def _analyze_segments(
-        self, db: AsyncSession, journey: TrainJourney, stops: list[JourneyStop]
-    ) -> None:
-        """Calculate and store transit times between consecutive stations."""
+        self, db: AsyncSession, journey: TrainJourney, stops: list[JourneyStop],
+        check_duplicates: bool = False
+    ) -> int:
+        """Calculate and store transit times between consecutive stations.
+        
+        Args:
+            db: Database session
+            journey: Journey to analyze
+            stops: List of journey stops
+            check_duplicates: If True, check if segment already exists before creating
+            
+        Returns:
+            Number of segments created
+        """
         segments_created = 0
 
         for i in range(len(stops) - 1):
@@ -82,6 +117,19 @@ class TransitAnalyzer:
             # Skip if we don't have actual times
             if not (current_stop.actual_departure and next_stop.actual_arrival):
                 continue
+            
+            # Check if segment already exists (to avoid duplicates)
+            if check_duplicates:
+                exists_stmt = select(SegmentTransitTime).where(
+                    and_(
+                        SegmentTransitTime.journey_id == journey.id,
+                        SegmentTransitTime.from_station_code == current_stop.station_code,
+                        SegmentTransitTime.to_station_code == next_stop.station_code
+                    )
+                )
+                result = await db.execute(exists_stmt)
+                if result.scalar():
+                    continue  # Skip if already analyzed
 
             # Calculate scheduled transit time
             scheduled_minutes = None
@@ -133,6 +181,8 @@ class TransitAnalyzer:
                 journey_id=journey.id,
                 segments_created=segments_created,
             )
+        
+        return segments_created
 
     async def _analyze_dwell_times(
         self, db: AsyncSession, journey: TrainJourney, stops: list[JourneyStop]

@@ -349,6 +349,10 @@ struct StopV2: Identifiable, Codable {
     let rawStatus: RawStopStatus?
     let hasDepartedStation: Bool
     
+    // Prediction fields
+    let predictedArrival: Date?
+    let predictedArrivalSamples: Int?
+    
     var id: String {
         "\(stationCode)-\(sequence)"
     }
@@ -375,6 +379,8 @@ struct StopV2: Identifiable, Codable {
         case track
         case rawStatus = "raw_status"
         case hasDepartedStation = "has_departed_station"
+        case predictedArrival = "predicted_arrival"
+        case predictedArrivalSamples = "predicted_arrival_samples"
     }
 }
 

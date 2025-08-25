@@ -34,7 +34,7 @@ from trackrat.models.api import (
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
 from trackrat.services.jit import JustInTimeUpdateService
-from trackrat.services.predictions import JourneyPredictor
+from trackrat.services.simple_forecaster import SimpleArrivalForecaster
 from trackrat.utils.time import now_et, safe_datetime_subtract
 from trackrat.utils.train import is_amtrak_train
 
@@ -143,6 +143,24 @@ async def get_train_details(
         )
         stops.append(stop_detail)
 
+    # Add arrival predictions to each stop if requested
+    if include_predictions:
+        try:
+            forecaster = SimpleArrivalForecaster()
+            await forecaster.add_predictions_to_stops(db, journey, stops)
+            logger.info(
+                "added_arrival_predictions",
+                train_id=journey.train_id,
+                stops_with_predictions=sum(1 for s in stops if s.predicted_arrival is not None)
+            )
+        except Exception as e:
+            # Log error but don't fail the request
+            logger.error(
+                "prediction_failed",
+                train_id=journey.train_id,
+                error=str(e)
+            )
+
     # Calculate train position
     train_position = calculate_train_position(journey)
 
@@ -166,20 +184,19 @@ async def get_train_details(
                 next_arrival=latest_progress.next_station,
             )
 
-    # Get arrival prediction if requested
+    # Get final destination prediction from our per-stop predictions
     predicted_arrival = None
-    arrival_confidence = None
     if include_predictions and journey.terminal_station_code:
-        predictor = JourneyPredictor()
-        prediction = await predictor.predict_arrival(
-            db, journey, journey.terminal_station_code
+        # Find the terminal station in our stops list
+        terminal_stop = next(
+            (s for s in stops if s.station.code == journey.terminal_station_code),
+            None
         )
-        if prediction:
-            predicted_arrival = prediction.predicted_arrival
-            arrival_confidence = prediction.confidence_score
+        if terminal_stop and terminal_stop.predicted_arrival:
+            predicted_arrival = terminal_stop.predicted_arrival
 
             # Update minutes to arrival in progress
-            if progress:
+            if progress and predicted_arrival:
                 minutes_to_arrival = int(
                     (predicted_arrival - now_et()).total_seconds() / 60
                 )
@@ -219,7 +236,6 @@ async def get_train_details(
         is_completed=journey.is_completed,
         progress=progress,
         predicted_arrival=predicted_arrival,
-        arrival_confidence=arrival_confidence,
     )
 
     return TrainDetailsResponse(train=train_details)
