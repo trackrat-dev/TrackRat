@@ -79,7 +79,7 @@ module "trackrat_api_service" {
     GCP_METRICS_EXPORT_INTERVAL              = "60"                   # Export metrics to GCP every 60 seconds
     TRACKRAT_GCS_BACKUP_BUCKET               = "trackrat-staging-periodic-db-backup"
     TRACKRAT_DISCOVERY_INTERVAL_MINUTES      = "30"
-    TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES = "60"
+    TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES = "15"
     TRACKRAT_DATA_STALENESS_SECONDS          = "60"
   }
 
