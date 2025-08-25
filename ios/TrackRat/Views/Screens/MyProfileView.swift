@@ -91,7 +91,7 @@ struct MyProfileView: View {
                     VStack(spacing: 16) {
                         // Section header
                         HStack {
-                            Text("Support")
+                            Text("Support & Community")
                                 .font(.headline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.white)
@@ -101,8 +101,8 @@ struct MyProfileView: View {
                         
                         // Report Issues & Request Features
                         Button {
-                            if let signalURL = URL(string: "https://signal.me/#eu/iG3LNnu-IycTUbwrWF1nwrlR-u-TN5gtBO0tXtJk3Nder7TtfzFPa6On6N9dl3e-") {
-                                openURL(signalURL)
+                            if let instagramURL = URL(string: "https://www.instagram.com/trackratapp/") {
+                                openURL(instagramURL)
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             }
                         } label: {
@@ -113,13 +113,53 @@ struct MyProfileView: View {
                                     .frame(width: 24, height: 24)
                                 
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Report Issues & Request Features")
+                                    Text("Report Issues via Instagram")
                                         .font(.headline)
                                         .fontWeight(.medium)
                                         .foregroundColor(.white)
                                         .multilineTextAlignment(.leading)
                                     
-                                    Text("Get help via Signal messenger")
+                                    Text("Send ideas for new features too!")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
+                                        .multilineTextAlignment(.leading)
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                        
+                        // Follow our YouTube Channel
+                        Button {
+                            if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-Development/shorts") {
+                                openURL(youtubeURL)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "play.rectangle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("YouTube Channel")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                    
+                                    Text("Don't forget to like and subscribe 💪")
                                         .font(.caption)
                                         .foregroundColor(.white.opacity(0.7))
                                         .multilineTextAlignment(.leading)
