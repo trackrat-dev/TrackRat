@@ -134,7 +134,7 @@ class JourneyStop(Base):
     raw_amtrak_status = Column(String(50))  # Amtrak status values
     raw_njt_departed_flag = Column(String(10))  # NJT DEPARTED flag
     has_departed_station = Column(Boolean, default=False, nullable=False)
-    
+
     # How we determined departure (api_explicit, sequential_inference, time_inference)
     departure_source = Column(String(30))
 
