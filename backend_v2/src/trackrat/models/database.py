@@ -362,9 +362,9 @@ class JourneyProgress(Base):
 
 class CachedApiResponse(Base):
     """Pre-computed API responses for performance optimization."""
-    
+
     __tablename__ = "cached_api_responses"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     endpoint = Column(String(100), nullable=False)
     params_hash = Column(String(64), nullable=False)
@@ -373,9 +373,11 @@ class CachedApiResponse(Base):
     generated_at = Column(DateTime(timezone=True), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     __table_args__ = (
         Index("idx_cached_api_endpoint_params", "endpoint", "params_hash"),
         Index("idx_cached_api_expires", "expires_at"),
-        UniqueConstraint("endpoint", "params_hash", name="uq_cached_api_endpoint_params"),
+        UniqueConstraint(
+            "endpoint", "params_hash", name="uq_cached_api_endpoint_params"
+        ),
     )

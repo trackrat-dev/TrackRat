@@ -279,7 +279,7 @@ async def get_route_congestion(
     # Try to serve from cache first (unless force_refresh is requested)
     if not force_refresh:
         from trackrat.services.api_cache import ApiCacheService
-        
+
         cache_service = ApiCacheService()
         cached_response = await cache_service.get_cached_response(
             db=db,
@@ -287,14 +287,14 @@ async def get_route_congestion(
             params={
                 "time_window_hours": time_window_hours,
                 "max_per_segment": max_per_segment,
-                "data_source": data_source
-            }
+                "data_source": data_source,
+            },
         )
-        
+
         if cached_response:
             # Return cached response directly - it's already in the correct format
             return CongestionMapResponse(**cached_response)
-    
+
     # Cache miss or force refresh - compute the response
     analyzer = CongestionAnalyzer()
     aggregated_segments, journeys, individual_segments = (
@@ -412,12 +412,12 @@ async def get_route_congestion(
             "total_trains": len(train_positions),
         },
     )
-    
+
     # Store in cache for future requests (fire-and-forget to avoid slowing down response)
     if not force_refresh:
         try:
             from trackrat.services.api_cache import ApiCacheService
-            
+
             cache_service = ApiCacheService()
             await cache_service.store_cached_response(
                 db=db,
@@ -425,15 +425,15 @@ async def get_route_congestion(
                 params={
                     "time_window_hours": time_window_hours,
                     "max_per_segment": max_per_segment,
-                    "data_source": data_source
+                    "data_source": data_source,
                 },
-                response=response.model_dump(mode='json'),
-                ttl_seconds=600  # 10 minutes (longer than 15-min refresh to avoid gaps)
+                response=response.model_dump(mode="json"),
+                ttl_seconds=600,  # 10 minutes (longer than 15-min refresh to avoid gaps)
             )
         except Exception as e:
             # Don't let cache storage failure affect the API response
             logger.warning("cache_storage_failed", error=str(e))
-    
+
     return response
 
 

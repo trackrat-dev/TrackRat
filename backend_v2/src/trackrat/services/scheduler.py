@@ -1801,36 +1801,36 @@ class SchedulerService:
     async def precompute_congestion_cache(self) -> None:
         """Pre-compute congestion API responses for common parameter combinations."""
         task_id = f"congestion_cache_{now_et().isoformat()}"
-        
+
         try:
             logger.info("starting_congestion_cache_precomputation")
-            
+
             # Track running task
             task = asyncio.current_task()
             if task:
                 self._running_tasks[task_id] = task
-            
+
             # Import here to avoid circular imports
             from trackrat.services.api_cache import ApiCacheService
-            
+
             # Use async database session for the cache service
             async with get_session() as session:
                 cache_service = ApiCacheService()
-                
+
                 # Pre-compute congestion responses
                 await cache_service.precompute_congestion_responses(session)
-                
+
                 # Clean up expired cache entries while we're here
                 deleted_count = await cache_service.cleanup_expired_cache(session)
-                
+
                 if deleted_count > 0:
                     logger.info(
                         "cleaned_up_expired_api_cache_entries",
-                        deleted_count=deleted_count
+                        deleted_count=deleted_count,
                     )
-            
+
             logger.info("congestion_cache_precomputation_completed")
-            
+
         except Exception as e:
             logger.error(
                 "congestion_cache_precomputation_failed",
