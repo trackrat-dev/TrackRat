@@ -85,7 +85,7 @@ struct Stations {
         "Hartford", "Meriden", "Wallingford", "Windsor Locks", "Springfield",
         "Claremont", "Dover NH", "Durham-UNH", "Exeter",
         "New Carrollton", "Aberdeen", "Alexandria", "Charlottesville",
-        "Lorton", "Norfolk", "Richmond Main Street", "Roanoke",
+        "Lorton", "Norfolk", "Richmond Main Street", "Richmond Staples Mill Road", "Roanoke",
         "Harrisburg", "Lancaster"
     ].sorted()
     
@@ -291,7 +291,8 @@ struct Stations {
         "Charlottesville": "CVS",
         "Lorton": "LOR",
         "Norfolk": "NFK",
-        "Richmond Main Street": "RVR",
+        "Richmond Main Street": "RVM",
+        "Richmond Staples Mill Road": "RVR",
         "Roanoke": "RNK",
         "Harrisburg": "HAR",
         "Lancaster": "LNC",
@@ -344,7 +345,8 @@ struct Stations {
         "CVS": CLLocationCoordinate2D(latitude: 38.0320, longitude: -78.4921),  // Charlottesville, VA
         "LOR": CLLocationCoordinate2D(latitude: 38.7060, longitude: -77.2214),  // Lorton, VA
         "NFK": CLLocationCoordinate2D(latitude: 36.8583, longitude: -76.2876),  // Norfolk, VA
-        "RVR": CLLocationCoordinate2D(latitude: 37.6143, longitude: -77.4966),  // Richmond Main Street, VA
+        "RVR": CLLocationCoordinate2D(latitude: 37.61741, longitude: -77.49755),  // Richmond Staples Mill Road, VA
+        "RVM": CLLocationCoordinate2D(latitude: 37.6143, longitude: -77.4966),  // Richmond Main Street, VA
         "RNK": CLLocationCoordinate2D(latitude: 37.3077, longitude: -79.9803),  // Roanoke, VA
         "PF": CLLocationCoordinate2D(latitude: 40.6140, longitude: -74.4147),   // Plainfield (corrected code from PL to PF)
         "LB": CLLocationCoordinate2D(latitude: 40.2970, longitude: -73.9883),   // Long Branch
