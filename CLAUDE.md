@@ -18,7 +18,7 @@ TrackRat is a full-stack train tracking system that combines a simplified Python
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                 │
                         ┌───────▼────────┐
-                        │    SQLite      │
+                        │   PostgreSQL   │
                         │   Database     │
                         └────────────────┘
                                 │
@@ -35,7 +35,7 @@ TrackRat is a full-stack train tracking system that combines a simplified Python
 1. **Multi-Station Support**: Backend and iOS app support NY Penn, Newark Penn, Trenton, Princeton Junction, and Metropark
 2. **Train Consolidation**: Backend merges duplicate trains; iOS app displays unified journey data
 3. **Track Predictions**: Track assignments from NJ Transit API; iOS app displays "Owl" predictions when available
-4. **Real-Time Updates**: Backend updates hourly + on-demand; iOS app refreshes every 30 seconds
+4. **Real-Time Updates**: Backend updates every 30 minutes + on-demand; iOS app refreshes every 30 seconds
 5. **Journey Planning**: Backend provides smart filtering; iOS app enables origin-destination trip selection
 6. **Live Activities**: Real-time train tracking on Lock Screen and Dynamic Island
 7. **Push Notifications**: Background updates for Live Activities with status changes
@@ -262,7 +262,7 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 ### Operational Requirements
 
 **Automated Operations:**
-- ✅ Data collection every 1-2 minutes via Cloud Scheduler
+- ✅ Data collection every 30 minutes (discovery) + 5 minutes (journey updates) via integrated scheduler
 - ✅ Auto-scaling based on traffic
 - ✅ Database backups and maintenance
 - ✅ Health monitoring and restart on failure
@@ -409,6 +409,16 @@ Real-time tracking of ML model performance:
 - **Monitoring**: Accuracy trends displayed in executive dashboard
 - **Benefits**: Continuous model performance monitoring and alerting
 
+### ML Track Prediction System (IMPLEMENTED)
+Sophisticated machine learning system for track assignment prediction:
+- **TrackPredictionFeatures**: Feature extraction service with 6 core features (hour, day, line, destination, time-based patterns)
+- **Station-Specific Models**: Individual RandomForest models per station for optimal accuracy
+- **Real-time Occupancy Filtering**: TrackOccupancyService filters predictions based on occupied tracks
+- **Platform Aggregation**: Track-level predictions aggregated to platform-level for user display
+- **Arrival Forecasting**: SimpleArrivalForecaster provides ML-powered ETA predictions
+- **API Integration**: Predictions available via `/api/v2/predictions/track-assignment/{station}` endpoint
+- **Benefits**: Intelligent track predictions with confidence scoring and real-time availability
+
 ## Architecture Decisions
 
 ### Why These Choices?
@@ -426,10 +436,10 @@ Real-time tracking of ML model performance:
 ### Future Considerations
 
 1. **Backend V2**:
-   - ML track prediction models (planned)
+   - Enhanced ML track prediction models with occupancy detection
    - GraphQL API for more efficient queries
    - WebSocket support for real-time updates
-   - Additional transit systems (LIRR, Metro-North)
+   - Additional transit systems (LIRR, Metro-North, SEPTA, PATH)
    - Redis caching layer
 
 2. **iOS**:

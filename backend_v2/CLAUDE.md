@@ -28,25 +28,34 @@ The V2 backend eliminates the complexity of V1 by:
 - **Minimal API calls**: ~95% reduction through smart caching and scheduling
 - **No consolidation needed**: Unified data model from the start
 - **PostgreSQL**: Production-ready database with async driver and connection pooling
+- **Multi-Transit Support**: NJ Transit and Amtrak data sources with extensible architecture
+- **ML-Powered Features**: Track predictions, arrival forecasting, and congestion analysis
+- **API Response Caching**: Intelligent caching system for performance optimization
 
 ### System Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  NJ Transit API │────▶│  Backend V2     │────▶│  Client Apps    │
-│                 │     │                 │     │  (iOS/Web)      │
-└─────────────────┘     ├─────────────────┤     └─────────────────┘
-                        │ • Discovery      │
-                        │ • Collection     │
-                        │ • JIT Updates    │
-                        │ • API Service    │
+│ Transit APIs    │────▶│  Backend V2     │────▶│  Client Apps    │
+│ • NJ Transit    │     │ • Discovery     │     │ • iOS App       │
+│ • Amtrak        │     │ • Collection    │     │ • Web App       │
+│ • (SEPTA)*      │     │ • JIT Updates   │     │ • Live Activities│
+│ • (PATH)*       │     │ • ML Predictions│     └─────────────────┘
+│ • (LIRR)*       │     │ • API Service   │
+└─────────────────┘     │ • Caching       │
+                        │ • Analytics     │
                         └────────┬────────┘
                                  │
                         ┌────────▼────────┐
-                        │   Database      │
-                        │  (PostgreSQL)   │
+                        │   PostgreSQL    │
+                        │ • Train Data    │
+                        │ • ML Models     │
+                        │ • Analytics     │
+                        │ • Cache         │
                         └─────────────────┘
 ```
+
+*Note: SEPTA, PATH, and LIRR collectors have placeholder directories but are not yet implemented.
 
 ## Key Components
 
@@ -149,8 +158,11 @@ GET /metrics                  # Prometheus metrics
 ### 4. Background Scheduler
 
 The APScheduler runs in-process and handles:
-- **Hourly**: Train discovery from major stations
-- **Every 15 min**: Journey collection for active trains
+- **Every 30 min** (configurable): NJ Transit train discovery from major stations
+- **Every 30 min** (configurable): Amtrak train discovery
+- **Every 5 min**: Journey update checks for active trains
+- **Every 15 min** (configurable): Individual journey collection updates
+- **Every 15 min**: API cache pre-computation for congestion endpoints
 - **Automatic startup**: Begins when FastAPI app starts
 
 ### 5. Transit Time Tracking System
@@ -163,6 +175,9 @@ The system now includes comprehensive transit time analysis:
 - **TransitAnalyzer**: Calculates segment times, dwell times, and journey progress
 - **CongestionAnalyzer**: Real-time network congestion analysis
 - **Route Analytics**: Historical performance metrics with delay breakdowns
+- **SimpleArrivalForecaster**: ML-powered arrival time predictions based on historical segment data
+- **ApiCacheService**: Intelligent response caching with automatic pre-computation
+- **TrackOccupancyService**: Real-time track availability analysis for predictions
 
 **Automatic Analysis:**
 - Segment transit times between consecutive stations
@@ -173,7 +188,9 @@ The system now includes comprehensive transit time analysis:
 **API Endpoints:**
 - `/api/v2/routes/congestion` - Real-time network congestion map
 - `/api/v2/routes/history` - Historical route performance with highlighted trains
-- Enhanced train details with `progress` field for journey tracking
+- `/api/v2/trains/{train_id}` - Enhanced train details with `progress` field and arrival forecasting
+- `/api/v2/predictions/track-occupancy/{station}` - Real-time track occupancy analysis
+- Enhanced `/health` endpoint with model prediction accuracy metrics
 
 **Congestion Levels:**
 - **Normal** (≤10% slower): Green (`#00ff00`)
@@ -196,9 +213,11 @@ The system now includes comprehensive transit time analysis:
    - **NOTE**: Migrations run automatically during application startup (after backup restore)
 
 3. **Collector Changes**:
-   - Discovery logic in `collectors/discovery.py`
-   - Journey details in `collectors/journey.py`
-   - Test with mock data in `tests/`
+   - NJT collectors in `collectors/njt/` (discovery.py, journey.py, client.py)
+   - Amtrak collectors in `collectors/amtrak/` (discovery.py, journey.py, client.py)
+   - Base classes in `collectors/base.py`
+   - Test with mock data in `tests/unit/collectors/`
+   - Note: SEPTA, PATH, LIRR collectors have placeholder directories only
 
 ### Code Style & Quality
 
@@ -236,6 +255,9 @@ poetry run pytest --cov=trackrat
 ```bash
 # Required
 TRACKRAT_NJT_API_TOKEN=your_nj_transit_api_token
+TRACKRAT_NJT_API_URL=https://raildata.njtransit.com/api
+TRACKRAT_AMTRAK_API_TOKEN=your_amtrak_api_token
+TRACKRAT_AMTRAK_API_URL=https://maps.amtrak.com/services
 
 # Optional (defaults to PostgreSQL)
 TRACKRAT_DATABASE_URL=postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb
@@ -404,7 +426,7 @@ curl http://localhost:8000/health | jq .scheduler
 ### Why These Choices?
 
 1. **Single journey record**: Eliminates duplicate data issues
-2. **Hourly discovery**: Balances freshness with API efficiency  
+2. **30-minute discovery**: Balances freshness with API efficiency  
 3. **15-minute collection**: Captures journey progress without excess
 4. **60-second staleness**: Real-time feel without constant polling
 5. **In-process scheduler**: Simplifies deployment and monitoring
@@ -423,10 +445,10 @@ curl http://localhost:8000/health | jq .scheduler
 
 ### Planned Features
 
-1. **Track Prediction Models**: ML models for track assignment
+1. **Enhanced Track Prediction Models**: Improved ML models with occupancy detection
 2. **WebSocket Support**: Real-time updates for clients
-3. **Multi-Transit Support**: Amtrak, LIRR, Metro-North
-4. **Advanced Analytics**: Journey patterns and delays
+3. **Additional Transit Systems**: LIRR, Metro-North, SEPTA, PATH (placeholder directories exist)
+4. **Advanced Analytics**: Enhanced journey pattern analysis
 5. **GraphQL API**: More efficient client queries
 
 ### Performance Targets
