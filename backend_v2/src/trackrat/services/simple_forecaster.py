@@ -41,7 +41,11 @@ class SimpleArrivalForecaster:
     MAX_SEGMENT_MINUTES = 60  # Maximum believable time for a single segment
 
     async def add_predictions_to_stops(
-        self, db: AsyncSession, journey: TrainJourney, stops: list[Any]
+        self,
+        db: AsyncSession,
+        journey: TrainJourney,
+        stops: list[Any],
+        user_origin: str | None = None,
     ) -> None:
         """
         Add predicted_arrival times to stop objects in-place.
@@ -50,12 +54,14 @@ class SimpleArrivalForecaster:
             db: Database session
             journey: The train journey
             stops: List of stop objects (modified in-place)
+            user_origin: User's boarding station code (if provided, uses scheduled times before this station)
         """
         logger.info(
             "🔮 Starting arrival prediction",
             train_id=journey.train_id,
             journey_date=journey.journey_date,
             num_stops=len(stops),
+            user_origin=user_origin,
         )
 
         if not stops:
@@ -67,6 +73,20 @@ class SimpleArrivalForecaster:
 
         # Find current position (last departed stop)
         current_index = self._find_current_position(stops)
+
+        # Find user's origin station index if provided
+        user_origin_index = None
+        if user_origin:
+            for i, stop in enumerate(stops):
+                if _get_station_code(stop) == user_origin:
+                    user_origin_index = i
+                    logger.info(
+                        "👤 Found user's origin station",
+                        station=user_origin,
+                        index=user_origin_index,
+                        has_departed=stop.has_departed_station,
+                    )
+                    break
 
         logger.info(
             "🚂 Train position analysis",
@@ -91,39 +111,71 @@ class SimpleArrivalForecaster:
             )
             return
 
-        # Start accumulating time from the train's current position
-        current_stop = stops[current_index]
-
-        # For the origin station, use scheduled departure time as the starting point
-        if current_index == 0:
-            # Train is at origin - use scheduled departure as base time
+        # Determine starting point and time
+        if user_origin_index is not None and current_index < user_origin_index:
+            # Train hasn't reached user's origin yet
+            # Use scheduled departure from user's origin as base
+            user_origin_stop = stops[user_origin_index]
             if (
-                hasattr(current_stop, "scheduled_departure")
-                and current_stop.scheduled_departure
+                hasattr(user_origin_stop, "scheduled_departure")
+                and user_origin_stop.scheduled_departure
             ):
-                predicted_time = ensure_timezone_aware(current_stop.scheduled_departure)
+                predicted_time = ensure_timezone_aware(
+                    user_origin_stop.scheduled_departure
+                )
+                start_index = user_origin_index  # Start predictions from user's origin
                 logger.info(
-                    "🚂 Using scheduled departure from origin",
-                    station=_get_station_code(current_stop),
+                    "👤 Train hasn't reached user's origin, using scheduled departure",
+                    user_origin=user_origin,
                     scheduled_departure=predicted_time.isoformat(),
+                    current_position=_get_station_code(stops[current_index]),
                 )
             else:
-                # Fallback to current time if no schedule
-                predicted_time = now_et()
+                # No scheduled departure at user's origin, fall back to current approach
                 logger.warning(
-                    "🚂 No scheduled departure, using current time",
-                    station=_get_station_code(current_stop),
+                    "👤 No scheduled departure at user's origin, using current time",
+                    user_origin=user_origin,
                 )
+                predicted_time = now_et()
+                start_index = current_index
         else:
-            # Train has departed from origin - start from current time
-            predicted_time = now_et()
-            logger.info(
-                "🚂 Train in progress, using current time",
-                current_station=_get_station_code(current_stop),
-            )
+            # Either no user origin provided, or train has passed it
+            # Use normal logic
+            current_stop = stops[current_index]
+            start_index = current_index
+
+            # For the origin station, use scheduled departure time as the starting point
+            if current_index == 0:
+                # Train is at origin - use scheduled departure as base time
+                if (
+                    hasattr(current_stop, "scheduled_departure")
+                    and current_stop.scheduled_departure
+                ):
+                    predicted_time = ensure_timezone_aware(
+                        current_stop.scheduled_departure
+                    )
+                    logger.info(
+                        "🚂 Using scheduled departure from origin",
+                        station=_get_station_code(current_stop),
+                        scheduled_departure=predicted_time.isoformat(),
+                    )
+                else:
+                    # Fallback to current time if no schedule
+                    predicted_time = now_et()
+                    logger.warning(
+                        "🚂 No scheduled departure, using current time",
+                        station=_get_station_code(current_stop),
+                    )
+            else:
+                # Train has departed from origin - start from current time
+                predicted_time = now_et()
+                logger.info(
+                    "🚂 Train in progress, using current time",
+                    current_station=_get_station_code(current_stop),
+                )
 
         # Process each remaining segment
-        for i in range(current_index, len(stops) - 1):
+        for i in range(start_index, len(stops) - 1):
             from_stop = stops[i]
             to_stop = stops[i + 1]
 

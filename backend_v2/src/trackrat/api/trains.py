@@ -87,11 +87,18 @@ async def get_train_details(
     date: date | None = Query(None, description="Journey date (YYYY-MM-DD)"),
     refresh: bool = Query(False, description="Force data refresh"),
     include_predictions: bool = Query(True, description="Include arrival predictions"),
+    from_station: str | None = Query(
+        None, description="User's origin station code (filters predictions)"
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> TrainDetailsResponse:
     """Get detailed information for a specific train."""
     logger.info(
-        "get_train_details_request", train_id=train_id, date=date, refresh=refresh
+        "get_train_details_request",
+        train_id=train_id,
+        date=date,
+        refresh=refresh,
+        from_station=from_station,
     )
 
     # Default to today
@@ -147,7 +154,14 @@ async def get_train_details(
     if include_predictions:
         try:
             forecaster = SimpleArrivalForecaster()
-            await forecaster.add_predictions_to_stops(db, journey, stops)
+            # Pass user's origin station to the forecaster for smarter predictions
+            await forecaster.add_predictions_to_stops(
+                db, journey, stops, user_origin=from_station
+            )
+
+            # Note: The forecaster now handles the user's origin intelligently,
+            # using scheduled times when the train hasn't reached it yet
+
             logger.info(
                 "added_arrival_predictions",
                 train_id=journey.train_id,

@@ -68,10 +68,19 @@ final class APIService: ObservableObject {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(identifier: "America/New_York")
-        components.queryItems = [
+        
+        var queryItems = [
             URLQueryItem(name: "date", value: formatter.string(from: Date())),
             URLQueryItem(name: "include_predictions", value: "true")
         ]
+        
+        // Pass the user's origin station to filter out meaningless predictions
+        // Only pass if not nil and not empty
+        if let fromStation = fromStationCode, !fromStation.isEmpty {
+            queryItems.append(URLQueryItem(name: "from_station", value: fromStation))
+        }
+        
+        components.queryItems = queryItems
         
         guard let url = components.url else {
             throw APIError.invalidURL

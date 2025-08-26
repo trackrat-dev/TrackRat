@@ -748,8 +748,9 @@ struct StopRowV2: View {
                         .foregroundColor(predictionDelayColor(predicted: predictedArrival, scheduled: stop.scheduledArrival))
                 }
                 .frame(maxHeight: .infinity, alignment: .center)
-            } else if stop.sequence > 0 {
-                // DEBUG: Show debug info when predictions aren't displayed (skip for origin station)
+            } else if stop.sequence > 0 && !isDeparture {
+                // DEBUG: Show debug info when predictions aren't displayed 
+                // (skip for user's origin/departure station since it will never have predictions)
                 let debugText = debugPredictionStatus()
                 if !debugText.isEmpty {
                     Text(debugText)
