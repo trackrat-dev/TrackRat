@@ -1,3 +1,0 @@
-gtfs-realtime-bindings==1.0.0
-requests>=2.31.0
-protobuf>=4.25.0
