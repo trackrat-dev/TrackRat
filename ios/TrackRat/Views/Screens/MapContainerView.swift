@@ -93,6 +93,47 @@ struct MapContainerView: View {
                 await mapViewModel?.fetchCongestionDataIfNeeded()
             }
         }
+        .onChange(of: appState.deepLinkTrainNumber) { _, trainNumber in
+            // Handle deep link navigation when train number is set
+            guard let trainNumber = trainNumber else { return }
+            
+            print("🔗 Deep link detected - navigating to train \(trainNumber)")
+            
+            Task {
+                // Small delay to ensure NavigationStack is ready
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                
+                await MainActor.run {
+                    // Navigate directly to train details
+                    print("🔗 Setting up navigation path...")
+                    appState.navigationPath = NavigationPath()
+                    appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                        trainNumber: trainNumber,
+                        fromStation: appState.deepLinkFromStation
+                    ))
+                    print("🔗 Navigation path set with \(appState.navigationPath.count) destinations")
+                    
+                    // Expand bottom sheet to full screen immediately
+                    bottomSheetPosition = .expanded
+                    print("🔗 Bottom sheet expanded")
+                    
+                    // Animate map to route if available
+                    if let route = appState.selectedRoute {
+                        animateMapToRoute(route, targetSheetPosition: .expanded)
+                        print("🔗 Map animated to route")
+                    }
+                }
+                
+                // Clear deep link state after a short delay to ensure navigation completes
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                await MainActor.run {
+                    appState.clearDeepLinkState()
+                    print("🔗 Deep link state cleared")
+                }
+                
+                print("✅ Deep link navigation completed")
+            }
+        }
         .onAppear {
             // Apply proper offset for initial bottom sheet position
             let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
@@ -154,6 +195,16 @@ struct MapContainerView: View {
                 // Clear the active train route when Live Activity ends
                 appState.activeTrainRoute = nil
                 appState.mapDisplayMode = .overallCongestion
+            }
+        }
+        .onChange(of: appState.shouldExpandForDeepLink) { _, shouldExpand in
+            // Handle deep link expansion request
+            if shouldExpand {
+                print("🔗 Deep link expansion requested")
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    bottomSheetPosition = .expanded
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
         }
         .sheet(item: $selectedSegment) { segment in

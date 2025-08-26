@@ -8,18 +8,25 @@ class DeepLinkService: ObservableObject {
     
     private init() {}
     
-    /// Handle an incoming URL and navigate to the appropriate screen
+    /// Handle an incoming URL and set up deep link state for navigation
     func handle(url: URL, appState: AppState) {
         print("🔗 Deep link received: \(url)")
         
         // Parse the deep link
         guard let deepLink = DeepLink(url: url) else {
+            print("❌ Failed to parse deep link URL")
             return
         }
         
-        print("✅ Deep link parsed - Train ID: \(deepLink.trainId)")
+        print("✅ Deep link parsed - Train Number: \(deepLink.trainId)")
         
-        // Set up app state for context
+        // Set deep link state for MapContainerView to handle
+        appState.deepLinkTrainNumber = deepLink.trainId
+        appState.deepLinkFromStation = deepLink.fromStationCode
+        appState.deepLinkToStation = deepLink.toStationCode
+        appState.shouldExpandForDeepLink = true
+        
+        // Set up context for proper display
         if let fromCode = deepLink.fromStationCode {
             appState.departureStationCode = fromCode
             // Find the station name for the code
@@ -38,17 +45,21 @@ class DeepLinkService: ObservableObject {
             }
         }
         
-        // Navigate to train details using the flexible navigation
-        let destination = NavigationDestination.trainDetailsFlexible(
-            trainNumber: deepLink.trainId,
-            fromStation: deepLink.fromStationCode
-        )
+        // Create route for map display
+        if let fromCode = deepLink.fromStationCode, 
+           let toCode = deepLink.toStationCode,
+           let fromName = appState.selectedDeparture,
+           let toName = appState.selectedDestination {
+            appState.selectedRoute = TripPair(
+                departureCode: fromCode,
+                departureName: fromName,
+                destinationCode: toCode,
+                destinationName: toName
+            )
+            print("🗺️ Set route for map display: \(fromCode) → \(toCode)")
+        }
         
-        // Clear existing navigation and push to train details
-        appState.navigationPath = NavigationPath()
-        appState.navigationPath.append(destination)
-        
-        print("🧭 Navigated to train details for \(deepLink.trainId)")
+        print("✅ Deep link state configured - MapContainerView will handle navigation")
     }
     
     /// Handle URL when app is already running (onOpenURL)

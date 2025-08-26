@@ -36,12 +36,16 @@ struct DeepLink {
         // Extract train ID from path
         let pathComponents = components.path.components(separatedBy: "/")
         
-        // For custom URL scheme, the path might be "train/{id}" or "/train/{id}"
+        // For custom URL scheme, the path might be "train/{id}" or "/train/{id}" or host could be "train"
         // For Universal Links, it's "/train/{id}"
         let trainIndex: Int
         if isCustomScheme {
-            // Custom scheme: "trackrat://train/123" or "trackrat:///train/123"
-            if pathComponents.count >= 2 && pathComponents[1] == "train" && pathComponents.count >= 3 {
+            // Handle format: "trackrat://train/A174" (train is host, A174 is path)
+            if components.host == "train" && pathComponents.count >= 2 && !pathComponents[1].isEmpty {
+                trainIndex = 1
+            }
+            // Handle format: "trackrat://host/train/A174" (train in path)
+            else if pathComponents.count >= 2 && pathComponents[1] == "train" && pathComponents.count >= 3 {
                 trainIndex = 2
             } else if pathComponents.count >= 3 && pathComponents[2] == "train" && pathComponents.count >= 4 {
                 trainIndex = 3

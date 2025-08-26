@@ -492,6 +492,12 @@ final class AppState: ObservableObject {
     @Published var mapDisplayMode: MapDisplayMode = .overallCongestion
     @Published var currentTrain: TrainV2?  // Currently selected train for journey focus
     
+    // Deep link navigation state
+    @Published var deepLinkTrainNumber: String? = nil
+    @Published var deepLinkFromStation: String? = nil
+    @Published var deepLinkToStation: String? = nil
+    @Published var shouldExpandForDeepLink: Bool = false
+    
     private let apiService = APIService()
     private let storageService = StorageService()
     
@@ -520,6 +526,14 @@ final class AppState: ObservableObject {
         selectedRoute = nil
         mapDisplayMode = .overallCongestion
         currentTrain = nil
+    }
+    
+    // Clear deep link state after handling
+    func clearDeepLinkState() {
+        deepLinkTrainNumber = nil
+        deepLinkFromStation = nil
+        deepLinkToStation = nil
+        shouldExpandForDeepLink = false
     }
     
     // MARK: - Trip Management
