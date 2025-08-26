@@ -452,7 +452,7 @@ async def get_segment_train_details(
     status: str | None = Query(
         None,
         description="Filter by delay status: on_time, delayed, significantly_delayed",
-        regex="^(on_time|delayed|significantly_delayed)$",
+        pattern="^(on_time|delayed|significantly_delayed)$",
     ),
     db: AsyncSession = Depends(get_db),
 ) -> SegmentTrainDetailsResponse:

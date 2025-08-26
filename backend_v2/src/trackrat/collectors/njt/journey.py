@@ -720,13 +720,13 @@ class JourneyCollector(BaseJourneyCollector):
         # This runs immediately without waiting for journey completion
         transit_analyzer = TransitAnalyzer()
         segments_created = await transit_analyzer.analyze_new_segments(session, journey)
-        
+
         if segments_created > 0:
             logger.info(
                 "realtime_segments_analyzed",
                 train_id=journey.train_id,
                 journey_id=journey.id,
-                segments_created=segments_created
+                segments_created=segments_created,
             )
 
         # Check if journey is complete
@@ -1116,9 +1116,8 @@ class JourneyCollector(BaseJourneyCollector):
             journey: Journey to validate
         """
         # Query stops directly to avoid lazy loading issues
-        stops_stmt = (
-            select(JourneyStop.stop_sequence)
-            .where(JourneyStop.journey_id == journey.id)
+        stops_stmt = select(JourneyStop.stop_sequence).where(
+            JourneyStop.journey_id == journey.id
         )
         result = await session.execute(stops_stmt)
         sequences = [row[0] for row in result.fetchall() if row[0] is not None]
@@ -1175,14 +1174,14 @@ class JourneyCollector(BaseJourneyCollector):
                     else "unknown"
                 ),
             )
-            
+
             # Run full analysis on completed journey (dwell times, progress, etc.)
             transit_analyzer = TransitAnalyzer()
             await transit_analyzer.analyze_journey(session, journey)
             logger.info(
                 "completed_journey_analyzed",
                 train_id=journey.train_id,
-                journey_id=journey.id
+                journey_id=journey.id,
             )
 
         # Check for cancellation (all stops cancelled)

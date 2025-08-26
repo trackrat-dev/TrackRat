@@ -89,9 +89,14 @@ async def test_api_error_count_reset_on_success():
     # Mock for multiple session.execute calls - need to handle many calls for stops, deletes, etc.
     mock_result_generic = AsyncMock()
     mock_result_generic.scalar = AsyncMock(return_value=None)
+    mock_result_generic.fetchall = Mock(
+        return_value=[]
+    )  # fetchall should return empty list
 
     # For scalars(), return a mock that directly returns an empty list (not awaitable)
-    mock_result_generic.scalars = lambda: []
+    scalars_mock = Mock()
+    scalars_mock.all.return_value = []
+    mock_result_generic.scalars = Mock(return_value=scalars_mock)
 
     # Mock both execute and scalar methods
     session.execute = AsyncMock(return_value=mock_result_generic)
@@ -219,16 +224,45 @@ async def test_train_not_found_counted_as_success_in_batch():
 
     # First mock_result for the journey selection query
     mock_result = AsyncMock()
-    scalars_mock = AsyncMock()
-    scalars_mock.all = lambda: [journey1, journey2]
-    mock_result.scalars = lambda: scalars_mock
+    scalars_mock = Mock()  # Use regular Mock, not AsyncMock
+    scalars_mock.all = Mock(return_value=[journey1, journey2])
+    mock_result.scalars = Mock(return_value=scalars_mock)
+    mock_result.fetchall = Mock(return_value=[])  # Add fetchall support
 
     # Second mock_result for the expire query (with rowcount)
     mock_expire_result = AsyncMock()
     mock_expire_result.rowcount = 0  # No rows expired
+    mock_expire_result.fetchall = Mock(return_value=[])  # Add fetchall support
+    expire_scalars_mock = Mock()
+    expire_scalars_mock.all = Mock(return_value=[])
+    mock_expire_result.scalars = Mock(return_value=expire_scalars_mock)
 
     # Set up session.execute to return different results for different calls
-    session.execute = AsyncMock(side_effect=[mock_result, mock_expire_result])
+    # Use a function to handle multiple calls with default mock
+    def execute_side_effect(*args, **kwargs):
+        if hasattr(execute_side_effect, "call_count"):
+            execute_side_effect.call_count += 1
+        else:
+            execute_side_effect.call_count = 1
+
+        if execute_side_effect.call_count == 1:
+            return mock_result
+        elif execute_side_effect.call_count == 2:
+            return mock_expire_result
+        else:
+            # Return a generic mock for any additional calls
+            generic_mock = AsyncMock(rowcount=0)
+            # Use regular Mock for scalars since it's not async
+            generic_scalars = Mock()
+            generic_scalars.all = Mock(
+                return_value=[]
+            )  # Return empty list for scalars().all()
+            # Make sure scalars is not async
+            generic_mock.scalars = Mock(return_value=generic_scalars)
+            generic_mock.fetchall = Mock(return_value=[])  # Add fetchall support
+            return generic_mock
+
+    session.execute = AsyncMock(side_effect=execute_side_effect)
 
     # Mock NJT client - first train succeeds, second train not found
     njt_client = AsyncMock()

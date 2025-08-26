@@ -22,8 +22,10 @@ from trackrat.utils.time import now_et
 def setup_mock_query(mock_session, stops):
     """Helper function to set up mock database query to return stops."""
     mock_result = AsyncMock()
-    # Mock scalars to return a simple iterable, not a coroutine
-    mock_result.scalars = MagicMock(return_value=stops)
+    # Mock scalars to return an object with .all() method that returns stops
+    scalars_mock = MagicMock()
+    scalars_mock.all = MagicMock(return_value=stops)
+    mock_result.scalars = MagicMock(return_value=scalars_mock)
     mock_session.execute.return_value = mock_result
 
 

@@ -151,15 +151,13 @@ async def get_train_details(
             logger.info(
                 "added_arrival_predictions",
                 train_id=journey.train_id,
-                stops_with_predictions=sum(1 for s in stops if s.predicted_arrival is not None)
+                stops_with_predictions=sum(
+                    1 for s in stops if s.predicted_arrival is not None
+                ),
             )
         except Exception as e:
             # Log error but don't fail the request
-            logger.error(
-                "prediction_failed",
-                train_id=journey.train_id,
-                error=str(e)
-            )
+            logger.error("prediction_failed", train_id=journey.train_id, error=str(e))
 
     # Calculate train position
     train_position = calculate_train_position(journey)
@@ -189,8 +187,7 @@ async def get_train_details(
     if include_predictions and journey.terminal_station_code:
         # Find the terminal station in our stops list
         terminal_stop = next(
-            (s for s in stops if s.station.code == journey.terminal_station_code),
-            None
+            (s for s in stops if s.station.code == journey.terminal_station_code), None
         )
         if terminal_stop and terminal_stop.predicted_arrival:
             predicted_arrival = terminal_stop.predicted_arrival

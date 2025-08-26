@@ -42,7 +42,7 @@ class TransitAnalyzer:
             .order_by(JourneyStop.stop_sequence)
         )
         result = await db.execute(stops_stmt)
-        stops = list(result.scalars())
+        stops = list(result.scalars().all())
 
         if not stops:
             logger.debug("no_stops_to_analyze", journey_id=journey.id)
@@ -75,7 +75,7 @@ class TransitAnalyzer:
         """
         Analyze only new segments that have completed since last analysis.
         This is designed to be called frequently during journey updates.
-        
+
         Returns:
             Number of new segments created
         """
@@ -86,25 +86,28 @@ class TransitAnalyzer:
             .order_by(JourneyStop.stop_sequence)
         )
         result = await db.execute(stops_stmt)
-        stops = list(result.scalars())
-        
+        stops = list(result.scalars().all())
+
         if len(stops) < 2:
             return 0
-        
+
         return await self._analyze_segments(db, journey, stops, check_duplicates=True)
 
     async def _analyze_segments(
-        self, db: AsyncSession, journey: TrainJourney, stops: list[JourneyStop],
-        check_duplicates: bool = False
+        self,
+        db: AsyncSession,
+        journey: TrainJourney,
+        stops: list[JourneyStop],
+        check_duplicates: bool = False,
     ) -> int:
         """Calculate and store transit times between consecutive stations.
-        
+
         Args:
             db: Database session
             journey: Journey to analyze
             stops: List of journey stops
             check_duplicates: If True, check if segment already exists before creating
-            
+
         Returns:
             Number of segments created
         """
@@ -117,14 +120,15 @@ class TransitAnalyzer:
             # Skip if we don't have actual times
             if not (current_stop.actual_departure and next_stop.actual_arrival):
                 continue
-            
+
             # Check if segment already exists (to avoid duplicates)
             if check_duplicates:
                 exists_stmt = select(SegmentTransitTime).where(
                     and_(
                         SegmentTransitTime.journey_id == journey.id,
-                        SegmentTransitTime.from_station_code == current_stop.station_code,
-                        SegmentTransitTime.to_station_code == next_stop.station_code
+                        SegmentTransitTime.from_station_code
+                        == current_stop.station_code,
+                        SegmentTransitTime.to_station_code == next_stop.station_code,
                     )
                 )
                 result = await db.execute(exists_stmt)
@@ -181,7 +185,7 @@ class TransitAnalyzer:
                 journey_id=journey.id,
                 segments_created=segments_created,
             )
-        
+
         return segments_created
 
     async def _analyze_dwell_times(
@@ -386,7 +390,7 @@ class TransitAnalyzer:
             .order_by(JourneyStop.stop_sequence)
         )
         result = db.execute(stops_stmt)
-        stops = list(result.scalars())
+        stops = list(result.scalars().all())
 
         if not stops:
             logger.debug("no_stops_to_analyze_sync", journey_id=journey.id)

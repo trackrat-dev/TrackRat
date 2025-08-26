@@ -165,10 +165,12 @@ class StopDetails(BaseModel):
     track_assigned_at: datetime | None = None
     raw_status: RawStopStatus
     has_departed_station: bool = False
-    
+
     # Prediction fields (added for arrival forecasting)
     predicted_arrival: datetime | None = None
-    predicted_arrival_samples: int | None = Field(None, ge=0, description="Number of recent trains used for prediction")
+    predicted_arrival_samples: int | None = Field(
+        None, ge=0, description="Number of recent trains used for prediction"
+    )
 
 
 class TrainDetails(BaseModel):
