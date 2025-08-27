@@ -977,7 +977,7 @@ class JourneyCollector(BaseJourneyCollector):
                     station_code=stop_data.STATION_2CHAR,
                     station_name=stop_data.STATIONNAME
                     or get_station_name(stop_data.STATION_2CHAR or ""),
-                    stop_sequence=sequence,
+                    stop_sequence=0,  # Placeholder, will be corrected by _resequence_stops
                     # Set scheduled times ONLY on creation (immutable)
                     # TIME on first response = scheduled arrival (then becomes estimate)
                     scheduled_arrival=api_arrival_time,
@@ -1013,29 +1013,6 @@ class JourneyCollector(BaseJourneyCollector):
                         train_id=journey.train_id,
                         station=stop_data.STATION_2CHAR,
                     )
-
-                # Update sequence if more accurate
-                current_seq = stop.stop_sequence or 0
-                if current_seq == 0 and sequence > 0:
-                    # Upgrade from discovery placeholder (0) to real sequence
-                    logger.debug(
-                        "upgrading_stop_sequence_from_placeholder",
-                        train_id=journey.train_id,
-                        station_code=stop.station_code,
-                        old_sequence=current_seq,
-                        new_sequence=sequence,
-                    )
-                    stop.stop_sequence = sequence
-                elif sequence > current_seq:
-                    # Update to higher sequence (more accurate position in journey)
-                    logger.debug(
-                        "updating_stop_sequence_to_higher_value",
-                        train_id=journey.train_id,
-                        station_code=stop.station_code,
-                        old_sequence=current_seq,
-                        new_sequence=sequence,
-                    )
-                    stop.stop_sequence = sequence
 
             # Always update actual_arrival with latest TIME value (live estimate)
             # This represents the current estimated/actual arrival time
@@ -1103,8 +1080,38 @@ class JourneyCollector(BaseJourneyCollector):
             stop.pickup_only = bool(stop_data.PICKUP)
             stop.dropoff_only = bool(stop_data.DROPOFF)
 
+        # Re-sequence all stops for this journey to ensure consistency
+        await self._resequence_stops(session, journey)
+
         # Validate that we don't have duplicate sequences after processing
         await self._validate_stop_sequences(session, journey)
+
+    async def _resequence_stops(
+        self, session: AsyncSession, journey: TrainJourney
+    ) -> None:
+        """Resequence all stops for a journey based on scheduled arrival time."""
+        logger.debug("resequencing_stops", journey_id=journey.id)
+
+        # Get all stops for the journey
+        stmt = select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+        result = await session.execute(stmt)
+        stops = list(result.scalars().all())
+
+        # Sort stops by scheduled arrival time (the most reliable field for ordering)
+        # Use a very early time for stops with no arrival time to sort them first
+        stops.sort(key=lambda s: s.scheduled_arrival or datetime.min)
+
+        # Update the stop_sequence for each stop
+        for i, stop in enumerate(stops):
+            if stop.stop_sequence != i:
+                logger.info(
+                    "updating_stop_sequence",
+                    journey_id=journey.id,
+                    station_code=stop.station_code,
+                    old_sequence=stop.stop_sequence,
+                    new_sequence=i,
+                )
+                stop.stop_sequence = i
 
     async def _validate_stop_sequences(
         self, session: AsyncSession, journey: TrainJourney
