@@ -1093,6 +1093,9 @@ struct SegmentedTrackPredictionView: View {
         return createSegments(from: sortedPlatforms)
     }
     
+    private var hasOnlyLowConfidencePredictions: Bool {
+        !predictionSegments.isEmpty && predictionSegments.allSatisfy { $0.probability < 0.17 }
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1112,6 +1115,13 @@ struct SegmentedTrackPredictionView: View {
             if isLoadingPredictions {
                 ProgressView()
                     .frame(height: 64)
+            } else if hasOnlyLowConfidencePredictions {
+                Text("No clear favorite")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+                    .frame(height: 64)
+                    .frame(maxWidth: .infinity)
             } else if !predictionSegments.isEmpty {
                 VStack(spacing: 8) {
                     // Labels for segments that need them above the bar
