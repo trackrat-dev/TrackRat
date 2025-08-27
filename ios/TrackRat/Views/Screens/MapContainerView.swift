@@ -14,8 +14,66 @@ struct MapContainerView: View {
         span: MKCoordinateSpan(latitudeDelta: 4.5, longitudeDelta: 3.0)   // Wide enough to show DC to Boston
     )
     
+    // Smart default that tries to focus on user's home/work stations, falls back to defaultMapRegion
+    private var smartDefaultRegion: MKCoordinateRegion {
+        // Try to get home and work station coordinates
+        let homeCode = RatSenseService.shared.getHomeStation()
+        let workCode = RatSenseService.shared.getWorkStation()
+        
+        let homeCoord = homeCode.flatMap { Stations.getCoordinates(for: $0) }
+        let workCoord = workCode.flatMap { Stations.getCoordinates(for: $0) }
+        
+        // Calculate optimal region based on available stations
+        if let home = homeCoord, let work = workCoord {
+            // Both home and work stations available
+            return calculateRegionForTwoPoints(home, work)
+        } else if let singleCoord = homeCoord ?? workCoord {
+            // Only one station available (home or work)
+            return calculateRegionForSinglePoint(singleCoord)
+        } else {
+            // No home/work stations set - use existing default
+            return Self.defaultMapRegion
+        }
+    }
+    
+    // Calculate region that encompasses both home and work stations with appropriate padding
+    private func calculateRegionForTwoPoints(_ point1: CLLocationCoordinate2D, _ point2: CLLocationCoordinate2D) -> MKCoordinateRegion {
+        // Handle case where both points are the same (home == work)
+        if abs(point1.latitude - point2.latitude) < 0.001 && abs(point1.longitude - point2.longitude) < 0.001 {
+            return calculateRegionForSinglePoint(point1)
+        }
+        
+        // Calculate bounding box for both points
+        let minLat = min(point1.latitude, point2.latitude)
+        let maxLat = max(point1.latitude, point2.latitude)
+        let minLng = min(point1.longitude, point2.longitude)
+        let maxLng = max(point1.longitude, point2.longitude)
+        
+        // Calculate center point
+        let centerLat = (minLat + maxLat) / 2
+        let centerLng = (minLng + maxLng) / 2
+        
+        // Calculate spans with reasonable padding (50% extra space around points)
+        let latSpan = max((maxLat - minLat) * 1.5, 0.1) // Minimum span of 0.1 degrees
+        let lngSpan = max((maxLng - minLng) * 1.5, 0.1)
+        
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLng),
+            span: MKCoordinateSpan(latitudeDelta: latSpan, longitudeDelta: lngSpan)
+        )
+    }
+    
+    // Calculate region centered on a single station with comfortable zoom level
+    private func calculateRegionForSinglePoint(_ point: CLLocationCoordinate2D) -> MKCoordinateRegion {
+        return MKCoordinateRegion(
+            center: point,
+            span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5) // Moderate zoom level
+        )
+    }
+    
     // Map region state - will be set dynamically based on bottom sheet position
     @State private var mapRegion = MapContainerView.defaultMapRegion
+    @State private var hasInitializedMapRegion = false
     
     var body: some View {
         ZStack {
@@ -135,15 +193,20 @@ struct MapContainerView: View {
             }
         }
         .onAppear {
-            // Apply proper offset for initial bottom sheet position
-            let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
-            mapRegion = MKCoordinateRegion(
-                center: CLLocationCoordinate2D(
-                    latitude: Self.defaultMapRegion.center.latitude + offset,
-                    longitude: Self.defaultMapRegion.center.longitude
-                ),
-                span: Self.defaultMapRegion.span
-            )
+            // Initialize map region with smart default (home/work focused) on first appearance
+            if !hasInitializedMapRegion {
+                let smartRegion = smartDefaultRegion
+                let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
+                
+                mapRegion = MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(
+                        latitude: smartRegion.center.latitude + offset,
+                        longitude: smartRegion.center.longitude
+                    ),
+                    span: smartRegion.span
+                )
+                hasInitializedMapRegion = true
+            }
             
             // Check for active Live Activity first
             checkForActiveLiveActivity()
