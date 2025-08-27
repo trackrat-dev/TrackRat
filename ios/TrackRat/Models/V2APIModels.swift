@@ -351,40 +351,6 @@ struct V2OccupiedTracksMetadata: Codable {
 
 // MARK: - Congestion Data Models
 
-// MARK: - Route Congestion Summary (Client-side only)
-
-struct CongestionSummary {
-    enum CongestionLevel {
-        case normal, moderate, heavy, severe
-        
-        var color: Color {
-            switch self {
-            case .normal: return .green.opacity(0.8)
-            case .moderate: return .yellow.opacity(0.8)
-            case .heavy: return .orange.opacity(0.8)
-            case .severe: return .red.opacity(0.8)
-            }
-        }
-        
-        var icon: String {
-            switch self {
-            case .normal: return "checkmark.circle.fill"
-            case .moderate: return "exclamationmark.circle.fill"
-            case .heavy: return "exclamationmark.triangle.fill"
-            case .severe: return "exclamationmark.octagon.fill"
-            }
-        }
-    }
-    
-    let level: CongestionLevel
-    let averageDelay: Double
-    let minDelay: Double
-    let maxDelay: Double
-    let message: String
-    let trainCount: Int
-}
-
-
 struct TrainLocationData: Codable, Identifiable {
     let trainId: String
     let line: String

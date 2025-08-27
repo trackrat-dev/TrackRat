@@ -260,51 +260,6 @@ final class APIService: ObservableObject {
         )
     }
     
-    // MARK: - Recent Route Congestion Data
-    
-    func fetchRecentSegmentTrains(
-        from fromStation: String,
-        to toStation: String,
-        hoursBack: Int = 3,
-        dataSource: String = "NJT"
-    ) async throws -> SegmentTrainDetailsResponse {
-        var components = URLComponents(string: "\(baseURL)/v2/routes/segments/\(fromStation)/\(toStation)/trains")!
-        
-        // Set time window to look back
-        let endTime = Date()
-        let startTime = endTime.addingTimeInterval(-Double(hoursBack) * 3600) // hours to seconds
-        
-        let formatter = ISO8601DateFormatter()
-        formatter.timeZone = TimeZone(identifier: "America/New_York")
-        
-        components.queryItems = [
-            URLQueryItem(name: "data_source", value: dataSource),
-            URLQueryItem(name: "start_time", value: formatter.string(from: startTime)),
-            URLQueryItem(name: "end_time", value: formatter.string(from: endTime)),
-            URLQueryItem(name: "limit", value: "100")
-        ]
-        
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-        
-        // 🔍 DEBUG: Log the actual URL being requested
-        print("🔍 CONGESTION DEBUG: Requesting URL: \(url.absoluteString)")
-        
-        let (data, _) = try await session.data(from: url)
-        
-        do {
-            let response = try decoder.decode(SegmentTrainDetailsResponse.self, from: data)
-            return response
-        } catch {
-            print("🔴 SEGMENT TRAINS DECODING ERROR: \(error)")
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("🔴 RAW DATA: \(jsonString.prefix(500))")
-            }
-            throw error
-        }
-    }
-    
     // MARK: - Route Historical Data
     
     func fetchRouteHistoricalData(

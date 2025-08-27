@@ -631,10 +631,7 @@ struct Stations {
     }
     
     static func getCoordinates(for code: String) -> CLLocationCoordinate2D? {
-        let coords = stationCoordinates[code]
-        print("🚉 Stations: getCoordinates(for: '\(code)') -> \(coords?.latitude ?? 0.0), \(coords?.longitude ?? 0.0)")
-        print("🚉 Stations: Station '\(code)' exists in coordinates dictionary: \(coords != nil)")
-        return coords
+        return stationCoordinates[code]
     }
     
     static func displayName(for stationCode: String) -> String? {

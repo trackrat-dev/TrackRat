@@ -43,12 +43,6 @@ struct TrainListView: View {
                         } else if viewModel.trains.isEmpty {
                             EmptyStateView(message: "No trains found")
                         } else {
-                            // Show congestion summary if available
-                            if let congestionSummary = viewModel.congestionSummary {
-                                CongestionBanner(summary: congestionSummary)
-                                    .padding(.bottom, 8)
-                            }
-                            
                             let expressTrains = viewModel.identifyExpressTrains()
                             ForEach(viewModel.trains) { train in
                                 TrainCard(
@@ -358,7 +352,6 @@ class TrainListViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var hasStartedLoading = false
     @Published var error: String?
-    @Published var congestionSummary: CongestionSummary?
     
     private var currentDestination: String?
     private var currentFromStationCode: String?
@@ -401,107 +394,6 @@ class TrainListViewModel: ObservableObject {
         }
         
         return expressTrains
-    }
-    
-    // MARK: - Congestion Calculation
-    
-    private func calculateRouteCongestion() async -> CongestionSummary? {
-        guard let fromStationCode = currentFromStationCode, !fromStationCode.isEmpty,
-              let destination = currentDestination, !destination.isEmpty,
-              let toStationCode = Stations.getStationCode(destination),
-              !toStationCode.isEmpty else {
-            return nil
-        }
-        
-        do {
-            // Fetch PAST trains that have actually traveled this route in the last 3 hours
-            let segmentResponse = try await apiService.fetchRecentSegmentTrains(
-                from: fromStationCode,
-                to: toStationCode,
-                hoursBack: 3,
-                dataSource: "NJT"
-            )
-            
-            let pastTrains = segmentResponse.trains
-            
-            // 🔍 DEBUG: Log what we received from API
-            print("🔍 CONGESTION DEBUG: API returned \(pastTrains.count) trains for \(fromStationCode)→\(toStationCode)")
-            for (index, train) in pastTrains.enumerated() {
-                print("  Train \(index + 1): \(train.trainId) - Arrival delay: \(train.arrivalDelayMinutes)m")
-            }
-            
-            guard !pastTrains.isEmpty else {
-                print("🔍 CONGESTION DEBUG: No trains found, returning 'unknown' message")
-                return CongestionSummary(
-                    level: .normal,
-                    averageDelay: 0,
-                    minDelay: 0,
-                    maxDelay: 0,
-                    message: "No recent trains • Route condition unknown",
-                    trainCount: 0
-                )
-            }
-            
-            // Use the final observed delay at destination station (arrival delay)
-            // This is exactly what the user requested: "grab just the final observed delay time at the user's destination station"
-            // Note: We keep negative delays (early arrivals) to get accurate averages
-            let journeyDelays: [Double] = pastTrains.map { train in
-                return Double(train.arrivalDelayMinutes)  // Removed max(0, ...) to preserve early arrivals
-            }
-            
-            // 🔍 DEBUG: Log delay calculations
-            print("🔍 CONGESTION DEBUG: Raw delays: \(journeyDelays)")
-            
-            let averageDelay = journeyDelays.reduce(0, +) / Double(journeyDelays.count)
-            let minDelay = journeyDelays.min() ?? 0
-            let maxDelay = journeyDelays.max() ?? 0
-            
-            // 🔍 DEBUG: Log calculated values
-            print("🔍 CONGESTION DEBUG: Average: \(averageDelay), Min: \(minDelay), Max: \(maxDelay)")
-            
-            // Categorize congestion with updated thresholds and messaging
-            let level: CongestionSummary.CongestionLevel
-            let message: String
-            
-            switch averageDelay {
-            case ..<(-2):  // More than 2 minutes early on average
-                level = .normal
-                message = "Running early • \(pastTrains.count) recent trains arriving ~\(abs(Int(averageDelay)))m early on average"
-                
-            case (-2)..<5:  // Between 2min early and 5min late
-                level = .normal
-                if averageDelay < 0 {
-                    message = "On time • \(pastTrains.count) recent trains arriving ~\(abs(Int(averageDelay)))m early on average"
-                } else {
-                    message = "On time • \(pastTrains.count) recent trains arriving ~\(Int(averageDelay))m late on average"
-                }
-                
-            case 5..<15:
-                level = .moderate
-                message = "Minor delays • \(pastTrains.count) recent trains arriving ~\(Int(averageDelay))m late on average"
-                
-            case 15..<25:
-                level = .heavy
-                message = "Moderate delays • \(pastTrains.count) recent trains arriving ~\(Int(averageDelay))m late on average"
-                
-            default:
-                level = .severe
-                message = "Significant delays • \(pastTrains.count) recent trains arriving ~\(Int(averageDelay))m late on average"
-            }
-            
-            return CongestionSummary(
-                level: level,
-                averageDelay: averageDelay,
-                minDelay: minDelay,
-                maxDelay: maxDelay,
-                message: message,
-                trainCount: pastTrains.count
-            )
-            
-        } catch {
-            print("🔴 Failed to calculate congestion: \(error)")
-            return nil
-        }
     }
     
     private func sortTrainsByDepartureTime(_ trains: [TrainV2], fromStationCode: String) -> [TrainV2] {
@@ -555,9 +447,6 @@ class TrainListViewModel: ObservableObject {
             
             // Sort trains by origin station departure time
             trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
-            
-            // Calculate congestion summary after trains are loaded
-            congestionSummary = await calculateRouteCongestion()
         } catch {
             self.error = error.localizedDescription
         }
@@ -608,9 +497,6 @@ class TrainListViewModel: ObservableObject {
             // Update trains list with new data
             trains = newTrains
             
-            // Calculate congestion summary after trains are refreshed
-            congestionSummary = await calculateRouteCongestion()
-            
         } catch {
             // Silent failure for background refresh
             print("TrainListViewModel: Silent refresh failed: \(error.localizedDescription)")
@@ -657,39 +543,6 @@ struct EmptyStateView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, minHeight: 200)
-    }
-}
-
-// MARK: - Congestion Banner Component
-struct CongestionBanner: View {
-    let summary: CongestionSummary
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Icon
-            Image(systemName: summary.level.icon)
-                .font(.title2)
-                .foregroundColor(summary.level.color)
-            
-            // Message
-            Text(summary.message)
-                .font(.subheadline)
-                .foregroundColor(.white)
-                .multilineTextAlignment(.leading)
-            
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(summary.level.color.opacity(0.3), lineWidth: 1)
-                )
-        )
-        .padding(.horizontal, 16)
     }
 }
 
