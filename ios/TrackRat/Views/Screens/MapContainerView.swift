@@ -16,30 +16,57 @@ struct MapContainerView: View {
     
     // Smart default that tries to focus on user's home/work stations, falls back to defaultMapRegion
     private var smartDefaultRegion: MKCoordinateRegion {
-        // Try to get home and work station coordinates
+        print("🗺️ SmartDefault: Starting smart default region calculation")
+        
+        // Try to get home and work station codes
         let homeCode = RatSenseService.shared.getHomeStation()
         let workCode = RatSenseService.shared.getWorkStation()
         
-        let homeCoord = homeCode.flatMap { Stations.getCoordinates(for: $0) }
-        let workCoord = workCode.flatMap { Stations.getCoordinates(for: $0) }
+        print("🗺️ SmartDefault: Retrieved station codes - Home: \(homeCode ?? "nil"), Work: \(workCode ?? "nil")")
+        
+        // Try to get coordinates for the stations
+        let homeCoord = homeCode.flatMap { code in
+            let coord = Stations.getCoordinates(for: code)
+            print("🗺️ SmartDefault: Home station '\(code)' coordinates: \(coord?.latitude ?? 0.0), \(coord?.longitude ?? 0.0)")
+            return coord
+        }
+        
+        let workCoord = workCode.flatMap { code in
+            let coord = Stations.getCoordinates(for: code)
+            print("🗺️ SmartDefault: Work station '\(code)' coordinates: \(coord?.latitude ?? 0.0), \(coord?.longitude ?? 0.0)")
+            return coord
+        }
+        
+        print("🗺️ SmartDefault: Coordinate resolution - Home: \(homeCoord != nil), Work: \(workCoord != nil)")
         
         // Calculate optimal region based on available stations
         if let home = homeCoord, let work = workCoord {
-            // Both home and work stations available
-            return calculateRegionForTwoPoints(home, work)
+            print("🗺️ SmartDefault: ✅ Both stations available - calculating two-point region")
+            let region = calculateRegionForTwoPoints(home, work)
+            print("🗺️ SmartDefault: Two-point region center: \(region.center.latitude), \(region.center.longitude), span: \(region.span.latitudeDelta)°")
+            return region
         } else if let singleCoord = homeCoord ?? workCoord {
-            // Only one station available (home or work)
-            return calculateRegionForSinglePoint(singleCoord)
+            let stationType = homeCoord != nil ? "home" : "work"
+            print("🗺️ SmartDefault: ✅ Single station available (\(stationType)) - calculating single-point region")
+            let region = calculateRegionForSinglePoint(singleCoord)
+            print("🗺️ SmartDefault: Single-point region center: \(region.center.latitude), \(region.center.longitude), span: \(region.span.latitudeDelta)°")
+            return region
         } else {
-            // No home/work stations set - use existing default
+            print("🗺️ SmartDefault: ❌ No stations available - using default region")
+            print("🗺️ SmartDefault: Default region center: \(Self.defaultMapRegion.center.latitude), \(Self.defaultMapRegion.center.longitude), span: \(Self.defaultMapRegion.span.latitudeDelta)°")
             return Self.defaultMapRegion
         }
     }
     
     // Calculate region that encompasses both home and work stations with appropriate padding
     private func calculateRegionForTwoPoints(_ point1: CLLocationCoordinate2D, _ point2: CLLocationCoordinate2D) -> MKCoordinateRegion {
+        print("🗺️ TwoPoints: Calculating region for two points")
+        print("🗺️ TwoPoints: Point1: \(point1.latitude), \(point1.longitude)")
+        print("🗺️ TwoPoints: Point2: \(point2.latitude), \(point2.longitude)")
+        
         // Handle case where both points are the same (home == work)
         if abs(point1.latitude - point2.latitude) < 0.001 && abs(point1.longitude - point2.longitude) < 0.001 {
+            print("🗺️ TwoPoints: Points are identical - using single point calculation")
             return calculateRegionForSinglePoint(point1)
         }
         
@@ -49,6 +76,8 @@ struct MapContainerView: View {
         let minLng = min(point1.longitude, point2.longitude)
         let maxLng = max(point1.longitude, point2.longitude)
         
+        print("🗺️ TwoPoints: Bounding box - Lat: \(minLat) to \(maxLat), Lng: \(minLng) to \(maxLng)")
+        
         // Calculate center point
         let centerLat = (minLat + maxLat) / 2
         let centerLng = (minLng + maxLng) / 2
@@ -56,6 +85,8 @@ struct MapContainerView: View {
         // Calculate spans with reasonable padding (50% extra space around points)
         let latSpan = max((maxLat - minLat) * 1.5, 0.1) // Minimum span of 0.1 degrees
         let lngSpan = max((maxLng - minLng) * 1.5, 0.1)
+        
+        print("🗺️ TwoPoints: Final region - Center: \(centerLat), \(centerLng), Span: \(latSpan)° x \(lngSpan)°")
         
         return MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLng),
@@ -65,10 +96,13 @@ struct MapContainerView: View {
     
     // Calculate region centered on a single station with comfortable zoom level
     private func calculateRegionForSinglePoint(_ point: CLLocationCoordinate2D) -> MKCoordinateRegion {
-        return MKCoordinateRegion(
+        print("🗺️ SinglePoint: Calculating region for single point: \(point.latitude), \(point.longitude)")
+        let region = MKCoordinateRegion(
             center: point,
             span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5) // Moderate zoom level
         )
+        print("🗺️ SinglePoint: Final region - Center: \(region.center.latitude), \(region.center.longitude), Span: \(region.span.latitudeDelta)°")
+        return region
     }
     
     // Map region state - will be set dynamically based on bottom sheet position
@@ -193,19 +227,36 @@ struct MapContainerView: View {
             }
         }
         .onAppear {
+            print("🗺️ MapContainer: onAppear called")
+            print("🗺️ MapContainer: hasInitializedMapRegion = \(hasInitializedMapRegion)")
+            print("🗺️ MapContainer: bottomSheetPosition = \(bottomSheetPosition)")
+            
             // Initialize map region with smart default (home/work focused) on first appearance
             if !hasInitializedMapRegion {
-                let smartRegion = smartDefaultRegion
-                let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
+                print("🗺️ MapContainer: First appearance - initializing map region")
                 
-                mapRegion = MKCoordinateRegion(
+                let smartRegion = smartDefaultRegion
+                print("🗺️ MapContainer: Smart region calculated - Center: \(smartRegion.center.latitude), \(smartRegion.center.longitude), Span: \(smartRegion.span.latitudeDelta)°")
+                
+                let offset = calculateVisibleAreaOffset(for: bottomSheetPosition)
+                print("🗺️ MapContainer: Calculated offset for \(bottomSheetPosition): \(offset)")
+                
+                let finalRegion = MKCoordinateRegion(
                     center: CLLocationCoordinate2D(
                         latitude: smartRegion.center.latitude + offset,
                         longitude: smartRegion.center.longitude
                     ),
                     span: smartRegion.span
                 )
+                
+                print("🗺️ MapContainer: Final region with offset - Center: \(finalRegion.center.latitude), \(finalRegion.center.longitude), Span: \(finalRegion.span.latitudeDelta)°")
+                
+                mapRegion = finalRegion
                 hasInitializedMapRegion = true
+                
+                print("🗺️ MapContainer: ✅ Map region initialized and flag set")
+            } else {
+                print("🗺️ MapContainer: Already initialized - skipping region calculation")
             }
             
             // Check for active Live Activity first
@@ -500,6 +551,8 @@ struct MapContainerView: View {
     }
     
     private func resetToDefaultMapView() {
+        print("🗺️ Reset: Resetting to default map view")
+        
         // Clear state immediately (non-blocking)
         appState.selectedRoute = nil
         appState.mapDisplayMode = .overallCongestion
@@ -507,15 +560,22 @@ struct MapContainerView: View {
         // Do map operations asynchronously to avoid blocking navigation
         Task { @MainActor in
             withAnimation(.easeInOut(duration: 0.25)) {
-                // Use consistent DC-Boston default region with medium position offset
+                // Use smart default region (home/work focused) instead of hardcoded default
+                let smartRegion = smartDefaultRegion
                 let offset = calculateVisibleAreaOffset(for: .medium)
+                
+                print("🗺️ Reset: Using smart region - Center: \(smartRegion.center.latitude), \(smartRegion.center.longitude), Span: \(smartRegion.span.latitudeDelta)°")
+                print("🗺️ Reset: Applied offset for medium position: \(offset)")
+                
                 mapRegion = MKCoordinateRegion(
                     center: CLLocationCoordinate2D(
-                        latitude: Self.defaultMapRegion.center.latitude + offset,
-                        longitude: Self.defaultMapRegion.center.longitude
+                        latitude: smartRegion.center.latitude + offset,
+                        longitude: smartRegion.center.longitude
                     ),
-                    span: Self.defaultMapRegion.span
+                    span: smartRegion.span
                 )
+                
+                print("🗺️ Reset: ✅ Map region reset with smart default")
             }
             
             // Clear route filter in background to avoid blocking
