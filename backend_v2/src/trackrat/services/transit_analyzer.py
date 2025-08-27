@@ -117,13 +117,12 @@ class TransitAnalyzer:
             current_stop = stops[i]
             next_stop = stops[i + 1]
 
-            # Use actual times when available, fall back to scheduled times (COALESCE logic)
-            departure_time = current_stop.actual_departure or current_stop.scheduled_departure
-            arrival_time = next_stop.actual_arrival or next_stop.scheduled_arrival
-            
-            # Skip if we don't have ANY times at all
-            if not (departure_time and arrival_time):
+            # We need actual times to calculate actual transit time
+            if not (current_stop.actual_departure and next_stop.actual_arrival):
                 continue
+
+            departure_time = current_stop.actual_departure
+            arrival_time = next_stop.actual_arrival
 
             # Check if segment already exists (to avoid duplicates)
             if check_duplicates:
@@ -147,8 +146,10 @@ class TransitAnalyzer:
                 ) - ensure_timezone_aware(current_stop.scheduled_departure)
                 scheduled_minutes = int(scheduled_delta.total_seconds() / 60)
 
-            # Calculate actual transit time using COALESCE variables
-            actual_delta = ensure_timezone_aware(arrival_time) - ensure_timezone_aware(departure_time)
+            # Calculate actual transit time
+            actual_delta = ensure_timezone_aware(arrival_time) - ensure_timezone_aware(
+                departure_time
+            )
             actual_minutes = int(actual_delta.total_seconds() / 60)
 
             # Skip invalid times (negative or unreasonably long)
@@ -427,13 +428,12 @@ class TransitAnalyzer:
             current_stop = stops[i]
             next_stop = stops[i + 1]
 
-            # Use actual times when available, fall back to scheduled times (COALESCE logic)
-            departure_time = current_stop.actual_departure or current_stop.scheduled_departure
-            arrival_time = next_stop.actual_arrival or next_stop.scheduled_arrival
-            
-            # Skip if we don't have ANY times at all
-            if not (departure_time and arrival_time):
+            # We need actual times to calculate actual transit time
+            if not (current_stop.actual_departure and next_stop.actual_arrival):
                 continue
+
+            departure_time = current_stop.actual_departure
+            arrival_time = next_stop.actual_arrival
 
             # Calculate scheduled transit time
             scheduled_minutes = None
@@ -443,8 +443,10 @@ class TransitAnalyzer:
                 ) - ensure_timezone_aware(current_stop.scheduled_departure)
                 scheduled_minutes = int(scheduled_delta.total_seconds() / 60)
 
-            # Calculate actual transit time using COALESCE variables
-            actual_delta = ensure_timezone_aware(arrival_time) - ensure_timezone_aware(departure_time)
+            # Calculate actual transit time
+            actual_delta = ensure_timezone_aware(arrival_time) - ensure_timezone_aware(
+                departure_time
+            )
             actual_minutes = int(actual_delta.total_seconds() / 60)
 
             # Skip invalid times (negative or unreasonably long)

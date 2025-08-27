@@ -89,6 +89,7 @@ async def test_api_error_count_reset_on_success():
     # Mock for multiple session.execute calls - need to handle many calls for stops, deletes, etc.
     mock_result_generic = AsyncMock()
     mock_result_generic.scalar = AsyncMock(return_value=None)
+    mock_result_generic.scalar_one_or_none = Mock(return_value=None)
     mock_result_generic.fetchall = Mock(
         return_value=[]
     )  # fetchall should return empty list

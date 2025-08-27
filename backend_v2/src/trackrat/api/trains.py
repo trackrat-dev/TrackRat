@@ -33,8 +33,8 @@ from trackrat.models.api import (
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
-from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.services.direct_forecaster import DirectArrivalForecaster
+from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.utils.time import now_et, safe_datetime_subtract
 from trackrat.utils.train import is_amtrak_train
 
