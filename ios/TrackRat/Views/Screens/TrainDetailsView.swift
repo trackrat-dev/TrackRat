@@ -762,12 +762,12 @@ struct StopRowV2: View {
         let delaySeconds = predicted.timeIntervalSince(scheduled)
         let delayMinutes = delaySeconds / 60.0
         
-        if delayMinutes <= 4 {
-            return .black          // ≤4 minutes: black text
-        } else if delayMinutes <= 14 {
-            return Color(red: 0.8, green: 0.4, blue: 0)  // 5-14 minutes: slightly dark orange
+        if delayMinutes <= 5 {
+            return .black          // ≤5 minutes: black text
+        } else if delayMinutes <= 19 {
+            return Color(red: 0.8, green: 0.4, blue: 0)  // 6-19 minutes: slightly dark orange
         } else {
-            return Color(red: 0.7, green: 0, blue: 0)    // ≥15 minutes: dark red
+            return Color(red: 0.7, green: 0, blue: 0)    // ≥20 minutes: dark red
         }
     }
     
