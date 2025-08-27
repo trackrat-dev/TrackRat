@@ -66,6 +66,7 @@ module "trackrat_api_service" {
     APP_ENV                                  = "production"
     TRACKRAT_ENV                             = "production"
     TRACKRAT_ENVIRONMENT                     = "production"                                       # Use production logging format (JSON, no ANSI)
+    TRACKRAT_LOG_LEVEL                       = "INFO"                                             # Explicit log level for application logs
     APNS_ENVIRONMENT                         = "prod"                                             # Use production APNS for App Store
     APNS_BUNDLE_ID                           = "net.trackrat.TrackRat"                            # Main app bundle ID
     APNS_LIVE_ACTIVITY_BUNDLE_ID             = "net.trackrat.TrackRat.TrainLiveActivityExtension" # Live Activity extension bundle ID
