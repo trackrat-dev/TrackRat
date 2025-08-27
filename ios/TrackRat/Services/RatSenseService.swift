@@ -146,12 +146,18 @@ final class RatSenseService: ObservableObject {
     
     /// Gets the user's home station
     func getHomeStation() -> String? {
-        userDefaults.string(forKey: homeStationKey)
+        let homeStation = userDefaults.string(forKey: homeStationKey)
+        print("🐀 RatSense: getHomeStation() called - returning: \(homeStation ?? "nil")")
+        print("🐀 RatSense: UserDefaults key '\(homeStationKey)' exists: \(userDefaults.object(forKey: homeStationKey) != nil)")
+        return homeStation
     }
     
     /// Gets the user's work station
     func getWorkStation() -> String? {
-        userDefaults.string(forKey: workStationKey)
+        let workStation = userDefaults.string(forKey: workStationKey)
+        print("🐀 RatSense: getWorkStation() called - returning: \(workStation ?? "nil")")
+        print("🐀 RatSense: UserDefaults key '\(workStationKey)' exists: \(userDefaults.object(forKey: workStationKey) != nil)")
+        return workStation
     }
     
     /// Checks if a station code is the user's home or work station
