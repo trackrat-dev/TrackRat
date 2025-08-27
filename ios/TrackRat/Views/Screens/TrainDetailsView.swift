@@ -723,7 +723,7 @@ struct StopRowV2: View {
                let samples = stop.predictedArrivalSamples,
                samples > 0,
                !stop.hasDepartedStation,
-               abs(predictedArrival.timeIntervalSince(scheduledArrival)) > 120 {
+               predictedArrival.timeIntervalSince(scheduledArrival) > 120 {
                 HStack(spacing: 4) {
                     Text("🐀✨")
                         .font(.system(size: 16))
