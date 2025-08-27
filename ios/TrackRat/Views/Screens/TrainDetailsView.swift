@@ -719,9 +719,11 @@ struct StopRowV2: View {
             
             // Show prediction if available and samples > 0
             if let predictedArrival = stop.predictedArrival,
+               let scheduledArrival = stop.scheduledArrival,
                let samples = stop.predictedArrivalSamples,
                samples > 0,
-               !stop.hasDepartedStation {
+               !stop.hasDepartedStation,
+               abs(predictedArrival.timeIntervalSince(scheduledArrival)) > 120 {
                 HStack(spacing: 4) {
                     Text("🐀✨")
                         .font(.system(size: 16))
