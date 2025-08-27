@@ -583,23 +583,6 @@ struct StopRowV2: View {
         return false
     }
     
-    // DEBUG: Helper to show why predictions aren't displayed
-    private func debugPredictionStatus() -> String {
-        if stop.predictedArrival == nil {
-            return "📊 No pred"
-        }
-        if stop.predictedArrivalSamples == nil {
-            return "📊 No samples"
-        }
-        if let samples = stop.predictedArrivalSamples, samples == 0 {
-            return "📊 0 samples"
-        }
-        if stop.hasDepartedStation {
-            return "📊 Departed"
-        }
-        return ""
-    }
-    
     private var enhancedTimeDisplay: (arrival: String?, departure: String?, details: [String]) {
         // For cancelled stops: Don't show any times
         if isCancelled {
@@ -682,9 +665,9 @@ struct StopRowV2: View {
     private func departureDelayText(actual: Date, scheduled: Date?) -> String {
         guard let scheduled = scheduled else { return "" }
         let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
-        if delayMinutes > 0 {
+        if delayMinutes > 1 {
             return "+\(delayMinutes)m delay"
-        } else if delayMinutes < -1 {
+        } else if delayMinutes < -2 {
             return "\(abs(delayMinutes))m early"
         }
         return "" // Don't show anything for on-time or 1 minute early
@@ -748,17 +731,7 @@ struct StopRowV2: View {
                         .foregroundColor(predictionDelayColor(predicted: predictedArrival, scheduled: stop.scheduledArrival))
                 }
                 .frame(maxHeight: .infinity, alignment: .center)
-            } else if stop.sequence > 0 && !isDeparture {
-                // DEBUG: Show debug info when predictions aren't displayed 
-                // (skip for user's origin/departure station since it will never have predictions)
-                let debugText = debugPredictionStatus()
-                if !debugText.isEmpty {
-                    Text(debugText)
-                        .font(.caption2)
-                        .foregroundColor(.orange)
-                        .frame(maxHeight: .infinity, alignment: .center)
-                }
-            }
+            } 
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)

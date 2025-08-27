@@ -1159,12 +1159,30 @@ class JourneyCollector(BaseJourneyCollector):
         if not stops_data:
             return
 
-        # Check if last stop is departed
-        last_stop = stops_data[-1]
-        if last_stop.DEPARTED == "YES":
+        # Check if last stop has departed (using database state, not raw API flag)
+        # This uses the inferred departure status from the three-tier logic:
+        # 1. api_explicit: DEPARTED="YES" from API
+        # 2. sequential_inference: earlier stops have departed
+        # 3. time_inference: >5 minutes past scheduled time
+        
+        # Get the last stop from the database
+        last_stop_stmt = select(JourneyStop).where(
+            and_(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.stop_sequence == len(stops_data) - 1
+            )
+        )
+        result = await session.execute(last_stop_stmt)
+        last_stop_db = result.scalar_one_or_none()
+        
+        if last_stop_db and last_stop_db.has_departed_station:
             journey.is_completed = True
-            if last_stop.TIME:
-                journey.actual_arrival = parse_njt_time(last_stop.TIME)
+            
+            # Set actual arrival from the last stop's data
+            last_stop_api = stops_data[-1]
+            if last_stop_api.TIME:
+                journey.actual_arrival = parse_njt_time(last_stop_api.TIME)
+            
             logger.info(
                 "journey_completed",
                 train_id=journey.train_id,
@@ -1173,6 +1191,7 @@ class JourneyCollector(BaseJourneyCollector):
                     if journey.actual_arrival
                     else "unknown"
                 ),
+                departure_source=last_stop_db.departure_source,  # Log how we determined completion
             )
 
             # Run full analysis on completed journey (dwell times, progress, etc.)

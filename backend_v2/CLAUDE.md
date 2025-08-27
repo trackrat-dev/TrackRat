@@ -175,7 +175,7 @@ The system now includes comprehensive transit time analysis:
 - **TransitAnalyzer**: Calculates segment times, dwell times, and journey progress
 - **CongestionAnalyzer**: Real-time network congestion analysis
 - **Route Analytics**: Historical performance metrics with delay breakdowns
-- **SimpleArrivalForecaster**: ML-powered arrival time predictions based on historical segment data
+- **DirectArrivalForecaster**: Real-time arrival time predictions calculated directly from recent journey data without intermediate storage
 - **ApiCacheService**: Intelligent response caching with automatic pre-computation
 - **TrackOccupancyService**: Real-time track availability analysis for predictions
 

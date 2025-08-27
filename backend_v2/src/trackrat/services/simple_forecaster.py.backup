@@ -1,15 +1,12 @@
 """
-Simple arrival time forecaster using recent trains with honest predictions.
+Simple arrival time forecaster using recent trains.
 
 This service predicts arrival times by looking at how long recent trains
-took to travel each segment of the journey. It uses an "honest predictions"
-approach - only showing predictions when we have sufficient real data (3+ samples).
-No fallback to scheduled times, ensuring predictions only appear when they
-add real value over what's already available.
+took to travel each segment of the journey.
 """
 
 import statistics
-from datetime import timedelta, timezone
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import and_, select
@@ -34,16 +31,13 @@ def _get_station_code(stop: Any) -> str:
 
 class SimpleArrivalForecaster:
     """
-    Honest arrival forecaster using recent trains on the same segments.
+    Ultra-simple arrival forecaster using recent trains on the same segments.
 
-    Uses trains from the last 6 hours to capture current conditions.
-    Predictions are only made when sufficient real data exists (2+ samples),
-    ensuring every prediction adds value over scheduled times. When data is
-    insufficient, predictions restart from the next stop's scheduled time.
+    Uses only trains from the last hour to capture current conditions.
     """
 
-    LOOKBACK_HOURS = 6  # How far back to look for recent trains (increased for better data coverage)
-    MIN_SAMPLES = 2  # Minimum trains needed for a prediction (reduced for practical usage)
+    LOOKBACK_HOURS = 1  # How far back to look for recent trains
+    MIN_SAMPLES = 3  # Minimum trains needed for a prediction
     MAX_SEGMENT_MINUTES = 60  # Maximum believable time for a single segment
 
     async def add_predictions_to_stops(
@@ -237,28 +231,6 @@ class SimpleArrivalForecaster:
                 segment_times, from_stop, to_stop
             )
 
-            # Check if we have sufficient data for a prediction
-            if transit_minutes is None:
-                # No prediction - insufficient data
-                to_stop.predicted_arrival = None
-                to_stop.predicted_arrival_samples = 0
-                
-                # Reset predicted_time to use next stop's scheduled time as baseline
-                # This allows us to restart predictions from the next segment
-                if hasattr(to_stop, "scheduled_departure") and to_stop.scheduled_departure:
-                    predicted_time = ensure_timezone_aware(to_stop.scheduled_departure)
-                    logger.info(
-                        "🔄 Reset baseline to scheduled time",
-                        station=_get_station_code(to_stop),
-                        new_baseline=predicted_time.isoformat(),
-                        reason="restart_after_gap"
-                    )
-                else:
-                    # Can't establish new baseline, predictions will continue to fail
-                    predicted_time = None
-                    
-                continue
-
             # Check for unreasonable segment time
             if transit_minutes > self.MAX_SEGMENT_MINUTES:
                 logger.warning(
@@ -267,19 +239,28 @@ class SimpleArrivalForecaster:
                     to_station=_get_station_code(to_stop),
                     minutes=transit_minutes,
                 )
-                # Skip prediction for this stop
-                to_stop.predicted_arrival = None
-                to_stop.predicted_arrival_samples = 0
-                
-                # Reset baseline for next segment
-                if hasattr(to_stop, "scheduled_departure") and to_stop.scheduled_departure:
-                    predicted_time = ensure_timezone_aware(to_stop.scheduled_departure)
+                # Fall back to using updated arrival if available
+                if hasattr(to_stop, "updated_arrival") and to_stop.updated_arrival:
+                    to_stop.predicted_arrival = ensure_timezone_aware(
+                        to_stop.updated_arrival
+                    )
+                    to_stop.predicted_arrival_samples = 0  # No samples, using fallback
+                    predicted_time = to_stop.predicted_arrival
+                    logger.info(
+                        "🔄 Used updated_arrival fallback",
+                        station=_get_station_code(to_stop),
+                        updated_arrival=predicted_time.isoformat()
+                    )
                 else:
-                    predicted_time = None
-                    
+                    # Skip prediction for this stop
+                    to_stop.predicted_arrival = None
+                    to_stop.predicted_arrival_samples = 0
+                    logger.info(
+                        "❌ Skipped prediction due to unreasonable segment time",
+                        station=_get_station_code(to_stop)
+                    )
                 continue
 
-            # We have valid transit time - make prediction
             # Add transit time to get arrival at next stop
             predicted_time = predicted_time + timedelta(minutes=transit_minutes)
 
@@ -478,10 +459,7 @@ class SimpleArrivalForecaster:
         Returns:
             List of transit times in minutes
         """
-        # Calculate cutoff in Eastern Time, then convert to UTC for database query
-        cutoff_time_et = now_et() - timedelta(hours=self.LOOKBACK_HOURS)
-        # Convert to UTC for database comparison (departure_time is stored in UTC)
-        cutoff_time = cutoff_time_et.astimezone(timezone.utc)
+        cutoff_time = now_et() - timedelta(hours=self.LOOKBACK_HOURS)
 
         logger.info(
             "🕐 Querying segment times",
@@ -489,8 +467,7 @@ class SimpleArrivalForecaster:
             to_station=to_station,
             data_source=data_source,
             lookback_hours=self.LOOKBACK_HOURS,
-            cutoff_time_et=cutoff_time_et.isoformat(),
-            cutoff_time_utc=cutoff_time.isoformat(),
+            cutoff_time=cutoff_time.isoformat(),
         )
 
         # First check if there are ANY segment times for this route (ever)
@@ -563,27 +540,105 @@ class SimpleArrivalForecaster:
             will_predict=len(times) >= self.MIN_SAMPLES,
         )
 
-        # Return actual times only - no fallback to scheduled times (honest predictions)
+        # If no actual segment times exist, try to get scheduled times from recent journeys
+        if len(times) == 0:
+            logger.info(
+                "🕰️ No actual segment data, trying scheduled times from recent journeys"
+            )
+            times = await self._get_recent_scheduled_segment_times(
+                db, from_station, to_station, data_source
+            )
+
         return times
 
+    async def _get_recent_scheduled_segment_times(
+        self, db: AsyncSession, from_station: str, to_station: str, data_source: str
+    ) -> list[float]:
+        """
+        Get scheduled transit times from recent journeys as a fallback.
+
+        Args:
+            db: Database session
+            from_station: Origin station code
+            to_station: Destination station code
+            data_source: NJT or AMTRAK
+
+        Returns:
+            List of scheduled transit times in minutes
+        """
+        cutoff_time = now_et() - timedelta(hours=self.LOOKBACK_HOURS)
+
+        logger.info(
+            "📋 Querying scheduled segment times",
+            from_station=from_station,
+            to_station=to_station,
+            data_source=data_source,
+            cutoff_time=cutoff_time.isoformat(),
+        )
+
+        # Query for recent journeys that have both stops in sequence
+        from sqlalchemy import text
+
+        # Use raw SQL for this complex query
+        stmt = text(
+            """
+            SELECT
+                EXTRACT(EPOCH FROM (js2.scheduled_arrival - js1.scheduled_departure)) / 60.0 as minutes
+            FROM train_journeys tj
+            JOIN journey_stops js1 ON tj.id = js1.journey_id AND js1.station_code = :from_station
+            JOIN journey_stops js2 ON tj.id = js2.journey_id AND js2.station_code = :to_station
+            WHERE tj.data_source = :data_source
+            AND tj.last_updated_at >= :cutoff_time
+            AND js1.stop_sequence < js2.stop_sequence
+            AND js1.scheduled_departure IS NOT NULL
+            AND js2.scheduled_arrival IS NOT NULL
+            LIMIT 10
+        """
+        )
+
+        result = await db.execute(
+            stmt,
+            {
+                "from_station": from_station,
+                "to_station": to_station,
+                "data_source": data_source,
+                "cutoff_time": cutoff_time,
+            },
+        )
+        scheduled_rows = result.fetchall()
+
+        # Extract valid transit times
+        times = []
+        for row in scheduled_rows:
+            minutes = float(row.minutes) if row.minutes else 0
+            if 0 < minutes <= self.MAX_SEGMENT_MINUTES:
+                times.append(minutes)
+
+        logger.info(
+            "📋 Scheduled times fallback results",
+            from_station=from_station,
+            to_station=to_station,
+            scheduled_count=len(times),
+            times=times[:3] if times else [],
+        )  # Log first 3
+
+        return times
 
     def _calculate_segment_time(
         self, segment_times: list[float], from_stop: Any, to_stop: Any
-    ) -> float | None:
+    ) -> float:
         """
-        Calculate the expected transit time for a segment using honest predictions.
+        Calculate the expected transit time for a segment.
 
-        Only returns a prediction when we have sufficient real data (2+ samples).
-        Returns None if we don't have enough samples for a reliable prediction.
-        This ensures predictions only appear when they add value over scheduled times.
+        Uses median of recent times if available, otherwise falls back to scheduled.
 
         Args:
-            segment_times: Recent actual transit times from real trains
+            segment_times: Recent actual transit times
             from_stop: Origin stop object
             to_stop: Destination stop object
 
         Returns:
-            Expected transit time in minutes, or None if insufficient data
+            Expected transit time in minutes
         """
         if len(segment_times) >= self.MIN_SAMPLES:
             # Use median for robustness against outliers
@@ -598,13 +653,43 @@ class SimpleArrivalForecaster:
             )
             return median_time
 
-        # Insufficient data - be honest and return None
         logger.info(
-            "⏭️ Skipping prediction - insufficient data",
+            "📉 Insufficient samples, using fallback",
             from_station=_get_station_code(from_stop),
             to_station=_get_station_code(to_stop),
             sample_count=len(segment_times),
             min_required=self.MIN_SAMPLES,
-            reason="honest_predictions_only",
         )
-        return None
+
+        # Fallback to scheduled times if available
+        if (
+            hasattr(from_stop, "scheduled_departure")
+            and hasattr(to_stop, "scheduled_arrival")
+            and from_stop.scheduled_departure
+            and to_stop.scheduled_arrival
+        ):
+
+            scheduled_delta = ensure_timezone_aware(
+                to_stop.scheduled_arrival
+            ) - ensure_timezone_aware(from_stop.scheduled_departure)
+            scheduled_minutes = scheduled_delta.total_seconds() / 60.0
+
+            # Sanity check scheduled time
+            if 0 < scheduled_minutes <= self.MAX_SEGMENT_MINUTES:
+                logger.info(
+                    "📅 Using scheduled time fallback",
+                    from_station=_get_station_code(from_stop),
+                    to_station=_get_station_code(to_stop),
+                    scheduled_minutes=round(scheduled_minutes, 1),
+                )
+                return scheduled_minutes
+
+        # Last resort: use a conservative default
+        # This should rarely happen in practice
+        logger.warning(
+            "❌ No segment data available, using default",
+            from_station=_get_station_code(from_stop),
+            to_station=_get_station_code(to_stop),
+            default_minutes=15.0,
+        )
+        return 15.0  # Conservative 15-minute default

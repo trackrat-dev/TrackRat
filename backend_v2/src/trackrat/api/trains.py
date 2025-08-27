@@ -34,7 +34,7 @@ from trackrat.models.api import (
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
 from trackrat.services.jit import JustInTimeUpdateService
-from trackrat.services.simple_forecaster import SimpleArrivalForecaster
+from trackrat.services.direct_forecaster import DirectArrivalForecaster
 from trackrat.utils.time import now_et, safe_datetime_subtract
 from trackrat.utils.train import is_amtrak_train
 
@@ -153,7 +153,7 @@ async def get_train_details(
     # Add arrival predictions to each stop if requested
     if include_predictions:
         try:
-            forecaster = SimpleArrivalForecaster()
+            forecaster = DirectArrivalForecaster()
             # Pass user's origin station to the forecaster for smarter predictions
             await forecaster.add_predictions_to_stops(
                 db, journey, stops, user_origin=from_station

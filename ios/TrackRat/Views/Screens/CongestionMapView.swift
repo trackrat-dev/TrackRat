@@ -7,7 +7,7 @@ struct CongestionMapView: View {
     @State private var region = MKCoordinateRegion.newarkPennDefault
     @State private var selectedSegment: CongestionSegment?
     @State private var showingFilters = false
-    @State private var timeWindow = 2
+    @State private var timeWindow = 1
     @State private var selectedDataSource: String = "All"
     
     var body: some View {

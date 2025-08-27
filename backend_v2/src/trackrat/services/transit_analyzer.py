@@ -117,8 +117,12 @@ class TransitAnalyzer:
             current_stop = stops[i]
             next_stop = stops[i + 1]
 
-            # Skip if we don't have actual times
-            if not (current_stop.actual_departure and next_stop.actual_arrival):
+            # Use actual times when available, fall back to scheduled times (COALESCE logic)
+            departure_time = current_stop.actual_departure or current_stop.scheduled_departure
+            arrival_time = next_stop.actual_arrival or next_stop.scheduled_arrival
+            
+            # Skip if we don't have ANY times at all
+            if not (departure_time and arrival_time):
                 continue
 
             # Check if segment already exists (to avoid duplicates)
@@ -143,10 +147,8 @@ class TransitAnalyzer:
                 ) - ensure_timezone_aware(current_stop.scheduled_departure)
                 scheduled_minutes = int(scheduled_delta.total_seconds() / 60)
 
-            # Calculate actual transit time
-            actual_delta = ensure_timezone_aware(
-                next_stop.actual_arrival
-            ) - ensure_timezone_aware(current_stop.actual_departure)
+            # Calculate actual transit time using COALESCE variables
+            actual_delta = ensure_timezone_aware(arrival_time) - ensure_timezone_aware(departure_time)
             actual_minutes = int(actual_delta.total_seconds() / 60)
 
             # Skip invalid times (negative or unreasonably long)
@@ -169,11 +171,9 @@ class TransitAnalyzer:
                 scheduled_minutes=scheduled_minutes or actual_minutes,
                 actual_minutes=actual_minutes,
                 delay_minutes=actual_minutes - (scheduled_minutes or actual_minutes),
-                departure_time=ensure_timezone_aware(current_stop.actual_departure),
-                hour_of_day=ensure_timezone_aware(current_stop.actual_departure).hour,
-                day_of_week=ensure_timezone_aware(
-                    current_stop.actual_departure
-                ).weekday(),
+                departure_time=ensure_timezone_aware(departure_time),
+                hour_of_day=ensure_timezone_aware(departure_time).hour,
+                day_of_week=ensure_timezone_aware(departure_time).weekday(),
             )
 
             db.add(segment)
@@ -427,8 +427,12 @@ class TransitAnalyzer:
             current_stop = stops[i]
             next_stop = stops[i + 1]
 
-            # Skip if we don't have actual times
-            if not (current_stop.actual_departure and next_stop.actual_arrival):
+            # Use actual times when available, fall back to scheduled times (COALESCE logic)
+            departure_time = current_stop.actual_departure or current_stop.scheduled_departure
+            arrival_time = next_stop.actual_arrival or next_stop.scheduled_arrival
+            
+            # Skip if we don't have ANY times at all
+            if not (departure_time and arrival_time):
                 continue
 
             # Calculate scheduled transit time
@@ -439,10 +443,8 @@ class TransitAnalyzer:
                 ) - ensure_timezone_aware(current_stop.scheduled_departure)
                 scheduled_minutes = int(scheduled_delta.total_seconds() / 60)
 
-            # Calculate actual transit time
-            actual_delta = ensure_timezone_aware(
-                next_stop.actual_arrival
-            ) - ensure_timezone_aware(current_stop.actual_departure)
+            # Calculate actual transit time using COALESCE variables
+            actual_delta = ensure_timezone_aware(arrival_time) - ensure_timezone_aware(departure_time)
             actual_minutes = int(actual_delta.total_seconds() / 60)
 
             # Skip invalid times (negative or unreasonably long)
@@ -465,11 +467,9 @@ class TransitAnalyzer:
                 scheduled_minutes=scheduled_minutes or actual_minutes,
                 actual_minutes=actual_minutes,
                 delay_minutes=actual_minutes - (scheduled_minutes or actual_minutes),
-                departure_time=ensure_timezone_aware(current_stop.actual_departure),
-                hour_of_day=ensure_timezone_aware(current_stop.actual_departure).hour,
-                day_of_week=ensure_timezone_aware(
-                    current_stop.actual_departure
-                ).weekday(),
+                departure_time=ensure_timezone_aware(departure_time),
+                hour_of_day=ensure_timezone_aware(departure_time).hour,
+                day_of_week=ensure_timezone_aware(departure_time).weekday(),
             )
 
             db.add(segment)

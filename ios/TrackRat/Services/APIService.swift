@@ -414,7 +414,7 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 3) async throws -> CongestionMapResponse {
+    func fetchCongestionData(timeWindowHours: Int = 1) async throws -> CongestionMapResponse {
         return try await fetchCongestionData(timeWindowHours: timeWindowHours, maxPerSegment: 100, dataSource: nil)
     }
     

@@ -17,6 +17,7 @@ from trackrat.config.stations import AMTRAK_TO_INTERNAL_STATION_MAP, get_station
 from trackrat.db.engine import get_session, with_db_retry
 from trackrat.models.api import AmtrakTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
 from trackrat.utils.time import normalize_to_et, now_et
 
@@ -646,3 +647,31 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             is_completed=journey.is_completed,
             is_cancelled=journey.is_cancelled,
         )
+
+        # Analyze any newly completed segments (for real-time predictions)
+        # This runs immediately without waiting for journey completion
+        transit_analyzer = TransitAnalyzer()
+        segments_created = await transit_analyzer.analyze_new_segments(session, journey)
+
+        if segments_created > 0:
+            logger.info(
+                "amtrak_segments_created",
+                train_id=journey.train_id,
+                segments_count=segments_created,
+            )
+
+        # For completed journeys, run full analysis (dwell times, progress, etc.)
+        if journey.is_completed:
+            logger.info(
+                "amtrak_journey_completed_analyzing",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+            )
+
+            # Run full analysis on completed journey (dwell times, progress, etc.)
+            await transit_analyzer.analyze_journey(session, journey)
+            logger.info(
+                "amtrak_completed_journey_analyzed",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+            )
