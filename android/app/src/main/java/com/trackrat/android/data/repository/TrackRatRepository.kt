@@ -114,13 +114,15 @@ class TrackRatRepository @Inject constructor(
                     val delayMs = INITIAL_RETRY_DELAY * (1 shl attempt)
                     delay(delayMs)
                 }
-                is ApiResult.Loading -> continue
+                is ApiResult.Loading -> {
+                    // Loading state shouldn't occur in retry logic, but handle gracefully
+                }
             }
         }
         
         // This should never be reached, but included for completeness
         return ApiResult.Error(
-            com.trackrat.android.data.models.ApiException.UnknownError("Retry logic failed")
+            com.trackrat.android.data.models.ApiException.UnknownError("Retry logic failed", null)
         )
     }
 }

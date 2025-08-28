@@ -2,7 +2,6 @@ package com.trackrat.android.di;
 
 import com.squareup.moshi.Moshi;
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory;
-import com.trackrat.android.BuildConfig;
 import com.trackrat.android.data.api.TrackRatApiService;
 import com.trackrat.android.data.api.ZonedDateTimeAdapter;
 import dagger.Module;

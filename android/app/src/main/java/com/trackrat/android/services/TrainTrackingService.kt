@@ -180,9 +180,9 @@ class TrainTrackingService : Service() {
             // Add progress information if available
             train.progress?.let { progress ->
                 if (progress.stopsCompleted > 0) {
-                    append(" • ${progress.stopsCompleted}/${progress.totalStops} stops")
+                    append(" • ${progress.stopsCompleted}/${progress.stopsTotal} stops")
                 }
-                progress.minutesToNextStop?.let { minutes ->
+                progress.nextArrival?.minutesToArrival?.let { minutes ->
                     if (minutes > 0) {
                         append(" • Next in ${minutes}m")
                     }

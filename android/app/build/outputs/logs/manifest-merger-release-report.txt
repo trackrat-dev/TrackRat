@@ -1,0 +1,381 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:2:1-41:12
+INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:2:1-41:12
+INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:2:1-41:12
+INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:2:1-41:12
+MERGED from [androidx.hilt:hilt-navigation-compose:1.1.0] /Users/andy/.gradle/caches/8.13/transforms/d68d51f71b7a64877e269912bebfb0d0/transformed/jetified-hilt-navigation-compose-1.1.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.hilt:hilt-navigation:1.1.0] /Users/andy/.gradle/caches/8.13/transforms/878fac9d3018e37569eca106b2486724/transformed/jetified-hilt-navigation-1.1.0/AndroidManifest.xml:2:1-7:12
+MERGED from [com.google.dagger:hilt-android:2.51] /Users/andy/.gradle/caches/8.13/transforms/f70a9bd8d31ab8fcd138989e7a44408a/transformed/jetified-hilt-android-2.51/AndroidManifest.xml:16:1-19:12
+MERGED from [androidx.navigation:navigation-common:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/af03f530c58f6c478e5ffb8557f60fa7/transformed/navigation-common-2.7.7/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.navigation:navigation-common-ktx:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/428b0fb55641ec9a4b38b368b74ae347/transformed/navigation-common-ktx-2.7.7/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.navigation:navigation-runtime:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/d46760e1159ce908e26742584f7e01ef/transformed/navigation-runtime-2.7.7/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.navigation:navigation-runtime-ktx:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/99313403e456e4db2ebb1841ad69cfb0/transformed/navigation-runtime-ktx-2.7.7/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.navigation:navigation-compose:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/3d9a52f2b2b4a8213fd451dfa6da3d59/transformed/jetified-navigation-compose-2.7.7/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material3:material3-android:1.2.0] /Users/andy/.gradle/caches/8.13/transforms/968f4a3ebc59d481c1fb06dcfcd84148/transformed/jetified-material3-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.compose.material:material-ripple-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/00c603604f2780a74a466a193b488058/transformed/jetified-material-ripple-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material:material-icons-core-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/f24a9534b480fc6c0ba7985f8b4b94c2/transformed/jetified-material-icons-core-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.material:material-icons-extended-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/e100f3c22ba96c79253a91c1ec28995c/transformed/jetified-material-icons-extended-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.animation:animation-core-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/052022654f6a3ad3cfbc418f71478192/transformed/jetified-animation-core-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.animation:animation-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/9e0b68a6b3bc1f79248fa81d2dce1301/transformed/jetified-animation-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.foundation:foundation-layout-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/18ddcbb9a371bcb0de8cc6f182deef74/transformed/jetified-foundation-layout-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.foundation:foundation-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/65156b0b27e688ff2d182f953c0974bb/transformed/jetified-foundation-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-unit-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/51f04c6328667d58c2ed3a22a8a73947/transformed/jetified-ui-unit-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-geometry-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/0c84e5086be4452fbeff491b9167f48c/transformed/jetified-ui-geometry-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-util-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/153a0232265ddef95e05b1309e93280a/transformed/jetified-ui-util-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-text-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/e0affe1730a70fb70cd9b823bc669350/transformed/jetified-ui-text-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/485ac5c6ad3a7d284b8958410f1ea704/transformed/jetified-ui-tooling-preview-release/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.compose.ui:ui-graphics-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/6f607793926b0a6e93eb12c2db86390b/transformed/jetified-ui-graphics-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.runtime:runtime-saveable-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/cf6d317ac8070e0e1a430d67de4da201/transformed/jetified-runtime-saveable-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.runtime:runtime-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/242700ec00edd74c836cfc4ffa3ba57f/transformed/jetified-runtime-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.runtime:runtime-livedata:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/9eeaa1100f775ff622a06931d9744e4a/transformed/jetified-runtime-livedata-1.6.2/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.fragment:fragment:1.5.1] /Users/andy/.gradle/caches/8.13/transforms/4fcb2300e27e9bc102d4b0f2e9ccf82c/transformed/fragment-1.5.1/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:17:1-35:12
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:17:1-35:12
+MERGED from [androidx.lifecycle:lifecycle-livedata-core-ktx:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/9ebfd41b6f2650ed0e962d4afde40a97/transformed/jetified-lifecycle-livedata-core-ktx-2.7.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/9a711f68777ff486ec1f1d807c139332/transformed/lifecycle-livedata-core-2.7.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.loader:loader:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/1db4a35be5c40e05652400cb5556335c/transformed/loader-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/89ab3a9fbaf31e9b709f152db76845a7/transformed/lifecycle-livedata-2.7.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] /Users/andy/.gradle/caches/8.13/transforms/65594783e3ecf1ef4a9a4c13e0af83e8/transformed/jetified-savedstate-ktx-1.2.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.savedstate:savedstate:1.2.1] /Users/andy/.gradle/caches/8.13/transforms/3478c116e4fbff31af87043d8389731b/transformed/jetified-savedstate-1.2.1/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/4080949caf89e8639e30abfe1657775d/transformed/lifecycle-viewmodel-2.7.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/779fbb6bcd6ca5844e99cbda69ee2865/transformed/jetified-lifecycle-viewmodel-savedstate-2.7.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/38f0461a0e13215a24efd939740c6a1b/transformed/jetified-lifecycle-viewmodel-ktx-2.7.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/b7cf7d281c850604c8df2078a3408965/transformed/lifecycle-runtime-2.7.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/3989e2664ebeb9249217c4cc2bd8bfd3/transformed/jetified-lifecycle-runtime-ktx-2.7.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/19474f5cbd24f18c189426e098db2b5f/transformed/jetified-lifecycle-viewmodel-compose-2.7.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.compose.ui:ui-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/2c34db11baeb04d3fe321e2ccc278111/transformed/jetified-ui-release/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.activity:activity-ktx:1.8.2] /Users/andy/.gradle/caches/8.13/transforms/4241fcd66bc55b42cbe40c8be7187eeb/transformed/jetified-activity-ktx-1.8.2/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.activity:activity-compose:1.8.2] /Users/andy/.gradle/caches/8.13/transforms/7539eeb78c1265e621c7a46a8a82ef4a/transformed/jetified-activity-compose-1.8.2/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.activity:activity:1.8.2] /Users/andy/.gradle/caches/8.13/transforms/45a5bbf5795930982efdfdc971010e55/transformed/jetified-activity-1.8.2/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.viewpager:viewpager:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/2124399aed02ba4ffcd90345b08b22e1/transformed/viewpager-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.autofill:autofill:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/7e77d3c85e8099e8f96b62154f320655/transformed/jetified-autofill-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.customview:customview:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/46779cb9ed843f02876a72c273020749/transformed/customview-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:17:1-30:12
+MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/8b1ecdff606062a4ade14bd4ff94effb/transformed/jetified-customview-poolingcontainer-1.0.0/AndroidManifest.xml:17:1-23:12
+MERGED from [androidx.core:core-ktx:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/5f1d22169a0470c10dbcb7a7654cd0d1/transformed/jetified-core-ktx-1.12.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.datastore:datastore-preferences:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/66c69a42f57fa7ac55fa14a0cc5e2fe1/transformed/jetified-datastore-preferences-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.datastore:datastore:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/efc76e84b710d79484e69b71fd89995d/transformed/jetified-datastore-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.annotation:annotation-experimental:1.4.0] /Users/andy/.gradle/caches/8.13/transforms/2172eb9eda8f48c793d44f5fdbd3c0ca/transformed/jetified-annotation-experimental-1.4.0/AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/d925d2f9fa37918a927b3f596593d10a/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:17:1-27:12
+MERGED from [androidx.interpolator:interpolator:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/72e69b26d2f8d1f68c85cc744e48604e/transformed/interpolator-1.0.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.arch.core:core-runtime:2.2.0] /Users/andy/.gradle/caches/8.13/transforms/59febbddbdd6ca7efe165af9839165e2/transformed/core-runtime-2.2.0/AndroidManifest.xml:17:1-22:12
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:17:1-55:12
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/a8ded835757352fafb16de99b2fbc5a3/transformed/jetified-startup-runtime-1.1.1/AndroidManifest.xml:17:1-33:12
+MERGED from [androidx.tracing:tracing:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/92e6feeebc62355b424f383077b86ccb/transformed/jetified-tracing-1.0.0/AndroidManifest.xml:17:1-24:12
+MERGED from [com.google.dagger:dagger-lint-aar:2.51] /Users/andy/.gradle/caches/8.13/transforms/24ccbb0a9f8a8ce01fc63a149a0c82ee/transformed/jetified-dagger-lint-aar-2.51/AndroidManifest.xml:16:1-19:12
+	package
+		INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml
+	android:versionName
+		INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml
+	xmlns:tools
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:3:5-51
+	android:versionCode
+		INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:2:11-69
+uses-permission#android.permission.INTERNET
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:5:5-67
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:5:22-64
+uses-permission#android.permission.VIBRATE
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:6:5-66
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:6:22-63
+uses-permission#android.permission.FOREGROUND_SERVICE
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:7:5-77
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:7:22-74
+uses-permission#android.permission.FOREGROUND_SERVICE_DATA_SYNC
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:8:5-87
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:8:22-84
+uses-permission#android.permission.POST_NOTIFICATIONS
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:9:5-77
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:9:22-74
+application
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:11:5-39:19
+INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:11:5-39:19
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:23:5-33:19
+MERGED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:28:5-89
+MERGED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:28:5-89
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/d925d2f9fa37918a927b3f596593d10a/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/d925d2f9fa37918a927b3f596593d10a/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:24:5-25:19
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:23:5-53:19
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:23:5-53:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/a8ded835757352fafb16de99b2fbc5a3/transformed/jetified-startup-runtime-1.1.1/AndroidManifest.xml:25:5-31:19
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/a8ded835757352fafb16de99b2fbc5a3/transformed/jetified-startup-runtime-1.1.1/AndroidManifest.xml:25:5-31:19
+	android:extractNativeLibs
+		INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml
+	android:appComponentFactory
+		ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
+	android:supportsRtl
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:19:9-35
+	android:label
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:17:9-41
+	android:fullBackupContent
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:15:9-54
+	android:roundIcon
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:18:9-54
+	tools:targetApi
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:21:9-29
+	android:icon
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:16:9-43
+	android:allowBackup
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:13:9-35
+	android:theme
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:20:9-46
+	android:dataExtractionRules
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:14:9-65
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:12:9-36
+activity#com.trackrat.android.MainActivity
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:22:9-32:20
+	android:label
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:25:13-45
+	android:exported
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:24:13-36
+	android:theme
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:26:13-50
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:23:13-41
+intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:27:13-31:29
+action#android.intent.action.MAIN
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:28:17-69
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:28:25-66
+category#android.intent.category.LAUNCHER
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:30:17-77
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:30:27-74
+service#com.trackrat.android.services.TrainTrackingService
+ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:35:9-38:56
+	android:exported
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:37:13-37
+	android:foregroundServiceType
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:38:13-53
+	android:name
+		ADDED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml:36:13-58
+uses-sdk
+INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml
+INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml
+MERGED from [androidx.hilt:hilt-navigation-compose:1.1.0] /Users/andy/.gradle/caches/8.13/transforms/d68d51f71b7a64877e269912bebfb0d0/transformed/jetified-hilt-navigation-compose-1.1.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.hilt:hilt-navigation-compose:1.1.0] /Users/andy/.gradle/caches/8.13/transforms/d68d51f71b7a64877e269912bebfb0d0/transformed/jetified-hilt-navigation-compose-1.1.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.hilt:hilt-navigation:1.1.0] /Users/andy/.gradle/caches/8.13/transforms/878fac9d3018e37569eca106b2486724/transformed/jetified-hilt-navigation-1.1.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.hilt:hilt-navigation:1.1.0] /Users/andy/.gradle/caches/8.13/transforms/878fac9d3018e37569eca106b2486724/transformed/jetified-hilt-navigation-1.1.0/AndroidManifest.xml:5:5-44
+MERGED from [com.google.dagger:hilt-android:2.51] /Users/andy/.gradle/caches/8.13/transforms/f70a9bd8d31ab8fcd138989e7a44408a/transformed/jetified-hilt-android-2.51/AndroidManifest.xml:18:3-42
+MERGED from [com.google.dagger:hilt-android:2.51] /Users/andy/.gradle/caches/8.13/transforms/f70a9bd8d31ab8fcd138989e7a44408a/transformed/jetified-hilt-android-2.51/AndroidManifest.xml:18:3-42
+MERGED from [androidx.navigation:navigation-common:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/af03f530c58f6c478e5ffb8557f60fa7/transformed/navigation-common-2.7.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.navigation:navigation-common:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/af03f530c58f6c478e5ffb8557f60fa7/transformed/navigation-common-2.7.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.navigation:navigation-common-ktx:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/428b0fb55641ec9a4b38b368b74ae347/transformed/navigation-common-ktx-2.7.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.navigation:navigation-common-ktx:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/428b0fb55641ec9a4b38b368b74ae347/transformed/navigation-common-ktx-2.7.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.navigation:navigation-runtime:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/d46760e1159ce908e26742584f7e01ef/transformed/navigation-runtime-2.7.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.navigation:navigation-runtime:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/d46760e1159ce908e26742584f7e01ef/transformed/navigation-runtime-2.7.7/AndroidManifest.xml:20:5-44
+MERGED from [androidx.navigation:navigation-runtime-ktx:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/99313403e456e4db2ebb1841ad69cfb0/transformed/navigation-runtime-ktx-2.7.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.navigation:navigation-runtime-ktx:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/99313403e456e4db2ebb1841ad69cfb0/transformed/navigation-runtime-ktx-2.7.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.navigation:navigation-compose:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/3d9a52f2b2b4a8213fd451dfa6da3d59/transformed/jetified-navigation-compose-2.7.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.navigation:navigation-compose:2.7.7] /Users/andy/.gradle/caches/8.13/transforms/3d9a52f2b2b4a8213fd451dfa6da3d59/transformed/jetified-navigation-compose-2.7.7/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material3:material3-android:1.2.0] /Users/andy/.gradle/caches/8.13/transforms/968f4a3ebc59d481c1fb06dcfcd84148/transformed/jetified-material3-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.material3:material3-android:1.2.0] /Users/andy/.gradle/caches/8.13/transforms/968f4a3ebc59d481c1fb06dcfcd84148/transformed/jetified-material3-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.material:material-ripple-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/00c603604f2780a74a466a193b488058/transformed/jetified-material-ripple-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-ripple-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/00c603604f2780a74a466a193b488058/transformed/jetified-material-ripple-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-core-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/f24a9534b480fc6c0ba7985f8b4b94c2/transformed/jetified-material-icons-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-core-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/f24a9534b480fc6c0ba7985f8b4b94c2/transformed/jetified-material-icons-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-extended-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/e100f3c22ba96c79253a91c1ec28995c/transformed/jetified-material-icons-extended-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.material:material-icons-extended-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/e100f3c22ba96c79253a91c1ec28995c/transformed/jetified-material-icons-extended-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-core-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/052022654f6a3ad3cfbc418f71478192/transformed/jetified-animation-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-core-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/052022654f6a3ad3cfbc418f71478192/transformed/jetified-animation-core-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/9e0b68a6b3bc1f79248fa81d2dce1301/transformed/jetified-animation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.animation:animation-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/9e0b68a6b3bc1f79248fa81d2dce1301/transformed/jetified-animation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-layout-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/18ddcbb9a371bcb0de8cc6f182deef74/transformed/jetified-foundation-layout-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-layout-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/18ddcbb9a371bcb0de8cc6f182deef74/transformed/jetified-foundation-layout-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/65156b0b27e688ff2d182f953c0974bb/transformed/jetified-foundation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.foundation:foundation-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/65156b0b27e688ff2d182f953c0974bb/transformed/jetified-foundation-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-unit-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/51f04c6328667d58c2ed3a22a8a73947/transformed/jetified-ui-unit-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-unit-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/51f04c6328667d58c2ed3a22a8a73947/transformed/jetified-ui-unit-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-geometry-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/0c84e5086be4452fbeff491b9167f48c/transformed/jetified-ui-geometry-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-geometry-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/0c84e5086be4452fbeff491b9167f48c/transformed/jetified-ui-geometry-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-util-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/153a0232265ddef95e05b1309e93280a/transformed/jetified-ui-util-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-util-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/153a0232265ddef95e05b1309e93280a/transformed/jetified-ui-util-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-text-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/e0affe1730a70fb70cd9b823bc669350/transformed/jetified-ui-text-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-text-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/e0affe1730a70fb70cd9b823bc669350/transformed/jetified-ui-text-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/485ac5c6ad3a7d284b8958410f1ea704/transformed/jetified-ui-tooling-preview-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/485ac5c6ad3a7d284b8958410f1ea704/transformed/jetified-ui-tooling-preview-release/AndroidManifest.xml:20:5-44
+MERGED from [androidx.compose.ui:ui-graphics-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/6f607793926b0a6e93eb12c2db86390b/transformed/jetified-ui-graphics-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-graphics-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/6f607793926b0a6e93eb12c2db86390b/transformed/jetified-ui-graphics-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-saveable-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/cf6d317ac8070e0e1a430d67de4da201/transformed/jetified-runtime-saveable-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-saveable-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/cf6d317ac8070e0e1a430d67de4da201/transformed/jetified-runtime-saveable-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/242700ec00edd74c836cfc4ffa3ba57f/transformed/jetified-runtime-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/242700ec00edd74c836cfc4ffa3ba57f/transformed/jetified-runtime-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-livedata:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/9eeaa1100f775ff622a06931d9744e4a/transformed/jetified-runtime-livedata-1.6.2/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.runtime:runtime-livedata:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/9eeaa1100f775ff622a06931d9744e4a/transformed/jetified-runtime-livedata-1.6.2/AndroidManifest.xml:5:5-44
+MERGED from [androidx.fragment:fragment:1.5.1] /Users/andy/.gradle/caches/8.13/transforms/4fcb2300e27e9bc102d4b0f2e9ccf82c/transformed/fragment-1.5.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.fragment:fragment:1.5.1] /Users/andy/.gradle/caches/8.13/transforms/4fcb2300e27e9bc102d4b0f2e9ccf82c/transformed/fragment-1.5.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core-ktx:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/9ebfd41b6f2650ed0e962d4afde40a97/transformed/jetified-lifecycle-livedata-core-ktx-2.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core-ktx:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/9ebfd41b6f2650ed0e962d4afde40a97/transformed/jetified-lifecycle-livedata-core-ktx-2.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/9a711f68777ff486ec1f1d807c139332/transformed/lifecycle-livedata-core-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata-core:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/9a711f68777ff486ec1f1d807c139332/transformed/lifecycle-livedata-core-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/1db4a35be5c40e05652400cb5556335c/transformed/loader-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.loader:loader:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/1db4a35be5c40e05652400cb5556335c/transformed/loader-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/89ab3a9fbaf31e9b709f152db76845a7/transformed/lifecycle-livedata-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-livedata:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/89ab3a9fbaf31e9b709f152db76845a7/transformed/lifecycle-livedata-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] /Users/andy/.gradle/caches/8.13/transforms/65594783e3ecf1ef4a9a4c13e0af83e8/transformed/jetified-savedstate-ktx-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] /Users/andy/.gradle/caches/8.13/transforms/65594783e3ecf1ef4a9a4c13e0af83e8/transformed/jetified-savedstate-ktx-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate:1.2.1] /Users/andy/.gradle/caches/8.13/transforms/3478c116e4fbff31af87043d8389731b/transformed/jetified-savedstate-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.savedstate:savedstate:1.2.1] /Users/andy/.gradle/caches/8.13/transforms/3478c116e4fbff31af87043d8389731b/transformed/jetified-savedstate-1.2.1/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/4080949caf89e8639e30abfe1657775d/transformed/lifecycle-viewmodel-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/4080949caf89e8639e30abfe1657775d/transformed/lifecycle-viewmodel-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/779fbb6bcd6ca5844e99cbda69ee2865/transformed/jetified-lifecycle-viewmodel-savedstate-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-savedstate:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/779fbb6bcd6ca5844e99cbda69ee2865/transformed/jetified-lifecycle-viewmodel-savedstate-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/38f0461a0e13215a24efd939740c6a1b/transformed/jetified-lifecycle-viewmodel-ktx-2.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/38f0461a0e13215a24efd939740c6a1b/transformed/jetified-lifecycle-viewmodel-ktx-2.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/b7cf7d281c850604c8df2078a3408965/transformed/lifecycle-runtime-2.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/b7cf7d281c850604c8df2078a3408965/transformed/lifecycle-runtime-2.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/3989e2664ebeb9249217c4cc2bd8bfd3/transformed/jetified-lifecycle-runtime-ktx-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-runtime-ktx:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/3989e2664ebeb9249217c4cc2bd8bfd3/transformed/jetified-lifecycle-runtime-ktx-2.7.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/19474f5cbd24f18c189426e098db2b5f/transformed/jetified-lifecycle-viewmodel-compose-2.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/19474f5cbd24f18c189426e098db2b5f/transformed/jetified-lifecycle-viewmodel-compose-2.7.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/2c34db11baeb04d3fe321e2ccc278111/transformed/jetified-ui-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.compose.ui:ui-android:1.6.2] /Users/andy/.gradle/caches/8.13/transforms/2c34db11baeb04d3fe321e2ccc278111/transformed/jetified-ui-release/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-ktx:1.8.2] /Users/andy/.gradle/caches/8.13/transforms/4241fcd66bc55b42cbe40c8be7187eeb/transformed/jetified-activity-ktx-1.8.2/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-ktx:1.8.2] /Users/andy/.gradle/caches/8.13/transforms/4241fcd66bc55b42cbe40c8be7187eeb/transformed/jetified-activity-ktx-1.8.2/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-compose:1.8.2] /Users/andy/.gradle/caches/8.13/transforms/7539eeb78c1265e621c7a46a8a82ef4a/transformed/jetified-activity-compose-1.8.2/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-compose:1.8.2] /Users/andy/.gradle/caches/8.13/transforms/7539eeb78c1265e621c7a46a8a82ef4a/transformed/jetified-activity-compose-1.8.2/AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity:1.8.2] /Users/andy/.gradle/caches/8.13/transforms/45a5bbf5795930982efdfdc971010e55/transformed/jetified-activity-1.8.2/AndroidManifest.xml:20:5-44
+MERGED from [androidx.activity:activity:1.8.2] /Users/andy/.gradle/caches/8.13/transforms/45a5bbf5795930982efdfdc971010e55/transformed/jetified-activity-1.8.2/AndroidManifest.xml:20:5-44
+MERGED from [androidx.viewpager:viewpager:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/2124399aed02ba4ffcd90345b08b22e1/transformed/viewpager-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.viewpager:viewpager:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/2124399aed02ba4ffcd90345b08b22e1/transformed/viewpager-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.autofill:autofill:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/7e77d3c85e8099e8f96b62154f320655/transformed/jetified-autofill-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.autofill:autofill:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/7e77d3c85e8099e8f96b62154f320655/transformed/jetified-autofill-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.customview:customview:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/46779cb9ed843f02876a72c273020749/transformed/customview-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.customview:customview:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/46779cb9ed843f02876a72c273020749/transformed/customview-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/8b1ecdff606062a4ade14bd4ff94effb/transformed/jetified-customview-poolingcontainer-1.0.0/AndroidManifest.xml:20:5-21:38
+MERGED from [androidx.customview:customview-poolingcontainer:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/8b1ecdff606062a4ade14bd4ff94effb/transformed/jetified-customview-poolingcontainer-1.0.0/AndroidManifest.xml:20:5-21:38
+MERGED from [androidx.core:core-ktx:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/5f1d22169a0470c10dbcb7a7654cd0d1/transformed/jetified-core-ktx-1.12.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.core:core-ktx:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/5f1d22169a0470c10dbcb7a7654cd0d1/transformed/jetified-core-ktx-1.12.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.datastore:datastore-preferences:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/66c69a42f57fa7ac55fa14a0cc5e2fe1/transformed/jetified-datastore-preferences-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.datastore:datastore-preferences:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/66c69a42f57fa7ac55fa14a0cc5e2fe1/transformed/jetified-datastore-preferences-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.datastore:datastore:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/efc76e84b710d79484e69b71fd89995d/transformed/jetified-datastore-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.datastore:datastore:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/efc76e84b710d79484e69b71fd89995d/transformed/jetified-datastore-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.annotation:annotation-experimental:1.4.0] /Users/andy/.gradle/caches/8.13/transforms/2172eb9eda8f48c793d44f5fdbd3c0ca/transformed/jetified-annotation-experimental-1.4.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.annotation:annotation-experimental:1.4.0] /Users/andy/.gradle/caches/8.13/transforms/2172eb9eda8f48c793d44f5fdbd3c0ca/transformed/jetified-annotation-experimental-1.4.0/AndroidManifest.xml:5:5-44
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/d925d2f9fa37918a927b3f596593d10a/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/d925d2f9fa37918a927b3f596593d10a/transformed/versionedparcelable-1.1.1/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.interpolator:interpolator:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/72e69b26d2f8d1f68c85cc744e48604e/transformed/interpolator-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.interpolator:interpolator:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/72e69b26d2f8d1f68c85cc744e48604e/transformed/interpolator-1.0.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.arch.core:core-runtime:2.2.0] /Users/andy/.gradle/caches/8.13/transforms/59febbddbdd6ca7efe165af9839165e2/transformed/core-runtime-2.2.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.arch.core:core-runtime:2.2.0] /Users/andy/.gradle/caches/8.13/transforms/59febbddbdd6ca7efe165af9839165e2/transformed/core-runtime-2.2.0/AndroidManifest.xml:20:5-44
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:21:5-44
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/a8ded835757352fafb16de99b2fbc5a3/transformed/jetified-startup-runtime-1.1.1/AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/a8ded835757352fafb16de99b2fbc5a3/transformed/jetified-startup-runtime-1.1.1/AndroidManifest.xml:21:5-23:41
+MERGED from [androidx.tracing:tracing:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/92e6feeebc62355b424f383077b86ccb/transformed/jetified-tracing-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [androidx.tracing:tracing:1.0.0] /Users/andy/.gradle/caches/8.13/transforms/92e6feeebc62355b424f383077b86ccb/transformed/jetified-tracing-1.0.0/AndroidManifest.xml:20:5-22:41
+MERGED from [com.google.dagger:dagger-lint-aar:2.51] /Users/andy/.gradle/caches/8.13/transforms/24ccbb0a9f8a8ce01fc63a149a0c82ee/transformed/jetified-dagger-lint-aar-2.51/AndroidManifest.xml:18:3-42
+MERGED from [com.google.dagger:dagger-lint-aar:2.51] /Users/andy/.gradle/caches/8.13/transforms/24ccbb0a9f8a8ce01fc63a149a0c82ee/transformed/jetified-dagger-lint-aar-2.51/AndroidManifest.xml:18:3-42
+	android:targetSdkVersion
+		INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/andy/projects/TrackRat/android/app/src/main/AndroidManifest.xml
+provider#androidx.startup.InitializationProvider
+ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:24:9-32:20
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/a8ded835757352fafb16de99b2fbc5a3/transformed/jetified-startup-runtime-1.1.1/AndroidManifest.xml:26:9-30:34
+MERGED from [androidx.startup:startup-runtime:1.1.1] /Users/andy/.gradle/caches/8.13/transforms/a8ded835757352fafb16de99b2fbc5a3/transformed/jetified-startup-runtime-1.1.1/AndroidManifest.xml:26:9-30:34
+	tools:node
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:28:13-31
+	android:authorities
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:26:13-68
+	android:exported
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:27:13-37
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:25:13-67
+meta-data#androidx.emoji2.text.EmojiCompatInitializer
+ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.emoji2:emoji2:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/4de0e2bcc09eca5435ec7cdd12e9bebb/transformed/jetified-emoji2-1.3.0/AndroidManifest.xml:30:17-75
+meta-data#androidx.lifecycle.ProcessLifecycleInitializer
+ADDED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.lifecycle:lifecycle-process:2.7.0] /Users/andy/.gradle/caches/8.13/transforms/e8ce8932a98eaee9cc729f98f886f801/transformed/jetified-lifecycle-process-2.7.0/AndroidManifest.xml:30:17-78
+permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:23:9-81
+permission#com.trackrat.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:22:5-24:47
+	android:protectionLevel
+		ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:24:9-44
+	android:name
+		ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:23:9-81
+uses-permission#${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:26:22-94
+uses-permission#com.trackrat.android.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:26:5-97
+	android:name
+		ADDED from [androidx.core:core:1.12.0] /Users/andy/.gradle/caches/8.13/transforms/f381db11a97f5dfe15112db34973e125/transformed/core-1.12.0/AndroidManifest.xml:26:22-94
+meta-data#androidx.profileinstaller.ProfileInstallerInitializer
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:29:13-31:52
+	android:value
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:31:17-49
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:30:17-85
+receiver#androidx.profileinstaller.ProfileInstallReceiver
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:34:9-52:20
+	android:enabled
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:37:13-35
+	android:exported
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:38:13-36
+	android:permission
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:39:13-57
+	android:directBootAware
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:36:13-44
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:35:13-76
+intent-filter#action:name:androidx.profileinstaller.action.INSTALL_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:40:13-42:29
+action#androidx.profileinstaller.action.INSTALL_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:41:17-91
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:41:25-88
+intent-filter#action:name:androidx.profileinstaller.action.SKIP_FILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:43:13-45:29
+action#androidx.profileinstaller.action.SKIP_FILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:44:17-85
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:44:25-82
+intent-filter#action:name:androidx.profileinstaller.action.SAVE_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:46:13-48:29
+action#androidx.profileinstaller.action.SAVE_PROFILE
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:47:17-88
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:47:25-85
+intent-filter#action:name:androidx.profileinstaller.action.BENCHMARK_OPERATION
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:49:13-51:29
+action#androidx.profileinstaller.action.BENCHMARK_OPERATION
+ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:50:17-95
+	android:name
+		ADDED from [androidx.profileinstaller:profileinstaller:1.3.0] /Users/andy/.gradle/caches/8.13/transforms/1ef4b2f34cb7e55b096c587bbeacac78/transformed/jetified-profileinstaller-1.3.0/AndroidManifest.xml:50:25-92

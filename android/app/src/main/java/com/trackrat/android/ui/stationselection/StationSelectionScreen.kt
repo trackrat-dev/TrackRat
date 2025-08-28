@@ -102,9 +102,10 @@ fun StationSelectionScreen(
                     destinationSearchText = station.name
                 },
                 onFindTrainsClicked = {
-                    if (selectedOrigin != null) {
+                    val origin = selectedOrigin
+                    if (origin != null) {
                         onNavigateToTrains(
-                            selectedOrigin.code,
+                            origin.code,
                             selectedDestination?.code
                         )
                     } else {

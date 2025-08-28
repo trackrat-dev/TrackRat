@@ -10,6 +10,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.DirectionsRailway
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -139,7 +141,7 @@ fun TrainDetailScreen(
                                 color = MaterialTheme.colorScheme.error
                             )
                             Text(
-                                text = uiState.error,
+                                text = uiState.error?.message ?: "Unknown error occurred",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center
@@ -460,14 +462,14 @@ fun ProgressCard(progress: com.trackrat.android.data.models.Progress) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "${progress.stopsCompleted} of ${progress.totalStops} stops",
+                        text = "${progress.stopsCompleted} of ${progress.stopsTotal} stops",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )
                 }
                 
                 // Time remaining
-                progress.minutesToArrival?.let { minutes ->
+                progress.nextArrival?.minutesToArrival?.let { minutes ->
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = "Time to arrival",
@@ -488,8 +490,8 @@ fun ProgressCard(progress: com.trackrat.android.data.models.Progress) {
                 }
             }
             
-            // Current location if available
-            progress.currentLocation?.let { location ->
+            // Last departed station if available
+            progress.lastDeparted?.let { lastDeparted ->
                 Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -502,7 +504,7 @@ fun ProgressCard(progress: com.trackrat.android.data.models.Progress) {
                         tint = Color(0xFFFF6600)
                     )
                     Text(
-                        text = location,
+                        text = "Last departed: ${lastDeparted.stationName}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

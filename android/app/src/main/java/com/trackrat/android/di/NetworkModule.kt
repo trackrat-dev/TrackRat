@@ -2,7 +2,6 @@ package com.trackrat.android.di
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import com.trackrat.android.BuildConfig
 import com.trackrat.android.data.api.TrackRatApiService
 import com.trackrat.android.data.api.ZonedDateTimeAdapter
 import dagger.Module
@@ -33,11 +32,8 @@ object NetworkModule {
     fun provideOkHttpClient(): OkHttpClient {
         // Add logging for debug builds
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = if (BuildConfig.DEBUG) {
-                HttpLoggingInterceptor.Level.BODY
-            } else {
-                HttpLoggingInterceptor.Level.NONE
-            }
+            // Use BODY for debug logging (can be configured later)
+            level = HttpLoggingInterceptor.Level.BODY
         }
         
         return OkHttpClient.Builder()

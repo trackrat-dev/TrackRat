@@ -126,15 +126,18 @@ fun TrainListScreen(
                 }
                 
                 uiState.error != null -> {
-                    ErrorContent(
-                        error = uiState.error,
-                        canRetry = uiState.canRetry,
-                        onRetryClick = { 
-                            HapticFeedbackHelper.performMediumHaptic(hapticFeedback, uiState.hapticFeedbackEnabled)
-                            viewModel.retry() 
-                        },
-                        hapticFeedbackEnabled = uiState.hapticFeedbackEnabled
-                    )
+                    val error = uiState.error
+                    if (error != null) {
+                        ErrorContent(
+                            error = error,
+                            canRetry = uiState.canRetry,
+                            onRetryClick = { 
+                                HapticFeedbackHelper.performMediumHaptic(hapticFeedback, uiState.hapticFeedbackEnabled)
+                                viewModel.retry() 
+                            },
+                            hapticFeedbackEnabled = uiState.hapticFeedbackEnabled
+                        )
+                    }
                 }
                 
                 uiState.trains.isEmpty() -> {
@@ -335,7 +338,8 @@ fun TrainCard(
                     color = Color(Constants.BRAND_ORANGE)
                 )
                 Text(
-                    text = "${progress.stopsCompleted}/${progress.totalStops} stops • ${progress.minutesToArrival} min remaining",
+                    text = "${progress.stopsCompleted}/${progress.stopsTotal} stops" +
+                            (progress.nextArrival?.minutesToArrival?.let { " • $it min remaining" } ?: ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
