@@ -301,30 +301,46 @@ class DirectArrivalForecaster:
         """
         Determine where to start making predictions and what the initial time is.
 
-        Priority order:
-        1. User's origin station (if provided)
-        2. Last departed stop (if train is in progress)
-        3. First stop (if train hasn't started)
+        Logic:
+        1. If user_origin provided:
+           - If train has departed from user's origin: use actual departure time
+           - If train hasn't reached user's origin: use scheduled departure time
+        2. If no user_origin: find last departed stop for full journey view
+        
+        This ensures user journeys use scheduled time until train departs their origin,
+        then switch to actual times which naturally incorporate delays.
 
         Returns:
             Tuple of (start_index, predicted_time) or (None, None) if cannot determine
         """
-        # Check for user origin
+        # Handle user's origin station
         if user_origin:
             for i, stop in enumerate(stops):
                 if _get_station_code(stop) == user_origin:
-                    # Start from user's origin with its scheduled time (plus any delay)
-                    base_time = self._get_scheduled_time(stop, "departure")
-                    if base_time:
-                        # Add any accumulated delay from train progress
-                        delay = self._calculate_current_delay(stops)
-                        return i, base_time + delay
-                    return i, now_et()
+                    # Check if train has departed from user's origin
+                    if getattr(stop, "has_departed_station", False):
+                        # Train has departed - use actual time (includes delays naturally)
+                        if stop.actual_departure:
+                            return i, ensure_timezone_aware(stop.actual_departure)
+                        else:
+                            # No actual time but marked as departed - use scheduled + buffer
+                            base_time = self._get_scheduled_time(stop, "departure")
+                            if base_time:
+                                buffer = self._get_departure_buffer(stop)
+                                return i, base_time + buffer
+                            return i, now_et()
+                    else:
+                        # Train hasn't departed from user's origin - use scheduled time
+                        base_time = self._get_scheduled_time(stop, "departure")
+                        if base_time:
+                            return i, base_time
+                        # Fallback if no scheduled time available
+                        return i, now_et()
 
-        # Find last departed stop
+        # No user origin specified - find last departed stop for full journey view
         for i in range(len(stops) - 1, -1, -1):
             stop = stops[i]
-            if stop.has_departed_station:
+            if getattr(stop, "has_departed_station", False):
                 # Use actual departure if available, otherwise scheduled + buffer
                 if stop.actual_departure:
                     return i, ensure_timezone_aware(stop.actual_departure)
@@ -334,12 +350,8 @@ class DirectArrivalForecaster:
                         buffer = self._get_departure_buffer(stop)
                         return i, base_time + buffer
 
-        # Default to first stop
-        if stops:
-            first_stop_time = self._get_scheduled_time(stops[0], "departure")
-            if first_stop_time:
-                return 0, first_stop_time
-
+        # No departed stops found - cannot make meaningful predictions
+        # (This handles the case where train hasn't started journey yet)
         return None, None
 
     def _get_scheduled_time(
@@ -414,25 +426,6 @@ class DirectArrivalForecaster:
             # Use arrival time (minimal or no dwell)
             return arrival_time
 
-    def _calculate_current_delay(self, stops: list[Any]) -> timedelta:
-        """
-        Calculate current delay based on departed stops.
-
-        Finds the most recent departed stop with actual times
-        and calculates delay vs scheduled time.
-
-        Returns:
-            Delay timedelta (can be negative for early trains)
-        """
-        for stop in reversed(stops):
-            if stop.has_departed_station:
-                if stop.actual_departure:
-                    scheduled = self._get_scheduled_time(stop, "departure")
-                    if scheduled and isinstance(stop.actual_departure, datetime):
-                        actual = ensure_timezone_aware(stop.actual_departure)
-                        return actual - scheduled
-
-        return timedelta(0)  # No delay if no departed stops
 
     def _get_departure_buffer(self, stop: Any) -> timedelta:
         """
