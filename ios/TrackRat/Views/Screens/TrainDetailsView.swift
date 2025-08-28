@@ -358,7 +358,10 @@ struct CombinedDetailsCard: View {
                 
                 // Track predictions section
                 if shouldShowPredictions {
-                    SegmentedTrackPredictionView(train: train)
+                    SegmentedTrackPredictionView(
+                        train: train,
+                        isDepartingFromNYPenn: appState.departureStationCode == "NY"
+                    )
                 }
             }
             .padding([.horizontal, .top])
@@ -426,85 +429,6 @@ struct CombinedDetailsCard: View {
 }
 
 // Note: StatusV2 functionality is now integrated directly into TrainV2 model
-
-// MARK: - Track Prediction Card
-struct TrackPredictionCard: View {
-    let train: TrainV2
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "tram.circle.fill")
-                    .foregroundColor(.black)
-                    .font(.title2)
-                
-                Text("Track Predictions")
-                    .font(.headline)
-                    .foregroundColor(.black)
-                
-                Spacer()
-            }
-            
-            if let predictionData = train.predictionData,
-               let trackProbabilities = predictionData.trackProbabilities {
-                
-                // Group tracks by platform and show percentages
-                let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
-                // Filter to only show platforms with ≥2% likelihood
-                let filteredPlatforms = platformProbabilities.filter { $0.value >= 0.02 }
-                let sortedPlatforms = filteredPlatforms.sorted { $0.value > $1.value }
-                
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 8) {
-                    ForEach(sortedPlatforms, id: \.key) { platform, probability in
-                        PlatformPredictionRow(
-                            platformName: platform,
-                            probability: probability
-                        )
-                    }
-                }
-                .padding(.top, 4)
-            } else {
-                Text("No prediction data available")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                    .italic()
-            }
-        }
-        .padding()
-        .background(Color.orange.opacity(0.05))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-        )
-    }
-}
-
-// MARK: - Platform Prediction Row
-struct PlatformPredictionRow: View {
-    let platformName: String
-    let probability: Double
-    
-    var body: some View {
-        HStack {
-            Text(platformName)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundColor(.black)
-            
-            Spacer()
-            
-            Text("\(Int(probability * 100))%")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundColor(.orange)
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 10)
-        .background(Color.white.opacity(0.8))
-        .cornerRadius(8)
-    }
-}
 
 // MARK: - Stops Card
 struct StopsCard: View {
@@ -1105,6 +1029,7 @@ struct TrainProgressIndicator: View {
 // MARK: - Segmented Track Prediction View
 struct SegmentedTrackPredictionView: View {
     let train: TrainV2
+    let isDepartingFromNYPenn: Bool
     @State private var selectedSegment: TrackPredictionSegment?
     @State private var showingOthersPopup = false
     @State private var adjustedPredictions: PredictionData?
@@ -1171,6 +1096,11 @@ struct SegmentedTrackPredictionView: View {
                     .font(.caption)
                     .foregroundColor(.gray)
                     .italic()
+            }
+            
+            // Penn Station waiting guide link for NY departures
+            if isDepartingFromNYPenn {
+                PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
             }
         }
         .padding()
@@ -1401,6 +1331,45 @@ enum TrackLabelPosition {
     case inside
     case above
     case none
+}
+
+// MARK: - Penn Station Waiting Link
+struct PennStationWaitingLink: View {
+    let isAmtrak: Bool
+    @State private var showingGuide = false
+    
+    var body: some View {
+        HStack {
+            Spacer()
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showingGuide = true
+            }) {
+                HStack(spacing: 3) {
+                    Text("⚡")
+                        .font(.system(size: 12))
+                    Text("where should I wait?")
+                        .font(.system(size: 12))
+                        .fontWeight(.medium)
+                    Text("⚡")
+                        .font(.system(size: 12))
+                }
+                .foregroundColor(.white)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color.black.opacity(0.9))
+                )
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.top, 8)
+        .sheet(isPresented: $showingGuide) {
+            PennStationGuideView(isAmtrak: isAmtrak)
+        }
+    }
 }
 
 // MARK: - Stations Helper Extension
