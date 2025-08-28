@@ -381,3 +381,32 @@ class CachedApiResponse(Base):
             "endpoint", "params_hash", name="uq_cached_api_endpoint_params"
         ),
     )
+
+
+class SchedulerTaskRun(Base):
+    """Track when scheduled tasks last ran to prevent duplicate execution across replicas."""
+
+    __tablename__ = "scheduler_task_runs"
+
+    # Primary key is the task name itself
+    task_name = Column(String(50), primary_key=True)
+
+    # When the task last successfully completed
+    last_successful_run = Column(DateTime(timezone=True), nullable=False)
+
+    # When the task was last attempted (may not have succeeded)
+    last_attempt = Column(DateTime(timezone=True))
+
+    # Metrics for monitoring
+    run_count = Column(Integer, default=0, nullable=False)
+    average_duration_ms = Column(Integer)
+    last_duration_ms = Column(Integer)
+
+    # Track which Cloud Run instance ran it (for debugging)
+    last_instance_id = Column(String(100))
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (Index("idx_task_freshness", "task_name", "last_successful_run"),)

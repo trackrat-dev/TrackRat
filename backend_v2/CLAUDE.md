@@ -155,7 +155,7 @@ GET /scheduler/status         # Detailed scheduler status
 GET /metrics                  # Prometheus metrics
 ```
 
-### 4. Background Scheduler
+### 4. Background Scheduler (Horizontally Scalable)
 
 The APScheduler runs in-process and handles:
 - **Every 30 min** (configurable): NJ Transit train discovery from major stations
@@ -164,6 +164,13 @@ The APScheduler runs in-process and handles:
 - **Every 15 min** (configurable): Individual journey collection updates
 - **Every 15 min**: API cache pre-computation for congestion endpoints
 - **Automatic startup**: Begins when FastAPI app starts
+
+**Horizontal Scaling Support:**
+- **Database-based coordination**: Multiple replicas coordinate through `scheduler_task_runs` table
+- **Freshness checking**: Tasks check last run time before executing to prevent duplicates
+- **Safe intervals**: Tasks use 90% of scheduled interval with 2-minute buffer to prevent over-execution
+- **Row-level locking**: PostgreSQL `WITH FOR UPDATE SKIP LOCKED` prevents race conditions
+- **Instance tracking**: Cloud Run revision ID tracked for debugging (`K_REVISION` env var)
 
 ### 5. Transit Time Tracking System
 
@@ -408,6 +415,12 @@ docker run -p 8000:8000 \
    - Verify APScheduler is starting
    - Check system time is correct
 
+4. **Duplicate task execution in multiple replicas**
+   - Check scheduler_task_runs table for task status
+   - Verify database locking is working
+   - Look for "task_locked_by_another_replica" in logs
+   - Ensure K_REVISION env var is set in Cloud Run
+
 ### Debug Commands
 
 ```bash
@@ -419,6 +432,21 @@ poetry run python -c "from trackrat.utils.nj_transit import test_api; import asy
 
 # View scheduler jobs
 curl http://localhost:8000/health | jq .scheduler
+
+# Check scheduler task run history
+poetry run python -c "
+import asyncio
+from trackrat.db.engine import get_session
+from sqlalchemy import text
+
+async def check_tasks():
+    async with get_session() as db:
+        result = await db.execute(text('SELECT * FROM scheduler_task_runs ORDER BY last_successful_run DESC'))
+        for row in result:
+            print(f'{row.task_name}: Last run {row.last_successful_run}, Count: {row.run_count}')
+
+asyncio.run(check_tasks())
+"
 ```
 
 ## Architecture Decisions
@@ -432,6 +460,7 @@ curl http://localhost:8000/health | jq .scheduler
 5. **In-process scheduler**: Simplifies deployment and monitoring
 6. **Async throughout**: Maximum performance with Python
 7. **Pydantic settings**: Type-safe configuration management
+8. **Database-based task coordination**: Simple, robust horizontal scaling without Redis/external services
 
 ### Trade-offs Accepted
 
