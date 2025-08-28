@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, case, distinct, func, select
-from sqlalchemy.sql.functions import coalesce
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.functions import coalesce
 from structlog import get_logger
 
 from trackrat.models.database import JourneyStop, TrainJourney
@@ -48,7 +48,9 @@ class DirectArrivalForecaster:
 
     # Configuration constants - easy to tune
     LOOKBACK_HOURS = 1  # How far back to look for recent trains
-    MIN_SAMPLES = 3  # Minimum trains needed for a prediction (increased for better reliability)
+    MIN_SAMPLES = (
+        3  # Minimum trains needed for a prediction (increased for better reliability)
+    )
     MAX_SEGMENT_MINUTES = 60  # Maximum believable time for a single segment
     STALE_PREDICTION_MINUTES = 10  # How old a prediction can be before we discard it
 
@@ -207,7 +209,7 @@ class DirectArrivalForecaster:
     ) -> dict[str, float] | None:
         """
         Calculate transit time from segments that completed recently.
-        
+
         A segment is considered "recent" if the arrival at the destination
         station occurred within LOOKBACK_HOURS.
 
@@ -220,20 +222,44 @@ class DirectArrivalForecaster:
         stmt = (
             select(
                 JourneyStop.journey_id,
-                func.min(case(
-                    (JourneyStop.station_code == from_station, JourneyStop.stop_sequence)
-                )).label('from_sequence'),
-                func.max(case(
-                    (JourneyStop.station_code == from_station,
-                     coalesce(JourneyStop.actual_departure, JourneyStop.scheduled_departure))
-                )).label('departure_time'),
-                func.max(case(
-                    (JourneyStop.station_code == to_station, JourneyStop.stop_sequence)
-                )).label('to_sequence'),
-                func.max(case(
-                    (JourneyStop.station_code == to_station,
-                     coalesce(JourneyStop.actual_arrival, JourneyStop.scheduled_arrival))
-                )).label('arrival_time'),
+                func.min(
+                    case(
+                        (
+                            JourneyStop.station_code == from_station,
+                            JourneyStop.stop_sequence,
+                        )
+                    )
+                ).label("from_sequence"),
+                func.max(
+                    case(
+                        (
+                            JourneyStop.station_code == from_station,
+                            coalesce(
+                                JourneyStop.actual_departure,
+                                JourneyStop.scheduled_departure,
+                            ),
+                        )
+                    )
+                ).label("departure_time"),
+                func.max(
+                    case(
+                        (
+                            JourneyStop.station_code == to_station,
+                            JourneyStop.stop_sequence,
+                        )
+                    )
+                ).label("to_sequence"),
+                func.max(
+                    case(
+                        (
+                            JourneyStop.station_code == to_station,
+                            coalesce(
+                                JourneyStop.actual_arrival,
+                                JourneyStop.scheduled_arrival,
+                            ),
+                        )
+                    )
+                ).label("arrival_time"),
             )
             .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
             .where(
@@ -247,13 +273,35 @@ class DirectArrivalForecaster:
                 and_(
                     func.count(distinct(JourneyStop.station_code)) == 2,
                     # Ensure from comes before to
-                    func.min(case((JourneyStop.station_code == from_station, JourneyStop.stop_sequence))) <
-                    func.max(case((JourneyStop.station_code == to_station, JourneyStop.stop_sequence))),
+                    func.min(
+                        case(
+                            (
+                                JourneyStop.station_code == from_station,
+                                JourneyStop.stop_sequence,
+                            )
+                        )
+                    )
+                    < func.max(
+                        case(
+                            (
+                                JourneyStop.station_code == to_station,
+                                JourneyStop.stop_sequence,
+                            )
+                        )
+                    ),
                     # Key change: Filter on actual segment completion time
-                    func.max(case(
-                        (JourneyStop.station_code == to_station,
-                         coalesce(JourneyStop.actual_arrival, JourneyStop.scheduled_arrival))
-                    )) >= cutoff_time
+                    func.max(
+                        case(
+                            (
+                                JourneyStop.station_code == to_station,
+                                coalesce(
+                                    JourneyStop.actual_arrival,
+                                    JourneyStop.scheduled_arrival,
+                                ),
+                            )
+                        )
+                    )
+                    >= cutoff_time,
                 )
             )
         )
@@ -267,7 +315,9 @@ class DirectArrivalForecaster:
 
         for row in result:
             if row.departure_time and row.arrival_time:
-                delta = ensure_timezone_aware(row.arrival_time) - ensure_timezone_aware(row.departure_time)
+                delta = ensure_timezone_aware(row.arrival_time) - ensure_timezone_aware(
+                    row.departure_time
+                )
                 minutes = delta.total_seconds() / 60.0
 
                 # Validate the time is reasonable (positive and not too long)
@@ -306,7 +356,7 @@ class DirectArrivalForecaster:
            - If train has departed from user's origin: use actual departure time
            - If train hasn't reached user's origin: use scheduled departure time
         2. If no user_origin: find last departed stop for full journey view
-        
+
         This ensures user journeys use scheduled time until train departs their origin,
         then switch to actual times which naturally incorporate delays.
 
@@ -425,7 +475,6 @@ class DirectArrivalForecaster:
         else:
             # Use arrival time (minimal or no dwell)
             return arrival_time
-
 
     def _get_departure_buffer(self, stop: Any) -> timedelta:
         """

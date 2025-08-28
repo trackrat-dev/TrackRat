@@ -85,7 +85,7 @@ def mock_db_with_segments():
     # Create properly structured mock rows for the database query
     # These represent the aggregated results from the SQL query in _get_segment_transit_time
     base_time = now_et()
-    
+
     # The query returns aggregated data per journey with departure_time and arrival_time
     mock_rows = [
         # Journey 1: NP->TR segment (45 minutes)
@@ -96,7 +96,7 @@ def mock_db_with_segments():
             to_sequence=2,
             journey_id=1,
         ),
-        # Journey 2: NP->TR segment (46 minutes)  
+        # Journey 2: NP->TR segment (46 minutes)
         MagicMock(
             departure_time=base_time - timedelta(hours=3, minutes=18),
             arrival_time=base_time - timedelta(hours=2, minutes=32),
@@ -211,7 +211,6 @@ class TestDirectArrivalForecaster:
             very_stale = now - timedelta(minutes=15)
             validated = forecaster._validate_prediction_time(very_stale, stop)
             assert validated == stop.scheduled_departure
-
 
     def test_calculate_next_departure(self, forecaster):
         """Test calculating next departure time."""
@@ -340,7 +339,7 @@ class TestDirectArrivalForecaster:
             # Journey 1: Uses actual times (30 minutes)
             MagicMock(
                 departure_time=base_time - timedelta(hours=1),  # actual departure
-                arrival_time=base_time - timedelta(minutes=30),  # actual arrival 
+                arrival_time=base_time - timedelta(minutes=30),  # actual arrival
                 from_sequence=1,
                 to_sequence=2,
                 journey_id=1,
@@ -348,7 +347,8 @@ class TestDirectArrivalForecaster:
             # Journey 2: Uses scheduled times (30 minutes)
             MagicMock(
                 departure_time=base_time - timedelta(hours=2),  # scheduled departure
-                arrival_time=base_time - timedelta(hours=1, minutes=30),  # scheduled arrival
+                arrival_time=base_time
+                - timedelta(hours=1, minutes=30),  # scheduled arrival
                 from_sequence=1,
                 to_sequence=2,
                 journey_id=2,
@@ -356,7 +356,8 @@ class TestDirectArrivalForecaster:
             # Journey 3: Mixed times (30 minutes) - need 3 samples for MIN_SAMPLES
             MagicMock(
                 departure_time=base_time - timedelta(hours=3),  # scheduled departure
-                arrival_time=base_time - timedelta(hours=2, minutes=30),  # scheduled arrival
+                arrival_time=base_time
+                - timedelta(hours=2, minutes=30),  # scheduled arrival
                 from_sequence=1,
                 to_sequence=2,
                 journey_id=3,
