@@ -376,9 +376,9 @@ fun StatusChip(
 fun PredictionChip(
     prediction: com.trackrat.android.data.models.PredictionData
 ) {
-    // Get confidence-based styling
+    // Get confidence-based styling (confidence is 0.0-1.0 float)
     val (backgroundColor, textColor, fontWeight, confidenceIcon) = when {
-        prediction.confidence >= 80 -> {
+        prediction.confidence >= 0.8f -> {
             // High confidence: Bold with checkmark
             Tuple4(
                 Color(Constants.BRAND_ORANGE),
@@ -387,7 +387,7 @@ fun PredictionChip(
                 "✓"
             )
         }
-        prediction.confidence >= 50 -> {
+        prediction.confidence >= 0.5f -> {
             // Medium confidence: Normal styling
             Tuple4(
                 Color(Constants.BRAND_ORANGE).copy(alpha = 0.15f),

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trackrat.android.data.models.Stop
 import com.trackrat.android.data.models.TrainV2
+import com.trackrat.android.ui.trainlist.Tuple4
 import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -628,9 +629,9 @@ fun StatusChip(
 fun PredictionChipDetailed(
     prediction: com.trackrat.android.data.models.PredictionData
 ) {
-    // Get confidence-based styling (same logic as TrainListScreen)
+    // Get confidence-based styling (confidence is 0.0-1.0 float)
     val (backgroundColor, textColor, fontWeight, confidenceIcon) = when {
-        prediction.confidence >= 80 -> {
+        prediction.confidence >= 0.8f -> {
             // High confidence: Bold with checkmark
             Tuple4(
                 Color(0xFFFF6600),
@@ -639,7 +640,7 @@ fun PredictionChipDetailed(
                 "✓"
             )
         }
-        prediction.confidence >= 50 -> {
+        prediction.confidence >= 0.5f -> {
             // Medium confidence: Normal styling  
             Tuple4(
                 Color(0xFFFF6600).copy(alpha = 0.15f),
@@ -676,7 +677,7 @@ fun PredictionChipDetailed(
         
         // Confidence percentage
         Text(
-            text = "${prediction.confidence}% confidence",
+            text = prediction.confidenceText,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp)
@@ -684,8 +685,6 @@ fun PredictionChipDetailed(
     }
 }
 
-// Helper class for multiple return values (reused from TrainListScreen)
-data class Tuple4<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 private fun formatLastUpdated(timestamp: Long): String {
     val now = System.currentTimeMillis()
