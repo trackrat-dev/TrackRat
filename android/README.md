@@ -1,4 +1,4 @@
-# TrackRat Android Application
+   # TrackRat Android Application
 
 ## Current Implementation Status
 
