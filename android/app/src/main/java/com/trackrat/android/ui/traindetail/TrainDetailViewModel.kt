@@ -2,12 +2,14 @@ package com.trackrat.android.ui.traindetail
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.trackrat.android.data.models.ApiException
 import com.trackrat.android.data.models.ApiResult
 import com.trackrat.android.data.models.TrainV2
 import com.trackrat.android.data.repository.TrackRatRepository
 import com.trackrat.android.services.TrainTrackingService
+import com.trackrat.android.utils.ErrorUtils.shouldStopAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -28,7 +30,8 @@ import javax.inject.Inject
 @HiltViewModel
 class TrainDetailViewModel @Inject constructor(
     application: Application,
-    private val repository: TrackRatRepository
+    private val repository: TrackRatRepository,
+    private val savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(application) {
 
     // UI State with structured error handling
@@ -60,14 +63,28 @@ class TrainDetailViewModel @Inject constructor(
     
     companion object {
         private const val AUTO_REFRESH_INTERVAL_MS = 30_000L // 30 seconds
+        
+        // SavedState keys for state restoration
+        private const val KEY_TRAIN_ID = "train_id"
+        private const val KEY_DATE = "date"
+        private const val KEY_LAST_UPDATED = "last_updated"
+        private const val KEY_TRAIN_STATUS = "train_status"
     }
 
+    init {
+        // Restore state from SavedStateHandle if available
+        restoreState()
+    }
+    
     /**
      * Load train details with improved error handling
      */
     fun loadTrainDetails(trainId: String, date: String? = null) {
         currentTrainId = trainId
         currentDate = date ?: getCurrentDateString()
+        
+        // Save current parameters to state
+        saveParametersToState(trainId, currentDate!!)
         
         viewModelScope.launch {
             // Cancel existing auto-refresh
@@ -114,14 +131,19 @@ class TrainDetailViewModel @Inject constructor(
     private suspend fun fetchTrainDetails(trainId: String, date: String) {
         when (val result = repository.getTrainDetails(trainId, date, refresh = true)) {
             is ApiResult.Success -> {
+                val currentTime = System.currentTimeMillis()
                 _uiState.value = _uiState.value.copy(
                     train = result.data.train,
                     isLoading = false,
                     isRefreshing = false,
                     error = null,
-                    lastUpdated = System.currentTimeMillis(),
+                    lastUpdated = currentTime,
                     canRetry = false
                 )
+                
+                // Save state for restoration
+                savedStateHandle[KEY_LAST_UPDATED] = currentTime
+                savedStateHandle[KEY_TRAIN_STATUS] = result.data.train.status
                 
                 // Start auto-refresh only on successful load
                 startAutoRefresh(trainId, date)
@@ -167,15 +189,22 @@ class TrainDetailViewModel @Inject constructor(
                             )
                         }
                         is ApiResult.Error -> {
-                            // Stop auto-refresh on persistent errors
-                            if (result.exception !is ApiException.NetworkError) {
+                            // Use enhanced error recovery strategy
+                            if (result.exception.shouldStopAutoRefresh()) {
+                                // Stop auto-refresh for persistent errors
                                 _uiState.value = _uiState.value.copy(
                                     error = result.exception,
                                     canRetry = true
                                 )
                                 break
+                            } else {
+                                // Continue auto-refresh for transient errors
+                                // Add extra delay for server errors to be less aggressive
+                                if (result.exception is ApiException.ServerError) {
+                                    delay(15_000) // Extra delay for server issues
+                                }
+                                // For network/timeout errors, continue with normal interval
                             }
-                            // Continue auto-refresh for network errors
                         }
                         is ApiResult.Loading -> {
                             // Continue loop
@@ -237,5 +266,47 @@ class TrainDetailViewModel @Inject constructor(
         val status = train.statusV2?.status ?: train.status
         return status.equals("BOARDING", ignoreCase = true) || 
                status.equals("ALL ABOARD", ignoreCase = true)
+    }
+    
+    /**
+     * Restore state from SavedStateHandle
+     */
+    private fun restoreState() {
+        val trainId = savedStateHandle.get<String>(KEY_TRAIN_ID)
+        val date = savedStateHandle.get<String>(KEY_DATE)
+        val lastUpdated = savedStateHandle.get<Long>(KEY_LAST_UPDATED) ?: 0L
+        
+        if (trainId != null && date != null) {
+            currentTrainId = trainId
+            currentDate = date
+            
+            // Check if cached data is still fresh (less than 2 minutes old)
+            val dataAge = System.currentTimeMillis() - lastUpdated
+            val maxDataAge = 2 * 60 * 1000L // 2 minutes
+            
+            if (dataAge < maxDataAge) {
+                // Restore basic state and refresh in background
+                _uiState.value = _uiState.value.copy(
+                    lastUpdated = lastUpdated,
+                    isLoading = false
+                )
+                
+                // Refresh data in background
+                viewModelScope.launch {
+                    fetchTrainDetails(trainId, date)
+                }
+            } else {
+                // Data is stale, do a fresh load
+                loadTrainDetails(trainId, date)
+            }
+        }
+    }
+    
+    /**
+     * Save current parameters to SavedStateHandle
+     */
+    private fun saveParametersToState(trainId: String, date: String) {
+        savedStateHandle[KEY_TRAIN_ID] = trainId
+        savedStateHandle[KEY_DATE] = date
     }
 }

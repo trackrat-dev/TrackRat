@@ -1,5 +1,6 @@
 package com.trackrat.android.ui.trainlist
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackrat.android.data.models.ApiException
@@ -7,6 +8,7 @@ import com.trackrat.android.data.models.ApiResult
 import com.trackrat.android.data.models.TrainV2
 import com.trackrat.android.data.preferences.UserPreferencesRepository
 import com.trackrat.android.data.repository.TrackRatRepository
+import com.trackrat.android.utils.ErrorUtils.shouldStopAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -26,8 +28,19 @@ import javax.inject.Inject
 @HiltViewModel
 class TrainListViewModel @Inject constructor(
     private val repository: TrackRatRepository,
-    private val preferencesRepository: UserPreferencesRepository
+    private val preferencesRepository: UserPreferencesRepository,
+    private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+    
+    companion object {
+        private const val AUTO_REFRESH_INTERVAL_MS = 30_000L // 30 seconds
+        
+        // SavedState keys for state restoration
+        private const val KEY_FROM_STATION = "from_station"
+        private const val KEY_TO_STATION = "to_station"
+        private const val KEY_LAST_UPDATED = "last_updated"
+        private const val KEY_TRAINS_JSON = "trains_json"
+    }
 
     // UI State with structured error handling
     data class UiState(
@@ -64,11 +77,12 @@ class TrainListViewModel @Inject constructor(
 
     // Auto-refresh job
     private var autoRefreshJob: Job? = null
-    
-    companion object {
-        private const val AUTO_REFRESH_INTERVAL_MS = 30_000L // 30 seconds
-    }
 
+    init {
+        // Restore state from SavedStateHandle if available
+        restoreState()
+    }
+    
     /**
      * Load trains between stations with improved error handling
      */
@@ -76,6 +90,9 @@ class TrainListViewModel @Inject constructor(
         viewModelScope.launch {
             // Cancel existing auto-refresh
             autoRefreshJob?.cancel()
+            
+            // Save current stations to state
+            saveStationsToState(fromStation, toStation)
             
             // Update station info in state
             _uiState.value = _uiState.value.copy(
@@ -139,6 +156,10 @@ class TrainListViewModel @Inject constructor(
                     canRetry = false
                 )
                 
+                // Save state for restoration
+                saveTrainsToState(uniqueTrains)
+                savedStateHandle[KEY_LAST_UPDATED] = System.currentTimeMillis()
+                
                 // Save user's last selected stations
                 viewModelScope.launch {
                     preferencesRepository.updateLastStations(fromStation, toStation)
@@ -195,15 +216,22 @@ class TrainListViewModel @Inject constructor(
                             )
                         }
                         is ApiResult.Error -> {
-                            // Stop auto-refresh on persistent errors
-                            if (result.exception !is ApiException.NetworkError) {
+                            // Use enhanced error recovery strategy
+                            if (result.exception.shouldStopAutoRefresh()) {
+                                // Stop auto-refresh for persistent errors
                                 _uiState.value = _uiState.value.copy(
                                     error = result.exception,
                                     canRetry = true
                                 )
                                 break
+                            } else {
+                                // Continue auto-refresh for transient errors
+                                // Add extra delay for server errors to be less aggressive
+                                if (result.exception is ApiException.ServerError) {
+                                    delay(15_000) // Extra delay for server issues
+                                }
+                                // For network/timeout errors, continue with normal interval
                             }
-                            // Continue auto-refresh for network errors
                         }
                         is ApiResult.Loading -> {
                             // Continue loop
@@ -236,5 +264,78 @@ class TrainListViewModel @Inject constructor(
         val status = train.statusV2?.status ?: train.status
         return status.equals("BOARDING", ignoreCase = true) || 
                status.equals("ALL ABOARD", ignoreCase = true)
+    }
+    
+    /**
+     * Restore state from SavedStateHandle
+     */
+    private fun restoreState() {
+        val fromStation = savedStateHandle.get<String>(KEY_FROM_STATION)
+        val toStation = savedStateHandle.get<String>(KEY_TO_STATION)
+        val lastUpdated = savedStateHandle.get<Long>(KEY_LAST_UPDATED) ?: 0L
+        
+        if (fromStation != null) {
+            // Restore basic state
+            _uiState.value = _uiState.value.copy(
+                fromStationCode = fromStation,
+                toStationCode = toStation,
+                lastUpdated = lastUpdated
+            )
+            
+            // Only restore trains if the data is relatively fresh (less than 5 minutes old)
+            val dataAge = System.currentTimeMillis() - lastUpdated
+            val maxDataAge = 5 * 60 * 1000L // 5 minutes
+            
+            if (dataAge < maxDataAge) {
+                restoreTrainsFromState()
+            } else {
+                // Data is stale, reload
+                loadTrains(fromStation, toStation)
+            }
+        }
+    }
+    
+    /**
+     * Save station codes to SavedStateHandle
+     */
+    private fun saveStationsToState(fromStation: String, toStation: String?) {
+        savedStateHandle[KEY_FROM_STATION] = fromStation
+        savedStateHandle[KEY_TO_STATION] = toStation
+    }
+    
+    /**
+     * Save trains to SavedStateHandle (simplified approach)
+     */
+    private fun saveTrainsToState(trains: List<TrainV2>) {
+        // For simplicity, we'll save just the count and key train IDs
+        // In a full implementation, you might serialize the entire list
+        val trainIds = trains.take(10).map { it.trainId } // Save first 10 train IDs
+        savedStateHandle["train_ids"] = trainIds
+        savedStateHandle["train_count"] = trains.size
+    }
+    
+    /**
+     * Restore trains from SavedStateHandle
+     */
+    private fun restoreTrainsFromState() {
+        // This is a simplified restoration
+        // In practice, you might want to serialize/deserialize the full train objects
+        val trainCount = savedStateHandle.get<Int>("train_count") ?: 0
+        
+        if (trainCount > 0) {
+            // Show cached state but trigger a refresh
+            val fromStation = savedStateHandle.get<String>(KEY_FROM_STATION)
+            val toStation = savedStateHandle.get<String>(KEY_TO_STATION)
+            
+            if (fromStation != null) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = true
+                )
+                // Refresh data in background
+                viewModelScope.launch {
+                    fetchTrains(fromStation, toStation)
+                }
+            }
+        }
     }
 }

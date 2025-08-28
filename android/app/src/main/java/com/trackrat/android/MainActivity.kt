@@ -11,6 +11,10 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.trackrat.android.navigation.TrackRatDestinations
+import com.trackrat.android.navigation.createTrackRatNavigator
+import com.trackrat.android.navigation.getTrainDetailArgs
+import com.trackrat.android.navigation.getTrainListArgs
 import com.trackrat.android.ui.stationselection.StationSelectionScreen
 import com.trackrat.android.ui.trainlist.TrainListScreen
 import com.trackrat.android.ui.traindetail.TrainDetailScreen
@@ -35,58 +39,53 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TrackRatAppNavHost() {
     val navController = rememberNavController()
+    val navigator = navController.createTrackRatNavigator()
 
-    NavHost(navController = navController, startDestination = "station_selection") {
-        composable("station_selection") {
+    NavHost(
+        navController = navController, 
+        startDestination = TrackRatDestinations.StationSelection.route
+    ) {
+        // Station Selection Screen
+        composable(TrackRatDestinations.StationSelection.route) {
             StationSelectionScreen(
                 onNavigateToTrains = { originCode, destinationCode ->
-                    if (destinationCode != null) {
-                        navController.navigate("train_list/$originCode/$destinationCode")
-                    } else {
-                        navController.navigate("train_list/$originCode")
-                    }
+                    navigator.navigateToTrainList(originCode, destinationCode)
                 },
                 onNavigateToTrainDetail = { trainId ->
-                    navController.navigate("train_detail/$trainId")
+                    navigator.navigateToTrainDetail(trainId)
                 }
             )
         }
         
-        composable("train_list/{fromStation}") { backStackEntry ->
-            val fromStation = backStackEntry.arguments?.getString("fromStation") ?: ""
+        // Train List Screen (with type-safe arguments)
+        composable(
+            route = TrackRatDestinations.TrainList.route,
+            arguments = TrackRatDestinations.TrainList.arguments
+        ) { backStackEntry ->
+            val args = backStackEntry.getTrainListArgs()
             TrainListScreen(
-                fromStation = fromStation,
-                toStation = null,
+                fromStation = args.fromStation,
+                toStation = args.toStation,
                 onNavigateBack = { 
-                    navController.popBackStack() 
+                    navigator.navigateBack()
                 },
                 onTrainClicked = { trainId ->
-                    navController.navigate("train_detail/$trainId")
+                    navigator.navigateToTrainDetail(trainId)
                 }
             )
         }
         
-        composable("train_list/{fromStation}/{toStation}") { backStackEntry ->
-            val fromStation = backStackEntry.arguments?.getString("fromStation") ?: ""
-            val toStation = backStackEntry.arguments?.getString("toStation")
-            TrainListScreen(
-                fromStation = fromStation,
-                toStation = toStation,
-                onNavigateBack = { 
-                    navController.popBackStack() 
-                },
-                onTrainClicked = { trainId ->
-                    navController.navigate("train_detail/$trainId")
-                }
-            )
-        }
-        
-        composable("train_detail/{trainId}") { backStackEntry ->
-            val trainId = backStackEntry.arguments?.getString("trainId") ?: ""
+        // Train Detail Screen (with type-safe arguments)
+        composable(
+            route = TrackRatDestinations.TrainDetail.route,
+            arguments = TrackRatDestinations.TrainDetail.arguments
+        ) { backStackEntry ->
+            val args = backStackEntry.getTrainDetailArgs()
             TrainDetailScreen(
-                trainId = trainId,
+                trainId = args.trainId,
+                date = args.date,
                 onNavigateBack = { 
-                    navController.popBackStack() 
+                    navigator.navigateBack()
                 }
             )
         }

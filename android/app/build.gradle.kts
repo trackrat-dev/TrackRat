@@ -24,11 +24,26 @@ android {
 
     buildTypes {
         release {
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            // Production API configuration
+            buildConfigField("String", "API_BASE_URL", "\"https://prod.api.trackrat.net/api/v2/\"")
+            buildConfigField("String", "ENVIRONMENT_NAME", "\"Production\"")
+            buildConfigField("boolean", "ALLOW_ENVIRONMENT_SWITCHING", "false")
+        }
+        debug {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Development API configuration - defaults to production but can be changed
+            buildConfigField("String", "API_BASE_URL", "\"https://prod.api.trackrat.net/api/v2/\"")
+            buildConfigField("String", "ENVIRONMENT_NAME", "\"Development\"")
+            buildConfigField("boolean", "ALLOW_ENVIRONMENT_SWITCHING", "true")
         }
     }
     compileOptions {
@@ -42,6 +57,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"

@@ -4,10 +4,12 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.trackrat.android.data.api.TrackRatApiService
 import com.trackrat.android.data.api.ZonedDateTimeAdapter
+import com.trackrat.android.data.preferences.EnvironmentManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -45,12 +47,19 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit {
-        // Use production API by default, can be overridden for local development
-        // For local development with emulator: "http://10.0.2.2:8000/api/v2/"
-        val BASE_URL = "https://prod.api.trackrat.net/api/v2/"
+    fun provideRetrofit(
+        okHttpClient: OkHttpClient, 
+        moshi: Moshi,
+        environmentManager: EnvironmentManager
+    ): Retrofit {
+        // Get the configured base URL from EnvironmentManager
+        // This allows switching between environments in debug builds
+        val baseUrl = runBlocking { 
+            environmentManager.loadServerEnvironment().baseURL 
+        }
+        
         return Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(baseUrl)
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
