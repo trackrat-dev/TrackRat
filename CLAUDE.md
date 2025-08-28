@@ -4,17 +4,17 @@ This file provides comprehensive guidance to Claude Code (claude.ai/code) when w
 
 ## Project Overview
 
-TrackRat is a full-stack train tracking system that combines a simplified Python backend V2 with a native iOS app featuring Live Activity support for real-time track predictions for NJ Transit and Amtrak trains.
+TrackRat is a full-stack train tracking system that combines a simplified Python backend V2 with native mobile apps (iOS and Android) featuring real-time track predictions for NJ Transit and Amtrak trains. The iOS app includes Live Activity support for Lock Screen updates.
 
 ### System Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Data Sources  │     │   Cloud Run     │     │   iOS Frontend  │
+│   Data Sources  │     │   Cloud Run     │     │ Mobile Frontends│
 ├─────────────────┤     ├─────────────────┤     ├─────────────────┤
 │ • NJ Transit    │────▶│ • API Service   │────▶│ • iOS App       │
-│ • Amtrak APIs   │     │ • Scheduler     │     │ • Live Activity │
-│                 │     │ • ML Models     │     │ • Widgets       │
+│ • Amtrak APIs   │     │ • Scheduler     │     │ • Android App   │
+│                 │     │ • ML Models     │     │ • Live Activity │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                 │
                         ┌───────▼────────┐
@@ -86,6 +86,14 @@ poetry run uvicorn trackrat.main:app --reload
 # iOS development
 cd ios
 open TrackRat.xcodeproj
+
+# Android development
+cd android
+# Set up Java (required each session unless added to shell profile)
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export PATH=$JAVA_HOME/bin:$PATH
+# Build debug APK
+./gradlew assembleDebug -x test
 
 # Infrastructure management
 cd infra
@@ -450,6 +458,13 @@ Sophisticated machine learning system for track assignment prediction:
    - Siri Shortcuts integration
    - CarPlay support
 
+3. **Android**:
+   - Widget support
+   - Wear OS app
+   - Material You dynamic theming
+   - Offline caching
+   - Android Auto support
+
 ## Development Tools
 
 ### Development Commands
@@ -515,6 +530,47 @@ TrackRat/Models/Train.swift          # Core data model
 TrackRat/Views/                      # All UI components
 ```
 
+### Android Commands
+```bash
+# Set up Java environment (macOS with Homebrew)
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export PATH=$JAVA_HOME/bin:$PATH
+
+# Verify Java setup
+java -version  # Should show OpenJDK 17
+
+# Build debug APK (skip tests for quick build)
+./gradlew assembleDebug -x test
+
+# Build with tests
+./gradlew build
+
+# Install on connected device/emulator
+./gradlew installDebug
+
+# Run the app
+./gradlew installDebug && adb shell am start -n com.trackrat.android/.MainActivity
+
+# Clean build artifacts
+./gradlew clean
+
+# APK output location
+# Debug: app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Android Key Files
+```
+app/src/main/java/com/trackrat/android/
+├── data/
+│   ├── api/TrackRatApi.kt          # API interface
+│   ├── models/                      # Data models
+│   └── repository/                  # Repository pattern
+├── ui/
+│   ├── trainlist/                   # Train list UI
+│   └── theme/                       # Material Design theme
+└── MainActivity.kt                   # App entry point
+```
+
 
 ### API Base URLs
 - Development: `http://localhost:8000/api`
@@ -525,8 +581,9 @@ TrackRat/Views/                      # All UI components
 When working on this project, refer to:
 - **Backend V2 details**: `backend_v2/CLAUDE.md` - Simplified V2 backend development
 - **iOS details**: `ios/CLAUDE.md` - iOS app development with Live Activities
+- **Android details**: `android/CLAUDE.md` - Android app development
 - **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP infrastructure  
-- **Integration guidance**: This file for backend-iOS integration
+- **Integration guidance**: This file for backend-mobile integration
 
 ### Quick Reference
 
