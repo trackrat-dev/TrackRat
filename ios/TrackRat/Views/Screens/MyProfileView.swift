@@ -119,7 +119,7 @@ struct MyProfileView: View {
                                         .foregroundColor(.white)
                                         .multilineTextAlignment(.leading)
                                     
-                                    Text("Send ideas for new features too!")
+                                    Text("Send new ideas too!")
                                         .font(.caption)
                                         .foregroundColor(.white.opacity(0.7))
                                         .multilineTextAlignment(.leading)
@@ -247,15 +247,10 @@ struct MyProfileView: View {
                                     .frame(width: 24, height: 24)
                                 
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Favorite Stations")
+                                    Text("Edit Favorite Stations")
                                         .font(.headline)
                                         .fontWeight(.medium)
                                         .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                    
-                                    Text("Manage your quick access stations")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
                                         .multilineTextAlignment(.leading)
                                 }
                                 
@@ -290,11 +285,6 @@ struct MyProfileView: View {
                                         .fontWeight(.medium)
                                         .foregroundColor(.white)
                                         .multilineTextAlignment(.leading)
-                                    
-                                    Text("Go through the welcome flow again")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                        .multilineTextAlignment(.leading)
                                 }
                                 
                                 Spacer()
@@ -327,11 +317,6 @@ struct MyProfileView: View {
                                         .font(.headline)
                                         .fontWeight(.medium)
                                         .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                    
-                                    Text("Server settings & health checks")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
                                         .multilineTextAlignment(.leading)
                                 }
                                 
