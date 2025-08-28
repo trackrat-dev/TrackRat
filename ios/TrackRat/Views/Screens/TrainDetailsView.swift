@@ -209,6 +209,29 @@ struct CombinedDetailsCard: View {
         return stationName.lowercased() == selectedDeparture.lowercased()
     }
     
+    // Check if predictions should be shown for the entire journey
+    private var shouldShowJourneyPredictions: Bool {
+        // Find the user's destination stop
+        guard let selectedDestination = selectedDestination,
+              let destinationStop = displayableTrainStops.first(where: { stop in
+                  stop.stationName.lowercased() == selectedDestination.lowercased()
+              }) else {
+            return false
+        }
+        
+        // Check if destination has significant predicted delay (≥4 minutes)
+        guard let predictedArrival = destinationStop.predictedArrival,
+              let scheduledArrival = destinationStop.scheduledArrival,
+              let samples = destinationStop.predictedArrivalSamples,
+              samples > 0,
+              !destinationStop.hasDepartedStation else {
+            return false
+        }
+        
+        let delaySeconds = predictedArrival.timeIntervalSince(scheduledArrival)
+        return delaySeconds > 240  // ≥4 minutes
+    }
+    
     // Helper functions for status display
     private func timeAgo(from date: Date) -> String {
         let now = Date()
@@ -367,7 +390,8 @@ struct CombinedDetailsCard: View {
                             isBoarding: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName),
                             boardingTrack: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName) ? stop.track : nil,
                             train: train,
-                            departureStationCode: appState.departureStationCode
+                            departureStationCode: appState.departureStationCode,
+                            shouldShowJourneyPredictions: shouldShowJourneyPredictions
                         )
                     }
                     
@@ -501,7 +525,8 @@ struct StopsCard: View {
                         isBoarding: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
                         boardingTrack: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? stop.track : nil,
                         train: train,
-                        departureStationCode: appState.departureStationCode
+                        departureStationCode: appState.departureStationCode,
+                        shouldShowJourneyPredictions: false
                     )
                 }
             } else {
@@ -528,6 +553,7 @@ struct StopRowV2: View {
     let boardingTrack: String?
     let train: TrainV2
     let departureStationCode: String?
+    let shouldShowJourneyPredictions: Bool
     
     @State private var showPulse = false
     
@@ -723,7 +749,8 @@ struct StopRowV2: View {
                let samples = stop.predictedArrivalSamples,
                samples > 0,
                !stop.hasDepartedStation,
-               predictedArrival.timeIntervalSince(scheduledArrival) > 240 {
+               predictedArrival.timeIntervalSince(scheduledArrival) > 240,
+               shouldShowJourneyPredictions {
                 HStack(spacing: 4) {
                     Text("🐀✨")
                         .font(.system(size: 16))
