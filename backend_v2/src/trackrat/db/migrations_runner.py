@@ -55,13 +55,14 @@ async def run_migrations() -> None:
         config = get_alembic_config()
         logger.info("Alembic config ready")
 
-        # Check if alembic_version table exists and has current revision
-        logger.info("Checking database schema state")
+        # Always run upgrade head to ensure all migrations are applied
+        # This is safe as Alembic tracks which migrations have already been applied
+        logger.info("Running alembic upgrade head to ensure all migrations are applied")
+        command.upgrade(config, "head")
+        logger.info("Alembic upgrade completed")
 
-        # Simple check: if alembic_version table exists with a revision, assume migrations are done
-        # This avoids hanging Alembic commands during startup
+        # Log current revision for debugging
         try:
-            # Use SQLAlchemy directly with sync engine for the check
             from sqlalchemy import create_engine, text
 
             from trackrat.settings import get_settings
@@ -70,26 +71,16 @@ async def run_migrations() -> None:
             sync_engine = create_engine(settings.database_url_sync)
 
             with sync_engine.connect() as conn:
-                # Check if alembic_version table exists and has a version
                 result = conn.execute(
                     text("SELECT version_num FROM alembic_version LIMIT 1")
                 )
                 current_version = result.scalar()
-
-            if current_version:
-                logger.info(
-                    f"Database has migration version: {current_version}, skipping migrations"
-                )
-            else:
-                logger.info("No migration version found, running migrations")
-                command.upgrade(config, "head")
-                logger.info("Alembic upgrade completed")
-
+                if current_version:
+                    logger.info(
+                        f"Database is now at migration version: {current_version}"
+                    )
         except Exception as e:
-            # If we can't check, assume migrations are needed
-            logger.info(f"Could not check migration state ({e}), running migrations")
-            command.upgrade(config, "head")
-            logger.info("Alembic upgrade completed")
+            logger.debug(f"Could not check final migration version: {e}")
 
         logger.info("Database migrations completed successfully")
 
