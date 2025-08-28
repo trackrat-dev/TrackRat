@@ -288,7 +288,6 @@ fun StationSelectionContent(
             }
         }
     }
-}
 
 @Composable
 fun TrainSearchContent(

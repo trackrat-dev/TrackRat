@@ -37,7 +37,7 @@ class TrainTrackingService : Service() {
 
     companion object {
         const val CHANNEL_ID = "train_tracking_channel"
-        const volatile val NOTIFICATION_ID = 1001
+        const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.trackrat.android.action.START_TRACKING"
         const val ACTION_STOP = "com.trackrat.android.action.STOP_TRACKING"
         const val EXTRA_TRAIN_ID = "train_id"

@@ -1,0 +1,50 @@
+[
+    {
+        "merged": "/Users/andy/.gradle/daemon/8.13/com.trackrat.android.app-debug-59:/xml_data_extraction_rules.xml.flat",
+        "source": "/Users/andy/.gradle/daemon/8.13/com.trackrat.android.app-main-61:/xml/data_extraction_rules.xml"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-xxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-xxxhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-xxhdpi_ic_launcher_round.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-xxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-hdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-hdpi_ic_launcher_round.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-hdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-xhdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-mdpi/ic_launcher.png"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-xxxhdpi_ic_launcher_round.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-xxxhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-xhdpi_ic_launcher_round.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-xhdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "com.trackrat.android.app-debug-59:/mipmap-mdpi_ic_launcher_round.png.flat",
+        "source": "com.trackrat.android.app-main-61:/mipmap-mdpi/ic_launcher_round.png"
+    },
+    {
+        "merged": "/Users/andy/.gradle/daemon/8.13/com.trackrat.android.app-debug-59:/xml_backup_rules.xml.flat",
+        "source": "/Users/andy/.gradle/daemon/8.13/com.trackrat.android.app-main-61:/xml/backup_rules.xml"
+    }
+]
