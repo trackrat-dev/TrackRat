@@ -723,7 +723,7 @@ struct StopRowV2: View {
                let samples = stop.predictedArrivalSamples,
                samples > 0,
                !stop.hasDepartedStation,
-               predictedArrival.timeIntervalSince(scheduledArrival) > 120 {
+               predictedArrival.timeIntervalSince(scheduledArrival) > 240 {
                 HStack(spacing: 4) {
                     Text("🐀✨")
                         .font(.system(size: 16))
@@ -762,12 +762,14 @@ struct StopRowV2: View {
         let delaySeconds = predicted.timeIntervalSince(scheduled)
         let delayMinutes = delaySeconds / 60.0
         
-        if delayMinutes <= 5 {
-            return .black          // ≤5 minutes: black text
-        } else if delayMinutes <= 19 {
-            return Color(red: 0.8, green: 0.4, blue: 0)  // 6-19 minutes: slightly dark orange
-        } else {
+        if delayMinutes >= 5 && delayMinutes <= 9 {
+            return .black          // 5-9 minutes: black text
+        } else if delayMinutes >= 10 && delayMinutes <= 19 {
+            return Color(red: 0.8, green: 0.4, blue: 0)  // 10-19 minutes: slightly dark orange
+        } else if delayMinutes >= 20 {
             return Color(red: 0.7, green: 0, blue: 0)    // ≥20 minutes: dark red
+        } else {
+            return .black          // Default to black for other cases (< 5 minutes)
         }
     }
     
