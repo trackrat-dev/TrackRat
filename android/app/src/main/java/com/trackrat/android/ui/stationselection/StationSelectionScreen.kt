@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun StationSelectionScreen(
     viewModel: StationSelectionViewModel = hiltViewModel(),
-    onNavigateToTrains: (originCode: String, destinationCode: String?) -> Unit,
+    onNavigateToDestination: (originCode: String) -> Unit,
     onNavigateToTrainDetail: (trainId: String) -> Unit
 ) {
     val departureStations by viewModel.departureStations.collectAsState()
@@ -156,8 +156,8 @@ fun StationSelectionScreen(
                                 .fillMaxWidth()
                                 .clickable { 
                                     viewModel.selectOrigin(station)
-                                    // Navigate directly to destination selection
-                                    onNavigateToTrains(station.code, null)
+                                    // Navigate to destination selection
+                                    onNavigateToDestination(station.code)
                                 }
                         ) {
                             Row(
@@ -200,7 +200,7 @@ fun StationSelectionScreen(
 @Composable
 fun StationSelectionScreenPreview() {
     StationSelectionScreen(
-        onNavigateToTrains = { _, _ -> },
+        onNavigateToDestination = { _ -> },
         onNavigateToTrainDetail = { _ -> }
     )
 }

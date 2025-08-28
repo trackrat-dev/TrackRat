@@ -13,8 +13,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.trackrat.android.navigation.TrackRatDestinations
 import com.trackrat.android.navigation.createTrackRatNavigator
+import com.trackrat.android.navigation.getDestinationSelectionArgs
 import com.trackrat.android.navigation.getTrainDetailArgs
 import com.trackrat.android.navigation.getTrainListArgs
+import com.trackrat.android.ui.destinationselection.DestinationSelectionScreen
 import com.trackrat.android.ui.stationselection.StationSelectionScreen
 import com.trackrat.android.ui.trainlist.TrainListScreen
 import com.trackrat.android.ui.traindetail.TrainDetailScreen
@@ -48,11 +50,28 @@ fun TrackRatAppNavHost() {
         // Station Selection Screen
         composable(TrackRatDestinations.StationSelection.route) {
             StationSelectionScreen(
-                onNavigateToTrains = { originCode, destinationCode ->
-                    navigator.navigateToTrainList(originCode, destinationCode)
+                onNavigateToDestination = { originCode ->
+                    navigator.navigateToDestinationSelection(originCode)
                 },
                 onNavigateToTrainDetail = { trainId ->
                     navigator.navigateToTrainDetail(trainId)
+                }
+            )
+        }
+        
+        // Destination Selection Screen
+        composable(
+            route = TrackRatDestinations.DestinationSelection.route,
+            arguments = TrackRatDestinations.DestinationSelection.arguments
+        ) { backStackEntry ->
+            val args = backStackEntry.getDestinationSelectionArgs()
+            DestinationSelectionScreen(
+                originStation = args.originStation,
+                onNavigateBack = {
+                    navigator.navigateBack()
+                },
+                onNavigateToTrains = { destinationCode ->
+                    navigator.navigateToTrainList(args.originStation, destinationCode)
                 }
             )
         }

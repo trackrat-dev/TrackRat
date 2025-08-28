@@ -22,6 +22,14 @@ class TrackRatNavigator(private val navController: NavController) {
     }
     
     /**
+     * Navigate to destination selection screen
+     */
+    fun navigateToDestinationSelection(originStation: String) {
+        val route = TrackRatDestinations.DestinationSelection.createRoute(originStation)
+        navController.navigate(route)
+    }
+    
+    /**
      * Navigate to train list screen
      */
     fun navigateToTrainList(fromStation: String, toStation: String? = null) {
@@ -55,6 +63,15 @@ class TrackRatNavigator(private val navController: NavController) {
 /**
  * Extension functions for extracting typed arguments from NavBackStackEntry
  */
+fun NavBackStackEntry.getDestinationSelectionArgs(): NavigationArgs.DestinationSelectionArgs {
+    val originStation = arguments?.getString("originStation") 
+        ?: throw IllegalArgumentException("originStation argument is required")
+    
+    return NavigationArgs.DestinationSelectionArgs(
+        originStation = originStation
+    )
+}
+
 fun NavBackStackEntry.getTrainListArgs(): NavigationArgs.TrainListArgs {
     val fromStation = arguments?.getString("fromStation") 
         ?: throw IllegalArgumentException("fromStation argument is required")

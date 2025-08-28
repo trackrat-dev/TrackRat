@@ -18,6 +18,26 @@ sealed class TrackRatDestinations(
     data object StationSelection : TrackRatDestinations("station_selection")
     
     /**
+     * Destination selection screen - choose where to go from origin
+     */
+    data object DestinationSelection : TrackRatDestinations(
+        route = "destination_selection/{originStation}",
+        arguments = listOf(
+            navArgument("originStation") {
+                type = NavType.StringType
+                nullable = false
+            }
+        )
+    ) {
+        /**
+         * Create route with origin parameter
+         */
+        fun createRoute(originStation: String): String {
+            return "destination_selection/$originStation"
+        }
+    }
+    
+    /**
      * Train list screen with optional destination
      * Shows departures from origin station
      */
@@ -81,6 +101,13 @@ sealed class TrackRatDestinations(
  * Extension functions for type-safe argument extraction
  */
 object NavigationArgs {
+    /**
+     * Extract typed arguments for DestinationSelection destination
+     */
+    data class DestinationSelectionArgs(
+        val originStation: String
+    )
+    
     /**
      * Extract typed arguments for TrainList destination
      */
