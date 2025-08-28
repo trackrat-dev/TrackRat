@@ -47,7 +47,7 @@ class DirectArrivalForecaster:
 
     # Configuration constants - easy to tune
     LOOKBACK_HOURS = 1  # How far back to look for recent trains
-    MIN_SAMPLES = 2  # Minimum trains needed for a prediction (2 is reasonable)
+    MIN_SAMPLES = 3  # Minimum trains needed for a prediction (increased for better reliability)
     MAX_SEGMENT_MINUTES = 60  # Maximum believable time for a single segment
     STALE_PREDICTION_MINUTES = 10  # How old a prediction can be before we discard it
 
