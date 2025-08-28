@@ -1,17 +1,22 @@
 package com.trackrat.android.ui.traindetail
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackrat.android.data.models.ApiException
 import com.trackrat.android.data.models.ApiResult
 import com.trackrat.android.data.models.TrainV2
 import com.trackrat.android.data.repository.TrackRatRepository
+import com.trackrat.android.services.TrainTrackingService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -22,8 +27,9 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class TrainDetailViewModel @Inject constructor(
+    application: Application,
     private val repository: TrackRatRepository
-) : ViewModel() {
+) : AndroidViewModel(application) {
 
     // UI State with structured error handling
     data class UiState(
@@ -37,6 +43,13 @@ class TrainDetailViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    // Tracking state - observe the service's tracking state
+    val isTrackingTrain: StateFlow<Boolean> = TrainTrackingService.isTracking
+        .map { trackingId -> 
+            trackingId != null && trackingId == currentTrainId 
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), false)
 
     // Auto-refresh job
     private var autoRefreshJob: Job? = null
@@ -178,6 +191,28 @@ class TrainDetailViewModel @Inject constructor(
      */
     private fun getCurrentDateString(): String {
         return LocalDate.now().toString() // YYYY-MM-DD format
+    }
+    
+    /**
+     * Toggle train tracking on/off
+     */
+    fun toggleTracking() {
+        val trainId = currentTrainId ?: return
+        val date = currentDate ?: getCurrentDateString()
+        val context = getApplication<Application>()
+        
+        if (TrainTrackingService.isTrackingTrain(trainId)) {
+            // Stop tracking
+            TrainTrackingService.stopTracking(context)
+        } else {
+            // Start tracking
+            TrainTrackingService.startTracking(
+                context = context,
+                trainId = trainId,
+                date = date,
+                fromStation = _uiState.value.train?.originStationCode
+            )
+        }
     }
 
     /**

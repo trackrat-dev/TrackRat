@@ -312,25 +312,14 @@ fun TrainCard(
                         }
                     }
                 } else if (train.prediction != null) {
-                    // Show Owl prediction if available
+                    // Show Owl prediction with confidence-based styling
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = "Prediction",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(Constants.BRAND_ORANGE).copy(alpha = 0.1f)
-                        ) {
-                            Text(
-                                text = "🦉 ${train.prediction.primaryPrediction}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(Constants.BRAND_ORANGE),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                            )
-                        }
+                        PredictionChip(prediction = train.prediction)
                     }
                 }
             }
@@ -382,6 +371,58 @@ fun StatusChip(
         )
     }
 }
+
+@Composable
+fun PredictionChip(
+    prediction: com.trackrat.android.data.models.PredictionData
+) {
+    // Get confidence-based styling
+    val (backgroundColor, textColor, fontWeight, confidenceIcon) = when {
+        prediction.confidence >= 80 -> {
+            // High confidence: Bold with checkmark
+            Tuple4(
+                Color(Constants.BRAND_ORANGE),
+                Color.White,
+                FontWeight.Bold,
+                "✓"
+            )
+        }
+        prediction.confidence >= 50 -> {
+            // Medium confidence: Normal styling
+            Tuple4(
+                Color(Constants.BRAND_ORANGE).copy(alpha = 0.15f),
+                Color(Constants.BRAND_ORANGE),
+                FontWeight.Medium,
+                ""
+            )
+        }
+        else -> {
+            // Low confidence: Gray with question mark
+            Tuple4(
+                MaterialTheme.colorScheme.surfaceVariant,
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                FontWeight.Normal,
+                "?"
+            )
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = backgroundColor
+    ) {
+        Text(
+            text = "🦉 ${prediction.primaryPrediction}$confidenceIcon",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = fontWeight,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+        )
+    }
+}
+
+// Helper class for multiple return values
+data class Tuple4<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 private fun formatDepartureTime(train: TrainV2, fromStation: String): String {
     return train.getScheduledDepartureTime(fromStation)?.format(

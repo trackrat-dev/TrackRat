@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -258,6 +259,8 @@ fun TrainHeaderCard(
     train: TrainV2,
     viewModel: TrainDetailViewModel
 ) {
+    val isTracking by viewModel.isTrackingTrain.collectAsState()
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -349,7 +352,7 @@ fun TrainHeaderCard(
                     }
                 }
                 
-                // Owl prediction
+                // Owl prediction with confidence styling
                 train.prediction?.let { prediction ->
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
@@ -357,20 +360,29 @@ fun TrainHeaderCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFFFF6600).copy(alpha = 0.1f)
-                        ) {
-                            Text(
-                                text = "🦉 ${prediction.primaryPrediction}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFF6600),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                        }
+                        PredictionChipDetailed(prediction = prediction)
                     }
                 }
+            }
+            
+            // Tracking button
+            Button(
+                onClick = { viewModel.toggleTracking() },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isTracking) Color.Gray else Color(0xFFFF6600)
+                )
+            ) {
+                Icon(
+                    imageVector = if (isTracking) Icons.Default.Circle else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isTracking) "Stop Tracking" else "Track This Train",
+                    style = MaterialTheme.typography.labelLarge
+                )
             }
         }
     }
@@ -380,42 +392,120 @@ fun TrainHeaderCard(
 fun ProgressCard(progress: com.trackrat.android.data.models.Progress) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "Journey Progress",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
+            // Header with icon
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DirectionsRailway,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = Color(0xFFFF6600)
+                )
+                Text(
+                    text = "Journey Progress",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                // Percentage badge
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFF6600).copy(alpha = 0.2f)
+                ) {
+                    Text(
+                        text = "${progress.journeyPercent.toInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF6600),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
             
+            // Enhanced progress bar with height
             LinearProgressIndicator(
                 progress = progress.journeyPercent / 100f,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(8.dp)
                     .clip(RoundedCornerShape(4.dp)),
-                color = Color(0xFFFF6600)
+                color = Color(0xFFFF6600),
+                trackColor = Color(0xFFFF6600).copy(alpha = 0.2f)
             )
             
+            // Progress details in grid
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "${progress.stopsCompleted}/${progress.totalStops} stops",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "${progress.minutesToArrival} min remaining",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                // Stops completed
+                Column {
+                    Text(
+                        text = "Progress",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${progress.stopsCompleted} of ${progress.totalStops} stops",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                
+                // Time remaining
+                progress.minutesToArrival?.let { minutes ->
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "Time to arrival",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = when {
+                                minutes <= 1 -> "Arriving now"
+                                minutes < 60 -> "$minutes min"
+                                else -> "${minutes / 60}h ${minutes % 60}m"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = if (minutes <= 5) Color(0xFFFF6600) else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+            
+            // Current location if available
+            progress.currentLocation?.let { location ->
+                Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFFFF6600)
+                    )
+                    Text(
+                        text = location,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
@@ -533,6 +623,69 @@ fun StatusChip(
         )
     }
 }
+
+@Composable
+fun PredictionChipDetailed(
+    prediction: com.trackrat.android.data.models.PredictionData
+) {
+    // Get confidence-based styling (same logic as TrainListScreen)
+    val (backgroundColor, textColor, fontWeight, confidenceIcon) = when {
+        prediction.confidence >= 80 -> {
+            // High confidence: Bold with checkmark
+            Tuple4(
+                Color(0xFFFF6600),
+                Color.White,
+                FontWeight.Bold,
+                "✓"
+            )
+        }
+        prediction.confidence >= 50 -> {
+            // Medium confidence: Normal styling  
+            Tuple4(
+                Color(0xFFFF6600).copy(alpha = 0.15f),
+                Color(0xFFFF6600),
+                FontWeight.Medium,
+                ""
+            )
+        }
+        else -> {
+            // Low confidence: Gray with question mark
+            Tuple4(
+                MaterialTheme.colorScheme.surfaceVariant,
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                FontWeight.Normal,
+                "?"
+            )
+        }
+    }
+
+    Column(horizontalAlignment = Alignment.End) {
+        // Prediction chip
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = backgroundColor
+        ) {
+            Text(
+                text = "🦉 ${prediction.primaryPrediction}$confidenceIcon",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = fontWeight,
+                color = textColor,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+        
+        // Confidence percentage
+        Text(
+            text = "${prediction.confidence}% confidence",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+// Helper class for multiple return values (reused from TrainListScreen)
+data class Tuple4<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 private fun formatLastUpdated(timestamp: Long): String {
     val now = System.currentTimeMillis()
