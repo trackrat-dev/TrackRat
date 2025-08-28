@@ -2,6 +2,7 @@ package com.trackrat.android.data.repository
 
 import com.trackrat.android.data.api.TrackRatApiService
 import com.trackrat.android.data.models.ApiResult
+import com.trackrat.android.data.models.DepartureV2
 import com.trackrat.android.data.models.DeparturesResponse
 import com.trackrat.android.data.models.TrainDetailsResponse
 import com.trackrat.android.data.models.TrainV2
@@ -85,13 +86,13 @@ class TrackRatRepository @Inject constructor(
     suspend fun searchByTrainNumber(
         trainNumber: String,
         fromStation: String = "NY"
-    ): ApiResult<TrainV2?> {
+    ): ApiResult<DepartureV2?> {
         return when (val result = getDepartures(fromStation, limit = 100)) {
             is ApiResult.Success -> {
-                val train = result.data.trains.find { 
-                    it.trainNumber == trainNumber || it.trainId == trainNumber 
+                val departure = result.data.departures.find { 
+                    it.trainId == trainNumber 
                 }
-                ApiResult.Success(train)
+                ApiResult.Success(departure)
             }
             is ApiResult.Error -> ApiResult.Error(result.exception)
             is ApiResult.Loading -> ApiResult.Loading

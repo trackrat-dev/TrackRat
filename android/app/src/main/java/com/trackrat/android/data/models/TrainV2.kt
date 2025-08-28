@@ -2,6 +2,7 @@ package com.trackrat.android.data.models
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.trackrat.android.data.api.HtmlDecode
 import java.time.ZonedDateTime
 
 /**
@@ -15,10 +16,10 @@ data class TrainV2(
     @Json(name = "line_name") val lineName: String?,
     @Json(name = "direction") val direction: String?,
     @Json(name = "origin_station_code") val originStationCode: String,
-    @Json(name = "origin_station_name") val originStationName: String,
+    @Json(name = "origin_station_name") @HtmlDecode val originStationName: String,
     @Json(name = "terminal_station_code") val terminalStationCode: String,
-    @Json(name = "terminal_station_name") val terminalStationName: String,
-    @Json(name = "destination") val destination: String?,
+    @Json(name = "terminal_station_name") @HtmlDecode val terminalStationName: String,
+    @Json(name = "destination") @HtmlDecode val destination: String?,
     @Json(name = "scheduled_departure") val scheduledDeparture: ZonedDateTime,
     @Json(name = "scheduled_arrival") val scheduledArrival: ZonedDateTime?,
     @Json(name = "status") val status: String,

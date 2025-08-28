@@ -5,6 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.trackrat.android.data.models.ApiException
 import com.trackrat.android.data.models.ApiResult
+import com.trackrat.android.data.models.DepartureV2
+import com.trackrat.android.data.models.Progress
+import com.trackrat.android.data.models.StatusV2
 import com.trackrat.android.data.models.TrainV2
 import com.trackrat.android.data.preferences.UserPreferencesRepository
 import com.trackrat.android.data.repository.TrackRatRepository
@@ -20,6 +23,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.time.ZonedDateTime
 import javax.inject.Inject
 
 /**
@@ -140,15 +144,16 @@ class TrainListViewModel @Inject constructor(
     private suspend fun fetchTrains(fromStation: String, toStation: String?) {
         when (val result = repository.getDepartures(fromStation, toStation)) {
             is ApiResult.Success -> {
-                // Deduplicate trains by train_id and sort by departure time
-                val uniqueTrains = result.data.trains
+                // Convert DepartureV2 to TrainV2 format for UI compatibility
+                val uniqueTrains = result.data.departures
+                    .map { departure -> convertDepartureToTrain(departure, fromStation) }
                     .distinctBy { it.trainId }
                     .sortedBy { it.getScheduledDepartureTime(fromStation) }
                 
                 _uiState.value = _uiState.value.copy(
                     trains = uniqueTrains,
-                    fromStationName = result.data.fromStation.name,
-                    toStationName = result.data.toStation?.name,
+                    fromStationName = result.data.metadata.fromStation.name,
+                    toStationName = result.data.metadata.toStation?.name,
                     isLoading = false,
                     isRefreshing = false,
                     error = null,
@@ -205,7 +210,8 @@ class TrainListViewModel @Inject constructor(
                 if (currentState.error == null && currentPrefs.autoRefreshEnabled) {
                     when (val result = repository.getDepartures(fromStation, toStation)) {
                         is ApiResult.Success -> {
-                            val uniqueTrains = result.data.trains
+                            val uniqueTrains = result.data.departures
+                                .map { departure -> convertDepartureToTrain(departure, fromStation) }
                                 .distinctBy { it.trainId }
                                 .sortedBy { it.getScheduledDepartureTime(fromStation) }
                             
@@ -337,5 +343,48 @@ class TrainListViewModel @Inject constructor(
                 }
             }
         }
+    }
+    
+    /**
+     * Convert DepartureV2 from API to TrainV2 for UI compatibility
+     */
+    private fun convertDepartureToTrain(departure: DepartureV2, fromStation: String): TrainV2 {
+        return TrainV2(
+            trainId = departure.trainId,
+            trainNumber = departure.trainId, // Use trainId as trainNumber
+            lineCode = departure.line.code,
+            lineName = departure.line.name ?: departure.line.code ?: "Unknown",
+            direction = null, // Not available in DepartureV2
+            originStationCode = departure.departure.code,
+            originStationName = departure.departure.name,
+            terminalStationCode = departure.arrival.code,
+            terminalStationName = departure.arrival.name,
+            destination = departure.destination ?: departure.arrival.name,
+            scheduledDeparture = departure.departure.scheduledTime ?: departure.departure.updatedTime ?: departure.departure.actualTime ?: ZonedDateTime.now(),
+            scheduledArrival = departure.arrival.scheduledTime,
+            status = if (departure.isCancelled) "CANCELLED" else "ON TIME", // Simple status
+            statusV2 = departure.departure.actualTime?.let {
+                StatusV2(
+                    status = if (departure.isCancelled) "CANCELLED" else "ON TIME",
+                    enhancedStatus = if (departure.isCancelled) "Cancelled" else "On Time",
+                    location = departure.trainPosition?.let { pos ->
+                        when {
+                            pos.atStationCode != null -> "At ${pos.atStationCode}"
+                            pos.betweenStations -> "Between ${pos.lastDepartedStationCode} and ${pos.nextStationCode}"
+                            else -> null
+                        }
+                    },
+                    lastUpdate = departure.dataFreshness.lastUpdated.toString()
+                )
+            },
+            progress = departure.progress,
+            track = departure.departure.track,
+            trackChange = false,
+            stops = emptyList(), // No stops data in departure response
+            dataSource = departure.dataSource,
+            isCancelled = departure.isCancelled,
+            isCompleted = false, // Not known from departure
+            prediction = null // No prediction data in DepartureV2
+        )
     }
 }

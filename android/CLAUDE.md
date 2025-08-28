@@ -2,14 +2,44 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Android application, ensuring consistency with the iOS app while maintaining Android platform conventions.
 
+## Java Setup (Required for Building)
+
+### Using Homebrew OpenJDK on macOS
+
+If Java is not available in your environment, you need to activate the Homebrew-installed OpenJDK:
+
+```bash
+# Check available OpenJDK installations
+brew list | grep openjdk
+
+# Set JAVA_HOME and PATH (for OpenJDK 17)
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export PATH=$JAVA_HOME/bin:$PATH
+
+# Verify Java is working
+java -version
+
+# For persistent setup, add to ~/.zshrc or ~/.bash_profile:
+echo 'export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc
+echo 'export PATH=$JAVA_HOME/bin:$PATH' >> ~/.zshrc
+source ~/.zshrc
+```
+
 ## Quick Start
 
 ```bash
 # Navigate to Android directory
 cd android
 
+# Set up Java (if needed)
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export PATH=$JAVA_HOME/bin:$PATH
+
 # Build debug APK
 ./gradlew assembleDebug
+
+# Build without running tests (faster)
+./gradlew assembleDebug -x test
 
 # Run on connected device/emulator
 ./gradlew installDebug
@@ -19,6 +49,13 @@ cd android
 
 # Clean and rebuild
 ./gradlew clean build
+```
+
+### APK Output Location
+
+After successful build, the debug APK is located at:
+```
+app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Architecture Overview
@@ -626,6 +663,24 @@ Expected error responses:
 - `400`: Invalid parameters
 - `500`: Server error (retry with backoff)
 - `503`: Service unavailable (show maintenance message)
+
+## Recent Enhancements & Fixes (August 2025)
+
+### HTML Entity Decoding Support
+- **Added**: `HtmlEntityDecoder.kt` with custom Moshi adapter
+- **Purpose**: Properly decode HTML entities (like &#9992; for ✈️) in destination names
+- **Implementation**: `@HtmlDecode` annotation on string fields that may contain entities
+- **Registration**: `HtmlEntityDecodeJsonAdapterFactory` added to Moshi builder
+
+### New DepartureV2 Model
+- **Added**: Support for V2 API departure response format
+- **Includes**: Enhanced train position, data freshness, and predicted arrival times
+- **Conversion**: `convertDepartureToTrain()` method in TrainListViewModel for compatibility
+
+### Build Configuration
+- **Java Setup**: Instructions for activating Homebrew OpenJDK
+- **Test Issues**: Unit tests may need updates for new TrainV2 constructor
+- **Quick Build**: Use `./gradlew assembleDebug -x test` to skip tests
 
 ## Contact for Support
 

@@ -2,6 +2,7 @@ package com.trackrat.android.data.models
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
+import com.trackrat.android.data.api.HtmlDecode
 import java.time.ZonedDateTime
 
 /**
@@ -10,7 +11,7 @@ import java.time.ZonedDateTime
 @JsonClass(generateAdapter = true)
 data class Stop(
     @Json(name = "station_code") val stationCode: String,
-    @Json(name = "station_name") val stationName: String,
+    @Json(name = "station_name") @HtmlDecode val stationName: String,
     @Json(name = "stop_sequence") val stopSequence: Int,
     @Json(name = "scheduled_arrival") val scheduledArrival: ZonedDateTime?,
     @Json(name = "scheduled_departure") val scheduledDeparture: ZonedDateTime?,

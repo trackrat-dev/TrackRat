@@ -2,6 +2,7 @@ package com.trackrat.android.di
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import com.trackrat.android.data.api.HtmlEntityDecodeJsonAdapterFactory
 import com.trackrat.android.data.api.TrackRatApiService
 import com.trackrat.android.data.api.ZonedDateTimeAdapter
 import com.trackrat.android.data.preferences.EnvironmentManager
@@ -25,6 +26,7 @@ object NetworkModule {
     fun provideMoshi(): Moshi {
         return Moshi.Builder()
             .add(ZonedDateTimeAdapter())  // Custom datetime adapter for Eastern Time
+            .add(HtmlEntityDecodeJsonAdapterFactory())  // Decode HTML entities like &#9992;
             .add(KotlinJsonAdapterFactory())  // Must be last
             .build()
     }
