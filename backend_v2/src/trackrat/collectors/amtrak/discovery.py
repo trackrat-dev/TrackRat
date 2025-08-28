@@ -14,13 +14,16 @@ from trackrat.models.api import AmtrakTrainData
 
 logger = get_logger(__name__)
 
-# Major hubs for Amtrak discovery in the Northeast Corridor
+# Major hubs for Amtrak discovery in the Northeast Corridor and Southeast
 DISCOVERY_HUBS = {
     "NYP",  # New York Penn Station
     "PHL",  # Philadelphia
     "WAS",  # Washington Union Station (Amtrak code)
     "BOS",  # Boston South Station
     "WIL",  # Wilmington Station
+    # Southeast expansion
+    "RVR",  # Richmond Staples Mill Road - unlocks Silver routes
+    "CLT",  # Charlotte - major NC hub
 }
 
 

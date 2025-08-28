@@ -211,6 +211,51 @@ STATION_NAMES: dict[str, str] = {
     "RVR": "Richmond Staples Mill Road",
     "RVM": "Richmond Main Street",
     "RNK": "Roanoke",
+    # Southeast Amtrak stations
+    "CLT": "Charlotte",
+    "RGH": "Raleigh",
+    "SEL": "Selma-Smithfield",
+    "WLN": "Wilson",
+    "RMT": "Rocky Mount", 
+    "PTB": "Petersburg",
+    "SAV": "Savannah",
+    "JES": "Jesup",
+    "JAX": "Jacksonville", 
+    "WPK": "Waldo",
+    "OCA": "Ocala",
+    "WTH": "Winter Haven",
+    "LKL": "Lakeland",
+    "TPA": "Tampa",
+    "WPB": "West Palm Beach",
+    "DLD": "Delray Beach",
+    "FTL": "Fort Lauderdale",
+    "HLW": "Hollywood",
+    "MIA": "Miami",
+    "ORL": "Orlando",
+    "KIS": "Kissimmee",
+    "WTR": "Winter Park",
+    "DLB": "DeLand",
+    "PAL": "Palatka",
+    "SAN": "Sanford",
+    "THU": "Thurmond",
+    "CHS": "Charleston",
+    "KTR": "Kingstree",
+    "FLO": "Florence",
+    "DIL": "Dillon",
+    "HAM": "Hamlet",
+    "SOU": "Southern Pines",
+    "CAR": "Cary",
+    "DNC": "Durham",
+    "GRB": "Greensboro",
+    "HPT": "High Point",
+    "SAL": "Salisbury",
+    "GAS": "Gastonia",
+    "SPB": "Spartanburg",
+    "GVL": "Greenville",
+    "ATL": "Atlanta",
+    "GAI": "Gainesville",
+    "TOC": "Toccoa",
+    "CLE": "Clemson",
 }
 
 
@@ -271,6 +316,51 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "RVR": "RVR",  # Richmond Staples Mill Road, VA
     "RVM": "RVM",  # Richmond Main Street, VA
     "RNK": "RNK",  # Roanoke, VA
+    # Southeast Amtrak stations
+    "CLT": "CLT",  # Charlotte, NC
+    "RGH": "RGH",  # Raleigh, NC
+    "SEL": "SEL",  # Selma-Smithfield, NC
+    "WLN": "WLN",  # Wilson, NC
+    "RMT": "RMT",  # Rocky Mount, NC
+    "PTB": "PTB",  # Petersburg, VA
+    "SAV": "SAV",  # Savannah, GA
+    "JES": "JES",  # Jesup, GA
+    "JAX": "JAX",  # Jacksonville, FL
+    "WPK": "WPK",  # Waldo, FL
+    "OCA": "OCA",  # Ocala, FL
+    "WTH": "WTH",  # Winter Haven, FL
+    "LKL": "LKL",  # Lakeland, FL
+    "TPA": "TPA",  # Tampa, FL
+    "WPB": "WPB",  # West Palm Beach, FL
+    "DLD": "DLD",  # Delray Beach, FL
+    "FTL": "FTL",  # Fort Lauderdale, FL
+    "HLW": "HLW",  # Hollywood, FL
+    "MIA": "MIA",  # Miami, FL
+    "ORL": "ORL",  # Orlando, FL
+    "KIS": "KIS",  # Kissimmee, FL
+    "WTR": "WTR",  # Winter Park, FL
+    "DLB": "DLB",  # DeLand, FL
+    "PAL": "PAL",  # Palatka, FL
+    "SAN": "SAN",  # Sanford, FL
+    "THU": "THU",  # Thurmond, WV
+    "CHS": "CHS",  # Charleston, SC
+    "KTR": "KTR",  # Kingstree, SC
+    "FLO": "FLO",  # Florence, SC
+    "DIL": "DIL",  # Dillon, SC
+    "HAM": "HAM",  # Hamlet, NC
+    "SOU": "SOU",  # Southern Pines, NC
+    "CAR": "CAR",  # Cary, NC
+    "DNC": "DNC",  # Durham, NC
+    "GRB": "GRB",  # Greensboro, NC
+    "HPT": "HPT",  # High Point, NC
+    "SAL": "SAL",  # Salisbury, NC
+    "GAS": "GAS",  # Gastonia, NC
+    "SPB": "SPB",  # Spartanburg, SC
+    "GVL": "GVL",  # Greenville, SC
+    "ATL": "ATL",  # Atlanta, GA
+    "GAI": "GAI",  # Gainesville, GA
+    "TOC": "TOC",  # Toccoa, GA
+    "CLE": "CLE",  # Clemson, SC
 }
 
 # Reverse mapping from internal codes to Amtrak codes (for the first match)
@@ -317,6 +407,51 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "RVR": "RVR",  # Richmond Staples Mill Road, VA
     "RVM": "RVM",  # Richmond Main Street, VA
     "RNK": "RNK",  # Roanoke, VA
+    # Southeast Amtrak stations
+    "CLT": "CLT",  # Charlotte, NC
+    "RGH": "RGH",  # Raleigh, NC
+    "SEL": "SEL",  # Selma-Smithfield, NC
+    "WLN": "WLN",  # Wilson, NC
+    "RMT": "RMT",  # Rocky Mount, NC
+    "PTB": "PTB",  # Petersburg, VA
+    "SAV": "SAV",  # Savannah, GA
+    "JES": "JES",  # Jesup, GA
+    "JAX": "JAX",  # Jacksonville, FL
+    "WPK": "WPK",  # Waldo, FL
+    "OCA": "OCA",  # Ocala, FL
+    "WTH": "WTH",  # Winter Haven, FL
+    "LKL": "LKL",  # Lakeland, FL
+    "TPA": "TPA",  # Tampa, FL
+    "WPB": "WPB",  # West Palm Beach, FL
+    "DLD": "DLD",  # Delray Beach, FL
+    "FTL": "FTL",  # Fort Lauderdale, FL
+    "HLW": "HLW",  # Hollywood, FL
+    "MIA": "MIA",  # Miami, FL
+    "ORL": "ORL",  # Orlando, FL
+    "KIS": "KIS",  # Kissimmee, FL
+    "WTR": "WTR",  # Winter Park, FL
+    "DLB": "DLB",  # DeLand, FL
+    "PAL": "PAL",  # Palatka, FL
+    "SAN": "SAN",  # Sanford, FL
+    "THU": "THU",  # Thurmond, WV
+    "CHS": "CHS",  # Charleston, SC
+    "KTR": "KTR",  # Kingstree, SC
+    "FLO": "FLO",  # Florence, SC
+    "DIL": "DIL",  # Dillon, SC
+    "HAM": "HAM",  # Hamlet, NC
+    "SOU": "SOU",  # Southern Pines, NC
+    "CAR": "CAR",  # Cary, NC
+    "DNC": "DNC",  # Durham, NC
+    "GRB": "GRB",  # Greensboro, NC
+    "HPT": "HPT",  # High Point, NC
+    "SAL": "SAL",  # Salisbury, NC
+    "GAS": "GAS",  # Gastonia, NC
+    "SPB": "SPB",  # Spartanburg, SC
+    "GVL": "GVL",  # Greenville, SC
+    "ATL": "ATL",  # Atlanta, GA
+    "GAI": "GAI",  # Gainesville, GA
+    "TOC": "TOC",  # Toccoa, GA
+    "CLE": "CLE",  # Clemson, SC
 }
 
 
