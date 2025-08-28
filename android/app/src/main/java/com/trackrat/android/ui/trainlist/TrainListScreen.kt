@@ -1,5 +1,6 @@
 package com.trackrat.android.ui.trainlist
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.trackrat.android.data.models.TrainV2
 import com.trackrat.android.ui.components.ErrorContent
+import com.trackrat.android.ui.components.GlassmorphicCard
 import com.trackrat.android.ui.components.TrainListSkeleton
 import com.trackrat.android.utils.Constants
 import com.trackrat.android.utils.HapticFeedbackHelper
@@ -52,6 +54,16 @@ fun TrainListScreen(
         viewModel.loadTrains(fromStation, toStation)
     }
     
+    // Auto-refresh every 30 seconds (matching iOS app)
+    LaunchedEffect(fromStation, toStation) {
+        while (true) {
+            kotlinx.coroutines.delay(30_000) // 30 seconds
+            if (!pullToRefreshState.isRefreshing) {
+                viewModel.refresh()
+            }
+        }
+    }
+    
     // Handle pull to refresh
     if (pullToRefreshState.isRefreshing) {
         LaunchedEffect(true) {
@@ -68,6 +80,7 @@ fun TrainListScreen(
     }
 
     Scaffold(
+        modifier = Modifier.background(MaterialTheme.colorScheme.background),
         topBar = {
             TopAppBar(
                 title = {
@@ -77,12 +90,13 @@ fun TrainListScreen(
                                 "Trains to ${uiState.toStationName ?: toStation}"
                             else 
                                 "All Departures",
-                            style = MaterialTheme.typography.titleMedium
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Text(
                             text = "From ${uiState.fromStationName ?: fromStation}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
                         )
                     }
                 },
@@ -217,134 +231,181 @@ fun TrainCard(
     viewModel: TrainListViewModel,
     onClick: () -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
+    val isBoarding = viewModel.isTrainBoarding(train) && !train.track.isNullOrEmpty()
+    
+    // Use orange card for boarding trains, glassmorphic for others
+    if (isBoarding) {
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .clickable { onClick() },
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(Constants.BRAND_ORANGE)
+            ),
+            shape = RoundedCornerShape(16.dp)
         ) {
-            // Header: Train number, line, destination
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Train ${train.trainId}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (!train.lineCode.isNullOrEmpty()) {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color(Constants.BRAND_ORANGE).copy(alpha = 0.1f)
-                            ) {
-                                Text(
-                                    text = train.lineCode,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(Constants.BRAND_ORANGE),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-                    Text(
-                        text = "to ${train.destination ?: train.terminalStationName}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                
-                // Status indicator
-                StatusChip(
-                    status = viewModel.getTrainDisplayStatus(train),
-                    isBoarding = viewModel.isTrainBoarding(train)
-                )
-            }
+            TrainCardContent(
+                train = train,
+                fromStation = fromStation,
+                viewModel = viewModel,
+                isBoarding = true,
+                textColor = Color.White
+            )
+        }
+    } else {
+        GlassmorphicCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() },
+            cornerRadius = 16.dp
+        ) {
+            TrainCardContent(
+                train = train,
+                fromStation = fromStation,
+                viewModel = viewModel,
+                isBoarding = false,
+                textColor = MaterialTheme.colorScheme.onBackground
+            )
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Departure time and track info
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
+@Composable
+private fun TrainCardContent(
+    train: TrainV2,
+    fromStation: String,
+    viewModel: TrainListViewModel,
+    isBoarding: Boolean,
+    textColor: Color
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(if (isBoarding) 16.dp else 0.dp) // GlassmorphicCard already has padding
+    ) {
+        // Header: Train number, line, destination
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
-                        text = "Departure",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = formatDepartureTime(train, fromStation),
+                        text = "Train ${train.trainId}",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Bold,
+                        color = textColor
                     )
-                }
-
-                if (!train.track.isNullOrEmpty()) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "Track",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    if (!train.lineCode.isNullOrEmpty()) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(Constants.BRAND_ORANGE).copy(alpha = 0.1f)
                         ) {
                             Text(
-                                text = train.track,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                text = train.lineCode,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(Constants.BRAND_ORANGE),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                     }
-                } else if (train.prediction != null) {
-                    // Show Owl prediction with confidence-based styling
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "Prediction",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        PredictionChip(prediction = train.prediction)
-                    }
                 }
+                Text(
+                    text = "to ${train.destination ?: train.terminalStationName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = textColor.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
+            
+            // Status indicator
+            StatusChip(
+                status = viewModel.getTrainDisplayStatus(train),
+                isBoarding = viewModel.isTrainBoarding(train)
+            )
+        }
 
-            // Progress indicator if available
-            train.progress?.let { progress ->
-                Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = progress.journeyPercent / 100f,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = Color(Constants.BRAND_ORANGE)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Departure time and track info
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "Departure",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = textColor.copy(alpha = 0.7f)
                 )
                 Text(
-                    text = "${progress.stopsCompleted}/${progress.stopsTotal} stops" +
-                            (progress.nextArrival?.minutesToArrival?.let { " • $it min remaining" } ?: ""),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
+                    text = formatDepartureTime(train, fromStation),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = textColor
                 )
             }
+
+            if (!train.track.isNullOrEmpty()) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = if (isBoarding) "Boarding on Track" else "Track",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor.copy(alpha = 0.9f)
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isBoarding) 
+                            Color.White.copy(alpha = 0.2f)
+                        else 
+                            MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Text(
+                            text = train.track,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isBoarding) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            } else if (train.prediction != null) {
+                // Show Owl prediction with confidence-based styling
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "Prediction",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor.copy(alpha = 0.7f)
+                    )
+                    PredictionChip(prediction = train.prediction)
+                }
+            }
+        }
+
+        // Progress indicator if available
+        train.progress?.let { progress ->
+            Spacer(modifier = Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = progress.journeyPercent / 100f,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp)),
+                color = Color(Constants.BRAND_ORANGE)
+            )
+            Text(
+                text = "${progress.stopsCompleted}/${progress.stopsTotal} stops" +
+                        (progress.nextArrival?.minutesToArrival?.let { " • $it min remaining" } ?: ""),
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor.copy(alpha = 0.8f),
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 }
@@ -378,10 +439,11 @@ fun StatusChip(
 
 @Composable
 fun PredictionChip(
-    prediction: com.trackrat.android.data.models.PredictionData
+    prediction: com.trackrat.android.data.models.PredictionData?
 ) {
+    if (prediction == null) return
     // Get confidence-based styling (confidence is 0.0-1.0 float)
-    val (backgroundColor, textColor, fontWeight, confidenceIcon) = when {
+    val styling = when {
         prediction.confidence >= 0.8f -> {
             // High confidence: Bold with checkmark
             Tuple4(
@@ -410,6 +472,11 @@ fun PredictionChip(
             )
         }
     }
+    
+    val backgroundColor = styling.first
+    val textColor = styling.second
+    val fontWeight = styling.third
+    val confidenceIcon = styling.fourth
 
     Surface(
         shape = RoundedCornerShape(8.dp),

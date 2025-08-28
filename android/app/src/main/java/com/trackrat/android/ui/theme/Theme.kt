@@ -15,6 +15,40 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+// TrackRat Dark Theme - Matching iOS App
+private val TrackRatColorScheme = darkColorScheme(
+    // Primary colors
+    primary = TrackRatOrange,
+    onPrimary = TrackRatBlack,
+    
+    // Container colors
+    primaryContainer = TrackRatOrange,
+    onPrimaryContainer = TrackRatBlack,
+    
+    // Secondary colors  
+    secondary = TrackRatOrange,
+    onSecondary = TrackRatBlack,
+    
+    // Background colors - Pure black like iOS
+    background = TrackRatBlack,
+    onBackground = TrackRatTextPrimary,
+    
+    // Surface colors - Using glassmorphic surfaces
+    surface = TrackRatBlack,
+    onSurface = TrackRatTextPrimary,
+    surfaceVariant = TrackRatSurfaceCard,
+    onSurfaceVariant = TrackRatTextSecondary,
+    
+    // Other surface variants
+    surfaceContainer = TrackRatSurfaceElevated,
+    surfaceContainerHigh = TrackRatSurfaceCard,
+    
+    // Outline colors for borders
+    outline = TrackRatBorder,
+    outlineVariant = TrackRatBorder.copy(alpha = 0.5f)
+)
+
+// Legacy color schemes for fallback
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,
     secondary = PurpleGrey80,
@@ -25,40 +59,26 @@ private val LightColorScheme = lightColorScheme(
     primary = Purple40,
     secondary = PurpleGrey40,
     tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
 )
 
 @Composable
 fun TrackRatTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    darkTheme: Boolean = true, // Always use dark theme to match iOS
+    // Dynamic color disabled to use our custom TrackRat colors
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    // Always use our custom TrackRat color scheme
+    val colorScheme = TrackRatColorScheme
+    
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
+            // Set status bar to black to match theme
+            window.statusBarColor = TrackRatBlack.toArgb()
+            // Use light status bar content (white text) on black background
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
 
