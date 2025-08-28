@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- TODO: Define cloud backup rules for your app -->
+    </cloud-backup>
+    <device-transfer>
+        <!-- TODO: Define device transfer rules for your app -->
+    </device-transfer>
+</data-extraction-rules>
