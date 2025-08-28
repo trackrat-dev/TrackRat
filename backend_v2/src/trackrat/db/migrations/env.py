@@ -4,6 +4,7 @@ Alembic environment configuration for TrackRat V2.
 Handles PostgreSQL database migrations using synchronous connections.
 """
 
+import os
 from logging.config import fileConfig
 
 from alembic import context
@@ -22,9 +23,18 @@ if config.config_file_name is not None:
 # Add model's MetaData object for 'autogenerate' support
 target_metadata = Base.metadata
 
-# Get database URL from settings
-settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url_sync)
+# Get database URL - check for standard DATABASE_URL env var first (for subprocess)
+# then fall back to settings for normal operation
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    # Ensure it's a sync URL (remove asyncpg if present)
+    database_url = database_url.replace("+asyncpg", "")
+else:
+    # Get from settings as usual
+    settings = get_settings()
+    database_url = settings.database_url_sync
+
+config.set_main_option("sqlalchemy.url", database_url)
 
 
 def run_migrations_offline() -> None:
@@ -59,12 +69,9 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode using async engine."""
-    # Get the sync URL for migrations
-    db_url = settings.database_url_sync
-    config.set_main_option("sqlalchemy.url", db_url)
-
-    # Create a sync engine for migrations
+    """Run migrations in 'online' mode using sync engine."""
+    # The database URL is already set in config above
+    # Just create a sync engine for migrations
     config_section = config.get_section(config.config_ini_section) or {}
     connectable = engine_from_config(
         config_section,
