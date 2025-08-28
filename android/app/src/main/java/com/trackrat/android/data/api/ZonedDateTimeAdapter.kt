@@ -18,6 +18,7 @@ class ZonedDateTimeAdapter : JsonAdapter<ZonedDateTime>() {
         
         // Multiple formatters to try, in order of preference
         private val FORMATTERS = listOf(
+            DateTimeFormatter.ISO_INSTANT,           // Handles 'Z' suffix (UTC)
             DateTimeFormatter.ISO_OFFSET_DATE_TIME,  // Standard with timezone
             DateTimeFormatter.ISO_LOCAL_DATE_TIME,   // Without timezone
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSS"),  // With microseconds
@@ -51,6 +52,17 @@ class ZonedDateTimeAdapter : JsonAdapter<ZonedDateTime>() {
     }
     
     private fun parseDateTime(dateString: String): ZonedDateTime {
+        // Special handling for ISO_INSTANT format (timestamps ending with 'Z')
+        if (dateString.endsWith("Z")) {
+            try {
+                // Parse as Instant and convert to ZonedDateTime in ET
+                val instant = java.time.Instant.parse(dateString)
+                return ZonedDateTime.ofInstant(instant, ET_ZONE)
+            } catch (e: DateTimeParseException) {
+                // Fall through to other formatters
+            }
+        }
+        
         // Try each formatter until one works
         for (formatter in FORMATTERS) {
             try {

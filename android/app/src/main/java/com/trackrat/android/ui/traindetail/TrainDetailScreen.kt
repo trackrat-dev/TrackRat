@@ -27,8 +27,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.trackrat.android.data.models.Stop
-import com.trackrat.android.data.models.TrainV2
+import com.trackrat.android.data.models.StopDetail
+import com.trackrat.android.data.models.TrainDetailV2
 import com.trackrat.android.ui.trainlist.Tuple4
 import java.time.format.DateTimeFormatter
 
@@ -72,7 +72,7 @@ fun TrainDetailScreen(
                         )
                         uiState.train?.let { train ->
                             Text(
-                                text = "${train.originStationName} → ${train.terminalStationName}",
+                                text = "${train.route.origin} → ${train.route.destination}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -220,12 +220,13 @@ fun TrainDetailScreen(
                                 )
                             }
                             
-                            train.stops?.let { stops ->
+                            val stops = train.stops
+                            if (stops.isNotEmpty()) {
                                 items(stops) { stop ->
                                     StopCard(
                                         stop = stop,
-                                        isOrigin = stop.stationCode == train.originStationCode,
-                                        isTerminal = stop.stationCode == train.terminalStationCode
+                                        isOrigin = stop.station.code == train.route.originCode,
+                                        isTerminal = stop.station.code == train.route.destinationCode
                                     )
                                 }
                             }
@@ -259,7 +260,7 @@ fun TrainDetailScreen(
 
 @Composable
 fun TrainHeaderCard(
-    train: TrainV2,
+    train: TrainDetailV2,
     viewModel: TrainDetailViewModel
 ) {
     val isTracking by viewModel.isTrackingTrain.collectAsState()
@@ -286,13 +287,7 @@ fun TrainHeaderCard(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
-                    train.trainNumber?.let { number ->
-                        Text(
-                            text = "Train #$number",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    // Train number not available in TrainDetailV2
                 }
                 
                 // Status
@@ -303,7 +298,7 @@ fun TrainHeaderCard(
             }
             
             // Line and destination
-            if (!train.lineCode.isNullOrEmpty()) {
+            if (train.line.code.isNotEmpty()) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -313,7 +308,7 @@ fun TrainHeaderCard(
                         color = Color(0xFFFF6600).copy(alpha = 0.1f)
                     ) {
                         Text(
-                            text = train.lineCode,
+                            text = train.line.code,
                             style = MaterialTheme.typography.labelMedium,
                             color = Color(0xFFFF6600),
                             fontWeight = FontWeight.Bold,
@@ -321,7 +316,7 @@ fun TrainHeaderCard(
                         )
                     }
                     Text(
-                        text = train.lineName ?: "",
+                        text = train.line.name,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -333,8 +328,9 @@ fun TrainHeaderCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Track info
-                if (!train.track.isNullOrEmpty()) {
+                // Track info - get from first stop if available
+                val firstStopTrack = train.stops.firstOrNull()?.track
+                if (!firstStopTrack.isNullOrEmpty()) {
                     Column {
                         Text(
                             text = "Track",
@@ -346,7 +342,7 @@ fun TrainHeaderCard(
                             color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
-                                text = train.track,
+                                text = firstStopTrack,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -355,8 +351,8 @@ fun TrainHeaderCard(
                     }
                 }
                 
-                // Owl prediction with confidence styling
-                train.prediction?.let { prediction ->
+                // Owl prediction not available in TrainDetailV2
+                /* train.prediction?.let { prediction ->
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = "Owl Prediction",
@@ -365,7 +361,7 @@ fun TrainHeaderCard(
                         )
                         PredictionChipDetailed(prediction = prediction)
                     }
-                }
+                } */
             }
             
             // Tracking button
@@ -392,7 +388,7 @@ fun TrainHeaderCard(
 }
 
 @Composable
-fun ProgressCard(progress: com.trackrat.android.data.models.Progress) {
+fun ProgressCard(progress: com.trackrat.android.data.models.ProgressV2) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -440,7 +436,7 @@ fun ProgressCard(progress: com.trackrat.android.data.models.Progress) {
             
             // Enhanced progress bar with height
             LinearProgressIndicator(
-                progress = progress.journeyPercent / 100f,
+                progress = { (progress.journeyPercent / 100f).toFloat() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp)
@@ -469,7 +465,7 @@ fun ProgressCard(progress: com.trackrat.android.data.models.Progress) {
                 }
                 
                 // Time remaining
-                progress.nextArrival?.minutesToArrival?.let { minutes ->
+                progress.minutesToArrival?.let { minutes ->
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             text = "Time to arrival",
@@ -504,7 +500,7 @@ fun ProgressCard(progress: com.trackrat.android.data.models.Progress) {
                         tint = Color(0xFFFF6600)
                     )
                     Text(
-                        text = "Last departed: ${lastDeparted.stationName}",
+                        text = "Last departed: $lastDeparted",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -516,7 +512,7 @@ fun ProgressCard(progress: com.trackrat.android.data.models.Progress) {
 
 @Composable
 fun StopCard(
-    stop: Stop,
+    stop: StopDetail,
     isOrigin: Boolean = false,
     isTerminal: Boolean = false
 ) {
@@ -553,12 +549,12 @@ fun StopCard(
             // Station info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stop.stationName,
+                    text = stop.station.name,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (isOrigin || isTerminal) FontWeight.Bold else FontWeight.Normal
                 )
                 Text(
-                    text = stop.stationCode,
+                    text = stop.station.code,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

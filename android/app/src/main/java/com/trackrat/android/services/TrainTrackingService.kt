@@ -11,7 +11,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.trackrat.android.MainActivity
 import com.trackrat.android.R
-import com.trackrat.android.data.models.TrainV2
+import com.trackrat.android.data.models.TrainDetailV2
 import com.trackrat.android.data.repository.TrackRatRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
@@ -166,15 +166,16 @@ class TrainTrackingService : Service() {
         }
     }
 
-    private fun updateNotification(train: TrainV2) {
+    private fun updateNotification(train: TrainDetailV2) {
+        val firstStopTrack = train.stops.firstOrNull()?.track
         val title = buildString {
-            append("Train ${train.trainNumber ?: train.trainId}")
-            train.track?.let { append(" • Track $it") }
+            append("Train ${train.trainId}")
+            firstStopTrack?.let { append(" • Track $it") }
         }
 
         val content = buildString {
-            // Use StatusV2 if available, fallback to regular status
-            val status = train.statusV2?.enhancedStatus ?: train.status
+            // Use raw train state
+            val status = train.rawTrainState ?: "UNKNOWN"
             append(status)
             
             // Add progress information if available
@@ -182,7 +183,7 @@ class TrainTrackingService : Service() {
                 if (progress.stopsCompleted > 0) {
                     append(" • ${progress.stopsCompleted}/${progress.stopsTotal} stops")
                 }
-                progress.nextArrival?.minutesToArrival?.let { minutes ->
+                progress.minutesToArrival?.let { minutes ->
                     if (minutes > 0) {
                         append(" • Next in ${minutes}m")
                     }
@@ -193,7 +194,7 @@ class TrainTrackingService : Service() {
         val updatedNotification = createNotification(
             title = title,
             content = content,
-            subText = "${train.originStationName} → ${train.terminalStationName}"
+            subText = "${train.route.origin} → ${train.route.destination}"
         )
 
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

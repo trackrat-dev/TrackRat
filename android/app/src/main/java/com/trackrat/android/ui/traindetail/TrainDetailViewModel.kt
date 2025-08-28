@@ -6,7 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.trackrat.android.data.models.ApiException
 import com.trackrat.android.data.models.ApiResult
-import com.trackrat.android.data.models.TrainV2
+import com.trackrat.android.data.models.TrainDetailV2
 import com.trackrat.android.data.repository.TrackRatRepository
 import com.trackrat.android.services.TrainTrackingService
 import com.trackrat.android.utils.ErrorUtils.shouldStopAutoRefresh
@@ -36,7 +36,7 @@ class TrainDetailViewModel @Inject constructor(
 
     // UI State with structured error handling
     data class UiState(
-        val train: TrainV2? = null,
+        val train: TrainDetailV2? = null,
         val isLoading: Boolean = false,
         val isRefreshing: Boolean = false,
         val error: ApiException? = null,
@@ -143,7 +143,7 @@ class TrainDetailViewModel @Inject constructor(
                 
                 // Save state for restoration
                 savedStateHandle[KEY_LAST_UPDATED] = currentTime
-                savedStateHandle[KEY_TRAIN_STATUS] = result.data.train.status
+                savedStateHandle[KEY_TRAIN_STATUS] = result.data.train.rawTrainState ?: ""
                 
                 // Start auto-refresh only on successful load
                 startAutoRefresh(trainId, date)
@@ -239,7 +239,7 @@ class TrainDetailViewModel @Inject constructor(
                 context = context,
                 trainId = trainId,
                 date = date,
-                fromStation = _uiState.value.train?.originStationCode
+                fromStation = _uiState.value.train?.route?.originCode
             )
         }
     }
@@ -253,17 +253,18 @@ class TrainDetailViewModel @Inject constructor(
     }
     
     /**
-     * Get display status for the train (uses statusV2 if available)
+     * Get display status for the train
      */
-    fun getTrainDisplayStatus(train: TrainV2): String {
-        return train.statusV2?.enhancedStatus ?: train.status
+    fun getTrainDisplayStatus(train: TrainDetailV2): String {
+        // TrainDetailV2 doesn't have statusV2, use the raw_train_state
+        return train.rawTrainState ?: "UNKNOWN"
     }
     
     /**
      * Check if a train is boarding
      */
-    fun isTrainBoarding(train: TrainV2): Boolean {
-        val status = train.statusV2?.status ?: train.status
+    fun isTrainBoarding(train: TrainDetailV2): Boolean {
+        val status = train.rawTrainState ?: ""
         return status.equals("BOARDING", ignoreCase = true) || 
                status.equals("ALL ABOARD", ignoreCase = true)
     }
