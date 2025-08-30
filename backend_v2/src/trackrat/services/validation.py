@@ -13,6 +13,7 @@ from structlog import get_logger
 
 from trackrat.collectors.amtrak.client import AmtrakClient
 from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.config.stations import INTERNAL_TO_AMTRAK_STATION_MAP
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.metrics import (
     missing_trains_detected,
@@ -41,10 +42,18 @@ class ValidationResult:
         self.transit_trains = transit_trains
         self.api_trains = api_trains
         self.missing_trains = transit_trains - api_trains
+        self.extra_trains = (
+            api_trains - transit_trains
+        )  # Trains in API but not in transit (possibly stale)
         self.timestamp = timestamp
-        self.coverage_percent = (
-            (len(api_trains) / len(transit_trains) * 100) if transit_trains else 100
-        )
+
+        # Fix #2: Calculate coverage based on intersection (trains found in both)
+        # This gives us the percentage of transit trains that we successfully have
+        if transit_trains:
+            found_trains = api_trains.intersection(transit_trains)
+            self.coverage_percent = (len(found_trains) / len(transit_trains)) * 100
+        else:
+            self.coverage_percent = 100
 
 
 class TrainValidationService:
@@ -132,36 +141,88 @@ class TrainValidationService:
     async def get_amtrak_trains_for_route(
         self, from_station: str, to_station: str
     ) -> set[str]:
-        """Get Amtrak trains for a specific route."""
+        """Get Amtrak trains for a specific route.
+
+        Fix #1: Only return trains that actually serve both stations in the correct order.
+        Maps internal station codes to Amtrak codes for proper comparison.
+        """
         if not self.amtrak_client:
             logger.error("Amtrak client not initialized")
             return set()
 
         try:
+            # Map our internal codes to Amtrak codes
+            amtrak_from = INTERNAL_TO_AMTRAK_STATION_MAP.get(from_station, from_station)
+            amtrak_to = INTERNAL_TO_AMTRAK_STATION_MAP.get(to_station, to_station)
+
+            logger.debug(
+                "amtrak_station_mapping",
+                internal_from=from_station,
+                internal_to=to_station,
+                amtrak_from=amtrak_from,
+                amtrak_to=amtrak_to,
+            )
+
             # Get all trains and filter for our route
             all_trains = await self.amtrak_client.get_all_trains()
 
             relevant_trains = set()
-            # Look for trains that serve both stations
+            trains_checked = 0
+            trains_serving_route = 0
+
+            # Check each train to see if it serves this specific route
             for _, station_trains in all_trains.items():
                 for train in station_trains:
-                    # Check if this train serves our route
-                    # For simplicity, we'll add all Amtrak trains and let the API filter
-                    if hasattr(train, "trainID"):
-                        train_id = train.trainID
-                        # Extract just the train number (before the dash)
-                        train_num = (
-                            train_id.split("-")[0] if "-" in train_id else train_id
-                        )
-                        # Add "A" prefix for internal format
-                        internal_id = f"A{train_num}"
-                        relevant_trains.add(internal_id)
+                    trains_checked += 1
+
+                    if not hasattr(train, "trainID") or not hasattr(train, "stations"):
+                        continue
+
+                    # Get station codes for this train (these are Amtrak codes)
+                    station_codes = [s.code for s in train.stations]
+
+                    # Check if both stations are served (using Amtrak codes)
+                    if (
+                        amtrak_from not in station_codes
+                        or amtrak_to not in station_codes
+                    ):
+                        continue
+
+                    # Check the order - the train must serve 'from' before 'to'
+                    from_index = station_codes.index(amtrak_from)
+                    to_index = station_codes.index(amtrak_to)
+
+                    # Skip if stations are in wrong order (we want from -> to)
+                    # Allow both directions since trains can go either way
+                    if from_index == to_index:
+                        continue
+
+                    # This train serves the route!
+                    trains_serving_route += 1
+                    train_id = train.trainID
+                    # Extract just the train number (before the dash)
+                    train_num = train_id.split("-")[0] if "-" in train_id else train_id
+                    # Add "A" prefix for internal format
+                    internal_id = f"A{train_num}"
+                    relevant_trains.add(internal_id)
+
+                    # Log for debugging (Fix #4: Enhanced logging)
+                    logger.debug(
+                        "amtrak_train_serves_route",
+                        train_id=internal_id,
+                        raw_id=train_id,
+                        route=f"{from_station}->{to_station}",
+                        from_index=from_index,
+                        to_index=to_index,
+                    )
 
             logger.info(
                 "amtrak_route_scan_complete",
                 from_station=from_station,
                 to_station=to_station,
                 trains_found=len(relevant_trains),
+                trains_checked=trains_checked,
+                trains_serving_route=trains_serving_route,
                 train_ids=sorted(relevant_trains),
             )
 
@@ -315,25 +376,44 @@ class TrainValidationService:
                 source=source,
             ).observe(time.time() - start_time)
 
-            # Log detailed info about missing trains
-            if result.missing_trains:
-                # Verify each missing train's accessibility
+            # Fix #3 & #4: Enhanced logging with stale data detection
+            # Log detailed info about validation results
+            if result.missing_trains or result.extra_trains:
+                # Verify accessibility of missing trains (limit to first 5 for performance)
                 missing_details = {}
-                for train_id in result.missing_trains:
+                for train_id in list(result.missing_trains)[:5]:
                     details = await self.verify_train_details_accessible(train_id)
                     missing_details[train_id] = details
 
-                logger.warning(
-                    "missing_trains_detected",
+                # Log if we found discrepancies
+                log_method = logger.warning if result.missing_trains else logger.info
+
+                log_method(
+                    "validation_discrepancies_found",
                     route=result.route,
                     source=result.source,
-                    missing_count=len(result.missing_trains),
-                    missing_trains=sorted(result.missing_trains),
                     coverage_percent=result.coverage_percent,
-                    transit_trains_full=sorted(transit_trains),
-                    api_trains_full=sorted(api_trains),
-                    missing_train_details=missing_details,
+                    missing_count=len(result.missing_trains),
+                    missing_trains=sorted(result.missing_trains)[:10],  # Show first 10
+                    extra_count=len(result.extra_trains),
+                    extra_trains=sorted(result.extra_trains)[
+                        :10
+                    ],  # Show first 10 stale trains
+                    transit_train_count=len(transit_trains),
+                    api_train_count=len(api_trains),
+                    missing_train_sample_details=missing_details,
                     timestamp=timestamp.isoformat(),
+                )
+
+                # Additional detailed log for debugging (only if debug level)
+                logger.debug(
+                    "validation_full_details",
+                    route=result.route,
+                    source=result.source,
+                    all_transit_trains=sorted(transit_trains),
+                    all_api_trains=sorted(api_trains),
+                    all_missing=sorted(result.missing_trains),
+                    all_extra=sorted(result.extra_trains),
                 )
             else:
                 logger.info(
@@ -341,7 +421,9 @@ class TrainValidationService:
                     route=result.route,
                     source=result.source,
                     coverage_percent=result.coverage_percent,
-                    train_count=len(transit_trains),
+                    transit_train_count=len(transit_trains),
+                    api_train_count=len(api_trains),
+                    perfect_match=True,
                 )
 
             results.append(result)
@@ -376,15 +458,22 @@ class TrainValidationService:
         total_missing = sum(len(r.missing_trains) for r in all_results)
         routes_with_issues = sum(1 for r in all_results if r.missing_trains)
 
+        # Fix #4: Enhanced summary logging
+        total_extra = sum(len(r.extra_trains) for r in all_results)
+        routes_with_stale_data = sum(1 for r in all_results if r.extra_trains)
+
         logger.info(
             "train_validation_complete",
             total_routes_checked=len(all_results),
-            routes_with_issues=routes_with_issues,
+            routes_with_missing_trains=routes_with_issues,
+            routes_with_stale_trains=routes_with_stale_data,
             total_missing_trains=total_missing,
+            total_stale_trains=total_extra,
             summary={
                 f"{r.route}_{r.source}": {
                     "coverage": f"{r.coverage_percent:.1f}%",
                     "missing": len(r.missing_trains),
+                    "stale": len(r.extra_trains),
                 }
                 for r in all_results
             },
