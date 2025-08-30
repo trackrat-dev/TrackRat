@@ -32,11 +32,11 @@ TrackRat is a full-stack train tracking system that combines a simplified Python
 
 ### Key Features
 
-1. **Multi-Station Support**: Backend and iOS app support NY Penn, Newark Penn, Trenton, Princeton Junction, and Metropark
+1. **Multi-Station Support**: Backend and iOS app support NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark, plus 44 Southeast Amtrak stations
 2. **Train Consolidation**: Backend merges duplicate trains; iOS app displays unified journey data
 3. **Track Predictions**: Track assignments from NJ Transit API; iOS app displays "Owl" predictions when available
-4. **Real-Time Updates**: Backend updates every 30 minutes + on-demand; iOS app refreshes every 30 seconds
-5. **Journey Planning**: Backend provides smart filtering; iOS app enables origin-destination trip selection
+4. **Real-Time Updates**: Backend updates every 30 minutes + on-demand + hourly validation; iOS app refreshes every 30 seconds
+5. **Journey Planning**: Backend provides smart filtering with bidirectional route support; iOS app enables origin-destination trip selection
 6. **Live Activities**: Real-time train tracking on Lock Screen and Dynamic Island
 7. **Push Notifications**: Background updates for Live Activities with status changes
 
@@ -270,7 +270,7 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 ### Operational Requirements
 
 **Automated Operations:**
-- ✅ Data collection every 30 minutes (discovery) + 5 minutes (journey updates) via integrated scheduler
+- ✅ Data collection every 30 minutes (discovery) + 5 minutes (journey updates) + hourly validation via integrated scheduler
 - ✅ Auto-scaling based on traffic
 - ✅ Database backups and maintenance
 - ✅ Health monitoring and restart on failure
@@ -372,7 +372,39 @@ When adding new features:
 
 ## Recent Enhancements
 
-### Transit Time Tracking & Congestion Analysis (NEW)
+### Train Validation Service (NEW)
+Automated hourly validation system for comprehensive train coverage monitoring:
+- **Backend**: New `TrainValidationService` class performs hourly validation checks
+- **Coverage**: Validates key routes (NY→WI, NY→PJ, MP→NY, NY→HL) across NJT and Amtrak
+- **Metrics**: New Prometheus metrics `train_validation_coverage_percent` and `missing_trains_detected_total`
+- **Debugging**: Detailed logging identifies missing trains and API discrepancies
+- **Scheduler**: Integrated hourly validation job running at :05 past each hour
+- **Benefits**: Ensures data completeness and identifies API integration issues automatically
+
+### Southeast Amtrak Station Expansion
+Major expansion of Amtrak station coverage across the Southeast corridor:
+- **iOS**: Added 44 new stations across NC, SC, GA, FL, VA, WV to Stations.swift
+- **Coverage**: Now includes Charlotte, Raleigh, Atlanta, Miami, Jacksonville, Tampa, Orlando
+- **Trains**: Full support for Silver Star, Silver Meteor, Carolinian, Piedmont, Crescent
+- **Total Stations**: Expanded from ~100 to ~144 stations system-wide
+- **Benefits**: Complete Southeast corridor coverage for Amtrak travelers
+
+### Bidirectional Route Support Fix
+Critical fix for train route handling:
+- **Backend**: Fixed departure service logic to handle trains in both directions
+- **Logic Change**: Updated from `to_seq > from_seq` to `to_seq != from_seq`
+- **Impact**: Northbound trains from Southeast stations now properly displayed
+- **Benefits**: Full bidirectional support for all train routes
+
+### Android App Implementation
+Complete Android application now available:
+- **UI**: Material Design 3 with dynamic theming
+- **Features**: Train tracking, station selection, real-time updates
+- **Architecture**: Kotlin with Jetpack Compose, Repository pattern
+- **Status**: Fully functional debug build available
+- **Benefits**: Cross-platform support for Android users
+
+### Transit Time Tracking & Congestion Analysis
 Comprehensive analytics system for route performance monitoring:
 - **Backend**: New `TransitAnalyzer` service calculates segment times, dwell times, and journey progress
 - **Database**: Added `segment_transit_times`, `station_dwell_times`, and `journey_progress` tables
@@ -459,11 +491,11 @@ Sophisticated machine learning system for track assignment prediction:
    - CarPlay support
 
 3. **Android**:
-   - Widget support
-   - Wear OS app
-   - Material You dynamic theming
-   - Offline caching
-   - Android Auto support
+   - Widget support (planned)
+   - Wear OS app (planned)
+   - Material You dynamic theming (implemented)
+   - Offline caching (planned)
+   - Android Auto support (planned)
 
 ## Development Tools
 

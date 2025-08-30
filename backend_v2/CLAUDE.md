@@ -506,6 +506,21 @@ asyncio.run(check_tasks())
 4. Update documentation
 5. Request review from maintainers
 
+## Key Service Classes
+
+### Core Services
+
+The backend is organized into service classes for better maintainability:
+
+- **DepartureService** (`services/departure.py`): Train departure endpoints with filtering, JIT updates, and bidirectional route support
+- **TrainValidationService** (`services/validation.py`): Hourly validation checks for train coverage monitoring
+- **TransitAnalyzer** (`services/transit_analyzer.py`): Transit time and dwell time analysis
+- **CongestionAnalyzer** (`services/congestion.py`): Real-time network congestion monitoring
+- **TrackPredictionService** (`services/track_prediction.py`): ML-powered track assignment predictions
+- **TrackOccupancyService** (`services/track_occupancy.py`): Real-time track availability analysis
+- **ApiCacheService** (`services/api_cache.py`): Intelligent response caching with pre-computation
+- **DirectArrivalForecaster** (`services/arrival_forecaster.py`): Real-time arrival predictions
+
 ## Contact & Support
 
 For questions about the V2 backend:

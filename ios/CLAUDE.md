@@ -33,7 +33,9 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 
 ### 2. **DeparturePickerView**
 - Origin station selection for departures
-- Supports 5 stations: NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark
+- Primary stations: NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark
+- Additional Southeast Amtrak stations: Charlotte, Raleigh, Atlanta, Miami, Jacksonville, Tampa, Orlando, and more
+- Total station coverage: ~144 stations (up from ~100)
 - Glassmorphism cards with owl background
 - Navigates to destination picker after selection
 
@@ -425,6 +427,15 @@ xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
 
 ## Recent Enhancements
 
+### Southeast Amtrak Station Expansion
+Major expansion of station coverage across the Southeast corridor:
+- **New Stations**: Added 44 Southeast stations to Stations.swift
+- **States Covered**: North Carolina, South Carolina, Georgia, Florida, Virginia, West Virginia
+- **Major Cities**: Charlotte (CLT), Raleigh (RGH), Atlanta (ATL), Miami (MIA), Jacksonville (JAX), Tampa (TPA), Orlando (ORL)
+- **Train Services**: Full support for Silver Star, Silver Meteor, Carolinian, Piedmont, Crescent
+- **Station Codes**: All stations use standard Amtrak codes (e.g., WAS, RVR, CLT, SAV)
+- **Total Coverage**: System now supports ~144 stations across the Eastern US
+
 ### Enhanced Status Display (StatusV2)
 The app now intelligently resolves conflicting train statuses from multiple data sources:
 - **Automatic Conflict Resolution**: DEPARTED always overrides BOARDING status
@@ -455,6 +466,7 @@ Live Activities now use the enhanced data for better tracking:
 ## Future Considerations
 
 ### Planned Features
+- **Additional Transit Systems**: LIRR, Metro-North, SEPTA, PATH integration
 - **Widget Extension**: Home/Lock Screen widgets for favorite routes
 - **Apple Watch App**: Companion app with Live Activity sync
 - **Siri Shortcuts**: Quick access to frequent trips
