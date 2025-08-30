@@ -430,16 +430,9 @@ class TrainListViewModel: ObservableObject {
                 toStationCode: toStationCode
             )
             
-            // Filter trains: within 6 hours and haven't already departed
-            let now = Date()
-            let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
-            
+            // Filter trains: only exclude trains that have already departed
             let filteredTrains = fetchedTrains.filter { train in
-                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
-                let isWithinTimeWindow = departureTime <= sixHoursFromNow
-                let hasNotDeparted = !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
-                
-                return isWithinTimeWindow && hasNotDeparted
+                !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
             }
             
             // Deduplicate trains by ID to prevent ForEach crashes
