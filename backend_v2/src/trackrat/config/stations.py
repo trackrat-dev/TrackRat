@@ -221,20 +221,20 @@ STATION_NAMES: dict[str, str] = {
     "SAV": "Savannah",
     "JES": "Jesup",
     "JAX": "Jacksonville",
-    "WPK": "Waldo",
+    "WLD": "Waldo",
     "OCA": "Ocala",
     "WTH": "Winter Haven",
     "LKL": "Lakeland",
     "TPA": "Tampa",
     "WPB": "West Palm Beach",
-    "DLD": "Delray Beach",
+    "DLB": "Delray Beach",
     "FTL": "Fort Lauderdale",
     "HLW": "Hollywood",
     "MIA": "Miami",
     "ORL": "Orlando",
     "KIS": "Kissimmee",
-    "WTR": "Winter Park",
-    "DLB": "DeLand",
+    "WPK": "Winter Park",
+    "DLD": "DeLand",
     "PAL": "Palatka",
     "SAN": "Sanford",
     "THU": "Thurmond",
@@ -255,7 +255,7 @@ STATION_NAMES: dict[str, str] = {
     "ATL": "Atlanta",
     "GAI": "Gainesville",
     "TOC": "Toccoa",
-    "CLE": "Clemson",
+    "CSN": "Clemson",
 }
 
 
@@ -326,20 +326,20 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "SAV": "SAV",  # Savannah, GA
     "JES": "JES",  # Jesup, GA
     "JAX": "JAX",  # Jacksonville, FL
-    "WPK": "WPK",  # Waldo, FL
+    "WLD": "WLD",  # Waldo, FL
     "OCA": "OCA",  # Ocala, FL
     "WTH": "WTH",  # Winter Haven, FL
     "LKL": "LKL",  # Lakeland, FL
     "TPA": "TPA",  # Tampa, FL
     "WPB": "WPB",  # West Palm Beach, FL
-    "DLD": "DLD",  # Delray Beach, FL
+    "DLB": "DLB",  # Delray Beach, FL
     "FTL": "FTL",  # Fort Lauderdale, FL
     "HLW": "HLW",  # Hollywood, FL
     "MIA": "MIA",  # Miami, FL
     "ORL": "ORL",  # Orlando, FL
     "KIS": "KIS",  # Kissimmee, FL
-    "WTR": "WTR",  # Winter Park, FL
-    "DLB": "DLB",  # DeLand, FL
+    "WPK": "WPK",  # Winter Park, FL
+    "DLD": "DLD",  # DeLand, FL
     "PAL": "PAL",  # Palatka, FL
     "SAN": "SAN",  # Sanford, FL
     "THU": "THU",  # Thurmond, WV
@@ -360,7 +360,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "ATL": "ATL",  # Atlanta, GA
     "GAI": "GAI",  # Gainesville, GA
     "TOC": "TOC",  # Toccoa, GA
-    "CLE": "CLE",  # Clemson, SC
+    "CSN": "CSN",  # Clemson, SC
 }
 
 # Reverse mapping from internal codes to Amtrak codes (for the first match)
@@ -417,20 +417,20 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "SAV": "SAV",  # Savannah, GA
     "JES": "JES",  # Jesup, GA
     "JAX": "JAX",  # Jacksonville, FL
-    "WPK": "WPK",  # Waldo, FL
+    "WLD": "WLD",  # Waldo, FL
     "OCA": "OCA",  # Ocala, FL
     "WTH": "WTH",  # Winter Haven, FL
     "LKL": "LKL",  # Lakeland, FL
     "TPA": "TPA",  # Tampa, FL
     "WPB": "WPB",  # West Palm Beach, FL
-    "DLD": "DLD",  # Delray Beach, FL
+    "DLB": "DLB",  # Delray Beach, FL
     "FTL": "FTL",  # Fort Lauderdale, FL
     "HLW": "HLW",  # Hollywood, FL
     "MIA": "MIA",  # Miami, FL
     "ORL": "ORL",  # Orlando, FL
     "KIS": "KIS",  # Kissimmee, FL
-    "WTR": "WTR",  # Winter Park, FL
-    "DLB": "DLB",  # DeLand, FL
+    "WPK": "WPK",  # Winter Park, FL
+    "DLD": "DLD",  # DeLand, FL
     "PAL": "PAL",  # Palatka, FL
     "SAN": "SAN",  # Sanford, FL
     "THU": "THU",  # Thurmond, WV
@@ -451,7 +451,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "ATL": "ATL",  # Atlanta, GA
     "GAI": "GAI",  # Gainesville, GA
     "TOC": "TOC",  # Toccoa, GA
-    "CLE": "CLE",  # Clemson, SC
+    "CSN": "CSN",  # Clemson, SC
 }
 
 

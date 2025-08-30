@@ -330,7 +330,7 @@ struct Stations {
         "Kingstree": "KTR",
         "Florence": "FLO",
         "Dillon": "DIL",
-        "Clemson": "CLE",
+        "Clemson": "CSN",
         "Savannah": "SAV",
         "Atlanta": "ATL",
         "Jesup": "JES",
@@ -344,12 +344,12 @@ struct Stations {
         "West Palm Beach": "WPB",
         "Kissimmee": "KIS",
         "Lakeland": "LKL",
-        "Winter Park FL": "WTR",
-        "DeLand": "DLB",
+        "Winter Park FL": "WPK",
+        "DeLand": "DLD",
         "Sanford FL": "SAN",
         "Hollywood FL": "HLW",
-        "Delray Beach": "DLD",
-        "Waldo": "WPK",
+        "Delray Beach": "DLB",
+        "Waldo": "WLD",
         "Ocala": "OCA",
         "Winter Haven": "WTH",
         "Palatka": "PAL",
@@ -586,7 +586,7 @@ struct Stations {
         // Additional Amtrak stations (Southeast/South)
         "ATL": CLLocationCoordinate2D(latitude: 33.7995643615723, longitude: -84.3917846679688),   // Atlanta, GA
         "CHS": CLLocationCoordinate2D(latitude: 32.8755340576172, longitude: -79.9989013671875),   // Charleston, SC
-        "CLE": CLLocationCoordinate2D(latitude: 41.5044174194336, longitude: -81.6981735229492),   // Cleveland, OH
+        "CSN": CLLocationCoordinate2D(latitude: 34.6910, longitude: -82.8325),   // Clemson, SC
         "CLT": CLLocationCoordinate2D(latitude: 35.2411460876465, longitude: -80.8236389160156),   // Charlotte, NC
         "DIL": CLLocationCoordinate2D(latitude: 34.418285369873, longitude: -79.3717575073242),    // Dillon, SC
         "DLB": CLLocationCoordinate2D(latitude: 26.4551792144775, longitude: -80.092529296875),    // Delray Beach, FL
@@ -600,7 +600,7 @@ struct Stations {
         "JAX": CLLocationCoordinate2D(latitude: 30.3665771484375, longitude: -81.7246017456055),   // Jacksonville, FL
         "KIS": CLLocationCoordinate2D(latitude: 28.293270111084, longitude: -81.4048690795898),    // Kissimmee, FL
         "KTR": CLLocationCoordinate2D(latitude: 33.664379119873, longitude: -79.8290634155273),    // Kingstree, SC
-        "LKL": CLLocationCoordinate2D(latitude: 30.1966114044189, longitude: -82.6511001586914),   // Lake City, FL
+        "LKL": CLLocationCoordinate2D(latitude: 28.04568, longitude: -81.95188),   // Lakeland, FL
         "MIA": CLLocationCoordinate2D(latitude: 25.8498477935791, longitude: -80.2580718994141),   // Miami, FL
         "ORL": CLLocationCoordinate2D(latitude: 28.5256938934326, longitude: -81.3817443847656),   // Orlando, FL
         "PTB": CLLocationCoordinate2D(latitude: 37.2416191101074, longitude: -77.4289703369141),   // Petersburg, VA
