@@ -148,6 +148,19 @@ class TrainListViewModel @Inject constructor(
                 val uniqueTrains = result.data.departures
                     .map { departure -> convertDepartureToTrain(departure, fromStation) }
                     .distinctBy { it.trainId }
+                    .filter { train -> 
+                        // Filter out trains that departed more than 30 minutes ago
+                        val departureTime = train.getScheduledDepartureTime(fromStation)
+                        if (departureTime != null && train.status == "DEPARTED") {
+                            val minutesAgo = java.time.Duration.between(
+                                departureTime,
+                                java.time.ZonedDateTime.now(java.time.ZoneId.of("America/New_York"))
+                            ).toMinutes()
+                            minutesAgo <= 30
+                        } else {
+                            true // Keep all non-departed trains or trains without departure time
+                        }
+                    }
                     .sortedBy { it.getScheduledDepartureTime(fromStation) }
                 
                 _uiState.value = _uiState.value.copy(
@@ -213,6 +226,19 @@ class TrainListViewModel @Inject constructor(
                             val uniqueTrains = result.data.departures
                                 .map { departure -> convertDepartureToTrain(departure, fromStation) }
                                 .distinctBy { it.trainId }
+                                .filter { train -> 
+                                    // Filter out trains that departed more than 30 minutes ago
+                                    val departureTime = train.getScheduledDepartureTime(fromStation)
+                                    if (departureTime != null && train.status == "DEPARTED") {
+                                        val minutesAgo = java.time.Duration.between(
+                                            departureTime,
+                                            java.time.ZonedDateTime.now(java.time.ZoneId.of("America/New_York"))
+                                        ).toMinutes()
+                                        minutesAgo <= 30
+                                    } else {
+                                        true // Keep all non-departed trains or trains without departure time
+                                    }
+                                }
                                 .sortedBy { it.getScheduledDepartureTime(fromStation) }
                             
                             _uiState.value = _uiState.value.copy(
