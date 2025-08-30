@@ -85,16 +85,31 @@ class DepartureService:
             # Find from and to stops
             from_stop = None
             to_stop = None
-            for stop in sorted(journey.stops, key=lambda s: s.stop_sequence or 0):
-                if stop.station_code == from_station and not from_stop:
-                    from_stop = stop
-                elif to_station and stop.station_code == to_station and from_stop:
-                    # Ensure to_stop comes AFTER from_stop in the journey sequence
-                    if (stop.stop_sequence or 0) > (from_stop.stop_sequence or 0):
-                        to_stop = stop
-                        break
 
-            # Skip if stops not found
+            # First, find the from_stop
+            for stop in journey.stops:
+                if stop.station_code == from_station:
+                    from_stop = stop
+                    break
+
+            # If we have a from_stop and a to_station, find the to_stop
+            if from_stop and to_station:
+                for stop in journey.stops:
+                    if stop.station_code == to_station:
+                        # The to_stop must be different from from_stop and the train
+                        # must travel from from_stop to to_stop in its journey
+                        # (sequence numbers tell us the order)
+                        from_seq = from_stop.stop_sequence or 0
+                        to_seq = stop.stop_sequence or 0
+
+                        # For valid journey: either going forward (to_seq > from_seq)
+                        # or backward (to_seq < from_seq) - both are valid for different trains
+                        # But they must be different stops (not the same sequence)
+                        if to_seq != from_seq:
+                            to_stop = stop
+                            break
+
+            # Skip if stops not found or if to_station was specified but not found
             if not from_stop or (to_station and not to_stop):
                 continue
 
