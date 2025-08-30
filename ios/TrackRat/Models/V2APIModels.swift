@@ -97,6 +97,7 @@ struct V2TrainDeparture: Codable {
     let trainPosition: V2TrainPosition
     let dataFreshness: V2DataFreshness
     let dataSource: String
+    let observationType: String?
     let isCancelled: Bool
     
     enum CodingKeys: String, CodingKey {
@@ -105,7 +106,13 @@ struct V2TrainDeparture: Codable {
         case trainPosition = "train_position"
         case dataFreshness = "data_freshness"
         case dataSource = "data_source"
+        case observationType = "observation_type"
         case isCancelled = "is_cancelled"
+    }
+    
+    // Helper to check if this is a scheduled (not observed) train
+    var isScheduledOnly: Bool {
+        return observationType == "SCHEDULED"
     }
 }
 
@@ -223,6 +230,7 @@ struct V2TrainDetails: Codable {
     let stops: [V2StopDetails]
     let dataFreshness: V2DataFreshness
     let dataSource: String
+    let observationType: String?
     let rawTrainState: String?
     let isCancelled: Bool
     let isCompleted: Bool
@@ -235,9 +243,15 @@ struct V2TrainDetails: Codable {
         case stops
         case dataFreshness = "data_freshness"
         case dataSource = "data_source"
+        case observationType = "observation_type"
         case rawTrainState = "raw_train_state"
         case isCancelled = "is_cancelled"
         case isCompleted = "is_completed"
+    }
+    
+    // Helper to check if this is a scheduled (not observed) train
+    var isScheduledOnly: Bool {
+        return observationType == "SCHEDULED"
     }
 }
 

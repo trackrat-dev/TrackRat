@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import and_, select
@@ -18,6 +19,7 @@ from structlog import get_logger
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
+from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.apns import SimpleAPNSService
@@ -144,6 +146,17 @@ class SchedulerService:
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=300,
+        )
+
+        # Schedule NJT schedule collection (daily at 12:30 AM)
+        self.scheduler.add_job(
+            self.collect_njt_schedules,
+            trigger=CronTrigger(hour=0, minute=30, timezone="America/New_York"),
+            id="njt_schedule_collection",
+            name="NJT Daily Schedule Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=900,  # 15 minute grace period
         )
 
         # Start the scheduler
@@ -2236,6 +2249,66 @@ class SchedulerService:
             safe_datetime_subtract(now_et(), last_updated).total_seconds()
             > threshold_seconds
         )
+
+    async def collect_njt_schedules(self) -> None:
+        """Collect NJT schedule data once daily at 12:30 AM.
+
+        This task fetches 27-hour schedule data from NJ Transit API
+        and creates SCHEDULED journey records for trains that haven't
+        been observed yet.
+        """
+        task_id = f"njt_schedules_{now_et().isoformat()}"
+
+        async def do_schedule_collection() -> None:
+            """The actual schedule collection work."""
+            try:
+                logger.info("starting_njt_schedule_collection_task")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Ensure NJT client is initialized
+                if not self.njt_client:
+                    raise RuntimeError(
+                        "NJTransitClient not initialized - call start() first"
+                    )
+
+                # Run schedule collection
+                collector = NJTScheduleCollector(self.njt_client)
+                result = await collector.collect_all_schedules()
+
+                logger.info(
+                    "njt_schedule_collection_completed",
+                    total_schedules=result.get("total_schedules", 0),
+                    new_schedules=result.get("new_schedules", 0),
+                    updated_schedules=result.get("updated_schedules", 0),
+                    skipped_observed=result.get("skipped_observed", 0),
+                    errors=result.get("errors", 0),
+                )
+
+            except Exception as e:
+                logger.error(
+                    "njt_schedule_collection_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check with 23-hour minimum interval (safe for once-daily task)
+        async with get_session() as db:
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="njt_schedule_collection",
+                minimum_interval_seconds=23 * 60 * 60,  # 23 hours
+                task_func=do_schedule_collection,
+            )
+
+            if not executed:
+                logger.debug("njt_schedule_collection_skipped_still_fresh")
 
     def get_status(self) -> dict[str, Any]:
         """Get scheduler status and job information."""

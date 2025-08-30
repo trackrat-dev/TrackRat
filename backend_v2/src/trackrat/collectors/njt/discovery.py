@@ -295,6 +295,15 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     # Update last seen time
                     existing.last_updated_at = now_et()
 
+                    # Mark as observed if it was previously scheduled
+                    if existing.observation_type == "SCHEDULED":
+                        existing.observation_type = "OBSERVED"
+                        logger.info(
+                            "upgraded_scheduled_to_observed",
+                            train_id=train_id,
+                            journey_date=journey_date,
+                        )
+
                     # Update track directly in journey stop
                     track = train_data.get("TRACK")
                     if track and station_code:
@@ -318,6 +327,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     terminal_station_code=station_code,  # Will be updated later
                     scheduled_departure=scheduled_departure,  # May be wrong - journey collector will fix
                     data_source="NJT",
+                    observation_type="OBSERVED",  # Real-time discovery data
                     first_seen_at=now_et(),
                     last_updated_at=now_et(),
                     has_complete_journey=False,

@@ -106,6 +106,10 @@ class TrainDeparture(BaseModel):
     train_position: TrainPosition
     data_freshness: DataFreshness
     data_source: str = Field(..., description="Data source (NJT or AMTRAK)")
+    observation_type: str = Field(
+        default="OBSERVED",
+        description="SCHEDULED (from schedule API) or OBSERVED (real-time data)",
+    )
     is_cancelled: bool = Field(
         default=False, description="Whether the train is cancelled"
     )
@@ -184,6 +188,10 @@ class TrainDetails(BaseModel):
     stops: list[StopDetails]
     data_freshness: DataFreshness
     data_source: str = Field(..., description="Data source (NJT or AMTRAK)")
+    observation_type: str = Field(
+        default="OBSERVED",
+        description="SCHEDULED (from schedule API) or OBSERVED (real-time data)",
+    )
     raw_train_state: str | None = None
     is_cancelled: bool = Field(
         default=False, description="Whether the train is cancelled"

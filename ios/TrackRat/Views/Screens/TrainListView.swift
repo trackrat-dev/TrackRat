@@ -165,6 +165,11 @@ struct TrainCard: View {
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 6
     
+    /// Check if train is scheduled only (not observed)
+    private var isScheduledOnly: Bool {
+        return train.observationType == "SCHEDULED"
+    }
+    
     /// Check if train is cancelled
     private var isCancelled: Bool {
         return train.isCancelled
@@ -173,7 +178,9 @@ struct TrainCard: View {
     /// Check if train is boarding at origin
     private var isBoardingAtOrigin: Bool {
         // Use context-aware boarding check and verify track + departure timing
-        return train.isBoarding(fromStationCode: departureStationCode) && 
+        // Don't show boarding for scheduled-only trains
+        return !isScheduledOnly &&
+               train.isBoarding(fromStationCode: departureStationCode) && 
                train.track != nil &&
                train.isDepartingSoon(fromStationCode: departureStationCode, withinMinutes: 11)
     }
@@ -207,6 +214,12 @@ struct TrainCard: View {
                             .font(.headline)
                             .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
                             .strikethrough(isCancelled)
+                        
+                        if isScheduledOnly {
+                            Text("(Scheduled)")
+                                .font(.caption)
+                                .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.8) : .black.opacity(0.6)))
+                        }
                         
                         if isExpress {
                             Image(systemName: "bolt.fill")
@@ -266,12 +279,13 @@ struct TrainCard: View {
             }
             .padding()
             .background(
-                isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9)
+                isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(isScheduledOnly ? 0.7 : 0.9)
             )
             .cornerRadius(16)
             .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
         }
         .buttonStyle(.plain)
+        .opacity(isScheduledOnly ? 0.85 : 1.0)
     }
 }
 

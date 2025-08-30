@@ -39,6 +39,7 @@ class TrainJourney(Base):
     origin_station_code = Column(String(3), nullable=False)
     terminal_station_code = Column(String(3), nullable=False)
     data_source = Column(String(10), nullable=False, default="NJT")
+    observation_type = Column(String(10), nullable=False, default="OBSERVED")
 
     # Discovery metadata
     first_seen_at = Column(
