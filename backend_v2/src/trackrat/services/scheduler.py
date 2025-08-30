@@ -135,6 +135,17 @@ class SchedulerService:
             max_instances=1,
         )
 
+        # Schedule train validation (every hour)
+        self.scheduler.add_job(
+            self.run_train_validation,
+            trigger=IntervalTrigger(hours=1),
+            id="train_validation",
+            name="End-to-End Train Validation",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=300,
+        )
+
         # Start the scheduler
         self.scheduler.start()
 
@@ -2155,6 +2166,61 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("live_activity_updates_skipped_still_fresh")
+
+    async def run_train_validation(self) -> None:
+        """Run end-to-end validation of train discovery and API accessibility."""
+        task_id = f"train_validation_{now_et().isoformat()}"
+
+        async def do_validation_work() -> None:
+            """The actual validation work."""
+            try:
+                logger.info("starting_train_validation_task")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Import and run validation
+                from trackrat.services.validation import TrainValidationService
+
+                async with TrainValidationService(self.settings) as validator:
+                    results = await validator.run_validation()
+
+                    # Summary metrics
+                    total_missing = sum(len(r.missing_trains) for r in results)
+                    routes_with_issues = sum(1 for r in results if r.missing_trains)
+
+                    logger.info(
+                        "train_validation_completed",
+                        total_routes_checked=len(results),
+                        routes_with_issues=routes_with_issues,
+                        total_missing_trains=total_missing,
+                    )
+
+            except Exception as e:
+                logger.error(
+                    "train_validation_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check with 55-minute interval (for hourly runs)
+        async with get_session() as db:
+            safe_interval = 55 * 60  # 55 minutes
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="train_validation",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_validation_work,
+            )
+
+            if not executed:
+                logger.debug("train_validation_skipped_still_fresh")
 
     def _is_stale(self, last_updated: datetime, threshold_seconds: int = 60) -> bool:
         """Check if data is older than threshold.
