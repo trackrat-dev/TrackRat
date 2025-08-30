@@ -70,3 +70,10 @@ logs/
 tmp/
 temp/
 *.tmp
+
+# Debug and test scripts (keep out of repo)
+debug_*.py
+test_*.py
+fix_*.py
+*_debug.py
+*_test.py
