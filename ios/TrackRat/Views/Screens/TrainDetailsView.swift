@@ -1166,7 +1166,7 @@ struct SegmentedTrackPredictionView: View {
             .overlay(
                 segment.labelPosition == .inside ? 
                 Text(segment.displayText)
-                    .font(.caption2)
+                    .font(segment.labelFont)
                     .fontWeight(.medium)
                     .foregroundColor(.black)
                     .lineLimit(3)
@@ -1232,7 +1232,7 @@ struct SegmentedTrackPredictionView: View {
                     let segmentWidth = geometry.size.width * segment.probability
                     
                     VStack {
-                        if segment.probability >= 0.17 {
+                        if segment.probability >= 0.12 {
                             Text("\(Int(segment.probability * 100))%")
                                 .font(.caption2)
                                 .fontWeight(.medium)
@@ -1306,6 +1306,11 @@ struct TrackPredictionSegment: Identifiable, Equatable {
         if isOthersGroup {
             return "Others"
         }
+        // For 12-17% probability, show "Tracks" prefix with smaller font
+        if probability >= 0.12 && probability < 0.17 {
+            return "Tracks\n\(platformName)"
+        }
+        // For >=17% probability, show "Tracks" prefix with normal font
         return "Tracks\n\(platformName)"
     }
     
@@ -1321,16 +1326,8 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .gray.opacity(0.6)
         }
         
-        switch rank {
-        case 1:
-            return .orange
-        case 2:
-            return .orange.opacity(0.7)
-        case 3:
-            return .orange.opacity(0.5)
-        default:
-            return .orange.opacity(0.3)
-        }
+        // All segments now use same opacity
+        return .orange.opacity(0.3)
     }
     
     var labelPosition: TrackLabelPosition {
@@ -1338,12 +1335,24 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .inside
         }
         
-        // Only show labels for segments with >= 17% probability
-        if probability >= 0.17 {
+        // Show labels for segments with >= 12% probability
+        if probability >= 0.12 {
             return .inside
         } else {
             return .none
         }
+    }
+    
+    var labelFont: Font {
+        if isOthersGroup {
+            return .caption2
+        }
+        // Smaller font for 12-17% probability segments
+        if probability >= 0.12 && probability < 0.17 {
+            return .system(size: 9, weight: .medium)
+        }
+        // Normal font for >=17% probability segments
+        return .caption2
     }
 }
 
