@@ -1375,13 +1375,9 @@ struct PennStationWaitingLink: View {
                 showingGuide = true
             }) {
                 HStack(spacing: 3) {
-                    Text("⚡")
-                        .font(.system(size: 12))
                     Text("where should I wait?")
                         .font(.system(size: 12))
                         .fontWeight(.medium)
-                    Text("⚡")
-                        .font(.system(size: 12))
                 }
                 .foregroundColor(.white)
                 .padding(.vertical, 6)
