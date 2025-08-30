@@ -32,11 +32,7 @@
             </intent-filter>
         </activity>
         
-        <!-- Train tracking foreground service -->
-        <service 
-            android:name=".services.TrainTrackingService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
+        <!-- TODO: Add TrainTrackingService when implementing live tracking -->
     </application>
 
 </manifest>

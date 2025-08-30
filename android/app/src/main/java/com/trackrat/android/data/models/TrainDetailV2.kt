@@ -12,9 +12,9 @@ import java.time.ZonedDateTime
 data class TrainDetailV2(
     @Json(name = "train_id") val trainId: String,
     @Json(name = "journey_date") val journeyDate: String,
-    @Json(name = "line") val line: LineInfoV2,
+    @Json(name = "line") val line: LineInfo,
     @Json(name = "route") val route: RouteInfoV2,
-    @Json(name = "train_position") val trainPosition: TrainPositionV2?,
+    @Json(name = "train_position") val trainPosition: TrainPosition?,
     @Json(name = "stops") val stops: List<StopDetail>,
     @Json(name = "data_freshness") val dataFreshness: DataFreshnessV2,
     @Json(name = "data_source") val dataSource: String,
@@ -26,26 +26,11 @@ data class TrainDetailV2(
 )
 
 @JsonClass(generateAdapter = true)
-data class LineInfoV2(
-    @Json(name = "code") val code: String,
-    @Json(name = "name") val name: String,
-    @Json(name = "color") val color: String
-)
-
-@JsonClass(generateAdapter = true)
 data class RouteInfoV2(
     @Json(name = "origin") @HtmlDecode val origin: String,
     @Json(name = "destination") @HtmlDecode val destination: String,
     @Json(name = "origin_code") val originCode: String,
     @Json(name = "destination_code") val destinationCode: String
-)
-
-@JsonClass(generateAdapter = true)
-data class TrainPositionV2(
-    @Json(name = "last_departed_station_code") val lastDepartedStationCode: String?,
-    @Json(name = "at_station_code") val atStationCode: String?,
-    @Json(name = "next_station_code") val nextStationCode: String?,
-    @Json(name = "between_stations") val betweenStations: Boolean
 )
 
 @JsonClass(generateAdapter = true)
@@ -64,12 +49,6 @@ data class StopDetail(
     @Json(name = "has_departed_station") val hasDepartedStation: Boolean,
     @Json(name = "predicted_arrival") val predictedArrival: ZonedDateTime?,
     @Json(name = "predicted_arrival_samples") val predictedArrivalSamples: Int?
-)
-
-@JsonClass(generateAdapter = true)
-data class StationInfo(
-    @Json(name = "code") val code: String,
-    @Json(name = "name") @HtmlDecode val name: String
 )
 
 @JsonClass(generateAdapter = true)

@@ -261,7 +261,9 @@ fun TrainHeaderCard(
     train: TrainDetailV2,
     viewModel: TrainDetailViewModel
 ) {
-    val isTracking by viewModel.isTrackingTrain.collectAsState()
+    // TODO: Implement tracking when needed
+    // val isTracking by viewModel.isTrackingTrain.collectAsState()
+    val isTracking = false // Temporarily disabled
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -296,7 +298,7 @@ fun TrainHeaderCard(
             }
             
             // Line and destination
-            if (train.line.code.isNotEmpty()) {
+            if (!train.line.code.isNullOrEmpty()) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -306,7 +308,7 @@ fun TrainHeaderCard(
                         color = Color(0xFFFF6600).copy(alpha = 0.1f)
                     ) {
                         Text(
-                            text = train.line.code,
+                            text = train.line.code ?: "",
                             style = MaterialTheme.typography.labelMedium,
                             color = Color(0xFFFF6600),
                             fontWeight = FontWeight.Bold,
@@ -314,7 +316,7 @@ fun TrainHeaderCard(
                         )
                     }
                     Text(
-                        text = train.line.name,
+                        text = train.line.name ?: "Unknown Line",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -362,9 +364,10 @@ fun TrainHeaderCard(
                 } */
             }
             
+            // TODO: Re-enable when tracking is implemented
             // Tracking button
             Button(
-                onClick = { viewModel.toggleTracking() },
+                onClick = { /* viewModel.toggleTracking() */ },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isTracking) Color.Gray else Color(0xFFFF6600)

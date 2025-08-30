@@ -8,7 +8,6 @@ import com.trackrat.android.data.models.ApiException
 import com.trackrat.android.data.models.ApiResult
 import com.trackrat.android.data.models.TrainDetailV2
 import com.trackrat.android.data.repository.TrackRatRepository
-import com.trackrat.android.services.TrainTrackingService
 import com.trackrat.android.utils.ErrorUtils.shouldStopAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -47,12 +46,8 @@ class TrainDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    // Tracking state - observe the service's tracking state
-    val isTrackingTrain: StateFlow<Boolean> = TrainTrackingService.isTracking
-        .map { trackingId -> 
-            trackingId != null && trackingId == currentTrainId 
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), false)
+    // TODO: Implement train tracking when needed
+    // val isTrackingTrain: StateFlow<Boolean> = MutableStateFlow(false)
 
     // Auto-refresh job
     private var autoRefreshJob: Job? = null
@@ -223,26 +218,12 @@ class TrainDetailViewModel @Inject constructor(
     }
     
     /**
+     * TODO: Implement train tracking when needed
      * Toggle train tracking on/off
      */
-    fun toggleTracking() {
-        val trainId = currentTrainId ?: return
-        val date = currentDate ?: getCurrentDateString()
-        val context = getApplication<Application>()
-        
-        if (TrainTrackingService.isTrackingTrain(trainId)) {
-            // Stop tracking
-            TrainTrackingService.stopTracking(context)
-        } else {
-            // Start tracking
-            TrainTrackingService.startTracking(
-                context = context,
-                trainId = trainId,
-                date = date,
-                fromStation = _uiState.value.train?.route?.originCode
-            )
-        }
-    }
+    // fun toggleTracking() {
+    //     // Implementation removed - TrainTrackingService not yet fully implemented
+    // }
 
     /**
      * Stop auto-refresh when ViewModel is cleared
