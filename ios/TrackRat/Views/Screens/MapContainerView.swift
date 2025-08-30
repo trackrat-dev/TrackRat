@@ -339,12 +339,11 @@ struct MapContainerView: View {
         } else {
             // Check if we're navigating to train details
             if isNavigatingToTrainDetails(navigationPath) {
-                // Animate map FIRST using target position to avoid race condition
-                if let route = appState.selectedRoute {
-                    animateMapToRoute(route, targetSheetPosition: .expanded)
-                }
+                // DO NOT animate the map when navigating to train details
+                // The map should already be properly positioned from the train list view
+                // Removing animation prevents the map from jumping/refocusing
                 
-                // Then snap bottom sheet to full screen (100%) when navigating to train details
+                // Just snap bottom sheet to full screen (100%) when navigating to train details
                 withAnimation(.easeInOut(duration: 0.3)) {
                     bottomSheetPosition = .expanded
                 }
@@ -434,8 +433,8 @@ struct MapContainerView: View {
             }
         }
         
-        // Animate map to focus on the journey area immediately using expanded position
-        animateMapToRoute(route, targetSheetPosition: .expanded)
+        // DO NOT animate map here - it's already properly positioned from the train list view
+        // Removing this prevents the map from jumping when viewing train details
     }
     
     private func extractTrainNumber(from fullTrainId: String) -> String {
