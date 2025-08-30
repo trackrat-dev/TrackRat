@@ -47,9 +47,9 @@ class NJTScheduleCollector:
 
         try:
             # Get schedule for all stations (empty string = all)
-            # Include both NJT and Amtrak trains in schedule
+            # Only fetch NJT trains - Amtrak has its own discovery pipeline
             schedule_data = await self.client.get_station_schedule(
-                station_code=None, njt_only=False  # All stations  # Include Amtrak
+                station_code=None, njt_only=True  # All stations, NJT trains only
             )
 
             logger.info(
@@ -206,14 +206,21 @@ class NJTScheduleCollector:
         line = item.get("LINE", "")
         track = item.get("TRACK")  # May be line name for schedule data
 
-        # Determine if this is NJT or Amtrak based on train ID format
-        # Amtrak trains typically have non-numeric IDs
-        data_source = "NJT"
+        # Validate train ID format - NJT trains should be numeric
+        # Non-numeric IDs are typically Amtrak trains
         if not train_id.isdigit():
-            # Could be Amtrak, but schedule API doesn't clearly distinguish
-            # For now, assume numeric = NJT, non-numeric might be Amtrak
-            # This is a simplification - may need refinement
-            pass
+            # This shouldn't happen with njt_only=True, but log if it does
+            logger.warning(
+                "unexpected_non_numeric_train_id_in_njt_schedule",
+                train_id=train_id,
+                destination=destination,
+                line=line,
+                scheduled_departure=sched_dep_str,
+            )
+            return "skipped"
+        
+        # All NJT trains use NJT data source
+        data_source = "NJT"
 
         # Check if this journey already exists
         stmt = select(TrainJourney).where(
