@@ -63,11 +63,13 @@ class NJTScheduleCollector:
             # Process the schedule data
             async with get_session() as session:
                 stats = await self._process_schedule_data(session, schedule_data)
-            
+
             # Collect full stop lists for new NJT trains in a new session
             # (needs to be separate so we can query the committed schedule data)
             async with get_session() as session:
-                stop_stats = await self._collect_stop_lists_for_scheduled_trains(session)
+                stop_stats = await self._collect_stop_lists_for_scheduled_trains(
+                    session
+                )
                 stats.update(stop_stats)
 
             logger.info("njt_schedule_collection_completed", **stats)
@@ -218,7 +220,7 @@ class NJTScheduleCollector:
                 scheduled_departure=sched_dep_str,
             )
             return "skipped"
-        
+
         # All NJT trains use NJT data source
         data_source = "NJT"
 
@@ -311,13 +313,13 @@ class NJTScheduleCollector:
         self, session: AsyncSession
     ) -> dict[str, Any]:
         """Collect full stop lists for NJT scheduled trains.
-        
+
         This method fetches the complete route information for each NJT
         scheduled train, allowing them to appear in route searches.
-        
+
         Args:
             session: Database session
-            
+
         Returns:
             Dictionary with collection statistics
         """
@@ -326,7 +328,7 @@ class NJTScheduleCollector:
             "stop_collections_successful": 0,
             "stop_collections_failed": 0,
         }
-        
+
         # Get all NJT scheduled trains created today that need stop lists
         journey_date = now_et().date()
         stmt = select(TrainJourney).where(
@@ -334,39 +336,41 @@ class NJTScheduleCollector:
                 TrainJourney.observation_type == "SCHEDULED",
                 TrainJourney.data_source == "NJT",
                 TrainJourney.journey_date == journey_date,
-                TrainJourney.has_complete_journey == False,  # Only trains without stops
+                TrainJourney.has_complete_journey.is_(
+                    False
+                ),  # Only trains without stops
             )
         )
-        
+
         result = await session.execute(stmt)
         scheduled_journeys = result.scalars().all()
-        
+
         logger.info(
             "collecting_stop_lists_for_scheduled_trains",
             journey_count=len(scheduled_journeys),
         )
-        
+
         for journey in scheduled_journeys:
             stats["stop_collections_attempted"] += 1
-            
+
             try:
                 # Small delay to be nice to the API
                 await asyncio.sleep(0.25)
-                
+
                 # Fetch the train stop list
                 train_data = await self.client.get_train_stop_list(journey.train_id)
-                
+
                 # Process and store the stops
                 await self._update_journey_with_stops(session, journey, train_data)
-                
+
                 stats["stop_collections_successful"] += 1
-                
+
                 logger.debug(
                     "collected_stops_for_scheduled_train",
                     train_id=journey.train_id,
                     stop_count=len(train_data.STOPS) if train_data.STOPS else 0,
                 )
-                
+
             except Exception as e:
                 stats["stop_collections_failed"] += 1
                 logger.warning(
@@ -377,17 +381,17 @@ class NJTScheduleCollector:
                 )
                 # Continue with next train instead of failing entire collection
                 continue
-        
+
         # Commit all the stop updates
         await session.commit()
-        
+
         logger.info(
             "stop_collection_completed",
             **stats,
         )
-        
+
         return stats
-    
+
     async def _update_journey_with_stops(
         self,
         session: AsyncSession,
@@ -395,7 +399,7 @@ class NJTScheduleCollector:
         train_data: Any,
     ) -> None:
         """Update a scheduled journey with full stop information.
-        
+
         Args:
             session: Database session
             journey: The scheduled journey to update
@@ -407,20 +411,25 @@ class NJTScheduleCollector:
                 train_id=journey.train_id,
             )
             return
-        
+
         # Delete the single placeholder stop we created during schedule collection
         from sqlalchemy import delete
+
         await session.execute(
             delete(JourneyStop).where(JourneyStop.journey_id == journey.id)
         )
-        
+
         # Add all the stops from the API
         stops = []
         for idx, stop in enumerate(train_data.STOPS):
             # Parse times
-            scheduled_arrival = parse_njt_time(stop.SCHED_ARR_DATE) if stop.SCHED_ARR_DATE else None
-            scheduled_departure = parse_njt_time(stop.SCHED_DEP_DATE) if stop.SCHED_DEP_DATE else None
-            
+            scheduled_arrival = (
+                parse_njt_time(stop.SCHED_ARR_DATE) if stop.SCHED_ARR_DATE else None
+            )
+            scheduled_departure = (
+                parse_njt_time(stop.SCHED_DEP_DATE) if stop.SCHED_DEP_DATE else None
+            )
+
             # Create stop record
             journey_stop = JourneyStop(
                 journey=journey,
@@ -432,24 +441,24 @@ class NJTScheduleCollector:
                 track=stop.TRACK if stop.TRACK else None,
                 has_departed_station=False,
             )
-            
+
             stops.append(journey_stop)
             session.add(journey_stop)
-        
+
         # Update journey metadata
         if stops:
             journey.has_complete_journey = True
             journey.stops_count = len(stops)
             journey.origin_station_code = stops[0].station_code
             journey.terminal_station_code = stops[-1].station_code
-            
+
             # Update scheduled times from first/last stops
             if stops[0].scheduled_departure:
                 journey.scheduled_departure = stops[0].scheduled_departure
             if stops[-1].scheduled_arrival:
                 journey.scheduled_arrival = stops[-1].scheduled_arrival
-            
+
             journey.last_updated_at = now_et()
             journey.update_count = (journey.update_count or 0) + 1
-            
+
         await session.flush()
