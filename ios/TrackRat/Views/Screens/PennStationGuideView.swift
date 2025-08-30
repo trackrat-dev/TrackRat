@@ -8,18 +8,6 @@ struct PennStationGuideView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Header
-                VStack(spacing: 8) {
-                    Text("Penn Station Fast Track")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    Text("Strategic spots to wait for quicker boarding")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                .padding()
-                
                 // Swipeable cards
                 TabView(selection: $currentPage) {
                     ForEach(0..<3) { index in
@@ -33,17 +21,6 @@ struct PennStationGuideView: View {
                 .tabViewStyle(PageTabViewStyle())
                 .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
                 
-                // Close button
-                Button(action: { dismiss() }) {
-                    Text("Got it!")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.orange)
-                        .cornerRadius(12)
-                }
-                .padding()
             }
             .background(Color(UIColor.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
