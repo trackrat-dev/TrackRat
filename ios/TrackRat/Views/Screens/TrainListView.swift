@@ -11,13 +11,52 @@ struct TrainListView: View {
     @State private var destination: String
     @State private var departureStationCode: String
     @State private var departureName: String
+    @Binding var sheetPosition: BottomSheetPosition
     
     
-    init(destination: String) {
+    init(destination: String, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
         self._destination = State(initialValue: destination)
         self._departureStationCode = State(initialValue: "")
         self._departureName = State(initialValue: "")
+        self._sheetPosition = sheetPosition
         self._viewModel = StateObject(wrappedValue: TrainListViewModel())
+    }
+    
+    private func handleToolbarDrag(value: DragGesture.Value) {
+        let translation = value.translation.height
+        
+        // Swipe down to collapse, swipe up to expand
+        if translation > 50 {
+            // Dragging down - step down one position
+            switch sheetPosition {
+            case .expanded:
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .medium
+                }
+            case .medium:
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .compact
+                }
+            case .compact:
+                break // Already at lowest
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } else if translation < -50 {
+            // Dragging up - step up one position
+            switch sheetPosition {
+            case .compact:
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .medium
+                }
+            case .medium:
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .expanded
+                }
+            case .expanded:
+                break // Already at highest
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
     }
     
     var body: some View {
@@ -26,7 +65,7 @@ struct TrainListView: View {
             TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
-            ScrollView {
+            SheetAwareScrollView(sheetPosition: $sheetPosition) {
                     VStack(spacing: 16) {
                         if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
                             TrackRatLoadingView(message: "Finding your trains...")
@@ -76,6 +115,9 @@ struct TrainListView: View {
                                 )
                             }
                         }
+                        
+                        // Add spacer at bottom for better scrolling
+                        Spacer(minLength: 50)
                     }
                     .padding()
                 }
@@ -101,6 +143,13 @@ struct TrainListView: View {
                             .foregroundColor(.white.opacity(0.8))
                     }
                 }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture()
+                        .onEnded { value in
+                            handleToolbarDrag(value: value)
+                        }
+                )
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {

@@ -165,12 +165,15 @@ struct MapContainerView: View {
             }
             
             
-            // Bottom sheet with navigation content
-            BottomSheetView(position: $bottomSheetPosition) {
+            // Bottom sheet with navigation content (marked as scrollable)
+            BottomSheetView(position: $bottomSheetPosition, isScrollable: true) {
                 NavigationStack(path: $appState.navigationPath) {
-                    TripSelectionView(onBottomSheetPositionChange: { newPosition in
-                        bottomSheetPosition = newPosition
-                    })
+                    TripSelectionView(
+                        sheetPosition: $bottomSheetPosition,
+                        onBottomSheetPositionChange: { newPosition in
+                            bottomSheetPosition = newPosition
+                        }
+                    )
                         .navigationDestination(for: NavigationDestination.self) { destination in
                             bottomSheetNavigationContent(for: destination)
                         }
@@ -643,7 +646,7 @@ struct MapContainerView: View {
         case .destinationPicker:
             DestinationPickerView()
         case .trainList(let stationName):
-            TrainListView(destination: stationName)
+            TrainListView(destination: stationName, sheetPosition: $bottomSheetPosition)
         case .trainDetails(let trainId):
             TrainDetailsView(trainId: trainId)
         case .trainDetailsFlexible(let trainNumber, let fromStation):

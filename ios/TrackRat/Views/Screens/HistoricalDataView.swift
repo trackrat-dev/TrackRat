@@ -553,6 +553,7 @@ class HistoricalDataViewModel: ObservableObject {
         arrival: nil,
         trainPosition: nil,
         dataFreshness: nil,
+        observationType: nil,
         isCancelled: false,
         isCompleted: false,
         stops: nil

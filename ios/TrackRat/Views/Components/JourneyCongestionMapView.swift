@@ -1357,6 +1357,7 @@ private struct SegmentTimeDetailRow: View {
             arrival: nil,
             trainPosition: nil,
             dataFreshness: nil,
+            observationType: nil,
             isCancelled: false,
             isCompleted: false,
             stops: []

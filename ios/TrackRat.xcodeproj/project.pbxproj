@@ -43,6 +43,7 @@
 		A17329672E54A8B1006BF187 /* StationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329662E54A8B1006BF187 /* StationRow.swift */; };
 		A17329692E54D46E006BF187 /* intro_animation.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A17329682E54D46E006BF187 /* intro_animation.mp4 */; };
 		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
+		A183B7E12E6352E80024FADC /* SheetAwareScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A183B7E02E6352E80024FADC /* SheetAwareScrollView.swift */; };
 		A1875C7F2E400F4F00FCC7FC /* MyProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */; };
 		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
@@ -149,6 +150,7 @@
 		A17329662E54A8B1006BF187 /* StationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationRow.swift; path = Views/Components/StationRow.swift; sourceTree = "<group>"; };
 		A17329682E54D46E006BF187 /* intro_animation.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro_animation.mp4; sourceTree = "<group>"; };
 		A17B9F372E17FD0A00B370A6 /* StationButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationButton.swift; path = Views/Components/StationButton.swift; sourceTree = "<group>"; };
+		A183B7E02E6352E80024FADC /* SheetAwareScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SheetAwareScrollView.swift; path = Views/Components/SheetAwareScrollView.swift; sourceTree = "<group>"; };
 		A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyProfileView.swift; path = Views/Screens/MyProfileView.swift; sourceTree = "<group>"; };
 		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
@@ -277,6 +279,7 @@
 				A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */,
 				A1AC62AF2E60A30300D1A16C /* PennStationGuideView.swift */,
 				A1CB28322E3D634C004A49E6 /* JourneyCongestionMapView.swift */,
+				A183B7E02E6352E80024FADC /* SheetAwareScrollView.swift */,
 				A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */,
 				1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */,
 				1A1A1A1A1A1A1A1A1A1A1A20 /* TrackRat.entitlements */,
@@ -538,6 +541,7 @@
 				A10E98022DE39F23002F3214 /* DestinationPickerView.swift in Sources */,
 				A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */,
 				A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */,
+				A183B7E12E6352E80024FADC /* SheetAwareScrollView.swift in Sources */,
 				A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */,
 				A1AD0D092E106D1B003DA39F /* Stations.swift in Sources */,
 				A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */,

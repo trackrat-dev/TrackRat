@@ -20,10 +20,15 @@ struct TripSelectionView: View {
     @State private var trainValidationStates: [String: TrainValidationState] = [:]
     @State private var validationTasks: [String: Task<Void, Never>] = [:]
     
+    // Sheet position binding for coordination
+    @Binding var sheetPosition: BottomSheetPosition
+    
     // Callback to control bottom sheet position
     let onBottomSheetPositionChange: ((BottomSheetPosition) -> Void)?
     
-    init(onBottomSheetPositionChange: ((BottomSheetPosition) -> Void)? = nil) {
+    init(sheetPosition: Binding<BottomSheetPosition> = .constant(.medium), 
+         onBottomSheetPositionChange: ((BottomSheetPosition) -> Void)? = nil) {
+        self._sheetPosition = sheetPosition
         self.onBottomSheetPositionChange = onBottomSheetPositionChange
     }
     
@@ -72,32 +77,33 @@ struct TripSelectionView: View {
             TrackRatTheme.Colors.surface
                 .ignoresSafeArea()
             
-            GeometryReader { geometry in
+            // Use SheetAwareScrollView for smart scrolling
+            SheetAwareScrollView(sheetPosition: $sheetPosition) {
                 VStack(spacing: 8) {
-                // Rat Sense suggestion at the top
-                if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive, !isSearching {
-                    Button {
-                        selectRatSenseSuggestion(suggestion)
-                    } label: {
-                        Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.orange.opacity(0.3))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
-                                    )
-                            )
+                    // Rat Sense suggestion at the top
+                    if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive, !isSearching {
+                        Button {
+                            selectRatSenseSuggestion(suggestion)
+                        } label: {
+                            Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color.orange.opacity(0.3))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
+                                        )
+                                )
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 12)
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-                }
-                
-                // Top title
+                    
+                    // Top title
                 Text("Where would you like to leave from?")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundColor(.white)
@@ -243,10 +249,9 @@ struct TripSelectionView: View {
                 }
                 .padding(.top, 12)
                 
-                // Spacer to push content to top and fill remaining space
-                Spacer()
+                    // Spacer to push content to top and fill remaining space
+                    Spacer(minLength: 100) // Ensure some minimum space at bottom
                 }
-                .frame(width: geometry.size.width, height: max(geometry.size.height, 600), alignment: .top)
             }
         }
         .onAppear {
