@@ -1034,6 +1034,7 @@ struct SegmentedTrackPredictionView: View {
     @State private var showingOthersPopup = false
     @State private var adjustedPredictions: PredictionData?
     @State private var isLoadingPredictions = true
+    @State private var showWaitingLink = false
     
     private var predictionSegments: [TrackPredictionSegment] {
         guard let predictionData = adjustedPredictions,
@@ -1042,7 +1043,11 @@ struct SegmentedTrackPredictionView: View {
         }
         
         let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
-        let sortedPlatforms = platformProbabilities.sorted { $0.value > $1.value }
+        let sortedPlatforms = platformProbabilities.sorted { first, second in
+            let firstNum = extractPlatformNumber(from: first.key)
+            let secondNum = extractPlatformNumber(from: second.key)
+            return firstNum < secondNum
+        }
         
         return createSegments(from: sortedPlatforms)
     }
@@ -1099,8 +1104,9 @@ struct SegmentedTrackPredictionView: View {
             }
             
             // Penn Station waiting guide link for NY departures
-            if isDepartingFromNYPenn {
+            if isDepartingFromNYPenn && showWaitingLink {
                 PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding()
@@ -1119,6 +1125,20 @@ struct SegmentedTrackPredictionView: View {
         isLoadingPredictions = true
         adjustedPredictions = await StaticTrackDistributionService.shared.getAdjustedPredictionData(for: train)
         isLoadingPredictions = false
+        
+        // Show the waiting link with animation after predictions load
+        if isDepartingFromNYPenn {
+            withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {
+                showWaitingLink = true
+            }
+        }
+    }
+    
+    private func extractPlatformNumber(from platformName: String) -> Int {
+        // Extract first number from platform names like "1 & 2", "3 & 4", "17"
+        let components = platformName.components(separatedBy: CharacterSet.decimalDigits.inverted)
+        let firstNumber = components.first { !$0.isEmpty }
+        return Int(firstNumber ?? "999") ?? 999
     }
     
     private var segmentedBarView: some View {
