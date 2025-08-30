@@ -535,8 +535,6 @@ struct MapContainerView: View {
         // Negative offsets move map center south (down), positioning stations in visible area above bottom sheet
         // Values tuned for northeast corridor geography (roughly 25 miles per 0.1°)
         switch position {
-        case .compact:      // 75% visible area, center should be at 37.5% from top
-            return -0.08    // Small adjustment south (~5 miles)
         case .medium:       // 50% visible area, center should be at 25% from top
             return -0.10    // Small-medium adjustment south (~7 miles)
         case .expanded:     // 0% visible area - position in off-screen area

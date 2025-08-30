@@ -34,20 +34,12 @@ struct TrainListView: View {
                     sheetPosition = .medium
                 }
             case .medium:
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                    sheetPosition = .compact
-                }
-            case .compact:
-                break // Already at lowest
+                break // Already at lowest position
             }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } else if translation < -50 {
             // Dragging up - step up one position
             switch sheetPosition {
-            case .compact:
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                    sheetPosition = .medium
-                }
             case .medium:
                 withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
                     sheetPosition = .expanded

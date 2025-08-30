@@ -1,8 +1,17 @@
 import SwiftUI
 
+// MARK: - Gesture Mode
+/// Tracks what action a gesture should perform
+enum GestureMode {
+    case idle           // No gesture active
+    case sheetMoving    // Sheet is being moved, block scrolling
+    case scrolling      // Content is scrolling, block sheet movement
+}
+
 // MARK: - Sheet-Aware ScrollView
 /// A custom ScrollView that coordinates with BottomSheetView position
 /// to provide intuitive gesture handling:
+/// - One swipe = one action (either sheet movement OR scrolling, never both)
 /// - When sheet is not expanded: swipe up expands sheet first
 /// - When sheet is expanded & content at top: swipe down collapses sheet
 /// - Otherwise: normal scrolling behavior
@@ -11,11 +20,8 @@ struct SheetAwareScrollView<Content: View>: View {
     let showsIndicators: Bool
     let content: Content
     
-    @State private var scrollOffset: CGFloat = 0
-    @State private var isDragging = false
-    @State private var gestureStartPosition: CGFloat = 0
-    @State private var hasTriggeredPositionChange = false
-    @State private var isScrollingEnabled = true
+    @State private var isScrolledToTop: Bool = true  // Track if we're at scroll top
+    @State private var gestureMode: GestureMode = .idle
     
     init(
         sheetPosition: Binding<BottomSheetPosition>,
@@ -28,128 +34,135 @@ struct SheetAwareScrollView<Content: View>: View {
     }
     
     var body: some View {
-        ScrollViewReader { proxy in
+        GeometryReader { geometry in
             ScrollView(.vertical, showsIndicators: showsIndicators) {
                 VStack(spacing: 0) {
-                    // Hidden anchor for scroll position tracking
-                    Color.clear
-                        .frame(height: 1)
-                        .id("top")
+                    // Track position with a background GeometryReader
+                    GeometryReader { innerGeo in
+                        Color.clear
+                            .onChange(of: innerGeo.frame(in: .global).minY) { newValue in
+                                // Check if we're at the top
+                                // The scroll view content starts at the same Y as the scroll view itself when at top
+                                let scrollViewTop = geometry.frame(in: .global).minY
+                                let contentTop = newValue
+                                let wasScrolledToTop = isScrolledToTop
+                                
+                                // We're at top if content hasn't moved up (within small tolerance)
+                                isScrolledToTop = contentTop >= (scrollViewTop - 2)
+                                
+                                if wasScrolledToTop != isScrolledToTop {
+                                    print("📜 Scroll state changed: isScrolledToTop = \(isScrolledToTop), contentTop = \(contentTop), scrollViewTop = \(scrollViewTop)")
+                                }
+                            }
+                    }
+                    .frame(height: 0)  // Invisible tracker
                     
                     // Actual content
                     content
-                        .allowsHitTesting(isScrollingEnabled) // Prevent interaction when disabled
-                    
-                    // Track scroll position
-                    GeometryReader { geometry in
-                        Color.clear
-                            .preference(key: ScrollOffsetPreferenceKey.self,
-                                      value: geometry.frame(in: .named("scroll")).minY)
-                    }
-                    .frame(height: 0)
                 }
             }
-            .coordinateSpace(name: "scroll")
-            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-                scrollOffset = value
+            .onAppear {
+                // Initialize scroll state on appear
+                print("📜 ScrollView appeared, initializing isScrolledToTop = true")
+                isScrolledToTop = true
             }
-            .disabled(!isScrollingEnabled) // Disable scrolling when needed
+            .disabled(gestureMode == .sheetMoving)  // Disable scroll when sheet is moving
             .simultaneousGesture(
-                DragGesture(minimumDistance: 10)
+                // Use simultaneous gesture to detect gesture start and determine mode
+                DragGesture(minimumDistance: 5)
                     .onChanged { value in
-                        handleDragChanged(value: value, proxy: proxy)
+                        handleDragGesture(value: value)
                     }
-                    .onEnded { value in
-                        handleDragEnded(value: value)
+                    .onEnded { _ in
+                        gestureMode = .idle  // Reset for next gesture
                     }
             )
         }
     }
     
-    private func handleDragChanged(value: DragGesture.Value, proxy: ScrollViewProxy) {
-        if !isDragging {
-            isDragging = true
-            gestureStartPosition = value.location.y
-            hasTriggeredPositionChange = false
-        }
+    private func determineGestureMode(translation: CGFloat) -> GestureMode {
+        // Determine what action should happen based on current state and swipe direction
+        let isSwipingUp = translation < 0
+        let isSwipingDown = translation > 0
         
-        // Only trigger position change once per gesture
-        if hasTriggeredPositionChange {
-            return
-        }
+        print("🎯 Determining gesture mode:")
+        print("   - Sheet position: \(sheetPosition)")
+        print("   - Translation: \(translation)")
+        print("   - isScrolledToTop: \(isScrolledToTop)")
         
-        let translation = value.translation.height
-        var shouldMoveSheet = false
-        
-        // Determine if sheet should move instead of scrolling
-        if sheetPosition == .compact && translation < -20 {
-            // Sheet is compact and swiping up -> expand to medium
-            shouldMoveSheet = true
-        } else if sheetPosition == .medium && translation < -20 {
-            // Sheet is medium and swiping up -> expand fully
-            shouldMoveSheet = true
-        } else if sheetPosition == .expanded && scrollOffset >= -10 && translation > 50 {
-            // Sheet is expanded, at top of scroll, swiping down -> collapse to medium
-            shouldMoveSheet = true
-        } else if sheetPosition == .medium && translation > 50 {
-            // Sheet is at medium and swiping down -> collapse to compact
-            shouldMoveSheet = true
-        }
-        
-        // If sheet should move, disable scrolling first
-        if shouldMoveSheet {
-            hasTriggeredPositionChange = true
-            isScrollingEnabled = false // Disable scrolling immediately
+        switch sheetPosition {
+        case .medium:
+            // From medium: only upward swipes do anything (expand sheet)
+            if isSwipingUp {
+                print("   → Mode: sheetMoving (will expand)")
+                return .sheetMoving  // Will expand the sheet
+            } else {
+                print("   → Mode: idle (can't go lower)")
+                return .idle  // Can't go lower than medium
+            }
             
-            // Perform the sheet movement
-            if sheetPosition == .compact && translation < -20 {
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                    sheetPosition = .medium
+        case .expanded:
+            // From expanded: depends on scroll position and direction
+            if isSwipingUp {
+                // Swiping up when expanded: always scroll (if there's content to scroll)
+                print("   → Mode: scrolling (swipe up from expanded)")
+                return .scrolling
+            } else if isSwipingDown {
+                // Swiping down when expanded: use our reliable scroll position flag
+                if isScrolledToTop {
+                    // We're truly at the top: collapse sheet
+                    print("   → Mode: sheetMoving (at top, will collapse)")
+                    return .sheetMoving
+                } else {
+                    // Not at top: must scroll up first
+                    print("   → Mode: scrolling (not at top, will scroll up)")
+                    return .scrolling
                 }
-            } else if sheetPosition == .medium && translation < -20 {
+            }
+            print("   → Mode: idle (no swipe detected)")
+            return .idle
+        }
+    }
+    
+    private func handleDragGesture(value: DragGesture.Value) {
+        let translation = value.translation.height
+        
+        // Determine mode once at the start of gesture
+        if gestureMode == .idle {
+            print("🔄 Gesture started, determining mode...")
+            gestureMode = determineGestureMode(translation: translation)
+            print("🔄 Gesture mode set to: \(gestureMode)")
+            
+            // If we determined this should be scrolling, do nothing else
+            // The ScrollView will handle it naturally
+            if gestureMode == .scrolling {
+                print("🔄 Letting ScrollView handle the gesture")
+                return
+            }
+        }
+        
+        // Only handle sheet movement if we're in sheetMoving mode
+        if gestureMode == .sheetMoving {
+            // Check if we should actually move the sheet based on drag distance
+            if sheetPosition == .medium && translation < -20 {
+                // Expand the sheet
+                print("📍 Expanding sheet from medium to expanded")
                 withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
                     sheetPosition = .expanded
                 }
-            } else if sheetPosition == .expanded && scrollOffset >= -10 && translation > 50 {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                
+            } else if sheetPosition == .expanded && translation > 20 {
+                // Collapse the sheet (we already verified we're at scroll top in determineGestureMode)
+                print("📍 Collapsing sheet from expanded to medium")
                 withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
                     sheetPosition = .medium
                 }
-            } else if sheetPosition == .medium && translation > 50 {
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                    sheetPosition = .compact
-                }
-            }
-            
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            
-            // Re-enable scrolling after animation completes
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                isScrollingEnabled = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
         }
     }
     
-    private func handleDragEnded(value: DragGesture.Value) {
-        isDragging = false
-        gestureStartPosition = 0
-        hasTriggeredPositionChange = false
-        
-        // Ensure scrolling is re-enabled after gesture ends
-        if !isScrollingEnabled {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                isScrollingEnabled = true
-            }
-        }
-    }
-}
-
-// MARK: - Preference Key for Scroll Offset
-struct ScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
 }
 
 // MARK: - Helper Extension

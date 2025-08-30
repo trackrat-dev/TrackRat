@@ -2,14 +2,11 @@ import SwiftUI
 
 // MARK: - Bottom Sheet Position
 enum BottomSheetPosition: CaseIterable {
-    case compact    // 25% of screen height
     case medium     // 50% of screen height
     case expanded   // 100% of screen height
     
     func offsetFor(screenHeight: CGFloat) -> CGFloat {
         switch self {
-        case .compact:
-            return screenHeight * 0.75  // Show 25%
         case .medium:
             return screenHeight * 0.5   // Show 50%
         case .expanded:
@@ -49,8 +46,8 @@ struct BottomSheetView<Content: View>: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .clipped()
                     
-                    // Gradient overlay to indicate hidden content (only when not fully expanded)
-                    if position != .expanded {
+                    // Gradient overlay to indicate hidden content (only when at medium)
+                    if position == .medium {
                         VStack {
                             Spacer()
                             LinearGradient(
@@ -62,7 +59,7 @@ struct BottomSheetView<Content: View>: View {
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
-                            .frame(height: position == .compact ? 20 : 30)
+                            .frame(height: 30)
                             .allowsHitTesting(false) // Allow gestures to pass through
                         }
                     }
@@ -100,24 +97,19 @@ struct BottomSheetView<Content: View>: View {
     private func safeOffset(for screenHeight: CGFloat) -> CGFloat {
         let baseOffset = position.offsetFor(screenHeight: screenHeight)
         
-        // Limit translation to only allow movement to adjacent positions
+        // Limit translation to only allow movement between medium and expanded
         var limitedTranslation = translation
         
-        // Calculate the offsets for adjacent positions
-        let compactOffset = BottomSheetPosition.compact.offsetFor(screenHeight: screenHeight)
+        // Calculate the offsets for positions
         let mediumOffset = BottomSheetPosition.medium.offsetFor(screenHeight: screenHeight)
         let expandedOffset = BottomSheetPosition.expanded.offsetFor(screenHeight: screenHeight)
         
         // Limit based on current position
         switch position {
-        case .compact:
-            // Can only go up to medium
-            let maxUpwardOffset = mediumOffset - baseOffset
-            limitedTranslation = max(maxUpwardOffset, min(0, limitedTranslation))
         case .medium:
-            // Can go to compact or expanded
-            let maxDownwardOffset = compactOffset - baseOffset
+            // Can only go up to expanded or stay at medium
             let maxUpwardOffset = expandedOffset - baseOffset
+            let maxDownwardOffset: CGFloat = 0  // Don't allow going lower than medium
             limitedTranslation = max(maxUpwardOffset, min(maxDownwardOffset, limitedTranslation))
         case .expanded:
             // Can only go down to medium
@@ -129,7 +121,7 @@ struct BottomSheetView<Content: View>: View {
         
         // Additional safety: prevent sheet from going above screen or too far below
         let minOffset: CGFloat = 0
-        let maxOffset = screenHeight * 0.95
+        let maxOffset = screenHeight * 0.5  // Medium is the lowest position now
         
         return max(minOffset, min(maxOffset, combinedOffset))
     }
@@ -144,8 +136,9 @@ struct BottomSheetView<Content: View>: View {
                 cyclePosition()
             }
             .gesture(
-                // Drag indicator is always draggable for sheet positioning
-                DragGesture()
+                // Only allow drag on indicator when content is not scrollable
+                // When scrollable, let SheetAwareScrollView handle everything
+                isScrollable ? nil : DragGesture()
                     .updating($translation) { value, state, _ in
                         state = value.translation.height
                     }
@@ -166,35 +159,19 @@ struct BottomSheetView<Content: View>: View {
     }
     
     private func snapToNearestPosition(dragOffset: CGFloat, velocity: CGFloat, screenHeight: CGFloat) {
-        let currentOffset = position.offsetFor(screenHeight: screenHeight)
-        let finalOffset = currentOffset + dragOffset
-        
-        // Determine direction and step through positions
+        // Determine direction
         let isDraggingUp = dragOffset < -10
         let isDraggingDown = dragOffset > 10
         
         var nearestPosition = position
         
-        // Step through positions based on drag direction
-        if isDraggingUp {
-            switch position {
-            case .compact:
-                nearestPosition = .medium
-            case .medium:
-                nearestPosition = .expanded
-            case .expanded:
-                nearestPosition = .expanded // Stay at expanded
-            }
-        } else if isDraggingDown {
-            switch position {
-            case .compact:
-                nearestPosition = .compact // Stay at compact
-            case .medium:
-                nearestPosition = .compact
-            case .expanded:
-                nearestPosition = .medium
-            }
+        // Simple two-state logic
+        if isDraggingUp && position == .medium {
+            nearestPosition = .expanded
+        } else if isDraggingDown && position == .expanded {
+            nearestPosition = .medium
         }
+        // Otherwise stay in current position
         
         // Apply haptic feedback
         if nearestPosition != position {
@@ -207,13 +184,12 @@ struct BottomSheetView<Content: View>: View {
     private func cyclePosition() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         
+        // Simple toggle between medium and expanded
         switch position {
-        case .compact:
-            position = .medium
         case .medium:
             position = .expanded
         case .expanded:
-            position = .medium  // Go back to medium, not compact
+            position = .medium
         }
     }
 }
