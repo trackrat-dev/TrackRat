@@ -7,6 +7,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.trackrat.android.utils.Constants
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import javax.inject.Inject
@@ -35,6 +36,7 @@ class UserPreferencesRepository @Inject constructor(
         val NOTIFICATION_ENABLED = booleanPreferencesKey("notification_enabled")
         val LAST_REFRESH_TIME = longPreferencesKey("last_refresh_time")
         val FAVORITE_ROUTES = stringSetPreferencesKey("favorite_routes")
+        val FAVORITE_STATIONS = stringSetPreferencesKey("favorite_stations")
     }
     
     /**
@@ -48,7 +50,8 @@ class UserPreferencesRepository @Inject constructor(
         val themeMode: String = "system",
         val notificationEnabled: Boolean = true,
         val lastRefreshTime: Long = 0L,
-        val favoriteRoutes: Set<String> = emptySet()
+        val favoriteRoutes: Set<String> = emptySet(),
+        val favoriteStations: Set<String> = emptySet()
     )
     
     /**
@@ -73,7 +76,8 @@ class UserPreferencesRepository @Inject constructor(
                 themeMode = preferences[PreferencesKeys.THEME_MODE] ?: "system",
                 notificationEnabled = preferences[PreferencesKeys.NOTIFICATION_ENABLED] ?: true,
                 lastRefreshTime = preferences[PreferencesKeys.LAST_REFRESH_TIME] ?: 0L,
-                favoriteRoutes = preferences[PreferencesKeys.FAVORITE_ROUTES] ?: emptySet()
+                favoriteRoutes = preferences[PreferencesKeys.FAVORITE_ROUTES] ?: emptySet(),
+                favoriteStations = preferences[PreferencesKeys.FAVORITE_STATIONS] ?: emptySet()
             )
         }
     
@@ -156,6 +160,32 @@ class UserPreferencesRepository @Inject constructor(
             val currentFavorites = preferences[PreferencesKeys.FAVORITE_ROUTES] ?: emptySet()
             preferences[PreferencesKeys.FAVORITE_ROUTES] = currentFavorites - routeKey
         }
+    }
+    
+    /**
+     * Toggle favorite station
+     */
+    suspend fun toggleFavoriteStation(stationCode: String) {
+        dataStore.edit { preferences ->
+            val currentFavorites = preferences[PreferencesKeys.FAVORITE_STATIONS] ?: emptySet()
+            preferences[PreferencesKeys.FAVORITE_STATIONS] = if (stationCode in currentFavorites) {
+                currentFavorites - stationCode
+            } else {
+                currentFavorites + stationCode
+            }
+        }
+    }
+    
+    /**
+     * Check if station is favorited
+     */
+    suspend fun isStationFavorited(stationCode: String): Boolean {
+        return dataStore.data.map { preferences ->
+            val favorites = preferences[PreferencesKeys.FAVORITE_STATIONS] ?: emptySet()
+            stationCode in favorites
+        }.catch { 
+            emit(false)
+        }.first()
     }
     
     /**

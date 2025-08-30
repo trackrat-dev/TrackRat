@@ -9,7 +9,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +25,7 @@ import com.trackrat.android.data.models.Station
 import com.trackrat.android.ui.components.GlassmorphicCard
 import com.trackrat.android.ui.components.GlassmorphicSearchCard
 import com.trackrat.android.ui.stationselection.StationSelectionViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,14 +35,15 @@ fun DestinationSelectionScreen(
     onNavigateBack: () -> Unit,
     onNavigateToTrains: (destinationCode: String?) -> Unit
 ) {
-    val allStations by viewModel.allStations.collectAsState()
+    val scope = rememberCoroutineScope()
+    val displayedStations by viewModel.displayedDestinationStations.collectAsState(initial = emptyList())
     val searchResults by viewModel.searchResults.collectAsState()
     val selectedDestination by viewModel.selectedDestination.collectAsState()
     var searchText by remember { mutableStateOf("") }
 
     // Filter out origin station from available destinations
-    val availableStations = remember(allStations, originStation) {
-        allStations.filter { it.code != originStation }
+    val availableStations = remember(displayedStations, originStation) {
+        displayedStations.filter { it.code != originStation }
     }
     
     val filteredResults = remember(searchResults, originStation) {
@@ -54,7 +59,9 @@ fun DestinationSelectionScreen(
                         Text(
                             text = "Where would you like to go?",
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground
+                            color = MaterialTheme.colorScheme.onBackground,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         Text(
                             text = "from $originStation",
@@ -94,7 +101,7 @@ fun DestinationSelectionScreen(
                     value = searchText,
                     onValueChange = { 
                         searchText = it
-                        viewModel.searchStations(it)
+                        viewModel.searchDestinations(it)
                     },
                     placeholder = { 
                         Text(
@@ -122,20 +129,7 @@ fun DestinationSelectionScreen(
                 )
             }
 
-            // Show all departures button
-            Button(
-                onClick = { onNavigateToTrains(null) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Text(
-                    text = "Show All Departures from $originStation",
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-            }
+            // Removed "Show all departures" button as backend doesn't support it
 
             // Station list
             LazyColumn(
@@ -158,7 +152,9 @@ fun DestinationSelectionScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Text(
                                     text = station.name,
                                     style = MaterialTheme.typography.titleMedium,
@@ -171,10 +167,19 @@ fun DestinationSelectionScreen(
                                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                                 )
                             }
-                            if (selectedDestination == station) {
+                            // Heart icon for favoriting
+                            val isFavorited by viewModel.isStationFavorited(station.code).collectAsState(initial = false)
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        viewModel.toggleFavoriteStation(station.code)
+                                    }
+                                },
+                                modifier = Modifier.size(40.dp)
+                            ) {
                                 Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = "Selected",
+                                    imageVector = if (isFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = if (isFavorited) "Remove from favorites" else "Add to favorites",
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }

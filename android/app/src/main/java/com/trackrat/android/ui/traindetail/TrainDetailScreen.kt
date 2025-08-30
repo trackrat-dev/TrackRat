@@ -203,11 +203,9 @@ fun TrainDetailScreen(
                                 )
                             }
                             
-                            // Progress info if available
-                            train.progress?.let { progress ->
-                                item {
-                                    ProgressCard(progress)
-                                }
+                            // Track Predictions section (replacing Journey Progress)
+                            item {
+                                TrackPredictionsCard(train)
                             }
                             
                             // Journey stops
@@ -388,7 +386,7 @@ fun TrainHeaderCard(
 }
 
 @Composable
-fun ProgressCard(progress: com.trackrat.android.data.models.ProgressV2) {
+fun TrackPredictionsCard(train: TrainDetailV2) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -414,97 +412,87 @@ fun ProgressCard(progress: com.trackrat.android.data.models.ProgressV2) {
                     tint = Color(0xFFFF6600)
                 )
                 Text(
-                    text = "Journey Progress",
+                    text = "Track Predictions",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.weight(1f))
-                // Percentage badge
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFFF6600).copy(alpha = 0.2f)
-                ) {
-                    Text(
-                        text = "${progress.journeyPercent.toInt()}%",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFF6600),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
             }
             
-            // Enhanced progress bar with height
-            LinearProgressIndicator(
-                progress = { (progress.journeyPercent / 100f).toFloat() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp)),
-                color = Color(0xFFFF6600),
-                trackColor = Color(0xFFFF6600).copy(alpha = 0.2f)
-            )
+            // Track assignment information
+            val stopsWithTracks = train.stops.filter { !it.track.isNullOrEmpty() }
             
-            // Progress details in grid
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Stops completed
-                Column {
-                    Text(
-                        text = "Progress",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${progress.stopsCompleted} of ${progress.stopsTotal} stops",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                
-                // Time remaining
-                progress.minutesToArrival?.let { minutes ->
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "Time to arrival",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = when {
-                                minutes <= 1 -> "Arriving now"
-                                minutes < 60 -> "$minutes min"
-                                else -> "${minutes / 60}h ${minutes % 60}m"
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = if (minutes <= 5) Color(0xFFFF6600) else MaterialTheme.colorScheme.onSurface
-                        )
+            if (stopsWithTracks.isNotEmpty()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    stopsWithTracks.forEach { stop ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = stop.station.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                val displayTime = stop.scheduledDeparture ?: stop.scheduledArrival
+                                displayTime?.let { time ->
+                                    Text(
+                                        text = formatTime(time.toString()),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            
+                            // Track badge
+                            stop.track?.let { track ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFFF6600).copy(alpha = 0.2f)
+                                ) {
+                                    Text(
+                                        text = "Track $track",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFF6600),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
-            }
-            
-            // Last departed station if available
-            progress.lastDeparted?.let { lastDeparted ->
-                Divider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+            } else {
+                // No track predictions available
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = Color(0xFFFF6600)
-                    )
                     Text(
-                        text = "Last departed: $lastDeparted",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Track assignments not yet available",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+            
+            // Note about predictions
+            if (stopsWithTracks.isEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Track assignments will appear here when available",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
@@ -683,6 +671,21 @@ fun PredictionChipDetailed(
     }
 }
 
+
+private fun formatTime(timeString: String): String {
+    // Extract time portion if it's an ISO string, otherwise return as-is
+    return try {
+        if (timeString.contains("T")) {
+            // ISO format: extract HH:mm
+            val timePart = timeString.substringAfter("T").substringBefore("-")
+            timePart.substring(0, 5) // Get HH:mm
+        } else {
+            timeString
+        }
+    } catch (e: Exception) {
+        timeString
+    }
+}
 
 private fun formatLastUpdated(timestamp: Long): String {
     val now = System.currentTimeMillis()
