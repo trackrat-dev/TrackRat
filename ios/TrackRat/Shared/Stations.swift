@@ -86,7 +86,17 @@ struct Stations {
         "Claremont", "Dover NH", "Durham-UNH", "Exeter",
         "New Carrollton", "Aberdeen", "Alexandria", "Charlottesville",
         "Lorton", "Norfolk", "Richmond Main Street", "Richmond Staples Mill Road", "Roanoke",
-        "Harrisburg", "Lancaster"
+        "Harrisburg", "Lancaster",
+        
+        // Southeast Amtrak Stations (Silver Star/Meteor and Carolinian/Piedmont routes)
+        "Charlotte", "Raleigh", "Greensboro", "Durham", "Rocky Mount", "Wilson",
+        "Cary", "Southern Pines", "High Point", "Salisbury", "Gastonia", "Hamlet",
+        "Selma-Smithfield", "Petersburg",
+        "Charleston", "Spartanburg", "Greenville", "Kingstree", "Florence", "Dillon", "Clemson",
+        "Savannah", "Atlanta", "Jesup", "Gainesville GA", "Toccoa",
+        "Jacksonville", "Miami", "Orlando", "Tampa", "Fort Lauderdale", "West Palm Beach",
+        "Kissimmee", "Lakeland", "Winter Park FL", "DeLand", "Sanford FL", "Hollywood FL",
+        "Delray Beach", "Waldo", "Ocala", "Winter Haven", "Palatka", "Thurmond"
     ].sorted()
     
     // Station name to code mapping - Updated to match backend STATION_CODES.txt
@@ -297,7 +307,53 @@ struct Stations {
         "Harrisburg": "HAR",
         "Lancaster": "LNC",
         "Kingston": "KIN",
-        "Westerly": "WLY"
+        "Westerly": "WLY",
+        
+        // Southeast Amtrak stations
+        "Charlotte": "CLT",
+        "Raleigh": "RGH",
+        "Greensboro": "GRB",
+        "Durham": "DNC",
+        "Rocky Mount": "RMT",
+        "Wilson": "WLN",
+        "Cary": "CAR",
+        "Southern Pines": "SOU",
+        "High Point": "HPT",
+        "Salisbury": "SAL",
+        "Gastonia": "GAS",
+        "Hamlet": "HAM",
+        "Selma-Smithfield": "SEL",
+        "Petersburg": "PTB",
+        "Charleston": "CHS",
+        "Spartanburg": "SPB",
+        "Greenville": "GVL",
+        "Kingstree": "KTR",
+        "Florence": "FLO",
+        "Dillon": "DIL",
+        "Clemson": "CLE",
+        "Savannah": "SAV",
+        "Atlanta": "ATL",
+        "Jesup": "JES",
+        "Gainesville GA": "GAI",
+        "Toccoa": "TOC",
+        "Jacksonville": "JAX",
+        "Miami": "MIA",
+        "Orlando": "ORL",
+        "Tampa": "TPA",
+        "Fort Lauderdale": "FTL",
+        "West Palm Beach": "WPB",
+        "Kissimmee": "KIS",
+        "Lakeland": "LKL",
+        "Winter Park FL": "WTR",
+        "DeLand": "DLB",
+        "Sanford FL": "SAN",
+        "Hollywood FL": "HLW",
+        "Delray Beach": "DLD",
+        "Waldo": "WPK",
+        "Ocala": "OCA",
+        "Winter Haven": "WTH",
+        "Palatka": "PAL",
+        "Thurmond": "THU"
     ]
     
     // Station coordinates for mapping - synced with backend_v2/src/trackrat/config/stations.py
@@ -562,6 +618,7 @@ struct Stations {
     
     // Supported departure stations - Updated to match backend
     static let departureStations: [(name: String, code: String)] = [
+        // Northeast Corridor
         ("New York Penn Station", "NY"),
         ("Hoboken", "HB"),
         ("Metropark", "MP"),
@@ -573,7 +630,20 @@ struct Stations {
         ("Dunellen", "DN"),
         ("Raritan", "RA"),
         ("Philadelphia", "PH"),
-        ("Wilmington Station", "WI")
+        ("Wilmington Station", "WI"),
+        // Mid-Atlantic
+        ("Baltimore Station", "BL"),
+        ("Washington Union Station", "WS"),
+        ("Richmond Staples Mill Road", "RVR"),
+        // Southeast hubs
+        ("Charlotte", "CLT"),
+        ("Raleigh", "RGH"),
+        ("Savannah", "SAV"),
+        ("Jacksonville", "JAX"),
+        ("Orlando", "ORL"),
+        ("Tampa", "TPA"),
+        ("Miami", "MIA"),
+        ("Atlanta", "ATL")
     ]
     
     // Popular destination stations - kept in sync with departure stations
