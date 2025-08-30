@@ -15,6 +15,7 @@ struct SheetAwareScrollView<Content: View>: View {
     @State private var isDragging = false
     @State private var gestureStartPosition: CGFloat = 0
     @State private var hasTriggeredPositionChange = false
+    @State private var isScrollingEnabled = true
     
     init(
         sheetPosition: Binding<BottomSheetPosition>,
@@ -37,6 +38,7 @@ struct SheetAwareScrollView<Content: View>: View {
                     
                     // Actual content
                     content
+                        .allowsHitTesting(isScrollingEnabled) // Prevent interaction when disabled
                     
                     // Track scroll position
                     GeometryReader { geometry in
@@ -51,6 +53,7 @@ struct SheetAwareScrollView<Content: View>: View {
             .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
                 scrollOffset = value
             }
+            .disabled(!isScrollingEnabled) // Disable scrolling when needed
             .simultaneousGesture(
                 DragGesture(minimumDistance: 10)
                     .onChanged { value in
@@ -76,38 +79,53 @@ struct SheetAwareScrollView<Content: View>: View {
         }
         
         let translation = value.translation.height
+        var shouldMoveSheet = false
         
-        // If sheet is compact and swiping up, go to medium
+        // Determine if sheet should move instead of scrolling
         if sheetPosition == .compact && translation < -20 {
-            hasTriggeredPositionChange = true
-            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                sheetPosition = .medium
-            }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            // Sheet is compact and swiping up -> expand to medium
+            shouldMoveSheet = true
+        } else if sheetPosition == .medium && translation < -20 {
+            // Sheet is medium and swiping up -> expand fully
+            shouldMoveSheet = true
+        } else if sheetPosition == .expanded && scrollOffset >= -10 && translation > 50 {
+            // Sheet is expanded, at top of scroll, swiping down -> collapse to medium
+            shouldMoveSheet = true
+        } else if sheetPosition == .medium && translation > 50 {
+            // Sheet is at medium and swiping down -> collapse to compact
+            shouldMoveSheet = true
         }
-        // If sheet is medium and swiping up, expand it
-        else if sheetPosition == .medium && translation < -20 {
+        
+        // If sheet should move, disable scrolling first
+        if shouldMoveSheet {
             hasTriggeredPositionChange = true
-            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                sheetPosition = .expanded
+            isScrollingEnabled = false // Disable scrolling immediately
+            
+            // Perform the sheet movement
+            if sheetPosition == .compact && translation < -20 {
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .medium
+                }
+            } else if sheetPosition == .medium && translation < -20 {
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .expanded
+                }
+            } else if sheetPosition == .expanded && scrollOffset >= -10 && translation > 50 {
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .medium
+                }
+            } else if sheetPosition == .medium && translation > 50 {
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .compact
+                }
             }
+            
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
-        // If sheet is expanded, at top of scroll, and swiping down, go to medium
-        else if sheetPosition == .expanded && scrollOffset >= -10 && translation > 50 {
-            hasTriggeredPositionChange = true
-            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                sheetPosition = .medium
+            
+            // Re-enable scrolling after animation completes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                isScrollingEnabled = true
             }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
-        // If sheet is at medium, and swiping down, go to compact
-        else if sheetPosition == .medium && translation > 50 {
-            hasTriggeredPositionChange = true
-            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                sheetPosition = .compact
-            }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
     }
     
@@ -115,6 +133,13 @@ struct SheetAwareScrollView<Content: View>: View {
         isDragging = false
         gestureStartPosition = 0
         hasTriggeredPositionChange = false
+        
+        // Ensure scrolling is re-enabled after gesture ends
+        if !isScrollingEnabled {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isScrollingEnabled = true
+            }
+        }
     }
 }
 
