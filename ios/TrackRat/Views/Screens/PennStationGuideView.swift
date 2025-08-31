@@ -42,61 +42,61 @@ struct WaitingLocationCard: View {
     
     var locationInfo: (title: String, icon: String, tracks: String, directions: String, tip: String) {
         if isAmtrak {
-            // Amtrak-specific locations
+            // Amtrak - West End Concourse strategy
             switch cardIndex {
             case 0:
                 return (
-                    title: "Amtrak Waiting Area",
-                    icon: "building.2",
-                    tracks: "Best for: Acela & Northeast Regional",
-                    directions: "Enter through the Moynihan Train Hall on 33rd Street. Head to the upper level Amtrak waiting area with comfortable seating and departure boards.",
-                    tip: "Pro tip: Amtrak passengers can use the Metropolitan Lounge if you have first class or business class tickets!"
+                    title: "Skip the Crowds",
+                    icon: "figure.walk",
+                    tracks: "West End Concourse • Tracks 5-17",
+                    directions: "There's a hidden entrance that 90% of travelers don't know about. The West End Concourse gives you direct access to Amtrak tracks without fighting through the main station crowds.",
+                    tip: "This is Penn Station's best-kept secret for Amtrak passengers. Quieter, faster, with charging stations."
                 )
             case 1:
                 return (
-                    title: "West End Concourse",
-                    icon: "arrow.left.square",
-                    tracks: "Best for: Tracks 5-12",
-                    directions: "Enter at 8th Avenue & 31st Street, go down one level. This entrance connects directly to Amtrak tracks and avoids the main hall crowds.",
-                    tip: "Pro tip: There's a Starbucks here that's much less crowded than the one in the main hall."
+                    title: "Find the Entrance",
+                    icon: "location.circle",
+                    tracks: "31st Street & 8th Avenue",
+                    directions: "Exit at the southwest corner of 31st & 8th Ave. Look for \"To Trains\" signs. Take the elevator or walk down the ramps with white walls. You'll see NYC imagery on the walls—that's how you know you're in the right place.",
+                    tip: "Alternative: From Moynihan Train Hall, use the elevators on the eastern end—they stop at West End Concourse level."
                 )
             case 2:
                 return (
-                    title: "Moynihan Food Hall",
-                    icon: "fork.knife",
-                    tracks: "Quick access to all Amtrak tracks",
-                    directions: "Enter Moynihan Train Hall and head to the lower level food hall. Great spot to wait with food options, and you're directly above the tracks.",
-                    tip: "Pro tip: The food hall has the best sight lines to departure boards and shortest walk to tracks."
+                    title: "Navigate to Your Track",
+                    icon: "arrow.down.circle",
+                    tracks: "Best for tracks 7-16",
+                    directions: "Once in the West End Concourse, follow signs to your track number. Each platform has elevators and stairs. Check the Amtrak app for your track—there aren't many monitors down here.",
+                    tip: "Tracks 5-6 require longer walks. For tracks 17+, use the main Moynihan entrance instead."
                 )
             default:
                 return ("", "", "", "", "")
             }
         } else {
-            // NJ Transit-specific locations
+            // NJ Transit - 7th Avenue Concourse strategy
             switch cardIndex {
             case 0:
                 return (
-                    title: "Central Hall Side Corridors",
-                    icon: "arrow.left.and.right",
-                    tracks: "Best for: Tracks 1-12",
-                    directions: "In the main NJ Transit area, avoid the center. Use the side corridors near the walls. Much faster when track is announced.",
-                    tip: "Pro tip: Stand near the pillars by tracks 7-12 entrance for the quickest access when your track is called."
+                    title: "Avoid \"The Pit\"",
+                    icon: "figure.walk",
+                    tracks: "7th Avenue Concourse • All NJ Transit",
+                    directions: "Skip the notorious main waiting area (\"the pit\") entirely. There's a dedicated NJ Transit entrance that 81,000+ daily commuters use—it completely bypasses the chaos above.",
+                    tip: "This entrance opened in 2009 and remains one of the most efficient ways to board NJ Transit."
                 )
             case 1:
                 return (
-                    title: "7th Avenue Entrance",
-                    icon: "arrow.right.square",
-                    tracks: "Best for: Tracks 13-21",
-                    directions: "Enter from 7th Avenue side, near the LIRR area. This gives you backdoor access to higher-numbered NJ Transit tracks.",
-                    tip: "Pro tip: The corridor connecting to LIRR has direct stairs to tracks 17-21, avoiding the main crush."
+                    title: "Find the Entrance",
+                    icon: "location.circle",
+                    tracks: "31st Street & 7th Avenue",
+                    directions: "Look for the NJ Transit entrance at 31st & 7th Ave. You'll see a distinctive barrel-vaulted ceiling that looks like the original Penn Station. Take the escalators or elevators straight down.",
+                    tip: "This entrance never touches LIRR or Amtrak areas—it's 100% dedicated to NJ Transit."
                 )
             case 2:
                 return (
-                    title: "Exit Concourse Trick",
-                    icon: "arrow.up.backward",
-                    tracks: "Best for: Tracks 11-16",
-                    directions: "Counter-intuitive but effective: wait near the taxi/exit signs on the north side. These exits become entrances when tracks are announced.",
-                    tip: "Pro tip: Locals know this area clears out quickly after each train departure, giving you space to move fast."
+                    title: "Navigate to Your Track",
+                    icon: "arrow.down.circle",
+                    tracks: "Direct access to tracks 1-12",
+                    directions: "The concourse has Italian marble walls and granite floors. Check the departure boards, then head directly to your track. For tracks 1-4, you're golden. For tracks 5-12, follow the Exit Concourse signs for the fastest route.",
+                    tip: "Check NJ Transit's Departure Vision website on station WiFi for real-time track updates."
                 )
             default:
                 return ("", "", "", "", "")
