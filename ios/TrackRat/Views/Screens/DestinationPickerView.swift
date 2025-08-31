@@ -6,6 +6,7 @@ struct DestinationPickerView: View {
     @State private var isSearching = false
     @FocusState private var searchFieldFocused: Bool
     @State private var navigationBarVisible = false
+    @Binding var sheetPosition: BottomSheetPosition
     
     private var searchResults: [String] {
         let results = Stations.search(searchText)
@@ -39,7 +40,8 @@ struct DestinationPickerView: View {
             TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
-            VStack(spacing: 16) {
+            SheetAwareScrollView(sheetPosition: $sheetPosition) {
+                VStack(spacing: 16) {
                     // Simple centered title
                     Text("Where would you like to go?")
                         .font(.system(size: 26, weight: .semibold))
@@ -176,10 +178,11 @@ struct DestinationPickerView: View {
                     }
                     .padding(.top, searchFieldFocused ? 8 : 12)
                 
-                // Spacer to push content to top and fill remaining space
-                Spacer()
+                    // Spacer to push content to top and fill remaining space
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .navigationBarHidden(true)
         .onAppear {
@@ -254,6 +257,6 @@ struct FavoriteDestinationButton: View {
 }
 
 #Preview {
-    DestinationPickerView()
+    DestinationPickerView(sheetPosition: .constant(.expanded))
         .environmentObject(AppState())
 }

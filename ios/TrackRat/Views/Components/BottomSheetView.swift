@@ -138,11 +138,39 @@ struct BottomSheetView<Content: View>: View {
             .frame(width: 40, height: 5)
             .contentShape(Rectangle().size(width: 100, height: 44)) // Larger hit area
             .onTapGesture {
-                // Only allow tap when not scrollable
-                if !isScrollable {
-                    cyclePosition()
-                }
+                // Allow tap to cycle position
+                cyclePosition()
             }
+            .gesture(
+                // Add drag gesture for smooth dragging
+                DragGesture()
+                    .onEnded { value in
+                        let translation = value.translation.height
+                        let velocity = value.predictedEndTranslation.height - translation
+                        
+                        // Use same thresholds as SheetAwareScrollView
+                        let velocityThreshold: CGFloat = 50
+                        let translationThreshold: CGFloat = 50
+                        
+                        if position == .medium {
+                            // Swipe up to expand
+                            if velocity < -velocityThreshold || translation < -translationThreshold {
+                                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
+                                    position = .expanded
+                                }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } else if position == .expanded {
+                            // Swipe down to collapse
+                            if velocity > velocityThreshold || translation > translationThreshold {
+                                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
+                                    position = .medium
+                                }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        }
+                    }
+            )
     }
     
     private func snapToNearestPosition(dragOffset: CGFloat, velocity: CGFloat, screenHeight: CGFloat) {

@@ -639,9 +639,9 @@ struct MapContainerView: View {
     private func bottomSheetNavigationContent(for destination: NavigationDestination) -> some View {
         switch destination {
         case .departureSelector:
-            DeparturePickerView()
+            DeparturePickerView(sheetPosition: $bottomSheetPosition)
         case .destinationPicker:
-            DestinationPickerView()
+            DestinationPickerView(sheetPosition: $bottomSheetPosition)
         case .trainList(let stationName):
             TrainListView(destination: stationName, sheetPosition: $bottomSheetPosition)
         case .trainDetails(let trainId):

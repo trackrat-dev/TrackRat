@@ -368,6 +368,7 @@ struct CombinedDetailsCard: View {
                 }
             }
             .padding([.horizontal, .top])
+            .allowsHitTesting(false)  // Allow swipe gestures to pass through
             
             
             // Stops section
