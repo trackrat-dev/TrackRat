@@ -144,18 +144,18 @@ struct SheetAwareScrollView<Content: View>: View {
         // Only handle sheet movement if we're in sheetMoving mode
         if gestureMode == .sheetMoving {
             // Check if we should actually move the sheet based on drag distance
-            if sheetPosition == .medium && translation < -20 {
+            if sheetPosition == .medium && translation < -5 {
                 // Expand the sheet
                 print("📍 Expanding sheet from medium to expanded")
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
                     sheetPosition = .expanded
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 
-            } else if sheetPosition == .expanded && translation > 20 {
+            } else if sheetPosition == .expanded && translation > 5 {
                 // Collapse the sheet (we already verified we're at scroll top in determineGestureMode)
                 print("📍 Collapsing sheet from expanded to medium")
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
                     sheetPosition = .medium
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
