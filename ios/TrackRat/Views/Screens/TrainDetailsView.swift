@@ -6,19 +6,22 @@ struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @Binding var sheetPosition: BottomSheetPosition
     
     let trainId: Int  // Keep for backwards compatibility
     
     // Legacy initializer for database ID
-    init(trainId: Int) {
+    init(trainId: Int, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
         self.trainId = trainId
+        self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(trainId: trainId)
         self._viewModel = StateObject(wrappedValue: VModel)
     }
     
     // New initializer for train number
-    init(trainNumber: String, fromStation: String? = nil) {
+    init(trainNumber: String, fromStation: String? = nil, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
         self.trainId = 0  // Not used for train number based initialization
+        self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
@@ -34,7 +37,7 @@ struct TrainDetailsView: View {
             TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
-            ScrollView {
+            SheetAwareScrollView(sheetPosition: $sheetPosition) {
                 VStack {
                     if viewModel.isLoading && viewModel.train == nil {
                         TrackRatLoadingView(message: "Loading train details...")
@@ -72,7 +75,7 @@ struct TrainDetailsView: View {
                         selectedDestinationName: appState.selectedDestination
                     )
                 }
-            } // ScrollView
+            } // SheetAwareScrollView
         } // ZStack
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)

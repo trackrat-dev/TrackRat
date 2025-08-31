@@ -645,9 +645,9 @@ struct MapContainerView: View {
         case .trainList(let stationName):
             TrainListView(destination: stationName, sheetPosition: $bottomSheetPosition)
         case .trainDetails(let trainId):
-            TrainDetailsView(trainId: trainId)
+            TrainDetailsView(trainId: trainId, sheetPosition: $bottomSheetPosition)
         case .trainDetailsFlexible(let trainNumber, let fromStation):
-            TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation)
+            TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, sheetPosition: $bottomSheetPosition)
         case .advancedConfiguration:
             AdvancedConfigurationView()
         case .myProfile:
