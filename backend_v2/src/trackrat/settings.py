@@ -66,6 +66,17 @@ class Settings(BaseSettings):
         default=60, description="Maximum age of data before refresh (seconds)", ge=1
     )
 
+    # Validation Settings
+    internal_api_url: str = Field(
+        default="http://localhost:8000",
+        description="Internal API URL for validation service (uses localhost in Cloud Run)",
+    )
+    validation_max_trains_to_verify: int = Field(
+        default=20,
+        description="Maximum number of missing trains to verify in detail",
+        ge=1,
+    )
+
     # Monitoring
     enable_metrics: bool = Field(default=True, description="Enable Prometheus metrics")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(

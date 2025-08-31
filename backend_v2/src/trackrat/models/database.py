@@ -411,3 +411,34 @@ class SchedulerTaskRun(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     __table_args__ = (Index("idx_task_freshness", "task_name", "last_successful_run"),)
+
+
+class ValidationResult(Base):
+    """Store results from train validation service for monitoring and analysis."""
+
+    __tablename__ = "validation_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    # Route and source information
+    route = Column(String(10), nullable=False)  # e.g., "NY->PJ"
+    source = Column(String(10), nullable=False)  # e.g., "NJT", "AMTRAK"
+
+    # Coverage metrics
+    transit_train_count = Column(Integer, nullable=False)
+    api_train_count = Column(Integer, nullable=False)
+    coverage_percent = Column(Float, nullable=False)
+
+    # Missing and extra trains (stored as JSON arrays for simplicity)
+    missing_trains = Column(JSON)  # Trains in transit API but not our API
+    extra_trains = Column(JSON)  # Trains in our API but not transit API
+
+    # Additional details for debugging
+    details = Column(JSON)  # Store sample accessibility checks, error details, etc.
+
+    # Indexing for efficient queries
+    __table_args__ = (
+        Index("idx_validation_time", "run_at", "route", "source"),
+        Index("idx_validation_coverage", "route", "source", "coverage_percent"),
+    )

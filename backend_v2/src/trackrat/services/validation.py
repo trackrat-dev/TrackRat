@@ -14,6 +14,8 @@ from structlog import get_logger
 from trackrat.collectors.amtrak.client import AmtrakClient
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.config.stations import INTERNAL_TO_AMTRAK_STATION_MAP
+from trackrat.db.engine import get_session
+from trackrat.models.database import ValidationResult as ValidationResultDB
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.metrics import (
     missing_trains_detected,
@@ -51,9 +53,9 @@ class ValidationResult:
         # This gives us the percentage of transit trains that we successfully have
         if transit_trains:
             found_trains = api_trains.intersection(transit_trains)
-            self.coverage_percent = (len(found_trains) / len(transit_trains)) * 100
+            self.coverage_percent = (len(found_trains) / len(transit_trains)) * 100.0
         else:
-            self.coverage_percent = 100
+            self.coverage_percent = 100.0
 
 
 class TrainValidationService:
@@ -76,7 +78,7 @@ class TrainValidationService:
         self.njt_client: NJTransitClient | None = None
         self.amtrak_client: AmtrakClient | None = None
         self.http_client: httpx.AsyncClient | None = None
-        self.api_base_url = "http://localhost:8000"  # Internal API calls
+        self.api_base_url = self.settings.internal_api_url  # Use configured URL
 
     async def __aenter__(self) -> "TrainValidationService":
         """Async context manager entry."""
@@ -378,10 +380,12 @@ class TrainValidationService:
 
             # Fix #3 & #4: Enhanced logging with stale data detection
             # Log detailed info about validation results
+            missing_details = {}  # Initialize outside the if block
+
             if result.missing_trains or result.extra_trains:
-                # Verify accessibility of missing trains (limit to first 5 for performance)
-                missing_details = {}
-                for train_id in list(result.missing_trains)[:5]:
+                # Verify accessibility of missing trains (configurable limit)
+                max_to_verify = self.settings.validation_max_trains_to_verify
+                for train_id in list(result.missing_trains)[:max_to_verify]:
                     details = await self.verify_train_details_accessible(train_id)
                     missing_details[train_id] = details
 
@@ -428,7 +432,50 @@ class TrainValidationService:
 
             results.append(result)
 
+            # Save to database for persistence
+            await self._save_validation_result(result, missing_details)
+
         return results
+
+    async def _save_validation_result(
+        self, result: ValidationResult, missing_details: dict[str, Any] | None = None
+    ) -> None:
+        """Save validation result to database for persistence and monitoring."""
+        try:
+            async with get_session() as db:
+                db_result: ValidationResultDB = ValidationResultDB(
+                    route=result.route,
+                    source=result.source,
+                    transit_train_count=len(result.transit_trains),
+                    api_train_count=len(result.api_trains),
+                    coverage_percent=float(result.coverage_percent),  # type: ignore[arg-type]
+                    missing_trains=(
+                        list(result.missing_trains) if result.missing_trains else []
+                    ),
+                    extra_trains=(
+                        list(result.extra_trains) if result.extra_trains else []
+                    ),
+                    details={
+                        "missing_train_details": missing_details or {},
+                        "timestamp": result.timestamp.isoformat(),
+                    },
+                )
+                db.add(db_result)
+                await db.commit()
+
+                logger.debug(
+                    "validation_result_saved",
+                    route=result.route,
+                    source=result.source,
+                    coverage=result.coverage_percent,
+                )
+        except Exception as e:
+            logger.error(
+                "failed_to_save_validation_result",
+                route=result.route,
+                source=result.source,
+                error=str(e),
+            )
 
     async def run_validation(self) -> list[ValidationResult]:
         """Run validation for all monitored routes."""
