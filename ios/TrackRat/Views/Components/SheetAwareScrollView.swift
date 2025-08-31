@@ -73,8 +73,8 @@ struct SheetAwareScrollView<Content: View>: View {
                     .onChanged { value in
                         handleDragGesture(value: value)
                     }
-                    .onEnded { _ in
-                        gestureMode = .idle  // Reset for next gesture
+                    .onEnded { value in
+                        handleDragEnd(value: value)
                     }
             )
         }
@@ -133,33 +133,77 @@ struct SheetAwareScrollView<Content: View>: View {
             gestureMode = determineGestureMode(translation: translation)
             print("🔄 Gesture mode set to: \(gestureMode)")
             
-            // If we determined this should be scrolling, do nothing else
-            // The ScrollView will handle it naturally
+            // If we determined this should be scrolling, let ScrollView handle it
             if gestureMode == .scrolling {
                 print("🔄 Letting ScrollView handle the gesture")
-                return
             }
         }
         
-        // Only handle sheet movement if we're in sheetMoving mode
-        if gestureMode == .sheetMoving {
-            // Check if we should actually move the sheet based on drag distance
-            if sheetPosition == .medium && translation < -5 {
-                // Expand the sheet
-                print("📍 Expanding sheet from medium to expanded")
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
-                    sheetPosition = .expanded
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                
-            } else if sheetPosition == .expanded && translation > 5 {
-                // Collapse the sheet (we already verified we're at scroll top in determineGestureMode)
-                print("📍 Collapsing sheet from expanded to medium")
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
-                    sheetPosition = .medium
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // No position changes during drag - wait for gesture end
+    }
+    
+    private func handleDragEnd(value: DragGesture.Value) {
+        defer {
+            // Always reset gesture mode at the end
+            gestureMode = .idle
+        }
+        
+        // Only make position changes if we're in sheetMoving mode
+        guard gestureMode == .sheetMoving else {
+            print("🔄 Gesture ended, mode was: \(gestureMode)")
+            return
+        }
+        
+        let translation = value.translation.height
+        let velocity = value.predictedEndTranslation.height - translation
+        
+        print("🎯 Gesture ended with translation: \(translation), velocity: \(velocity)")
+        
+        // Determine intent based on velocity and translation
+        // Velocity threshold for "intentional" swipe
+        let velocityThreshold: CGFloat = 50
+        
+        // Translation threshold for "sufficient" drag
+        let translationThreshold: CGFloat = 50
+        
+        // Determine if user intended to change position
+        let shouldChangePosition: Bool
+        let targetPosition: BottomSheetPosition
+        
+        switch sheetPosition {
+        case .medium:
+            // From medium, can only go to expanded (swipe up)
+            let hasStrongUpwardVelocity = velocity < -velocityThreshold
+            let hasSufficientUpwardDrag = translation < -translationThreshold
+            
+            shouldChangePosition = hasStrongUpwardVelocity || hasSufficientUpwardDrag
+            targetPosition = .expanded
+            
+            print("📊 From medium: velocity=\(velocity), translation=\(translation)")
+            print("   Strong velocity: \(hasStrongUpwardVelocity), Sufficient drag: \(hasSufficientUpwardDrag)")
+            
+        case .expanded:
+            // From expanded, can only go to medium (swipe down)
+            // We already verified we're at scroll top in determineGestureMode
+            let hasStrongDownwardVelocity = velocity > velocityThreshold
+            let hasSufficientDownwardDrag = translation > translationThreshold
+            
+            shouldChangePosition = hasStrongDownwardVelocity || hasSufficientDownwardDrag
+            targetPosition = .medium
+            
+            print("📊 From expanded: velocity=\(velocity), translation=\(translation)")
+            print("   Strong velocity: \(hasStrongDownwardVelocity), Sufficient drag: \(hasSufficientDownwardDrag)")
+        }
+        
+        // Apply position change if determined
+        if shouldChangePosition {
+            print("✅ Changing position to: \(targetPosition)")
+            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
+                sheetPosition = targetPosition
             }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } else {
+            print("❌ Not changing position - insufficient velocity/translation")
         }
     }
     
