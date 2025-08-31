@@ -71,7 +71,8 @@ struct BottomSheetView<Content: View>: View {
                     .ignoresSafeArea()
             )
             .offset(y: safeOffset(for: geometry.size.height))
-            // Animation removed - now handled explicitly in gesture handlers and SheetAwareScrollView
+            // Single animation for visual offset changes when position updates
+            .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.95), value: safeOffset(for: geometry.size.height))
             .gesture(
                 // Only apply drag gesture to entire sheet if content is not scrollable
                 isScrollable ? nil : DragGesture()
@@ -178,15 +179,15 @@ struct BottomSheetView<Content: View>: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         }
         
-        withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
-            position = nearestPosition
-        }
+        // Direct position update - animation handled by SheetAwareScrollView
+        position = nearestPosition
     }
     
     private func cyclePosition() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         
         // Simple toggle between medium and expanded
+        // Animation only for tap gesture (SheetAwareScrollView doesn't handle taps)
         withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
             switch position {
             case .medium:
