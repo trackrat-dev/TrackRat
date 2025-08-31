@@ -71,8 +71,8 @@ struct BottomSheetView<Content: View>: View {
                     .ignoresSafeArea()
             )
             .offset(y: safeOffset(for: geometry.size.height))
-            // Single animation for visual offset changes when position updates
-            .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.95), value: safeOffset(for: geometry.size.height))
+            // Animate position changes smoothly
+            .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.95), value: position)
             .gesture(
                 // Only apply drag gesture to entire sheet if content is not scrollable
                 isScrollable ? nil : DragGesture()
@@ -98,7 +98,12 @@ struct BottomSheetView<Content: View>: View {
     private func safeOffset(for screenHeight: CGFloat) -> CGFloat {
         let baseOffset = position.offsetFor(screenHeight: screenHeight)
         
-        // Limit translation to only allow movement between medium and expanded
+        // When scrollable, ignore translation completely - SheetAwareScrollView handles everything
+        if isScrollable {
+            return baseOffset
+        }
+        
+        // For non-scrollable sheets, apply translation limits
         var limitedTranslation = translation
         
         // Calculate the offsets for positions
@@ -133,30 +138,11 @@ struct BottomSheetView<Content: View>: View {
             .frame(width: 40, height: 5)
             .contentShape(Rectangle().size(width: 100, height: 44)) // Larger hit area
             .onTapGesture {
-                // Cycle through positions on tap
-                cyclePosition()
+                // Only allow tap when not scrollable
+                if !isScrollable {
+                    cyclePosition()
+                }
             }
-            .gesture(
-                // Only allow drag on indicator when content is not scrollable
-                // When scrollable, let SheetAwareScrollView handle everything
-                isScrollable ? nil : DragGesture()
-                    .updating($translation) { value, state, _ in
-                        state = value.translation.height
-                    }
-                    .onChanged { _ in
-                        isDragging = true
-                    }
-                    .onEnded { value in
-                        isDragging = false
-                        // Get screen height from UIScreen since we don't have geometry here
-                        let screenHeight = UIScreen.main.bounds.height
-                        snapToNearestPosition(
-                            dragOffset: value.translation.height,
-                            velocity: value.predictedEndTranslation.height,
-                            screenHeight: screenHeight
-                        )
-                    }
-            )
     }
     
     private func snapToNearestPosition(dragOffset: CGFloat, velocity: CGFloat, screenHeight: CGFloat) {
