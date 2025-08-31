@@ -1237,7 +1237,7 @@ struct SegmentedTrackPredictionView: View {
                     let segmentWidth = geometry.size.width * segment.probability
                     
                     VStack {
-                        if segment.probability >= 0.12 {
+                        if segment.probability >= 0.15 {
                             Text("\(Int(segment.probability * 100))%")
                                 .font(.caption2)
                                 .fontWeight(.medium)
@@ -1311,11 +1311,7 @@ struct TrackPredictionSegment: Identifiable, Equatable {
         if isOthersGroup {
             return "Others"
         }
-        // For 12-17% probability, show "Tracks" prefix with smaller font
-        if probability >= 0.12 && probability < 0.17 {
-            return "Tracks\n\(platformName)"
-        }
-        // For >=17% probability, show "Tracks" prefix with normal font
+        // Show "Tracks" prefix for all segments >=15%
         return "Tracks\n\(platformName)"
     }
     
@@ -1340,8 +1336,8 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .inside
         }
         
-        // Show labels for segments with >= 12% probability
-        if probability >= 0.12 {
+        // Show labels for segments with >= 15% probability
+        if probability >= 0.15 {
             return .inside
         } else {
             return .none
@@ -1352,12 +1348,8 @@ struct TrackPredictionSegment: Identifiable, Equatable {
         if isOthersGroup {
             return .caption2
         }
-        // Smaller font for 12-17% probability segments
-        if probability >= 0.12 && probability < 0.17 {
-            return .system(size: 9, weight: .medium)
-        }
-        // Normal font for >=17% probability segments
-        return .caption2
+        // Use size 10 font (between size 9 and caption2) for all segments >= 15%
+        return .system(size: 10, weight: .medium)
     }
 }
 
