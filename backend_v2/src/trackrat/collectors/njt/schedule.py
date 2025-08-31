@@ -294,6 +294,7 @@ class NJTScheduleCollector:
             scheduled_departure=scheduled_departure,
             scheduled_arrival=scheduled_departure,  # Same as departure for origin
             track=track if track and track != line else None,
+            track_assigned_at=now_et() if (track and track != line) else None,
             has_departed_station=False,
         )
 
@@ -439,6 +440,7 @@ class NJTScheduleCollector:
                 scheduled_arrival=scheduled_arrival,
                 scheduled_departure=scheduled_departure,
                 track=stop.TRACK if stop.TRACK else None,
+                track_assigned_at=now_et() if stop.TRACK else None,
                 has_departed_station=False,
             )
 

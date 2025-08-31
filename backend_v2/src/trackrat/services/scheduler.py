@@ -1235,6 +1235,7 @@ class SchedulerService:
                                 actual_departure=actual_departure,
                                 actual_arrival=actual_arrival,
                                 track=stop_data.TRACK or None,
+                                track_assigned_at=now_et() if stop_data.TRACK else None,
                                 raw_njt_departed_flag=stop_data.DEPARTED,
                                 has_departed_station=(stop_data.DEPARTED == "YES"),
                             )
