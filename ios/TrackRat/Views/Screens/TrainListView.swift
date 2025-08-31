@@ -256,12 +256,6 @@ struct TrainCard: View {
                             .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
                             .strikethrough(isCancelled)
                         
-                        if isScheduledOnly {
-                            Text("(Scheduled)")
-                                .font(.caption)
-                                .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.8) : .black.opacity(0.6)))
-                        }
-                        
                         if isExpress {
                             Image(systemName: "bolt.fill")
                                 .font(.caption)
