@@ -22,6 +22,7 @@ from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
+from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.settings import Settings, get_settings
@@ -154,6 +155,17 @@ class SchedulerService:
             trigger=CronTrigger(hour=0, minute=30, timezone="America/New_York"),
             id="njt_schedule_collection",
             name="NJT Daily Schedule Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=900,  # 15 minute grace period
+        )
+
+        # Schedule Amtrak pattern-based schedule generation (daily at 12:45 AM)
+        self.scheduler.add_job(
+            self.generate_amtrak_schedules,
+            trigger=CronTrigger(hour=0, minute=45, timezone="America/New_York"),
+            id="amtrak_schedule_generation",
+            name="Amtrak Pattern Schedule Generation",
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=900,  # 15 minute grace period
@@ -2309,6 +2321,88 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("njt_schedule_collection_skipped_still_fresh")
+
+    async def generate_amtrak_schedules(self) -> None:
+        """Generate Amtrak schedules based on historical patterns.
+
+        This task runs daily at 12:45 AM and analyzes the past 22 days of
+        Amtrak train data to identify patterns and create SCHEDULED journey
+        records for trains that are expected to run today.
+        """
+        task_id = f"amtrak_schedules_{now_et().isoformat()}"
+
+        async def do_schedule_generation() -> None:
+            """The actual schedule generation work."""
+            try:
+                logger.info("starting_amtrak_schedule_generation_task")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Create the pattern scheduler
+                pattern_scheduler = AmtrakPatternScheduler()
+
+                # Generate schedules for today
+                today = now_et().date()
+                result = await pattern_scheduler.generate_daily_schedules(today)
+
+                logger.info(
+                    "amtrak_schedule_generation_completed",
+                    created=result.get("created", 0),
+                    updated=result.get("updated", 0),
+                    skipped=result.get("skipped", 0),
+                    errors=result.get("errors", 0),
+                    target_date=today.isoformat(),
+                )
+
+                # Also generate for tomorrow for better planning
+                tomorrow = today + timedelta(days=1)
+                tomorrow_result = await pattern_scheduler.generate_daily_schedules(
+                    tomorrow
+                )
+
+                logger.info(
+                    "amtrak_tomorrow_schedule_generation_completed",
+                    created=tomorrow_result.get("created", 0),
+                    updated=tomorrow_result.get("updated", 0),
+                    skipped=tomorrow_result.get("skipped", 0),
+                    errors=tomorrow_result.get("errors", 0),
+                    target_date=tomorrow.isoformat(),
+                )
+
+                # Clean up old scheduled records that never became observed
+                deleted_count = await pattern_scheduler.cleanup_old_scheduled_records(
+                    days_to_keep=1
+                )
+
+                logger.info(
+                    "amtrak_schedule_cleanup_completed",
+                    deleted_count=deleted_count,
+                )
+
+            except Exception as e:
+                logger.error(
+                    "amtrak_schedule_generation_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check with 23-hour minimum interval (safe for once-daily task)
+        async with get_session() as db:
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="amtrak_schedule_generation",
+                minimum_interval_seconds=23 * 60 * 60,  # 23 hours
+                task_func=do_schedule_generation,
+            )
+
+            if not executed:
+                logger.debug("amtrak_schedule_generation_skipped_still_fresh")
 
     def get_status(self) -> dict[str, Any]:
         """Get scheduler status and job information."""
