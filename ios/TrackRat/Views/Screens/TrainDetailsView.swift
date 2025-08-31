@@ -365,10 +365,10 @@ struct CombinedDetailsCard: View {
                         train: train,
                         isDepartingFromNYPenn: appState.departureStationCode == "NY"
                     )
+                    .allowsHitTesting(true)  // Ensure predictions card is interactive
                 }
             }
             .padding([.horizontal, .top])
-            .allowsHitTesting(false)  // Allow swipe gestures to pass through
             
             
             // Stops section
@@ -1110,7 +1110,6 @@ struct SegmentedTrackPredictionView: View {
             // Penn Station waiting guide link for NY departures
             if isDepartingFromNYPenn && showWaitingLink {
                 PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
-                    .allowsHitTesting(true)  // Override parent's hit testing to keep button clickable
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
