@@ -1110,6 +1110,7 @@ struct SegmentedTrackPredictionView: View {
             // Penn Station waiting guide link for NY departures
             if isDepartingFromNYPenn && showWaitingLink {
                 PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
+                    .allowsHitTesting(true)  // Override parent's hit testing to keep button clickable
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
