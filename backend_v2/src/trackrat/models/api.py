@@ -309,7 +309,7 @@ class AmtrakStationData(BaseModel):
 
     name: str
     code: str
-    tz: str
+    tz: str | None = None  # Made optional - some Gulf Coast stations don't provide this
     bus: bool
     schArr: str | None = None
     schDep: str | None = None
