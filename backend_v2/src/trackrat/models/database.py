@@ -117,7 +117,9 @@ class JourneyStop(Base):
     journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
     station_code = Column(String(3), nullable=False)
     station_name = Column(String(100), nullable=False)
-    stop_sequence = Column(Integer, nullable=True)  # Allow NULL until journey collector sets it
+    stop_sequence = Column(
+        Integer, nullable=True
+    )  # Allow NULL until journey collector sets it
 
     # Scheduled times (from initial schedule)
     scheduled_arrival = Column(DateTime(timezone=True))
