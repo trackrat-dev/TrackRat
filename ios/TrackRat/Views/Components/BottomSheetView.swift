@@ -26,6 +26,9 @@ struct BottomSheetView<Content: View>: View {
     @State private var isDragging = false
     @State private var scrollOffset: CGFloat = 0
     
+    // Scene phase monitoring for safety
+    @Environment(\.scenePhase) private var scenePhase
+    
     init(position: Binding<BottomSheetPosition>, isScrollable: Bool = false, @ViewBuilder content: () -> Content) {
         self._position = position
         self.isScrollable = isScrollable
@@ -73,6 +76,19 @@ struct BottomSheetView<Content: View>: View {
             .offset(y: safeOffset(for: geometry.size.height))
             // Animate position changes smoothly
             .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.95), value: position)
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                // Reset drag state when app lifecycle changes
+                print("🎛️ BottomSheet: Scene phase changed: \(oldPhase) → \(newPhase)")
+                
+                if newPhase == .active || newPhase == .inactive {
+                    // Reset dragging state when app becomes active or inactive
+                    if isDragging {
+                        print("🔧 BottomSheet: Resetting isDragging from \(isDragging) to false")
+                        isDragging = false
+                    }
+                    // Note: @GestureState translation auto-resets
+                }
+            }
             .gesture(
                 // Only apply drag gesture to entire sheet if content is not scrollable
                 isScrollable ? nil : DragGesture()
@@ -80,9 +96,13 @@ struct BottomSheetView<Content: View>: View {
                         state = value.translation.height
                     }
                     .onChanged { _ in
+                        if !isDragging {
+                            print("🎛️ BottomSheet: Drag started (isDragging → true)")
+                        }
                         isDragging = true
                     }
                     .onEnded { value in
+                        print("🎛️ BottomSheet: Drag ended (isDragging → false)")
                         isDragging = false
                         snapToNearestPosition(
                             dragOffset: value.translation.height,

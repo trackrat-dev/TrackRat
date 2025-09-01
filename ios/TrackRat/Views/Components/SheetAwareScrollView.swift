@@ -23,6 +23,9 @@ struct SheetAwareScrollView<Content: View>: View {
     @State private var isScrolledToTop: Bool = true  // Track if we're at scroll top
     @State private var gestureMode: GestureMode = .idle
     
+    // Scene phase monitoring to detect app lifecycle changes
+    @Environment(\.scenePhase) private var scenePhase
+    
     init(
         sheetPosition: Binding<BottomSheetPosition>,
         showsIndicators: Bool = true,
@@ -65,6 +68,45 @@ struct SheetAwareScrollView<Content: View>: View {
                 // Initialize scroll state on appear
                 print("📜 ScrollView appeared, initializing isScrolledToTop = true")
                 isScrolledToTop = true
+                // Ensure gesture state is clean on appear
+                gestureMode = .idle
+                print("🔧 ScrollView onAppear: Reset gestureMode to .idle")
+            }
+            .onChange(of: scenePhase) { oldPhase, newPhase in
+                // Reset gesture state when app becomes active to prevent stuck states
+                print("🔄 Scene phase changed: \(oldPhase) → \(newPhase)")
+                
+                switch newPhase {
+                case .active:
+                    // App became active - reset any stuck gesture states
+                    if gestureMode != .idle {
+                        print("⚠️ App became active with non-idle gesture mode: \(gestureMode)")
+                        print("🔧 Resetting gestureMode to .idle")
+                        gestureMode = .idle
+                    }
+                    // Re-evaluate scroll position when app becomes active
+                    print("🔧 App active: Re-evaluating scroll position")
+                    // Note: isScrolledToTop will be updated by the GeometryReader onChange
+                    
+                case .inactive:
+                    // App is transitioning (e.g., control center, app switcher)
+                    print("📱 App inactive - gesture mode: \(gestureMode)")
+                    if gestureMode != .idle {
+                        print("🔧 App inactive: Resetting gestureMode to .idle")
+                        gestureMode = .idle
+                    }
+                    
+                case .background:
+                    // App entered background
+                    print("📱 App entered background - gesture mode: \(gestureMode)")
+                    if gestureMode != .idle {
+                        print("🔧 App backgrounded: Force resetting gestureMode to .idle")
+                        gestureMode = .idle
+                    }
+                    
+                @unknown default:
+                    print("❓ Unknown scene phase: \(newPhase)")
+                }
             }
             .disabled(gestureMode == .sheetMoving)  // Disable scroll when sheet is moving
             .simultaneousGesture(
@@ -130,27 +172,39 @@ struct SheetAwareScrollView<Content: View>: View {
         // Determine mode once at the start of gesture
         if gestureMode == .idle {
             print("🔄 Gesture started, determining mode...")
+            print("   Current state - Sheet: \(sheetPosition), ScrollTop: \(isScrolledToTop)")
+            let previousMode = gestureMode
             gestureMode = determineGestureMode(translation: translation)
-            print("🔄 Gesture mode set to: \(gestureMode)")
+            print("🔄 Gesture mode transition: \(previousMode) → \(gestureMode)")
+            print("   Translation: \(translation), Direction: \(translation < 0 ? "Up" : "Down")")
             
             // If we determined this should be scrolling, let ScrollView handle it
             if gestureMode == .scrolling {
                 print("🔄 Letting ScrollView handle the gesture")
+            } else if gestureMode == .sheetMoving {
+                print("🔄 Sheet will handle the gesture (ScrollView disabled)")
             }
+        } else {
+            // Log if we're getting drag updates while not idle (shouldn't happen normally)
+            print("⚠️ Drag update received while gestureMode = \(gestureMode)")
         }
         
         // No position changes during drag - wait for gesture end
     }
     
     private func handleDragEnd(value: DragGesture.Value) {
+        print("🏁 Gesture ending - Current mode: \(gestureMode)")
+        
         defer {
             // Always reset gesture mode at the end
+            let previousMode = gestureMode
             gestureMode = .idle
+            print("🔧 Gesture mode reset: \(previousMode) → .idle")
         }
         
         // Only make position changes if we're in sheetMoving mode
         guard gestureMode == .sheetMoving else {
-            print("🔄 Gesture ended, mode was: \(gestureMode)")
+            print("🔄 Gesture ended without sheet movement, mode was: \(gestureMode)")
             return
         }
         
