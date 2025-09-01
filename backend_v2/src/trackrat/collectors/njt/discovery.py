@@ -225,7 +225,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     journey_id=journey.id,
                     station_code=station_code,
                     station_name=get_station_name(station_code),
-                    stop_sequence=0,  # Will be updated later by journey collector
+                    # Don't set stop_sequence - let journey collector handle it exclusively
                     track=sanitized_track,
                     track_assigned_at=now_et(),
                 )
