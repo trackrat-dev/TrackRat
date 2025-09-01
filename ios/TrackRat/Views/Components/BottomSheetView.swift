@@ -77,17 +77,14 @@ struct BottomSheetView<Content: View>: View {
             // Animate position changes smoothly
             .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.95), value: position)
             .onChange(of: scenePhase) { oldPhase, newPhase in
-                // Reset drag state when app lifecycle changes
                 print("🎛️ BottomSheet: Scene phase changed: \(oldPhase) → \(newPhase)")
                 
-                if newPhase == .active || newPhase == .inactive {
-                    // Reset dragging state when app becomes active or inactive
-                    if isDragging {
-                        print("🔧 BottomSheet: Resetting isDragging from \(isDragging) to false")
-                        isDragging = false
-                    }
-                    // Note: @GestureState translation auto-resets
+                // Always reset dragging state on any phase change for safety
+                if isDragging {
+                    isDragging = false
+                    print("🔧 BottomSheet: Reset isDragging to false")
                 }
+                // Note: @GestureState translation auto-resets
             }
             .gesture(
                 // Only apply drag gesture to entire sheet if content is not scrollable
