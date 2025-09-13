@@ -29,13 +29,7 @@ struct YouTubeLinkView: View {
                     .clipped()
                     .frame(maxWidth: .infinity)
 
-                // Dark overlay for better play button visibility
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.black.opacity(isPressed ? 0.5 : 0.3))
-                    .frame(maxHeight: maxHeight)
-                    .aspectRatio(16/9, contentMode: .fit)
-
-                // YouTube play button
+                // YouTube play button (no overlay)
                 ZStack {
                     Circle()
                         .fill(Color.red)
@@ -134,7 +128,7 @@ struct WaitingLocationCard: View {
                 return (
                     title: "For Amtrak, use the West End Concourse!",
                     imageName: "amtrak_video",
-                    directions: "Skip the crowded main areas of Penn Station & Moynihan Hall.\n\nWatch the video above or swipe for more info."
+                    directions: "Skip the crowded main areas of Penn Station & Moynihan Hall.\n\nClick to watch the video above or swipe for more info."
                 )
             case 1:
                 return (
@@ -164,7 +158,7 @@ struct WaitingLocationCard: View {
                 return (
                     title: "For NJ Transit, use the sub-level Exit Concourse!",
                     imageName: "nj_transit_video",
-                    directions: "Skip the crowded main waiting areas.\n\nWatch the video above or swipe for more info."
+                    directions: "Skip the crowded main waiting areas.\n\nClick to watch the video above or swipe for more info."
                 )
             case 1:
                 return (
