@@ -1,5 +1,81 @@
 import SwiftUI
 
+// YouTube Link View Component
+struct YouTubeLinkView: View {
+    let thumbnailImageName: String
+    let youtubeURL: String
+    let maxHeight: CGFloat
+
+    @Environment(\.openURL) private var openURL
+    @State private var isPressed = false
+
+    init(thumbnailImageName: String, youtubeURL: String, maxHeight: CGFloat = 200) {
+        self.thumbnailImageName = thumbnailImageName
+        self.youtubeURL = youtubeURL
+        self.maxHeight = maxHeight
+    }
+
+    var body: some View {
+        Button(action: {
+            openYouTubeVideo()
+        }) {
+            ZStack {
+                // Thumbnail image
+                Image(thumbnailImageName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: maxHeight)
+                    .cornerRadius(12)
+                    .clipped()
+                    .frame(maxWidth: .infinity)
+
+                // Dark overlay for better play button visibility
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.black.opacity(isPressed ? 0.5 : 0.3))
+                    .frame(maxHeight: maxHeight)
+                    .aspectRatio(16/9, contentMode: .fit)
+
+                // YouTube play button
+                ZStack {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 60, height: 60)
+
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.white)
+                        .offset(x: 2) // Slight offset to center the play icon visually
+                }
+                .scaleEffect(isPressed ? 0.9 : 1.0)
+                .animation(.easeInOut(duration: 0.1), value: isPressed)
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
+            isPressed = pressing
+        }, perform: {})
+    }
+
+    private func openYouTubeVideo() {
+        // Haptic feedback
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        // Try to open in YouTube app first, fallback to Safari
+        if let youtubeAppURL = URL(string: youtubeURL.replacingOccurrences(of: "https://", with: "youtube://")) {
+            openURL(youtubeAppURL) { success in
+                if !success {
+                    // Fallback to web URL if YouTube app is not installed
+                    if let webURL = URL(string: youtubeURL) {
+                        openURL(webURL)
+                    }
+                }
+            }
+        } else if let webURL = URL(string: youtubeURL) {
+            openURL(webURL)
+        }
+    }
+}
+
 struct PennStationGuideView: View {
     let isAmtrak: Bool
     @State private var currentPage = 0
@@ -10,7 +86,7 @@ struct PennStationGuideView: View {
             VStack(spacing: 0) {
                 // Swipeable cards
                 TabView(selection: $currentPage) {
-                    ForEach(0..<3) { index in
+                    ForEach(0..<4) { index in
                         WaitingLocationCard(
                             isAmtrak: isAmtrak,
                             cardIndex: index
@@ -39,67 +115,77 @@ struct PennStationGuideView: View {
 struct WaitingLocationCard: View {
     let isAmtrak: Bool
     let cardIndex: Int
-    
-    var locationInfo: (title: String, icon: String, tracks: String, directions: String, tip: String) {
+
+    // Add YouTube URL for video cards
+    var youtubeURL: String? {
+        if isAmtrak && cardIndex == 0 {
+            return "https://youtube.com/shorts/oEAzdvVJOcg"
+        } else if !isAmtrak && cardIndex == 0 {
+            return "https://youtube.com/shorts/H_WntclrDcI"
+        }
+        return nil
+    }
+
+    var locationInfo: (title: String, imageName: String, directions: String) {
         if isAmtrak {
             // Amtrak - West End Concourse strategy
             switch cardIndex {
             case 0:
                 return (
-                    title: "Skip the Crowds",
-                    icon: "figure.walk",
-                    tracks: "West End Concourse • Tracks 5-17",
-                    directions: "There's a hidden entrance that 90% of travelers don't know about. The West End Concourse gives you direct access to Amtrak tracks without fighting through the main station crowds.",
-                    tip: "This is Penn Station's best-kept secret for Amtrak passengers. Quieter, faster, with charging stations."
+                    title: "For Amtrak, use the West End Concourse!",
+                    imageName: "amtrak_video",
+                    directions: "Skip the crowded main areas of Penn Station & Moynihan Hall.\n\nWatch the video above or swipe for more info."
                 )
             case 1:
                 return (
-                    title: "Find the Entrance",
-                    icon: "location.circle",
-                    tracks: "31st Street & 8th Avenue",
-                    directions: "Exit at the southwest corner of 31st & 8th Ave. Look for \"To Trains\" signs. Take the elevator or walk down the ramps with white walls. You'll see NYC imagery on the walls—that's how you know you're in the right place.",
-                    tip: "Alternative: From Moynihan Train Hall, use the elevators on the eastern end—they stop at West End Concourse level."
+                    title: "Enter at 8th Ave & 33rd St",
+                    imageName: "amtrak_1",
+                    directions: "Use the \"normal\" entrance for Moynihan Hall at the corner of 8th Ave and 33rd Street."
                 )
             case 2:
                 return (
-                    title: "Navigate to Your Track",
-                    icon: "arrow.down.circle",
-                    tracks: "Best for tracks 7-16",
-                    directions: "Once in the West End Concourse, follow signs to your track number. Each platform has elevators and stairs. Check the Amtrak app for your track—there aren't many monitors down here.",
-                    tip: "Tracks 5-6 require longer walks. For tracks 17+, use the main Moynihan entrance instead."
+                    title: "Immediately take escalator on right",
+                    imageName: "amtrak_2",
+                    directions: "Instead of continuing into the main Moynihan Train Hall, take the escalator on your right down to the lower level.\n\nThis concourse is primarily used for LIRR (and making TikTok videos), but it serves all of Amtrak's tracks as well!"
+                )
+            case 3:
+                return (
+                    title: "Find your platform!",
+                    imageName: "amtrak_3",
+                    directions: "Once in the West End Concourse, follow signs to your track number.\n\nEach platform has stairs on the left and elevators on the right."
                 )
             default:
-                return ("", "", "", "", "")
+                return ("", "", "")
             }
         } else {
             // NJ Transit - 7th Avenue Concourse strategy
             switch cardIndex {
             case 0:
                 return (
-                    title: "Avoid \"The Pit\"",
-                    icon: "figure.walk",
-                    tracks: "7th Avenue Concourse • All NJ Transit",
-                    directions: "Skip the notorious main waiting area (\"the pit\") entirely. There's a dedicated NJ Transit entrance that 81,000+ daily commuters use—it completely bypasses the chaos above.",
-                    tip: "This entrance opened in 2009 and remains one of the most efficient ways to board NJ Transit."
+                    title: "For NJ Transit, use the sub-level Exit Concourse!",
+                    imageName: "nj_transit_video",
+                    directions: "Skip the crowded main waiting areas.\n\nWatch the video above or swipe for more info."
                 )
             case 1:
                 return (
-                    title: "Find the Entrance",
-                    icon: "location.circle",
-                    tracks: "31st Street & 7th Avenue",
-                    directions: "Look for the NJ Transit entrance at 31st & 7th Ave. You'll see a distinctive barrel-vaulted ceiling that looks like the original Penn Station. Take the escalators or elevators straight down.",
-                    tip: "This entrance never touches LIRR or Amtrak areas—it's 100% dedicated to NJ Transit."
+                    title: "Avoid \"The Pit\"",
+                    imageName: "nj_transit_1",
+                    directions: "Start at 7th Ave and 33rd Street and go down the escalator within the triangle entrance."
                 )
             case 2:
                 return (
+                    title: "Go straight until you find the Exit Concourse",
+                    imageName: "nj_transit_2",
+                    directions: "Go down the long hallway until you see signs for the Exit Concourse on your left. It's a long walk!"
+                )
+            case 3:
+                return (
                     title: "Navigate to Your Track",
-                    icon: "arrow.down.circle",
-                    tracks: "Direct access to tracks 1-12",
-                    directions: "The concourse has Italian marble walls and granite floors. Check the departure boards, then head directly to your track. For tracks 1-4, you're golden. For tracks 5-12, follow the Exit Concourse signs for the fastest route.",
-                    tip: "Check NJ Transit's Departure Vision website on station WiFi for real-time track updates."
+                    imageName: "nj_transit_3",
+                    directions: "This area serves all NJ Transit trains."
                 )
             default:
-                return ("", "", "", "", "")
+                return ("", "", "")
             }
         }
     }
@@ -108,49 +194,42 @@ struct WaitingLocationCard: View {
         VStack(alignment: .leading, spacing: 16) {
             // Location card
             VStack(alignment: .leading, spacing: 12) {
-                // Icon and title
-                HStack {
-                    Image(systemName: locationInfo.icon)
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                    
+                // Title and image - centered
+                VStack(spacing: 12) {
+                    // Title above image - centered
                     Text(locationInfo.title)
                         .font(.headline)
-                    
-                    Spacer()
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+
+                    // Check if this is a video card
+                    if let youtubeURL = youtubeURL {
+                        // Show YouTube link with play button overlay
+                        YouTubeLinkView(
+                            thumbnailImageName: locationInfo.imageName,
+                            youtubeURL: youtubeURL,
+                            maxHeight: 200
+                        )
+                    } else {
+                        // Regular image
+                        Image(locationInfo.imageName)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxHeight: 200)
+                            .cornerRadius(12)
+                            .clipped()
+                            .frame(maxWidth: .infinity)
+                    }
                 }
-                
-                // Track coverage
-                Text(locationInfo.tracks)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.orange.opacity(0.1))
-                    .cornerRadius(8)
-                
-                Divider()
-                
-                // Directions
-                Text(locationInfo.directions)
-                    .font(.body)
-                    .foregroundColor(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                
-                // Pro tip
-                HStack {
-                    Image(systemName: "lightbulb.fill")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                    
-                    Text(locationInfo.tip)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+
+                // Directions - only show if not empty
+                if !locationInfo.directions.isEmpty {
+                    Text(locationInfo.directions)
+                        .font(.body)
+                        .foregroundColor(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding()
-                .background(Color(UIColor.secondarySystemGroupedBackground))
-                .cornerRadius(10)
             }
             .padding()
             .background(Color(UIColor.systemBackground))
