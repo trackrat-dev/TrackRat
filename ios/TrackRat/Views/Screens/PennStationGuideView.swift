@@ -128,25 +128,25 @@ struct WaitingLocationCard: View {
                 return (
                     title: "For Amtrak, use the West End Concourse!",
                     imageName: "amtrak_video",
-                    directions: "Skip the crowded main areas of Penn Station & Moynihan Hall.\n\nClick to watch the video above or swipe for more info."
+                    directions: "\nSkip the crowded main areas of Penn Station & Moynihan Hall.\n\nClick to watch the video above or swipe for more info on how to get there."
                 )
             case 1:
                 return (
                     title: "Enter at 8th Ave & 33rd St",
                     imageName: "amtrak_1",
-                    directions: "Use the \"normal\" entrance for Moynihan Hall at the corner of 8th Ave and 33rd Street."
+                    directions: "\nUse the entrance for Moynihan Hall at the corner of 8th Ave and 33rd Street."
                 )
             case 2:
                 return (
                     title: "Immediately take escalator on right",
                     imageName: "amtrak_2",
-                    directions: "Instead of continuing into the main Moynihan Train Hall, take the escalator on your right down to the lower level.\n\nThis concourse is primarily used for LIRR (and making TikTok videos), but it serves all of Amtrak's tracks as well!"
+                    directions: "\nInstead of continuing into the main Moynihan Train Hall, take the escalator on your right down to the lower level.\n\nThis concourse is primarily used for LIRR (and making TikTok videos), but it serves all of the platforms used by Amtrak too."
                 )
             case 3:
                 return (
                     title: "Find your platform!",
                     imageName: "amtrak_3",
-                    directions: "Once in the West End Concourse, follow signs to your track number.\n\nEach platform has stairs on the left and elevators on the right."
+                    directions: "\nOnce in the West End Concourse, follow signs to your track number.\n\nEach platform can be accessed with the stairs on the left or elevators on the right."
                 )
             default:
                 return ("", "", "")
@@ -158,25 +158,25 @@ struct WaitingLocationCard: View {
                 return (
                     title: "For NJ Transit, use the sub-level Exit Concourse!",
                     imageName: "nj_transit_video",
-                    directions: "Skip the crowded main waiting areas.\n\nClick to watch the video above or swipe for more info."
+                    directions: "\nSkip the crowded main NJ Transit waiting areas.\n\nClick to watch the video above or swipe for more info on how to get there."
                 )
             case 1:
                 return (
                     title: "Avoid \"The Pit\"",
                     imageName: "nj_transit_1",
-                    directions: "Start at 7th Ave and 33rd Street and go down the escalator within the triangle entrance."
+                    directions: "\nStart at 7th Ave and 33rd Street and go down the escalator through the big triangle entrance."
                 )
             case 2:
                 return (
                     title: "Go straight until you find the Exit Concourse",
                     imageName: "nj_transit_2",
-                    directions: "Go down the long hallway until you see signs for the Exit Concourse on your left. It's a long walk!"
+                    directions: "\nGo down the long hallway until you see signs for the Exit Concourse on your left.\n\nIt's a long walk and you'll need to pass many restaurants and other concourses."
                 )
             case 3:
                 return (
                     title: "Navigate to Your Track",
                     imageName: "nj_transit_3",
-                    directions: "This area serves all NJ Transit trains."
+                    directions: "\nOnce in the Exit Concourse, follow signs to your track number.\n\nThis area serves the platforms used by all NJ Transit trains."
                 )
             default:
                 return ("", "", "")
