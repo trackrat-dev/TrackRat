@@ -53,18 +53,26 @@
 - **Error Handling**: Graceful error states with retry options
 - **Theme**: Orange accent color matching iOS app
 
-### 🚧 In Progress / Partially Implemented
+### 🚀 Partially Implemented Features
 
-#### Notifications System
-- **Foreground Service**: Structure exists but needs implementation for ongoing notifications
-- **Notification Channels**: Setup required for different notification types
-- **Firebase Integration**: FCM setup needed for push notifications
+#### Journey Progress
+- ✅ Progress bars in train list
+- ✅ Stop count display
+- ✅ Minutes remaining calculation
+- ⚠️ Model confusion (Progress vs ProgressV2)
+- ❌ Full journey visualization incomplete
 
-#### Data Features
-- **Journey Progress Tracking**: Model exists but UI visualization needs completion
-- **StatusV2 Display**: Model exists but enhanced display logic needs implementation
-- **Owl Predictions**: Data structure ready but confidence visualization needs work
-- **Congestion Analysis**: Models exist but UI components need implementation
+#### Track Predictions (Owl)
+- ✅ Confidence-based UI styling
+- ✅ Display in train list
+- ❌ Not available in train details
+- ❌ Platform aggregation not shown
+
+#### StatusV2 Integration
+- ✅ Basic enhanced status display
+- ✅ Boarding detection logic
+- ❌ Location context not utilized
+- ❌ Status history not tracked
 
 ### ❌ Not Yet Implemented
 

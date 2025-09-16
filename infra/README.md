@@ -80,21 +80,35 @@ make docs        # Generate documentation
 
 ### 4. Deploy Infrastructure
 
-Deploy to the development environment:
+#### Deploy to Staging:
 
 ```bash
 # Using Make (recommended)
-make staging-plan    # Plan staging environment
-make staging-apply   # Apply staging environment
+make staging-plan    # Review planned changes
+make staging-apply   # Apply changes to staging
 
 # Or using Terraform directly
-cd environments/dev
+cd environments/staging
 terraform init
-terraform plan
-terraform apply
+terraform plan -var-file=terraform.tfvars
+terraform apply -var-file=terraform.tfvars
 ```
 
-Repeat for staging and production environments as needed.
+#### Deploy to Production:
+
+```bash
+# Using Make (recommended)
+make prod-plan       # Review planned changes
+make prod-apply      # Apply changes to production
+
+# Or using Terraform directly
+cd environments/prod
+terraform init
+terraform plan -var-file=terraform.tfvars
+terraform apply -var-file=terraform.tfvars
+```
+
+**Note**: The terraform.tfvars files are created automatically by setup-backend.sh
 
 ## Architecture Overview
 

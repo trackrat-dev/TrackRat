@@ -402,6 +402,13 @@ xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
 - Physical device recommended for push notification testing
 - Use Console.app to debug Live Activity updates
 
+### Testing Recommendations
+1. **Unit Tests**: Add tests for all services and view models
+2. **UI Tests**: Automate critical user journeys
+3. **Integration Tests**: Test API communication and data flow
+4. **Performance Tests**: Monitor app launch time and memory usage
+5. **Live Activity Tests**: Validate all state transitions
+
 ## Code Conventions
 
 ### Swift Style Guide
@@ -426,6 +433,60 @@ xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
 - **Resources/**: Assets, Info.plist, and other resources
 
 ## Recent Enhancements
+
+### New Features Not Previously Documented
+
+#### Penn Station Navigation Guide (PennStationGuideView)
+Interactive guide helping users navigate Penn Station efficiently:
+- **YouTube Integration**: Embedded video guides with thumbnails
+- **Swipeable Cards**: Step-by-step navigation instructions
+- **Platform-Specific**: Separate guides for NJ Transit and Amtrak
+- **Visual Aids**: Station photos showing exact locations
+- **Amtrak Guide**: West End Concourse strategy via Moynihan Hall
+- **NJ Transit Guide**: 7th Avenue sub-level Exit Concourse approach
+
+#### RatSense AI Journey Suggestions
+Intelligent journey prediction system that learns from user behavior:
+- **Smart Suggestions**: Predicts likely trips based on time of day and history
+- **Home/Work Detection**: Learns commute patterns automatically
+- **Recent Context**: Suggests same route within 20 minutes of last search
+- **Return Journey**: Suggests reverse route 2-8 hours after Live Activity
+- **Time-Based Logic**: Morning (5-9am) and evening (1-8pm) commute predictions
+- **Live Activity Integration**: Records and learns from Live Activity usage
+
+#### Backend Wake-up Service with Caching
+Optimized backend communication system:
+- **15-Minute Cache**: Prevents redundant wake-up requests
+- **Environment-Aware**: Separate caches for dev/staging/production
+- **Health Check API**: Full diagnostic endpoint for troubleshooting
+- **Smart Retries**: Clears cache on failures for immediate retry
+- **Scene Phase Integration**: Wakes backend on app activation
+
+#### Enhanced UI Components
+- **BottomSheetView**: Draggable bottom sheet with multiple positions
+- **SheetAwareScrollView**: Smart scrolling that coordinates with bottom sheets
+- **TrackRatLoadingView**: Custom loading animation
+- **VideoPlayerView**: Native video playback for onboarding
+- **YouTubeLinkView**: YouTube video embedding with thumbnails
+- **TrackRatMascot**: Animated mascot character
+- **JourneyCongestionMapView**: Visual congestion mapping
+
+#### Deep Linking Support
+Complete URL scheme for external navigation:
+- **Train Details**: `trackrat://train/{trainNumber}`
+- **Journey Search**: `trackrat://journey?from={station}&to={station}`
+- **Live Activity Integration**: Deep links from notifications
+
+#### Theme Management System
+- **Dynamic Color Schemes**: Light/dark mode support
+- **Custom Tint Colors**: User-selectable accent colors
+- **Persistent Preferences**: Theme settings saved across launches
+
+#### Advanced Configuration View
+- **Server Environment Selection**: Dev/Staging/Production switching
+- **Favorite Stations Management**: Add/remove favorite stations
+- **Home/Work Station Setting**: Configure for RatSense
+- **Debug Tools**: Test data generation and cache clearing
 
 ### Southeast Amtrak Station Expansion
 Major expansion of station coverage across the Southeast corridor:
@@ -481,6 +542,45 @@ Live Activities now use the enhanced data for better tracking:
 - **iPad Optimization**: Multi-column layouts
 - **macOS Catalyst**: Desktop companion app
 - **CloudKit Sync**: Cross-device preference sync
+
+## Known Issues & Areas for Improvement
+
+### Critical Bugs
+1. **Live Activity Memory Management**: Potential retain cycles in push token subscription
+2. **Background Task Completion**: Missing proper task completion in some error paths
+3. **Push Notification Handling**: Inconsistent handling of different notification payload formats
+4. **Train Validation Race Conditions**: Multiple concurrent validation tasks not properly cancelled
+
+### Performance Issues
+1. **Search Performance**: Station search performs linear scan on every keystroke
+2. **Image Loading**: Video thumbnails loaded synchronously, blocking UI
+3. **API Call Redundancy**: Some views make duplicate API calls on refresh
+4. **Memory Usage**: Large video files kept in memory during onboarding
+
+### Architecture Improvements Needed
+1. **Dependency Injection**: Hard-coded singletons make testing difficult
+2. **Error Handling**: Inconsistent error propagation and user messaging
+3. **State Management**: AppState becoming a god object with too many responsibilities
+4. **Navigation**: Deep linking implementation is fragile and needs refactoring
+
+### Missing Features
+1. **Offline Support**: No caching for offline viewing
+2. **Accessibility**: Limited VoiceOver support in custom components
+3. **Localization**: No support for multiple languages
+4. **Analytics**: No usage tracking for feature improvement
+5. **Crash Reporting**: No automated crash collection
+
+### Code Quality Issues
+1. **Test Coverage**: <10% test coverage across the codebase
+2. **Documentation**: Many complex functions lack documentation
+3. **Magic Numbers**: Hard-coded values throughout (timeouts, delays, sizes)
+4. **Code Duplication**: Similar logic repeated in multiple views
+5. **SwiftLint**: No linting rules enforced
+
+### Security Concerns
+1. **API Keys**: No certificate pinning for API calls
+2. **Token Storage**: Push tokens stored in memory without encryption
+3. **Deep Links**: No validation of deep link parameters
 
 ## Technical Debt
 

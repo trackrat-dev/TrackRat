@@ -255,6 +255,13 @@ val displayStatus: String
 // - enhancedStatus: "DEPARTED from New York Penn"
 // - locationContext: Current position information
 // - lastUpdate: When status was last changed
+
+// Boarding logic (TrainListViewModel)
+fun isTrainBoarding(train: TrainV2): Boolean {
+    val status = train.statusV2?.enhancedStatus ?: train.status
+    return status.contains("BOARDING", ignoreCase = true) ||
+           status.contains("ALL ABOARD", ignoreCase = true)
+}
 ```
 
 ### 3. Owl Prediction Display
@@ -293,37 +300,47 @@ when (prediction?.confidence) {
 ```kotlin
 // Progress model provides:
 // - stopsCompleted: Number of stops passed
-// - totalStops: Total journey stops
-// - percentComplete: 0-100 journey percentage
-// - minutesToNextStop: ETA to next station
-// - currentLocation: Between X and Y stations
+// - stopsTotal: Total journey stops (renamed from totalStops)
+// - journeyPercent: 0-100 journey percentage (renamed from percentComplete)
+// - nextArrival?.minutesToArrival: ETA to next station
+// - lastDeparted: Last departed station name
 
-// Display as progress bar
+// Display as progress bar (already implemented in TrainListScreen)
 LinearProgressIndicator(
-    progress = (progress.percentComplete / 100f),
-    modifier = Modifier.fillMaxWidth(),
-    color = Orange
+    progress = progress.journeyPercent / 100f,
+    modifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(4.dp)),
+    color = Color(Constants.BRAND_ORANGE)
+)
+
+// With text display:
+Text(
+    text = "${progress.stopsCompleted}/${progress.stopsTotal} stops" +
+            (progress.nextArrival?.minutesToArrival?.let { " • $it min remaining" } ?: ""),
+    style = MaterialTheme.typography.bodySmall
 )
 ```
 
 ### 5. Auto-Refresh Implementation
 
-**30-second refresh pattern**:
+**30-second refresh pattern (implemented in TrainListScreen)**:
 ```kotlin
-// In ViewModel
-private fun startAutoRefresh() {
-    autoRefreshJob = viewModelScope.launch {
-        while (isActive) {
-            delay(30_000) // 30 seconds
-            refreshTrains()
+// In TrainListScreen Composable
+LaunchedEffect(fromStation, toStation) {
+    while (true) {
+        kotlinx.coroutines.delay(30_000) // 30 seconds
+        if (!pullToRefreshState.isRefreshing) {
+            viewModel.refresh()
         }
     }
 }
 
-// Cancel on screen exit
-override fun onCleared() {
-    autoRefreshJob?.cancel()
-    super.onCleared()
+// Pull-to-refresh handling
+if (pullToRefreshState.isRefreshing) {
+    LaunchedEffect(true) {
+        viewModel.refresh()
+    }
 }
 ```
 
@@ -664,16 +681,22 @@ Expected error responses:
 - `500`: Server error (retry with backoff)
 - `503`: Service unavailable (show maintenance message)
 
-## Build Success Summary
+## Current Implementation Status
 
-### ✅ Successfully Built Android App!
+### ✅ Successfully Implemented Features
 
-The Android app builds successfully with the following setup:
-
-**Key Steps:**
-1. **Java Setup**: Activated OpenJDK 17 from Homebrew
-2. **Code Fixes**: Resolved DepartureMetadata duplication and TrainV2 constructor issues
-3. **Build Success**: Debug APK generated at `app/build/outputs/apk/debug/app-debug.apk` (18.3 MB)
+**Core Functionality:**
+- **Navigation**: Type-safe navigation with Compose Navigation
+- **4 Main Screens**: Station selection, destination selection, train list, train detail
+- **API Integration**: Full V2 API support with consolidation enabled
+- **Real-time Updates**: 30-second auto-refresh and pull-to-refresh
+- **Glassmorphic UI**: Matching iOS design aesthetic
+- **Favorites**: Station favorites with heart icons
+- **Progress Tracking**: Journey progress bars with stop counts
+- **Track Predictions**: Owl predictions with confidence visualization
+- **Boarding Status**: Orange card highlighting for boarding trains
+- **HTML Entity Decoding**: Proper display of emojis in destination names
+- **Environment Switching**: Debug builds can switch between environments
 
 **Build Commands:**
 ```bash
@@ -696,23 +719,65 @@ export PATH=$JAVA_HOME/bin:$PATH
 - ✅ Core app functionality works and APK builds successfully
 - ⚠️  Unit tests need updates for new TrainV2 constructor (can be addressed later)
 
-## Recent Enhancements & Fixes (August 2025)
+## Known Issues & Areas for Improvement
 
-### HTML Entity Decoding Support
-- **Added**: `HtmlEntityDecoder.kt` with custom Moshi adapter
-- **Purpose**: Properly decode HTML entities (like &#9992; for ✈️) in destination names
-- **Implementation**: `@HtmlDecode` annotation on string fields that may contain entities
-- **Registration**: `HtmlEntityDecodeJsonAdapterFactory` added to Moshi builder
+### 🐛 Bugs to Fix
 
-### New DepartureV2 Model
-- **Added**: Support for V2 API departure response format
-- **Includes**: Enhanced train position, data freshness, and predicted arrival times
-- **Conversion**: `convertDepartureToTrain()` method in TrainListViewModel for compatibility
+1. **Track Button Not Working**: The "Track This Train" button in TrainDetailScreen is disabled and non-functional
+2. **Missing Train Tracking Service**: No ForegroundService implementation for ongoing notifications
+3. **Prediction Data Access**: TrainDetailV2 doesn't include prediction data from the API
+4. **Progress Model Inconsistency**: Two different Progress models (Progress vs ProgressV2) need consolidation
+5. **Status Display**: StatusChip appears in two different files with duplicate code
+6. **No All Departures**: "Show all departures" feature removed as backend doesn't support it
 
-### Build Configuration
-- **Java Setup**: Instructions for activating Homebrew OpenJDK
-- **Test Issues**: Unit tests may need updates for new TrainV2 constructor
-- **Quick Build**: Use `./gradlew assembleDebug -x test` to skip tests
+### ⚠️ Technical Debt
+
+1. **Duplicate Models**: Multiple versions of similar models (Train/TrainV2, Progress/ProgressV2)
+2. **Missing Tests**: Unit tests need updating for new constructors
+3. **Hard-coded Values**: API base URL and other configs should be in BuildConfig
+4. **No Error Recovery**: Limited retry logic for network failures
+5. **Memory Leaks**: No proper lifecycle management for auto-refresh coroutines
+
+### 🚀 Performance Issues
+
+1. **No Caching**: API responses are not cached locally
+2. **Excessive Recomposition**: Train list items may recompose unnecessarily
+3. **Large APK Size**: 18.3 MB is quite large for a simple app
+4. **No Pagination**: Train list loads all items at once
+
+## Recent Enhancements & Fixes (September 2025)
+
+### Recent Updates
+
+1. **Enhanced Navigation System**
+   - Type-safe navigation with `TrackRatNavigator`
+   - Separate destination selection screen
+   - Proper back stack management
+
+2. **Glassmorphic Design Implementation**
+   - `GlassmorphicCard` component matching iOS
+   - Semi-transparent cards with borders
+   - Special variants for search and elevated cards
+
+3. **Station Favorites**
+   - Heart icons for favoriting stations
+   - Persistence with DataStore preferences
+   - Quick access to favorite destinations
+
+4. **Boarding Status Highlighting**
+   - Orange cards for boarding trains
+   - Dynamic status chip colors
+   - Visual distinction for different states
+
+5. **Track Predictions UI**
+   - Confidence-based styling (checkmark, normal, question mark)
+   - Owl emoji integration
+   - Platform-level aggregation display
+
+6. **Environment Management**
+   - `EnvironmentManager` for switching between dev/prod
+   - BuildConfig flags for environment control
+   - Debug-only switching capability
 
 ## Contact for Support
 

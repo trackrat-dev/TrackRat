@@ -511,9 +511,14 @@ make clean                           # Clean build artifacts
 make backend-test                    # Run backend tests
 make backend-migrate                 # Run database migrations
 
-# Infrastructure commands  
-make infra-plan                      # Plan infrastructure changes
-make infra-validate                  # Validate Terraform configuration
+# Infrastructure commands
+# CRITICAL: Always run linting before infrastructure changes
+cd infra
+make test                            # Run quick validation tests
+make staging-plan                    # Plan staging changes
+make staging-apply                   # Apply staging changes
+make prod-plan                       # Plan production changes
+make prod-apply                      # Apply production changes
 
 # Setup development environment
 make setup                           # Install dependencies and initialize
