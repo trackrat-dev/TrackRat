@@ -331,15 +331,27 @@ class TestNJTBatchCollectionIntegration:
             scheduler_service, "schedule_njt_batch_collection"
         ) as mock_schedule:
             with patch.object(scheduler_service, "_running_tasks", {}):
-                # Mock the discovery collector directly on the scheduler service
+                # Mock the freshness check to always allow execution
                 with patch(
-                    "trackrat.services.scheduler.TrainDiscoveryCollector"
-                ) as mock_collector_class:
-                    mock_collector = AsyncMock()
-                    mock_collector.run.return_value = sample_discovery_result
-                    mock_collector_class.return_value = mock_collector
+                    "trackrat.services.scheduler.run_with_freshness_check"
+                ) as mock_freshness:
+                    # Mock to execute the task function directly and return True
+                    async def mock_freshness_check(
+                        db, task_name, minimum_interval_seconds, task_func
+                    ):
+                        await task_func()
+                        return True
 
-                    await scheduler_service.run_njt_discovery()
+                    mock_freshness.side_effect = mock_freshness_check
+                    # Mock the discovery collector directly on the scheduler service
+                    with patch(
+                        "trackrat.services.scheduler.TrainDiscoveryCollector"
+                    ) as mock_collector_class:
+                        mock_collector = AsyncMock()
+                        mock_collector.run.return_value = sample_discovery_result
+                        mock_collector_class.return_value = mock_collector
+
+                        await scheduler_service.run_njt_discovery()
 
         # Should have called schedule_njt_batch_collection with the discovery result
         mock_schedule.assert_called_once_with(sample_discovery_result)

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import and_, select
@@ -18,11 +19,17 @@ from structlog import get_logger
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
+from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
+from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.settings import Settings, get_settings
+from trackrat.utils.scheduler_utils import (
+    calculate_safe_interval,
+    run_with_freshness_check,
+)
 from trackrat.utils.time import (
     ensure_timezone_aware,
     now_et,
@@ -131,6 +138,39 @@ class SchedulerService:
             max_instances=1,
         )
 
+        # Schedule train validation (every hour)
+        self.scheduler.add_job(
+            self.run_train_validation,
+            trigger=IntervalTrigger(hours=1),
+            id="train_validation",
+            name="End-to-End Train Validation",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=300,
+        )
+
+        # Schedule NJT schedule collection (daily at 12:30 AM)
+        self.scheduler.add_job(
+            self.collect_njt_schedules,
+            trigger=CronTrigger(hour=0, minute=30, timezone="America/New_York"),
+            id="njt_schedule_collection",
+            name="NJT Daily Schedule Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=900,  # 15 minute grace period
+        )
+
+        # Schedule Amtrak pattern-based schedule generation (daily at 12:45 AM)
+        self.scheduler.add_job(
+            self.generate_amtrak_schedules,
+            trigger=CronTrigger(hour=0, minute=45, timezone="America/New_York"),
+            id="amtrak_schedule_generation",
+            name="Amtrak Pattern Schedule Generation",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=900,  # 15 minute grace period
+        )
+
         # Start the scheduler
         self.scheduler.start()
 
@@ -165,106 +205,157 @@ class SchedulerService:
         """Run NJ Transit train discovery for all configured stations."""
         task_id = f"njt_discovery_{now_et().isoformat()}"
 
-        try:
-            logger.info("starting_train_discovery_task")
-
-            # Track running task
-            task = asyncio.current_task()
-            if task:
-                self._running_tasks[task_id] = task
-
-            # Run discovery
-            if not self.njt_client:
-                raise RuntimeError(
-                    "NJTransitClient not initialized - call start() first"
+        async def do_discovery_work() -> None:
+            """The actual discovery work, wrapped for freshness checking."""
+            try:
+                logger.info(
+                    "starting_train_discovery_task",
+                    task="njt_discovery",
+                    scheduled_interval_minutes=self.settings.discovery_interval_minutes,
                 )
-            collector = TrainDiscoveryCollector(self.njt_client)
-            result = await collector.run()
 
-            logger.info(
-                "train_discovery_completed",
-                total_discovered=result.get("total_discovered", 0),
-                total_new=result.get("total_new", 0),
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Run discovery
+                if not self.njt_client:
+                    raise RuntimeError(
+                        "NJTransitClient not initialized - call start() first"
+                    )
+                collector = TrainDiscoveryCollector(self.njt_client)
+                result = await collector.run()
+
+                logger.info(
+                    "train_discovery_completed",
+                    task="njt_discovery",
+                    total_discovered=result.get("total_discovered", 0),
+                    total_new=result.get("total_new", 0),
+                    safe_interval_seconds=calculate_safe_interval(
+                        self.settings.discovery_interval_minutes
+                    ),
+                )
+
+                # Schedule batch collection for ALL discovered trains
+                # This ensures all trains have their journey details collected
+                if result.get("total_discovered", 0) > 0:
+                    await self.schedule_njt_batch_collection(result)
+
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        async with get_session() as db:
+            # Calculate safe interval based on configured discovery interval
+            safe_interval = calculate_safe_interval(
+                self.settings.discovery_interval_minutes
             )
 
-            # Schedule batch collection for ALL discovered trains
-            # This ensures all trains have their journey details collected
-            if result.get("total_discovered", 0) > 0:
-                await self.schedule_njt_batch_collection(result)
-
-        except Exception as e:
-            logger.error(
-                "train_discovery_failed", error=str(e), error_type=type(e).__name__
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="njt_discovery",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_discovery_work,
             )
-        finally:
-            # Remove from running tasks
-            self._running_tasks.pop(task_id, None)
+
+            if not executed:
+                logger.debug("njt_discovery_skipped_still_fresh")
 
     async def run_amtrak_discovery(self) -> None:
         """Run Amtrak train discovery for trains serving NYP."""
         task_id = f"amtrak_discovery_{now_et().isoformat()}"
 
-        try:
-            logger.info("starting_amtrak_discovery_task")
+        async def do_amtrak_discovery_work() -> None:
+            """The actual Amtrak discovery work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_amtrak_discovery_task")
 
-            # Track running task
-            task = asyncio.current_task()
-            if task:
-                self._running_tasks[task_id] = task
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
 
-            # Run Amtrak discovery
-            collector = AmtrakDiscoveryCollector()
-            result = await collector.run()
+                # Run Amtrak discovery
+                collector = AmtrakDiscoveryCollector()
+                result = await collector.run()
 
-            logger.info(
-                "amtrak_discovery_completed",
-                discovered_count=result.get("discovered_trains", 0),
-            )
-
-            # Clean up any conflicting jobs first
-            await self.cleanup_conflicting_amtrak_jobs()
-
-            # Schedule journey collection for discovered trains
-            if result.get("discovered_trains", 0) > 0:
-                await self.schedule_amtrak_journey_collections(
-                    result.get("train_ids", [])
+                logger.info(
+                    "amtrak_discovery_completed",
+                    discovered_count=result.get("discovered_trains", 0),
                 )
 
-        except Exception as e:
-            logger.error(
-                "amtrak_discovery_failed", error=str(e), error_type=type(e).__name__
+                # Clean up any conflicting jobs first
+                await self.cleanup_conflicting_amtrak_jobs()
+
+                # Schedule journey collection for discovered trains
+                if result.get("discovered_trains", 0) > 0:
+                    await self.schedule_amtrak_journey_collections(
+                        result.get("train_ids", [])
+                    )
+
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        async with get_session() as db:
+            # Calculate safe interval based on configured discovery interval
+            safe_interval = calculate_safe_interval(
+                self.settings.discovery_interval_minutes
             )
-        finally:
-            # Remove from running tasks
-            self._running_tasks.pop(task_id, None)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="amtrak_discovery",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_amtrak_discovery_work,
+            )
+
+            if not executed:
+                logger.debug("amtrak_discovery_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
         task_id = f"journey_check_{now_et().isoformat()}"
 
-        try:
-            logger.info("checking_journey_updates")
+        async def do_journey_check_work() -> None:
+            """The actual journey check work, wrapped for freshness checking."""
+            try:
+                logger.info("checking_journey_updates")
 
-            # Track running task
-            task = asyncio.current_task()
-            if task:
-                self._running_tasks[task_id] = task
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
 
-            # Find trains needing updates
-            async with get_session() as session:
-                # Trains that need initial collection (at departure time)
-                await self.schedule_departure_collections(session)
+                # Find trains needing updates
+                async with get_session() as session:
+                    # Trains that need initial collection (at departure time)
+                    await self.schedule_departure_collections(session)
 
-                # Trains that need periodic updates (every 15 minutes)
-                await self.schedule_periodic_updates(session)
+                    # Trains that need periodic updates (every 15 minutes)
+                    await self.schedule_periodic_updates(session)
 
-        except Exception as e:
-            logger.error(
-                "journey_update_check_failed", error=str(e), error_type=type(e).__name__
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        # This runs every 5 minutes, so use a 4-minute minimum interval
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(5)  # 5-minute scheduled interval
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="journey_update_check",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_journey_check_work,
             )
-        finally:
-            # Remove from running tasks
-            self._running_tasks.pop(task_id, None)
+
+            if not executed:
+                logger.debug("journey_update_check_skipped_still_fresh")
 
     async def schedule_departure_collections(self, session: AsyncSession) -> None:
         """Schedule collection for trains at their departure time."""
@@ -1144,6 +1235,7 @@ class SchedulerService:
                                 actual_departure=actual_departure,
                                 actual_arrival=actual_arrival,
                                 track=stop_data.TRACK or None,
+                                track_assigned_at=now_et() if stop_data.TRACK else None,
                                 raw_njt_departed_flag=stop_data.DEPARTED,
                                 has_departed_station=(stop_data.DEPARTED == "YES"),
                             )
@@ -1750,131 +1842,171 @@ class SchedulerService:
 
     async def cleanup_expired_live_activity_tokens(self) -> None:
         """Clean up expired Live Activity tokens by marking them as inactive."""
-        try:
-            logger.info("starting_live_activity_token_cleanup")
 
-            # Use sync database access for consistency with other scheduler methods
-            from sqlalchemy import create_engine, update
-            from sqlalchemy.orm import sessionmaker
+        # Define the actual work as a nested function for freshness checking
+        async def do_cleanup_work() -> None:
+            try:
+                logger.info("starting_live_activity_token_cleanup")
 
-            db_url = str(self.settings.database_url).replace(
-                "postgresql+asyncpg", "postgresql"
-            )
-            sync_engine = create_engine(
-                db_url,
-                # PostgreSQL doesn't need special connect_args for basic operations
-            )
-            SyncSession = sessionmaker(sync_engine)
+                # Use sync database access for consistency with other scheduler methods
+                from sqlalchemy import create_engine, update
+                from sqlalchemy.orm import sessionmaker
 
-            with SyncSession() as session:
-                # Find expired tokens that are still active
-                current_time = now_et()
+                db_url = str(self.settings.database_url).replace(
+                    "postgresql+asyncpg", "postgresql"
+                )
+                sync_engine = create_engine(
+                    db_url,
+                    # PostgreSQL doesn't need special connect_args for basic operations
+                )
+                SyncSession = sessionmaker(sync_engine)
 
-                # Update expired tokens to inactive
-                result = session.execute(
-                    update(LiveActivityToken)
-                    .where(
-                        and_(
-                            LiveActivityToken.is_active.is_(True),
-                            LiveActivityToken.expires_at <= current_time,
+                with SyncSession() as session:
+                    # Find expired tokens that are still active
+                    current_time = now_et()
+
+                    # Update expired tokens to inactive
+                    result = session.execute(
+                        update(LiveActivityToken)
+                        .where(
+                            and_(
+                                LiveActivityToken.is_active.is_(True),
+                                LiveActivityToken.expires_at <= current_time,
+                            )
                         )
+                        .values(is_active=False)
                     )
-                    .values(is_active=False)
+
+                    session.commit()
+
+                    cleaned_count = result.rowcount
+                    logger.info(
+                        "live_activity_token_cleanup_completed",
+                        tokens_cleaned=cleaned_count,
+                        cutoff_time=current_time.isoformat(),
+                    )
+
+                # Close sync engine when done
+                sync_engine.dispose()
+
+            except Exception as e:
+                logger.error(
+                    "live_activity_token_cleanup_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
 
-                session.commit()
+        # Use freshness check to prevent duplicate runs across replicas
+        # This runs daily, so use a 23-hour minimum interval
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(24 * 60)  # 24 hours in minutes
 
-                cleaned_count = result.rowcount
-                logger.info(
-                    "live_activity_token_cleanup_completed",
-                    tokens_cleaned=cleaned_count,
-                    cutoff_time=current_time.isoformat(),
-                )
-
-        except Exception as e:
-            logger.error(
-                "live_activity_token_cleanup_failed",
-                error=str(e),
-                error_type=type(e).__name__,
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="live_activity_token_cleanup",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_cleanup_work,
             )
+
+            if not executed:
+                logger.debug("live_activity_token_cleanup_skipped_still_fresh")
 
     async def precompute_congestion_cache(self) -> None:
         """Pre-compute congestion API responses for common parameter combinations."""
         task_id = f"congestion_cache_{now_et().isoformat()}"
 
-        try:
-            logger.info("starting_congestion_cache_precomputation")
+        # Define the actual work as a nested function for freshness checking
+        async def do_cache_work() -> None:
+            try:
+                logger.info("starting_congestion_cache_precomputation")
 
-            # Track running task
-            task = asyncio.current_task()
-            if task:
-                self._running_tasks[task_id] = task
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
 
-            # Import here to avoid circular imports
-            from trackrat.services.api_cache import ApiCacheService
+                # Import here to avoid circular imports
+                from trackrat.services.api_cache import ApiCacheService
 
-            # Use async database session for the cache service
-            async with get_session() as session:
-                cache_service = ApiCacheService()
+                # Use async database session for the cache service
+                async with get_session() as session:
+                    cache_service = ApiCacheService()
 
-                # Pre-compute congestion responses
-                await cache_service.precompute_congestion_responses(session)
+                    # Pre-compute congestion responses
+                    await cache_service.precompute_congestion_responses(session)
 
-                # Clean up expired cache entries while we're here
-                deleted_count = await cache_service.cleanup_expired_cache(session)
+                    # Clean up expired cache entries while we're here
+                    deleted_count = await cache_service.cleanup_expired_cache(session)
 
-                if deleted_count > 0:
-                    logger.info(
-                        "cleaned_up_expired_api_cache_entries",
-                        deleted_count=deleted_count,
-                    )
+                    if deleted_count > 0:
+                        logger.info(
+                            "cleaned_up_expired_api_cache_entries",
+                            deleted_count=deleted_count,
+                        )
 
-            logger.info("congestion_cache_precomputation_completed")
+                logger.info("congestion_cache_precomputation_completed")
 
-        except Exception as e:
-            logger.error(
-                "congestion_cache_precomputation_failed",
-                error=str(e),
-                error_type=type(e).__name__,
+            except Exception as e:
+                logger.error(
+                    "congestion_cache_precomputation_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        # This runs every 15 minutes, so use a 13-minute minimum interval
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(15)  # 15-minute scheduled interval
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="congestion_cache_precompute",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_cache_work,
             )
-        finally:
-            # Remove from running tasks
-            self._running_tasks.pop(task_id, None)
+
+            if not executed:
+                logger.debug("congestion_cache_precompute_skipped_still_fresh")
 
     async def update_live_activities(self) -> None:
         """Update all active Live Activities with current train data."""
         task_id = f"live_activity_update_{now_et().isoformat()}"
 
-        try:
-            logger.info("starting_live_activity_updates")
+        # Define the actual work as a nested function for freshness checking
+        async def do_live_activity_work() -> None:
+            try:
+                logger.info("starting_live_activity_updates")
 
-            # Track running task
-            task = asyncio.current_task()
-            if task:
-                self._running_tasks[task_id] = task
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
 
-            from sqlalchemy import and_, create_engine, select
-            from sqlalchemy.orm import selectinload, sessionmaker
+                from sqlalchemy import and_, create_engine, select
+                from sqlalchemy.orm import selectinload, sessionmaker
 
-            # Use synchronous database access to avoid greenlet issues in scheduler context
-            # This is a workaround for APScheduler's async executor not properly initializing greenlets
-            db_url = str(self.settings.database_url).replace(
-                "postgresql+asyncpg", "postgresql"
-            )
-            sync_engine = create_engine(
-                db_url,
-                # PostgreSQL doesn't need special connect_args for basic operations
-            )
-            SyncSession = sessionmaker(sync_engine)
-
-            with SyncSession() as session:
-                # Get active tokens that haven't expired
-                stmt = select(LiveActivityToken).where(
-                    and_(
-                        LiveActivityToken.is_active.is_(True),
-                        LiveActivityToken.expires_at > now_et(),
-                    )
+                # Use synchronous database access to avoid greenlet issues in scheduler context
+                # This is a workaround for APScheduler's async executor not properly initializing greenlets
+                db_url = str(self.settings.database_url).replace(
+                    "postgresql+asyncpg", "postgresql"
                 )
+                sync_engine = create_engine(
+                    db_url,
+                    # PostgreSQL doesn't need special connect_args for basic operations
+                )
+                SyncSession = sessionmaker(sync_engine)
+
+                with SyncSession() as session:
+                    # Get active tokens that haven't expired
+                    stmt = select(LiveActivityToken).where(
+                        and_(
+                            LiveActivityToken.is_active.is_(True),
+                            LiveActivityToken.expires_at > now_et(),
+                        )
+                    )
                 # Use synchronous query execution
                 result = session.execute(stmt)
                 active_tokens = list(result.scalars())
@@ -2021,30 +2153,100 @@ class SchedulerService:
                     trains_updated=len(trains_to_update),
                 )
 
-            # Close sync engine when done
-            sync_engine.dispose()
+                # Close sync engine when done
+                sync_engine.dispose()
 
-        except Exception as e:
-            # Add more context for debugging
-            import greenlet  # type: ignore[import-untyped]
+            except Exception as e:
+                # Add more context for debugging
+                import greenlet  # type: ignore[import-untyped]
 
-            logger.error(
-                "live_activity_update_error",
-                error=str(e),
-                error_type=type(e).__name__,
-                has_running_loop=asyncio._get_running_loop() is not None,
-                current_task_name=(
-                    task.get_name()
-                    if (task := asyncio.current_task()) is not None
-                    else None
-                ),
-                greenlet_current=(
-                    str(greenlet.getcurrent()) if greenlet else "no greenlet module"
-                ),
+                logger.error(
+                    "live_activity_update_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    has_running_loop=asyncio._get_running_loop() is not None,
+                    current_task_name=(
+                        task.get_name()
+                        if (task := asyncio.current_task()) is not None
+                        else None
+                    ),
+                    greenlet_current=(
+                        str(greenlet.getcurrent()) if greenlet else "no greenlet module"
+                    ),
+                )
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        # Live Activities update every 30 seconds, so use a 25-second minimum interval
+        async with get_session() as db:
+            safe_interval = 25  # 25 seconds (slightly less than 30 to ensure updates)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="live_activity_updates",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_live_activity_work,
             )
-        finally:
-            # Remove from running tasks
-            self._running_tasks.pop(task_id, None)
+
+            if not executed:
+                logger.debug("live_activity_updates_skipped_still_fresh")
+
+    async def run_train_validation(self) -> None:
+        """Run end-to-end validation of train discovery and API accessibility."""
+        task_id = f"train_validation_{now_et().isoformat()}"
+
+        async def do_validation_work() -> None:
+            """The actual validation work."""
+            try:
+                logger.info("starting_train_validation_task")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Import and run validation
+                from trackrat.services.validation import TrainValidationService
+
+                async with TrainValidationService(self.settings) as validator:
+                    results = await validator.run_validation()
+
+                    # Summary metrics
+                    total_missing = sum(len(r.missing_trains) for r in results)
+                    routes_with_issues = sum(1 for r in results if r.missing_trains)
+
+                    logger.info(
+                        "train_validation_completed",
+                        total_routes_checked=len(results),
+                        routes_with_issues=routes_with_issues,
+                        total_missing_trains=total_missing,
+                    )
+
+            except Exception as e:
+                logger.error(
+                    "train_validation_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check with 55-minute interval (for hourly runs)
+        async with get_session() as db:
+            safe_interval = 55 * 60  # 55 minutes
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="train_validation",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_validation_work,
+            )
+
+            if not executed:
+                logger.debug("train_validation_skipped_still_fresh")
 
     def _is_stale(self, last_updated: datetime, threshold_seconds: int = 60) -> bool:
         """Check if data is older than threshold.
@@ -2060,6 +2262,148 @@ class SchedulerService:
             safe_datetime_subtract(now_et(), last_updated).total_seconds()
             > threshold_seconds
         )
+
+    async def collect_njt_schedules(self) -> None:
+        """Collect NJT schedule data once daily at 12:30 AM.
+
+        This task fetches 27-hour schedule data from NJ Transit API
+        and creates SCHEDULED journey records for trains that haven't
+        been observed yet.
+        """
+        task_id = f"njt_schedules_{now_et().isoformat()}"
+
+        async def do_schedule_collection() -> None:
+            """The actual schedule collection work."""
+            try:
+                logger.info("starting_njt_schedule_collection_task")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Ensure NJT client is initialized
+                if not self.njt_client:
+                    raise RuntimeError(
+                        "NJTransitClient not initialized - call start() first"
+                    )
+
+                # Run schedule collection
+                collector = NJTScheduleCollector(self.njt_client)
+                result = await collector.collect_all_schedules()
+
+                logger.info(
+                    "njt_schedule_collection_completed",
+                    total_schedules=result.get("total_schedules", 0),
+                    new_schedules=result.get("new_schedules", 0),
+                    updated_schedules=result.get("updated_schedules", 0),
+                    skipped_observed=result.get("skipped_observed", 0),
+                    errors=result.get("errors", 0),
+                )
+
+            except Exception as e:
+                logger.error(
+                    "njt_schedule_collection_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check with 23-hour minimum interval (safe for once-daily task)
+        async with get_session() as db:
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="njt_schedule_collection",
+                minimum_interval_seconds=23 * 60 * 60,  # 23 hours
+                task_func=do_schedule_collection,
+            )
+
+            if not executed:
+                logger.debug("njt_schedule_collection_skipped_still_fresh")
+
+    async def generate_amtrak_schedules(self) -> None:
+        """Generate Amtrak schedules based on historical patterns.
+
+        This task runs daily at 12:45 AM and analyzes the past 22 days of
+        Amtrak train data to identify patterns and create SCHEDULED journey
+        records for trains that are expected to run today.
+        """
+        task_id = f"amtrak_schedules_{now_et().isoformat()}"
+
+        async def do_schedule_generation() -> None:
+            """The actual schedule generation work."""
+            try:
+                logger.info("starting_amtrak_schedule_generation_task")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Create the pattern scheduler
+                pattern_scheduler = AmtrakPatternScheduler()
+
+                # Generate schedules for today
+                today = now_et().date()
+                result = await pattern_scheduler.generate_daily_schedules(today)
+
+                logger.info(
+                    "amtrak_schedule_generation_completed",
+                    created=result.get("created", 0),
+                    updated=result.get("updated", 0),
+                    skipped=result.get("skipped", 0),
+                    errors=result.get("errors", 0),
+                    target_date=today.isoformat(),
+                )
+
+                # Also generate for tomorrow for better planning
+                tomorrow = today + timedelta(days=1)
+                tomorrow_result = await pattern_scheduler.generate_daily_schedules(
+                    tomorrow
+                )
+
+                logger.info(
+                    "amtrak_tomorrow_schedule_generation_completed",
+                    created=tomorrow_result.get("created", 0),
+                    updated=tomorrow_result.get("updated", 0),
+                    skipped=tomorrow_result.get("skipped", 0),
+                    errors=tomorrow_result.get("errors", 0),
+                    target_date=tomorrow.isoformat(),
+                )
+
+                # Clean up old scheduled records that never became observed
+                deleted_count = await pattern_scheduler.cleanup_old_scheduled_records(
+                    days_to_keep=1
+                )
+
+                logger.info(
+                    "amtrak_schedule_cleanup_completed",
+                    deleted_count=deleted_count,
+                )
+
+            except Exception as e:
+                logger.error(
+                    "amtrak_schedule_generation_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check with 23-hour minimum interval (safe for once-daily task)
+        async with get_session() as db:
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="amtrak_schedule_generation",
+                minimum_interval_seconds=23 * 60 * 60,  # 23 hours
+                task_func=do_schedule_generation,
+            )
+
+            if not executed:
+                logger.debug("amtrak_schedule_generation_skipped_still_fresh")
 
     def get_status(self) -> dict[str, Any]:
         """Get scheduler status and job information."""

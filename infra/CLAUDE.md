@@ -16,21 +16,34 @@ infra/
 ├── main.tf                           # Root module - orchestrates all infrastructure
 ├── variables.tf                      # Global variables for all environments
 ├── outputs.tf                        # Outputs from root module
+├── Makefile                          # Convenient commands for Terraform operations
 ├── setup-backend.sh                  # Script to initialize Terraform backends
+├── lint-and-test.sh                  # Comprehensive testing script
+├── quick-test.sh                     # Quick validation script
+├── test-terraform.sh                 # Legacy testing script (use quick-test.sh)
+├── .pre-commit-config.yaml           # Pre-commit hooks configuration
+├── .tflint.hcl                       # TFLint configuration with Google rules
 ├── environments/                     # Environment-specific configurations
 │   ├── staging/                     # Staging environment
 │   │   ├── main.tf                  # Staging-specific configuration
 │   │   ├── variables.tf             # Staging-specific variables
-│   │   ├── outputs.tf               # Staging outputs
-│   │   └── terraform.tfvars         # Staging variable values (created by setup script)
+│   │   └── outputs.tf               # Staging outputs
 │   └── prod/                        # Production environment (similar structure)
+├── scripts/                          # Utility scripts
+│   └── update-database-secrets.sh   # Script to update database secrets
 └── modules/                         # Reusable Terraform modules
     ├── apis/                        # GCP API enablement module
-    ├── application/                 # Application-level configuration
+    ├── application/                 # Monitoring dashboards and synthetics
+    │   ├── dashboards.tf            # Cloud Monitoring dashboards
+    │   ├── monitoring.tf            # Monitoring alerts and policies
+    │   └── synthetics.tf            # Synthetic monitoring checks
     ├── artifact-registry/           # Container registry module
     ├── cloud-run/                   # Cloud Run service module
     ├── collector/                   # Data collector service module
     ├── database/                    # Cloud SQL database module
+    │   ├── main.tf                  # Database instance configuration
+    │   ├── monitoring.tf            # Database monitoring alerts
+    │   └── backup.tf                # Backup configuration
     ├── scheduler/                   # Cloud Scheduler module
     ├── secrets/                     # Secret Manager module
     ├── vpc/                         # VPC and networking module
@@ -52,13 +65,22 @@ infra/
 
 ### Child Modules (`modules/*/`)
 - **apis**: Enables required GCP APIs
-- **application**: Application-level configuration and service orchestration
+- **application**: Cloud Monitoring dashboards, alerts, and synthetic monitoring
+  - Executive, Operations, Business KPIs, and Troubleshooting dashboards
+  - Monitoring alerts for services and database
+  - Synthetic monitoring for endpoint health checks
 - **artifact-registry**: Creates Docker repositories with cleanup policies
 - **cloud-run**: Cloud Run service configuration with auto-scaling
+  - Extended startup probes for ML model loading
+  - VPC connector integration for database access
+  - Secret Manager integration for credentials
 - **collector**: Data collector service for train data ingestion
 - **database**: Cloud SQL PostgreSQL instance with private networking
+  - PostgreSQL 17 support
+  - Automated backups to GCS
+  - Monitoring and alerting configuration
 - **scheduler**: Cloud Scheduler for automated task execution
-- **secrets**: Sets up Secret Manager for sensitive data
+- **secrets**: Sets up Secret Manager for sensitive data (NJT, Amtrak, APNS credentials)
 - **vpc**: Creates VPC, subnets, NAT, firewall rules
 - **vpc-connector**: VPC connector for Cloud Run private networking
 
@@ -79,18 +101,19 @@ infra/
 ### 2. Secret Manager (`modules/secrets/`)
 **Purpose**: Secure storage for application secrets
 **Resources**:
-- Secret Manager secret with auto-replication
-- Initial secret version with placeholders
+- Individual secrets for each credential type
+- Auto-replication for high availability
 - Lifecycle policy to ignore changes (updated externally)
 
-**Expected Secrets**:
-```json
-{
-  "database_url": "postgresql://...",
-  "nj_transit_api_key": "...",
-  "amtrak_api_key": "..."
-}
-```
+**Secrets Created**:
+- `trackrat-{env}-njt-username`: NJ Transit API username
+- `trackrat-{env}-njt-password`: NJ Transit API password
+- `trackrat-{env}-njt-token`: NJ Transit API token
+- `trackrat-{env}-amtrak-api-key`: Amtrak API key
+- `trackrat-{env}-apns-team-id`: Apple Push Notification Service Team ID
+- `trackrat-{env}-apns-key-id`: APNS Key ID
+- `trackrat-{env}-apns-auth-key`: APNS Auth Key (P8 content)
+- `trackrat-{env}-database-url`: PostgreSQL connection string (auto-generated)
 
 ### 3. Artifact Registry (`modules/artifact-registry/`)
 **Purpose**: Docker image storage for Cloud Run deployments
@@ -111,7 +134,7 @@ infra/
 ### 5. Cloud Run Services (`modules/cloud-run/`)
 **Purpose**: Scalable serverless container deployment
 **Configuration**:
-- Auto-scaling from 0 to configured max instances
+- Auto-scaling from min to max instances (configured per environment)
 - VPC connector for private database access
 - Extended startup probe configuration:
   - Initial delay: 30 seconds
@@ -120,13 +143,39 @@ infra/
   - Failure threshold: 40 attempts (10 minutes total)
 - Liveness probe on `/health` endpoint every 30 seconds
 - Request timeout: 60 seconds for API operations
+- CPU boost enabled for faster startup
+- Generation 2 execution environment
+
+**Environment Variables**:
+- Application configuration (environment, log levels)
+- APNS configuration for iOS push notifications
+- OpenTelemetry configuration for tracing
+- Scheduler configuration (cloud_native mode)
+- Data staleness and update intervals
 
 **Key Configuration Updates**:
 - Startup timeout extended to accommodate ML model loading
-- VPC connector names limited to 25 characters (e.g., `trackrat-dev-vpc`)
+- VPC connector names limited to 25 characters
 - Health checks ensure service readiness before traffic routing
+- Secret environment variables mapped from Secret Manager
 
-### 6. Cloud Monitoring Dashboards (`modules/application/dashboards.tf`)
+### 6. Database Layer (`modules/database/`)
+**Purpose**: Managed PostgreSQL database with high availability
+**Configuration**:
+- PostgreSQL 17 latest version
+- Private IP only (no public access)
+- Automated daily backups with 7-day retention
+- Point-in-time recovery enabled
+- High availability with automatic failover (production)
+- Connection pooling and query insights
+
+**Monitoring**:
+- CPU, memory, and disk utilization alerts
+- Connection count monitoring
+- Transaction ID wraparound prevention
+- Replication lag monitoring (if HA enabled)
+
+### 7. Cloud Monitoring Dashboards (`modules/application/`)
 **Purpose**: Comprehensive system observability
 **Dashboards**:
 1. **Executive Dashboard**: High-level business metrics
@@ -441,39 +490,46 @@ terraform plan             # Review planned changes
 
 ## Current Infrastructure Status
 
-### ✅ Phase 1: Foundation Layer (Complete)
-- VPC and networking with private subnets
-- Secret Manager for credentials
-- Artifact Registry for container images
-- Required APIs enabled
+### ✅ Core Infrastructure (Complete)
+- **Networking**: VPC with private subnets, NAT gateway, firewall rules
+- **Security**: Secret Manager for all sensitive credentials
+- **Container Registry**: Artifact Registry with cleanup policies
+- **Database**: Cloud SQL PostgreSQL 17 with private networking
+- **Compute**: Cloud Run services with auto-scaling
+- **Monitoring**: Comprehensive dashboards and alerting
+- **Backup**: Automated database backups to GCS
 
-### ✅ Phase 2: Database Layer (Complete)
-- Cloud SQL PostgreSQL instances
-- Private IP connectivity via VPC
-- Backup and high availability configuration
-- Database monitoring and alerting
+### 🚀 Deployed Services
 
-### ✅ Phase 3: Application Layer (Complete)
-- Cloud Run services with auto-scaling
-- VPC connectors for private networking
-- SSL certificates and load balancing
-- Data collector and scheduler services
-- Extended startup probes for model loading (10 minutes)
-- VPC connector name constraints (25 character limit)
+#### Staging Environment
+- **API Service**: `trackrat-api-staging`
+  - CPU: 1 core, Memory: 512Mi
+  - Min/Max instances: 1/1
+  - APNS configured for production (TestFlight)
+  - Higher OpenTelemetry sampling (0.2)
+  - 30-minute discovery interval
 
-### ✅ Phase 4: Monitoring Layer (Complete)
-- Cloud Monitoring dashboards (Executive, Operations, Business KPIs, Troubleshooting)
-- Alerting policies for database and services
-- Log aggregation and analysis
-- Performance monitoring with Prometheus metrics
-- Model prediction accuracy tracking
-- Executive dashboard with system health score, daily trains processed, API uptime
+#### Production Environment
+- **API Service**: `trackrat-api-prod`
+  - CPU: 1 core, Memory: 1Gi
+  - Min/Max instances: 1/1
+  - APNS configured for production (App Store)
+  - Lower OpenTelemetry sampling (0.05)
+  - 20-minute discovery interval
 
-### 📋 Phase 5: CI/CD Layer (Planned)
-- Cloud Build pipelines
-- Artifact promotion between environments
-- Automated testing and deployment
-- Enhanced monitoring and rollback
+### 📊 Monitoring Configuration
+- **Dashboards**: Executive, Operations, Business KPIs, Troubleshooting
+- **Metrics**: Prometheus metrics exported every 60 seconds
+- **Tracing**: OpenTelemetry integration with Cloud Trace
+- **Alerts**: Database and service health monitoring
+- **Synthetics**: Endpoint availability monitoring
+
+### 🔐 Security Configuration
+- All secrets stored in Secret Manager
+- Private database access only (no public IP)
+- VPC isolation for all services
+- Service account with least privilege
+- Automated secret rotation support
 
 ## Quick Reference Commands
 
@@ -499,9 +555,16 @@ gsutil ls gs://BUCKET_NAME                  # List bucket contents
 ```bash
 cd infra
 ./setup-backend.sh                         # Setup all environments
-cd environments/dev && terraform init      # Initialize dev
-cd ../staging && terraform init            # Initialize staging
+cd environments/staging && terraform init  # Initialize staging
 cd ../prod && terraform init               # Initialize prod
+```
+
+### Update Database Secrets
+```bash
+# After database creation, update the connection string
+cd scripts
+./update-database-secrets.sh staging       # Update staging secrets
+./update-database-secrets.sh prod          # Update production secrets
 ```
 
 ## Contact and Support

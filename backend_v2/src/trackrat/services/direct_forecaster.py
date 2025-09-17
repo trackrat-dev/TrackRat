@@ -10,8 +10,9 @@ import statistics
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, distinct, func, select
+from sqlalchemy import and_, case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.functions import coalesce
 from structlog import get_logger
 
 from trackrat.models.database import JourneyStop, TrainJourney
@@ -47,7 +48,9 @@ class DirectArrivalForecaster:
 
     # Configuration constants - easy to tune
     LOOKBACK_HOURS = 1  # How far back to look for recent trains
-    MIN_SAMPLES = 2  # Minimum trains needed for a prediction (2 is reasonable)
+    MIN_SAMPLES = (
+        3  # Minimum trains needed for a prediction (increased for better reliability)
+    )
     MAX_SEGMENT_MINUTES = 60  # Maximum believable time for a single segment
     STALE_PREDICTION_MINUTES = 10  # How old a prediction can be before we discard it
 
@@ -205,126 +208,140 @@ class DirectArrivalForecaster:
         line_code: str | None = None,
     ) -> dict[str, float] | None:
         """
-        Calculate transit time directly from recent journeys.
+        Calculate transit time from segments that completed recently.
 
-        This replaces the need for segment_transit_times table by
-        querying journey_stops directly for trains that traveled
-        between these two stations.
+        A segment is considered "recent" if the arrival at the destination
+        station occurred within LOOKBACK_HOURS.
 
         Returns:
             Dict with 'avg' and 'samples' keys, or None if insufficient data
         """
         cutoff_time = now_et() - timedelta(hours=self.LOOKBACK_HOURS)
 
-        # More efficient query: find journeys that have BOTH stations
-        # We'll do this with a subquery to ensure we only get relevant journeys
-        journey_ids_subquery = (
-            select(JourneyStop.journey_id)
+        # Single query that gets segment data and filters on arrival time
+        stmt = (
+            select(
+                JourneyStop.journey_id,
+                func.min(
+                    case(
+                        (
+                            JourneyStop.station_code == from_station,
+                            JourneyStop.stop_sequence,
+                        )
+                    )
+                ).label("from_sequence"),
+                func.max(
+                    case(
+                        (
+                            JourneyStop.station_code == from_station,
+                            coalesce(
+                                JourneyStop.actual_departure,
+                                JourneyStop.scheduled_departure,
+                            ),
+                        )
+                    )
+                ).label("departure_time"),
+                func.max(
+                    case(
+                        (
+                            JourneyStop.station_code == to_station,
+                            JourneyStop.stop_sequence,
+                        )
+                    )
+                ).label("to_sequence"),
+                func.max(
+                    case(
+                        (
+                            JourneyStop.station_code == to_station,
+                            coalesce(
+                                JourneyStop.actual_arrival,
+                                JourneyStop.scheduled_arrival,
+                            ),
+                        )
+                    )
+                ).label("arrival_time"),
+            )
             .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
             .where(
                 and_(
                     TrainJourney.data_source == data_source,
-                    TrainJourney.last_updated_at >= cutoff_time,
                     JourneyStop.station_code.in_([from_station, to_station]),
                 )
             )
             .group_by(JourneyStop.journey_id)
             .having(
-                func.count(distinct(JourneyStop.station_code)) == 2
-            )  # Must have both stations
+                and_(
+                    func.count(distinct(JourneyStop.station_code)) == 2,
+                    # Ensure from comes before to
+                    func.min(
+                        case(
+                            (
+                                JourneyStop.station_code == from_station,
+                                JourneyStop.stop_sequence,
+                            )
+                        )
+                    )
+                    < func.max(
+                        case(
+                            (
+                                JourneyStop.station_code == to_station,
+                                JourneyStop.stop_sequence,
+                            )
+                        )
+                    ),
+                    # Key change: Filter on actual segment completion time
+                    func.max(
+                        case(
+                            (
+                                JourneyStop.station_code == to_station,
+                                coalesce(
+                                    JourneyStop.actual_arrival,
+                                    JourneyStop.scheduled_arrival,
+                                ),
+                            )
+                        )
+                    )
+                    >= cutoff_time,
+                )
+            )
         )
 
         # Add line filter if provided
         if line_code:
-            journey_ids_subquery = journey_ids_subquery.where(
-                TrainJourney.line_code == line_code
-            )
-
-        # Now get the actual stops for these journeys
-        stmt = (
-            select(
-                JourneyStop.journey_id,
-                JourneyStop.station_code,
-                JourneyStop.stop_sequence,
-                JourneyStop.actual_departure,
-                JourneyStop.scheduled_departure,
-                JourneyStop.actual_arrival,
-                JourneyStop.scheduled_arrival,
-            )
-            .where(
-                and_(
-                    JourneyStop.journey_id.in_(journey_ids_subquery),
-                    JourneyStop.station_code.in_([from_station, to_station]),
-                )
-            )
-            .order_by(JourneyStop.journey_id, JourneyStop.stop_sequence)
-        )
+            stmt = stmt.where(TrainJourney.line_code == line_code)
 
         result = await db.execute(stmt)
-        stops_by_journey: dict[Any, list[Any]] = {}
-
-        # Group stops by journey (simplified since we only get relevant stops)
-        for row in result:
-            if row.journey_id not in stops_by_journey:
-                stops_by_journey[row.journey_id] = []
-            stops_by_journey[row.journey_id].append(row)
-
-        # Calculate transit times for each journey
         transit_times = []
 
-        for journey_id, stops in stops_by_journey.items():
-            # Should have exactly 2 stops
-            if len(stops) != 2:
-                logger.debug(f"Journey {journey_id} has {len(stops)} stops, expected 2")
-                continue
+        for row in result:
+            if row.departure_time and row.arrival_time:
+                delta = ensure_timezone_aware(row.arrival_time) - ensure_timezone_aware(
+                    row.departure_time
+                )
+                minutes = delta.total_seconds() / 60.0
 
-            # Sort by sequence to ensure correct order
-            stops.sort(key=lambda s: s.stop_sequence)
-
-            # Verify correct order (from_station should come before to_station)
-            if (
-                stops[0].station_code == from_station
-                and stops[1].station_code == to_station
-            ):
-                from_stop = stops[0]
-                to_stop = stops[1]
-
-                # Use COALESCE logic: actual times if available, otherwise scheduled
-                departure = from_stop.actual_departure or from_stop.scheduled_departure
-                arrival = to_stop.actual_arrival or to_stop.scheduled_arrival
-
-                if departure and arrival:
-                    # Calculate time difference
-                    delta = ensure_timezone_aware(arrival) - ensure_timezone_aware(
-                        departure
+                # Validate the time is reasonable (positive and not too long)
+                if 0 < minutes <= self.MAX_SEGMENT_MINUTES:
+                    transit_times.append(minutes)
+                    logger.debug(
+                        f"Found recent segment: {from_station}→{to_station} = {minutes:.1f}min "
+                        f"(arrived {row.arrival_time})"
                     )
-                    minutes = delta.total_seconds() / 60.0
-
-                    # Validate the time is reasonable (positive and not too long)
-                    if 0 < minutes <= self.MAX_SEGMENT_MINUTES:
-                        transit_times.append(minutes)
-                        logger.debug(
-                            f"Found transit time: {from_station}→{to_station} = {minutes:.1f}min "
-                            f"(journey {journey_id})"
-                        )
-                    else:
-                        logger.debug(
-                            f"Skipped unreasonable time: {minutes:.1f}min for {from_station}→{to_station}"
-                        )
+                else:
+                    logger.debug(
+                        f"Skipped unreasonable time: {minutes:.1f}min for {from_station}→{to_station}"
+                    )
 
         # Check if we have enough samples
         if len(transit_times) >= self.MIN_SAMPLES:
             return {
-                "avg": statistics.median(transit_times),  # Use median for robustness
+                "avg": statistics.median(transit_times),
                 "samples": len(transit_times),
             }
 
         logger.debug(
-            "insufficient_samples",
-            from_station=from_station,
-            to_station=to_station,
-            samples_found=len(transit_times),
-            min_required=self.MIN_SAMPLES,
+            f"Insufficient recent segments for {from_station}→{to_station}: "
+            f"found {len(transit_times)}, need {self.MIN_SAMPLES}"
         )
         return None
 
@@ -334,30 +351,46 @@ class DirectArrivalForecaster:
         """
         Determine where to start making predictions and what the initial time is.
 
-        Priority order:
-        1. User's origin station (if provided)
-        2. Last departed stop (if train is in progress)
-        3. First stop (if train hasn't started)
+        Logic:
+        1. If user_origin provided:
+           - If train has departed from user's origin: use actual departure time
+           - If train hasn't reached user's origin: use scheduled departure time
+        2. If no user_origin: find last departed stop for full journey view
+
+        This ensures user journeys use scheduled time until train departs their origin,
+        then switch to actual times which naturally incorporate delays.
 
         Returns:
             Tuple of (start_index, predicted_time) or (None, None) if cannot determine
         """
-        # Check for user origin
+        # Handle user's origin station
         if user_origin:
             for i, stop in enumerate(stops):
                 if _get_station_code(stop) == user_origin:
-                    # Start from user's origin with its scheduled time (plus any delay)
-                    base_time = self._get_scheduled_time(stop, "departure")
-                    if base_time:
-                        # Add any accumulated delay from train progress
-                        delay = self._calculate_current_delay(stops)
-                        return i, base_time + delay
-                    return i, now_et()
+                    # Check if train has departed from user's origin
+                    if getattr(stop, "has_departed_station", False):
+                        # Train has departed - use actual time (includes delays naturally)
+                        if stop.actual_departure:
+                            return i, ensure_timezone_aware(stop.actual_departure)
+                        else:
+                            # No actual time but marked as departed - use scheduled + buffer
+                            base_time = self._get_scheduled_time(stop, "departure")
+                            if base_time:
+                                buffer = self._get_departure_buffer(stop)
+                                return i, base_time + buffer
+                            return i, now_et()
+                    else:
+                        # Train hasn't departed from user's origin - use scheduled time
+                        base_time = self._get_scheduled_time(stop, "departure")
+                        if base_time:
+                            return i, base_time
+                        # Fallback if no scheduled time available
+                        return i, now_et()
 
-        # Find last departed stop
+        # No user origin specified - find last departed stop for full journey view
         for i in range(len(stops) - 1, -1, -1):
             stop = stops[i]
-            if stop.has_departed_station:
+            if getattr(stop, "has_departed_station", False):
                 # Use actual departure if available, otherwise scheduled + buffer
                 if stop.actual_departure:
                     return i, ensure_timezone_aware(stop.actual_departure)
@@ -367,12 +400,8 @@ class DirectArrivalForecaster:
                         buffer = self._get_departure_buffer(stop)
                         return i, base_time + buffer
 
-        # Default to first stop
-        if stops:
-            first_stop_time = self._get_scheduled_time(stops[0], "departure")
-            if first_stop_time:
-                return 0, first_stop_time
-
+        # No departed stops found - cannot make meaningful predictions
+        # (This handles the case where train hasn't started journey yet)
         return None, None
 
     def _get_scheduled_time(
@@ -446,26 +475,6 @@ class DirectArrivalForecaster:
         else:
             # Use arrival time (minimal or no dwell)
             return arrival_time
-
-    def _calculate_current_delay(self, stops: list[Any]) -> timedelta:
-        """
-        Calculate current delay based on departed stops.
-
-        Finds the most recent departed stop with actual times
-        and calculates delay vs scheduled time.
-
-        Returns:
-            Delay timedelta (can be negative for early trains)
-        """
-        for stop in reversed(stops):
-            if stop.has_departed_station:
-                if stop.actual_departure:
-                    scheduled = self._get_scheduled_time(stop, "departure")
-                    if scheduled and isinstance(stop.actual_departure, datetime):
-                        actual = ensure_timezone_aware(stop.actual_departure)
-                        return actual - scheduled
-
-        return timedelta(0)  # No delay if no departed stops
 
     def _get_departure_buffer(self, stop: Any) -> timedelta:
         """

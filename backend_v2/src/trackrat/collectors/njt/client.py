@@ -278,3 +278,58 @@ class NJTransitClient:
                 ),
             )
             raise NJTransitAPIError(f"Invalid train data format: {str(e)}") from e
+
+    @track_api_call(api_name="njtransit", endpoint="station_schedule")
+    async def get_station_schedule(
+        self, station_code: str | None = None, njt_only: bool = False
+    ) -> list[dict[str, Any]]:
+        """Get 27-hour schedule data for a station or all stations.
+
+        This API has limited access (5 times per day) and should only be called
+        once daily, ideally after 12:30 AM.
+
+        Args:
+            station_code: Two-character station code (e.g., "NY", "NP").
+                         Pass None or empty string for all stations.
+            njt_only: If True, return NJT trains only. If False, include Amtrak.
+
+        Returns:
+            List of station schedule dictionaries with train data
+
+        Raises:
+            NJTransitAPIError: If the request fails
+        """
+        logger.info(
+            "API QUERY: getting station schedule using getStationSchedule",
+            station_code=station_code or "ALL",
+            njt_only=njt_only,
+        )
+
+        # Build request data
+        data = {"NJTOnly": "true" if njt_only else "false"}
+        if station_code:
+            data["station"] = station_code
+        else:
+            # Empty string for all stations
+            data["station"] = ""
+
+        response = await self._make_request("TrainData/getStationSchedule", data)
+
+        # The API returns a list of station dictionaries
+        if not isinstance(response, list):
+            logger.error(
+                "invalid_schedule_response_type",
+                response_type=type(response).__name__,
+                station_code=station_code,
+            )
+            raise NJTransitAPIError(
+                f"Expected list response for schedule, got {type(response).__name__}"
+            )
+
+        logger.info(
+            "station_schedule_retrieved",
+            station_count=len(response),
+            station_code=station_code or "ALL",
+        )
+
+        return response

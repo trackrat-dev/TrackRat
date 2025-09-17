@@ -52,10 +52,12 @@ struct StationIconView: View {
 struct DeparturePickerView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var ratSenseService = RatSenseService.shared
+    @Binding var sheetPosition: BottomSheetPosition
     
-    init() {
+    init(sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
         print("🐀🐀🐀 DeparturePickerView init - ensuring RatSense is initialized")
         _ = RatSenseService.shared
+        self._sheetPosition = sheetPosition
     }
     @State private var searchText = ""
     @State private var isSearching = false
@@ -190,19 +192,21 @@ struct DeparturePickerView: View {
             TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
-            VStack(spacing: 16) {
-                titleSection
-                
-                Spacer()
-                    .frame(height: shouldShowTitle ? 0 : topPadding)
-                
-                VStack(spacing: 20) {
-                    searchFieldSection
-                    contentSection
+            SheetAwareScrollView(sheetPosition: $sheetPosition) {
+                VStack(spacing: 16) {
+                    titleSection
+                    
+                    Spacer()
+                        .frame(height: shouldShowTitle ? 0 : topPadding)
+                    
+                    VStack(spacing: 20) {
+                        searchFieldSection
+                        contentSection
+                    }
+                    
+                    Spacer()
+                    Spacer()
                 }
-                
-                Spacer()
-                Spacer()
             }
         }
     }
@@ -581,6 +585,6 @@ struct DepartureButton: View {
 }
 
 #Preview {
-    DeparturePickerView()
+    DeparturePickerView(sheetPosition: .constant(.expanded))
         .environmentObject(AppState())
 }

@@ -4,17 +4,17 @@ This file provides comprehensive guidance to Claude Code (claude.ai/code) when w
 
 ## Project Overview
 
-TrackRat is a full-stack train tracking system that combines a simplified Python backend V2 with a native iOS app featuring Live Activity support for real-time track predictions for NJ Transit and Amtrak trains.
+TrackRat is a full-stack train tracking system that combines a simplified Python backend V2 with native mobile apps (iOS and Android) featuring real-time track predictions for NJ Transit and Amtrak trains. The iOS app includes Live Activity support for Lock Screen updates.
 
 ### System Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Data Sources  │     │   Cloud Run     │     │   iOS Frontend  │
+│   Data Sources  │     │   Cloud Run     │     │ Mobile Frontends│
 ├─────────────────┤     ├─────────────────┤     ├─────────────────┤
 │ • NJ Transit    │────▶│ • API Service   │────▶│ • iOS App       │
-│ • Amtrak APIs   │     │ • Scheduler     │     │ • Live Activity │
-│                 │     │ • ML Models     │     │ • Widgets       │
+│ • Amtrak APIs   │     │ • Scheduler     │     │ • Android App   │
+│                 │     │ • ML Models     │     │ • Live Activity │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                 │
                         ┌───────▼────────┐
@@ -32,11 +32,11 @@ TrackRat is a full-stack train tracking system that combines a simplified Python
 
 ### Key Features
 
-1. **Multi-Station Support**: Backend and iOS app support NY Penn, Newark Penn, Trenton, Princeton Junction, and Metropark
+1. **Multi-Station Support**: Backend and iOS app support NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark, plus 44 Southeast Amtrak stations
 2. **Train Consolidation**: Backend merges duplicate trains; iOS app displays unified journey data
 3. **Track Predictions**: Track assignments from NJ Transit API; iOS app displays "Owl" predictions when available
-4. **Real-Time Updates**: Backend updates every 30 minutes + on-demand; iOS app refreshes every 30 seconds
-5. **Journey Planning**: Backend provides smart filtering; iOS app enables origin-destination trip selection
+4. **Real-Time Updates**: Backend updates every 30 minutes + on-demand + hourly validation; iOS app refreshes every 30 seconds
+5. **Journey Planning**: Backend provides smart filtering with bidirectional route support; iOS app enables origin-destination trip selection
 6. **Live Activities**: Real-time train tracking on Lock Screen and Dynamic Island
 7. **Push Notifications**: Background updates for Live Activities with status changes
 
@@ -86,6 +86,14 @@ poetry run uvicorn trackrat.main:app --reload
 # iOS development
 cd ios
 open TrackRat.xcodeproj
+
+# Android development
+cd android
+# Set up Java (required each session unless added to shell profile)
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export PATH=$JAVA_HOME/bin:$PATH
+# Build debug APK
+./gradlew assembleDebug -x test
 
 # Infrastructure management
 cd infra
@@ -262,7 +270,7 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 ### Operational Requirements
 
 **Automated Operations:**
-- ✅ Data collection every 30 minutes (discovery) + 5 minutes (journey updates) via integrated scheduler
+- ✅ Data collection every 30 minutes (discovery) + 5 minutes (journey updates) + hourly validation via integrated scheduler
 - ✅ Auto-scaling based on traffic
 - ✅ Database backups and maintenance
 - ✅ Health monitoring and restart on failure
@@ -364,7 +372,39 @@ When adding new features:
 
 ## Recent Enhancements
 
-### Transit Time Tracking & Congestion Analysis (NEW)
+### Train Validation Service (NEW)
+Automated hourly validation system for comprehensive train coverage monitoring:
+- **Backend**: New `TrainValidationService` class performs hourly validation checks
+- **Coverage**: Validates key routes (NY→WI, NY→PJ, MP→NY, NY→HL) across NJT and Amtrak
+- **Metrics**: New Prometheus metrics `train_validation_coverage_percent` and `missing_trains_detected_total`
+- **Debugging**: Detailed logging identifies missing trains and API discrepancies
+- **Scheduler**: Integrated hourly validation job running at :05 past each hour
+- **Benefits**: Ensures data completeness and identifies API integration issues automatically
+
+### Southeast Amtrak Station Expansion
+Major expansion of Amtrak station coverage across the Southeast corridor:
+- **iOS**: Added 44 new stations across NC, SC, GA, FL, VA, WV to Stations.swift
+- **Coverage**: Now includes Charlotte, Raleigh, Atlanta, Miami, Jacksonville, Tampa, Orlando
+- **Trains**: Full support for Silver Star, Silver Meteor, Carolinian, Piedmont, Crescent
+- **Total Stations**: Expanded from ~100 to ~144 stations system-wide
+- **Benefits**: Complete Southeast corridor coverage for Amtrak travelers
+
+### Bidirectional Route Support Fix
+Critical fix for train route handling:
+- **Backend**: Fixed departure service logic to handle trains in both directions
+- **Logic Change**: Updated from `to_seq > from_seq` to `to_seq != from_seq`
+- **Impact**: Northbound trains from Southeast stations now properly displayed
+- **Benefits**: Full bidirectional support for all train routes
+
+### Android App Implementation
+Complete Android application now available:
+- **UI**: Material Design 3 with dynamic theming
+- **Features**: Train tracking, station selection, real-time updates
+- **Architecture**: Kotlin with Jetpack Compose, Repository pattern
+- **Status**: Fully functional debug build available
+- **Benefits**: Cross-platform support for Android users
+
+### Transit Time Tracking & Congestion Analysis
 Comprehensive analytics system for route performance monitoring:
 - **Backend**: New `TransitAnalyzer` service calculates segment times, dwell times, and journey progress
 - **Database**: Added `segment_transit_times`, `station_dwell_times`, and `journey_progress` tables
@@ -450,6 +490,13 @@ Sophisticated machine learning system for track assignment prediction:
    - Siri Shortcuts integration
    - CarPlay support
 
+3. **Android**:
+   - Widget support (planned)
+   - Wear OS app (planned)
+   - Material You dynamic theming (implemented)
+   - Offline caching (planned)
+   - Android Auto support (planned)
+
 ## Development Tools
 
 ### Development Commands
@@ -464,9 +511,14 @@ make clean                           # Clean build artifacts
 make backend-test                    # Run backend tests
 make backend-migrate                 # Run database migrations
 
-# Infrastructure commands  
-make infra-plan                      # Plan infrastructure changes
-make infra-validate                  # Validate Terraform configuration
+# Infrastructure commands
+# CRITICAL: Always run linting before infrastructure changes
+cd infra
+make test                            # Run quick validation tests
+make staging-plan                    # Plan staging changes
+make staging-apply                   # Apply staging changes
+make prod-plan                       # Plan production changes
+make prod-apply                      # Apply production changes
 
 # Setup development environment
 make setup                           # Install dependencies and initialize
@@ -515,6 +567,47 @@ TrackRat/Models/Train.swift          # Core data model
 TrackRat/Views/                      # All UI components
 ```
 
+### Android Commands
+```bash
+# Set up Java environment (macOS with Homebrew)
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export PATH=$JAVA_HOME/bin:$PATH
+
+# Verify Java setup
+java -version  # Should show OpenJDK 17
+
+# Build debug APK (skip tests for quick build)
+./gradlew assembleDebug -x test
+
+# Build with tests
+./gradlew build
+
+# Install on connected device/emulator
+./gradlew installDebug
+
+# Run the app
+./gradlew installDebug && adb shell am start -n com.trackrat.android/.MainActivity
+
+# Clean build artifacts
+./gradlew clean
+
+# APK output location
+# Debug: app/build/outputs/apk/debug/app-debug.apk
+```
+
+### Android Key Files
+```
+app/src/main/java/com/trackrat/android/
+├── data/
+│   ├── api/TrackRatApi.kt          # API interface
+│   ├── models/                      # Data models
+│   └── repository/                  # Repository pattern
+├── ui/
+│   ├── trainlist/                   # Train list UI
+│   └── theme/                       # Material Design theme
+└── MainActivity.kt                   # App entry point
+```
+
 
 ### API Base URLs
 - Development: `http://localhost:8000/api`
@@ -525,8 +618,9 @@ TrackRat/Views/                      # All UI components
 When working on this project, refer to:
 - **Backend V2 details**: `backend_v2/CLAUDE.md` - Simplified V2 backend development
 - **iOS details**: `ios/CLAUDE.md` - iOS app development with Live Activities
+- **Android details**: `android/CLAUDE.md` - Android app development
 - **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP infrastructure  
-- **Integration guidance**: This file for backend-iOS integration
+- **Integration guidance**: This file for backend-mobile integration
 
 ### Quick Reference
 

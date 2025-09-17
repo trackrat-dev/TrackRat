@@ -343,24 +343,27 @@ struct OnboardingView: View {
                     title: "Fast!",
                     description: "Real-time updates every 30 seconds\nwith intelligent caching"
                 )
-                
-                FeatureCard(
-                    icon: "tram.fill",
-                    title: "Live Progress Updates",
-                    description: "Track trains on your Lock Screen\nwith real-time updates"
-                )
-                
-                FeatureCard(
-                    icon: "map.fill",
-                    title: "View Congestion & Delays",
-                    description: "System-wide delay visualization\n🟢 On time  🟡 5-15m  🟠 15-30m  🔴 30m+"
-                )
-                
                 FeatureCard(
                     icon: "brain.head.profile",
                     title: "Departure Track Predictions",
                     description: "AI-powered track assignments\nbefore official announcements"
                 )
+                FeatureCard(
+                    icon: "tram.fill",
+                    title: "Live Progress Updates",
+                    description: "Track trains on your Lock Screen\nwith real-time updates"
+                )
+                FeatureCard(
+                    icon: "map.fill",
+                    title: "View Congestion & Delays",
+                    description: "System-wide delay visualization\n🟢 On time  🟡 5-15m  🟠 15-30m  🔴 30m+"
+                )
+                FeatureCard(
+                    icon: "speedometer",
+                    title: "Arrival Time Forecasts",
+                    description: ""
+                )
+                
                 
             }
             

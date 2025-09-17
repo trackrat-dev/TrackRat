@@ -977,7 +977,7 @@ class JourneyCollector(BaseJourneyCollector):
                     station_code=stop_data.STATION_2CHAR,
                     station_name=stop_data.STATIONNAME
                     or get_station_name(stop_data.STATION_2CHAR or ""),
-                    stop_sequence=0,  # Placeholder, will be corrected by _resequence_stops
+                    stop_sequence=sequence,  # Use actual sequence from API, will be resequenced if needed
                     # Set scheduled times ONLY on creation (immutable)
                     # TIME on first response = scheduled arrival (then becomes estimate)
                     scheduled_arrival=api_arrival_time,
@@ -1083,13 +1083,20 @@ class JourneyCollector(BaseJourneyCollector):
         # Re-sequence all stops for this journey to ensure consistency
         await self._resequence_stops(session, journey)
 
+        # Critical: Flush changes to database to ensure resequencing is persisted
+        await session.flush()
+
         # Validate that we don't have duplicate sequences after processing
         await self._validate_stop_sequences(session, journey)
 
     async def _resequence_stops(
         self, session: AsyncSession, journey: TrainJourney
     ) -> None:
-        """Resequence all stops for a journey based on scheduled arrival time."""
+        """Resequence all stops for a journey based on scheduled times.
+
+        Uses scheduled_arrival for most stops, but falls back to scheduled_departure
+        for origin stations that may only have departure times.
+        """
         logger.debug("resequencing_stops", journey_id=journey.id)
 
         # Get all stops for the journey
@@ -1097,11 +1104,14 @@ class JourneyCollector(BaseJourneyCollector):
         result = await session.execute(stmt)
         stops = list(result.scalars().all())
 
-        # Sort stops by scheduled arrival time (the most reliable field for ordering)
-        # Use a very early time for stops with no arrival time to sort them first
-        stops.sort(key=lambda s: s.scheduled_arrival or datetime.min)
+        # Sort stops by scheduled arrival time, using scheduled departure as fallback
+        # This handles origin stations that may only have departure times
+        stops.sort(
+            key=lambda s: s.scheduled_arrival or s.scheduled_departure or datetime.min
+        )
 
         # Update the stop_sequence for each stop
+        changes_made = False
         for i, stop in enumerate(stops):
             if stop.stop_sequence != i:
                 logger.info(
@@ -1110,38 +1120,120 @@ class JourneyCollector(BaseJourneyCollector):
                     station_code=stop.station_code,
                     old_sequence=stop.stop_sequence,
                     new_sequence=i,
+                    scheduled_arrival=(
+                        stop.scheduled_arrival.isoformat()
+                        if stop.scheduled_arrival
+                        else None
+                    ),
+                    scheduled_departure=(
+                        stop.scheduled_departure.isoformat()
+                        if stop.scheduled_departure
+                        else None
+                    ),
                 )
                 stop.stop_sequence = i
+                changes_made = True
+
+        if changes_made:
+            logger.info(
+                "stop_sequences_updated",
+                journey_id=journey.id,
+                train_id=journey.train_id,
+                total_stops=len(stops),
+            )
 
     async def _validate_stop_sequences(
         self, session: AsyncSession, journey: TrainJourney
     ) -> None:
         """Validate that no duplicate stop sequences exist for this journey.
+        If duplicates are found, automatically fix them.
 
         Args:
             session: Database session
             journey: Journey to validate
         """
         # Query stops directly to avoid lazy loading issues
-        stops_stmt = select(JourneyStop.stop_sequence).where(
+        stops_stmt = select(JourneyStop.stop_sequence, JourneyStop.station_code).where(
             JourneyStop.journey_id == journey.id
         )
         result = await session.execute(stops_stmt)
-        sequences = [row[0] for row in result.fetchall() if row[0] is not None]
+        stop_data = [(row[0], row[1]) for row in result.fetchall()]
+        sequences = [seq for seq, _ in stop_data if seq is not None]
 
         # Find duplicates
         duplicate_sequences = {seq for seq in sequences if sequences.count(seq) > 1}
 
         if duplicate_sequences:
-            logger.error(
-                "duplicate_stop_sequences_detected",
+            logger.warning(
+                "duplicate_stop_sequences_detected_attempting_fix",
                 train_id=journey.train_id,
                 journey_id=journey.id,
                 duplicate_sequences=list(duplicate_sequences),
                 total_sequences=len(sequences),
+                stop_details=stop_data,
             )
-            # This shouldn't happen with our fix, but if it does, mark journey for review
-            journey.api_error_count = (journey.api_error_count or 0) + 1
+
+            # Self-healing: Force re-sequence based on scheduled times
+            logger.info(
+                "forcing_stop_resequence_due_to_duplicates",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+            )
+
+            # Get all stops with their scheduled arrival times
+            full_stops_stmt = select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id
+            )
+            full_result = await session.execute(full_stops_stmt)
+            stops = list(full_result.scalars().all())
+
+            # Sort by scheduled arrival time, using scheduled departure for origin station
+            stops.sort(
+                key=lambda s: s.scheduled_arrival
+                or s.scheduled_departure
+                or datetime.min
+            )
+
+            # Force update all sequences
+            for i, stop in enumerate(stops):
+                stop.stop_sequence = i
+                logger.info(
+                    "force_updated_stop_sequence",
+                    journey_id=journey.id,
+                    station_code=stop.station_code,
+                    new_sequence=i,
+                )
+
+            # Force flush to database
+            await session.flush()
+
+            # Verify fix worked
+            verify_stmt = select(JourneyStop.stop_sequence).where(
+                JourneyStop.journey_id == journey.id
+            )
+            verify_result = await session.execute(verify_stmt)
+            verify_sequences = [
+                row[0] for row in verify_result.fetchall() if row[0] is not None
+            ]
+            verify_duplicates = {
+                seq for seq in verify_sequences if verify_sequences.count(seq) > 1
+            }
+
+            if verify_duplicates:
+                logger.error(
+                    "duplicate_sequences_persist_after_fix",
+                    train_id=journey.train_id,
+                    journey_id=journey.id,
+                    duplicate_sequences=list(verify_duplicates),
+                )
+                # Mark journey for manual review
+                journey.api_error_count = (journey.api_error_count or 0) + 1
+            else:
+                logger.info(
+                    "duplicate_sequences_fixed_successfully",
+                    train_id=journey.train_id,
+                    journey_id=journey.id,
+                )
         else:
             logger.debug(
                 "stop_sequence_validation_passed",

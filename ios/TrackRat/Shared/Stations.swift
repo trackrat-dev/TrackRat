@@ -86,7 +86,17 @@ struct Stations {
         "Claremont", "Dover NH", "Durham-UNH", "Exeter",
         "New Carrollton", "Aberdeen", "Alexandria", "Charlottesville",
         "Lorton", "Norfolk", "Richmond Main Street", "Richmond Staples Mill Road", "Roanoke",
-        "Harrisburg", "Lancaster"
+        "Harrisburg", "Lancaster",
+        
+        // Southeast Amtrak Stations (Silver Star/Meteor and Carolinian/Piedmont routes)
+        "Charlotte", "Raleigh", "Greensboro", "Durham", "Rocky Mount", "Wilson",
+        "Cary", "Southern Pines", "High Point", "Salisbury", "Gastonia", "Hamlet",
+        "Selma-Smithfield", "Petersburg",
+        "Charleston", "Spartanburg", "Greenville", "Kingstree", "Florence", "Dillon", "Clemson",
+        "Savannah", "Atlanta", "Jesup", "Gainesville GA", "Toccoa",
+        "Jacksonville", "Miami", "Orlando", "Tampa", "Fort Lauderdale", "West Palm Beach",
+        "Kissimmee", "Lakeland", "Winter Park FL", "DeLand", "Sanford FL", "Hollywood FL",
+        "Delray Beach", "Waldo", "Ocala", "Winter Haven", "Palatka", "Thurmond"
     ].sorted()
     
     // Station name to code mapping - Updated to match backend STATION_CODES.txt
@@ -297,7 +307,53 @@ struct Stations {
         "Harrisburg": "HAR",
         "Lancaster": "LNC",
         "Kingston": "KIN",
-        "Westerly": "WLY"
+        "Westerly": "WLY",
+        
+        // Southeast Amtrak stations
+        "Charlotte": "CLT",
+        "Raleigh": "RGH",
+        "Greensboro": "GRB",
+        "Durham": "DNC",
+        "Rocky Mount": "RMT",
+        "Wilson": "WLN",
+        "Cary": "CAR",
+        "Southern Pines": "SOU",
+        "High Point": "HPT",
+        "Salisbury": "SAL",
+        "Gastonia": "GAS",
+        "Hamlet": "HAM",
+        "Selma-Smithfield": "SEL",
+        "Petersburg": "PTB",
+        "Charleston": "CHS",
+        "Spartanburg": "SPB",
+        "Greenville": "GVL",
+        "Kingstree": "KTR",
+        "Florence": "FLO",
+        "Dillon": "DIL",
+        "Clemson": "CSN",
+        "Savannah": "SAV",
+        "Atlanta": "ATL",
+        "Jesup": "JES",
+        "Gainesville GA": "GAI",
+        "Toccoa": "TOC",
+        "Jacksonville": "JAX",
+        "Miami": "MIA",
+        "Orlando": "ORL",
+        "Tampa": "TPA",
+        "Fort Lauderdale": "FTL",
+        "West Palm Beach": "WPB",
+        "Kissimmee": "KIS",
+        "Lakeland": "LKL",
+        "Winter Park FL": "WPK",
+        "DeLand": "DLD",
+        "Sanford FL": "SAN",
+        "Hollywood FL": "HLW",
+        "Delray Beach": "DLB",
+        "Waldo": "WLD",
+        "Ocala": "OCA",
+        "Winter Haven": "WTH",
+        "Palatka": "PAL",
+        "Thurmond": "THU"
     ]
     
     // Station coordinates for mapping - synced with backend_v2/src/trackrat/config/stations.py
@@ -525,11 +581,44 @@ struct Stations {
 	"WH": CLLocationCoordinate2D(latitude: 40.615644648058776, longitude: -74.77069208869021),  //  White House
 	"ON": CLLocationCoordinate2D(latitude: 40.63685173471974, longitude: -74.83598194792847),  // Lebanon
 	"AN": CLLocationCoordinate2D(latitude: 40.645122790094504, longitude: -74.87893201752432),  // Annandale
-	"HG": CLLocationCoordinate2D(latitude: 40.666798999008535, longitude: -74.89591082917332)  // High Bridge
+	"HG": CLLocationCoordinate2D(latitude: 40.666798999008535, longitude: -74.89591082917332),  // High Bridge
+        
+        // Additional Amtrak stations (Southeast/South)
+        "ATL": CLLocationCoordinate2D(latitude: 33.7995643615723, longitude: -84.3917846679688),   // Atlanta, GA
+        "CHS": CLLocationCoordinate2D(latitude: 32.8755340576172, longitude: -79.9989013671875),   // Charleston, SC
+        "CSN": CLLocationCoordinate2D(latitude: 34.6910, longitude: -82.8325),   // Clemson, SC
+        "CLT": CLLocationCoordinate2D(latitude: 35.2411460876465, longitude: -80.8236389160156),   // Charlotte, NC
+        "DIL": CLLocationCoordinate2D(latitude: 34.418285369873, longitude: -79.3717575073242),    // Dillon, SC
+        "DLB": CLLocationCoordinate2D(latitude: 26.4551792144775, longitude: -80.092529296875),    // Delray Beach, FL
+        "DLD": CLLocationCoordinate2D(latitude: 29.0168342590332, longitude: -81.3524551391602),   // DeLand, FL
+        "DNC": CLLocationCoordinate2D(latitude: 35.9970359802246, longitude: -78.9072265625),     // Durham, NC
+        "FLO": CLLocationCoordinate2D(latitude: 34.1988182067871, longitude: -79.7570953369141),   // Florence, SC
+        "FTL": CLLocationCoordinate2D(latitude: 26.1196136474609, longitude: -80.1701889038086),   // Fort Lauderdale, FL
+        "GAS": CLLocationCoordinate2D(latitude: 35.2683563232422, longitude: -81.1639785766602),   // Gastonia, NC
+        "HAM": CLLocationCoordinate2D(latitude: 34.8830718994141, longitude: -79.6984558105469),   // Hamlet, NC
+        "HPT": CLLocationCoordinate2D(latitude: 35.9575080871582, longitude: -80.0058364868164),   // High Point, NC
+        "JAX": CLLocationCoordinate2D(latitude: 30.3665771484375, longitude: -81.7246017456055),   // Jacksonville, FL
+        "KIS": CLLocationCoordinate2D(latitude: 28.293270111084, longitude: -81.4048690795898),    // Kissimmee, FL
+        "KTR": CLLocationCoordinate2D(latitude: 33.664379119873, longitude: -79.8290634155273),    // Kingstree, SC
+        "LKL": CLLocationCoordinate2D(latitude: 28.04568, longitude: -81.95188),   // Lakeland, FL
+        "MIA": CLLocationCoordinate2D(latitude: 25.8498477935791, longitude: -80.2580718994141),   // Miami, FL
+        "ORL": CLLocationCoordinate2D(latitude: 28.5256938934326, longitude: -81.3817443847656),   // Orlando, FL
+        "PTB": CLLocationCoordinate2D(latitude: 37.2416191101074, longitude: -77.4289703369141),   // Petersburg, VA
+        "RGH": CLLocationCoordinate2D(latitude: 35.7795, longitude: -78.6382),                     // Raleigh, NC
+        "RMT": CLLocationCoordinate2D(latitude: 35.9382, longitude: -77.7905),                     // Rocky Mount, NC
+        "SAL": CLLocationCoordinate2D(latitude: 35.6740, longitude: -80.4842),                     // Salisbury, NC
+        "SAV": CLLocationCoordinate2D(latitude: 32.0835, longitude: -81.0998),                     // Savannah, GA
+        "SPB": CLLocationCoordinate2D(latitude: 34.9496, longitude: -81.9318),                     // Spartanburg, SC
+        "TPA": CLLocationCoordinate2D(latitude: 27.9506, longitude: -82.4572),                     // Tampa, FL
+        "WLN": CLLocationCoordinate2D(latitude: 35.7230682373047, longitude: -77.9082946777344),   // Wilson, NC
+        "WPB": CLLocationCoordinate2D(latitude: 26.7153, longitude: -80.0534),                     // West Palm Beach, FL
+        "WPK": CLLocationCoordinate2D(latitude: 28.5990, longitude: -81.3392),                     // Winter Park, FL
+        "WTH": CLLocationCoordinate2D(latitude: 28.0222, longitude: -81.7323)                      // Winter Haven, FL
     ]
     
     // Supported departure stations - Updated to match backend
     static let departureStations: [(name: String, code: String)] = [
+        // Northeast Corridor
         ("New York Penn Station", "NY"),
         ("Hoboken", "HB"),
         ("Metropark", "MP"),
@@ -541,7 +630,20 @@ struct Stations {
         ("Dunellen", "DN"),
         ("Raritan", "RA"),
         ("Philadelphia", "PH"),
-        ("Wilmington Station", "WI")
+        ("Wilmington Station", "WI"),
+        // Mid-Atlantic
+        ("Baltimore Station", "BL"),
+        ("Washington Union Station", "WS"),
+        ("Richmond Staples Mill Road", "RVR"),
+        // Southeast hubs
+        ("Charlotte", "CLT"),
+        ("Raleigh", "RGH"),
+        ("Savannah", "SAV"),
+        ("Jacksonville", "JAX"),
+        ("Orlando", "ORL"),
+        ("Tampa", "TPA"),
+        ("Miami", "MIA"),
+        ("Atlanta", "ATL")
     ]
     
     // Popular destination stations - kept in sync with departure stations

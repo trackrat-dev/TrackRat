@@ -747,6 +747,7 @@ final class APIService: ObservableObject {
                 updateCount: departure.dataFreshness.updateCount,
                 collectionMethod: departure.dataFreshness.collectionMethod
             ),
+            observationType: departure.observationType,
             isCancelled: departure.isCancelled,
             isCompleted: false, // Departures are never completed at search time
             stops: nil
@@ -846,6 +847,7 @@ final class APIService: ObservableObject {
                 updateCount: details.dataFreshness.updateCount,
                 collectionMethod: details.dataFreshness.collectionMethod
             ),
+            observationType: details.observationType,
             isCancelled: details.isCancelled,
             isCompleted: details.isCompleted,
             stops: stops

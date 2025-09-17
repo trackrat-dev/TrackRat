@@ -135,6 +135,7 @@ echo "================================="
 echo ""
 
 echo "📝 Checking code formatting with black..."
+poetry run black src/ tests/
 poetry run black src/ tests/ --check
 
 echo ""
@@ -143,7 +144,7 @@ poetry run mypy src/
 
 echo ""
 echo "⚡ Running fast linting with ruff..."
-poetry run ruff check src/
+poetry run ruff check src/ --fix
 
 echo ""
 echo "✅ All code quality checks passed!"

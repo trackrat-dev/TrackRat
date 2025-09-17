@@ -11,13 +11,44 @@ struct TrainListView: View {
     @State private var destination: String
     @State private var departureStationCode: String
     @State private var departureName: String
+    @Binding var sheetPosition: BottomSheetPosition
     
     
-    init(destination: String) {
+    init(destination: String, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
         self._destination = State(initialValue: destination)
         self._departureStationCode = State(initialValue: "")
         self._departureName = State(initialValue: "")
+        self._sheetPosition = sheetPosition
         self._viewModel = StateObject(wrappedValue: TrainListViewModel())
+    }
+    
+    private func handleToolbarDrag(value: DragGesture.Value) {
+        let translation = value.translation.height
+        
+        // Swipe down to collapse, swipe up to expand
+        if translation > 50 {
+            // Dragging down - step down one position
+            switch sheetPosition {
+            case .expanded:
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .medium
+                }
+            case .medium:
+                break // Already at lowest position
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } else if translation < -50 {
+            // Dragging up - step up one position
+            switch sheetPosition {
+            case .medium:
+                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                    sheetPosition = .expanded
+                }
+            case .expanded:
+                break // Already at highest
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
     }
     
     var body: some View {
@@ -26,7 +57,7 @@ struct TrainListView: View {
             TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
-            ScrollView {
+            SheetAwareScrollView(sheetPosition: $sheetPosition) {
                     VStack(spacing: 16) {
                         if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
                             TrackRatLoadingView(message: "Finding your trains...")
@@ -76,6 +107,9 @@ struct TrainListView: View {
                                 )
                             }
                         }
+                        
+                        // Add spacer at bottom for better scrolling
+                        Spacer(minLength: 50)
                     }
                     .padding()
                 }
@@ -101,6 +135,13 @@ struct TrainListView: View {
                             .foregroundColor(.white.opacity(0.8))
                     }
                 }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture()
+                        .onEnded { value in
+                            handleToolbarDrag(value: value)
+                        }
+                )
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -165,6 +206,11 @@ struct TrainCard: View {
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 6
     
+    /// Check if train is scheduled only (not observed)
+    private var isScheduledOnly: Bool {
+        return train.observationType == "SCHEDULED"
+    }
+    
     /// Check if train is cancelled
     private var isCancelled: Bool {
         return train.isCancelled
@@ -173,7 +219,9 @@ struct TrainCard: View {
     /// Check if train is boarding at origin
     private var isBoardingAtOrigin: Bool {
         // Use context-aware boarding check and verify track + departure timing
-        return train.isBoarding(fromStationCode: departureStationCode) && 
+        // Don't show boarding for scheduled-only trains
+        return !isScheduledOnly &&
+               train.isBoarding(fromStationCode: departureStationCode) && 
                train.track != nil &&
                train.isDepartingSoon(fromStationCode: departureStationCode, withinMinutes: 11)
     }
@@ -266,12 +314,13 @@ struct TrainCard: View {
             }
             .padding()
             .background(
-                isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9)
+                isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(isScheduledOnly ? 0.7 : 0.9)
             )
             .cornerRadius(16)
             .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
         }
         .buttonStyle(.plain)
+        .opacity(isScheduledOnly ? 0.85 : 1.0)
     }
 }
 
@@ -430,16 +479,9 @@ class TrainListViewModel: ObservableObject {
                 toStationCode: toStationCode
             )
             
-            // Filter trains: within 6 hours and haven't already departed
-            let now = Date()
-            let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
-            
+            // Filter trains: only exclude trains that have already departed
             let filteredTrains = fetchedTrains.filter { train in
-                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
-                let isWithinTimeWindow = departureTime <= sixHoursFromNow
-                let hasNotDeparted = !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
-                
-                return isWithinTimeWindow && hasNotDeparted
+                !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
             }
             
             // Deduplicate trains by ID to prevent ForEach crashes

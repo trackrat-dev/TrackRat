@@ -46,7 +46,7 @@ class DepartureService:
                 tzinfo=None
             )  # Convert to naive Eastern for consistent DB comparison
         if time_to is None:
-            time_to = time_from + timedelta(hours=6)
+            time_to = time_from + timedelta(hours=24)
 
         # Query journeys from both NJT and Amtrak data sources
         stmt = (
@@ -148,6 +148,7 @@ class DepartureService:
                     update_count=journey.update_count,
                 ),
                 data_source=journey.data_source,
+                observation_type=journey.observation_type,
                 is_cancelled=journey.is_cancelled,
             )
             departures.append(departure)

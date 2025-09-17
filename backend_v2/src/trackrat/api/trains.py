@@ -60,7 +60,7 @@ async def get_departures(
         None, description="Start time (defaults to now)"
     ),
     time_to: datetime | None = Query(
-        None, description="End time (defaults to +6 hours)"
+        None, description="End time (defaults to +24 hours)"
     ),
     limit: int = Query(50, le=100, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
@@ -242,6 +242,7 @@ async def get_train_details(
             collection_method="just_in_time" if refresh else "scheduled",
         ),
         data_source=journey.data_source or "NJT",
+        observation_type=journey.observation_type,
         raw_train_state="Active" if journey.data_source == "AMTRAK" else None,
         is_cancelled=journey.is_cancelled,
         is_completed=journey.is_completed,

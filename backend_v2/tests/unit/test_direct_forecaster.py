@@ -82,66 +82,35 @@ def mock_db_with_segments():
     """Create a mock database session with segment data."""
     mock_db = AsyncMock(spec=AsyncSession)
 
-    # Mock the database query results
-    # The result of execute() is an iterable Result object.
-    # The code iterates over this result.
+    # Create properly structured mock rows for the database query
+    # These represent the aggregated results from the SQL query in _get_segment_transit_time
+    base_time = now_et()
+
+    # The query returns aggregated data per journey with departure_time and arrival_time
     mock_rows = [
-        # Journey 1 stops
+        # Journey 1: NP->TR segment (45 minutes)
         MagicMock(
+            departure_time=base_time - timedelta(hours=2, minutes=18),
+            arrival_time=base_time - timedelta(hours=1, minutes=33),
+            from_sequence=1,
+            to_sequence=2,
             journey_id=1,
-            station_code="NP",
-            stop_sequence=1,
-            actual_departure=now_et() - timedelta(hours=2, minutes=18),
-            scheduled_departure=now_et() - timedelta(hours=2, minutes=20),
-            actual_arrival=None,
-            scheduled_arrival=None,
         ),
+        # Journey 2: NP->TR segment (46 minutes)
         MagicMock(
-            journey_id=1,
-            station_code="TR",
-            stop_sequence=2,
-            actual_departure=None,
-            scheduled_departure=None,
-            actual_arrival=now_et() - timedelta(hours=1, minutes=33),
-            scheduled_arrival=now_et() - timedelta(hours=1, minutes=35),
-        ),
-        # Journey 2 stops
-        MagicMock(
+            departure_time=base_time - timedelta(hours=3, minutes=18),
+            arrival_time=base_time - timedelta(hours=2, minutes=32),
+            from_sequence=1,
+            to_sequence=2,
             journey_id=2,
-            station_code="NP",
-            stop_sequence=1,
-            actual_departure=now_et() - timedelta(hours=3, minutes=18),
-            scheduled_departure=now_et() - timedelta(hours=3, minutes=20),
-            actual_arrival=None,
-            scheduled_arrival=None,
         ),
+        # Journey 3: NP->TR segment (45 minutes)
         MagicMock(
-            journey_id=2,
-            station_code="TR",
-            stop_sequence=2,
-            actual_departure=None,
-            scheduled_departure=None,
-            actual_arrival=now_et() - timedelta(hours=2, minutes=32),
-            scheduled_arrival=now_et() - timedelta(hours=2, minutes=35),
-        ),
-        # Journey 3 stops
-        MagicMock(
+            departure_time=base_time - timedelta(hours=4, minutes=20),
+            arrival_time=base_time - timedelta(hours=3, minutes=35),
+            from_sequence=1,
+            to_sequence=2,
             journey_id=3,
-            station_code="NP",
-            stop_sequence=1,
-            actual_departure=None,  # No actual times, use scheduled
-            scheduled_departure=now_et() - timedelta(hours=4, minutes=20),
-            actual_arrival=None,
-            scheduled_arrival=None,
-        ),
-        MagicMock(
-            journey_id=3,
-            station_code="TR",
-            stop_sequence=2,
-            actual_departure=None,
-            scheduled_departure=None,
-            actual_arrival=None,  # No actual times, use scheduled
-            scheduled_arrival=now_et() - timedelta(hours=3, minutes=35),
         ),
     ]
 
@@ -213,8 +182,10 @@ class TestDirectArrivalForecaster:
             sample_stops, user_origin=None
         )
 
-        assert start_index == 0  # Should start from first stop
-        assert start_time is not None
+        # With our simplified logic, we return None when no stops have departed
+        # and no user origin is specified, since we can't make meaningful predictions
+        assert start_index is None
+        assert start_time is None
 
     def test_validate_prediction_time(self, forecaster):
         """Test prediction time validation."""
@@ -240,13 +211,6 @@ class TestDirectArrivalForecaster:
             very_stale = now - timedelta(minutes=15)
             validated = forecaster._validate_prediction_time(very_stale, stop)
             assert validated == stop.scheduled_departure
-
-    def test_calculate_current_delay(self, forecaster, sample_stops):
-        """Test calculating current delay from departed stops."""
-        delay = forecaster._calculate_current_delay(sample_stops)
-
-        # NP departed 2 minutes late (actual -16 vs scheduled -18)
-        assert delay == timedelta(minutes=2)
 
     def test_calculate_next_departure(self, forecaster):
         """Test calculating next departure time."""
@@ -367,46 +331,36 @@ class TestDirectArrivalForecaster:
     async def test_coalesce_logic(self, forecaster):
         """Test COALESCE logic (actual times preferred over scheduled)."""
         mock_db = AsyncMock(spec=AsyncSession)
+        base_time = now_et()
 
-        # Create stops with mix of actual and scheduled times
+        # Create aggregated results as returned by the SQL query
+        # The query COALESCEs actual times preferred over scheduled times
         mock_rows = [
-            # Journey with actual times
+            # Journey 1: Uses actual times (30 minutes)
             MagicMock(
+                departure_time=base_time - timedelta(hours=1),  # actual departure
+                arrival_time=base_time - timedelta(minutes=30),  # actual arrival
+                from_sequence=1,
+                to_sequence=2,
                 journey_id=1,
-                station_code="A",
-                stop_sequence=1,
-                actual_departure=now_et() - timedelta(hours=1),
-                scheduled_departure=now_et() - timedelta(hours=1, minutes=5),
-                actual_arrival=None,
-                scheduled_arrival=None,
             ),
+            # Journey 2: Uses scheduled times (30 minutes)
             MagicMock(
-                journey_id=1,
-                station_code="B",
-                stop_sequence=2,
-                actual_departure=None,
-                scheduled_departure=None,
-                actual_arrival=now_et() - timedelta(minutes=30),
-                scheduled_arrival=now_et() - timedelta(minutes=35),
-            ),
-            # Journey with only scheduled times
-            MagicMock(
+                departure_time=base_time - timedelta(hours=2),  # scheduled departure
+                arrival_time=base_time
+                - timedelta(hours=1, minutes=30),  # scheduled arrival
+                from_sequence=1,
+                to_sequence=2,
                 journey_id=2,
-                station_code="A",
-                stop_sequence=1,
-                actual_departure=None,
-                scheduled_departure=now_et() - timedelta(hours=2),
-                actual_arrival=None,
-                scheduled_arrival=None,
             ),
+            # Journey 3: Mixed times (30 minutes) - need 3 samples for MIN_SAMPLES
             MagicMock(
-                journey_id=2,
-                station_code="B",
-                stop_sequence=2,
-                actual_departure=None,
-                scheduled_departure=None,
-                actual_arrival=None,
-                scheduled_arrival=now_et() - timedelta(hours=1, minutes=30),
+                departure_time=base_time - timedelta(hours=3),  # scheduled departure
+                arrival_time=base_time
+                - timedelta(hours=2, minutes=30),  # scheduled arrival
+                from_sequence=1,
+                to_sequence=2,
+                journey_id=3,
             ),
         ]
 
@@ -417,34 +371,25 @@ class TestDirectArrivalForecaster:
         )
 
         assert result is not None
-        assert result["samples"] == 2
-        # Both journeys should contribute (COALESCE uses actual when available)
-        assert result["avg"] == pytest.approx(30.0)  # Median of 30 and 30 minutes
+        assert result["samples"] == 3
+        # All three journeys should contribute (COALESCE uses actual when available)
+        assert result["avg"] == pytest.approx(30.0)  # Median of 30, 30, and 30 minutes
 
     @pytest.mark.asyncio
     async def test_max_segment_minutes_filtering(self, forecaster):
         """Test that segments over MAX_SEGMENT_MINUTES are filtered out."""
         mock_db = AsyncMock(spec=AsyncSession)
+        base_time = now_et()
 
-        # Create stops with unreasonable transit time
+        # Create aggregated result with unreasonable transit time (2 hours = 120 minutes)
+        # This exceeds MAX_SEGMENT_MINUTES (60 minutes)
         mock_rows = [
             MagicMock(
+                departure_time=base_time - timedelta(hours=3),
+                arrival_time=base_time - timedelta(hours=1),  # 2 hours transit time!
+                from_sequence=1,
+                to_sequence=2,
                 journey_id=1,
-                station_code="A",
-                stop_sequence=1,
-                actual_departure=now_et() - timedelta(hours=3),
-                scheduled_departure=None,
-                actual_arrival=None,
-                scheduled_arrival=None,
-            ),
-            MagicMock(
-                journey_id=1,
-                station_code="B",
-                stop_sequence=2,
-                actual_departure=None,
-                scheduled_departure=None,
-                actual_arrival=now_et() - timedelta(hours=1),  # 2 hours transit!
-                scheduled_arrival=None,
             ),
         ]
 

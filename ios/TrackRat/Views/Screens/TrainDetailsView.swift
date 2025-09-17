@@ -6,19 +6,22 @@ struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @Binding var sheetPosition: BottomSheetPosition
     
     let trainId: Int  // Keep for backwards compatibility
     
     // Legacy initializer for database ID
-    init(trainId: Int) {
+    init(trainId: Int, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
         self.trainId = trainId
+        self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(trainId: trainId)
         self._viewModel = StateObject(wrappedValue: VModel)
     }
     
     // New initializer for train number
-    init(trainNumber: String, fromStation: String? = nil) {
+    init(trainNumber: String, fromStation: String? = nil, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
         self.trainId = 0  // Not used for train number based initialization
+        self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
@@ -34,7 +37,7 @@ struct TrainDetailsView: View {
             TrackRatTheme.Colors.primaryBackground
                 .ignoresSafeArea()
             
-            ScrollView {
+            SheetAwareScrollView(sheetPosition: $sheetPosition) {
                 VStack {
                     if viewModel.isLoading && viewModel.train == nil {
                         TrackRatLoadingView(message: "Loading train details...")
@@ -72,7 +75,7 @@ struct TrainDetailsView: View {
                         selectedDestinationName: appState.selectedDestination
                     )
                 }
-            } // ScrollView
+            } // SheetAwareScrollView
         } // ZStack
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)
@@ -209,6 +212,29 @@ struct CombinedDetailsCard: View {
         return stationName.lowercased() == selectedDeparture.lowercased()
     }
     
+    // Check if predictions should be shown for the entire journey
+    private var shouldShowJourneyPredictions: Bool {
+        // Find the user's destination stop
+        guard let selectedDestination = selectedDestination,
+              let destinationStop = displayableTrainStops.first(where: { stop in
+                  stop.stationName.lowercased() == selectedDestination.lowercased()
+              }) else {
+            return false
+        }
+        
+        // Check if destination has significant predicted delay (≥4 minutes)
+        guard let predictedArrival = destinationStop.predictedArrival,
+              let scheduledArrival = destinationStop.scheduledArrival,
+              let samples = destinationStop.predictedArrivalSamples,
+              samples > 0,
+              !destinationStop.hasDepartedStation else {
+            return false
+        }
+        
+        let delaySeconds = predictedArrival.timeIntervalSince(scheduledArrival)
+        return delaySeconds > 240  // ≥4 minutes
+    }
+    
     // Helper functions for status display
     private func timeAgo(from date: Date) -> String {
         let now = Date()
@@ -335,7 +361,11 @@ struct CombinedDetailsCard: View {
                 
                 // Track predictions section
                 if shouldShowPredictions {
-                    SegmentedTrackPredictionView(train: train)
+                    SegmentedTrackPredictionView(
+                        train: train,
+                        isDepartingFromNYPenn: appState.departureStationCode == "NY"
+                    )
+                    .allowsHitTesting(true)  // Ensure predictions card is interactive
                 }
             }
             .padding([.horizontal, .top])
@@ -367,7 +397,8 @@ struct CombinedDetailsCard: View {
                             isBoarding: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName),
                             boardingTrack: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName) ? stop.track : nil,
                             train: train,
-                            departureStationCode: appState.departureStationCode
+                            departureStationCode: appState.departureStationCode,
+                            shouldShowJourneyPredictions: shouldShowJourneyPredictions
                         )
                     }
                     
@@ -403,85 +434,6 @@ struct CombinedDetailsCard: View {
 
 // Note: StatusV2 functionality is now integrated directly into TrainV2 model
 
-// MARK: - Track Prediction Card
-struct TrackPredictionCard: View {
-    let train: TrainV2
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "tram.circle.fill")
-                    .foregroundColor(.black)
-                    .font(.title2)
-                
-                Text("Track Predictions")
-                    .font(.headline)
-                    .foregroundColor(.black)
-                
-                Spacer()
-            }
-            
-            if let predictionData = train.predictionData,
-               let trackProbabilities = predictionData.trackProbabilities {
-                
-                // Group tracks by platform and show percentages
-                let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
-                // Filter to only show platforms with ≥2% likelihood
-                let filteredPlatforms = platformProbabilities.filter { $0.value >= 0.02 }
-                let sortedPlatforms = filteredPlatforms.sorted { $0.value > $1.value }
-                
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 8) {
-                    ForEach(sortedPlatforms, id: \.key) { platform, probability in
-                        PlatformPredictionRow(
-                            platformName: platform,
-                            probability: probability
-                        )
-                    }
-                }
-                .padding(.top, 4)
-            } else {
-                Text("No prediction data available")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                    .italic()
-            }
-        }
-        .padding()
-        .background(Color.orange.opacity(0.05))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-        )
-    }
-}
-
-// MARK: - Platform Prediction Row
-struct PlatformPredictionRow: View {
-    let platformName: String
-    let probability: Double
-    
-    var body: some View {
-        HStack {
-            Text(platformName)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundColor(.black)
-            
-            Spacer()
-            
-            Text("\(Int(probability * 100))%")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundColor(.orange)
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 10)
-        .background(Color.white.opacity(0.8))
-        .cornerRadius(8)
-    }
-}
-
 // MARK: - Stops Card
 struct StopsCard: View {
     let train: TrainV2
@@ -501,7 +453,8 @@ struct StopsCard: View {
                         isBoarding: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
                         boardingTrack: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? stop.track : nil,
                         train: train,
-                        departureStationCode: appState.departureStationCode
+                        departureStationCode: appState.departureStationCode,
+                        shouldShowJourneyPredictions: false
                     )
                 }
             } else {
@@ -528,6 +481,7 @@ struct StopRowV2: View {
     let boardingTrack: String?
     let train: TrainV2
     let departureStationCode: String?
+    let shouldShowJourneyPredictions: Bool
     
     @State private var showPulse = false
     
@@ -723,7 +677,8 @@ struct StopRowV2: View {
                let samples = stop.predictedArrivalSamples,
                samples > 0,
                !stop.hasDepartedStation,
-               predictedArrival.timeIntervalSince(scheduledArrival) > 240 {
+               predictedArrival.timeIntervalSince(scheduledArrival) > 240,
+               shouldShowJourneyPredictions {
                 HStack(spacing: 4) {
                     Text("🐀✨")
                         .font(.system(size: 16))
@@ -1078,10 +1033,12 @@ struct TrainProgressIndicator: View {
 // MARK: - Segmented Track Prediction View
 struct SegmentedTrackPredictionView: View {
     let train: TrainV2
+    let isDepartingFromNYPenn: Bool
     @State private var selectedSegment: TrackPredictionSegment?
     @State private var showingOthersPopup = false
     @State private var adjustedPredictions: PredictionData?
     @State private var isLoadingPredictions = true
+    @State private var showWaitingLink = false
     
     private var predictionSegments: [TrackPredictionSegment] {
         guard let predictionData = adjustedPredictions,
@@ -1090,7 +1047,11 @@ struct SegmentedTrackPredictionView: View {
         }
         
         let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
-        let sortedPlatforms = platformProbabilities.sorted { $0.value > $1.value }
+        let sortedPlatforms = platformProbabilities.sorted { first, second in
+            let firstNum = extractPlatformNumber(from: first.key)
+            let secondNum = extractPlatformNumber(from: second.key)
+            return firstNum < secondNum
+        }
         
         return createSegments(from: sortedPlatforms)
     }
@@ -1145,6 +1106,12 @@ struct SegmentedTrackPredictionView: View {
                     .foregroundColor(.gray)
                     .italic()
             }
+            
+            // Penn Station waiting guide link for NY departures
+            if isDepartingFromNYPenn && showWaitingLink {
+                PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding()
         .background(Color.orange.opacity(0.05))
@@ -1162,6 +1129,20 @@ struct SegmentedTrackPredictionView: View {
         isLoadingPredictions = true
         adjustedPredictions = await StaticTrackDistributionService.shared.getAdjustedPredictionData(for: train)
         isLoadingPredictions = false
+        
+        // Show the waiting link with animation after predictions load
+        if isDepartingFromNYPenn {
+            withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {
+                showWaitingLink = true
+            }
+        }
+    }
+    
+    private func extractPlatformNumber(from platformName: String) -> Int {
+        // Extract first number from platform names like "1 & 2", "3 & 4", "17"
+        let components = platformName.components(separatedBy: CharacterSet.decimalDigits.inverted)
+        let firstNumber = components.first { !$0.isEmpty }
+        return Int(firstNumber ?? "999") ?? 999
     }
     
     private var segmentedBarView: some View {
@@ -1189,7 +1170,7 @@ struct SegmentedTrackPredictionView: View {
             .overlay(
                 segment.labelPosition == .inside ? 
                 Text(segment.displayText)
-                    .font(.caption2)
+                    .font(segment.labelFont)
                     .fontWeight(.medium)
                     .foregroundColor(.black)
                     .lineLimit(3)
@@ -1255,7 +1236,7 @@ struct SegmentedTrackPredictionView: View {
                     let segmentWidth = geometry.size.width * segment.probability
                     
                     VStack {
-                        if segment.probability >= 0.17 {
+                        if segment.probability >= 0.15 {
                             Text("\(Int(segment.probability * 100))%")
                                 .font(.caption2)
                                 .fontWeight(.medium)
@@ -1329,6 +1310,7 @@ struct TrackPredictionSegment: Identifiable, Equatable {
         if isOthersGroup {
             return "Others"
         }
+        // Show "Tracks" prefix for all segments >=15%
         return "Tracks\n\(platformName)"
     }
     
@@ -1344,16 +1326,8 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .gray.opacity(0.6)
         }
         
-        switch rank {
-        case 1:
-            return .orange
-        case 2:
-            return .orange.opacity(0.7)
-        case 3:
-            return .orange.opacity(0.5)
-        default:
-            return .orange.opacity(0.3)
-        }
+        // All segments now use same opacity
+        return .orange.opacity(0.3)
     }
     
     var labelPosition: TrackLabelPosition {
@@ -1361,12 +1335,20 @@ struct TrackPredictionSegment: Identifiable, Equatable {
             return .inside
         }
         
-        // Only show labels for segments with >= 17% probability
-        if probability >= 0.17 {
+        // Show labels for segments with >= 15% probability
+        if probability >= 0.15 {
             return .inside
         } else {
             return .none
         }
+    }
+    
+    var labelFont: Font {
+        if isOthersGroup {
+            return .caption2
+        }
+        // Use size 10 font (between size 9 and caption2) for all segments >= 15%
+        return .system(size: 10, weight: .medium)
     }
 }
 
@@ -1374,6 +1356,41 @@ enum TrackLabelPosition {
     case inside
     case above
     case none
+}
+
+// MARK: - Penn Station Waiting Link
+struct PennStationWaitingLink: View {
+    let isAmtrak: Bool
+    @State private var showingGuide = false
+    
+    var body: some View {
+        HStack {
+            Spacer()
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showingGuide = true
+            }) {
+                HStack(spacing: 3) {
+                    Text("where should I wait?")
+                        .font(.system(size: 12))
+                        .fontWeight(.medium)
+                }
+                .foregroundColor(.white)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color.black.opacity(0.9))
+                )
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.top, 8)
+        .sheet(isPresented: $showingGuide) {
+            PennStationGuideView(isAmtrak: isAmtrak)
+        }
+    }
 }
 
 // MARK: - Stations Helper Extension

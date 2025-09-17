@@ -229,12 +229,21 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 journey = existing
                 journey.last_updated_at = now_et()
                 journey.update_count = (journey.update_count or 0) + 1
+                # Mark as observed if it was previously scheduled
+                if journey.observation_type == "SCHEDULED":
+                    journey.observation_type = "OBSERVED"
+                    logger.info(
+                        "upgraded_amtrak_scheduled_to_observed",
+                        train_id=train_id,
+                        journey_date=journey_date,
+                    )
             else:
                 # Create new journey
                 journey = TrainJourney(
                     train_id=train_id,
                     journey_date=journey_date,
                     data_source="AMTRAK",
+                    observation_type="OBSERVED",  # Real-time Amtrak data
                     line_code="AM",  # Standard code for Amtrak
                     line_name="Amtrak",
                     line_color="#003366",  # Amtrak blue

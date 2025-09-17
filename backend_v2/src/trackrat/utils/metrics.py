@@ -35,6 +35,32 @@ upstream_api_errors = Counter(
     ["api", "endpoint", "error_type"],
 )
 
+# Metrics for train validation service
+train_validation_coverage = Histogram(
+    "train_validation_coverage_percent",
+    "Percentage of trains found in our API vs transit API",
+    ["route", "source"],
+    buckets=[0, 25, 50, 75, 80, 85, 90, 95, 98, 99, 100],
+)
+
+missing_trains_detected = Counter(
+    "missing_trains_detected_total",
+    "Total missing trains detected during validation",
+    ["route", "source"],
+)
+
+train_validation_duration = Histogram(
+    "train_validation_duration_seconds",
+    "Time taken to validate routes",
+    ["route", "source"],
+)
+
+train_validation_runs = Counter(
+    "train_validation_runs_total",
+    "Total validation runs",
+    ["status"],  # success or failure
+)
+
 
 def track_api_call(
     api_name: str, endpoint: str

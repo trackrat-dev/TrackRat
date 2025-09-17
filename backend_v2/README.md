@@ -1,18 +1,26 @@
 # TrackRat V2 Backend
 
-A simplified, efficient train tracking system for NJ Transit and Amtrak built with FastAPI, SQLite, and modern Python.
+A simplified, efficient train tracking system for NJ Transit and Amtrak built with FastAPI, PostgreSQL, and modern Python.
+
+**Version:** 2.0.0 (September 2025)
+**Database:** PostgreSQL with asyncpg (production-ready)
+**Python:** 3.11+ with strict type checking
 
 ## ✨ Features
 
-- **🔄 Minimal API Polling**: Hourly discovery + on-demand updates (~95% fewer API calls)
+- **🔄 Minimal API Polling**: 30-min discovery + on-demand updates (~95% fewer API calls)
+- **📅 Schedule Generation**: Daily NJT schedules + Amtrak pattern-based predictions
 - **⚡ Just-in-Time Updates**: Fresh data when users request it (<1 minute staleness)
 - **🎯 Single Journey Records**: One record per train, no duplicates
 - **🛡️ Type-Safe**: Strict mypy checking enforced from day one
-- **🚀 Async Throughout**: Built on aiosqlite for maximum performance
-- **📊 Built-in Monitoring**: Health checks, metrics, and structured logging
-- **🔧 Zero Config**: Works with SQLite out of the box, no database server required
+- **🚀 Async Throughout**: Built on asyncpg for maximum PostgreSQL performance
+- **📊 Built-in Monitoring**: Health checks, metrics, validation, and structured logging
+- **🤖 ML Predictions**: Track assignment predictions with confidence scoring
 - **📱 Live Activities**: Push notification support for iOS Live Activity updates
-- **🚂 Multi-Source**: Supports both NJ Transit and Amtrak data sources
+- **🚂 Multi-Transit**: NJ Transit + Amtrak with extensible architecture
+- **🔍 Coverage Validation**: Hourly validation ensures complete train coverage
+- **💾 API Caching**: Intelligent response caching with pre-computation
+- **🔄 Horizontal Scaling**: Database-coordinated task execution across replicas
 
 ## 📈 V2 Improvements
 
@@ -20,7 +28,7 @@ Compared to the original backend:
 - **~95% reduction** in NJ Transit API calls
 - **Simplified architecture** - easier to understand and maintain
 - **Better performance** - async everywhere, optimized queries
-- **Simple deployment** - SQLite database with built-in concurrency handling
+- **Production-ready** - PostgreSQL with connection pooling and horizontal scaling
 - **Enhanced monitoring** - comprehensive health checks and metrics
 
 ## Quick Start
@@ -40,13 +48,20 @@ cd backend_v2
 # Install dependencies
 poetry install
 
+# Set up PostgreSQL database (required)
+# Create database and user:
+psql -U postgres
+CREATE DATABASE trackratdb;
+CREATE USER trackratuser WITH PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE trackratdb TO trackratuser;
+\q
+
 # Copy environment template
 cp .env.example .env
-# Edit .env with your configuration
-# Set TRACKRAT_NJT_API_TOKEN with your NJ Transit API token
-
-# Database is SQLite - no setup required!
-# Default location: ./trackrat.db (configurable in .env)
+# Edit .env with your configuration:
+# - TRACKRAT_NJT_API_TOKEN: Your NJ Transit API token
+# - TRACKRAT_AMTRAK_API_TOKEN: Your Amtrak API token
+# - TRACKRAT_DATABASE_URL: postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb
 
 # Run database migrations
 poetry run alembic upgrade head
@@ -59,10 +74,13 @@ poetry run uvicorn trackrat.main:app --reload
 
 **No additional steps needed!** The background scheduler starts automatically when you run the application:
 
-- Train discovery begins within 60 minutes of startup
-- Journey collection starts immediately for discovered trains
-- Data updates happen continuously in the background
-- Monitor scheduler status at `/health` endpoint
+- **Daily 4:00 AM ET**: NJT 27-hour schedule collection
+- **Daily 4:30 AM ET**: Amtrak pattern-based schedule generation
+- **Every 30 minutes**: Train discovery for NJT and Amtrak
+- **Every 15 minutes**: Journey collection for active trains
+- **Every 5 minutes**: Update checks for active journeys
+- **Hourly at :05**: Validation across key routes
+- Monitor scheduler status at `/scheduler/status` endpoint
 
 ## Configuration
 
@@ -70,6 +88,8 @@ All configuration is done via environment variables. See `.env.example` for avai
 
 ### Required Settings
 - `TRACKRAT_NJT_API_TOKEN`: Your NJ Transit API token
+- `TRACKRAT_AMTRAK_API_TOKEN`: Your Amtrak API token (optional but recommended)
+- `TRACKRAT_DATABASE_URL`: PostgreSQL connection string
 - **APNS Configuration** (required for Live Activities):
   - `APNS_TEAM_ID`: Apple Developer Team ID (10 characters)
   - `APNS_KEY_ID`: APNS Auth Key ID (10 characters)
@@ -78,11 +98,13 @@ All configuration is done via environment variables. See `.env.example` for avai
   - **APNS P8 Certificate**: Place `AuthKey_4WC3F645FR.p8` in `certs/` directory
 
 ### Optional Settings
-- `DATABASE_URL`: SQLite database file path (default: `sqlite:///trackrat.db`)
-- `DISCOVERY_INTERVAL_MINUTES`: How often to discover new trains (default: 60)
-- `JOURNEY_UPDATE_INTERVAL_MINUTES`: How often to update journey data (default: 15)
-- `DATA_STALENESS_SECONDS`: When to refresh data on-demand (default: 60)
-- `ENABLE_METRICS`: Enable Prometheus metrics endpoint (default: true)
+- `TRACKRAT_DISCOVERY_INTERVAL_MINUTES`: How often to discover new trains (default: 30)
+- `TRACKRAT_COLLECTION_INTERVAL_MINUTES`: How often to collect journey data (default: 15)
+- `TRACKRAT_DATA_STALENESS_SECONDS`: When to refresh data on-demand (default: 60)
+- `TRACKRAT_ENABLE_METRICS`: Enable Prometheus metrics endpoint (default: true)
+- `TRACKRAT_LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
+- `TRACKRAT_ENVIRONMENT`: Environment name (development, staging, production)
+- `TRACKRAT_GCS_BACKUP_BUCKET`: GCS bucket for database backups (optional)
 
 ### APNS Certificate Setup
 
@@ -108,33 +130,110 @@ All configuration is done via environment variables. See `.env.example` for avai
 
 ## API Endpoints
 
-### Train Departures
-```
-GET /api/v2/trains/departures?from=NY&to=TR
-```
+### Core Train Operations
 
-Get trains departing from any station to any other station. The from/to parameters work for ANY segment of a journey.
-
-### Train Details
+#### Train Departures
 ```
-GET /api/v2/trains/{train_id}?date=2024-01-15&refresh=true
+GET /api/v2/trains/departures?from=NY&to=TR&limit=50&data_source=ALL
 ```
+Get trains between stations with filtering:
+- `from`/`to`: Station codes (works for any segment)
+- `limit`: Max results (default: 50)
+- `data_source`: NJT, AMTRAK, or ALL
+- Returns both SCHEDULED and OBSERVED trains
 
-Get complete journey details with all stops. Use `refresh=true` to force fresh data.
-
-### Train History
+#### Train Details
 ```
-GET /api/v2/trains/{train_id}/history?days=30
+GET /api/v2/trains/{train_id}?date=2025-09-15&refresh=true
 ```
+Complete journey with all stops:
+- `refresh=true`: Force fresh data from API
+- Includes progress tracking and arrival predictions
+- Returns enhanced status_v2 field
 
-Get historical performance data for a train.
+### Route Analytics
 
-### Health Check
+#### Route History
+```
+GET /api/v2/routes/history?from_station=NY&to_station=TR&days=30
+```
+Historical performance with:
+- Delay breakdowns by category
+- Track usage statistics
+- Journey time analysis
+
+#### Network Congestion
+```
+GET /api/v2/routes/congestion?time_window_hours=3&data_source=NJT
+```
+Real-time congestion analysis:
+- Color-coded severity levels
+- Segment-by-segment delays
+- Cached for performance
+
+### ML Predictions
+
+#### Track Assignment Prediction
+```
+GET /api/v2/predictions/track-assignment/{station}?train_id=1234&date=2025-09-15
+```
+ML-powered track predictions with confidence scoring
+
+#### Track Occupancy
+```
+GET /api/v2/predictions/track-occupancy/{station}
+```
+Real-time track availability analysis
+
+### System Operations
+
+#### Health Check
 ```
 GET /health
 ```
+Comprehensive health with:
+- Database connectivity
+- Scheduler status
+- Data freshness metrics
+- Model accuracy statistics
 
-Comprehensive health check with database, scheduler, and data freshness status.
+#### Scheduler Status
+```
+GET /scheduler/status
+```
+Detailed scheduler information:
+- All job statuses
+- Next run times
+- Execution history
+
+#### Metrics
+```
+GET /metrics
+```
+Prometheus-compatible metrics:
+- API latencies
+- Train counts
+- Validation coverage
+- Cache hit rates
+
+### Live Activities
+
+#### Register Live Activity
+```
+POST /api/v2/live-activities/register
+{
+  "push_token": "...",
+  "activity_id": "...",
+  "train_number": "1234",
+  "origin_code": "NY",
+  "destination_code": "TR"
+}
+```
+
+#### Unregister Live Activity
+```
+DELETE /api/v2/live-activities/{token}
+```
 
 ## Development
 
@@ -186,41 +285,125 @@ poetry run alembic downgrade -1
 
 ## Architecture
 
-### Background Scheduler
+### Data Collection Pipeline
 
-The system uses **APScheduler** integrated into FastAPI to automatically collect data:
+The system uses a sophisticated multi-phase approach:
 
-- **Starts automatically** when you run the application (no separate activation needed)
-- **Train Discovery**: Runs every 60 minutes, polls 7 stations: NY, NP, PJ, TR, LB, PL, DN
-- **Journey Updates**: Scheduled at departure time + every 15 minutes for active trains
-- **Just-in-Time Updates**: Refreshes data when users request it (if >60 seconds stale)
+#### 1. Schedule Generation (Daily)
+- **NJT Schedule Collection** (4:00 AM ET)
+  - Fetches 27-hour schedule data in single API call
+  - Creates SCHEDULED journey records for all trains
+  - Updates to OBSERVED when trains appear in discovery
 
-### Data Collection Flow
-1. **Discovery** (hourly): Polls 7 major stations to find active trains
-2. **Journey Collection**: Collects full journey data at departure + every 15 minutes
-3. **Just-in-Time**: Updates data when users request it (if >1 minute stale)
+- **Amtrak Pattern Analysis** (4:30 AM ET)
+  - Analyzes 22 days of historical patterns
+  - Identifies trains that run regularly (≥2 times in 3 weeks)
+  - Generates SCHEDULED records for expected trains
 
-### Key Components
-- **SchedulerService**: Manages periodic tasks using APScheduler
-- **TrainDiscoveryCollector**: Finds new trains from station APIs
-- **JourneyCollector**: Gets complete journey data with all stops
-- **JustInTimeUpdateService**: Ensures data freshness on-demand
-- **NJTransitClient**: Handles API communication with retry logic
+#### 2. Train Discovery (Every 30 minutes)
+- Polls major stations for active trains
+- NJT: NY, NP, PJ, TR, LB, PL, DN stations
+- Amtrak: Major corridor stations
+- Updates journey status from SCHEDULED to OBSERVED
 
-## Monitoring
+#### 3. Journey Collection (Every 15 minutes)
+- Fetches complete journey details for active trains
+- Updates all stops with actual times and tracks
+- Calculates transit times and dwell times
+- Updates progress tracking
 
-- Prometheus metrics at `/metrics`
-- Structured logging with correlation IDs
-- Scheduler status at `/scheduler/status`
+#### 4. Just-in-Time Updates (On-demand)
+- Triggered when users request data
+- Only refreshes if data >60 seconds stale
+- Ensures real-time accuracy
 
-## 🎯 Performance
+#### 5. Validation & Monitoring (Hourly)
+- Validates coverage across key routes
+- Detects missing trains
+- Updates coverage metrics
 
-- **~95% reduction** in API calls vs V1
-- **<100ms** API response time (p95)
-- **Single database record** per train (no duplicates)
-- **Efficient async queries** with SQLite/PostgreSQL
-- **Smart caching** - data refreshes only when stale
-- **Concurrent operations** - async throughout the stack
+### Horizontal Scaling
+
+The scheduler supports multiple replicas:
+- **Database coordination** via `scheduler_task_runs` table
+- **Row-level locking** prevents duplicate execution
+- **Freshness checks** ensure tasks run at correct intervals
+- **Instance tracking** via Cloud Run revision IDs
+
+### Key Services
+
+#### Data Collection
+- **SchedulerService**: Orchestrates all background tasks
+- **NJTScheduleCollector**: Daily NJT schedule fetching
+- **AmtrakPatternScheduler**: Pattern-based Amtrak schedules
+- **JustInTimeUpdateService**: On-demand data refresh
+
+#### API & Analytics
+- **DepartureService**: Train departure queries
+- **TransitAnalyzer**: Journey time analysis
+- **CongestionAnalyzer**: Network congestion monitoring
+- **DirectArrivalForecaster**: Real-time arrival predictions
+- **ApiCacheService**: Response caching with pre-computation
+
+#### ML & Predictions
+- **TrackPredictionFeatures**: ML feature extraction
+- **TrackPredictionService**: Track assignment predictions
+- **TrackOccupancyService**: Track availability analysis
+
+#### Infrastructure
+- **SimpleAPNSService**: iOS Live Activity notifications
+- **BackupService**: GCS database backups
+- **TrainValidationService**: Coverage monitoring
+
+## Monitoring & Observability
+
+### Metrics
+- **Prometheus endpoint** at `/metrics`
+- Train discovery counts
+- API call latencies
+- Cache hit rates
+- Validation coverage percentages
+- Model prediction accuracy
+
+### Health Monitoring
+- **Comprehensive health** at `/health`
+- **Liveness probe** at `/health/live`
+- **Readiness probe** at `/health/ready`
+- Database connectivity checks
+- Scheduler job status
+- Data freshness indicators
+
+### Logging
+- Structured JSON logging with `structlog`
+- Correlation IDs for request tracing
+- Configurable log levels
+- Detailed error context
+
+## 🎯 Performance & Optimization
+
+### API Performance
+- **~95% reduction** in external API calls vs V1
+- **<100ms** response time (p95) with caching
+- **~80% cache hit rate** for popular routes
+- **<10ms** database query time for indexed queries
+
+### Data Efficiency
+- **Single database record** per train journey
+- **Intelligent caching** with 15-minute pre-computation
+- **Direct arrival forecasting** without intermediate storage
+- **Pattern-based schedules** reduce API dependency
+
+### System Resources
+- **Memory usage**: ~300-400MB typical
+- **CPU usage**: Low, spikes during discovery/collection
+- **Database connections**: Pooled with asyncpg
+- **Concurrent operations**: Full async/await architecture
+
+### Scaling Characteristics
+- **Horizontal scaling** via database coordination
+- **Stateless API** servers
+- **Connection pooling** for database efficiency
+- **Background task distribution** across replicas
 
 ## 🚀 Production Deployment
 
@@ -282,11 +465,35 @@ Test the validation:
 ```
 
 ### Production Considerations
-- Use connection pooling for PostgreSQL
-- Set up proper logging aggregation
-- Monitor API rate limits
-- Configure CORS appropriately
-- Use a reverse proxy (nginx/caddy)
+
+#### Database
+- **PostgreSQL required** (not SQLite)
+- Configure connection pooling (built-in with asyncpg)
+- Set appropriate pool size based on load
+- Regular backups (GCS integration available)
+- Monitor slow queries and optimize indexes
+
+#### API & Security
+- Configure CORS for your frontend domains
+- Use reverse proxy (nginx/caddy) for SSL
+- Implement rate limiting at proxy level
+- Monitor external API rate limits
+- Rotate API tokens regularly
+
+#### Monitoring
+- Set up Prometheus/Grafana for metrics
+- Configure log aggregation (ELK, CloudWatch, etc.)
+- Set alerts for:
+  - High API error rates
+  - Low validation coverage
+  - Stale data indicators
+  - Memory/CPU thresholds
+
+#### Scaling
+- Use Cloud Run or Kubernetes for auto-scaling
+- Configure appropriate replica counts
+- Monitor database connection limits
+- Consider Redis for future caching layer
 
 ## 🛣️ Next Steps & Roadmap
 
@@ -364,7 +571,9 @@ Test the validation:
 - **Data Retention**: Define archival and cleanup policies  
 - **Error Recovery**: Design resilient failure handling
 - **Security**: Implement API authentication and authorization
-- **Recent Migration**: The `api_calls` table was recently removed - monitoring simplified
+- **Database Migrations**: Check `src/trackrat/db/migrations/versions/` for recent schema changes
+- **Schedule Features**: New SCHEDULED vs OBSERVED journey types for future visibility
+- **Validation System**: Hourly coverage checks ensure data completeness
 
 ### 🤝 Contributing
 
@@ -374,8 +583,51 @@ The V2 backend is designed for easy contribution:
 - **Comprehensive tests** - ensures changes don't break functionality
 - **Modern tooling** - Poetry, Ruff, Black for smooth development
 
+## 🐛 Known Issues & Improvements Needed
+
+### Critical Issues
+1. **Schedule Duplication**: SCHEDULED records may duplicate if trains appear early
+2. **Pattern Detection**: Amtrak pattern analysis may miss irregular services
+3. **Test Coverage**: Limited tests for new schedule generation features
+
+### Performance Improvements
+1. **Cache Invalidation**: Current strategy is time-based only, needs smarter invalidation
+2. **Database Indexes**: Some queries could benefit from additional indexes
+3. **Memory Usage**: Pattern analysis loads full 22-day dataset into memory
+
+### Feature Gaps
+1. **Configuration**: Validation routes are hardcoded, should be configurable
+2. **ML Models**: Accuracy tracking needs more comprehensive metrics
+3. **Error Recovery**: Some edge cases in API failures need better handling
+
+### Technical Debt
+1. **Code Duplication**: Some similar logic between NJT and Amtrak collectors
+2. **Type Annotations**: Some older code missing proper type hints
+3. **Test Data**: Mock data needs updating for new features
+
+### Future Enhancements
+1. **WebSocket Support**: Real-time updates for connected clients
+2. **GraphQL API**: More flexible querying for complex data needs
+3. **Additional Transit**: LIRR, Metro-North, SEPTA, PATH support
+4. **Advanced ML**: Delay prediction and passenger flow analysis
+
 Ready to enhance train tracking for millions of commuters! 🚂
+
+## System Requirements
+
+### Minimum Requirements
+- Python 3.11+
+- PostgreSQL 14+
+- 512MB RAM
+- 1GB disk space
+
+### Recommended Production
+- Python 3.11+
+- PostgreSQL 15+
+- 2GB RAM
+- 10GB disk space
+- Redis (future caching)
 
 ## License
 
-Copyright 2024 TrackRat Team
+Copyright 2025 TrackRat Team

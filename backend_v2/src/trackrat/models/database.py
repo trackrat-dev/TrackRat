@@ -39,6 +39,7 @@ class TrainJourney(Base):
     origin_station_code = Column(String(3), nullable=False)
     terminal_station_code = Column(String(3), nullable=False)
     data_source = Column(String(10), nullable=False, default="NJT")
+    observation_type = Column(String(10), nullable=False, default="OBSERVED")
 
     # Discovery metadata
     first_seen_at = Column(
@@ -116,7 +117,9 @@ class JourneyStop(Base):
     journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
     station_code = Column(String(3), nullable=False)
     station_name = Column(String(100), nullable=False)
-    stop_sequence = Column(Integer, nullable=False)
+    stop_sequence = Column(
+        Integer, nullable=True
+    )  # Allow NULL until journey collector sets it
 
     # Scheduled times (from initial schedule)
     scheduled_arrival = Column(DateTime(timezone=True))
@@ -380,4 +383,64 @@ class CachedApiResponse(Base):
         UniqueConstraint(
             "endpoint", "params_hash", name="uq_cached_api_endpoint_params"
         ),
+    )
+
+
+class SchedulerTaskRun(Base):
+    """Track when scheduled tasks last ran to prevent duplicate execution across replicas."""
+
+    __tablename__ = "scheduler_task_runs"
+
+    # Primary key is the task name itself
+    task_name = Column(String(50), primary_key=True)
+
+    # When the task last successfully completed
+    last_successful_run = Column(DateTime(timezone=True), nullable=False)
+
+    # When the task was last attempted (may not have succeeded)
+    last_attempt = Column(DateTime(timezone=True))
+
+    # Metrics for monitoring
+    run_count = Column(Integer, default=0, nullable=False)
+    average_duration_ms = Column(Integer)
+    last_duration_ms = Column(Integer)
+
+    # Track which Cloud Run instance ran it (for debugging)
+    last_instance_id = Column(String(100))
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (Index("idx_task_freshness", "task_name", "last_successful_run"),)
+
+
+class ValidationResult(Base):
+    """Store results from train validation service for monitoring and analysis."""
+
+    __tablename__ = "validation_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    # Route and source information
+    route = Column(String(10), nullable=False)  # e.g., "NY->PJ"
+    source = Column(String(10), nullable=False)  # e.g., "NJT", "AMTRAK"
+
+    # Coverage metrics
+    transit_train_count = Column(Integer, nullable=False)
+    api_train_count = Column(Integer, nullable=False)
+    coverage_percent = Column(Float, nullable=False)
+
+    # Missing and extra trains (stored as JSON arrays for simplicity)
+    missing_trains = Column(JSON)  # Trains in transit API but not our API
+    extra_trains = Column(JSON)  # Trains in our API but not transit API
+
+    # Additional details for debugging
+    details = Column(JSON)  # Store sample accessibility checks, error details, etc.
+
+    # Indexing for efficient queries
+    __table_args__ = (
+        Index("idx_validation_time", "run_at", "route", "source"),
+        Index("idx_validation_coverage", "route", "source", "coverage_percent"),
     )

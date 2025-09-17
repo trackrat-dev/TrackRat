@@ -28,6 +28,9 @@ struct Train: Identifiable, Codable {
     let statusV2: StatusV2?
     let progress: TrainProgress?
     
+    // Schedule vs observed indicator
+    let observationType: String?
+    
     enum CodingKeys: String, CodingKey {
         case id
         case trainId = "train_id"
@@ -50,6 +53,7 @@ struct Train: Identifiable, Codable {
         case consolidationMetadata = "consolidation_metadata"
         case statusV2 = "status_v2"
         case progress
+        case observationType = "observation_type"
     }
     
     // Custom decoder to handle both legacy and consolidated formats
@@ -132,10 +136,11 @@ struct Train: Identifiable, Codable {
         // Common fields
         stops = try container.decodeIfPresent([Stop].self, forKey: .stops)
         predictionData = try container.decodeIfPresent(PredictionData.self, forKey: .predictionData)
+        observationType = try container.decodeIfPresent(String.self, forKey: .observationType)
     }
     
     // Programmatic initializer for creating Train objects directly
-    init(id: Int, trainId: String, line: String, destination: String, departureTime: Date, track: String?, status: TrainStatus, delayMinutes: Int?, stops: [Stop]?, predictionData: PredictionData?, originStationCode: String?, dataSource: String?, consolidatedId: String? = nil, originStation: OriginStation? = nil, dataSources: [DataSource]? = nil, currentPosition: CurrentPosition? = nil, trackAssignment: TrackAssignment? = nil, statusSummary: StatusSummary? = nil, consolidationMetadata: ConsolidationMetadata? = nil, statusV2: StatusV2? = nil, progress: TrainProgress? = nil) {
+    init(id: Int, trainId: String, line: String, destination: String, departureTime: Date, track: String?, status: TrainStatus, delayMinutes: Int?, stops: [Stop]?, predictionData: PredictionData?, originStationCode: String?, dataSource: String?, consolidatedId: String? = nil, originStation: OriginStation? = nil, dataSources: [DataSource]? = nil, currentPosition: CurrentPosition? = nil, trackAssignment: TrackAssignment? = nil, statusSummary: StatusSummary? = nil, consolidationMetadata: ConsolidationMetadata? = nil, statusV2: StatusV2? = nil, progress: TrainProgress? = nil, observationType: String? = nil) {
         self.id = id
         self.trainId = trainId
         self.line = line
@@ -157,6 +162,7 @@ struct Train: Identifiable, Codable {
         self.consolidationMetadata = consolidationMetadata
         self.statusV2 = statusV2
         self.progress = progress
+        self.observationType = observationType
     }
     
     // Static helper to map consolidated status strings (for use in decoder)
@@ -174,6 +180,11 @@ struct Train: Identifiable, Codable {
     // Instance helper to map consolidated status strings
     private func mapConsolidatedStatus(_ statusString: String) -> TrainStatus {
         return Self.mapConsolidatedStatusStatic(statusString)
+    }
+    
+    // Helper to check if this is a scheduled (not observed) train
+    var isScheduledOnly: Bool {
+        return observationType == "SCHEDULED"
     }
 }
 
