@@ -10,6 +10,19 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
+
+# Custom serializer for Eastern Time datetimes
+def serialize_eastern_datetime(dt: datetime | None) -> str | None:
+    """Serialize datetime as Eastern Time without 'Z' suffix.
+
+    The backend stores naive datetimes in Eastern time.
+    We serialize without timezone suffix to indicate local times,
+    avoiding confusion with UTC (which would have 'Z' suffix).
+    """
+    if dt is None:
+        return None
+    return dt.isoformat()
+
 # Enums
 
 
@@ -50,14 +63,8 @@ class StationInfo(BaseModel):
     track: str | None = None
 
     @field_serializer("scheduled_time", "updated_time", "actual_time")
-    def serialize_datetime(self, dt: datetime | None) -> str | None:
-        """Serialize datetime as Eastern Time with proper timezone suffix."""
-        if dt is None:
-            return None
-        # Backend stores naive datetimes in Eastern time
-        # Add timezone suffix to indicate Eastern Time (-04:00 for EDT, -05:00 for EST)
-        # For now, return without 'Z' to indicate these are local times
-        return dt.isoformat()
+    def serialize_dt(self, dt: datetime | None) -> str | None:
+        return serialize_eastern_datetime(dt)
 
 
 class SimpleStationInfo(BaseModel):
@@ -76,11 +83,8 @@ class DataFreshness(BaseModel):
     collection_method: Literal["scheduled", "just_in_time"] | None = None
 
     @field_serializer("last_updated")
-    def serialize_datetime(self, dt: datetime) -> str:
-        """Serialize datetime as Eastern Time without 'Z' suffix."""
-        # Backend stores naive datetimes in Eastern time
-        # Return without 'Z' to indicate these are local times
-        return dt.isoformat()
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""
 
 
 class CurrentStatus(BaseModel):
@@ -90,6 +94,10 @@ class CurrentStatus(BaseModel):
     status_v2: TrainStatus | None = None
     last_updated: datetime
     delay_minutes: int = Field(default=0, ge=0)
+
+    @field_serializer("last_updated")
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""
 
 
 class JourneyProgress(BaseModel):
@@ -135,11 +143,8 @@ class TrainDeparture(BaseModel):
     predicted_arrival: datetime | None = None
 
     @field_serializer("predicted_arrival")
-    def serialize_datetime(self, dt: datetime | None) -> str | None:
-        """Serialize datetime as Eastern Time without 'Z' suffix."""
-        if dt is None:
-            return None
-        return dt.isoformat()
+    def serialize_dt(self, dt: datetime | None) -> str | None:
+        return serialize_eastern_datetime(dt)
 
 
 class DeparturesResponse(BaseModel):
@@ -202,12 +207,10 @@ class StopDetails(BaseModel):
         "actual_arrival",
         "actual_departure",
         "track_assigned_at",
+        "predicted_arrival",
     )
-    def serialize_datetime(self, dt: datetime | None) -> str | None:
-        """Serialize datetime as Eastern Time without 'Z' suffix."""
-        if dt is None:
-            return None
-        return dt.isoformat()
+    def serialize_dt(self, dt: datetime | None) -> str | None:
+        return serialize_eastern_datetime(dt)
 
     # Prediction fields (added for arrival forecasting)
     predicted_arrival: datetime | None = None
@@ -272,6 +275,12 @@ class HistoricalJourney(BaseModel):
         default_factory=dict, examples=[{"NY": "7", "NP": "2", "TR": None}]
     )
 
+    @field_serializer(
+        "scheduled_departure", "actual_departure", "scheduled_arrival", "actual_arrival"
+    )
+    def serialize_dt(self, dt: datetime | None) -> str | None:
+        return serialize_eastern_datetime(dt)
+
 
 class TrainHistoryResponse(BaseModel):
     """Response for train history endpoint."""
@@ -306,6 +315,10 @@ class OccupiedTracksResponse(BaseModel):
     occupied_tracks: list[str]
     last_updated: datetime
     cache_expires_at: datetime
+
+    @field_serializer("last_updated", "cache_expires_at")
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""
 
 
 # Internal Models (not exposed via API)
@@ -494,6 +507,12 @@ class IndividualJourneySegment(BaseModel):
     actual_arrival: datetime
     scheduled_minutes: float = Field(..., ge=0.0)
     actual_minutes: float = Field(..., ge=0.0)
+
+    @field_serializer(
+        "scheduled_departure", "actual_departure", "scheduled_arrival", "actual_arrival"
+    )
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""
     delay_minutes: float
     congestion_factor: float = Field(..., ge=0.0)
     congestion_level: Literal["normal", "moderate", "heavy", "severe"]
@@ -530,6 +549,10 @@ class CongestionMapResponse(BaseModel):
     max_per_segment: int = Field(default=100, ge=0, le=500)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @field_serializer("generated_at")
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""
+
 
 # Segment Train Details API Models
 
@@ -550,6 +573,12 @@ class SegmentTrainDetail(BaseModel):
         "on_time", "slight_delay", "delayed", "significantly_delayed"
     ]
     data_source: str
+
+    @field_serializer(
+        "scheduled_departure", "actual_departure", "scheduled_arrival", "actual_arrival"
+    )
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""
 
 
 class SegmentTrainDetailsResponse(BaseModel):
