@@ -77,6 +77,12 @@ class Settings(BaseSettings):
         ge=1,
     )
 
+    # Feature Flags
+    use_optimized_amtrak_pattern_analysis: bool = Field(
+        default=True,
+        description="Use database-aggregated pattern analysis for Amtrak schedules (reduces memory usage by ~99%)",
+    )
+
     # Monitoring
     enable_metrics: bool = Field(default=True, description="Enable Prometheus metrics")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
