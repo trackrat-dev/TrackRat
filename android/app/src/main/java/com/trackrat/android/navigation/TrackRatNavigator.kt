@@ -40,8 +40,13 @@ class TrackRatNavigator(private val navController: NavController) {
     /**
      * Navigate to train detail screen
      */
-    fun navigateToTrainDetail(trainId: String, date: String? = null) {
-        val route = TrackRatDestinations.TrainDetail.createRoute(trainId, date)
+    fun navigateToTrainDetail(
+        trainId: String,
+        date: String? = null,
+        originCode: String? = null,
+        destinationCode: String? = null
+    ) {
+        val route = TrackRatDestinations.TrainDetail.createRoute(trainId, date, originCode, destinationCode)
         navController.navigate(route)
     }
     
@@ -87,10 +92,14 @@ fun NavBackStackEntry.getTrainDetailArgs(): NavigationArgs.TrainDetailArgs {
     val trainId = arguments?.getString("trainId")
         ?: throw IllegalArgumentException("trainId argument is required")
     val date = arguments?.getString("date")
-    
+    val originCode = arguments?.getString("originCode")
+    val destinationCode = arguments?.getString("destinationCode")
+
     return NavigationArgs.TrainDetailArgs(
         trainId = trainId,
-        date = date
+        date = date,
+        originCode = originCode,
+        destinationCode = destinationCode
     )
 }
 

@@ -8,6 +8,8 @@ import com.trackrat.android.data.models.ApiException
 import com.trackrat.android.data.models.ApiResult
 import com.trackrat.android.data.models.TrainDetailV2
 import com.trackrat.android.data.repository.TrackRatRepository
+import com.trackrat.android.services.TrackingStateRepository
+import com.trackrat.android.services.TrainTrackingService
 import com.trackrat.android.utils.ErrorUtils.shouldStopAutoRefresh
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -30,6 +32,7 @@ import javax.inject.Inject
 class TrainDetailViewModel @Inject constructor(
     application: Application,
     private val repository: TrackRatRepository,
+    private val trackingStateRepository: TrackingStateRepository,
     private val savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(application) {
 
@@ -46,8 +49,9 @@ class TrainDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    // TODO: Implement train tracking when needed
-    // val isTrackingTrain: StateFlow<Boolean> = MutableStateFlow(false)
+    // Train tracking state
+    val isTrackingTrain: StateFlow<Boolean> = trackingStateRepository.isTracking()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     // Auto-refresh job
     private var autoRefreshJob: Job? = null
@@ -55,6 +59,8 @@ class TrainDetailViewModel @Inject constructor(
     // Store current request params for retry
     private var currentTrainId: String? = null
     private var currentDate: String? = null
+    private var currentOriginCode: String? = null
+    private var currentDestinationCode: String? = null
     
     companion object {
         private const val AUTO_REFRESH_INTERVAL_MS = 30_000L // 30 seconds
@@ -218,12 +224,52 @@ class TrainDetailViewModel @Inject constructor(
     }
     
     /**
-     * TODO: Implement train tracking when needed
+     * Set origin code for tracking
+     */
+    fun setOriginCode(code: String) {
+        currentOriginCode = code
+        savedStateHandle["originCode"] = code
+    }
+
+    /**
+     * Set destination code for tracking
+     */
+    fun setDestinationCode(code: String) {
+        currentDestinationCode = code
+        savedStateHandle["destinationCode"] = code
+    }
+
+    /**
      * Toggle train tracking on/off
      */
-    // fun toggleTracking() {
-    //     // Implementation removed - TrainTrackingService not yet fully implemented
-    // }
+    fun toggleTracking() {
+        val context = getApplication<Application>()
+        viewModelScope.launch {
+            val isTracking = isTrackingTrain.value
+            val train = _uiState.value.train
+
+            if (isTracking) {
+                // Stop tracking
+                TrainTrackingService.stopTracking(context)
+            } else if (train != null) {
+                // Start tracking - use saved origin and destination codes
+                val originCode = currentOriginCode ?: savedStateHandle.get<String>("originCode") ?: ""
+                val destinationCode = currentDestinationCode ?: savedStateHandle.get<String>("destinationCode") ?: ""
+
+                val originName = train.stops.find { it.station.code == originCode }?.station?.name ?: originCode
+                val destinationName = train.stops.find { it.station.code == destinationCode }?.station?.name ?: destinationCode
+
+                TrainTrackingService.startTracking(
+                    context = context,
+                    trainId = train.trainId,
+                    originCode = originCode,
+                    destinationCode = destinationCode,
+                    originName = originName,
+                    destinationName = destinationName
+                )
+            }
+        }
+    }
 
     /**
      * Stop auto-refresh when ViewModel is cleared

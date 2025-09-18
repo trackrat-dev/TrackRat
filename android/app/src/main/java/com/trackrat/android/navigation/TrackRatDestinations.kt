@@ -71,7 +71,7 @@ sealed class TrackRatDestinations(
      * Train detail screen showing journey information
      */
     data object TrainDetail : TrackRatDestinations(
-        route = "train_detail/{trainId}?date={date}",
+        route = "train_detail/{trainId}?date={date}&originCode={originCode}&destinationCode={destinationCode}",
         arguments = listOf(
             navArgument("trainId") {
                 type = NavType.StringType
@@ -81,15 +81,35 @@ sealed class TrackRatDestinations(
                 type = NavType.StringType
                 nullable = true
                 defaultValue = null
+            },
+            navArgument("originCode") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+            navArgument("destinationCode") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
             }
         )
     ) {
         /**
          * Create route with parameters
          */
-        fun createRoute(trainId: String, date: String? = null): String {
-            return if (date != null) {
-                "train_detail/$trainId?date=$date"
+        fun createRoute(
+            trainId: String,
+            date: String? = null,
+            originCode: String? = null,
+            destinationCode: String? = null
+        ): String {
+            val params = mutableListOf<String>()
+            date?.let { params.add("date=$it") }
+            originCode?.let { params.add("originCode=$it") }
+            destinationCode?.let { params.add("destinationCode=$it") }
+
+            return if (params.isNotEmpty()) {
+                "train_detail/$trainId?${params.joinToString("&")}"
             } else {
                 "train_detail/$trainId"
             }
@@ -121,6 +141,8 @@ object NavigationArgs {
      */
     data class TrainDetailArgs(
         val trainId: String,
-        val date: String?
+        val date: String?,
+        val originCode: String?,
+        val destinationCode: String?
     )
 }

@@ -37,14 +37,19 @@ import java.time.format.DateTimeFormatter
 fun TrainDetailScreen(
     trainId: String,
     date: String? = null,
+    originCode: String? = null,
+    destinationCode: String? = null,
     viewModel: TrainDetailViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val pullToRefreshState = rememberPullToRefreshState()
 
-    // Load train details when screen opens
-    LaunchedEffect(trainId, date) {
+    // Load train details when screen opens and save origin/destination codes
+    LaunchedEffect(trainId, date, originCode, destinationCode) {
+        // Save origin/destination codes to ViewModel for tracking
+        originCode?.let { viewModel.setOriginCode(it) }
+        destinationCode?.let { viewModel.setDestinationCode(it) }
         viewModel.loadTrainDetails(trainId, date)
     }
     
@@ -261,9 +266,7 @@ fun TrainHeaderCard(
     train: TrainDetailV2,
     viewModel: TrainDetailViewModel
 ) {
-    // TODO: Implement tracking when needed
-    // val isTracking by viewModel.isTrackingTrain.collectAsState()
-    val isTracking = false // Temporarily disabled
+    val isTracking by viewModel.isTrackingTrain.collectAsState()
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -364,10 +367,9 @@ fun TrainHeaderCard(
                 } */
             }
             
-            // TODO: Re-enable when tracking is implemented
             // Tracking button
             Button(
-                onClick = { /* viewModel.toggleTracking() */ },
+                onClick = { viewModel.toggleTracking() },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isTracking) Color.Gray else Color(0xFFFF6600)
