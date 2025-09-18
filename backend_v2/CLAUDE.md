@@ -596,8 +596,6 @@ The backend is organized into service classes for better maintainability:
 - ✅ Added departure_source tracking for analytics
 
 ### Known Issues & Areas for Improvement
-- ⚠️ Schedule generation may create duplicates if trains appear early
-- ⚠️ Amtrak pattern detection could miss irregular service patterns
 - ⚠️ Cache invalidation strategy could be more sophisticated
 - ⚠️ ML model accuracy tracking needs more comprehensive metrics
 - ⚠️ Test coverage for new schedule features is limited

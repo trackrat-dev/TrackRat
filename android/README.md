@@ -77,8 +77,8 @@
 ### ❌ Not Yet Implemented
 
 #### Critical Missing Features
-1. **Live Train Tracking (Ongoing Notifications)**
-   - Foreground service for continuous updates
+1. **Live Train Tracking**
+   - Track button functionality in detail view
    - Custom notification layout with journey progress
    - Background data refresh mechanism
 

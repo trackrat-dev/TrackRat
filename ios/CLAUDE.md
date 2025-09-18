@@ -546,16 +546,14 @@ Live Activities now use the enhanced data for better tracking:
 ## Known Issues & Areas for Improvement
 
 ### Critical Bugs
-1. **Live Activity Memory Management**: Potential retain cycles in push token subscription
-2. **Background Task Completion**: Missing proper task completion in some error paths
-3. **Push Notification Handling**: Inconsistent handling of different notification payload formats
-4. **Train Validation Race Conditions**: Multiple concurrent validation tasks not properly cancelled
+1. **Background Task Completion**: Missing proper task completion in some error paths
+2. **Push Notification Handling**: Inconsistent handling of different notification payload formats
+3. **Train Validation Race Conditions**: Multiple concurrent validation tasks not properly cancelled
 
 ### Performance Issues
-1. **Search Performance**: Station search performs linear scan on every keystroke
-2. **Image Loading**: Video thumbnails loaded synchronously, blocking UI
-3. **API Call Redundancy**: Some views make duplicate API calls on refresh
-4. **Memory Usage**: Large video files kept in memory during onboarding
+1. **Image Loading**: Video thumbnails loaded synchronously, blocking UI
+2. **API Call Redundancy**: Some views make duplicate API calls on refresh
+3. **Memory Usage**: Large video files kept in memory during onboarding
 
 ### Architecture Improvements Needed
 1. **Dependency Injection**: Hard-coded singletons make testing difficult
