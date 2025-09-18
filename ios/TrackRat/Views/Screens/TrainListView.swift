@@ -462,33 +462,54 @@ class TrainListViewModel: ObservableObject {
     func loadTrains(destination: String, fromStationCode: String) async {
         self.currentDestination = destination
         self.currentFromStationCode = fromStationCode
-        
+
         isLoading = true
         hasStartedLoading = true
         error = nil
-        
+
         do {
             guard let toStationCode = Stations.getStationCode(destination) else {
                 self.error = "Invalid destination station code for: \(destination)"
                 self.isLoading = false
                 return
             }
+
+            print("🔍 DEBUG: Loading trains from \(fromStationCode) to \(toStationCode)")
+
             // Use injected apiService
             let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode
             )
-            
+
+            print("🔍 DEBUG: API returned \(fetchedTrains.count) trains")
+            print("🔍 DEBUG: Train IDs: \(fetchedTrains.map { $0.trainId })")
+
             // Filter trains: only exclude trains that have already departed
+            let now = Date()
+            print("🔍 DEBUG: Current time: \(now)")
+
             let filteredTrains = fetchedTrains.filter { train in
-                !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
+                let hasDeparted = train.hasAlreadyDeparted(fromStationCode: fromStationCode)
+                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
+                if hasDeparted {
+                    print("🔍 DEBUG: Train \(train.trainId) filtered out - scheduled: \(departureTime?.description ?? "nil"), hasDeparted: \(hasDeparted)")
+                }
+                return !hasDeparted
             }
-            
+
+            print("🔍 DEBUG: After filtering departed trains: \(filteredTrains.count) trains remain")
+
             // Deduplicate trains by ID to prevent ForEach crashes
             let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
-            
+
+            print("🔍 DEBUG: After deduplication: \(uniqueTrains.count) unique trains")
+            print("🔍 DEBUG: Unique train IDs: \(uniqueTrains.map { $0.trainId })")
+
             // Sort trains by origin station departure time
             trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
+
+            print("🔍 DEBUG: Final sorted trains count: \(trains.count)")
         } catch {
             self.error = error.localizedDescription
         }

@@ -41,16 +41,24 @@ final class APIService: ObservableObject {
             URLQueryItem(name: "to", value: toStationCode),
             URLQueryItem(name: "limit", value: "100")
         ]
-        
+
         guard let url = components.url else {
             throw APIError.invalidURL
         }
-        
+
+        print("🔵 DEBUG API: Fetching trains from URL: \(url)")
+
         let (data, _) = try await session.data(from: url)
-        
+
         do {
             let response = try decoder.decode(V2DeparturesResponse.self, from: data)
-            return response.departures.map { adaptV2DepartureToTrainV2($0) }
+            print("🔵 DEBUG API: Decoded \(response.departures.count) departures from API")
+            print("🔵 DEBUG API: Train IDs in response: \(response.departures.map { $0.trainId })")
+
+            let adaptedTrains = response.departures.map { adaptV2DepartureToTrainV2($0) }
+            print("🔵 DEBUG API: Adapted to \(adaptedTrains.count) TrainV2 objects")
+
+            return adaptedTrains
         } catch {
             print("🔴 V2 DECODING ERROR (searchTrains): \(error)")
             if let jsonString = String(data: data, encoding: .utf8) {
