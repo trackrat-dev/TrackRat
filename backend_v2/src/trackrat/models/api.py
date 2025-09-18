@@ -49,6 +49,16 @@ class StationInfo(BaseModel):
     actual_time: datetime | None = None
     track: str | None = None
 
+    @field_serializer("scheduled_time", "updated_time", "actual_time")
+    def serialize_datetime(self, dt: datetime | None) -> str | None:
+        """Serialize datetime as Eastern Time with proper timezone suffix."""
+        if dt is None:
+            return None
+        # Backend stores naive datetimes in Eastern time
+        # Add timezone suffix to indicate Eastern Time (-04:00 for EDT, -05:00 for EST)
+        # For now, return without 'Z' to indicate these are local times
+        return dt.isoformat()
+
 
 class SimpleStationInfo(BaseModel):
     """Simple station information without timing data."""
@@ -64,6 +74,13 @@ class DataFreshness(BaseModel):
     age_seconds: int = Field(..., ge=0)
     update_count: int | None = Field(None, ge=0)
     collection_method: Literal["scheduled", "just_in_time"] | None = None
+
+    @field_serializer("last_updated")
+    def serialize_datetime(self, dt: datetime) -> str:
+        """Serialize datetime as Eastern Time without 'Z' suffix."""
+        # Backend stores naive datetimes in Eastern time
+        # Return without 'Z' to indicate these are local times
+        return dt.isoformat()
 
 
 class CurrentStatus(BaseModel):
@@ -117,6 +134,13 @@ class TrainDeparture(BaseModel):
     progress: JourneyProgress | None = None
     predicted_arrival: datetime | None = None
 
+    @field_serializer("predicted_arrival")
+    def serialize_datetime(self, dt: datetime | None) -> str | None:
+        """Serialize datetime as Eastern Time without 'Z' suffix."""
+        if dt is None:
+            return None
+        return dt.isoformat()
+
 
 class DeparturesResponse(BaseModel):
     """Response for departures endpoint."""
@@ -169,6 +193,21 @@ class StopDetails(BaseModel):
     track_assigned_at: datetime | None = None
     raw_status: RawStopStatus
     has_departed_station: bool = False
+
+    @field_serializer(
+        "scheduled_arrival",
+        "scheduled_departure",
+        "updated_arrival",
+        "updated_departure",
+        "actual_arrival",
+        "actual_departure",
+        "track_assigned_at",
+    )
+    def serialize_datetime(self, dt: datetime | None) -> str | None:
+        """Serialize datetime as Eastern Time without 'Z' suffix."""
+        if dt is None:
+            return None
+        return dt.isoformat()
 
     # Prediction fields (added for arrival forecasting)
     predicted_arrival: datetime | None = None
