@@ -15,7 +15,8 @@ struct TripSelectionView: View {
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var liveActivityService = LiveActivityService.shared
     @StateObject private var ratSenseService = RatSenseService.shared
-    
+    @State private var searchTask: Task<Void, Never>?
+
     // Train validation state - now supports multiple train results
     @State private var trainValidationStates: [String: TrainValidationState] = [:]
     @State private var validationTasks: [String: Task<Void, Never>] = [:]
@@ -127,12 +128,20 @@ struct TripSelectionView: View {
                             .autocorrectionDisabled(true)
                             .textInputAutocapitalization(.never)
                             .onChange(of: searchText) { _, newValue in
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    isSearching = !newValue.isEmpty
+                                searchTask?.cancel()
+                                searchTask = Task {
+                                    try? await Task.sleep(for: .milliseconds(200))
+                                    if !Task.isCancelled {
+                                        await MainActor.run {
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                isSearching = !newValue.isEmpty
+                                            }
+
+                                            // Start train validation with debouncing
+                                            startTrainValidation(for: newValue)
+                                        }
+                                    }
                                 }
-                                
-                                // Start train validation with debouncing
-                                startTrainValidation(for: newValue)
                             }
                             .onChange(of: searchFieldFocused) { _, newValue in
                                 if newValue {

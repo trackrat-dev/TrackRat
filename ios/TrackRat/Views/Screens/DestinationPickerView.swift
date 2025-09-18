@@ -7,6 +7,7 @@ struct DestinationPickerView: View {
     @FocusState private var searchFieldFocused: Bool
     @State private var navigationBarVisible = false
     @Binding var sheetPosition: BottomSheetPosition
+    @State private var searchTask: Task<Void, Never>?
     
     private var searchResults: [String] {
         let results = Stations.search(searchText)
@@ -92,8 +93,16 @@ struct DestinationPickerView: View {
                                     .autocorrectionDisabled(true)
                                     .textInputAutocapitalization(.never)
                                     .onChange(of: searchText) { _, newValue in
-                                        withAnimation(.easeInOut(duration: 0.3)) {
-                                            isSearching = !newValue.isEmpty
+                                        searchTask?.cancel()
+                                        searchTask = Task {
+                                            try? await Task.sleep(for: .milliseconds(200))
+                                            if !Task.isCancelled {
+                                                await MainActor.run {
+                                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                                        isSearching = !newValue.isEmpty
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     .onSubmit {

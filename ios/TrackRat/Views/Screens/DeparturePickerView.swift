@@ -65,6 +65,7 @@ struct DeparturePickerView: View {
     @State private var navigationBarVisible = false
     @State private var trainSearchError: String?
     @State private var isSearchingTrain = false
+    @State private var searchTask: Task<Void, Never>?
     
     private var searchResults: (stations: [String], trainNumber: String?) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
@@ -263,11 +264,19 @@ struct DeparturePickerView: View {
                 .autocorrectionDisabled(true)
                 .textInputAutocapitalization(.never)
                 .onChange(of: searchText) { _, newValue in
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        isSearching = !newValue.isEmpty
-                    }
-                    if trainSearchError != nil {
-                        trainSearchError = nil
+                    searchTask?.cancel()
+                    searchTask = Task {
+                        try? await Task.sleep(for: .milliseconds(200))
+                        if !Task.isCancelled {
+                            await MainActor.run {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    isSearching = !newValue.isEmpty
+                                }
+                                if trainSearchError != nil {
+                                    trainSearchError = nil
+                                }
+                            }
+                        }
                     }
                 }
                 .onChange(of: searchFieldFocused) { _, newValue in
