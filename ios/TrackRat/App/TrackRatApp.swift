@@ -414,24 +414,42 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             return
         }
 
-        // It's good practice to store these before starting an async task
-        // trainId in attributes is already a String, matching what fetchTrainDetailsFlexible expects for trainNumber
-        // let trainIdString = activityAttributes.trainId
-        // Guarding Int conversion is not strictly necessary here if APIService.fetchTrainDetailsFlexible expects trainId as String (trainNumber)
-        // guard let _ = Int(trainIdString) else {
-        //     print("Invalid trainId in Live Activity attributes: \(trainIdString)")
-        //     task.setTaskCompleted(success: false)
-        //     return
-        // }
-
         print("Performing background fetch for Live Activity: Train \(activityAttributes.trainNumber)")
 
+        // Use Task with proper completion and timeout
         Task {
-            await LiveActivityService.shared.fetchAndUpdateTrain()
-            // The fetchAndUpdateTrain method itself handles errors internally by logging them.
-            // We assume success here unless a more specific error handling from fetchAndUpdateTrain is needed.
-            print("Background fetch completed for Live Activity: Train \(activityAttributes.trainNumber)")
-            task.setTaskCompleted(success: true)
+            do {
+                // Add 25-second timeout to prevent hanging
+                try await withTimeout(seconds: 25) {
+                    await LiveActivityService.shared.fetchAndUpdateTrain()
+                }
+                print("Background fetch completed successfully for Live Activity: Train \(activityAttributes.trainNumber)")
+                task.setTaskCompleted(success: true)
+            } catch {
+                print("Background fetch failed or timed out: \(error)")
+                task.setTaskCompleted(success: false)
+            }
+        }
+    }
+
+    // Helper function for timeout
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            // Add the actual operation
+            group.addTask {
+                try await operation()
+            }
+
+            // Add timeout task
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw CancellationError()
+            }
+
+            // Wait for first to complete and cancel the other
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 
