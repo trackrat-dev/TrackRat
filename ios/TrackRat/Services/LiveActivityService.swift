@@ -133,40 +133,52 @@ class LiveActivityService: ObservableObject {
     /// End the current Live Activity
     func endCurrentActivity() async {
         guard let activity = currentActivity else { return }
-        
-        // Stop periodic updates
+
+        // Stop periodic updates first
         stopPeriodicUpdates()
-        
-        // Cancel push token subscription
-        pushTokenTask?.cancel()
+
+        // Cancel push token subscription and wait for completion
+        if let task = pushTokenTask {
+            task.cancel()
+            // Give the task a moment to complete
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        }
         pushTokenTask = nil
-        
+
         // Unregister push token if we have one
         if let pushToken = currentPushToken {
             let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
-            try? await APIService.shared.unregisterLiveActivityToken(pushToken: tokenString)
+            do {
+                try await APIService.shared.unregisterLiveActivityToken(pushToken: tokenString)
+                print("✅ Unregistered push token from server")
+            } catch {
+                print("⚠️ Failed to unregister push token: \(error)")
+                // Continue with cleanup anyway
+            }
         }
-        
+
         // End the activity
         await activity.end(dismissalPolicy: .immediate)
-        
-        await MainActor.run {
-            self.currentActivity = nil
-            self.isActivityActive = false
-            self.currentPushToken = nil
+
+        // Clear all references with weak self for extra safety
+        await MainActor.run { [weak self] in
+            self?.currentActivity = nil
+            self?.isActivityActive = false
+            self?.currentPushToken = nil
         }
-        
-        print("🛑 Live Activity ended")
+
+        print("🛑 Live Activity ended and cleaned up")
     }
     
     // MARK: - Updates
     
     private func startPeriodicUpdates() {
         stopPeriodicUpdates()
-        
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
-            Task {
-                await self.fetchAndUpdateTrain()
+
+        // Use weak self in timer closure to avoid retain cycle
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { [weak self] in
+                await self?.fetchAndUpdateTrain()
             }
         }
     }
@@ -271,28 +283,38 @@ class LiveActivityService: ObservableObject {
     private func startPushTokenSubscription(for activity: Activity<TrainActivityAttributes>, train: TrainV2, from originCode: String, to destinationCode: String) {
         // Cancel any existing subscription
         pushTokenTask?.cancel()
-        
-        pushTokenTask = Task {
+
+        pushTokenTask = Task { [weak self] in
+            guard let self = self else { return }
+
             print("🔄 Starting push token subscription for Live Activity...")
-            
+
             do {
                 for await pushToken in activity.pushTokenUpdates {
-                    print("📡 Received Live Activity push token: \(pushToken.prefix(20))...")
-                    
-                    // Store the token for later use (e.g., unregistration)
-                    await MainActor.run {
-                        self.currentPushToken = pushToken
+                    // Check for cancellation
+                    if Task.isCancelled {
+                        print("⚠️ Push token subscription cancelled")
+                        break
                     }
-                    
+
+                    print("📡 Received Live Activity push token: \(pushToken.prefix(20))...")
+
+                    // Store the token for later use (e.g., unregistration)
+                    await MainActor.run { [weak self] in
+                        self?.currentPushToken = pushToken
+                    }
+
                     // Register with backend
-                    await registerPushToken(pushToken, for: train, from: originCode, to: destinationCode)
-                    
+                    await self.registerPushToken(pushToken, for: train, from: originCode, to: destinationCode)
+
                     // We only need the first token, so break
                     break
                 }
             } catch {
                 print("❌ Push token subscription failed: \(error)")
             }
+
+            print("✅ Push token subscription task completed")
         }
     }
     
@@ -301,25 +323,24 @@ class LiveActivityService: ObservableObject {
     private func registerPushToken(_ token: Data, for train: TrainV2, from originCode: String, to destinationCode: String) async {
         let tokenString = token.map { String(format: "%02x", $0) }.joined()
         print("🔧 Converting push token to string: \(tokenString.prefix(20))...")
-        
-        Task {
-            for activity in Activity<TrainActivityAttributes>.activities {
-                if activity.id == currentActivity?.id {
-                    print("📤 Making HTTP request to register Live Activity token...")
-                    do {
-                        try await APIService.shared.registerLiveActivityToken(
-                            pushToken: tokenString,
-                            activityId: activity.id,
-                            trainNumber: train.trainId,
-                            originCode: originCode,
-                            destinationCode: destinationCode
-                        )
-                        print("✅ Live Activity token registration successful")
-                    } catch {
-                        print("❌ Live Activity token registration failed: \(error)")
-                    }
-                    break // Only register for the current activity
+
+        // Remove nested Task - we're already in async context
+        for activity in Activity<TrainActivityAttributes>.activities {
+            if activity.id == currentActivity?.id {
+                print("📤 Making HTTP request to register Live Activity token...")
+                do {
+                    try await APIService.shared.registerLiveActivityToken(
+                        pushToken: tokenString,
+                        activityId: activity.id,
+                        trainNumber: train.trainId,
+                        originCode: originCode,
+                        destinationCode: destinationCode
+                    )
+                    print("✅ Live Activity token registration successful")
+                } catch {
+                    print("❌ Live Activity token registration failed: \(error)")
                 }
+                break // Only register for the current activity
             }
         }
     }
