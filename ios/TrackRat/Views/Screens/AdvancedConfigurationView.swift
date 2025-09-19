@@ -1,4 +1,5 @@
 import SwiftUI
+import Sentry
 
 struct AdvancedConfigurationView: View {
     @EnvironmentObject private var appState: AppState
@@ -18,17 +19,19 @@ struct AdvancedConfigurationView: View {
     var body: some View {
         let backgroundView = TrackRatTheme.Colors.primaryBackground
             .ignoresSafeArea()
-        
+
         let serverEnvironmentSection = createServerEnvironmentSection()
         let healthCheckSection = createHealthCheckSection()
-        
+        let sentryTestSection = createSentryTestSection()
+
         return ZStack {
             backgroundView
-            
+
             ScrollView {
                 VStack(spacing: 24) {
                     serverEnvironmentSection
                     healthCheckSection
+                    sentryTestSection
                 }
                 .padding()
                 .padding(.bottom, 40)
@@ -248,16 +251,16 @@ struct AdvancedConfigurationView: View {
     private func testConnection() {
         isTestingConnection = true
         healthCheckResult = nil
-        
+
         Task {
             let result = await BackendWakeupService.shared.performHealthCheck(environment: selectedEnvironment)
-            
+
             await MainActor.run {
                 withAnimation {
                     healthCheckResult = result
                     isTestingConnection = false
                 }
-                
+
                 // Haptic feedback
                 if result.success {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -267,7 +270,169 @@ struct AdvancedConfigurationView: View {
             }
         }
     }
-    
+
+    @ViewBuilder
+    private func createSentryTestSection() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Error Reporting")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+
+            Text("Test Sentry error reporting to ensure crashes and errors are being tracked properly.")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+
+            VStack(spacing: 12) {
+                // Test Error Button
+                Button {
+                    testSentryError()
+                } label: {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("Send Test Error")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.red.opacity(0.8))
+                    )
+                }
+
+                // Test Message Button
+                Button {
+                    testSentryMessage()
+                } label: {
+                    HStack {
+                        Image(systemName: "message.fill")
+                        Text("Send Test Message")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.blue.opacity(0.8))
+                    )
+                }
+
+                // Test Transaction Button
+                Button {
+                    testSentryTransaction()
+                } label: {
+                    HStack {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                        Text("Send Test Transaction")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.purple.opacity(0.8))
+                    )
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+
+    private func testSentryError() {
+        // Create a test error
+        let error = NSError(
+            domain: "TrackRatTestError",
+            code: 9999,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Test error from iOS app - Sentry integration verification",
+                "test_type": "manual_test",
+                "triggered_from": "AdvancedConfigurationView"
+            ]
+        )
+
+        // Capture the error with additional context
+        SentrySDK.capture(error: error) { scope in
+            scope.setLevel(.error)
+            scope.setContext(value: [
+                "environment": selectedEnvironment.rawValue,
+                "test": true,
+                "timestamp": Date().ISO8601Format()
+            ], key: "test_context")
+            scope.setTag(value: "ios_test", key: "error_source")
+        }
+
+        print("🔍 Sentry test error sent successfully")
+
+        // Haptic feedback
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+
+    private func testSentryMessage() {
+        // Send a test message
+        SentrySDK.capture(message: "Test message from iOS app - Sentry is working correctly") { scope in
+            scope.setLevel(.info)
+            scope.setContext(value: [
+                "environment": selectedEnvironment.rawValue,
+                "test": true,
+                "app_version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+            ], key: "test_info")
+            scope.setTag(value: "ios_test", key: "message_source")
+        }
+
+        print("🔍 Sentry test message sent successfully")
+
+        // Haptic feedback
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private func testSentryTransaction() {
+        Task {
+            // Start a test transaction
+            let transaction = SentrySDK.startTransaction(
+                name: "test.performance",
+                operation: "manual_test"
+            )
+            transaction.setData(value: selectedEnvironment.rawValue, key: "environment")
+            transaction.setData(value: "AdvancedConfigurationView", key: "source")
+
+            // Create child spans to simulate work
+            let networkSpan = transaction.startChild(operation: "http.client", description: "Simulated API call")
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            networkSpan.setData(value: 200, key: "status_code")
+            networkSpan.finish()
+
+            let dbSpan = transaction.startChild(operation: "db.query", description: "Simulated database query")
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+            dbSpan.finish()
+
+            let computeSpan = transaction.startChild(operation: "compute", description: "Simulated processing")
+            try? await Task.sleep(nanoseconds: 75_000_000) // 75ms
+            computeSpan.finish()
+
+            // Finish the transaction
+            transaction.finish()
+
+            print("🔍 Sentry test transaction sent successfully")
+
+            // Haptic feedback
+            await MainActor.run {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        }
+    }
+
 }
 
 

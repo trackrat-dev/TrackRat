@@ -74,36 +74,23 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         let isStaging = environment == "staging"
         let isProduction = environment == "production"
 
-        // Get environment-specific sampling rates
-        let (tracesSampleRate, profilesSampleRate) = getSamplingRates(for: environment)
-
         SentrySDK.start { options in
             // Basic configuration
             options.dsn = "https://f46282b1deb1de34493decb5c3c54c05@o4510043461058560.ingest.us.sentry.io/4510043476393984"
-            options.environment = environment
+            //options.environment = environment
             options.debug = isDevelopment // Only enable debug in development
 
-            // Privacy and data collection
-            options.sendDefaultPii = false // Don't send PII by default
+            options.tracesSampleRate = 1.0
+            options.profilesSampleRate = 1.0
 
-            // Performance monitoring
-            options.tracesSampleRate = tracesSampleRate as NSNumber
-            options.enableTracing = true
-            options.enableNetworkTracking = true
-            options.enableFileIOTracing = true
-            options.enableCoreDataTracing = false // We don't use Core Data
-            options.enableAutoBreadcrumbTracking = true
+            // Session replay configuration
+            // Using 100% sampling for all environments as requested
+            //options.sessionReplay.sessionSampleRate = 1.0  // 100% session replay
+            //options.sessionReplay.onErrorSampleRate = 1.0   // 100% replay on errors
 
-            // Profiling configuration
-            options.profilesSampleRate = profilesSampleRate as NSNumber
-
-            // Session replay configuration (iOS 16.0+)
-            if #available(iOS 16.0, *) {
-                options.experimental.sessionReplay.sessionSampleRate = isStaging ? 1.0 : (isProduction ? 0.3 : 1.0)
-                options.experimental.sessionReplay.onErrorSampleRate = 1.0 // Always replay on errors
-                options.experimental.sessionReplay.redactAllText = false // We'll manage PII separately
-                options.experimental.sessionReplay.redactAllImages = false
-            }
+            // Privacy configuration for replays
+            //options.sessionReplay.maskAllText = true        // Mask all text for privacy
+            //options.sessionReplay.maskAllImages = true      // Mask all images for privacy
 
             // Error tracking enhancements
             options.attachScreenshot = !isProduction // Screenshots in dev/staging only
@@ -129,7 +116,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 // Add custom context
                 event.context?["app"] = [
                     "environment": environment,
-                    "server_environment": StorageService.shared.loadServerEnvironment().rawValue
+                    "server_environment": StorageService().loadServerEnvironment().rawValue
                 ]
 
                 // Add user context (anonymized)
@@ -145,33 +132,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             // Enable experimental features
             options.experimental.enableLogs = !isProduction
         }
-
-        print("🔍 Sentry initialized - Environment: \\(environment), Traces: \\(tracesSampleRate), Profiles: \\(profilesSampleRate)")
     }
 
     private func getCurrentEnvironment() -> String {
         // Check for environment configuration
-        let storageService = StorageService.shared
+        let storageService = StorageService()
         let serverEnv = storageService.loadServerEnvironment()
 
         switch serverEnv {
-        case .dev:
+        case .local:
             return "development"
         case .staging:
             return "staging"
         case .production:
             return "production"
-        }
-    }
-
-    private func getSamplingRates(for environment: String) -> (traces: Double, profiles: Double) {
-        switch environment {
-        case "staging":
-            return (1.0, 0.5) // 100% traces, 50% profiles in staging
-        case "production":
-            return (0.2, 0.1) // 20% traces, 10% profiles in production
-        default:
-            return (1.0, 1.0) // 100% everything in development
         }
     }
 
@@ -189,27 +163,50 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        // Start app cold start transaction
+        let startupTransaction = SentrySDK.startTransaction(
+            name: "app.cold_start",
+            operation: "app_lifecycle",
+            bindToScope: true
+        )
+
+        // Track Sentry initialization
+        let sentrySpan = startupTransaction.startChild(operation: "sentry.init", description: "Initialize Sentry SDK")
         configureSentry()
+        sentrySpan.finish()
+
         configureSessionReplayConsent()
 
+        // Track notification setup
+        let notificationSpan = startupTransaction.startChild(operation: "notifications.setup", description: "Configure notifications")
         UNUserNotificationCenter.current().delegate = self
         setupNotificationCategories()
         registerBackgroundTasks()
+        notificationSpan.finish()
         
         // Request notification permissions (required for Live Activities)
+        let permissionSpan = startupTransaction.startChild(operation: "permissions.request", description: "Request notification permissions")
         Task {
             await requestNotificationPermissions()
+            permissionSpan.finish()
         }
-        
+
         // Register for remote notifications (push notifications)
         application.registerForRemoteNotifications()
-        
+
         // Wake up backend on app launch
         print("📱 App Launch: Triggering backend wake-up...")
+        let backendSpan = startupTransaction.startChild(operation: "backend.wakeup", description: "Wake up backend service")
         Task {
             BackendWakeupService.shared.wakeupBackend()
+            backendSpan.finish()
+
+            // Finish the startup transaction after backend wakeup
+            startupTransaction.setData(value: "cold_start", key: "launch_type")
+            startupTransaction.setData(value: launchOptions?.isEmpty == false, key: "has_launch_options")
+            startupTransaction.finish()
         }
-        
+
         return true
     }
     

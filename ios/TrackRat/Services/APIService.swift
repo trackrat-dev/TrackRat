@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Sentry
 
 // MARK: - Clean API Service for V2 Backend
 @MainActor
@@ -48,10 +49,27 @@ final class APIService: ObservableObject {
 
         print("🔵 DEBUG API: Fetching trains from URL: \(url)")
 
-        let (data, _) = try await session.data(from: url)
+        // Create a span for network request tracking
+        let span = SentrySDK.span
+        let networkSpan = span?.startChild(
+            operation: "http.client",
+            description: "GET \(url.path)"
+        )
+        networkSpan?.setData(value: url.absoluteString, key: "url")
+        networkSpan?.setData(value: "GET", key: "method")
+
+        let (data, response) = try await session.data(from: url)
+
+        // Track HTTP response
+        if let httpResponse = response as? HTTPURLResponse {
+            networkSpan?.setData(value: httpResponse.statusCode, key: "status_code")
+        }
+        networkSpan?.finish()
 
         do {
+            let decodingSpan = span?.startChild(operation: "json.decode", description: "Parse departures")
             let response = try decoder.decode(V2DeparturesResponse.self, from: data)
+            decodingSpan?.finish()
             print("🔵 DEBUG API: Decoded \(response.departures.count) departures from API")
             print("🔵 DEBUG API: Train IDs in response: \(response.departures.map { $0.trainId })")
 

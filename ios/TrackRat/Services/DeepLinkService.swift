@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Sentry
 
 /// Service for handling deep links and URL navigation
 @MainActor
@@ -11,14 +12,27 @@ class DeepLinkService: ObservableObject {
     /// Handle an incoming URL and set up deep link state for navigation
     func handle(url: URL, appState: AppState) {
         print("🔗 Deep link received: \(url)")
-        
+
+        // Start transaction for deep link navigation
+        let transaction = SentrySDK.startTransaction(
+            name: "deeplink.navigation",
+            operation: "navigation"
+        )
+        transaction.setData(value: url.absoluteString, key: "url")
+
         // Parse the deep link
+        let parseSpan = transaction.startChild(operation: "url.parse", description: "Parse deep link URL")
         guard let deepLink = DeepLink(url: url) else {
             print("❌ Failed to parse deep link URL")
+            parseSpan.setData(value: "invalid_url", key: "error")
+            parseSpan.finish()
+            transaction.finish(status: .invalidArgument)
             return
         }
-        
+        parseSpan.finish()
+
         print("✅ Deep link parsed - Train Number: \(deepLink.trainId)")
+        transaction.setData(value: deepLink.trainId, key: "train_id")
         
         // Set deep link state for MapContainerView to handle
         appState.deepLinkTrainNumber = deepLink.trainId
@@ -58,7 +72,13 @@ class DeepLinkService: ObservableObject {
             )
             print("🗺️ Set route for map display: \(fromCode) → \(toCode)")
         }
-        
+
+        // Track navigation success
+        transaction.setData(value: deepLink.fromStationCode ?? "none", key: "from_station")
+        transaction.setData(value: deepLink.toStationCode ?? "none", key: "to_station")
+        transaction.setData(value: true, key: "success")
+        transaction.finish()
+
         print("✅ Deep link state configured - MapContainerView will handle navigation")
     }
     
