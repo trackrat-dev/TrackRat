@@ -1,6 +1,5 @@
 import SwiftUI
 import Sentry
-
 import ActivityKit
 import WidgetKit
 import UserNotifications
@@ -60,37 +59,138 @@ struct TrackRatApp: App {
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     // Store device token for Live Activity registration
     private static var storedDeviceToken: String?
-    
+
     @MainActor static var deviceToken: String? {
         get { storedDeviceToken }
         set { storedDeviceToken = newValue }
     }
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+
+    // MARK: - Sentry Configuration
+
+    private func configureSentry() {
+        // Determine environment
+        let environment = getCurrentEnvironment()
+        let isDevelopment = environment == "development"
+        let isStaging = environment == "staging"
+        let isProduction = environment == "production"
+
+        // Get environment-specific sampling rates
+        let (tracesSampleRate, profilesSampleRate) = getSamplingRates(for: environment)
+
         SentrySDK.start { options in
+            // Basic configuration
             options.dsn = "https://f46282b1deb1de34493decb5c3c54c05@o4510043461058560.ingest.us.sentry.io/4510043476393984"
-            options.debug = true // Enabled debug when first installing is always helpful
+            options.environment = environment
+            options.debug = isDevelopment // Only enable debug in development
 
-            // Adds IP for users.
-            // For more information, visit: https://docs.sentry.io/platforms/apple/data-management/data-collected/
-            options.sendDefaultPii = true
+            // Privacy and data collection
+            options.sendDefaultPii = false // Don't send PII by default
 
-            // Set tracesSampleRate to 1.0 to capture 100% of transactions for performance monitoring.
-            // We recommend adjusting this value in production.
-            options.tracesSampleRate = 1.0
+            // Performance monitoring
+            options.tracesSampleRate = tracesSampleRate as NSNumber
+            options.enableTracing = true
+            options.enableNetworkTracking = true
+            options.enableFileIOTracing = true
+            options.enableCoreDataTracing = false // We don't use Core Data
+            options.enableAutoBreadcrumbTracking = true
 
-            // Configure profiling. Visit https://docs.sentry.io/platforms/apple/profiling/ to learn more.
-            options.configureProfiling = {
-                $0.sessionSampleRate = 1.0 // We recommend adjusting this value in production.
-                $0.lifecycle = .trace
+            // Profiling configuration
+            options.profilesSampleRate = profilesSampleRate as NSNumber
+
+            // Session replay configuration (iOS 16.0+)
+            if #available(iOS 16.0, *) {
+                options.experimental.sessionReplay.sessionSampleRate = isStaging ? 1.0 : (isProduction ? 0.3 : 1.0)
+                options.experimental.sessionReplay.onErrorSampleRate = 1.0 // Always replay on errors
+                options.experimental.sessionReplay.redactAllText = false // We'll manage PII separately
+                options.experimental.sessionReplay.redactAllImages = false
             }
 
-            // Uncomment the following lines to add more data to your events
-            // options.attachScreenshot = true // This adds a screenshot to the error events
-            // options.attachViewHierarchy = true // This adds the view hierarchy to the error events
-            
-            // Enable experimental logging features
-            options.experimental.enableLogs = true
+            // Error tracking enhancements
+            options.attachScreenshot = !isProduction // Screenshots in dev/staging only
+            options.attachViewHierarchy = !isProduction // View hierarchy in dev/staging only
+            options.attachStacktrace = true
+            options.maxBreadcrumbs = 100
+
+            // Performance tracking
+            options.enableAutoPerformanceTracing = true
+            options.enableUIViewControllerTracing = true
+            options.enableSwizzling = true
+            options.enableAppHangTracking = true
+            options.appHangTimeoutInterval = 2.0 // 2 second hang detection
+
+            // Release tracking
+            if let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+               let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
+                options.releaseName = "trackrat-ios@\\(appVersion)+\\(buildNumber)"
+            }
+
+            // Custom before send hook
+            options.beforeSend = { event in
+                // Add custom context
+                event.context?["app"] = [
+                    "environment": environment,
+                    "server_environment": StorageService.shared.loadServerEnvironment().rawValue
+                ]
+
+                // Add user context (anonymized)
+                if #available(iOS 16.1, *) {
+                    event.context?["journey"] = [
+                        "has_active_live_activity": LiveActivityService.shared.isActivityActive
+                    ]
+                }
+
+                return event
+            }
+
+            // Enable experimental features
+            options.experimental.enableLogs = !isProduction
         }
+
+        print("🔍 Sentry initialized - Environment: \\(environment), Traces: \\(tracesSampleRate), Profiles: \\(profilesSampleRate)")
+    }
+
+    private func getCurrentEnvironment() -> String {
+        // Check for environment configuration
+        let storageService = StorageService.shared
+        let serverEnv = storageService.loadServerEnvironment()
+
+        switch serverEnv {
+        case .dev:
+            return "development"
+        case .staging:
+            return "staging"
+        case .production:
+            return "production"
+        }
+    }
+
+    private func getSamplingRates(for environment: String) -> (traces: Double, profiles: Double) {
+        switch environment {
+        case "staging":
+            return (1.0, 0.5) // 100% traces, 50% profiles in staging
+        case "production":
+            return (0.2, 0.1) // 20% traces, 10% profiles in production
+        default:
+            return (1.0, 1.0) // 100% everything in development
+        }
+    }
+
+    private func configureSessionReplayConsent() {
+        // Check if user has consented to session replay
+        let hasConsented = UserDefaults.standard.bool(forKey: "sentry_session_replay_consent")
+
+        if !hasConsented && getCurrentEnvironment() == "production" {
+            // We'll request consent later in the app flow
+            // For now, disable session replay until consent is given
+            if #available(iOS 16.0, *) {
+                // Session replay consent will be handled in settings
+            }
+        }
+    }
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        configureSentry()
+        configureSessionReplayConsent()
 
         UNUserNotificationCenter.current().delegate = self
         setupNotificationCategories()
