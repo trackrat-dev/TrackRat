@@ -26,7 +26,7 @@ async def health_check(
     db: AsyncSession = Depends(get_db), settings: Settings = Depends(get_settings)
 ) -> dict[str, Any]:
     """Comprehensive health check endpoint."""
-    logger.info("health_check_request")
+    # Health check logging handled by middleware to reduce noise
 
     health_status: dict[str, Any] = {
         "status": "healthy",

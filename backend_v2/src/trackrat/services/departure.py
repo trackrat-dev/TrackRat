@@ -296,6 +296,10 @@ class DepartureService:
         if not train_id:
             return
 
+        # Check if this is an Amtrak train appearing in NJT station data
+        # Amtrak trains start with 'A' followed by numbers
+        is_amtrak = train_id.startswith("A") and train_id[1:].isdigit()
+
         # Find existing journey
         journey = await db.scalar(
             select(TrainJourney)
@@ -310,11 +314,21 @@ class DepartureService:
         )
 
         if not journey:
-            logger.warning(
-                "journey_not_found_during_station_refresh",
-                train_id=train_id,
-                station_code=station_code,
-            )
+            # Only log warning for non-Amtrak trains or unexpected cases
+            if not is_amtrak:
+                logger.warning(
+                    "journey_not_found_during_station_refresh",
+                    train_id=train_id,
+                    station_code=station_code,
+                )
+            else:
+                # Debug log for Amtrak trains - this is expected
+                logger.debug(
+                    "amtrak_train_in_njt_station",
+                    train_id=train_id,
+                    station_code=station_code,
+                    reason="Amtrak trains appear in NJT stations but are tracked separately",
+                )
             return
 
         # Update journey metadata

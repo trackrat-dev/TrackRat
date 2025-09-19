@@ -122,7 +122,7 @@ class TrainValidationService:
                     relevant_trains.add(train_id)
 
             logger.info(
-                "njt_route_scan_complete",
+                "validation.njt.scan_completed",
                 from_station=from_station,
                 to_station=to_station,
                 trains_found=len(relevant_trains),

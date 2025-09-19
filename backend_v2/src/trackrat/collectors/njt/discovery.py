@@ -77,7 +77,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         Returns:
             Discovery results summary
         """
-        logger.info("starting_train_discovery", stations=DISCOVERY_STATIONS)
+        logger.info("discovery.njt.started", stations=DISCOVERY_STATIONS)
 
         total_discovered = 0
         total_new = 0
@@ -90,7 +90,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
             total_new += result["new_trains"]
 
         logger.info(
-            "train_discovery_complete",
+            "discovery.njt.completed",
             total_discovered=total_discovered,
             total_new=total_new,
             stations_processed=len(DISCOVERY_STATIONS),

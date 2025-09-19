@@ -6,10 +6,14 @@ This module sets up the FastAPI app with all routers, middleware, and lifecycle 
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+import time
+from typing import Callable
+import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
+import structlog
 from structlog import get_logger
 
 from trackrat.api import (
@@ -100,6 +104,56 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next: Callable) -> Response:
+    """Add correlation ID to all requests for tracing."""
+    # Generate or get correlation ID
+    correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4())[:8])
+
+    # Bind to structlog context for this request
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
+
+    # Add to request state for access in handlers
+    request.state.correlation_id = correlation_id
+
+    # Process request
+    response = await call_next(request)
+
+    # Add correlation ID to response headers
+    response.headers["X-Correlation-ID"] = correlation_id
+
+    return response
+
+
+@app.middleware("http")
+async def suppress_health_check_logs(request: Request, call_next: Callable) -> Response:
+    """Middleware to suppress logging for health check endpoints."""
+    # List of paths that should not be logged
+    quiet_paths = {"/health", "/health/live", "/health/ready", "/metrics"}
+
+    # Check if this is a path we want to suppress logs for
+    should_suppress = request.url.path in quiet_paths
+
+    # For health checks, we'll handle logging ourselves (or not log at all)
+    if should_suppress:
+        # Process the request without logging
+        response = await call_next(request)
+        # Only log if there was an error
+        if response.status_code >= 400:
+            logger.warning(
+                "health_check_failed",
+                path=request.url.path,
+                status_code=response.status_code,
+                method=request.method,
+            )
+        return response
+
+    # For all other requests, process normally (will be logged by uvicorn)
+    return await call_next(request)
+
 
 # Include routers
 app.include_router(trains.router)

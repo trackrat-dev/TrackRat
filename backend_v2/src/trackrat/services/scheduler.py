@@ -383,6 +383,7 @@ class SchedulerService:
                 if window_start <= scheduled_dep <= window_end:
                     trains.append(train)
 
+        scheduled_count = 0
         for train in trains:
             # Schedule collection at departure time
             job_id = f"departure_collection_{train.train_id}_{train.journey_date}"
@@ -399,16 +400,15 @@ class SchedulerService:
                     name=f"Departure collection for {train.train_id}",
                     replace_existing=True,
                 )
+                scheduled_count += 1
 
-                logger.info(
-                    "scheduled_departure_collection",
-                    train_id=train.train_id,
-                    departure_time=(
-                        train.scheduled_departure.isoformat()
-                        if train.scheduled_departure
-                        else "unknown"
-                    ),
-                )
+        # Log batch summary instead of individual trains
+        if scheduled_count > 0:
+            logger.info(
+                "scheduler.departure.scheduled",
+                count=scheduled_count,
+                window_minutes=10,
+            )
 
     async def schedule_periodic_updates(self, session: AsyncSession) -> None:
         """Schedule periodic updates for active trains."""
@@ -444,6 +444,7 @@ class SchedulerService:
                 if last_updated < cutoff_time:
                     trains.append(train)
 
+        scheduled_count = 0
         for train in trains:
             # Use deterministic job ID to prevent duplicate updates
             job_id = f"periodic_update_{train.train_id}_{train.journey_date}"
@@ -459,15 +460,14 @@ class SchedulerService:
                     replace_existing=True,
                     max_instances=1,  # Prevent overlapping instances
                 )
+                scheduled_count += 1
 
+        # Log batch summary instead of individual trains
+        if scheduled_count > 0:
             logger.info(
-                "scheduled_periodic_update",
-                train_id=train.train_id,
-                last_updated=(
-                    ensure_timezone_aware(train.last_updated_at).isoformat()
-                    if train.last_updated_at
-                    else "unknown"
-                ),
+                "scheduler.periodic.scheduled",
+                count=scheduled_count,
+                total_active_trains=len(trains),
             )
 
     async def collect_journey(self, train_id: str, journey_date: datetime) -> None:
@@ -475,8 +475,9 @@ class SchedulerService:
         task_id = f"journey_{train_id}_{now_et().isoformat()}"
 
         try:
-            logger.info(
-                "collecting_journey", train_id=train_id, journey_date=journey_date
+            # Debug level for individual collection start
+            logger.debug(
+                "journey.collection.started", train_id=train_id, journey_date=journey_date
             )
 
             # Track running task
@@ -497,22 +498,24 @@ class SchedulerService:
             )
 
             if result:
-                logger.info(
-                    "journey_collection_completed",
+                # Debug level for successful collection
+                logger.debug(
+                    "journey.collection.completed",
                     train_id=train_id,
                     is_completed=result.get("is_completed", False),
                     stops_count=result.get("stops_count", 0),
                 )
             else:
+                # Error for actual failures
                 logger.error(
-                    "journey_collection_failed",
+                    "journey.collection.failed",
                     train_id=train_id,
                     error="No result returned from collection",
                 )
 
         except Exception as e:
             logger.error(
-                "journey_collection_error",
+                "journey.collection.error",
                 train_id=train_id,
                 error=str(e),
                 error_type=type(e).__name__,
