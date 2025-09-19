@@ -31,9 +31,53 @@ from trackrat.services.scheduler import get_scheduler
 from trackrat.settings import get_settings
 from trackrat.utils.logging import setup_logging
 
-# Set up logging
+# Set up logging first
 setup_logging()
 logger = get_logger(__name__)
+
+# Configure Sentry integration with structlog
+import sentry_sdk
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.httpx import HttpxIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+def add_sentry_context(logger, log_method, event_dict):
+    """Add Sentry context to structlog events."""
+    # Add correlation ID if available
+    if "correlation_id" in event_dict:
+        sentry_sdk.set_tag("correlation_id", event_dict["correlation_id"])
+
+    # Add custom tags for errors
+    if log_method in ("error", "exception", "critical"):
+        if "train_id" in event_dict:
+            sentry_sdk.set_tag("train.id", event_dict["train_id"])
+        if "station_code" in event_dict:
+            sentry_sdk.set_tag("station.code", event_dict["station_code"])
+        if "data_source" in event_dict:
+            sentry_sdk.set_tag("data.source", event_dict["data_source"])
+
+    return event_dict
+
+# Add Sentry processor to structlog
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        add_sentry_context,  # Add Sentry context
+        structlog.processors.JSONRenderer(),
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
 
 
 @asynccontextmanager
@@ -85,25 +129,100 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("trackrat_v2_shutdown_complete")
 
-import sentry_sdk
+def configure_sentry():
+    """Configure Sentry with environment-specific settings."""
+    settings = get_settings()
+    if not settings.sentry_dsn:
+        logger.warning("Sentry DSN not configured, skipping Sentry initialization")
+        return
 
-sentry_sdk.init(
-    dsn="https://932919d4e814a93ace4a6bdac65a4da9@o4510043461058560.ingest.us.sentry.io/4510043532754944",
-    # Add data like request headers and IP for users,
-    # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
-    send_default_pii=True,
-    # Enable sending logs to Sentry
-    enable_logs=True,
-    # Set traces_sample_rate to 1.0 to capture 100%
-    # of transactions for tracing.
-    traces_sample_rate=1.0,
-    # Set profile_session_sample_rate to 1.0 to profile 100%
-    # of profile sessions.
-    profile_session_sample_rate=1.0,
-    # Set profile_lifecycle to "trace" to automatically
-    # run the profiler on when there is an active transaction
-    profile_lifecycle="trace",
-)
+    # Get environment-specific sampling rates
+    traces_rate, profiles_rate = settings.sentry_sample_rates
+
+    # Configure integrations
+    integrations = [
+        AsyncioIntegration(),
+        FastApiIntegration(
+            transaction_style="endpoint",
+            auto_session_tracking=True,
+        ),
+        HttpxIntegration(),
+        LoggingIntegration(
+            level="INFO",  # Capture info and above
+            event_level="ERROR",  # Send errors as events
+        ),
+        SqlalchemyIntegration(),
+    ]
+
+    # Initialize Sentry
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        integrations=integrations,
+
+        # Performance monitoring
+        traces_sample_rate=traces_rate,
+        profiles_sample_rate=profiles_rate,
+        enable_tracing=settings.sentry_enable_tracing,
+
+        # Error tracking
+        attach_stacktrace=True,
+        send_default_pii=False,  # Don't send PII by default
+
+        # Release tracking
+        release=f"trackrat-backend@{settings.environment}",
+
+        # Other settings
+        max_breadcrumbs=100,
+        debug=settings.debug,
+
+        # Custom before_send hook
+        before_send=before_send_filter,
+
+        # Custom before_send_transaction hook
+        before_send_transaction=before_send_transaction_filter,
+    )
+
+    logger.info(
+        "sentry_initialized",
+        environment=settings.sentry_environment,
+        traces_sample_rate=traces_rate,
+        profiles_sample_rate=profiles_rate,
+        tracing_enabled=settings.sentry_enable_tracing,
+    )
+
+def before_send_filter(event, hint):
+    """Filter sensitive data before sending to Sentry."""
+    settings = get_settings()
+
+    # Filter out health check errors
+    if "transaction" in event and "/health" in event["transaction"]:
+        return None
+
+    # Add custom context
+    if "contexts" not in event:
+        event["contexts"] = {}
+
+    # Add application context
+    event["contexts"]["app"] = {
+        "environment": settings.environment,
+        "debug": settings.debug,
+    }
+
+    return event
+
+def before_send_transaction_filter(event, hint):
+    """Filter transaction data before sending to Sentry."""
+    # Don't send transactions for health checks
+    if event.get("transaction", "").startswith("/health"):
+        return None
+    if event.get("transaction", "") == "/metrics":
+        return None
+
+    return event
+
+# Initialize Sentry before creating the app
+configure_sentry()
 
 
 
