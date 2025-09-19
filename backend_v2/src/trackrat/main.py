@@ -144,12 +144,11 @@ def configure_sentry():
         AsyncioIntegration(),
         FastApiIntegration(
             transaction_style="endpoint",
-            auto_session_tracking=True,
         ),
         HttpxIntegration(),
         LoggingIntegration(
-            level="INFO",  # Capture info and above
-            event_level="ERROR",  # Send errors as events
+            level="INFO",  # Capture info and above as breadcrumbs
+            event_level="ERROR",  # Send warnings and above as events
         ),
         SqlalchemyIntegration(),
     ]
