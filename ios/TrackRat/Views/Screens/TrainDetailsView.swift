@@ -33,44 +33,46 @@ struct TrainDetailsView: View {
     
     
     var body: some View {
-        // Content will be wrapped by BottomSheetView's SheetAwareScrollView
-        VStack {
-                    if viewModel.isLoading && viewModel.train == nil {
-                        TrackRatLoadingView(message: "Loading train details...")
-                            .frame(maxWidth: .infinity, minHeight: 400)
-                    } else if let error = viewModel.error {
-                        ErrorView(message: error) {
-                            Task {
-                                await viewModel.loadTrainDetails(
-                                    fromStationCode: appState.departureStationCode,
-                                    selectedDestinationName: appState.selectedDestination
-                                )
-                            }
-                        }
-                    } else if let train = viewModel.train {
-                        VStack(spacing: 16) {
-                            CombinedDetailsCard(
-                                train: train,
-                                selectedDestination: appState.selectedDestination,
-                                displayableTrainStops: viewModel.displayableTrainStops,
-                                hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
-                                hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
-                                journeyProgressPercentage: viewModel.journeyProgressPercentage,
-                                journeyStopsCompleted: viewModel.journeyStopsCompleted,
-                                journeyTotalStops: viewModel.journeyTotalStops
+        // Wrap content in SheetAwareScrollView for proper dragging and scrolling
+        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+            VStack {
+                if viewModel.isLoading && viewModel.train == nil {
+                    TrackRatLoadingView(message: "Loading train details...")
+                        .frame(maxWidth: .infinity, minHeight: 400)
+                } else if let error = viewModel.error {
+                    ErrorView(message: error) {
+                        Task {
+                            await viewModel.loadTrainDetails(
+                                fromStationCode: appState.departureStationCode,
+                                selectedDestinationName: appState.selectedDestination
                             )
                         }
-                        .padding()
-                        // Force view update by using a composite ID that includes changing data
-                        .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
                     }
-                } // VStack
-                .refreshable {
-                    await viewModel.loadTrainDetails(
-                        fromStationCode: appState.departureStationCode,
-                        selectedDestinationName: appState.selectedDestination
-                    )
+                } else if let train = viewModel.train {
+                    VStack(spacing: 16) {
+                        CombinedDetailsCard(
+                            train: train,
+                            selectedDestination: appState.selectedDestination,
+                            displayableTrainStops: viewModel.displayableTrainStops,
+                            hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
+                            hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
+                            journeyProgressPercentage: viewModel.journeyProgressPercentage,
+                            journeyStopsCompleted: viewModel.journeyStopsCompleted,
+                            journeyTotalStops: viewModel.journeyTotalStops
+                        )
+                    }
+                    .padding()
+                    // Force view update by using a composite ID that includes changing data
+                    .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
                 }
+            } // VStack
+        }
+        .refreshable {
+            await viewModel.loadTrainDetails(
+                fromStationCode: appState.departureStationCode,
+                selectedDestinationName: appState.selectedDestination
+            )
+        }
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)
         .trackRatNavigationBarStyle()
