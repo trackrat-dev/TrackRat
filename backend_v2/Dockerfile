@@ -43,10 +43,6 @@ COPY alembic.ini ./
 COPY certs/ ./certs/
 COPY docker-entrypoint.sh ./
 
-# Copy ML models if they exist (using a separate layer for better caching)
-# This will include all trained model files (predictor, encoders, classes)
-COPY ml/models/*.pkl ./ml/models/
-
 # Make entrypoint script executable and set ownership
 RUN chmod +x docker-entrypoint.sh && \
     chown -R trackrat:trackrat /app
