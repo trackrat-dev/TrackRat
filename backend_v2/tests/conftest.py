@@ -19,6 +19,9 @@ from trackrat.db.engine import get_db
 from trackrat.models.database import Base
 from trackrat.collectors.njt.client import NJTransitClient
 
+# Ensure Sentry is disabled for all tests
+os.environ["SENTRY_DSN"] = ""
+
 
 # Test database URL - use environment variable or fallback to default
 TEST_DATABASE_URL = os.getenv(
@@ -63,6 +66,7 @@ def test_settings() -> Settings:
         discovery_interval_minutes=60,
         journey_update_interval_minutes=15,
         data_staleness_seconds=60,
+        sentry_dsn="",  # Explicitly disable Sentry
     )
 
 

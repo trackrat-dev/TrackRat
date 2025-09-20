@@ -150,6 +150,9 @@ echo ""
 echo "✅ All code quality checks passed!"
 echo ""
 
+# Ensure Sentry is disabled during tests
+export SENTRY_DSN=""
+
 # Run the tests
 echo "🎯 Running tests..."
 echo "=================="
