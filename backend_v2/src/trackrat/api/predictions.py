@@ -4,7 +4,7 @@ Machine Learning platform prediction API endpoints.
 Provides ML-based platform predictions for supported stations.
 """
 
-from datetime import date
+from datetime import UTC, date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,8 +19,8 @@ from trackrat.config.station_configs import (
     station_has_ml_predictions,
 )
 from trackrat.db.engine import get_db
-from trackrat.services.ml_features import TrackPredictionFeatures
-from trackrat.services.ml_predictor import track_predictor
+from trackrat.models.database import TrainJourney
+from trackrat.services.historical_track_predictor import historical_track_predictor
 
 logger = get_logger()
 
@@ -65,10 +65,14 @@ async def predict_track(
     db: AsyncSession = Depends(get_db),
 ) -> TrackPredictionResponse:
     """
-    Get ML-based platform prediction for a train at a station.
+    Get historical-based track prediction for a train at a station.
 
-    Supports all stations with ML predictions enabled.
-    Falls back to uniform distribution if model is unavailable.
+    Uses hierarchical historical data:
+    1. Exact train ID (if >= 10 records)
+    2. Line code (if >= 25 records)
+    3. Service provider fallback
+
+    Automatically removes occupied tracks and renormalizes probabilities.
 
     Args:
         station_code: Station code (e.g., 'NY', 'NP', 'TR')
@@ -76,7 +80,7 @@ async def predict_track(
         journey_date: Date of the journey
 
     Returns:
-        Platform prediction with probabilities and confidence
+        Track prediction with probabilities and confidence
     """
 
     logger.info(
@@ -86,53 +90,76 @@ async def predict_track(
         journey_date=journey_date,
     )
 
-    # Check if station supports ML predictions
+    # Check if station supports predictions (for now, keep this check)
     if not station_has_ml_predictions(station_code):
         raise HTTPException(
             status_code=400,
-            detail=f"Platform predictions not available for station {station_code}",
+            detail=f"Track predictions not available for station {station_code}",
         )
 
-    # Extract features
-    feature_extractor = TrackPredictionFeatures()
-    features = await feature_extractor.extract_features(
-        db, station_code, train_id, journey_date
+    # Look up the train to get line code and data source
+    from sqlalchemy import and_, select
+
+    query = (
+        select(TrainJourney)
+        .where(
+            and_(
+                TrainJourney.train_id == train_id,
+                TrainJourney.journey_date == journey_date,
+            )
+        )
+        .limit(1)
     )
 
-    if not features:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Train {train_id} not found for date {journey_date}",
-        )
+    result = await db.execute(query)
+    train_journey = result.scalar_one_or_none()
+
+    if not train_journey:
+        # Try to find any journey for this train ID to get metadata
+        query = select(TrainJourney).where(TrainJourney.train_id == train_id).limit(1)
+
+        result = await db.execute(query)
+        train_journey = result.scalar_one_or_none()
+
+        if not train_journey:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Train {train_id} not found",
+            )
 
     # Generate prediction with timing
     import time
+    from datetime import datetime
 
     prediction_start = time.time()
-    prediction = await track_predictor.predict(db, station_code, features)
+
+    # Use scheduled departure from the journey if available
+    scheduled_departure = (
+        train_journey.scheduled_departure
+        if train_journey.scheduled_departure
+        else datetime.now(UTC)
+    )
+
+    # data_source is non-nullable in database but MyPy doesn't know this
+    data_source = train_journey.data_source or "NJT"  # fallback to NJT as default
+
+    prediction = await historical_track_predictor.predict_track(
+        station_code=station_code,
+        train_id=train_id,
+        line_code=train_journey.line_code,
+        data_source=data_source,
+        scheduled_departure=scheduled_departure,
+        db=db,
+    )
+
     prediction_duration = time.time() - prediction_start
 
     logger.info(
-        "ml_prediction_timing",
+        "historical_prediction_timing",
         station_code=station_code,
         train_id=train_id,
         prediction_duration_ms=round(prediction_duration * 1000, 2),
     )
-
-    if not prediction:
-        # ML model failed - return error instead of fallback
-        logger.error(
-            "ml_model_prediction_failed",
-            station_code=station_code,
-            train_id=train_id,
-            reason="model_unavailable_or_failed",
-            detail="ML model could not generate prediction - likely model files not found or loading error",
-        )
-
-        raise HTTPException(
-            status_code=400,
-            detail=f"Platform predictions temporarily unavailable for station {station_code}. Model not loaded.",
-        )
 
     # Log successful prediction details
     logger.info(
@@ -144,13 +171,19 @@ async def predict_track(
         top_3_platforms=prediction["top_3"],
         model_version=prediction["model_version"],
         features_count=len(prediction.get("features_used", {})),
+        prediction_level=prediction.get("features_used", {}).get("prediction_level"),
+        historical_records=prediction.get("features_used", {}).get(
+            "historical_records"
+        ),
         prediction_distribution={
             platform: round(prob, 3)
             for platform, prob in sorted(
                 prediction["platform_probabilities"].items(),
                 key=lambda x: x[1],
                 reverse=True,
-            )
+            )[
+                :5
+            ]  # Only log top 5 for brevity
         },
     )
 

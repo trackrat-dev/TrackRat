@@ -42,11 +42,8 @@ pyjwt = {extras = ["crypto"], version = "^2.8.0"}
 google-cloud-storage = "^2.10.0"
 greenlet = "^3.2.3"
 
-# Machine Learning
-numpy = "^1.24.0"
+# Utilities
 python-dotenv = "^1.1.1"
-pandas = "^2.3.2"
-scikit-learn = "^1.7.1"
 sentry-sdk = {extras = ["fastapi"], version = "^2.38.0"}
 
 [tool.poetry.group.dev.dependencies]
@@ -87,10 +84,6 @@ plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 
 [[tool.mypy.overrides]]
 module = "apscheduler.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "numpy.*"
 ignore_missing_imports = true
 
 [tool.black]
