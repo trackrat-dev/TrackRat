@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		1A1A1A1A1A1A1A1A1A1A1A1E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */; };
+		6E77D3B353C24E0799B9B6A7 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 9C615FA6EA9A4D608C421280 /* Sentry */; };
 		A10077B02E01E0C0007C6022 /* AdvancedConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10077AF2E01E0C0007C6022 /* AdvancedConfigurationView.swift */; };
 		A10077B12E01E0C0007C6022 /* AdvancedConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10077AF2E01E0C0007C6022 /* AdvancedConfigurationView.swift */; };
 		A10684812E36B6EC0052C4AE /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10684802E36B6EC0052C4AE /* ThemeManager.swift */; };
@@ -42,6 +43,9 @@
 		A17329652E54A8A2006BF187 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329632E54A8A2006BF187 /* OnboardingView.swift */; };
 		A17329672E54A8B1006BF187 /* StationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329662E54A8B1006BF187 /* StationRow.swift */; };
 		A17329692E54D46E006BF187 /* intro_animation.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A17329682E54D46E006BF187 /* intro_animation.mp4 */; };
+		A17B1E6F2E7F05B00026D42E /* (null) in Frameworks */ = {isa = PBXBuildFile; };
+		A17B1E702E7F05B00026D42E /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 9C615FA6EA9A4D608C421280 /* Sentry */; };
+		A17B1E712E7F05B00026D42E /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
 		A183B7E12E6352E80024FADC /* SheetAwareScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A183B7E02E6352E80024FADC /* SheetAwareScrollView.swift */; };
 		A1875C7F2E400F4F00FCC7FC /* MyProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */; };
@@ -81,7 +85,6 @@
 		A1WIDGET172DFC73650002FB39 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FA2DE39F0F002F3214 /* Extensions.swift */; };
 		A1WIDGET342DFC73650002FB39 /* LiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WIDGET322DFC73650002FB39 /* LiveActivityWidget.swift */; };
 		A1WIDGET352DFC73650002FB39 /* TrainLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WIDGET332DFC73650002FB39 /* TrainLiveActivityBundle.swift */; };
-		6E77D3B353C24E0799B9B6A7 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 9C615FA6EA9A4D608C421280 /* Sentry */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -194,7 +197,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6E77D3B353C24E0799B9B6A7 /* Sentry in Frameworks */,
+				A17B1E702E7F05B00026D42E /* Sentry in Frameworks */,
+				A17B1E6F2E7F05B00026D42E /* (null) in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -202,7 +206,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6E77D3B353C24E0799B9B6A7 /* Sentry in Frameworks */,
+				A17B1E712E7F05B00026D42E /* (null) in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -413,12 +417,12 @@
 				A1WIDGET282DFC73650002FB39 /* PBXTargetDependency */,
 			);
 			name = TrackRat;
-			productName = TrackRat;
-			productReference = 1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */;
-			productType = "com.apple.product-type.application";
 			packageProductDependencies = (
 				9C615FA6EA9A4D608C421280 /* Sentry */,
 			);
+			productName = TrackRat;
+			productReference = 1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */;
+			productType = "com.apple.product-type.application";
 		};
 		A1BA60DA2DFC73650002FB39 /* TrackRatTests */ = {
 			isa = PBXNativeTarget;
@@ -485,6 +489,9 @@
 				Base,
 			);
 			mainGroup = 1A1A1A1A1A1A1A1A1A1A1A07;
+			packageReferences = (
+				C2B0D6A344A44A0EB2672526 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+			);
 			productRefGroup = 1A1A1A1A1A1A1A1A1A1A1A11 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -492,9 +499,6 @@
 				1A1A1A1A1A1A1A1A1A1A1A0F /* TrackRat */,
 				A1BA60DA2DFC73650002FB39 /* TrackRatTests */,
 				A1WIDGET192DFC73650002FB39 /* TrainLiveActivityExtension */,
-			);
-			packageReferences = (
-				C2B0D6A344A44A0EB2672526 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 		};
 /* End PBXProject section */
@@ -533,6 +537,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4A083A1A55BE40CAA7C5AF17 /* Upload Debug Symbols to Sentry */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
+			);
+			name = "Upload Debug Symbols to Sentry";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# This script is responsible for uploading debug symbols and source context for Sentry.\nif which sentry-cli >/dev/null; then\n  export SENTRY_ORG=andy-fx\n  export SENTRY_PROJECT=apple-ios\n  ERROR=$(sentry-cli debug-files upload --include-sources \"$DWARF_DSYM_FOLDER_PATH\" 2>&1 >/dev/null)\n  if [ ! $? -eq 0 ]; then\n    echo \"warning: sentry-cli - $ERROR\"\n  fi\nelse\n  echo \"warning: sentry-cli not installed, download from https://github.com/getsentry/sentry-cli/releases\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		1A1A1A1A1A1A1A1A1A1A1A0C /* Sources */ = {
@@ -759,9 +781,11 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = D5RZZ55J9R;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrackRat/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -780,8 +804,6 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_USER_SCRIPT_SANDBOXING = "NO";
 			};
 			name = Debug;
 		};
@@ -794,9 +816,11 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = D5RZZ55J9R;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TrackRat/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -815,8 +839,6 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_USER_SCRIPT_SANDBOXING = "NO";
 			};
 			name = Release;
 		};
@@ -960,35 +982,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		4A083A1A55BE40CAA7C5AF17 /* Upload Debug Symbols to Sentry */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# This script is responsible for uploading debug symbols and source context for Sentry.
-if which sentry-cli >/dev/null; then
-  export SENTRY_ORG=andy-fx
-  export SENTRY_PROJECT=apple-ios
-  ERROR=$(sentry-cli debug-files upload --include-sources \"$DWARF_DSYM_FOLDER_PATH\" 2>&1 >/dev/null)
-  if [ ! $? -eq 0 ]; then
-    echo \"warning: sentry-cli - $ERROR\"
-  fi
-else
-  echo \"warning: sentry-cli not installed, download from https://github.com/getsentry/sentry-cli/releases\"
-fi
-";
-			name = "Upload Debug Symbols to Sentry";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin XCRemoteSwiftPackageReference section */
 		C2B0D6A344A44A0EB2672526 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {

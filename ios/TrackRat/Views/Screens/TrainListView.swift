@@ -249,87 +249,87 @@ struct TrainCard: View {
     }
     
     var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 12) {
-                // Train header
-                HStack {
-                    if isBoardingAtOrigin && !isCancelled {
-                        Image(systemName: "circle.fill")
-                            .foregroundColor(.white)
+        VStack(alignment: .leading, spacing: 12) {
+            // Train header
+            HStack {
+                if isBoardingAtOrigin && !isCancelled {
+                    Image(systemName: "circle.fill")
+                        .foregroundColor(.white)
+                        .font(.caption)
+                }
+
+                HStack(spacing: 4) {
+                    Text("Train \(train.trainId)")
+                        .font(.headline)
+                        .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
+                        .strikethrough(isCancelled)
+
+                    if isExpress {
+                        Image(systemName: "bolt.fill")
                             .font(.caption)
-                    }
-                    
-                    HStack(spacing: 4) {
-                        Text("Train \(train.trainId)")
-                            .font(.headline)
-                            .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
-                            .strikethrough(isCancelled)
-                        
-                        if isExpress {
-                            Image(systemName: "bolt.fill")
-                                .font(.caption)
-                                .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .orange))
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    HStack(spacing: 2) {
-                        Text(departureTime)
-                            .font(.subheadline)
-                            .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
-                        
-                        
-                        Text(" → ")
-                            .font(.subheadline)
-                            .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
-                        
-                        Text(arrivalTime)
-                            .font(.subheadline)
-                            .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
-                        
+                            .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .orange))
                     }
                 }
-                
-                // Show cancellation location
-                if isCancelled {
-                    Text("Cancelled")
+
+                Spacer()
+
+                HStack(spacing: 2) {
+                    Text(departureTime)
+                        .font(.subheadline)
+                        .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
+
+
+                    Text(" → ")
+                        .font(.subheadline)
+                        .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
+
+                    Text(arrivalTime)
+                        .font(.subheadline)
+                        .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
+
+                }
+            }
+
+            // Show cancellation location
+            if isCancelled {
+                Text("Cancelled")
+                    .font(.caption)
+                    .foregroundColor(.red.opacity(0.8))
+                    .fontWeight(.medium)
+            }
+
+            // Show delay status
+            if !isCancelled {
+                let hasDepDelay = train.delayMinutes >= TrainCard.DELAY_THRESHOLD_MINUTES
+                let hasArrDelay = train.arrival?.delayMinutes ?? 0 >= TrainCard.DELAY_THRESHOLD_MINUTES
+
+                if hasDepDelay || hasArrDelay {
+                    Text("Operating with Delays")
                         .font(.caption)
                         .foregroundColor(.red.opacity(0.8))
                         .fontWeight(.medium)
                 }
-                
-                // Show delay status
-                if !isCancelled {
-                    let hasDepDelay = train.delayMinutes >= TrainCard.DELAY_THRESHOLD_MINUTES
-                    let hasArrDelay = train.arrival?.delayMinutes ?? 0 >= TrainCard.DELAY_THRESHOLD_MINUTES
-                    
-                    if hasDepDelay || hasArrDelay {
-                        Text("Operating with Delays")
-                            .font(.caption)
-                            .foregroundColor(.red.opacity(0.8))
-                            .fontWeight(.medium)
-                    }
-                }
-                
-                // Track and status - only show for boarding trains at origin
-                if !isCancelled && isBoardingAtOrigin,
-                   let track = train.track {
-                    Label("Boarding on Track \(track)", systemImage: "tram.fill")
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                        .fontWeight(.medium)
-                }
             }
-            .padding()
-            .background(
-                isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(isScheduledOnly ? 0.7 : 0.9)
-            )
-            .cornerRadius(16)
-            .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+
+            // Track and status - only show for boarding trains at origin
+            if !isCancelled && isBoardingAtOrigin,
+               let track = train.track {
+                Label("Boarding on Track \(track)", systemImage: "tram.fill")
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                    .fontWeight(.medium)
+            }
         }
-        .buttonStyle(.plain)
+        .padding()
+        .background(
+            isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(isScheduledOnly ? 0.7 : 0.9)
+        )
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
         .opacity(isScheduledOnly ? 0.85 : 1.0)
+        .onTapGesture {
+            onTap()
+        }
     }
 }
 
