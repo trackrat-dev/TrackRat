@@ -8,7 +8,7 @@ struct DestinationPickerView: View {
     @State private var navigationBarVisible = false
     @Binding var sheetPosition: BottomSheetPosition
     @State private var searchTask: Task<Void, Never>?
-    
+
     private var searchResults: [String] {
         let results = Stations.search(searchText)
         // Filter out the current departure station
@@ -36,13 +36,9 @@ struct DestinationPickerView: View {
     }
     
     var body: some View {
-        ZStack {
-            // Black gradient background
-            TrackRatTheme.Colors.primaryBackground
-                .ignoresSafeArea()
-            
-            SheetAwareScrollView(sheetPosition: $sheetPosition) {
-                VStack(spacing: 16) {
+        // Wrap content in SheetAwareScrollView for proper scrolling and dragging
+        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+            VStack(spacing: 16) {
                     // Simple centered title
                     Text("Where would you like to go?")
                         .font(.system(size: 26, weight: .semibold))
@@ -191,7 +187,6 @@ struct DestinationPickerView: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
         }
         .navigationBarHidden(true)
         .onAppear {

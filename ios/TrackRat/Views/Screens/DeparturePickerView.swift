@@ -66,7 +66,7 @@ struct DeparturePickerView: View {
     @State private var trainSearchError: String?
     @State private var isSearchingTrain = false
     @State private var searchTask: Task<Void, Never>?
-    
+
     private var searchResults: (stations: [String], trainNumber: String?) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
         
@@ -189,12 +189,9 @@ struct DeparturePickerView: View {
     
     @ViewBuilder
     private var mainContent: some View {
-        ZStack {
-            TrackRatTheme.Colors.primaryBackground
-                .ignoresSafeArea()
-            
-            SheetAwareScrollView(sheetPosition: $sheetPosition) {
-                VStack(spacing: 16) {
+        // Wrap content in SheetAwareScrollView for proper scrolling and dragging
+        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+            VStack(spacing: 16) {
                     titleSection
                     
                     Spacer()
@@ -209,7 +206,6 @@ struct DeparturePickerView: View {
                     Spacer()
                 }
             }
-        }
     }
     
     @ViewBuilder

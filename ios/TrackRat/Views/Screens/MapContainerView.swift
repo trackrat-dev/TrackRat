@@ -169,9 +169,9 @@ struct MapContainerView: View {
                             bottomSheetPosition = newPosition
                         }
                     )
-                        .navigationDestination(for: NavigationDestination.self) { destination in
-                            bottomSheetNavigationContent(for: destination)
-                        }
+                    .navigationDestination(for: NavigationDestination.self) { destination in
+                        bottomSheetNavigationContent(for: destination)
+                    }
                 }
             }
         }

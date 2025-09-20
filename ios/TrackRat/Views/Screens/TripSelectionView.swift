@@ -73,14 +73,9 @@ struct TripSelectionView: View {
     
     
     var body: some View {
-        ZStack {
-            // Theme background
-            TrackRatTheme.Colors.surface
-                .ignoresSafeArea()
-            
-            // Use SheetAwareScrollView for smart scrolling
-            SheetAwareScrollView(sheetPosition: $sheetPosition) {
-                VStack(spacing: 8) {
+        // Wrap content in SheetAwareScrollView for proper scrolling and dragging
+        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+            VStack(spacing: 8) {
                     // Rat Sense suggestion at the top
                     if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive, !isSearching {
                         Button {
@@ -108,6 +103,9 @@ struct TripSelectionView: View {
                 Text("Where would you like to leave from?")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundColor(.white)
+                    .onAppear {
+                        print("🎯 TripSelectionView title text appeared!")
+                    }
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
@@ -261,7 +259,6 @@ struct TripSelectionView: View {
                     // Spacer to push content to top and fill remaining space
                     Spacer(minLength: 100) // Ensure some minimum space at bottom
                 }
-            }
         }
         .onAppear {
             print("🐀🐀🐀 TripSelectionView appeared - updating Rat Sense")

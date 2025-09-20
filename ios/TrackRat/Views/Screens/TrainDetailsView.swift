@@ -33,13 +33,8 @@ struct TrainDetailsView: View {
     
     
     var body: some View {
-        ZStack {
-            // Black gradient background
-            TrackRatTheme.Colors.primaryBackground
-                .ignoresSafeArea()
-            
-            SheetAwareScrollView(sheetPosition: $sheetPosition) {
-                VStack {
+        // Content will be wrapped by BottomSheetView's SheetAwareScrollView
+        VStack {
                     if viewModel.isLoading && viewModel.train == nil {
                         TrackRatLoadingView(message: "Loading train details...")
                             .frame(maxWidth: .infinity, minHeight: 400)
@@ -76,8 +71,6 @@ struct TrainDetailsView: View {
                         selectedDestinationName: appState.selectedDestination
                     )
                 }
-            } // SheetAwareScrollView
-        } // ZStack
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)
         .trackRatNavigationBarStyle()
