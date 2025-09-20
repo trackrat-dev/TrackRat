@@ -148,7 +148,8 @@ class Settings(BaseSettings):
         le=1.0,
     )
     sentry_enable_tracing: bool = Field(
-        default_factory=lambda: os.getenv("SENTRY_ENABLE_TRACING", "true").lower() == "true",
+        default_factory=lambda: os.getenv("SENTRY_ENABLE_TRACING", "true").lower()
+        == "true",
         description="Enable Sentry distributed tracing",
     )
 

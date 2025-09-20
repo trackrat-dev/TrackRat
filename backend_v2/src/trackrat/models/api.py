@@ -23,6 +23,7 @@ def serialize_eastern_datetime(dt: datetime | None) -> str | None:
         return None
     return dt.isoformat()
 
+
 # Enums
 
 
@@ -513,6 +514,7 @@ class IndividualJourneySegment(BaseModel):
     )
     def serialize_dt(self, dt: datetime) -> str:
         return serialize_eastern_datetime(dt) or ""
+
     delay_minutes: float
     congestion_factor: float = Field(..., ge=0.0)
     congestion_level: Literal["normal", "moderate", "heavy", "severe"]

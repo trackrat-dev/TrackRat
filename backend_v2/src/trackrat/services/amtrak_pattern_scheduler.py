@@ -314,8 +314,8 @@ class AmtrakPatternScheduler:
                     "target_date": target_date,
                     "target_day": target_day_of_week,
                     "min_count": self.MIN_OCCURRENCES,
-                    "variance_threshold": self.TIME_VARIANCE_THRESHOLD
-                }
+                    "variance_threshold": self.TIME_VARIANCE_THRESHOLD,
+                },
             )
 
             patterns = []
@@ -335,21 +335,25 @@ class AmtrakPatternScheduler:
                 if hours >= 24:
                     hours = hours % 24
 
-                patterns.append({
-                    "train_number": row.train_number,
-                    "median_departure": time(hours, minutes),
-                    "occurrence_count": row.occurrence_count,
-                    "origin": row.origin,
-                    "destination": row.destination,
-                    "terminal": row.terminal,
-                    "line_name": row.line_name or "Amtrak",
-                    "time_variance": round(row.time_variance, 1) if row.time_variance else 0.0,
-                    "sample_dates": [
-                        d.isoformat() if d else None
-                        for d in (row.sample_dates or [])
-                        if d is not None
-                    ]
-                })
+                patterns.append(
+                    {
+                        "train_number": row.train_number,
+                        "median_departure": time(hours, minutes),
+                        "occurrence_count": row.occurrence_count,
+                        "origin": row.origin,
+                        "destination": row.destination,
+                        "terminal": row.terminal,
+                        "line_name": row.line_name or "Amtrak",
+                        "time_variance": (
+                            round(row.time_variance, 1) if row.time_variance else 0.0
+                        ),
+                        "sample_dates": [
+                            d.isoformat() if d else None
+                            for d in (row.sample_dates or [])
+                            if d is not None
+                        ],
+                    }
+                )
 
                 logger.debug(
                     "pattern_identified",

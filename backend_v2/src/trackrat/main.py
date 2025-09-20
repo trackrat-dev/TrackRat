@@ -4,16 +4,21 @@ Main FastAPI application for TrackRat V2.
 This module sets up the FastAPI app with all routers, middleware, and lifecycle events.
 """
 
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
-import time
-from typing import Callable
 import uuid
+from collections.abc import AsyncGenerator, Callable, Coroutine, Mapping, MutableMapping
+from contextlib import asynccontextmanager
+from typing import Any
 
+import sentry_sdk
+import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
-import structlog
+from sentry_sdk.integrations.asyncio import AsyncioIntegration
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.httpx import HttpxIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 from structlog import get_logger
 
 from trackrat.api import (
@@ -31,19 +36,21 @@ from trackrat.services.scheduler import get_scheduler
 from trackrat.settings import get_settings
 from trackrat.utils.logging import setup_logging
 
+# Import Event type from sentry_sdk if available
+try:
+    from sentry_sdk._types import Event
+except ImportError:
+    # Fallback for older sentry-sdk versions
+    Event = dict[str, Any]  # type: ignore[misc,assignment]
+
 # Set up logging first
 setup_logging()
 logger = get_logger(__name__)
 
-# Configure Sentry integration with structlog
-import sentry_sdk
-from sentry_sdk.integrations.asyncio import AsyncioIntegration
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.httpx import HttpxIntegration
-from sentry_sdk.integrations.logging import LoggingIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
-def add_sentry_context(logger, log_method, event_dict):
+def add_sentry_context(
+    logger: Any, log_method: str, event_dict: MutableMapping[str, Any]
+) -> Mapping[str, Any] | str | bytes | bytearray | tuple[Any, ...]:
     """Add Sentry context to structlog events."""
     # Add correlation ID if available
     if "correlation_id" in event_dict:
@@ -59,6 +66,7 @@ def add_sentry_context(logger, log_method, event_dict):
             sentry_sdk.set_tag("data.source", event_dict["data_source"])
 
     return event_dict
+
 
 # Add Sentry processor to structlog
 structlog.configure(
@@ -129,7 +137,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("trackrat_v2_shutdown_complete")
 
-def configure_sentry():
+
+def configure_sentry() -> None:
     """Configure Sentry with environment-specific settings."""
     settings = get_settings()
     if not settings.sentry_dsn:
@@ -147,8 +156,8 @@ def configure_sentry():
         ),
         HttpxIntegration(),
         LoggingIntegration(
-            level="INFO",  # Capture info and above as breadcrumbs
-            event_level="ERROR",  # Send warnings and above as events
+            level=20,  # Capture info and above as breadcrumbs (INFO level)
+            event_level=40,  # Send warnings and above as events (ERROR level)
         ),
         SqlalchemyIntegration(),
     ]
@@ -158,26 +167,20 @@ def configure_sentry():
         dsn=settings.sentry_dsn,
         environment=settings.sentry_environment,
         integrations=integrations,
-
         # Performance monitoring
         traces_sample_rate=traces_rate,
         profiles_sample_rate=profiles_rate,
         enable_tracing=settings.sentry_enable_tracing,
-
         # Error tracking
         attach_stacktrace=True,
         send_default_pii=False,  # Don't send PII by default
-
         # Release tracking
         release=f"trackrat-backend@{settings.environment}",
-
         # Other settings
         max_breadcrumbs=100,
         debug=settings.debug,
-
         # Custom before_send hook
         before_send=before_send_filter,
-
         # Custom before_send_transaction hook
         before_send_transaction=before_send_transaction_filter,
     )
@@ -190,7 +193,8 @@ def configure_sentry():
         tracing_enabled=settings.sentry_enable_tracing,
     )
 
-def before_send_filter(event, hint):
+
+def before_send_filter(event: Event, hint: dict[str, Any]) -> Event | None:
     """Filter sensitive data before sending to Sentry."""
     settings = get_settings()
 
@@ -210,7 +214,8 @@ def before_send_filter(event, hint):
 
     return event
 
-def before_send_transaction_filter(event, hint):
+
+def before_send_transaction_filter(event: Event, hint: dict[str, Any]) -> Event | None:
     """Filter transaction data before sending to Sentry."""
     # Don't send transactions for health checks
     if event.get("transaction", "").startswith("/health"):
@@ -220,10 +225,9 @@ def before_send_transaction_filter(event, hint):
 
     return event
 
+
 # Initialize Sentry before creating the app
 configure_sentry()
-
-
 
 
 # Create FastAPI app
@@ -245,8 +249,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.middleware("http")
-async def correlation_id_middleware(request: Request, call_next: Callable) -> Response:
+async def correlation_id_middleware(
+    request: Request, call_next: Callable[[Request], Coroutine[Any, Any, Response]]
+) -> Response:
     """Add correlation ID to all requests for tracing."""
     # Generate or get correlation ID
     correlation_id = request.headers.get("X-Correlation-ID", str(uuid.uuid4())[:8])
@@ -259,7 +266,7 @@ async def correlation_id_middleware(request: Request, call_next: Callable) -> Re
     request.state.correlation_id = correlation_id
 
     # Process request
-    response = await call_next(request)
+    response: Response = await call_next(request)
 
     # Add correlation ID to response headers
     response.headers["X-Correlation-ID"] = correlation_id
@@ -268,7 +275,9 @@ async def correlation_id_middleware(request: Request, call_next: Callable) -> Re
 
 
 @app.middleware("http")
-async def suppress_health_check_logs(request: Request, call_next: Callable) -> Response:
+async def suppress_health_check_logs(
+    request: Request, call_next: Callable[[Request], Coroutine[Any, Any, Response]]
+) -> Response:
     """Middleware to suppress logging for health check endpoints."""
     # List of paths that should not be logged
     quiet_paths = {"/health", "/health/live", "/health/ready", "/metrics"}
@@ -279,7 +288,7 @@ async def suppress_health_check_logs(request: Request, call_next: Callable) -> R
     # For health checks, we'll handle logging ourselves (or not log at all)
     if should_suppress:
         # Process the request without logging
-        response = await call_next(request)
+        response: Response = await call_next(request)
         # Only log if there was an error
         if response.status_code >= 400:
             logger.warning(

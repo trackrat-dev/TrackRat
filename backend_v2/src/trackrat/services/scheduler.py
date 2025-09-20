@@ -5,8 +5,9 @@ Uses APScheduler to run periodic tasks within the FastAPI application.
 """
 
 import asyncio
+from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -17,12 +18,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 try:
-    import sentry_sdk
     from sentry_sdk.crons import capture_checkin
+
     SENTRY_AVAILABLE = True
 except ImportError:
     SENTRY_AVAILABLE = False
-    capture_checkin = None
+
+    def capture_checkin(  # type: ignore[misc]
+        monitor_slug: str | None = None,
+        check_in_id: str | None = None,
+        status: str | None = None,
+        duration: float | None = None,
+        monitor_config: Any = None,
+    ) -> str:
+        return ""
+
 
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
@@ -47,7 +57,11 @@ from trackrat.utils.time import (
 logger = get_logger(__name__)
 
 
-def with_sentry_cron(monitor_slug: str) -> Callable:
+def with_sentry_cron(
+    monitor_slug: str,
+) -> Callable[
+    [Callable[..., Coroutine[Any, Any, Any]]], Callable[..., Coroutine[Any, Any, Any]]
+]:
     """Decorator to add Sentry cron monitoring to scheduled jobs.
 
     Args:
@@ -56,43 +70,60 @@ def with_sentry_cron(monitor_slug: str) -> Callable:
     Returns:
         Decorated function with Sentry cron monitoring
     """
-    def decorator(func: Callable[..., Coroutine]) -> Callable[..., Coroutine]:
-        async def wrapper(*args, **kwargs):
+
+    def decorator(
+        func: Callable[..., Coroutine[Any, Any, Any]]
+    ) -> Callable[..., Coroutine[Any, Any, Any]]:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # Start check-in if Sentry is available
             check_in_id = None
-            if SENTRY_AVAILABLE and capture_checkin:
+            if SENTRY_AVAILABLE:
                 check_in_id = capture_checkin(
                     monitor_slug=monitor_slug,
                     status="in_progress",
                 )
-                logger.debug(f"sentry_cron_checkin_started", monitor=monitor_slug, check_in_id=check_in_id)
+                logger.debug(
+                    "sentry_cron_checkin_started",
+                    monitor=monitor_slug,
+                    check_in_id=check_in_id,
+                )
 
             try:
                 # Execute the actual function
                 result = await func(*args, **kwargs)
 
                 # Mark as successful
-                if SENTRY_AVAILABLE and capture_checkin and check_in_id:
+                if SENTRY_AVAILABLE and check_in_id:
                     capture_checkin(
                         monitor_slug=monitor_slug,
                         status="ok",
                         check_in_id=check_in_id,
                     )
-                    logger.debug(f"sentry_cron_checkin_success", monitor=monitor_slug, check_in_id=check_in_id)
+                    logger.debug(
+                        "sentry_cron_checkin_success",
+                        monitor=monitor_slug,
+                        check_in_id=check_in_id,
+                    )
 
                 return result
             except Exception as e:
                 # Mark as failed
-                if SENTRY_AVAILABLE and capture_checkin and check_in_id:
+                if SENTRY_AVAILABLE and check_in_id:
                     capture_checkin(
                         monitor_slug=monitor_slug,
                         status="error",
                         check_in_id=check_in_id,
                     )
-                    logger.debug(f"sentry_cron_checkin_error", monitor=monitor_slug, check_in_id=check_in_id, error=str(e))
+                    logger.debug(
+                        "sentry_cron_checkin_error",
+                        monitor=monitor_slug,
+                        check_in_id=check_in_id,
+                        error=str(e),
+                    )
                 raise
 
         return wrapper
+
     return decorator
 
 
@@ -537,7 +568,9 @@ class SchedulerService:
         try:
             # Debug level for individual collection start
             logger.debug(
-                "journey.collection.started", train_id=train_id, journey_date=journey_date
+                "journey.collection.started",
+                train_id=train_id,
+                journey_date=journey_date,
             )
 
             # Track running task
