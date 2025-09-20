@@ -40,11 +40,12 @@ struct StationIconView: View {
                 .foregroundColor(.orange)
         } else {
             // Regular favorite heart icon - interactive
-            Button(action: onHeartTap) {
-                Image(systemName: isStationFavorited ? "heart.fill" : "heart")
-                    .font(.system(size: fontSize))
-                    .foregroundColor(.orange)
-            }
+            Image(systemName: isStationFavorited ? "heart.fill" : "heart")
+                .font(.system(size: fontSize))
+                .foregroundColor(.orange)
+                .onTapGesture {
+                    onHeartTap()
+                }
         }
     }
 }
@@ -112,46 +113,46 @@ struct DeparturePickerView: View {
     @ViewBuilder
     private var trainSearchResultView: some View {
         if let trainNumber = searchResults.trainNumber {
-            Button {
-                searchForTrain(trainNumber)
-            } label: {
-                HStack {
-                    Image(systemName: "tram.fill")
+            HStack {
+                Image(systemName: "tram.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.orange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Train \(trainNumber)")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text("Search for this train")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                }
+
+                Spacer()
+
+                if isSearchingTrain {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: "arrow.right.circle.fill")
                         .font(.system(size: 20))
                         .foregroundColor(.orange)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Train \(trainNumber)")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text("Search for this train")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                    }
-                    
-                    Spacer()
-                    
-                    if isSearchingTrain {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .orange))
-                            .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.orange)
-                    }
                 }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.orange.opacity(0.2))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.orange, lineWidth: 1.5)
-                        )
-                )
             }
-            .disabled(isSearchingTrain)
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.orange.opacity(0.2))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.orange, lineWidth: 1.5)
+                    )
+            )
+            .onTapGesture {
+                if !isSearchingTrain {
+                    searchForTrain(trainNumber)
+                }
+            }
             .padding(.horizontal, 24)
             
             // Show train search error if any
@@ -229,24 +230,23 @@ struct DeparturePickerView: View {
         VStack(spacing: 12) {
             // Rat Sense suggestion
             if let suggestion = ratSenseService.suggestedJourney {
-                Button {
-                    selectRatSenseSuggestion(suggestion)
-                } label: {
-                    Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.orange.opacity(0.3))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
-                                )
-                        )
-                }
-                .padding(.horizontal, 24)
+                Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.orange.opacity(0.3))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
+                            )
+                    )
+                    .onTapGesture {
+                        selectRatSenseSuggestion(suggestion)
+                    }
+                    .padding(.horizontal, 24)
             }
             
             // Search field
@@ -321,22 +321,21 @@ struct DeparturePickerView: View {
     private var stationResultsView: some View {
         ForEach(searchResults.stations, id: \.self) { station in
             HStack {
-                Button {
+                HStack {
+                    Text(station)
+                        .font(.body)
+                        .foregroundColor(.white)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+                .onTapGesture {
                     if let code = Stations.getStationCode(station) {
                         selectDeparture(name: station, code: code)
                     }
-                } label: {
-                    HStack {
-                        Text(station)
-                            .font(.body)
-                            .foregroundColor(.white)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
                 }
-                
+
                 if let code = Stations.getStationCode(station) {
                     StationIconView(
                         stationCode: code,
@@ -554,18 +553,17 @@ struct DepartureButton: View {
     var body: some View {
         HStack {
             // Main station button
-            Button {
+            HStack {
+                Text(Stations.displayName(for: name))
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.white.opacity(0.7))
+                    .font(.caption)
+            }
+            .onTapGesture {
                 onTap()
-            } label: {
-                HStack {
-                    Text(Stations.displayName(for: name))
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .foregroundColor(.white.opacity(0.7))
-                        .font(.caption)
-                }
             }
             
             // Station icon - shows home/work icon or interactive heart

@@ -127,17 +127,16 @@ struct DestinationPickerView: View {
                                 ForEach(searchResults, id: \.self) { station in
                                     HStack {
                                         // Main station button
-                                        Button {
-                                            selectDestination(station)
-                                        } label: {
-                                            HStack {
-                                                Text(Stations.displayName(for: station))
-                                                    .font(.body)
-                                                    .foregroundColor(.white)
-                                                Spacer()
-                                            }
+                                        HStack {
+                                            Text(Stations.displayName(for: station))
+                                                .font(.body)
+                                                .foregroundColor(.white)
+                                            Spacer()
                                         }
-                                        
+                                        .onTapGesture {
+                                            selectDestination(station)
+                                        }
+
                                         // Station icon - shows home/work icon or interactive heart
                                         if let code = Stations.getStationCode(station) {
                                             StationIconView(
@@ -223,39 +222,38 @@ struct FavoriteDestinationButton: View {
     
     
     var body: some View {
-        Button {
-            onTap()
-        } label: {
-            HStack {
-                Text(Stations.displayName(for: station.name))
-                    .font(.callout)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                // Station icon - shows home/work icon or interactive heart
-                StationIconView(
-                    stationCode: station.id,
-                    isStationFavorited: appState.isStationFavorited(code: station.id),
-                    fontSize: 20
-                ) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        appState.toggleFavoriteStation(code: station.id, name: station.name)
-                    }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        HStack {
+            Text(Stations.displayName(for: station.name))
+                .font(.callout)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+
+            Spacer()
+
+            // Station icon - shows home/work icon or interactive heart
+            StationIconView(
+                stationCode: station.id,
+                isStationFavorited: appState.isStationFavorited(code: station.id),
+                fontSize: 20
+            ) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    appState.toggleFavoriteStation(code: station.id, name: station.name)
                 }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.white.opacity(0.15))
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(.white.opacity(0.2), lineWidth: 1)
-                    )
-            )
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.white.opacity(0.15))
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+        .onTapGesture {
+            onTap()
         }
     }
 }
