@@ -25,7 +25,7 @@ class CommonLogicTests: XCTestCase {
 
     // MARK: - DateFormatter.easternTime Tests
     func testDateFormatterEasternTime() {
-        let formatter1 = DateFormatter.easternTime(dateStyle: .medium, timeStyle: .short)
+        let formatter1 = DateFormatter.easternTime(date: .medium, time: .short)
         XCTAssertEqual(formatter1.timeZone, TimeZone(identifier: "America/New_York"))
         XCTAssertEqual(formatter1.dateStyle, .medium)
         XCTAssertEqual(formatter1.timeStyle, .short)

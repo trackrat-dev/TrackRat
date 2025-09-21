@@ -51,6 +51,14 @@
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
 		A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */; };
 		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
+		A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */; };
+		A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */; };
+		A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899472E8063F90079E596 /* HistoricalDataViewModelTests.swift */; };
+		A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */; };
+		A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899492E8063F90079E596 /* TrainListViewModelTests.swift */; };
+		A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */; };
+		A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899522E8067020079E596 /* TrainV2Tests.swift */; };
+		A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899562E8069AC0079E596 /* MockProtocols.swift */; };
 		A19E912B2E3F8E2E0011F777 /* MapContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */; };
 		A19E912D2E3F8E4A0011F777 /* BottomSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912C2E3F8E4A0011F777 /* BottomSheetView.swift */; };
 		A1AA1BB32DEF00BB001FA904 /* TrackRatTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */; };
@@ -156,6 +164,14 @@
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
 		A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityDebugView.swift; path = Views/Components/LiveActivityDebugView.swift; sourceTree = "<group>"; };
 		A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveTripsSection.swift; path = Views/Components/ActiveTripsSection.swift; sourceTree = "<group>"; };
+		A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityServiceTests.swift; path = TrackRatTests/Services/LiveActivityServiceTests.swift; sourceTree = "<group>"; };
+		A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RatSenseServiceTests.swift; path = TrackRatTests/Services/RatSenseServiceTests.swift; sourceTree = "<group>"; };
+		A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapViewModelTests.swift; path = TrackRatTests/ViewModels/CongestionMapViewModelTests.swift; sourceTree = "<group>"; };
+		A19899472E8063F90079E596 /* HistoricalDataViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HistoricalDataViewModelTests.swift; path = TrackRatTests/ViewModels/HistoricalDataViewModelTests.swift; sourceTree = "<group>"; };
+		A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDetailsViewModelTests.swift; path = TrackRatTests/ViewModels/TrainDetailsViewModelTests.swift; sourceTree = "<group>"; };
+		A19899492E8063F90079E596 /* TrainListViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainListViewModelTests.swift; path = TrackRatTests/ViewModels/TrainListViewModelTests.swift; sourceTree = "<group>"; };
+		A19899522E8067020079E596 /* TrainV2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2Tests.swift; path = TrackRatTests/Models/TrainV2Tests.swift; sourceTree = "<group>"; };
+		A19899562E8069AC0079E596 /* MockProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockProtocols.swift; path = TrackRatTests/TestUtilities/MockProtocols.swift; sourceTree = "<group>"; };
 		A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MapContainerView.swift; path = Views/Screens/MapContainerView.swift; sourceTree = "<group>"; };
 		A19E912C2E3F8E4A0011F777 /* BottomSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BottomSheetView.swift; path = Views/Components/BottomSheetView.swift; sourceTree = "<group>"; };
 		A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatTheme.swift; path = Theme/TrackRatTheme.swift; sourceTree = "<group>"; };
@@ -223,6 +239,12 @@
 		1A1A1A1A1A1A1A1A1A1A1A07 = {
 			isa = PBXGroup;
 			children = (
+				A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */,
+				A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */,
+				A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */,
+				A19899472E8063F90079E596 /* HistoricalDataViewModelTests.swift */,
+				A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */,
+				A19899492E8063F90079E596 /* TrainListViewModelTests.swift */,
 				A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */,
 				A10684802E36B6EC0052C4AE /* ThemeManager.swift */,
 				A14A4ABD2E1949A400E13005 /* V2APIModels.swift */,
@@ -233,12 +255,14 @@
 				1A1A1A1A1A1A1A1A1A1A1A11 /* Products */,
 				A1WIDGET242DFC73650002FB39 /* Frameworks */,
 				A16D6EE62E16A558008C6996 /* Recovered References */,
+				A19899522E8067020079E596 /* TrainV2Tests.swift */,
 			);
 			sourceTree = "<group>";
 		};
 		1A1A1A1A1A1A1A1A1A1A1A11 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				A19899562E8069AC0079E596 /* MockProtocols.swift */,
 				1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */,
 				A1BA60DB2DFC73650002FB39 /* TrackRatTests.xctest */,
 				A1WIDGET142DFC73650002FB39 /* TrainLiveActivityExtension.appex */,
@@ -609,9 +633,17 @@
 				A1BA60ED2DFC73650002FB39 /* StationsTests.swift in Sources */,
 				A1BA60EE2DFC73650002FB39 /* TrainTests.swift in Sources */,
 				A1BA60EF2DFC73650002FB39 /* APIServiceTests.swift in Sources */,
+				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
+				A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */,
+				A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */,
+				A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */,
+				A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */,
 				A1BA60F02DFC73650002FB39 /* StorageServiceTests.swift in Sources */,
 				A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */,
 				A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */,
+				A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */,
+				A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */,
+				A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */,
 				A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

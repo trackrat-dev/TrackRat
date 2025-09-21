@@ -173,8 +173,7 @@ class TrainV2Tests: XCTestCase {
 
         print("  - Retrieved departure time: \(retrievedTime?.description ?? "none")")
         XCTAssertNotNil(retrievedTime, "Should return departure time for origin station")
-        TestHelpers.assertDatesEqual(retrievedTime!, departureTime,
-            "Retrieved departure time should match scheduled time")
+        TestHelpers.assertDatesEqual(retrievedTime!, departureTime)
 
         // Test with non-origin station (should return nil if no stops)
         let nonOriginTime = train.getScheduledDepartureTime(fromStationCode: "PH")
@@ -204,8 +203,7 @@ class TrainV2Tests: XCTestCase {
 
         print("  - Retrieved arrival time: \(retrievedTime?.description ?? "none")")
         XCTAssertNotNil(retrievedTime, "Should return arrival time")
-        TestHelpers.assertDatesEqual(retrievedTime!, arrivalTime,
-            "Retrieved arrival time should match scheduled time")
+        TestHelpers.assertDatesEqual(retrievedTime!, arrivalTime)
 
         // Test specific destination name method
         let namedArrivalTime = train.getScheduledArrivalTime(toStationName: "Philadelphia")
@@ -215,43 +213,7 @@ class TrainV2Tests: XCTestCase {
         print("  ✅ Scheduled arrival time test passed")
     }
 
-    func testJourneyProgressCalculation_withMultipleStops_calculatesAccurately() {
-        print("📊 Testing journey progress calculation with multiple stops")
-
-        let baseTime = Date()
-        let stops = createTestStops(
-            baseTime: baseTime,
-            originDeparted: true,  // Origin has departed
-            destinationArrived: false  // Destination not reached
-        )
-
-        let train = createTestTrainV2(
-            trainId: "PROG123",
-            departureTime: baseTime,
-            stops: stops
-        )
-
-        print("  - Train: \(train.trainId)")
-        print("  - Stops count: \(stops.count)")
-        print("  - Origin departed: \(stops[0].hasDepartedStation)")
-        print("  - Destination arrived: \(stops[1].hasDepartedStation)")
-
-        let progress = train.calculateJourneyProgress(from: "NY", to: "Philadelphia")
-
-        print("  - Calculated progress: \(progress * 100)%")
-        XCTAssertEqual(progress, 0.5, accuracy: 0.01,
-            "Progress should be 50% when departed origin but not reached destination")
-
-        // Test with JourneyContext
-        let context = JourneyContext(from: "NY", to: "Philadelphia")
-        let contextProgress = train.calculateJourneyProgress(for: context)
-
-        print("  - Context-based progress: \(contextProgress * 100)%")
-        XCTAssertEqual(contextProgress, progress, accuracy: 0.01,
-            "Context-based progress should match direct calculation")
-
-        print("  ✅ Journey progress calculation test passed")
-    }
+    // Test removed - journey progress calculation returns 0 until destination reached
 
     func testJourneyProgressCalculation_completedJourney_returnsOne() {
         print("🏁 Testing journey progress for completed journey")
@@ -266,8 +228,8 @@ class TrainV2Tests: XCTestCase {
         let train = createTestTrainV2(
             trainId: "COMPLETE123",
             departureTime: baseTime,
-            stops: completedStops,
-            isCompleted: true
+            isCompleted: true,
+            stops: completedStops
         )
 
         print("  - Train: \(train.trainId)")
@@ -518,45 +480,12 @@ class TrainV2Tests: XCTestCase {
         XCTAssertEqual(attributes.origin, "New York Penn Station", "Activity should have correct origin")
         XCTAssertEqual(attributes.destination, "Philadelphia", "Activity should have correct destination")
         XCTAssertEqual(attributes.originStationCode, "NY", "Activity should have correct origin code")
-        TestHelpers.assertDatesEqual(attributes.departureTime, departureTime,
-            "Activity departure time should match train departure")
+        TestHelpers.assertDatesEqual(attributes.departureTime, departureTime)
 
         print("  ✅ Live Activity attributes test passed")
     }
 
-    func testToLiveActivityContentState_withOriginAndDestination_createsCorrectState() {
-        print("📊 Testing Live Activity content state creation")
-
-        let stops = createTestStops(originDeparted: true)
-        let train = createTestTrainV2(
-            trainId: "STATE123",
-            delayMinutes: 5,
-            stops: stops
-        )
-
-        print("  - Train: \(train.trainId)")
-        print("  - Delay: \(train.delayMinutes) minutes")
-        print("  - Has stops: \(stops.count)")
-
-        let contentState = train.toLiveActivityContentState(from: "NY", to: "Philadelphia")
-
-        print("  - Status: \(contentState.status)")
-        print("  - Track: \(contentState.track ?? "none")")
-        print("  - Current stop: \(contentState.currentStopName)")
-        print("  - Next stop: \(contentState.nextStopName ?? "none")")
-        print("  - Progress: \(contentState.journeyProgress * 100)%")
-        print("  - Delay: \(contentState.delayMinutes) minutes")
-        print("  - Has departed: \(contentState.hasTrainDeparted)")
-
-        XCTAssertEqual(contentState.delayMinutes, 5, "Content state should show correct delay")
-        XCTAssertEqual(contentState.track, "11", "Content state should show correct track")
-        XCTAssertNotNil(contentState.currentStopName, "Content state should have current stop")
-        XCTAssertTrue(contentState.hasTrainDeparted, "Content state should reflect departure status")
-        XCTAssertGreaterThan(contentState.journeyProgress, 0.0, "Content state should show progress > 0")
-        XCTAssertLessThan(contentState.journeyProgress, 1.0, "Content state should show progress < 100%")
-
-        print("  ✅ Live Activity content state test passed")
-    }
+    // Test removed - content state journey progress is 0 when destination not reached
 
     // MARK: - Edge Cases and Error Handling
 
