@@ -10,6 +10,21 @@ import structlog
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
+# Disable Sentry completely before any imports
+os.environ["SENTRY_DSN"] = ""
+# Mock sentry_sdk to prevent initialization
+import sys
+from unittest.mock import MagicMock
+
+sys.modules["sentry_sdk"] = MagicMock()
+sys.modules["sentry_sdk.integrations.asyncio"] = MagicMock()
+sys.modules["sentry_sdk.integrations.fastapi"] = MagicMock()
+sys.modules["sentry_sdk.integrations.httpx"] = MagicMock()
+sys.modules["sentry_sdk.integrations.logging"] = MagicMock()
+sys.modules["sentry_sdk.integrations.sqlalchemy"] = MagicMock()
+sys.modules["sentry_sdk.crons"] = MagicMock()
+sys.modules["sentry_sdk._types"] = MagicMock()
+
 from starlette.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
@@ -18,9 +33,6 @@ from trackrat.main import app
 from trackrat.db.engine import get_db
 from trackrat.models.database import Base
 from trackrat.collectors.njt.client import NJTransitClient
-
-# Ensure Sentry is disabled for all tests
-os.environ["SENTRY_DSN"] = ""
 
 
 # Test database URL - use environment variable or fallback to default
