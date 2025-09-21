@@ -1104,11 +1104,40 @@ class JourneyCollector(BaseJourneyCollector):
         result = await session.execute(stmt)
         stops = list(result.scalars().all())
 
-        # Sort stops by scheduled arrival time, using scheduled departure as fallback
-        # This handles origin stations that may only have departure times
-        stops.sort(
-            key=lambda s: s.scheduled_arrival or s.scheduled_departure or datetime.min
-        )
+        # Track stops with missing times for logging
+        stops_without_times = []
+
+        # Sort stops by scheduled times, but preserve sequence for stops without times
+        # This prevents stops with null times from being incorrectly placed at position 0
+        def get_sort_key(stop):
+            # If stop has a valid time, sort by that time
+            if stop.scheduled_arrival or stop.scheduled_departure:
+                return (0, stop.scheduled_arrival or stop.scheduled_departure)
+
+            # Stop has no times - track it for logging
+            stops_without_times.append(stop.station_code)
+
+            # Use datetime.max to place after all timed stops,
+            # but preserve relative order using existing sequence
+            if stop.stop_sequence is not None:
+                # Place after timed stops but maintain relative order
+                # Use stop_sequence directly as secondary sort key
+                return (1, datetime.max, stop.stop_sequence)
+            else:
+                # Last resort: use station code for stable ordering
+                return (2, datetime.max, stop.station_code)
+
+        stops.sort(key=get_sort_key)
+
+        # Log if we found stops without times
+        if stops_without_times:
+            logger.warning(
+                "stops_missing_scheduled_times",
+                journey_id=journey.id,
+                train_id=journey.train_id,
+                stations_without_times=stops_without_times,
+                count=len(stops_without_times)
+            )
 
         # Update the stop_sequence for each stop
         changes_made = False
@@ -1141,6 +1170,35 @@ class JourneyCollector(BaseJourneyCollector):
                 train_id=journey.train_id,
                 total_stops=len(stops),
             )
+
+        # Validation: Check for anomalies in the final sequence
+        # The first stop (sequence 0) should be the origin station
+        if stops and len(stops) > 1:
+            first_stop = stops[0]
+            # Check if any non-first stop has sequence 0 (shouldn't happen after our fix)
+            anomalies = [
+                stop for stop in stops[1:]
+                if stop.stop_sequence == 0
+            ]
+            if anomalies:
+                logger.error(
+                    "invalid_stop_sequences_after_resequencing",
+                    journey_id=journey.id,
+                    train_id=journey.train_id,
+                    first_stop_station=first_stop.station_code,
+                    anomalous_stations=[s.station_code for s in anomalies]
+                )
+
+            # Also check if the origin station is not at position 0
+            if journey.origin_station_code and first_stop.station_code != journey.origin_station_code:
+                logger.warning(
+                    "origin_station_not_first",
+                    journey_id=journey.id,
+                    train_id=journey.train_id,
+                    expected_origin=journey.origin_station_code,
+                    actual_first=first_stop.station_code,
+                    first_stop_sequence=first_stop.stop_sequence
+                )
 
     async def _validate_stop_sequences(
         self, session: AsyncSession, journey: TrainJourney
