@@ -29,37 +29,61 @@ class StaticTrackDistributionService {
     ///   - excludingOccupiedTracks: Ignored - ML model already considers track usage
     /// - Returns: PredictionData if available, nil otherwise
     func getAdjustedPredictionData(for train: TrainV2, excludingOccupiedTracks: Bool = true) async -> PredictionData? {
+        print("🔍 [StaticTrackDistribution] Getting predictions for train \(train.trainId)")
+        print("   - Origin: \(train.originStationCode ?? "nil")")
+        print("   - Track: \(train.track ?? "nil")")
+
         // Only support NY Penn Station
         guard train.originStationCode == "NY" else {
+            print("❌ [StaticTrackDistribution] Not NY Penn - no predictions")
             return nil
         }
-        
+
         // Don't show predictions if track already assigned
         if train.track != nil {
+            print("❌ [StaticTrackDistribution] Track already assigned: \(train.track!) - no predictions")
             return nil
         }
-        
+
         do {
             // Extract journey date from scheduled departure
             guard let scheduledDeparture = train.departure.scheduledTime else {
-                print("No scheduled departure for train \(train.trainId)")
+                print("❌ [StaticTrackDistribution] No scheduled departure for train \(train.trainId)")
                 return nil
             }
-            
+
+            print("📡 [StaticTrackDistribution] Calling API for predictions...")
+            print("   - Station: \(train.originStationCode ?? "NY")")
+            print("   - Train ID: \(train.trainId)")
+            print("   - Journey Date: \(scheduledDeparture)")
+
             // Call ML platform prediction endpoint
             let platformPrediction = try await APIService.shared.getPlatformPrediction(
-                stationCode: train.originStationCode ?? "NY",
+                stationCode: train.originStationCode,
                 trainId: train.trainId,
                 journeyDate: scheduledDeparture
             )
-            
+
+            print("✅ [StaticTrackDistribution] API returned platform predictions")
+            print("   - Primary: \(platformPrediction.primaryPrediction)")
+            print("   - Confidence: \(platformPrediction.confidence)")
+            print("   - Top 3: \(platformPrediction.top3)")
+
             // Convert platform predictions to track predictions
             let trackProbabilities = platformPrediction.convertToTrackProbabilities()
-            
+
+            print("🎯 [StaticTrackDistribution] Converted to \(trackProbabilities.count) track probabilities")
+            let sortedTracks = trackProbabilities.sorted { $0.value > $1.value }
+            for (track, probability) in sortedTracks.prefix(3) {
+                print("   - Track \(track): \(String(format: "%.1f%%", probability * 100))")
+            }
+
             return PredictionData(trackProbabilities: trackProbabilities)
-            
+
         } catch {
-            print("ML platform prediction failed: \(error)")
+            print("❌ [StaticTrackDistribution] ML platform prediction failed:")
+            print("   Error: \(error)")
+            print("   Localized: \(error.localizedDescription)")
             // If API fails, don't show predictions
             return nil
         }

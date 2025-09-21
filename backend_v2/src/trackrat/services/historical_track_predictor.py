@@ -42,6 +42,21 @@ class HistoricalTrackPredictor:
         """Initialize the predictor."""
         self.occupancy_service = TrackOccupancyService()
 
+        # NY Penn platform mappings (tracks that share the same platform)
+        self.ny_platform_mappings = {
+            "1 & 2": ["1", "2"],
+            "3 & 4": ["3", "4"],
+            "5 & 6": ["5", "6"],
+            "7 & 8": ["7", "8"],
+            "9 & 10": ["9", "10"],
+            "11 & 12": ["11", "12"],
+            "13 & 14": ["13", "14"],
+            "15 & 16": ["15", "16"],
+            "17": ["17"],
+            "18 & 19": ["18", "19"],
+            "20 & 21": ["20", "21"],
+        }
+
     async def predict_track(
         self,
         station_code: str,
@@ -178,21 +193,26 @@ class HistoricalTrackPredictor:
             )
             return self._create_static_distribution(station_code, data_source)
 
-        # Step 5: Get top predictions
-        sorted_tracks = sorted(
-            normalized_probs.items(), key=lambda x: x[1], reverse=True
+        # Step 5: Convert tracks to platforms for NY Penn
+        platform_probs = self._convert_tracks_to_platforms(
+            normalized_probs, station_code
         )
 
-        primary_track = sorted_tracks[0][0] if sorted_tracks else None
-        confidence = sorted_tracks[0][1] if sorted_tracks else 0.0
-        top_3 = [track for track, _ in sorted_tracks[:3]]
+        # Step 6: Get top platforms (for compatibility, though iOS doesn't use these)
+        sorted_platforms = sorted(
+            platform_probs.items(), key=lambda x: x[1], reverse=True
+        )
 
-        # Step 6: Build response
+        primary_platform = sorted_platforms[0][0] if sorted_platforms else "Unknown"
+        confidence = sorted_platforms[0][1] if sorted_platforms else 0.0
+        top_3_platforms = [platform for platform, _ in sorted_platforms[:3]]
+
+        # Step 7: Build response with platform probabilities
         return {
-            "platform_probabilities": normalized_probs,
-            "primary_prediction": primary_track,
-            "confidence": confidence,
-            "top_3": top_3,
+            "platform_probabilities": platform_probs,  # Now contains platforms, not tracks
+            "primary_prediction": primary_platform,  # Platform name for compatibility
+            "confidence": confidence,  # Keep for compatibility
+            "top_3": top_3_platforms,  # Platform names for compatibility
             "model_version": f"historical_v1_{prediction_level}",
             "features_used": {
                 "prediction_level": prediction_level,
@@ -407,18 +427,23 @@ class HistoricalTrackPredictor:
             # Fallback to uniform if station not configured
             return self._create_uniform_distribution(station_code)
 
-        # Sort by probability to get top predictions
-        sorted_tracks = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+        # Convert tracks to platforms for NY Penn
+        platform_probs = self._convert_tracks_to_platforms(probabilities, station_code)
 
-        primary_track = sorted_tracks[0][0] if sorted_tracks else None
-        confidence = sorted_tracks[0][1] if sorted_tracks else 0.0
-        top_3 = [track for track, _ in sorted_tracks[:3]]
+        # Sort by probability to get top predictions
+        sorted_platforms = sorted(
+            platform_probs.items(), key=lambda x: x[1], reverse=True
+        )
+
+        primary_platform = sorted_platforms[0][0] if sorted_platforms else "Unknown"
+        confidence = sorted_platforms[0][1] if sorted_platforms else 0.0
+        top_3_platforms = [platform for platform, _ in sorted_platforms[:3]]
 
         return {
-            "platform_probabilities": probabilities,
-            "primary_prediction": primary_track,
+            "platform_probabilities": platform_probs,  # Now contains platforms
+            "primary_prediction": primary_platform,
             "confidence": confidence,
-            "top_3": top_3,
+            "top_3": top_3_platforms,
             "model_version": "historical_v1_static",
             "features_used": {
                 "prediction_level": "static_fallback",
@@ -440,13 +465,25 @@ class HistoricalTrackPredictor:
             tracks = [str(i) for i in range(1, 11)]  # Tracks 1-10
 
         uniform_prob = 1.0 / len(tracks)
-        probabilities = {track: uniform_prob for track in tracks}
+        track_probabilities = {track: uniform_prob for track in tracks}
+
+        # Convert tracks to platforms
+        platform_probs = self._convert_tracks_to_platforms(
+            track_probabilities, station_code
+        )
+
+        # Get top platforms
+        sorted_platforms = sorted(
+            platform_probs.items(), key=lambda x: x[1], reverse=True
+        )
+        primary_platform = sorted_platforms[0][0] if sorted_platforms else "Unknown"
+        top_3_platforms = [platform for platform, _ in sorted_platforms[:3]]
 
         return {
-            "platform_probabilities": probabilities,
-            "primary_prediction": tracks[0],
+            "platform_probabilities": platform_probs,  # Platforms, not tracks
+            "primary_prediction": primary_platform,
             "confidence": uniform_prob,
-            "top_3": tracks[:3],
+            "top_3": top_3_platforms,
             "model_version": "historical_v1_uniform",
             "features_used": {
                 "prediction_level": "uniform_fallback",
@@ -454,6 +491,43 @@ class HistoricalTrackPredictor:
                 "station_code": station_code,
             },
         }
+
+    def _convert_tracks_to_platforms(
+        self, track_probabilities: dict[str, float], station_code: str
+    ) -> dict[str, float]:
+        """
+        Convert individual track probabilities to platform probabilities.
+
+        For NY Penn, tracks are grouped into platforms (e.g., tracks 1 & 2 share a platform).
+        For other stations, return tracks as-is since they don't have platform groupings.
+
+        Args:
+            track_probabilities: Dictionary of track -> probability
+            station_code: Station code (e.g., 'NY')
+
+        Returns:
+            Dictionary of platform -> probability
+        """
+        # Only NY Penn has platform groupings
+        if station_code != "NY":
+            # For non-NY stations, each track is its own "platform"
+            return track_probabilities
+
+        # Convert tracks to platforms for NY Penn
+        platform_probabilities = {}
+
+        for platform_name, tracks in self.ny_platform_mappings.items():
+            # Sum probabilities for all tracks in this platform
+            total_prob = 0.0
+            for track in tracks:
+                if track in track_probabilities:
+                    total_prob += track_probabilities[track]
+
+            # Only add platform if it has non-zero probability
+            if total_prob > 0:
+                platform_probabilities[platform_name] = total_prob
+
+        return platform_probabilities
 
 
 # Create singleton instance

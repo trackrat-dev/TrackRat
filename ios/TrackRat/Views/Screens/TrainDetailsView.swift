@@ -1074,19 +1074,31 @@ struct SegmentedTrackPredictionView: View {
     @State private var showWaitingLink = false
     
     private var predictionSegments: [TrackPredictionSegment] {
-        guard let predictionData = adjustedPredictions,
-              let trackProbabilities = predictionData.trackProbabilities else {
+        print("🔍 [TrackPredictionView] Computing prediction segments")
+        guard let predictionData = adjustedPredictions else {
+            print("❌ [TrackPredictionView] No adjustedPredictions data")
             return []
         }
-        
+
+        guard let trackProbabilities = predictionData.trackProbabilities else {
+            print("❌ [TrackPredictionView] No trackProbabilities in prediction data")
+            return []
+        }
+
+        print("✅ [TrackPredictionView] Have \(trackProbabilities.count) track probabilities")
+
         let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
+        print("   Grouped into \(platformProbabilities.count) platforms")
+
         let sortedPlatforms = platformProbabilities.sorted { first, second in
             let firstNum = extractPlatformNumber(from: first.key)
             let secondNum = extractPlatformNumber(from: second.key)
             return firstNum < secondNum
         }
-        
-        return createSegments(from: sortedPlatforms)
+
+        let segments = createSegments(from: sortedPlatforms)
+        print("   Created \(segments.count) segments")
+        return segments
     }
     
     private var hasOnlyLowConfidencePredictions: Bool {
@@ -1159,10 +1171,21 @@ struct SegmentedTrackPredictionView: View {
     }
     
     private func loadAdjustedPredictions() async {
+        print("🔄 [TrainDetailsView] Loading predictions for train \(train.trainId)")
+        print("   - Origin: \(train.originStationCode ?? "nil")")
+        print("   - Is NY Penn: \(isDepartingFromNYPenn)")
+
         isLoadingPredictions = true
         adjustedPredictions = await StaticTrackDistributionService.shared.getAdjustedPredictionData(for: train)
         isLoadingPredictions = false
-        
+
+        if let predictions = adjustedPredictions {
+            let trackCount = predictions.trackProbabilities?.count ?? 0
+            print("✅ [TrainDetailsView] Got predictions with \(trackCount) tracks")
+        } else {
+            print("⚠️ [TrainDetailsView] No predictions returned")
+        }
+
         // Show the waiting link with animation after predictions load
         if isDepartingFromNYPenn {
             withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {

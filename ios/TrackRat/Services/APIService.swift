@@ -888,24 +888,48 @@ final class APIService: ObservableObject {
         journeyDate: Date
     ) async throws -> PlatformPrediction {
         var components = URLComponents(string: "\(baseURL)/v2/predictions/track")!
-        
+
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
         let dateString = dateFormatter.string(from: journeyDate)
-        
+
         components.queryItems = [
             URLQueryItem(name: "station_code", value: stationCode),
             URLQueryItem(name: "train_id", value: trainId),
             URLQueryItem(name: "journey_date", value: dateString)
         ]
-        
+
         guard let url = components.url else {
             throw APIError.invalidURL
         }
-        
-        let (data, _) = try await session.data(from: url)
-        return try decoder.decode(PlatformPrediction.self, from: data)
+
+        print("🌐 [APIService] Fetching predictions from: \(url.absoluteString)")
+
+        let (data, response) = try await session.data(from: url)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            print("📡 [APIService] Response status: \(httpResponse.statusCode)")
+            if httpResponse.statusCode != 200 {
+                print("⚠️ [APIService] Non-200 status code")
+                if let responseStr = String(data: data, encoding: .utf8) {
+                    print("   Response body: \(responseStr)")
+                }
+            }
+        }
+
+        do {
+            // Try to decode the response
+            let prediction = try decoder.decode(PlatformPrediction.self, from: data)
+            print("✅ [APIService] Successfully decoded platform prediction")
+            return prediction
+        } catch {
+            print("❌ [APIService] Decoding error: \(error)")
+            if let responseStr = String(data: data, encoding: .utf8) {
+                print("   Raw response: \(responseStr.prefix(500))...")
+            }
+            throw error
+        }
     }
 }
 
@@ -939,8 +963,8 @@ struct PlatformPrediction: Codable {
     let modelVersion: String
     let stationCode: String
     let trainId: String
-    let featuresUsed: PredictionFeatures?
-    
+    // featuresUsed field removed - no longer needed after migration to historical predictor
+
     enum CodingKeys: String, CodingKey {
         case platformProbabilities = "platform_probabilities"
         case primaryPrediction = "primary_prediction"
@@ -949,30 +973,11 @@ struct PlatformPrediction: Codable {
         case modelVersion = "model_version"
         case stationCode = "station_code"
         case trainId = "train_id"
-        case featuresUsed = "features_used"
+        // featuresUsed removed from CodingKeys after historical predictor migration
     }
 }
 
-/// Features used by the ML model for prediction
-struct PredictionFeatures: Codable {
-    let hourOfDay: Int
-    let dayOfWeek: Int
-    let isAmtrak: Int
-    let lineCode: String?
-    let destination: String?
-    let avgMinutesSinceTrackUsed: Double?
-    let avgMinutesSincePlatformUsed: Double?
-    
-    enum CodingKeys: String, CodingKey {
-        case hourOfDay = "hour_of_day"
-        case dayOfWeek = "day_of_week"
-        case isAmtrak = "is_amtrak"
-        case lineCode = "line_code"
-        case destination
-        case avgMinutesSinceTrackUsed = "avg_minutes_since_track_used"
-        case avgMinutesSincePlatformUsed = "avg_minutes_since_platform_used"
-    }
-}
+// PredictionFeatures struct removed - obsolete after migration from ML to historical predictor
 
 // MARK: - Platform to Track Mapping
 
