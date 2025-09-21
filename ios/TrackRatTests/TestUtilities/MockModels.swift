@@ -68,13 +68,19 @@ extension Stop {
         stopStatus: String? = "ON_TIME"
     ) -> Stop {
         return Stop(
-            stationName: stationName,
             stationCode: stationCode,
-            scheduledTime: scheduledTime,
-            departureTime: departureTime ?? scheduledTime, // Ensure departureTime has a value if not provided
-            actualTime: actualTime,
+            stationName: stationName,
+            scheduledArrival: scheduledTime,
+            scheduledDeparture: departureTime ?? scheduledTime,
+            actualArrival: actualTime,
+            actualDeparture: nil,
+            estimatedArrival: nil,
+            pickupOnly: nil,
+            dropoffOnly: nil,
             departed: departed,
-            stopStatus: stopStatus
+            departedConfirmedBy: nil,
+            stopStatus: stopStatus,
+            platform: nil
         )
     }
 }
