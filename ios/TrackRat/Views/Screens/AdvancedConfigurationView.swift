@@ -29,7 +29,6 @@ struct AdvancedConfigurationView: View {
                 VStack(spacing: 24) {
                     serverEnvironmentSection
                     healthCheckSection
-                    sentryTestSection
                 }
                 .padding()
                 .padding(.bottom, 40)
