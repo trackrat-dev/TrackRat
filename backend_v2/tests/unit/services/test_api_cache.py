@@ -561,14 +561,54 @@ class TestApiCacheService:
                 assert mock_store.call_count == 8
 
                 expected_routes = [
-                    {"from_station": "NY", "to_station": "TR", "limit": 50},
-                    {"from_station": "NY", "to_station": "NP", "limit": 50},
-                    {"from_station": "TR", "to_station": "NY", "limit": 50},
-                    {"from_station": "NP", "to_station": "NY", "limit": 50},
-                    {"from_station": "NY", "to_station": "PJ", "limit": 50},
-                    {"from_station": "PJ", "to_station": "NY", "limit": 50},
-                    {"from_station": "NY", "to_station": "LB", "limit": 50},
-                    {"from_station": "LB", "to_station": "NY", "limit": 50},
+                    {
+                        "from_station": "NY",
+                        "to_station": "TR",
+                        "date": None,
+                        "limit": 50,
+                    },
+                    {
+                        "from_station": "NY",
+                        "to_station": "NP",
+                        "date": None,
+                        "limit": 50,
+                    },
+                    {
+                        "from_station": "TR",
+                        "to_station": "NY",
+                        "date": None,
+                        "limit": 50,
+                    },
+                    {
+                        "from_station": "NP",
+                        "to_station": "NY",
+                        "date": None,
+                        "limit": 50,
+                    },
+                    {
+                        "from_station": "NY",
+                        "to_station": "PJ",
+                        "date": None,
+                        "limit": 50,
+                    },
+                    {
+                        "from_station": "PJ",
+                        "to_station": "NY",
+                        "date": None,
+                        "limit": 50,
+                    },
+                    {
+                        "from_station": "NY",
+                        "to_station": "LB",
+                        "date": None,
+                        "limit": 50,
+                    },
+                    {
+                        "from_station": "LB",
+                        "to_station": "NY",
+                        "date": None,
+                        "limit": 50,
+                    },
                 ]
 
                 for i, expected_route in enumerate(expected_routes):

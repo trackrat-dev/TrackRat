@@ -433,6 +433,73 @@ async def test_get_departures_with_date_parameter(client, db_session):
         assert a98_trains[0]["journey_date"] == f"{tomorrow.isoformat()}T00:00:00"
 
 
+@pytest.mark.asyncio
+async def test_departures_cache_behavior_with_mock(client):
+    """Test that cache service is called correctly for default params."""
+    from unittest.mock import patch, AsyncMock, MagicMock
+
+    mock_cache_instance = MagicMock()
+    mock_cache_instance.get_cached_response = AsyncMock(return_value=None)
+    mock_cache_instance.store_cached_response = AsyncMock()
+
+    with patch("trackrat.api.trains.ApiCacheService", return_value=mock_cache_instance):
+        response = client.get("/api/v2/trains/departures?from=NY&limit=50")
+        assert response.status_code == 200
+
+        # Verify cache was checked
+        mock_cache_instance.get_cached_response.assert_called_once()
+        call_args = mock_cache_instance.get_cached_response.call_args
+        assert call_args[0][1] == "/api/v2/trains/departures"
+
+        # Verify params structure matches pre-computation
+        params = call_args[0][2]
+        assert params["from_station"] == "NY"
+        assert params["to_station"] is None
+        assert params["date"] is None
+        assert params["limit"] == 50
+
+        # Verify cache was stored after miss
+        mock_cache_instance.store_cached_response.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_departures_cache_miss_with_mock(client):
+    """Test cache miss scenario using mocked cache service."""
+    from unittest.mock import patch, AsyncMock, MagicMock
+
+    mock_cache_instance = MagicMock()
+    mock_cache_instance.get_cached_response = AsyncMock(return_value=None)
+    mock_cache_instance.store_cached_response = AsyncMock()
+
+    with patch("trackrat.api.trains.ApiCacheService", return_value=mock_cache_instance):
+        response = client.get("/api/v2/trains/departures?from=NY")
+        assert response.status_code == 200
+
+        mock_cache_instance.get_cached_response.assert_called_once()
+        mock_cache_instance.store_cached_response.assert_called_once()
+
+        call_args = mock_cache_instance.store_cached_response.call_args
+        assert call_args[0][1] == "/api/v2/trains/departures"
+        assert call_args[1]["ttl_seconds"] == 120
+
+
+@pytest.mark.asyncio
+async def test_departures_no_cache_with_custom_params(client):
+    """Test that custom date/time params bypass cache."""
+    from unittest.mock import patch, AsyncMock
+    from datetime import datetime
+
+    with patch("trackrat.api.trains.ApiCacheService") as mock_cache_class:
+        mock_cache = AsyncMock()
+        mock_cache_class.return_value = mock_cache
+
+        response = client.get("/api/v2/trains/departures?from=NY&date=2024-01-15")
+        assert response.status_code == 200
+
+        mock_cache.get_cached_response.assert_not_called()
+        mock_cache.store_cached_response.assert_not_called()
+
+
 @pytest.mark.skip(reason="Integration test requires real database connection")
 @pytest.mark.asyncio
 async def test_departures_cache_integration(client, db_session):
