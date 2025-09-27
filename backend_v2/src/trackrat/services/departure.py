@@ -262,21 +262,92 @@ class DepartureService:
                 train_count=len(train_items),
             )
 
+            # Extract all train IDs for bulk loading
+            train_ids = []
+            for train_data in train_items:
+                if train_id := train_data.get("TRAIN_ID"):
+                    train_ids.append(train_id)
+
+            if not train_ids:
+                await db.commit()
+                logger.info(
+                    "station_refresh_complete",
+                    station_code=station_code,
+                    updated_trains=0,
+                )
+                return
+
+            # Bulk load all journeys in a single query
+            stmt = (
+                select(TrainJourney)
+                .where(
+                    and_(
+                        TrainJourney.train_id.in_(train_ids),
+                        TrainJourney.journey_date == now_et().date(),
+                        TrainJourney.data_source == "NJT",
+                    )
+                )
+                .options(selectinload(TrainJourney.stops))
+            )
+            result = await db.execute(stmt)
+            journeys_by_id = {j.train_id: j for j in result.scalars().all()}
+
+            # Update journeys in memory
+            updated_count = 0
             for train_data in train_items:
                 train_id = train_data.get("TRAIN_ID")
                 if not train_id:
                     continue
 
-                # Update journey and its stops from the embedded data
-                await self._update_journey_from_schedule_data(
-                    db, train_data, station_code
+                # Check if this is an Amtrak train appearing in NJT station data
+                is_amtrak = train_id.startswith("A") and train_id[1:].isdigit()
+
+                journey = journeys_by_id.get(train_id)
+                if not journey:
+                    # Only log warning for non-Amtrak trains
+                    if not is_amtrak:
+                        logger.warning(
+                            "journey_not_found_during_station_refresh",
+                            train_id=train_id,
+                            station_code=station_code,
+                        )
+                    else:
+                        logger.debug(
+                            "amtrak_train_in_njt_station",
+                            train_id=train_id,
+                            station_code=station_code,
+                            reason="Amtrak trains appear in NJT stations but are tracked separately",
+                        )
+                    continue
+
+                # Update journey metadata
+                journey.destination = train_data.get("DESTINATION", journey.destination)
+
+                # Clean color value (remove trailing spaces)
+                if backcolor := train_data.get("BACKCOLOR"):
+                    journey.line_color = backcolor.strip()
+                journey.last_updated_at = now_et()
+                journey.update_count = (journey.update_count or 0) + 1
+
+                # Update stops from embedded STOPS data
+                stops_data = train_data.get("STOPS", [])
+                if stops_data:
+                    await self._update_stops_from_embedded_data(journey, stops_data)
+                    journey.has_complete_journey = True
+                    journey.stops_count = len(stops_data)
+
+                logger.debug(
+                    "journey_updated_from_schedule",
+                    train_id=train_id,
+                    stops_count=len(stops_data),
                 )
+                updated_count += 1
 
             await db.commit()
             logger.info(
                 "station_refresh_complete",
                 station_code=station_code,
-                updated_trains=len(train_items),
+                updated_trains=updated_count,
             )
 
         except Exception as e:
@@ -287,72 +358,6 @@ class DepartureService:
             raise
         finally:
             await njt_client.close()
-
-    async def _update_journey_from_schedule_data(
-        self, db: AsyncSession, train_data: dict[str, Any], station_code: str
-    ) -> None:
-        """Update journey and stops from getTrainSchedule data."""
-
-        train_id = train_data.get("TRAIN_ID")
-        if not train_id:
-            return
-
-        # Check if this is an Amtrak train appearing in NJT station data
-        # Amtrak trains start with 'A' followed by numbers
-        is_amtrak = train_id.startswith("A") and train_id[1:].isdigit()
-
-        # Find existing journey
-        journey = await db.scalar(
-            select(TrainJourney)
-            .where(
-                and_(
-                    TrainJourney.train_id == train_id,
-                    TrainJourney.journey_date == now_et().date(),
-                    TrainJourney.data_source == "NJT",
-                )
-            )
-            .options(selectinload(TrainJourney.stops))
-        )
-
-        if not journey:
-            # Only log warning for non-Amtrak trains or unexpected cases
-            if not is_amtrak:
-                logger.warning(
-                    "journey_not_found_during_station_refresh",
-                    train_id=train_id,
-                    station_code=station_code,
-                )
-            else:
-                # Debug log for Amtrak trains - this is expected
-                logger.debug(
-                    "amtrak_train_in_njt_station",
-                    train_id=train_id,
-                    station_code=station_code,
-                    reason="Amtrak trains appear in NJT stations but are tracked separately",
-                )
-            return
-
-        # Update journey metadata
-        journey.destination = train_data.get("DESTINATION", journey.destination)
-
-        # Clean color value (remove trailing spaces)
-        if backcolor := train_data.get("BACKCOLOR"):
-            journey.line_color = backcolor.strip()
-        journey.last_updated_at = now_et()
-        journey.update_count = (journey.update_count or 0) + 1
-
-        # Update stops from embedded STOPS data
-        stops_data = train_data.get("STOPS", [])
-        if stops_data:
-            await self._update_stops_from_embedded_data(journey, stops_data)
-            journey.has_complete_journey = True
-            journey.stops_count = len(stops_data)
-
-        logger.debug(
-            "journey_updated_from_schedule",
-            train_id=train_id,
-            stops_count=len(stops_data),
-        )
 
     async def _update_stops_from_embedded_data(
         self, journey: TrainJourney, stops_data: list[dict[str, Any]]
