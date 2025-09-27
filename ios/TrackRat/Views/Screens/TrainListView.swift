@@ -5,14 +5,15 @@ import Sentry
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainListViewModel
-    
+
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 6
-    
+
     @State private var destination: String
     @State private var departureStationCode: String
     @State private var departureName: String
     @Binding var sheetPosition: BottomSheetPosition
+    @State private var isClosing = false
     
     
     init(destination: String, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
@@ -119,6 +120,7 @@ struct TrainListView: View {
         .navigationTitle(destination)
         .navigationBarTitleDisplayMode(.inline)
         .glassmorphicNavigationBar()
+        .toolbar(isClosing ? .hidden : .visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
@@ -142,7 +144,10 @@ struct TrainListView: View {
             
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Close") {
-                    appState.navigationPath = NavigationPath()
+                    isClosing = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        appState.navigationPath = NavigationPath()
+                    }
                 }
                 .foregroundColor(.white)
                 .font(.body)
