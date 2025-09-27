@@ -213,7 +213,7 @@ class CongestionMapViewModel: ObservableObject {
         print("🚦 CongestionMapViewModel init - data loading deferred")
     }
     
-    func fetchCongestionDataIfNeeded(timeWindowHours: Int = 2, dataSource: String? = nil) async {
+    func fetchCongestionDataIfNeeded(timeWindowHours: Int = 1, dataSource: String? = nil) async {
         // Only fetch if we don't already have data and we're not currently loading
         guard allAggregatedSegments.isEmpty && !isLoading else {
             print("🚦 Skipping congestion data fetch - already have data or loading")
@@ -223,7 +223,7 @@ class CongestionMapViewModel: ObservableObject {
         await fetchCongestionData(timeWindowHours: timeWindowHours, dataSource: dataSource)
     }
     
-    func fetchCongestionData(timeWindowHours: Int = 2, dataSource: String? = nil) async {
+    func fetchCongestionData(timeWindowHours: Int = 1, dataSource: String? = nil) async {
         // Prevent duplicate fetches if already loading
         guard !isLoading else {
             print("🚦 Skipping duplicate fetch - already loading")
@@ -810,27 +810,27 @@ struct SystemCongestionMapView: UIViewRepresentable {
             let now = Date()
             let timeSinceDeparture = now.timeIntervalSince(departureTime)
             let hoursAgo = timeSinceDeparture / 3600.0
-            
+
             // Scale opacity based on how long ago the train departed
             // Most recent (0-1 hours): 0.9 alpha (most opaque)
-            // 1-3 hours ago: 0.7-0.9 alpha (linear fade)
-            // 3-6 hours ago: 0.4-0.7 alpha (more fade)
-            // 6+ hours ago: 0.3 alpha (most transparent)
-            
+            // 1-2 hours ago: 0.8-0.6 alpha (linear fade)
+            // 2-3 hours ago: 0.6-0.4 alpha (more fade)
+            // 3+ hours ago: 0.3 alpha (most transparent)
+
             if hoursAgo < 0 {
                 // Future departure or very recent - most opaque
                 return 0.9
             } else if hoursAgo <= 1.0 {
                 // 0-1 hours ago: 0.9 to 0.8
                 return 0.9 - CGFloat(hoursAgo) * 0.1
+            } else if hoursAgo <= 2.0 {
+                // 1-2 hours ago: 0.8 to 0.6
+                return 0.8 - CGFloat((hoursAgo - 1.0)) * 0.2
             } else if hoursAgo <= 3.0 {
-                // 1-3 hours ago: 0.8 to 0.6
-                return 0.8 - CGFloat((hoursAgo - 1.0) / 2.0) * 0.2
-            } else if hoursAgo <= 6.0 {
-                // 3-6 hours ago: 0.6 to 0.4
-                return 0.6 - CGFloat((hoursAgo - 3.0) / 3.0) * 0.2
+                // 2-3 hours ago: 0.6 to 0.4
+                return 0.6 - CGFloat((hoursAgo - 2.0)) * 0.2
             } else {
-                // 6+ hours ago: minimum opacity
+                // 3+ hours ago: minimum opacity
                 return 0.3
             }
         }
