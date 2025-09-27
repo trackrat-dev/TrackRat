@@ -85,8 +85,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
             // Session replay configuration
             // Using 100% sampling for all environments as requested
-            //options.sessionReplay.sessionSampleRate = 1.0  // 100% session replay
-            //options.sessionReplay.onErrorSampleRate = 1.0   // 100% replay on errors
+            options.sessionReplay.sessionSampleRate = 1.0  // 100% session replay
+            options.sessionReplay.onErrorSampleRate = 1.0   // 100% replay on errors
 
             // Privacy configuration for replays
             //options.sessionReplay.maskAllText = true        // Mask all text for privacy

@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		1A1A1A1A1A1A1A1A1A1A1A1E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */; };
-		6E77D3B353C24E0799B9B6A7 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 9C615FA6EA9A4D608C421280 /* Sentry */; };
 		A10684812E36B6EC0052C4AE /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10684802E36B6EC0052C4AE /* ThemeManager.swift */; };
 		A10E97F02DE39EC1002F3214 /* TrackRatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97EF2DE39EC1002F3214 /* TrackRatApp.swift */; };
 		A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97EE2DE39EC1002F3214 /* ContentView.swift */; };
@@ -28,6 +27,8 @@
 		A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5552E25BBC700958ABA /* DeepLink.swift */; };
 		A126E55D2E25BBD800958ABA /* DeepLinkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55B2E25BBD800958ABA /* DeepLinkService.swift */; };
 		A126E55E2E25BBD800958ABA /* ShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55C2E25BBD800958ABA /* ShareService.swift */; };
+		A12E781B2E880B590068B472 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A1SENTRY012E88C1A00068B472 /* Sentry */; };
+		A12E781D2E880B590068B472 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A1SENTRY012E88C1A00068B472 /* Sentry */; };
 		A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4ABD2E1949A400E13005 /* V2APIModels.swift */; };
 		A16D6EEC2E1703C7008C6996 /* rat-train-icon@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */; };
 		A16D6EED2E1703C7008C6996 /* rat-train-icon@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */; };
@@ -42,7 +43,6 @@
 		A17329672E54A8B1006BF187 /* StationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329662E54A8B1006BF187 /* StationRow.swift */; };
 		A17329692E54D46E006BF187 /* intro_animation.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A17329682E54D46E006BF187 /* intro_animation.mp4 */; };
 		A17B1E6F2E7F05B00026D42E /* (null) in Frameworks */ = {isa = PBXBuildFile; };
-		A17B1E702E7F05B00026D42E /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 9C615FA6EA9A4D608C421280 /* Sentry */; };
 		A17B1E712E7F05B00026D42E /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
 		A183B7E12E6352E80024FADC /* SheetAwareScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A183B7E02E6352E80024FADC /* SheetAwareScrollView.swift */; };
@@ -209,8 +209,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A17B1E702E7F05B00026D42E /* Sentry in Frameworks */,
 				A17B1E6F2E7F05B00026D42E /* (null) in Frameworks */,
+				A12E781B2E880B590068B472 /* (null) in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -219,6 +219,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A17B1E712E7F05B00026D42E /* (null) in Frameworks */,
+				A12E781D2E880B590068B472 /* (null) in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -229,7 +230,6 @@
 				A1WIDGET052DFC73650002FB39 /* ActivityKit.framework in Frameworks */,
 				A1WIDGET032DFC73650002FB39 /* SwiftUI.framework in Frameworks */,
 				A1WIDGET012DFC73650002FB39 /* WidgetKit.framework in Frameworks */,
-				6E77D3B353C24E0799B9B6A7 /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -437,7 +437,7 @@
 			);
 			name = TrackRat;
 			packageProductDependencies = (
-				9C615FA6EA9A4D608C421280 /* Sentry */,
+				A1SENTRY012E88C1A00068B472 /* Sentry */,
 			);
 			productName = TrackRat;
 			productReference = 1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */;
@@ -476,6 +476,8 @@
 			dependencies = (
 			);
 			name = TrainLiveActivityExtension;
+			packageProductDependencies = (
+			);
 			productName = TrainLiveActivityExtension;
 			productReference = A1WIDGET142DFC73650002FB39 /* TrainLiveActivityExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -509,7 +511,7 @@
 			);
 			mainGroup = 1A1A1A1A1A1A1A1A1A1A1A07;
 			packageReferences = (
-				C2B0D6A344A44A0EB2672526 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+				A1SENTRY002E88C1A00068B472 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 			productRefGroup = 1A1A1A1A1A1A1A1A1A1A1A11 /* Products */;
 			projectDirPath = "";
@@ -1008,9 +1010,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		C2B0D6A344A44A0EB2672526 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+		A1SENTRY002E88C1A00068B472 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa/";
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 8.56.2;
@@ -1019,9 +1021,9 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		9C615FA6EA9A4D608C421280 /* Sentry */ = {
+		A1SENTRY012E88C1A00068B472 /* Sentry */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = C2B0D6A344A44A0EB2672526 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			package = A1SENTRY002E88C1A00068B472 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
 			productName = Sentry;
 		};
 /* End XCSwiftPackageProductDependency section */
