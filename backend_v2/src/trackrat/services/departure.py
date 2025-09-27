@@ -62,6 +62,7 @@ class DepartureService:
                 and_(
                     JourneyStop.scheduled_departure >= time_from,
                     JourneyStop.scheduled_departure <= time_to,
+                    TrainJourney.journey_date == (date or now_et().date()),
                     # Include both data sources
                     TrainJourney.data_source.in_(["NJT", "AMTRAK"]),
                 )
