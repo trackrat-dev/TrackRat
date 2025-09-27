@@ -77,7 +77,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         SentrySDK.start { options in
             // Basic configuration
             options.dsn = "https://f46282b1deb1de34493decb5c3c54c05@o4510043461058560.ingest.us.sentry.io/4510043476393984"
-            //options.environment = environment
             options.debug = isDevelopment // Only enable debug in development
 
             options.tracesSampleRate = 1.0
@@ -88,48 +87,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             options.sessionReplay.sessionSampleRate = 1.0  // 100% session replay
             options.sessionReplay.onErrorSampleRate = 1.0   // 100% replay on errors
 
-            // Privacy configuration for replays
-            //options.sessionReplay.maskAllText = true        // Mask all text for privacy
-            //options.sessionReplay.maskAllImages = true      // Mask all images for privacy
-
-            // Error tracking enhancements
-            options.attachScreenshot = !isProduction // Screenshots in dev/staging only
-            options.attachViewHierarchy = !isProduction // View hierarchy in dev/staging only
-            options.attachStacktrace = true
-            options.maxBreadcrumbs = 100
-
-            // Performance tracking
-            options.enableAutoPerformanceTracing = true
-            options.enableUIViewControllerTracing = true
-            options.enableSwizzling = true
-            options.enableAppHangTracking = true
-            options.appHangTimeoutInterval = 2.0 // 2 second hang detection
-
-            // Release tracking
-            if let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-               let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
-                options.releaseName = "trackrat-ios@\\(appVersion)+\\(buildNumber)"
-            }
-
-            // Custom before send hook
-            options.beforeSend = { event in
-                // Add custom context
-                event.context?["app"] = [
-                    "environment": environment,
-                    "server_environment": StorageService().loadServerEnvironment().rawValue
-                ]
-
-                // Add user context (anonymized)
-                if #available(iOS 16.1, *) {
-                    event.context?["journey"] = [
-                        "has_active_live_activity": LiveActivityService.shared.isActivityActive
-                    ]
-                }
-
-                return event
-            }
-
-            // Enable experimental features
             options.experimental.enableLogs = !isProduction
         }
     }
