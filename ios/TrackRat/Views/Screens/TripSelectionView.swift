@@ -203,6 +203,7 @@ struct TripSelectionView: View {
                                             Spacer()
                                         }
                                     }
+                                    .buttonStyle(.plain)
                                     
                                     // Station icon - shows home/work icon or interactive heart
                                     if let code = Stations.getStationCode(station) {
@@ -575,9 +576,9 @@ struct FavoriteStationButton: View {
                     .font(.callout)
                     .fontWeight(.medium)
                     .foregroundColor(.white)
-                
+
                 Spacer()
-                
+
                 // Station icon - shows home/work icon or interactive heart
                 StationIconView(
                     stationCode: station.id,
@@ -589,7 +590,7 @@ struct FavoriteStationButton: View {
                     }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
-                
+
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white.opacity(0.6))
@@ -605,6 +606,7 @@ struct FavoriteStationButton: View {
                     )
             )
         }
+        .buttonStyle(.plain)
     }
 }
 
