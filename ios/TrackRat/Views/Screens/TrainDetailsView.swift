@@ -103,7 +103,14 @@ struct TrainDetailsView: View {
                     }
                     
                     Button("Close") {
-                        appState.navigationPath.removeLast(appState.navigationPath.count)
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            // Trigger immediate visual feedback for the title bar
+                        }
+
+                        // Delay the actual navigation change to let title bar animate first
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            appState.navigationPath.removeLast(appState.navigationPath.count)
+                        }
                     }
                     .font(.body)
                     .fontWeight(.medium)
