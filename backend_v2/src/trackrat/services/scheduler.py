@@ -226,6 +226,17 @@ class SchedulerService:
             max_instances=1,
         )
 
+        # Schedule departures API cache pre-computation (every 90 seconds)
+        self.scheduler.add_job(
+            self.precompute_departure_cache,
+            trigger=IntervalTrigger(seconds=90),
+            id="departure_cache_precompute",
+            name="Departure Cache Pre-computation",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+
         # Schedule train validation (every hour)
         self.scheduler.add_job(
             self.run_train_validation,
@@ -2068,6 +2079,49 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("congestion_cache_precompute_skipped_still_fresh")
+
+    @with_sentry_cron("departure-cache-precompute")
+    async def precompute_departure_cache(self) -> None:
+        """Pre-compute departure API responses for popular station pairs."""
+        task_id = f"departure_cache_{now_et().isoformat()}"
+
+        async def do_cache_work() -> None:
+            try:
+                logger.info("starting_departure_cache_precomputation")
+
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                from trackrat.services.api_cache import ApiCacheService
+
+                async with get_session() as session:
+                    cache_service = ApiCacheService()
+                    await cache_service.precompute_departure_responses(session)
+
+                logger.info("departure_cache_precomputation_completed")
+
+            except Exception as e:
+                logger.error(
+                    "departure_cache_precomputation_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(2)  # Round up 1.5 to 2 minutes
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="departure_cache_precompute",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_cache_work,
+            )
+
+            if not executed:
+                logger.debug("departure_cache_precompute_skipped_still_fresh")
 
     @with_sentry_cron("live-activity-updates")
     async def update_live_activities(self) -> None:

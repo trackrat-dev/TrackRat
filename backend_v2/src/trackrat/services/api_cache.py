@@ -53,16 +53,19 @@ class ApiCacheService:
         cached = result.scalar_one_or_none()
 
         if cached:
+            age_seconds = 0.0
+            if cached.generated_at:
+                try:
+                    age_seconds = (now_et() - cached.generated_at).total_seconds()
+                except (TypeError, AttributeError):
+                    age_seconds = 0.0
+
             logger.info(
                 "cache_hit",
                 endpoint=endpoint,
                 params=params,
                 generated_at=cached.generated_at,
-                age_seconds=(
-                    (now_et() - cached.generated_at).total_seconds()
-                    if cached.generated_at
-                    else 0
-                ),
+                age_seconds=age_seconds,
             )
             return cached.response
 
@@ -277,6 +280,70 @@ class ApiCacheService:
         )
 
         # Convert to dict for storage with datetime serialization
+        return response.model_dump(mode="json")
+
+    async def precompute_departure_responses(self, db: AsyncSession) -> None:
+        """Pre-compute departure responses for popular station pairs."""
+
+        popular_routes: list[dict[str, Any]] = [
+            {"from_station": "NY", "to_station": "TR", "limit": 50},
+            {"from_station": "NY", "to_station": "NP", "limit": 50},
+            {"from_station": "TR", "to_station": "NY", "limit": 50},
+            {"from_station": "NP", "to_station": "NY", "limit": 50},
+            {"from_station": "NY", "to_station": "PJ", "limit": 50},
+            {"from_station": "PJ", "to_station": "NY", "limit": 50},
+            {"from_station": "NY", "to_station": "LB", "limit": 50},
+            {"from_station": "LB", "to_station": "NY", "limit": 50},
+        ]
+
+        logger.info("precomputing_departure_responses", route_count=len(popular_routes))
+
+        for params in popular_routes:
+            try:
+                response_dict = await self._compute_departure_response(db, params)
+
+                await self.store_cached_response(
+                    db=db,
+                    endpoint="/api/v2/trains/departures",
+                    params=params,
+                    response=response_dict,
+                    ttl_seconds=120,
+                )
+
+                logger.info(
+                    "precomputed_departure_response",
+                    params=params,
+                    response_size_kb=len(json.dumps(response_dict)) / 1024,
+                )
+
+            except Exception as e:
+                logger.error(
+                    "precompute_departure_error",
+                    params=params,
+                    error=str(e),
+                    exc_info=True,
+                )
+
+    async def _compute_departure_response(
+        self, db: AsyncSession, params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Compute departure response using existing departure service logic."""
+
+        from_station = params.get("from_station")
+        assert from_station is not None, "from_station is required"
+        to_station = params.get("to_station")
+        limit = params.get("limit", 50)
+
+        response = await self.departure_service.get_departures(
+            db=db,
+            from_station=from_station,
+            to_station=to_station,
+            date=None,
+            time_from=None,
+            time_to=None,
+            limit=limit,
+        )
+
         return response.model_dump(mode="json")
 
     async def cleanup_expired_cache(self, db: AsyncSession) -> int:

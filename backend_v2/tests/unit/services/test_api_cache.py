@@ -530,6 +530,146 @@ class TestApiCacheService:
         assert len(result["train_positions"]) == 1
         assert result["train_positions"][0]["train_id"] == "5678"
 
+    @pytest.mark.asyncio
+    async def test_precompute_departure_responses(self, cache_service, mock_db):
+        """Test pre-computation of departure responses."""
+        mock_response = {
+            "departures": [
+                {
+                    "train_id": "1234",
+                    "line": {
+                        "code": "NE",
+                        "name": "Northeast Corridor",
+                        "color": "#000000",
+                    },
+                    "destination": "Trenton",
+                }
+            ],
+            "metadata": {
+                "from_station": {"code": "NY", "name": "New York Penn Station"}
+            },
+        }
+
+        with patch.object(
+            cache_service, "_compute_departure_response", return_value=mock_response
+        ) as mock_compute:
+            with patch.object(cache_service, "store_cached_response") as mock_store:
+                await cache_service.precompute_departure_responses(mock_db)
+
+                assert mock_compute.call_count == 8
+
+                assert mock_store.call_count == 8
+
+                expected_routes = [
+                    {"from_station": "NY", "to_station": "TR", "limit": 50},
+                    {"from_station": "NY", "to_station": "NP", "limit": 50},
+                    {"from_station": "TR", "to_station": "NY", "limit": 50},
+                    {"from_station": "NP", "to_station": "NY", "limit": 50},
+                    {"from_station": "NY", "to_station": "PJ", "limit": 50},
+                    {"from_station": "PJ", "to_station": "NY", "limit": 50},
+                    {"from_station": "NY", "to_station": "LB", "limit": 50},
+                    {"from_station": "LB", "to_station": "NY", "limit": 50},
+                ]
+
+                for i, expected_route in enumerate(expected_routes):
+                    actual_params = mock_compute.call_args_list[i][0][1]
+                    assert actual_params == expected_route
+
+                    store_call = mock_store.call_args_list[i]
+                    assert store_call.kwargs["endpoint"] == "/api/v2/trains/departures"
+                    assert store_call.kwargs["params"] == expected_route
+                    assert store_call.kwargs["ttl_seconds"] == 120
+
+    @pytest.mark.asyncio
+    async def test_precompute_departure_handles_errors(self, cache_service, mock_db):
+        """Test that departure pre-computation continues even if some computations fail."""
+        with patch.object(cache_service, "_compute_departure_response") as mock_compute:
+            mock_compute.side_effect = [
+                Exception("Computation failed"),
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+            ]
+
+            with patch.object(cache_service, "store_cached_response") as mock_store:
+                await cache_service.precompute_departure_responses(mock_db)
+
+                assert mock_compute.call_count == 8
+
+                assert mock_store.call_count == 7
+
+    @pytest.mark.asyncio
+    async def test_compute_departure_response(self, cache_service, mock_db):
+        """Test computation of departure response."""
+        params = {"from_station": "NY", "to_station": "TR", "limit": 50}
+
+        mock_departure_response = Mock()
+        mock_departure_response.model_dump.return_value = {
+            "departures": [
+                {
+                    "train_id": "1234",
+                    "line": {
+                        "code": "NE",
+                        "name": "Northeast Corridor",
+                        "color": "#000000",
+                    },
+                    "destination": "Trenton",
+                }
+            ],
+            "metadata": {
+                "from_station": {"code": "NY", "name": "New York Penn Station"},
+                "to_station": {"code": "TR", "name": "Trenton"},
+                "count": 1,
+            },
+        }
+
+        with patch.object(
+            cache_service.departure_service,
+            "get_departures",
+            return_value=mock_departure_response,
+        ):
+            result = await cache_service._compute_departure_response(mock_db, params)
+
+        assert isinstance(result, dict)
+        assert "departures" in result
+        assert "metadata" in result
+        assert len(result["departures"]) == 1
+        assert result["departures"][0]["train_id"] == "1234"
+
+    @pytest.mark.asyncio
+    async def test_compute_departure_response_with_none_destination(
+        self, cache_service, mock_db
+    ):
+        """Test departure computation with no destination (all departures from station)."""
+        params = {"from_station": "NY", "to_station": None, "limit": 50}
+
+        mock_departure_response = Mock()
+        mock_departure_response.model_dump.return_value = {
+            "departures": [
+                {"train_id": "1234", "destination": "Trenton"},
+                {"train_id": "5678", "destination": "Princeton Junction"},
+            ],
+            "metadata": {
+                "from_station": {"code": "NY", "name": "New York Penn Station"},
+                "to_station": None,
+                "count": 2,
+            },
+        }
+
+        with patch.object(
+            cache_service.departure_service,
+            "get_departures",
+            return_value=mock_departure_response,
+        ):
+            result = await cache_service._compute_departure_response(mock_db, params)
+
+        assert len(result["departures"]) == 2
+        assert result["metadata"]["to_station"] is None
+
 
 class TestApiCacheIntegration:
     """Integration tests for cache service with other components."""

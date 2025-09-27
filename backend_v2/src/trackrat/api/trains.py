@@ -32,6 +32,7 @@ from trackrat.models.api import (
     TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.services.api_cache import ApiCacheService
 from trackrat.services.departure import DepartureService
 from trackrat.services.direct_forecaster import DirectArrivalForecaster
 from trackrat.services.jit import JustInTimeUpdateService
@@ -78,10 +79,42 @@ async def get_departures(
         time_to=time_to,
     )
 
+    cache_service = ApiCacheService()
+
+    use_cache = date is None and time_from is None and time_to is None
+
+    if use_cache:
+        cache_params = {
+            "from_station": from_station,
+            "to_station": to_station,
+            "date": None,
+            "limit": limit,
+        }
+
+        cached_response = await cache_service.get_cached_response(
+            db, "/api/v2/trains/departures", cache_params
+        )
+        if cached_response:
+            try:
+                return DeparturesResponse(**cached_response)
+            except (TypeError, ValueError):
+                pass
+
     service = DepartureService()
-    return await service.get_departures(
+    response = await service.get_departures(
         db, from_station, to_station, date, time_from, time_to, limit
     )
+
+    if use_cache:
+        await cache_service.store_cached_response(
+            db,
+            "/api/v2/trains/departures",
+            cache_params,
+            response.model_dump(mode="json"),
+            ttl_seconds=120,
+        )
+
+    return response
 
 
 @router.get("/{train_id}", response_model=TrainDetailsResponse)
