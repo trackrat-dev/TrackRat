@@ -540,6 +540,7 @@ class HistoricalDataViewModel: ObservableObject {
 #Preview {
     HistoricalDataView(train: TrainV2(
         trainId: "3923",
+        journeyDate: Date(),
         line: LineInfo(code: "NEC", name: "Northeast Corridor", color: "#0066CC"),
         destination: "Trenton",
         departure: StationTiming(

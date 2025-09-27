@@ -98,7 +98,8 @@ struct TrainListView: View {
                                 // Only pass departure station if it's not empty
                                 appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                                     trainNumber: train.trainId,
-                                    fromStation: departureStationCode.isEmpty ? nil : departureStationCode
+                                    fromStation: departureStationCode.isEmpty ? nil : departureStationCode,
+                                    journeyDate: train.journeyDate
                                 ))
                             },
                             isExpress: expressTrains.contains(train.trainId)

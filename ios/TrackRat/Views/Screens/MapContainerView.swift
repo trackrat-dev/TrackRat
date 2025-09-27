@@ -199,7 +199,8 @@ struct MapContainerView: View {
                     appState.navigationPath = NavigationPath()
                     appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                         trainNumber: trainNumber,
-                        fromStation: appState.deepLinkFromStation
+                        fromStation: appState.deepLinkFromStation,
+                        journeyDate: nil
                     ))
                     print("🔗 Navigation path set with \(appState.navigationPath.count) destinations")
                     
@@ -588,8 +589,8 @@ struct MapContainerView: View {
             TrainListView(destination: stationName, sheetPosition: $bottomSheetPosition)
         case .trainDetails(let trainId):
             TrainDetailsView(trainId: trainId, sheetPosition: $bottomSheetPosition)
-        case .trainDetailsFlexible(let trainNumber, let fromStation):
-            TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, sheetPosition: $bottomSheetPosition)
+        case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
+            TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate, sheetPosition: $bottomSheetPosition)
         case .advancedConfiguration:
             AdvancedConfigurationView()
         case .myProfile:

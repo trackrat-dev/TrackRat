@@ -125,6 +125,7 @@ class TrainDeparture(BaseModel):
     """Train departure information for list view."""
 
     train_id: str
+    journey_date: date
     line: LineInfo
     destination: str
     departure: StationInfo
@@ -142,6 +143,11 @@ class TrainDeparture(BaseModel):
     # Progress and prediction fields
     progress: JourneyProgress | None = None
     predicted_arrival: datetime | None = None
+
+    @field_serializer("journey_date")
+    def serialize_journey_date(self, journey_date: date) -> str:
+        """Serialize date as datetime string for iOS compatibility."""
+        return f"{journey_date.isoformat()}T00:00:00"
 
     @field_serializer("predicted_arrival")
     def serialize_dt(self, dt: datetime | None) -> str | None:

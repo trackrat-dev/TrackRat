@@ -521,7 +521,8 @@ struct TripSelectionView: View {
                     appState.currentTrainId = foundTrain.id
                     appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                         trainNumber: trainNumber,
-                        fromStation: nil  // No specific departure station when searching globally
+                        fromStation: nil,  // No specific departure station when searching globally
+                        journeyDate: foundTrain.journeyDate
                     ))
                     
                     // Reset search

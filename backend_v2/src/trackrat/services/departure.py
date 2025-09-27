@@ -2,7 +2,7 @@
 Departure service for handling train departure queries.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, select
@@ -34,6 +34,7 @@ class DepartureService:
         db: AsyncSession,
         from_station: str,
         to_station: str | None = None,
+        date: date | None = None,
         time_from: datetime | None = None,
         time_to: datetime | None = None,
         limit: int = 50,
@@ -42,9 +43,8 @@ class DepartureService:
 
         # Set default time range
         if time_from is None:
-            time_from = now_et().replace(
-                tzinfo=None
-            )  # Convert to naive Eastern for consistent DB comparison
+            query_date = date or now_et().date()
+            time_from = datetime.combine(query_date, datetime.min.time())
         if time_to is None:
             time_to = time_from + timedelta(hours=24)
 
@@ -104,6 +104,7 @@ class DepartureService:
             # Build departure
             departure = TrainDeparture(
                 train_id=journey.train_id,
+                journey_date=journey.journey_date,
                 line=LineInfo(
                     code=journey.line_code,
                     name=journey.line_name or journey.line_code,

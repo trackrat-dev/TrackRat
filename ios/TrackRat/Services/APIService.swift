@@ -35,13 +35,23 @@ final class APIService: ObservableObject {
     
     // MARK: - Train Search
     
-    func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [TrainV2] {
+    func searchTrains(fromStationCode: String, toStationCode: String, date: Date? = nil) async throws -> [TrainV2] {
         var components = URLComponents(string: "\(baseURL)/v2/trains/departures")!
-        components.queryItems = [
+
+        var queryItems = [
             URLQueryItem(name: "from", value: fromStationCode),
             URLQueryItem(name: "to", value: toStationCode),
             URLQueryItem(name: "limit", value: "100")
         ]
+
+        if let date = date {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.timeZone = TimeZone(identifier: "America/New_York")
+            queryItems.append(URLQueryItem(name: "date", value: formatter.string(from: date)))
+        }
+
+        components.queryItems = queryItems
 
         guard let url = components.url else {
             throw APIError.invalidURL
@@ -88,15 +98,16 @@ final class APIService: ObservableObject {
     
     // MARK: - Train Details
     
-    func fetchTrainDetails(id: String, fromStationCode: String? = nil) async throws -> TrainV2 {
+    func fetchTrainDetails(id: String, fromStationCode: String? = nil, date: Date? = nil) async throws -> TrainV2 {
         var components = URLComponents(string: "\(baseURL)/v2/trains/\(id)")!
-        
+
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(identifier: "America/New_York")
-        
+
+        let queryDate = date ?? Date()
         var queryItems = [
-            URLQueryItem(name: "date", value: formatter.string(from: Date())),
+            URLQueryItem(name: "date", value: formatter.string(from: queryDate)),
             URLQueryItem(name: "include_predictions", value: "true")
         ]
         
@@ -137,9 +148,9 @@ final class APIService: ObservableObject {
     
     // MARK: - Flexible Train Details
     
-    func fetchTrainDetailsFlexible(id: String? = nil, trainId: String? = nil, fromStationCode: String? = nil) async throws -> TrainV2 {
+    func fetchTrainDetailsFlexible(id: String? = nil, trainId: String? = nil, fromStationCode: String? = nil, date: Date? = nil) async throws -> TrainV2 {
         let trainNumber = id ?? trainId ?? ""
-        return try await fetchTrainDetails(id: trainNumber, fromStationCode: fromStationCode)
+        return try await fetchTrainDetails(id: trainNumber, fromStationCode: fromStationCode, date: date)
     }
     
     // MARK: - Historical Data (Simplified for V2)
@@ -738,6 +749,7 @@ final class APIService: ObservableObject {
     private func adaptV2DepartureToTrainV2(_ departure: V2TrainDeparture) -> TrainV2 {
         return TrainV2(
             trainId: departure.trainId,
+            journeyDate: departure.journeyDate,
             line: LineInfo(
                 code: departure.line.code,
                 name: departure.line.name,
@@ -854,6 +866,7 @@ final class APIService: ObservableObject {
         
         return TrainV2(
             trainId: details.trainId,
+            journeyDate: details.journeyDate,
             line: LineInfo(
                 code: details.line.code,
                 name: details.line.name,

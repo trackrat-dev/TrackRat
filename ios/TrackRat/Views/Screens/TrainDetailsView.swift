@@ -21,13 +21,14 @@ struct TrainDetailsView: View {
     }
     
     // New initializer for train number
-    init(trainNumber: String, fromStation: String? = nil, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
+    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
         self.trainId = 0  // Not used for train number based initialization
         self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
-            fromStationCode: fromStation
+            fromStationCode: fromStation,
+            journeyDate: journeyDate
         )
         self._viewModel = StateObject(wrappedValue: VModel)
     }
@@ -767,28 +768,31 @@ class TrainDetailsViewModel: ObservableObject {
     private let databaseId: Int?
     let trainNumber: String?  // Made public for transaction tracking
     private let preferredStationCode: String?
-    
+    private let journeyDate: Date?
+
     // Store current origin and destination for stop filtering
     private var currentOriginStationCode: String?
     private var currentDestinationName: String?
-    
+
     private let apiService = APIService.shared
-    
+
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    
+
     // Legacy initializer for backwards compatibility
     init(trainId: Int) {
         self.databaseId = trainId
         self.trainNumber = nil
         self.preferredStationCode = nil
+        self.journeyDate = nil
     }
-    
+
     // New flexible initializer
-    init(databaseId: Int? = nil, trainNumber: String? = nil, fromStationCode: String? = nil) {
+    init(databaseId: Int? = nil, trainNumber: String? = nil, fromStationCode: String? = nil, journeyDate: Date? = nil) {
         self.databaseId = databaseId
         self.trainNumber = trainNumber
         self.preferredStationCode = fromStationCode
+        self.journeyDate = journeyDate
     }
     
     // Computed property for backwards compatibility
@@ -908,7 +912,8 @@ class TrainDetailsViewModel: ObservableObject {
             train = try await apiService.fetchTrainDetailsFlexible(
                 id: databaseId.map(String.init),
                 trainId: trainNumber,
-                fromStationCode: fromStationCode ?? preferredStationCode
+                fromStationCode: fromStationCode ?? preferredStationCode,
+                date: journeyDate
             )
 
             // Track stops and delays
@@ -965,7 +970,8 @@ class TrainDetailsViewModel: ObservableObject {
             let newTrain = try await apiService.fetchTrainDetailsFlexible(
                 id: databaseId.map(String.init),
                 trainId: trainNumber,
-                fromStationCode: fromStationCode ?? preferredStationCode
+                fromStationCode: fromStationCode ?? preferredStationCode,
+                date: journeyDate
             )
             
             print("✅ TrainDetailsView refresh successful for train \(identifier)")

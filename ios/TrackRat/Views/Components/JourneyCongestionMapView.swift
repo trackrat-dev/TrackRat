@@ -1351,6 +1351,7 @@ private struct SegmentTimeDetailRow: View {
     JourneyCongestionMapView(
         train: TrainV2(
             trainId: "2307",
+            journeyDate: Date(),
             line: LineInfo(code: "NEC", name: "Northeast Corridor", color: "#0066CC"),
             destination: "New York Penn Station",
             departure: StationTiming(code: "TR", name: "Trenton", scheduledTime: Date(), updatedTime: nil, actualTime: nil, track: nil),

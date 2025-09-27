@@ -24,6 +24,7 @@ struct TrainV2: Identifiable, Codable {
         return "\(trainId)-\(departure.code)-\(timeString)"
     }
     let trainId: String
+    let journeyDate: Date?
     let line: LineInfo
     let destination: String
     let departure: StationTiming
@@ -33,12 +34,13 @@ struct TrainV2: Identifiable, Codable {
     let observationType: String?
     let isCancelled: Bool
     let isCompleted: Bool
-    
+
     // Optional detailed stops (populated from detail endpoint)
     var stops: [StopV2]? = nil
-    
+
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
+        case journeyDate = "journey_date"
         case line
         case destination
         case departure

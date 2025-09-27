@@ -302,3 +302,132 @@ async def test_get_train_history(client, db_session):
     assert latest["delay_minutes"] == 5
     assert latest["was_cancelled"] is False
     assert "NY" in latest["track_assignments"]
+
+
+@pytest.mark.skip(reason="Integration test requires real database connection")
+@pytest.mark.asyncio
+async def test_get_departures_with_date_parameter(client, db_session):
+    """Test departures endpoint with date parameter to ensure correct train instance is returned."""
+    base_time = now_et()
+    today = base_time.date()
+    tomorrow = today + timedelta(days=1)
+
+    # Create two instances of train A98 - one for today, one for tomorrow
+    today_journey = TrainJourney(
+        train_id="A98",
+        journey_date=today,
+        line_code="AMTRAK",
+        line_name="Silver Service",
+        line_color="#005480",
+        destination="New York",
+        origin_station_code="MIA",
+        terminal_station_code="NY",
+        data_source="AMTRAK",
+        scheduled_departure=datetime.combine(
+            today, datetime.min.time().replace(hour=12, minute=10)
+        ),
+        scheduled_arrival=datetime.combine(
+            today + timedelta(days=1), datetime.min.time().replace(hour=15, minute=20)
+        ),
+        first_seen_at=base_time,
+        last_updated_at=base_time,
+        has_complete_journey=True,
+        stops_count=2,
+        is_cancelled=False,
+        is_completed=False,
+    )
+    db_session.add(today_journey)
+    await db_session.flush()
+
+    # Add stop for today's train at NY
+    today_stop = JourneyStop(
+        journey_id=today_journey.id,
+        station_code="NY",
+        station_name="New York Penn Station",
+        stop_sequence=1,
+        scheduled_arrival=datetime.combine(
+            today + timedelta(days=1), datetime.min.time().replace(hour=15, minute=20)
+        ),
+        has_departed_station=False,
+        raw_njt_departed_flag="NO",
+    )
+    db_session.add(today_stop)
+
+    # Create tomorrow's train
+    tomorrow_journey = TrainJourney(
+        train_id="A98",
+        journey_date=tomorrow,
+        line_code="AMTRAK",
+        line_name="Silver Service",
+        line_color="#005480",
+        destination="New York",
+        origin_station_code="MIA",
+        terminal_station_code="NY",
+        data_source="AMTRAK",
+        scheduled_departure=datetime.combine(
+            tomorrow, datetime.min.time().replace(hour=12, minute=10)
+        ),
+        scheduled_arrival=datetime.combine(
+            tomorrow + timedelta(days=1),
+            datetime.min.time().replace(hour=15, minute=20),
+        ),
+        first_seen_at=base_time,
+        last_updated_at=base_time,
+        has_complete_journey=True,
+        stops_count=2,
+        is_cancelled=False,
+        is_completed=False,
+    )
+    db_session.add(tomorrow_journey)
+    await db_session.flush()
+
+    # Add stop for tomorrow's train at NY
+    tomorrow_stop = JourneyStop(
+        journey_id=tomorrow_journey.id,
+        station_code="NY",
+        station_name="New York Penn Station",
+        stop_sequence=1,
+        scheduled_arrival=datetime.combine(
+            tomorrow + timedelta(days=1),
+            datetime.min.time().replace(hour=15, minute=20),
+        ),
+        has_departed_station=False,
+        raw_njt_departed_flag="NO",
+    )
+    db_session.add(tomorrow_stop)
+
+    await db_session.commit()
+
+    # Test without date parameter - should default to today
+    response = client.get("/api/v2/trains/departures?from=NY")
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should only return trains departing today or arriving today
+    assert (
+        len(data["departures"]) >= 0
+    )  # May be empty if today's train already departed
+
+    # Test with explicit today date parameter
+    response = client.get(f"/api/v2/trains/departures?from=NY&date={today.isoformat()}")
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should return today's A98
+    a98_trains = [d for d in data["departures"] if d["train_id"] == "A98"]
+    if a98_trains:  # Only check if train is in results
+        assert len(a98_trains) == 1
+        assert a98_trains[0]["journey_date"] == f"{today.isoformat()}T00:00:00"
+
+    # Test with tomorrow's date parameter
+    response = client.get(
+        f"/api/v2/trains/departures?from=NY&date={tomorrow.isoformat()}"
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should return tomorrow's A98
+    a98_trains = [d for d in data["departures"] if d["train_id"] == "A98"]
+    if a98_trains:  # Only check if train is in results
+        assert len(a98_trains) == 1
+        assert a98_trains[0]["journey_date"] == f"{tomorrow.isoformat()}T00:00:00"

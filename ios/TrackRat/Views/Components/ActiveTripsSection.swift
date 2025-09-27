@@ -63,7 +63,8 @@ struct ActiveTripsSection: View {
                         appState.navigationPath.append(
                             NavigationDestination.trainDetailsFlexible(
                                 trainNumber: activity.attributes.trainNumber,
-                                fromStation: activity.attributes.originStationCode
+                                fromStation: activity.attributes.originStationCode,
+                                journeyDate: nil  // TODO: Add journeyDate to LiveActivity attributes
                             )
                         )
                     } label: {

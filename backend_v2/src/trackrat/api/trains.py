@@ -56,6 +56,9 @@ async def get_departures(
     to_station: str | None = Query(
         None, alias="to", min_length=2, max_length=3, description="Arrival station code"
     ),
+    date: date | None = Query(
+        None, description="Journey date (YYYY-MM-DD, defaults to today)"
+    ),
     time_from: datetime | None = Query(
         None, description="Start time (defaults to now)"
     ),
@@ -70,13 +73,14 @@ async def get_departures(
         "get_departures_request",
         from_station=from_station,
         to_station=to_station,
+        date=date,
         time_from=time_from,
         time_to=time_to,
     )
 
     service = DepartureService()
     return await service.get_departures(
-        db, from_station, to_station, time_from, time_to, limit
+        db, from_station, to_station, date, time_from, time_to, limit
     )
 
 
