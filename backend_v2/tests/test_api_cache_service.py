@@ -58,7 +58,6 @@ async def test_cache_params_hash_missing_date_key():
     assert hash_with != hash_without
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
 @pytest.mark.asyncio
 async def test_get_cached_response_hit(db_session):
     """Test cache hit returns stored response."""
@@ -84,7 +83,6 @@ async def test_get_cached_response_hit(db_session):
     assert cached["metadata"]["count"] == 0
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
 @pytest.mark.asyncio
 async def test_get_cached_response_miss(db_session):
     """Test cache miss returns None."""
@@ -99,7 +97,6 @@ async def test_get_cached_response_miss(db_session):
     assert cached is None
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
 @pytest.mark.asyncio
 async def test_get_cached_response_expired(db_session):
     """Test expired cache entry returns None."""
@@ -130,18 +127,23 @@ async def test_get_cached_response_expired(db_session):
     assert cached is None
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
 @pytest.mark.asyncio
 async def test_precompute_departure_responses(db_session):
     """Test pre-computation creates cache entries for popular routes."""
     service = ApiCacheService()
 
     with patch.object(service.departure_service, "get_departures") as mock_get:
-        mock_response = AsyncMock()
-        mock_response.model_dump.return_value = {
-            "departures": [],
-            "metadata": {"count": 0},
-        }
+        from trackrat.models.api import DeparturesResponse
+
+        mock_response = DeparturesResponse(
+            departures=[],
+            metadata={
+                "from_station": {"code": "NY", "name": "New York Penn Station"},
+                "to_station": None,
+                "date": None,
+                "count": 0,
+            },
+        )
         mock_get.return_value = mock_response
 
         await service.precompute_departure_responses(db_session)
@@ -161,7 +163,6 @@ async def test_precompute_departure_responses(db_session):
         assert cached is not None
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
 @pytest.mark.asyncio
 async def test_cleanup_expired_cache(db_session):
     """Test cleanup removes expired entries."""

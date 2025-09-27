@@ -212,23 +212,22 @@ class TestAmtrakDatabaseIntegration:
                 # Now only keeps 1 snapshot per journey to prevent database growth
                 assert len(snapshots) == 1
 
-    @pytest.mark.skip(
-        reason="Test data date mismatch - creates journeys for 2025-07-05 but queries for today"
-    )
     async def test_journey_query_operations(self, db_session: AsyncSession):
         """Test database query operations for Amtrak journeys."""
         collector = AmtrakJourneyCollector()
         today = now_et().date()
 
-        # Create multiple journeys
+        # Create multiple journeys with today's date
         for i, train_num in enumerate(["2150", "2160", "2170"]):
+            # Use today's date with appropriate times
+            dep_time = now_et().replace(hour=14 + i, minute=30, second=0, microsecond=0)
             train_data = create_amtrak_train_data(
                 train_id=f"{train_num}-{i}",
                 train_num=train_num,
                 stations=[
                     create_amtrak_station_data(
                         code="NYP",
-                        sch_dep=f"2025-07-05T{14+i}:30:00-05:00",
+                        sch_dep=dep_time.isoformat(),
                         status="Departed",
                     )
                 ],

@@ -234,12 +234,15 @@ def e2e_client(test_settings, sync_engine):
 
     app.dependency_overrides[get_db] = get_e2e_test_db
 
-    # Disable scheduler for tests
+    # Disable scheduler and migrations for tests
     with (
         patch("trackrat.main.get_scheduler") as mock_scheduler,
         patch("trackrat.api.health.get_scheduler") as mock_health_scheduler,
         patch("trackrat.api.trains.NJTransitClient") as mock_njt_client,
+        patch("trackrat.main.init_database") as mock_init_db,
     ):
+        mock_init_db.return_value = AsyncMock()
+
         scheduler = Mock()
         scheduler.start = AsyncMock()
         scheduler.stop = AsyncMock()

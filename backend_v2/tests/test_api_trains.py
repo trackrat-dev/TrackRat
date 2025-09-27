@@ -23,7 +23,9 @@ async def test_get_departures_empty(client):
     assert data["metadata"]["count"] == 0
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
+@pytest.mark.skip(
+    reason="Requires e2e test setup - test creates data in real db but client uses mock db"
+)
 @pytest.mark.asyncio
 async def test_get_departures_with_data(client, db_session):
     """Test departures endpoint with train data."""
@@ -105,7 +107,9 @@ async def test_get_departures_with_data(client, db_session):
         assert data["departures"][0]["arrival"]["code"] == "TR"
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
+@pytest.mark.skip(
+    reason="Requires e2e test setup - test creates data in real db but client uses mock db"
+)
 @pytest.mark.asyncio
 async def test_get_train_details(client, db_session):
     """Test train details endpoint."""
@@ -227,7 +231,9 @@ async def test_get_train_not_found(client):
         assert "not found" in response.json()["detail"]
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
+@pytest.mark.skip(
+    reason="Requires e2e test setup - test creates data in real db but client uses mock db"
+)
 @pytest.mark.asyncio
 async def test_get_train_history(client, db_session):
     """Test train history endpoint."""
@@ -304,7 +310,9 @@ async def test_get_train_history(client, db_session):
     assert "NY" in latest["track_assignments"]
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
+@pytest.mark.skip(
+    reason="Requires e2e test setup - test creates data in real db but client uses mock db"
+)
 @pytest.mark.asyncio
 async def test_get_departures_with_date_parameter(client, db_session):
     """Test departures endpoint with date parameter to ensure correct train instance is returned."""
@@ -500,7 +508,9 @@ async def test_departures_no_cache_with_custom_params(client):
         mock_cache.store_cached_response.assert_not_called()
 
 
-@pytest.mark.skip(reason="Integration test requires real database connection")
+@pytest.mark.skip(
+    reason="Requires e2e test setup - test creates data in real db but client uses mock db"
+)
 @pytest.mark.asyncio
 async def test_departures_cache_integration(client, db_session):
     """Test end-to-end cache functionality for departures endpoint."""
