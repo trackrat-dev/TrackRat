@@ -8,7 +8,8 @@ struct TrainDetailsView: View {
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @Binding var sheetPosition: BottomSheetPosition
-    
+    @State private var isClosing = false
+
     let trainId: Int  // Keep for backwards compatibility
     
     // Legacy initializer for database ID
@@ -76,6 +77,7 @@ struct TrainDetailsView: View {
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)
         .trackRatNavigationBarStyle()
+        .toolbar(isClosing ? .hidden : .visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(alignment: .center, spacing: 12) {
@@ -103,13 +105,9 @@ struct TrainDetailsView: View {
                     }
                     
                     Button("Close") {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            // Trigger immediate visual feedback for the title bar
-                        }
-
-                        // Delay the actual navigation change to let title bar animate first
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            appState.navigationPath.removeLast(appState.navigationPath.count)
+                        isClosing = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            appState.navigationPath = NavigationPath()
                         }
                     }
                     .font(.body)
