@@ -3,7 +3,6 @@ import Combine
 import Sentry
 
 // MARK: - Clean API Service for V2 Backend
-@MainActor
 final class APIService: ObservableObject {
     static let shared = APIService()
     
