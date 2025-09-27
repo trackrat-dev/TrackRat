@@ -250,8 +250,8 @@ struct TrainV2: Identifiable, Codable {
         
         // Fallback: Use scheduled time with buffer for delays
         if let scheduledDeparture = getDepartureTime(fromStationCode: fromStationCode) {
-            // Allow 15 minutes past scheduled time for delays/late boarding
-            let departureWithBuffer = scheduledDeparture.addingTimeInterval(15 * 60)
+            // Allow 1 minute past scheduled time for delays/late boarding
+            let departureWithBuffer = scheduledDeparture.addingTimeInterval(1 * 60)
             return departureWithBuffer < now
         }
         
