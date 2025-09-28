@@ -541,9 +541,13 @@ struct SystemCongestionMapView: UIViewRepresentable {
         let desiredAggregatedState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
         let desiredIndividualState = Set(individualSegments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: String($0.congestionFactor)) })
 
+        // Check if route changed
+        let routeChanged = selectedRoute != context.coordinator.currentRouteHighlight
+
         // Early exit if nothing changed
         guard desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
-              desiredIndividualState != context.coordinator.currentIndividualOverlayState else {
+              desiredIndividualState != context.coordinator.currentIndividualOverlayState ||
+              routeChanged else {
             return
         }
 
@@ -641,13 +645,24 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
+        // Handle route highlight changes
+        if routeChanged {
+            // Remove old route highlights
+            let oldRouteOverlays = mapView.overlays.filter { $0 is RouteHighlightPolyline }
+            if !oldRouteOverlays.isEmpty {
+                mapView.removeOverlays(oldRouteOverlays)
+            }
+
+            // Add new route highlight if needed
+            if let route = selectedRoute {
+                addRouteHighlight(mapView: mapView, route: route)
+            }
+
+            context.coordinator.currentRouteHighlight = selectedRoute
+        }
+
         // Always clear and re-add annotations (they're lightweight)
         mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
-
-        // Add route highlight if needed
-        if let route = selectedRoute {
-            addRouteHighlight(mapView: mapView, route: route)
-        }
 
         // Update state
         context.coordinator.currentAggregatedOverlayState = desiredAggregatedState
@@ -756,7 +771,8 @@ struct SystemCongestionMapView: UIViewRepresentable {
         var currentAggregatedOverlayState: Set<OverlayIdentity> = []
         var aggregatedOverlayMap: [String: SystemCongestionPolyline] = [:]
         var currentIndividualOverlayState: Set<OverlayIdentity> = []
-        var individualOverlayMap: [String: IndividualJourneyPolyline] = [:] // Track when map content actually changes
+        var individualOverlayMap: [String: IndividualJourneyPolyline] = [:]
+        var currentRouteHighlight: TripPair?
         
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
