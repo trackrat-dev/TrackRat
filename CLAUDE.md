@@ -55,6 +55,31 @@ Using the test-runner agent ensures:
 - Occasional pleasantries are fine.
 - Feel free to ask many questions. If you are in doubt of my intent, don't guess. Ask.
 
+## Debugging UI Issues
+
+When the user reports a UI bug with specific screen text or titles:
+
+1. **ALWAYS search for the exact text first** before making assumptions about which file to edit
+   - Use `Grep` to find where the text appears: `grep -r "exact text from user" ios/`
+   - Multiple views may have similar functionality but different implementations
+
+2. **Confirm the correct file** with the user if there's any ambiguity
+   - Example: "Where would you like to leave from?" appears in TripSelectionView.swift
+   - Example: "Where would you like to go?" appears in DestinationPickerView.swift
+   - Don't assume based on similar code patterns or naming conventions
+
+3. **Test hypotheses systematically**
+   - If a fix works in one view but not another, they likely have different implementations
+   - Don't continue trying variations in the wrong file
+   - Re-verify you're editing the correct file when user reports the fix didn't work
+
+4. **When user says "it's not working"**
+   - Ask which specific screen/view they're testing on
+   - Verify you're editing the file that corresponds to that screen
+   - Search for the screen's title text to confirm the file
+
+This prevents wasting time editing incorrect files when the user has given clear indicators (screen titles, specific text) about which view has the problem.
+
 ## ABSOLUTE RULES:
 
 - NO PARTIAL IMPLEMENTATION
