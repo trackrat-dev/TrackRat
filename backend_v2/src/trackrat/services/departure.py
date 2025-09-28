@@ -44,9 +44,23 @@ class DepartureService:
         # Set default time range
         if time_from is None:
             query_date = date or now_et().date()
-            time_from = datetime.combine(query_date, datetime.min.time())
+            # Fix timezone bug: ensure time_from is timezone-aware in ET
+            from trackrat.utils.time import ET
+
+            time_from = ET.localize(datetime.combine(query_date, datetime.min.time()))
+        else:
+            # Ensure provided time_from is timezone-aware
+            from trackrat.utils.time import ensure_timezone_aware
+
+            time_from = ensure_timezone_aware(time_from)
+
         if time_to is None:
             time_to = time_from + timedelta(hours=24)
+        else:
+            # Ensure provided time_to is timezone-aware
+            from trackrat.utils.time import ensure_timezone_aware
+
+            time_to = ensure_timezone_aware(time_to)
 
         # Query journeys from both NJT and Amtrak data sources
         stmt = (

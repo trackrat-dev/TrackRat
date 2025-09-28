@@ -474,6 +474,10 @@ class TrainListViewModel: ObservableObject {
         self.apiService = apiService
     }
 
+    private func getCurrentDateInET() -> Date {
+        return Date()
+    }
+
     func loadTrains(destination: String, fromStationCode: String) async {
         self.currentDestination = destination
         self.currentFromStationCode = fromStationCode
@@ -494,7 +498,8 @@ class TrainListViewModel: ObservableObject {
             // Use injected apiService
             let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
-                toStationCode: toStationCode
+                toStationCode: toStationCode,
+                date: getCurrentDateInET()
             )
 
             print("🔍 DEBUG: API returned \(fetchedTrains.count) trains")
@@ -542,9 +547,10 @@ class TrainListViewModel: ObservableObject {
             // Use injected apiService
             let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
-                toStationCode: toStationCode
+                toStationCode: toStationCode,
+                date: getCurrentDateInET()
             )
-            
+
             let now = Date()
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             

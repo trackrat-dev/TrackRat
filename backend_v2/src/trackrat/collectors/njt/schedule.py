@@ -128,12 +128,19 @@ class NJTScheduleCollector:
                 stats["total_schedules"] += 1
 
                 try:
+                    # Fix timezone bug: ensure datetime is timezone-aware in ET
+                    from trackrat.utils.time import ET
+
+                    journey_start_time = ET.localize(
+                        datetime.combine(journey_date, datetime.min.time())
+                    )
+
                     result = await self._process_schedule_item(
                         session,
                         item,
                         station_code,
                         station_name or "",
-                        datetime.combine(journey_date, datetime.min.time()),
+                        journey_start_time,
                     )
 
                     if result == "new":
