@@ -44,7 +44,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                 schedule_response = await self.njt_client.get_train_schedule_with_stops(
                     station_code
                 )
-                trains_data = schedule_response.get("ITEMS", [])
+                trains_data = schedule_response.get("ITEMS") or []
                 for train_data in trains_data:
                     train_id = train_data.get("TRAIN_ID", "").strip()
                     if train_id and train_id not in discovered_ids:
@@ -123,7 +123,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
             schedule_response = await self.njt_client.get_train_schedule_with_stops(
                 station_code
             )
-            trains_data = schedule_response.get("ITEMS", [])
+            trains_data = schedule_response.get("ITEMS") or []
 
             # Track ALL train IDs for batch collection
             all_train_ids = []
