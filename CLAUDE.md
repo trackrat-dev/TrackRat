@@ -2,6 +2,10 @@
 
 > Think carefully and implement the most concise solution that changes as little code as possible.
 
+## Sentry Configuration
+
+- Default organization slug: `andy-fx`
+
 ## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
 
 ### 1. Always use the file-analyzer sub-agent when asked to read files.
