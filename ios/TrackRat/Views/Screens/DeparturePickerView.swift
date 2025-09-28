@@ -330,11 +330,6 @@ struct DeparturePickerView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white.opacity(0.6))
                 }
-                .onTapGesture {
-                    if let code = Stations.getStationCode(station) {
-                        selectDeparture(name: station, code: code)
-                    }
-                }
 
                 if let code = Stations.getStationCode(station) {
                     StationIconView(

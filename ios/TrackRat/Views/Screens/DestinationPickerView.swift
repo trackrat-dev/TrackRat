@@ -125,41 +125,41 @@ struct DestinationPickerView: View {
                         if isSearching {
                             VStack(spacing: 8) {
                                 ForEach(searchResults, id: \.self) { station in
-                                    HStack {
-                                        // Main station button
+                                    Button {
+                                        selectDestination(station)
+                                    } label: {
                                         HStack {
-                                            Text(Stations.displayName(for: station))
-                                                .font(.body)
-                                                .foregroundColor(.white)
-                                            Spacer()
-                                        }
-                                        .onTapGesture {
-                                            selectDestination(station)
-                                        }
-
-                                        // Station icon - shows home/work icon or interactive heart
-                                        if let code = Stations.getStationCode(station) {
-                                            StationIconView(
-                                                stationCode: code,
-                                                isStationFavorited: appState.isStationFavorited(code: code)
-                                            ) {
-                                                withAnimation(.easeInOut(duration: 0.2)) {
-                                                    appState.toggleFavoriteStation(code: code, name: station)
-                                                }
-                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            HStack {
+                                                Text(Stations.displayName(for: station))
+                                                    .font(.body)
+                                                    .foregroundColor(.white)
+                                                Spacer()
                                             }
-                                            .padding(.leading, 8)
+
+                                            if let code = Stations.getStationCode(station) {
+                                                StationIconView(
+                                                    stationCode: code,
+                                                    isStationFavorited: appState.isStationFavorited(code: code)
+                                                ) {
+                                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                                        appState.toggleFavoriteStation(code: code, name: station)
+                                                    }
+                                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                }
+                                                .padding(.leading, 8)
+                                            }
                                         }
+                                        .padding()
+                                        .background(
+                                            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                                .fill(TrackRatTheme.Colors.surfaceCard)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                                                )
+                                        )
                                     }
-                                    .padding()
-                                    .background(
-                                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                            .fill(TrackRatTheme.Colors.surfaceCard)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                                    .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
-                                            )
-                                    )
+                                    .buttonStyle(.plain)
                                     .padding(.horizontal)
                                 }
                             }
