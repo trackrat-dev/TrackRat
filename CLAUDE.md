@@ -2,9 +2,19 @@
 
 > Think carefully and implement the most concise solution that changes as little code as possible.
 
+## Project Overview
+
+TrackRat is a multi-platform transit tracking application with:
+- **Backend**: Python (FastAPI + PostgreSQL + APScheduler) in `backend_v2/`
+- **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
+- **Android**: Kotlin (Jetpack Compose) in `android/`
+- **Infrastructure**: Terraform (Google Cloud Platform) in `infra/`
+
 ## Sentry Configuration
 
 - Default organization slug: `andy-fx`
+- Full APM with traces/profiles sampling
+- Correlation ID tracking across requests
 
 ## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
 
@@ -41,6 +51,40 @@ Using the test-runner agent ensures:
 - Do not move on to the next test until the current test is complete.
 - If the test fails, consider checking if the test is structured correctly before deciding we need to refactor the codebase.
 - Tests to be verbose so we can use them for debugging.
+
+**Test Commands:**
+```bash
+# Backend
+poetry run pytest                    # All tests
+poetry run pytest --cov=trackrat    # With coverage
+poetry run pytest tests/unit/        # Unit only
+
+# iOS
+xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'
+
+# Android
+./gradlew test
+```
+
+### Architecture Patterns
+
+**Backend Data Collection (Multi-Phase):**
+1. Schedule Generation (daily) - creates SCHEDULED records
+2. Discovery (30min) - updates to OBSERVED when trains appear
+3. Collection (15min) - fetches full journey details
+4. JIT Updates (on-demand) - refreshes stale data (>60s)
+5. Validation (hourly) - ensures coverage
+
+**Key Design Principles:**
+- Single Journey Record: One database row per train per day
+- Horizontal Scaling: Database-coordinated scheduler with row-level locking
+- API Response Caching: 15-minute pre-computed responses for congestion endpoints
+
+**iOS Architecture:**
+- MVVM embedded within view files (no separate ViewModel files)
+- Singleton services pattern (`APIService.shared`, `LiveActivityService.shared`)
+- `@StateObject AppState` for global state management
+- NavigationPath for type-safe navigation
 
 
 ## Tone and Behavior
@@ -79,6 +123,68 @@ When the user reports a UI bug with specific screen text or titles:
    - Search for the screen's title text to confirm the file
 
 This prevents wasting time editing incorrect files when the user has given clear indicators (screen titles, specific text) about which view has the problem.
+
+## Development Workflows
+
+### Backend Development
+```bash
+cd backend_v2
+poetry install
+alembic upgrade head
+
+# Run locally
+poetry run uvicorn trackrat.main:app --reload
+
+# Lint & type check
+poetry run black . && poetry run ruff check . && poetry run mypy src/
+# Or use: make lint
+```
+
+### iOS Development
+```bash
+cd ios
+open TrackRat.xcodeproj
+# Build: Cmd+B, Run: Cmd+R
+
+# CLI build
+xcodebuild -scheme TrackRat -sdk iphonesimulator build \
+  -destination 'platform=iOS Simulator,name=iPhone 16'
+```
+
+### Infrastructure Management
+```bash
+cd infra
+make test              # ALWAYS run first
+make staging-plan      # Review changes
+make staging-apply     # Deploy to staging
+make prod-plan         # Review prod changes
+make prod-apply        # Deploy to production
+```
+
+**CRITICAL**: Always run `make test` before applying infrastructure changes.
+
+## Key File Locations
+
+- Backend services: `backend_v2/src/trackrat/services/`
+- Backend API endpoints: `backend_v2/src/trackrat/api/`
+- Backend models: `backend_v2/src/trackrat/models/`
+- Backend tests: `backend_v2/tests/`
+- iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`
+- iOS services: `ios/TrackRat/Services/`
+- iOS models: `ios/TrackRat/Models/`
+- iOS tests: `ios/TrackRatTests/`
+- Android app: `android/app/src/main/java/com/trackrat/android/`
+- Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)
+
+## Common API Endpoints
+
+```
+/api/v2/trains/departures
+/api/v2/trains/{train_id}
+/api/v2/routes/congestion
+/api/v2/live-activities/register
+/health
+```
 
 ## ABSOLUTE RULES:
 
