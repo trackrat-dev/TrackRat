@@ -12,7 +12,9 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **UserNotifications**: Push notifications for Live Activity updates
 - **Combine**: Reactive data flow with automatic UI updates
 - **Async/Await**: Clean asynchronous API calls
-- **MVVM Pattern**: ViewModels for complex screens
+- **MapKit**: Map visualization for congestion and train tracking
+- **Sentry**: Error tracking and performance monitoring
+- **MVVM Pattern**: Embedded ViewModels within view files (no separate ViewModel files)
 
 ### State Management
 - **@StateObject AppState**: Global app state for navigation, user data, and Live Activities
@@ -23,15 +25,26 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 
 ## Screen Architecture
 
-### 1. **TripSelectionView** (Start Screen)
+### 1. **ContentView** (App Entry Point)
+- Routes to MapContainerView as main interface
+- Handles initial app setup and navigation
+
+### 2. **MapContainerView** (Primary Interface)
+- Full-screen map with real-time train positions
+- Bottom sheet with multiple positions (.collapsed, .medium, .large)
+- Integrated journey planning and Live Activity management
+- Congestion visualization overlay
+- Coordinated scrolling between map and sheet content
+
+### 3. **TripSelectionView** (Journey Planning Screen)
 - Shows active Live Activities at the top with journey progress
+- RatSense AI suggestions based on time of day and user patterns
 - Recent trips list with quick selection
 - "Add New Trip" button for new journeys
-- "Search by Train Number" for direct lookup
 - Glassmorphism design with dark mode preference
 - Orange accent color throughout
 
-### 2. **DeparturePickerView**
+### 4. **DeparturePickerView**
 - Origin station selection for departures
 - Primary stations: NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark
 - Additional Southeast Amtrak stations: Charlotte, Raleigh, Atlanta, Miami, Jacksonville, Tampa, Orlando, and more
@@ -39,14 +52,14 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - Glassmorphism cards with owl background
 - Navigates to destination picker after selection
 
-### 3. **DestinationPickerView** 
+### 5. **DestinationPickerView** 
 - Recent destinations with UserDefaults persistence
 - Real-time search with Stations.search()
 - Shows selected departure station in header
 - Haptic feedback on selection
 - Gradient background with glassmorphism
 
-### 4. **TrainListView**
+### 6. **TrainListView**
 - 30-second auto-refresh with Timer.publish
 - Pull-to-refresh gesture
 - Boarding status highlighting with orange theme
@@ -56,7 +69,7 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - Shows departure and destination in header
 - Live Activity toggle buttons for each train
 
-### 5. **TrainDetailsView**
+### 7. **TrainDetailsView**
 - Real-time status updates with consolidated train data
 - Journey visualization with stop indicators
 - Boarding state with orange theming
@@ -66,17 +79,54 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - Background refresh when Live Activity is active
 - Flexible navigation support (by ID or train number)
 
-### 6. **HistoricalDataView**
+### 8. **HistoricalDataView**
 - Delay performance bars
 - Track usage visualization
 - Three-tier analytics (train/line/destination)
 - Origin-filtered historical data
 - Modal presentation from train details
 
-### 7. **TrainNumberSearchView**
-- Direct train lookup by number
-- Origin-aware search results
-- Integrated into home screen flow
+### 9. **CongestionMapView**
+- Network-wide congestion visualization
+- Real-time occupied tracks at major stations
+- Segment-based train density display
+- Interactive segment selection for detailed train lists
+- Color-coded congestion levels
+- Time window filtering (1-24 hours)
+
+### 10. **OnboardingView**
+- Multi-step user onboarding flow
+- Intro video with automatic progression
+- Home/work station configuration
+- Favorite stations setup
+- Privacy consent (Sentry integration)
+- Video fallback handling for errors
+
+### 11. **PennStationGuideView**
+- Interactive Penn Station navigation guide
+- YouTube video integration with embedded player
+- Swipeable instruction cards
+- Separate guides for NJ Transit and Amtrak platforms
+- Visual aids showing exact station locations
+- Platform-specific navigation strategies
+
+### 12. **AdvancedConfigurationView**
+- Server environment selection (Production/Staging/Local)
+- Home/work station management
+- Favorite stations configuration
+- Developer debug tools
+- Cache clearing utilities
+- Backend health check testing
+
+### 13. **MyProfileView**
+- User preferences and settings
+- Account management placeholder
+- Quick access to advanced configuration
+
+### 14. **FavoriteStationsView**
+- Add/remove favorite stations
+- Quick access for journey planning
+- Persistent storage across app launches
 
 ## Live Activities
 
@@ -129,17 +179,26 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **Eastern Time Zone**: Automatic conversion for all timestamps
 
 ### Endpoints Used (V2 API)
-- `GET /v2/trains/departures?from=X&to=Y&limit=50` - Search trains between stations
-- `GET /v2/trains/{train_id}?date=YYYY-MM-DD&refresh=true` - Train details with optional forced refresh
-- `GET /v2/routes/history?from_station=X&to_station=Y&data_source=NJT&days=30` - Route historical performance data
+- `GET /v2/trains/departures?from=X&to=Y&limit=100&date=YYYY-MM-DD` - Search trains between stations
+- `GET /v2/trains/{id}?date=YYYY-MM-DD&include_predictions=true&from_station=X` - Train details with predictions
+- `GET /v2/trains/{id}/history?days=365&from_station=X&to_station=Y&include_route_trains=true` - Historical train data
+- `GET /v2/routes/history?from_station=X&to_station=Y&data_source=NJT&days=30` - Route historical performance
+- `GET /v2/trains/stations/{code}/tracks/occupied` - Real-time occupied tracks at station
+- `GET /v2/routes/congestion?time_window_hours=1&max_per_segment=100&data_source=X` - Network congestion data
+- `GET /v2/routes/segments/{from}/{to}/trains?max_trains=X&data_source=Y` - Segment-specific train details
+- `GET /v2/predictions/track?station_code=X&train_id=Y` - Owl track predictions
 - `POST /v2/live-activities/register` - Register Live Activity for updates
 - `DELETE /v2/live-activities/{push_token}` - Unregister Live Activity
+- `GET /health` - Backend health check for wake-up service
 
-### New API Features
+### API Features
 - **Consolidated Train Data**: Merges data from multiple sources (Amtrak, NJTransit)
 - **Real-time Position**: Current train location with segment progress
 - **Enhanced Track Assignment**: Source attribution for track predictions
 - **Flexible Train Lookup**: Support for both numeric IDs and train numbers
+- **Multi-Environment Support**: Production, Staging, and Local development environments
+- **Sentry Integration**: All API calls tracked with transactions for performance monitoring
+- **Backend Wake-up**: 15-minute cached health checks to warm serverless backends
 
 ## Data Models
 
@@ -180,8 +239,15 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 
 ### Navigation Types
 - **NavigationDestination**: Enhanced enum with flexible train details
-  - `.trainDetailsFlexible(trainNumber: String, fromStation: String?)`
-  - Support for both train IDs and train numbers
+  - `.departureSelector` - Departure station picker
+  - `.destinationPicker` - Destination station picker
+  - `.trainList(destination: String)` - List of trains for route
+  - `.trainDetails(trainId: Int)` - Legacy train details by ID
+  - `.trainDetailsFlexible(trainNumber: String, fromStation: String?, journeyDate: Date?)` - Flexible train lookup
+  - `.advancedConfiguration` - Developer settings
+  - `.myProfile` - User profile
+  - `.congestionMap` - Network congestion view
+  - `.favoriteStations` - Favorite stations management
 
 ### API Response Types
 - **OriginStation**: Train origin information
@@ -199,6 +265,17 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **DelayStats**: Performance percentages
 - **TrackStats**: Usage distribution
 - **HistoricalData**: Combined analytics
+
+### Configuration Types
+- **ServerEnvironment**: Multi-environment support (production, staging, local)
+- **FavoriteStation**: User's saved stations with codes and names
+- **JourneyContext**: User-specific journey information for calculations
+
+### Map & Congestion Types
+- **CongestionSegment**: Route segment with train density
+- **SegmentTrain**: Train information for congestion visualization
+- **OccupiedTrack**: Real-time track occupancy at stations
+- **MapRegion**: Map viewport and positioning
 
 ## UI/UX Patterns
 
@@ -290,6 +367,19 @@ The app provides sophisticated real-time journey visualization through multiple 
 
 ## Services
 
+### Core Services Overview
+All services follow the singleton pattern with `shared` instance for app-wide access. Services are organized in `/TrackRat/Services/`:
+
+1. **APIService** - V2 API integration with Sentry monitoring
+2. **LiveActivityService** - Live Activities lifecycle management
+3. **StorageService** - UserDefaults wrapper with type safety
+4. **RatSenseService** - AI journey prediction engine
+5. **BackendWakeupService** - Backend warming with caching
+6. **DeepLinkService** - URL scheme handling
+7. **ShareService** - Deep link sharing functionality
+8. **ThemeManager** - Theme configuration (currently hardcoded to dark)
+9. **StaticTrackDistributionService** - Track usage analytics
+
 ### LiveActivityService
 - **Singleton Pattern**: Shared instance for app-wide access
 - **Core Functionality**:
@@ -323,11 +413,47 @@ The app provides sophisticated real-time journey visualization through multiple 
   - `migrateDestinationsToTrips()`: One-time migration
 
 ### APIService
-- **Consolidated Train Support**: New endpoints for multi-source data
+- **Consolidated Train Support**: V2 endpoints for multi-source data
 - **Flexible Lookups**: Support for both train IDs and numbers
 - **Date Handling**: Multiple ISO8601 formats with fractional seconds
 - **Eastern Time Zone**: Automatic conversion for all timestamps
 - **Error Recovery**: Typed errors with user-friendly messages
+- **Sentry Integration**: Performance monitoring for all API calls
+- **Environment Switching**: Dynamic base URL based on ServerEnvironment
+- **Timeout Handling**: Configurable timeouts per endpoint
+
+### RatSenseService
+- **AI Journey Predictions**: Intelligent trip suggestions based on user behavior
+- **Time-Based Detection**: Morning (5-9am) and evening (1-8pm) commute patterns
+- **Home/Work Learning**: Automatic detection of frequent routes
+- **Recent Context**: Suggests same route within 20 minutes of last search
+- **Return Journey**: Suggests reverse route 2-8 hours after Live Activity
+- **Live Activity Integration**: Records journey patterns from active trips
+- **Persistence**: Stores learned patterns in UserDefaults
+
+### BackendWakeupService
+- **Health Check API**: Periodic backend warming to reduce cold starts
+- **15-Minute Cache**: Prevents redundant wake-up requests
+- **Environment-Aware**: Separate caches for production/staging/local
+- **Smart Retry Logic**: Clears cache on failures for immediate retry
+- **Scene Phase Integration**: Automatically wakes backend on app activation
+- **Async Operation**: Non-blocking health checks with proper error handling
+
+### DeepLinkService & ShareService
+- **URL Scheme Support**: `trackrat://` custom scheme
+- **Train Details**: `trackrat://train/{trainNumber}` for direct train lookup
+- **Journey Search**: `trackrat://journey?from={station}&to={station}` for route planning
+- **Sentry Tracking**: All deep link interactions tracked with transactions
+- **Share Sheet Integration**: Generate deep links for sharing trips
+- **Context Preservation**: Maintains origin station and journey date in links
+
+### ThemeManager
+- **Centralized Theme System**: Complete design system in TrackRatTheme.swift
+- **Color Palette**: Semantic color naming with dark mode support
+- **Typography Scale**: Consistent font sizing and weights
+- **Spacing System**: Standard spacing values (8pt grid)
+- **Corner Radius**: Consistent border radius values
+- **View Extensions**: Convenient modifiers for common patterns
 
 ## Accessibility
 
@@ -338,10 +464,12 @@ The app provides sophisticated real-time journey visualization through multiple 
 
 ## Security & Privacy
 
-- No user tracking or analytics
-- Local storage only for user preferences and recent trips
-- Push notifications only for active Live Activities
-- No external dependencies or third-party SDKs
+- **Error Tracking**: Sentry integration with user consent (opt-in)
+- **Session Replay**: 100% sampling for debugging (only with consent)
+- **Local Storage**: UserDefaults only for preferences and recent trips
+- **Push Notifications**: Only for active Live Activities
+- **No User Accounts**: No server-side user profiles or authentication
+- **Privacy-First**: User can decline Sentry tracking in onboarding
 - **Permissions Required**:
   - Push Notifications (optional, for Live Activity updates)
   - Live Activities (iOS 16.1+)
@@ -363,11 +491,29 @@ The app provides sophisticated real-time journey visualization through multiple 
 
 ### Build Configuration
 - **Bundle Identifier**: `net.trackrat.TrackRat`
+- **Version**: 1.6 (Build 2)
 - **Development Team**: Set in Xcode project settings
 - **Code Signing**: Automatic with development certificate
-- **Capabilities**: 
+- **Capabilities**:
   - Push Notifications
   - Background Modes (Background fetch, Remote notifications)
+  - Associated Domains (applinks:trackrat.net, applinks:www.trackrat.net)
+  - App Groups (group.net.trackrat.TrackRat)
+
+### Entitlements
+```xml
+<key>aps-environment</key>
+<string>development</string>
+<key>com.apple.security.application-groups</key>
+<array>
+    <string>group.net.trackrat.TrackRat</string>
+</array>
+<key>com.apple.developer.associated-domains</key>
+<array>
+    <string>applinks:trackrat.net</string>
+    <string>applinks:www.trackrat.net</string>
+</array>
+```
 
 ### Development Commands
 ```bash
@@ -425,12 +571,65 @@ xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
 - **Previews**: Provide meaningful preview data for all views
 
 ### Project Organization
-- **Views/**: All SwiftUI views organized by feature
-- **Models/**: Data models and extensions
-- **Services/**: Singletons and service classes
-- **ViewModels/**: Complex screen logic separated from views
+- **App/**: TrackRatApp.swift with AppState and Sentry setup
+- **Views/Screens/**: All screen-level SwiftUI views
+- **Views/Components/**: Reusable UI components
+- **Models/**: Data models, API responses, and extensions
+- **Services/**: Singleton service classes
+- **Theme/**: TrackRatTheme.swift with design system
 - **Utilities/**: Helper functions and extensions
-- **Resources/**: Assets, Info.plist, and other resources
+- **Shared/**: Shared types between app and widget (Stations, LiveActivityModels)
+- **Resources/**: Assets, Info.plist, videos, and other resources
+
+**Note**: ViewModels are embedded within their respective view files, not in separate files.
+
+## Additional Features & Components
+
+### Congestion Mapping System
+- **Real-time Network Visualization**: Map-based view of train density across the network
+- **Segment Analysis**: Click segments to see detailed train lists
+- **Occupied Tracks**: View which tracks are currently occupied at major stations
+- **Time Window Filtering**: Adjust congestion view from 1-24 hours
+- **Color-Coded Density**: Visual representation of crowded vs. empty segments
+- **Data Source Filtering**: View Amtrak, NJ Transit, or combined data
+- **Map Integration**: Full MapKit integration with coordinate-based visualization
+
+### Video Integration
+- **Onboarding Video**: Intro video with AVPlayer integration
+- **YouTube Embeds**: Penn Station guide uses YouTube links with thumbnails
+- **Fallback Handling**: Graceful degradation when videos fail to load
+- **Automatic Progression**: Onboarding advances after video completion
+- **Custom Video Player**: VideoPlayerView component for native playback
+
+### Sentry Integration Details
+- **Environment Tags**: Separate tracking for dev/staging/production
+- **Transaction Tracking**: Performance monitoring for API calls and deep links
+- **Session Replay**: Visual debugging with 100% sampling (opt-in)
+- **Error Breadcrumbs**: Detailed error context for debugging
+- **User Consent**: Opt-in during onboarding with SentryConsentView
+- **Performance Monitoring**: Track API response times and app performance
+
+### Bottom Sheet System
+- **Three Positions**: Collapsed (map focus), Medium (peek), Large (full content)
+- **Drag Gestures**: Smooth dragging with spring animations
+- **Coordinated Scrolling**: SheetAwareScrollView syncs with sheet position
+- **Haptic Feedback**: Position changes trigger haptic response
+- **State Persistence**: Sheet position maintained during navigation
+- **Flexible Content**: Can host any SwiftUI view content
+
+### UI Component Library
+- **ActiveTripsSection**: Horizontal scroll of active Live Activities
+- **LiveActivityControls**: Start/stop buttons with status indicators
+- **LiveActivityDebugView**: Developer tools for testing Live Activity states
+- **BottomSheetView**: Reusable draggable bottom sheet
+- **SheetAwareScrollView**: Smart scrolling coordinated with sheets
+- **TrackRatLoadingView**: Custom loading animation with mascot
+- **VideoPlayerView**: Native video playback component
+- **OnboardingVideoView**: Intro video with completion handling
+- **StationButton**: Station selection button component
+- **StationRow**: Station list row component
+- **JourneyCongestionMapView**: Journey-specific congestion visualization
+- **TrackRatMascot**: Animated mascot character
 
 ## Recent Enhancements
 
@@ -565,8 +764,8 @@ Live Activities now use the enhanced data for better tracking:
 1. **Offline Support**: No caching for offline viewing
 2. **Accessibility**: Limited VoiceOver support in custom components
 3. **Localization**: No support for multiple languages
-4. **Analytics**: No usage tracking for feature improvement
-5. **Crash Reporting**: No automated crash collection
+4. **User Analytics**: Only Sentry error tracking, no feature usage analytics
+5. **Light Theme**: Theme system exists but only dark mode implemented
 
 ### Code Quality Issues
 1. **Test Coverage**: <10% test coverage across the codebase
@@ -578,7 +777,8 @@ Live Activities now use the enhanced data for better tracking:
 ### Security Concerns
 1. **API Keys**: No certificate pinning for API calls
 2. **Token Storage**: Push tokens stored in memory without encryption
-3. **Deep Links**: No validation of deep link parameters
+3. **Deep Links**: Limited validation of deep link parameters
+4. **Sentry DSN**: Embedded in app binary (standard practice but visible)
 
 ## Technical Debt
 
