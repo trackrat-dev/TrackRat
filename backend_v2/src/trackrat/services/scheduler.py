@@ -636,10 +636,14 @@ class SchedulerService:
             for station_result in discovery_result.get("station_results", {}).values():
                 for train_id in station_result.get("new_train_ids", []):
                     # Get the journey record
+                    # Look for journeys from today or tomorrow to handle midnight edge case
+                    current_date = now_et().date()
                     stmt = select(TrainJourney).where(
                         and_(
                             TrainJourney.train_id == train_id,
-                            TrainJourney.journey_date == now_et().date(),
+                            TrainJourney.journey_date.in_(
+                                [current_date, current_date + timedelta(days=1)]
+                            ),
                             TrainJourney.data_source == "NJT",
                         )
                     )

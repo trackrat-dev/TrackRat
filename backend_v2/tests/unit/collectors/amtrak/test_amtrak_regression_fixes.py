@@ -58,7 +58,7 @@ class TestAmtrakTimezoneDateFix:
         # Mock current time to be during normal hours (no fallback)
         mock_et = ET.localize(datetime(2025, 9, 30, 15, 0, 0))  # 3 PM ET
 
-        with patch('trackrat.utils.time.now_et', return_value=mock_et):
+        with patch("trackrat.utils.time.now_et", return_value=mock_et):
             with patch.object(client, "_is_cache_valid", return_value=False):
                 # Mock the _session attribute directly
                 mock_session = MagicMock()
@@ -104,7 +104,7 @@ class TestAmtrakTimezoneDateFix:
         # Mock current time to be 8:30 PM ET
         mock_et = ET.localize(datetime(2025, 9, 30, 20, 30, 0))
 
-        with patch('trackrat.utils.time.now_et', return_value=mock_et):
+        with patch("trackrat.utils.time.now_et", return_value=mock_et):
             with patch.object(client, "_is_cache_valid", return_value=False):
                 # Mock the _session attribute directly
                 mock_session = MagicMock()
@@ -112,7 +112,9 @@ class TestAmtrakTimezoneDateFix:
 
                 # First call returns minimal data (dated API)
                 mock_response_dated = MagicMock()
-                mock_response_dated.json.return_value = {}  # Empty response triggers fallback
+                mock_response_dated.json.return_value = (
+                    {}
+                )  # Empty response triggers fallback
                 mock_response_dated.raise_for_status = MagicMock()
 
                 # Second call returns full data (dateless API)
@@ -124,7 +126,9 @@ class TestAmtrakTimezoneDateFix:
                 mock_response_dateless.raise_for_status = MagicMock()
 
                 # Configure mock to return different responses
-                mock_session.get = AsyncMock(side_effect=[mock_response_dated, mock_response_dateless])
+                mock_session.get = AsyncMock(
+                    side_effect=[mock_response_dated, mock_response_dateless]
+                )
                 mock_session.aclose = AsyncMock()
 
                 # Get trains
@@ -165,7 +169,9 @@ class TestAmtrakTimezoneDateFix:
             # First call fails (dated API), second succeeds
             mock_session.get = AsyncMock(
                 side_effect=[
-                    httpx.HTTPStatusError("API Error", request=None, response=MagicMock(status_code=500)),
+                    httpx.HTTPStatusError(
+                        "API Error", request=None, response=MagicMock(status_code=500)
+                    ),
                     mock_response_success,
                 ]
             )
@@ -188,7 +194,7 @@ class TestAmtrakTimezoneDateFix:
         # Mock current time to be 3 PM ET
         mock_et = ET.localize(datetime(2025, 9, 30, 15, 0, 0))
 
-        with patch('trackrat.utils.time.now_et', return_value=mock_et):
+        with patch("trackrat.utils.time.now_et", return_value=mock_et):
             with patch.object(client, "_is_cache_valid", return_value=False):
                 # Mock the _session attribute directly
                 mock_session = MagicMock()
@@ -328,7 +334,9 @@ class TestAmtrakEdgeCases:
             has_departed = status == "Departed" and (
                 not future_time or future_time <= now_et()
             )
-            assert has_departed == False, f"Status '{status}' should not mark as departed"
+            assert (
+                has_departed == False
+            ), f"Status '{status}' should not mark as departed"
 
 
 class TestAmtrakRealWorldScenarios:
@@ -342,7 +350,7 @@ class TestAmtrakRealWorldScenarios:
         # Mock 8:23 PM ET on September 30, 2025
         mock_et = ET.localize(datetime(2025, 9, 30, 20, 23, 0))
 
-        with patch('trackrat.utils.time.now_et', return_value=mock_et):
+        with patch("trackrat.utils.time.now_et", return_value=mock_et):
             with patch.object(client, "_is_cache_valid", return_value=False):
                 # Mock the _session attribute directly
                 mock_session = MagicMock()
@@ -363,7 +371,9 @@ class TestAmtrakRealWorldScenarios:
                 }
                 mock_response_dateless.raise_for_status = MagicMock()
 
-                mock_session.get = AsyncMock(side_effect=[mock_response_dated, mock_response_dateless])
+                mock_session.get = AsyncMock(
+                    side_effect=[mock_response_dated, mock_response_dateless]
+                )
                 mock_session.aclose = AsyncMock()
 
                 # Get trains - should fallback and find evening trains
@@ -382,7 +392,7 @@ class TestAmtrakRealWorldScenarios:
         # Scheduled time: 6:29 PM ET (12 minutes in future)
         scheduled_time = ET.localize(datetime(2025, 9, 30, 18, 29, 0))
 
-        with patch('trackrat.utils.time.now_et', return_value=current_time):
+        with patch("trackrat.utils.time.now_et", return_value=current_time):
             # Apply the validation logic
             has_departed = "Departed" == "Departed" and (
                 not scheduled_time or scheduled_time <= current_time
@@ -396,7 +406,7 @@ class TestAmtrakRealWorldScenarios:
         # Now test 6 minutes after scheduled departure
         later_time = ET.localize(datetime(2025, 9, 30, 18, 35, 0))
 
-        with patch('trackrat.utils.time.now_et', return_value=later_time):
+        with patch("trackrat.utils.time.now_et", return_value=later_time):
             has_departed = "Departed" == "Departed" and (
                 not scheduled_time or scheduled_time <= later_time
             )

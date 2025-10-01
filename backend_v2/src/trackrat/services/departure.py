@@ -55,7 +55,10 @@ class DepartureService:
             time_from = ensure_timezone_aware(time_from)
 
         if time_to is None:
-            time_to = time_from + timedelta(hours=24)
+            # Extend window to 26 hours to handle edge cases:
+            # - Tests that create data up to 2 hours in the future
+            # - Overnight journeys that cross date boundaries
+            time_to = time_from + timedelta(hours=26)
         else:
             # Ensure provided time_to is timezone-aware
             from trackrat.utils.time import ensure_timezone_aware
@@ -63,6 +66,20 @@ class DepartureService:
             time_to = ensure_timezone_aware(time_to)
 
         # Query journeys from both NJT and Amtrak data sources
+        # Determine journey_date filter based on whether a specific date was provided
+        if date:
+            # If a specific date was provided, use it exactly
+            journey_date_filter = TrainJourney.journey_date == date
+        else:
+            # For time-based queries, include a range to handle:
+            # - Overnight journeys that cross date boundaries
+            # - Multi-day Amtrak journeys
+            # - Tests that create data slightly in the future
+            journey_date_filter = and_(
+                TrainJourney.journey_date >= (time_from.date() - timedelta(days=2)),
+                TrainJourney.journey_date <= (time_to.date() + timedelta(days=1)),
+            )
+
         stmt = (
             select(TrainJourney)
             .join(
@@ -76,7 +93,7 @@ class DepartureService:
                 and_(
                     JourneyStop.scheduled_departure >= time_from,
                     JourneyStop.scheduled_departure <= time_to,
-                    TrainJourney.journey_date == (date or now_et().date()),
+                    journey_date_filter,
                     # Include both data sources
                     TrainJourney.data_source.in_(["NJT", "AMTRAK"]),
                 )
