@@ -29,7 +29,7 @@ class AmtrakClient(BaseClient):
         Args:
             timeout: Request timeout in seconds
         """
-        self.base_url = "https://api-v3.amtraker.com/v3/trains"
+        # Don't set base_url in init anymore - will build URL with date
         self.timeout = timeout
         self._session: httpx.AsyncClient | None = None
 
@@ -79,7 +79,10 @@ class AmtrakClient(BaseClient):
 
     @track_api_call(api_name="amtrak", endpoint="all_trains")
     async def get_all_trains(self) -> dict[str, list[AmtrakTrainData]]:
-        """Fetch all active trains from Amtrak API.
+        """Fetch all active trains from Amtrak API for the current ET date.
+
+        This explicitly uses ET date to avoid timezone mismatch issues where
+        after 8 PM ET, the API would return trains for the UTC date (next day).
 
         Returns:
             Dictionary mapping train numbers to lists of train data
@@ -89,59 +92,89 @@ class AmtrakClient(BaseClient):
             logger.debug("returning_cached_amtrak_data")
             return self._cache
 
-        try:
-            logger.info("fetching_amtrak_trains", url=self.base_url)
+        # Use ET date explicitly to avoid UTC/ET mismatch after 8 PM
+        from trackrat.utils.time import now_et
+        current_et = now_et()
+        current_et_date = current_et.date()
 
-            response = await self.session.get(self.base_url)
+        # Build URL with explicit date
+        url = f"https://api-v3.amtraker.com/v3/trains/{current_et_date}"
+
+        raw_data = None
+
+        try:
+            logger.info("fetching_amtrak_trains_with_date", url=url, date=str(current_et_date))
+
+            response = await self.session.get(url)
             response.raise_for_status()
 
             raw_data = response.json()
 
-            # Parse the response into our models
-            parsed_data = {}
-            for train_num, train_list in raw_data.items():
-                if not isinstance(train_list, list):
+            # If we get empty or minimal data, try without date
+            # (but only during the "danger zone" of 8 PM - midnight ET)
+            if (not raw_data or len(raw_data) < 10) and 20 <= current_et.hour < 24:
+                logger.warning(
+                    "dated_api_returned_minimal_data",
+                    train_count=len(raw_data) if raw_data else 0,
+                    trying_dateless=True
+                )
+                # Try dateless API as fallback
+                url = "https://api-v3.amtraker.com/v3/trains"
+                response = await self.session.get(url)
+                response.raise_for_status()
+                raw_data = response.json()
+
+        except Exception as e:
+            # Fallback to dateless API
+            logger.warning("dated_api_failed", error=str(e), falling_back=True)
+            url = "https://api-v3.amtraker.com/v3/trains"
+            try:
+                response = await self.session.get(url)
+                response.raise_for_status()
+                raw_data = response.json()
+            except Exception as fallback_error:
+                logger.error(
+                    "amtrak_api_fallback_failed",
+                    error=str(fallback_error),
+                    original_error=str(e)
+                )
+                raise
+
+        # Parse the response into our models
+        if not raw_data:
+            logger.error("no_amtrak_data_received")
+            return {}
+
+        parsed_data = {}
+        for train_num, train_list in raw_data.items():
+            if not isinstance(train_list, list):
+                continue
+
+            parsed_trains = []
+            for train_dict in train_list:
+                try:
+                    train = AmtrakTrainData(**train_dict)
+                    parsed_trains.append(train)
+                except Exception as e:
+                    logger.warning(
+                        "failed_to_parse_train", train_num=train_num, error=str(e)
+                    )
                     continue
 
-                parsed_trains = []
-                for train_dict in train_list:
-                    try:
-                        train = AmtrakTrainData(**train_dict)
-                        parsed_trains.append(train)
-                    except Exception as e:
-                        logger.warning(
-                            "failed_to_parse_train", train_num=train_num, error=str(e)
-                        )
-                        continue
+            if parsed_trains:
+                parsed_data[train_num] = parsed_trains
 
-                if parsed_trains:
-                    parsed_data[train_num] = parsed_trains
+        # Update cache
+        self._cache = parsed_data
+        self._cache_time = datetime.now()
 
-            # Update cache
-            self._cache = parsed_data
-            self._cache_time = datetime.now()
+        logger.info(
+            "amtrak_data_fetched",
+            train_count=len(parsed_data),
+            total_instances=sum(len(trains) for trains in parsed_data.values()),
+        )
 
-            logger.info(
-                "amtrak_data_fetched",
-                train_count=len(parsed_data),
-                total_instances=sum(len(trains) for trains in parsed_data.values()),
-            )
-
-            return parsed_data
-
-        except httpx.TimeoutException:
-            logger.error("amtrak_api_timeout", timeout=self.timeout)
-            raise
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                "amtrak_api_http_error",
-                status_code=e.response.status_code,
-                response_text=e.response.text[:500],
-            )
-            raise
-        except Exception as e:
-            logger.error("amtrak_api_error", error=str(e), error_type=type(e).__name__)
-            raise
+        return parsed_data
 
     def _is_cache_valid(self) -> bool:
         """Check if the cache is still valid.
