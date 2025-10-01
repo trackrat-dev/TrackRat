@@ -60,19 +60,22 @@ class TestDepartureFlagValidation:
         journey.stops = []
 
         # Past train with DEPARTED=YES
-        stops_data = [{
-            "STATION_2CHAR": "NY",
-            "STATIONNAME": "New York Penn Station",
-            "TIME": self.past_time.strftime("%m/%d/%Y %I:%M:%S %p"),
-            "DEP_TIME": self.past_time.strftime("%m/%d/%Y %I:%M:%S %p"),
-            "DEPARTED": "YES",
-            "TRACK": "5"
-        }]
+        stops_data = [
+            {
+                "STATION_2CHAR": "NY",
+                "STATIONNAME": "New York Penn Station",
+                "TIME": self.past_time.strftime("%m/%d/%Y %I:%M:%S %p"),
+                "DEP_TIME": self.past_time.strftime("%m/%d/%Y %I:%M:%S %p"),
+                "DEPARTED": "YES",
+                "TRACK": "5",
+            }
+        ]
 
-        with patch('trackrat.services.departure.parse_njt_time') as mock_parse:
+        with patch("trackrat.services.departure.parse_njt_time") as mock_parse:
             mock_parse.return_value = self.past_time
 
             import asyncio
+
             asyncio.run(service._update_stops_from_embedded_data(journey, stops_data))
 
         stop = journey.stops[0]
@@ -99,9 +102,8 @@ class TestDepartureFlagValidation:
 
         # Test the logic from journey.py lines 1029-1036
         # Apply the fix logic
-        should_mark_departed = (
-            stop_data.DEPARTED == "YES"
-            and (not stop.scheduled_departure or stop.scheduled_departure <= now_et())
+        should_mark_departed = stop_data.DEPARTED == "YES" and (
+            not stop.scheduled_departure or stop.scheduled_departure <= now_et()
         )
 
         # Future train should NOT be marked departed
@@ -109,9 +111,8 @@ class TestDepartureFlagValidation:
 
         # Test with past train
         stop.scheduled_departure = self.past_time
-        should_mark_departed = (
-            stop_data.DEPARTED == "YES"
-            and (not stop.scheduled_departure or stop.scheduled_departure <= now_et())
+        should_mark_departed = stop_data.DEPARTED == "YES" and (
+            not stop.scheduled_departure or stop.scheduled_departure <= now_et()
         )
 
         # Past train SHOULD be marked departed
@@ -158,21 +159,23 @@ class TestDepartureFlagValidation:
 
         # Future train
         scheduled_departure = self.future_time
-        has_departed_station = (
-            stop_data.DEPARTED == "YES"
-            and (not scheduled_departure or scheduled_departure <= now_et())
+        has_departed_station = stop_data.DEPARTED == "YES" and (
+            not scheduled_departure or scheduled_departure <= now_et()
         )
 
-        assert has_departed_station == False, "Scheduler should not mark future train as departed"
+        assert (
+            has_departed_station == False
+        ), "Scheduler should not mark future train as departed"
 
         # Past train
         scheduled_departure = self.past_time
-        has_departed_station = (
-            stop_data.DEPARTED == "YES"
-            and (not scheduled_departure or scheduled_departure <= now_et())
+        has_departed_station = stop_data.DEPARTED == "YES" and (
+            not scheduled_departure or scheduled_departure <= now_et()
         )
 
-        assert has_departed_station == True, "Scheduler should mark past train as departed"
+        assert (
+            has_departed_station == True
+        ), "Scheduler should mark past train as departed"
 
     def test_edge_cases(self):
         """Test edge cases for the departure flag validation."""
@@ -194,14 +197,18 @@ class TestDepartureFlagValidation:
         has_departed = stop_data.DEPARTED == "YES" and (
             not scheduled_departure or scheduled_departure <= now_et()
         )
-        assert has_departed == False, "Train with DEPARTED=NO should not be marked departed"
+        assert (
+            has_departed == False
+        ), "Train with DEPARTED=NO should not be marked departed"
 
         # Test with DEPARTED = None
         stop_data.DEPARTED = None
         has_departed = stop_data.DEPARTED == "YES" and (
             not scheduled_departure or scheduled_departure <= now_et()
         )
-        assert has_departed == False, "Train with DEPARTED=None should not be marked departed"
+        assert (
+            has_departed == False
+        ), "Train with DEPARTED=None should not be marked departed"
 
     def test_real_world_scenario(self):
         """Test a real-world scenario matching the bug report."""

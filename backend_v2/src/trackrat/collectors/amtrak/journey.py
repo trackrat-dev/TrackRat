@@ -324,9 +324,8 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
                 # Prepare stop data for upsert
                 # Apply time validation to prevent future trains being marked as departed
-                has_departed = (
-                    amtrak_stop.status == "Departed"
-                    and (not sched_dep or sched_dep <= now_et())
+                has_departed = amtrak_stop.status == "Departed" and (
+                    not sched_dep or sched_dep <= now_et()
                 )
 
                 stop_data = {
@@ -580,9 +579,8 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 )
                 actual_arrival = scheduled_arrival
             # Validate against scheduled time to prevent stale data issues
-            departed: bool = (
-                amtrak_stop.status == "Departed"
-                and (not scheduled_departure or scheduled_departure <= now_et())
+            departed: bool = amtrak_stop.status == "Departed" and (
+                not scheduled_departure or scheduled_departure <= now_et()
             )
             # status: str = self.STATUS_MAP.get(amtrak_stop.status, amtrak_stop.status)
             track: str | None = amtrak_stop.platform if amtrak_stop.platform else None

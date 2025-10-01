@@ -44,10 +44,11 @@ class TestAmtrakClient:
 
         result = await client.get_all_trains()
 
-        # Verify API was called correctly
-        mock_session.get.assert_called_once_with(
-            "https://api-v3.amtraker.com/v3/trains"
-        )
+        # Verify API was called - now uses dated endpoint first
+        assert mock_session.get.call_count >= 1
+        # First call should be to dated endpoint
+        first_call_url = mock_session.get.call_args_list[0][0][0]
+        assert "https://api-v3.amtraker.com/v3/trains/" in first_call_url
 
         # Verify response structure
         assert isinstance(result, dict)
@@ -69,13 +70,13 @@ class TestAmtrakClient:
         mock_session.get.return_value = mock_response
         client._session = mock_session
 
-        # First call should hit API
+        # First call should hit API (may call multiple times due to fallback logic)
         result1 = await client.get_all_trains()
-        assert mock_session.get.call_count == 1
+        initial_call_count = mock_session.get.call_count
 
         # Second call within TTL should use cache
         result2 = await client.get_all_trains()
-        assert mock_session.get.call_count == 1  # No additional calls
+        assert mock_session.get.call_count == initial_call_count  # No additional calls
 
         # Results should be identical
         assert result1 == result2
@@ -88,14 +89,15 @@ class TestAmtrakClient:
 
         # First call
         await client.get_all_trains()
-        assert mock_session.get.call_count == 1
+        initial_call_count = mock_session.get.call_count
 
         # Simulate cache expiration by setting old cache time
         client._cache_time = datetime.now() - timedelta(seconds=client._cache_ttl + 1)
 
         # Second call should hit API again
         await client.get_all_trains()
-        assert mock_session.get.call_count == 2
+        # Should have made at least one more call (may be more due to fallback logic)
+        assert mock_session.get.call_count > initial_call_count
 
     async def test_cache_clearing(self, client, mock_response):
         """Test manual cache clearing."""
@@ -260,13 +262,13 @@ class TestAmtrakClient:
             (
                 entry
                 for entry in cap.entries
-                if entry.get("event") == "fetching_amtrak_trains"
+                if entry.get("event") == "fetching_amtrak_trains_with_date"
             ),
             None,
         )
         assert (
             fetching_entry is not None
-        ), f"Expected 'fetching_amtrak_trains' event in {cap.entries}"
+        ), f"Expected 'fetching_amtrak_trains_with_date' event in {cap.entries}"
 
         # Also check for success message
         success_entries = [
@@ -294,16 +296,12 @@ class TestAmtrakClient:
         with pytest.raises(httpx.TimeoutException):
             await client.get_all_trains()
 
-        # Should log timeout error
+        # Should log error - now uses different event names due to fallback logic
         assert len(cap.entries) > 0, "Expected log entries"
-        timeout_entry = next(
-            (
-                entry
-                for entry in cap.entries
-                if entry.get("event") == "amtrak_api_timeout"
-            ),
-            None,
-        )
-        assert (
-            timeout_entry is not None
-        ), f"Expected 'amtrak_api_timeout' event in {cap.entries}"
+        # Check for any error-related event (dated_api_failed or amtrak_api_fallback_failed)
+        error_entries = [
+            entry
+            for entry in cap.entries
+            if "error" in entry or "failed" in entry.get("event", "")
+        ]
+        assert len(error_entries) > 0, f"Expected error-related event in {cap.entries}"

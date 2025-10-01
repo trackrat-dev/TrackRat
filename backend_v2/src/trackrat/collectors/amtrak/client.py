@@ -94,6 +94,7 @@ class AmtrakClient(BaseClient):
 
         # Use ET date explicitly to avoid UTC/ET mismatch after 8 PM
         from trackrat.utils.time import now_et
+
         current_et = now_et()
         current_et_date = current_et.date()
 
@@ -103,7 +104,9 @@ class AmtrakClient(BaseClient):
         raw_data = None
 
         try:
-            logger.info("fetching_amtrak_trains_with_date", url=url, date=str(current_et_date))
+            logger.info(
+                "fetching_amtrak_trains_with_date", url=url, date=str(current_et_date)
+            )
 
             response = await self.session.get(url)
             response.raise_for_status()
@@ -116,7 +119,7 @@ class AmtrakClient(BaseClient):
                 logger.warning(
                     "dated_api_returned_minimal_data",
                     train_count=len(raw_data) if raw_data else 0,
-                    trying_dateless=True
+                    trying_dateless=True,
                 )
                 # Try dateless API as fallback
                 url = "https://api-v3.amtraker.com/v3/trains"
@@ -136,7 +139,7 @@ class AmtrakClient(BaseClient):
                 logger.error(
                     "amtrak_api_fallback_failed",
                     error=str(fallback_error),
-                    original_error=str(e)
+                    original_error=str(e),
                 )
                 raise
 
