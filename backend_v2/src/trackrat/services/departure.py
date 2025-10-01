@@ -5,7 +5,7 @@ Departure service for handling train departure queries.
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -80,6 +80,9 @@ class DepartureService:
                 TrainJourney.journey_date <= (time_to.date() + timedelta(days=1)),
             )
 
+        # Determine the target date for prioritization
+        target_date = date if date else now_et().date()
+
         stmt = (
             select(TrainJourney)
             .join(
@@ -99,8 +102,14 @@ class DepartureService:
                 )
             )
             .options(selectinload(TrainJourney.stops))
-            .order_by(JourneyStop.scheduled_departure)
-            .limit(limit * 2)
+            .order_by(
+                # Prioritize trains with the target journey_date
+                case((TrainJourney.journey_date == target_date, 0), else_=1),
+                # Then order by scheduled departure time
+                JourneyStop.scheduled_departure,
+            )
+            # When using multi-day date range, fetch more to ensure coverage
+            .limit(limit * 3 if not date else limit * 2)
         )
 
         result = await db.execute(stmt)
