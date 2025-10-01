@@ -108,8 +108,8 @@ class DepartureService:
                 # Then order by scheduled departure time
                 JourneyStop.scheduled_departure,
             )
-            # When using multi-day date range, fetch more to ensure coverage
-            .limit(limit * 3 if not date else limit * 2)
+            # Don't limit the SQL query - we need all trains to filter properly
+            # We'll apply the limit after filtering for valid routes
         )
 
         result = await db.execute(stmt)
