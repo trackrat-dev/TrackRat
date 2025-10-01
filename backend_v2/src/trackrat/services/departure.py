@@ -406,10 +406,24 @@ class DepartureService:
             if departure_time_str := stop_data.get("DEP_TIME"):
                 stop.scheduled_departure = parse_njt_time(departure_time_str)
 
-            # Update departure status
+            # Update departure status with time validation
             departed = stop_data.get("DEPARTED")
-            stop.has_departed_station = departed == "YES"
             stop.raw_njt_departed_flag = departed
+
+            # Never mark as departed if scheduled departure is in the future
+            # This prevents stale NJT data from incorrectly marking future trains as departed
+            if stop.scheduled_departure and stop.scheduled_departure > now_et():
+                stop.has_departed_station = False
+                if departed == "YES":
+                    logger.debug(
+                        "overriding_future_departure_flag",
+                        station_code=station_code,
+                        train_id=journey.train_id,
+                        scheduled_departure=stop.scheduled_departure.isoformat(),
+                        njt_flag=departed,
+                    )
+            else:
+                stop.has_departed_station = departed == "YES"
 
             # Update stop sequence if not set
             if stop.stop_sequence is None:

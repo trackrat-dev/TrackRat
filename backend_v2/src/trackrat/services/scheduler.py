@@ -1344,7 +1344,14 @@ class SchedulerService:
                                 track=stop_data.TRACK or None,
                                 track_assigned_at=now_et() if stop_data.TRACK else None,
                                 raw_njt_departed_flag=stop_data.DEPARTED,
-                                has_departed_station=(stop_data.DEPARTED == "YES"),
+                                # Time validation: Never mark as departed if scheduled time is in future
+                                has_departed_station=(
+                                    stop_data.DEPARTED == "YES"
+                                    and (
+                                        not scheduled_departure
+                                        or scheduled_departure <= now_et()
+                                    )
+                                ),
                             )
                             session.add(stop)
 

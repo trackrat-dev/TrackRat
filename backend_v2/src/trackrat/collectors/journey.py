@@ -316,8 +316,11 @@ class JourneyCollector:
                 stop.actual_arrival = stop.scheduled_arrival
                 stop.actual_departure = stop.scheduled_departure
 
-            # Update status
-            stop.has_departed_station = stop_data.DEPARTED == "YES"
+            # Update status with time validation
+            # Never mark as departed if scheduled departure is in the future
+            stop.has_departed_station = stop_data.DEPARTED == "YES" and (
+                not stop.scheduled_departure or stop.scheduled_departure <= now_et()
+            )
 
             # Update track if available
             if stop_data.TRACK:
