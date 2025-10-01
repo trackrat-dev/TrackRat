@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.models.api import AmtrakTrainData, AmtrakStationData
 from trackrat.models.database import TrainJourney
+from trackrat.utils.time import ET
 from tests.factories.amtrak import create_amtrak_train_data, create_amtrak_station_data
 
 
@@ -326,7 +327,7 @@ class TestAmtrakJourneyCollector:
 
         # Mock time functions
         with patch("trackrat.collectors.amtrak.journey.now_et") as mock_now:
-            mock_now.return_value = datetime(2025, 7, 5, 14, 0, 0)
+            mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
             result = await journey_collector._convert_to_journey(
                 mock_db_session, sample_train_data
@@ -369,7 +370,7 @@ class TestAmtrakJourneyCollector:
 
         # Mock time functions
         with patch("trackrat.collectors.amtrak.journey.now_et") as mock_now:
-            mock_now.return_value = datetime(2025, 7, 5, 14, 0, 0)
+            mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
             result = await journey_collector._convert_to_journey(
                 mock_db_session, sample_train_data
