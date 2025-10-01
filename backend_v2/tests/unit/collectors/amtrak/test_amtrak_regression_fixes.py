@@ -51,11 +51,11 @@ class TestAmtrakTimezoneDateFix:
     """Test that Amtrak API correctly uses ET date instead of defaulting to UTC."""
 
     @pytest.mark.asyncio
-    async def test_amtrak_uses_explicit_et_date(self):
-        """Test that AmtrakClient uses explicit ET date in API URL."""
+    async def test_amtrak_uses_dateless_api(self):
+        """Test that AmtrakClient uses dateless API endpoint (new behavior after 1516d7c)."""
         client = AmtrakClient()
 
-        # Mock current time to be during normal hours (no fallback)
+        # Mock current time to be during normal hours
         mock_et = ET.localize(datetime(2025, 9, 30, 15, 0, 0))  # 3 PM ET
 
         with patch("trackrat.utils.time.now_et", return_value=mock_et):
@@ -63,7 +63,7 @@ class TestAmtrakTimezoneDateFix:
                 # Mock the _session attribute directly
                 mock_session = MagicMock()
                 mock_response = MagicMock()
-                # Return enough trains to avoid fallback
+                # Return enough trains
                 mock_response.json.return_value = {
                     "123": [create_valid_amtrak_train_data()],
                     "124": [create_valid_amtrak_train_data("124", "124-1")],
@@ -82,23 +82,23 @@ class TestAmtrakTimezoneDateFix:
                 mock_session.aclose = AsyncMock()  # Mock the close method
                 client._session = mock_session
 
-                # Get trains - should use ET date
+                # Get trains - should use dateless API
                 await client.get_all_trains()
 
-                # Verify the URL includes the ET date
+                # Verify the URL is the dateless endpoint
                 mock_session.get.assert_called_once()
                 call_args = mock_session.get.call_args
                 url = call_args[0][0]
 
-                # URL should include the ET date from our mock
-                expected_url = f"https://api-v3.amtraker.com/v3/trains/2025-09-30"
-                assert url == expected_url, f"Expected URL with ET date, got: {url}"
+                # URL should be dateless API
+                expected_url = "https://api-v3.amtraker.com/v3/trains"
+                assert url == expected_url, f"Expected dateless URL, got: {url}"
 
         # Don't call close since it might interact with real async
 
     @pytest.mark.asyncio
-    async def test_amtrak_handles_8pm_danger_zone(self):
-        """Test that fallback triggers during 8 PM-midnight ET when dated API returns minimal data."""
+    async def test_amtrak_handles_8pm_correctly(self):
+        """Test that API works correctly during 8 PM-midnight ET (no more date issues)."""
         client = AmtrakClient()
 
         # Mock current time to be 8:30 PM ET
@@ -110,48 +110,35 @@ class TestAmtrakTimezoneDateFix:
                 mock_session = MagicMock()
                 client._session = mock_session
 
-                # First call returns minimal data (dated API)
-                mock_response_dated = MagicMock()
-                mock_response_dated.json.return_value = (
-                    {}
-                )  # Empty response triggers fallback
-                mock_response_dated.raise_for_status = MagicMock()
-
-                # Second call returns full data (dateless API)
-                mock_response_dateless = MagicMock()
-                mock_response_dateless.json.return_value = {
+                # Dateless API returns full data even at night
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
                     "2121": [create_valid_amtrak_train_data("2121", "2121-1")],
                     "133": [create_valid_amtrak_train_data("133", "133-1")],
                 }
-                mock_response_dateless.raise_for_status = MagicMock()
+                mock_response.raise_for_status = MagicMock()
 
-                # Configure mock to return different responses
-                mock_session.get = AsyncMock(
-                    side_effect=[mock_response_dated, mock_response_dateless]
-                )
+                # Configure mock
+                mock_session.get = AsyncMock(return_value=mock_response)
                 mock_session.aclose = AsyncMock()
 
                 # Get trains
                 result = await client.get_all_trains()
 
-                # Should have called twice - dated then dateless
-                assert mock_session.get.call_count == 2
+                # Should have called once with dateless API
+                assert mock_session.get.call_count == 1
 
-                # First call should be dated API
-                first_call_url = mock_session.get.call_args_list[0][0][0]
-                assert "2025-09-30" in first_call_url
+                # Call should be dateless API
+                call_url = mock_session.get.call_args[0][0]
+                assert call_url == "https://api-v3.amtraker.com/v3/trains"
 
-                # Second call should be dateless API (fallback)
-                second_call_url = mock_session.get.call_args_list[1][0][0]
-                assert second_call_url == "https://api-v3.amtraker.com/v3/trains"
-
-                # Result should contain trains from fallback
+                # Result should contain trains
                 assert "2121" in result
                 assert "133" in result
 
     @pytest.mark.asyncio
-    async def test_amtrak_fallback_on_dated_api_failure(self):
-        """Test that client falls back to dateless API when dated API fails."""
+    async def test_amtrak_api_failure_handling(self):
+        """Test that client properly handles API failures (no fallback, just error propagation)."""
         client = AmtrakClient()
 
         with patch.object(client, "_is_cache_valid", return_value=False):
@@ -159,36 +146,24 @@ class TestAmtrakTimezoneDateFix:
             mock_session = MagicMock()
             client._session = mock_session
 
-            # Create a mock response for the second call
-            mock_response_success = MagicMock()
-            mock_response_success.json.return_value = {
-                "647": [create_valid_amtrak_train_data("647", "647-1")]
-            }
-            mock_response_success.raise_for_status = MagicMock()
-
-            # First call fails (dated API), second succeeds
+            # API call fails
             mock_session.get = AsyncMock(
-                side_effect=[
-                    httpx.HTTPStatusError(
-                        "API Error", request=None, response=MagicMock(status_code=500)
-                    ),
-                    mock_response_success,
-                ]
+                side_effect=httpx.HTTPStatusError(
+                    "API Error", request=None, response=MagicMock(status_code=500)
+                )
             )
             mock_session.aclose = AsyncMock()
 
-            # Get trains - should fallback
-            result = await client.get_all_trains()
+            # Get trains - should raise the error
+            with pytest.raises(httpx.HTTPStatusError):
+                await client.get_all_trains()
 
-            # Should have called twice
-            assert mock_session.get.call_count == 2
-
-            # Result should contain train from fallback
-            assert "647" in result
+            # Should have called once (no fallback)
+            assert mock_session.get.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_no_fallback_during_normal_hours(self):
-        """Test that fallback does NOT trigger during normal hours (before 8 PM)."""
+    async def test_dateless_api_during_normal_hours(self):
+        """Test that dateless API is used consistently (no time-based logic anymore)."""
         client = AmtrakClient()
 
         # Mock current time to be 3 PM ET
@@ -200,7 +175,7 @@ class TestAmtrakTimezoneDateFix:
                 mock_session = MagicMock()
                 client._session = mock_session
 
-                # Return enough data to not trigger fallback
+                # Return data
                 mock_response = MagicMock()
                 mock_response.json.return_value = {
                     "123": [create_valid_amtrak_train_data()],
@@ -222,12 +197,12 @@ class TestAmtrakTimezoneDateFix:
                 # Get trains
                 result = await client.get_all_trains()
 
-                # Should have called only once (no fallback)
+                # Should have called only once
                 assert mock_session.get.call_count == 1
 
-                # URL should still use dated API
+                # URL should be dateless API
                 call_url = mock_session.get.call_args[0][0]
-                assert "2025-09-30" in call_url
+                assert call_url == "https://api-v3.amtraker.com/v3/trains"
 
 
 class TestAmtrakDepartureFlagValidation:
@@ -344,7 +319,7 @@ class TestAmtrakRealWorldScenarios:
 
     @pytest.mark.asyncio
     async def test_evening_ny_philadelphia_trains(self):
-        """Test the exact scenario that failed: NY to Philadelphia trains missing after 8 PM."""
+        """Test that NY to Philadelphia trains are found after 8 PM (issue fixed by dateless API)."""
         client = AmtrakClient()
 
         # Mock 8:23 PM ET on September 30, 2025
@@ -356,28 +331,24 @@ class TestAmtrakRealWorldScenarios:
                 mock_session = MagicMock()
                 client._session = mock_session
 
-                # Dated API returns empty (wrong date)
-                mock_response_dated = MagicMock()
-                mock_response_dated.json.return_value = {}
-                mock_response_dated.raise_for_status = MagicMock()
-
-                # Dateless API returns evening trains
-                mock_response_dateless = MagicMock()
-                mock_response_dateless.json.return_value = {
+                # Dateless API returns evening trains correctly
+                mock_response = MagicMock()
+                mock_response.json.return_value = {
                     "2121": [create_valid_amtrak_train_data("2121", "2121-1")],
                     "133": [create_valid_amtrak_train_data("133", "133-1")],
                     "647": [create_valid_amtrak_train_data("647", "647-1")],
                     "19": [create_valid_amtrak_train_data("19", "19-1")],
                 }
-                mock_response_dateless.raise_for_status = MagicMock()
+                mock_response.raise_for_status = MagicMock()
 
-                mock_session.get = AsyncMock(
-                    side_effect=[mock_response_dated, mock_response_dateless]
-                )
+                mock_session.get = AsyncMock(return_value=mock_response)
                 mock_session.aclose = AsyncMock()
 
-                # Get trains - should fallback and find evening trains
+                # Get trains - should find evening trains with single API call
                 result = await client.get_all_trains()
+
+                # Should have called once (no fallback needed)
+                assert mock_session.get.call_count == 1
 
                 # All expected NY-Philadelphia trains should be present
                 assert "2121" in result, "Train 2121 (Acela) should be found"
