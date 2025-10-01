@@ -66,7 +66,7 @@ async def get_departures(
     time_to: datetime | None = Query(
         None, description="End time (defaults to +24 hours)"
     ),
-    limit: int = Query(50, le=100, description="Maximum results"),
+    limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
 ) -> DeparturesResponse:
     """Get train departures between stations."""
