@@ -79,10 +79,11 @@ class AmtrakClient(BaseClient):
 
     @track_api_call(api_name="amtrak", endpoint="all_trains")
     async def get_all_trains(self) -> dict[str, list[AmtrakTrainData]]:
-        """Fetch all active trains from Amtrak API for the current ET date.
+        """Fetch all active trains from Amtrak API.
 
-        This explicitly uses ET date to avoid timezone mismatch issues where
-        after 8 PM ET, the API would return trains for the UTC date (next day).
+        Uses the dateless API endpoint which returns all currently active trains.
+        The dated API endpoint has been unreliable, returning empty data even when
+        trains are running.
 
         Returns:
             Dictionary mapping train numbers to lists of train data
@@ -92,56 +93,26 @@ class AmtrakClient(BaseClient):
             logger.debug("returning_cached_amtrak_data")
             return self._cache
 
-        # Use ET date explicitly to avoid UTC/ET mismatch after 8 PM
-        from trackrat.utils.time import now_et
-
-        current_et = now_et()
-        current_et_date = current_et.date()
-
-        # Build URL with explicit date
-        url = f"https://api-v3.amtraker.com/v3/trains/{current_et_date}"
+        # Use dateless API which reliably returns all active trains
+        url = "https://api-v3.amtraker.com/v3/trains"
 
         raw_data = None
 
         try:
-            logger.info(
-                "fetching_amtrak_trains_with_date", url=url, date=str(current_et_date)
-            )
+            logger.info("fetching_amtrak_trains", url=url)
 
             response = await self.session.get(url)
             response.raise_for_status()
 
             raw_data = response.json()
 
-            # If we get empty or minimal data, try without date
-            # (but only during the "danger zone" of 8 PM - midnight ET)
-            if (not raw_data or len(raw_data) < 10) and 20 <= current_et.hour < 24:
-                logger.warning(
-                    "dated_api_returned_minimal_data",
-                    train_count=len(raw_data) if raw_data else 0,
-                    trying_dateless=True,
-                )
-                # Try dateless API as fallback
-                url = "https://api-v3.amtraker.com/v3/trains"
-                response = await self.session.get(url)
-                response.raise_for_status()
-                raw_data = response.json()
-
         except Exception as e:
-            # Fallback to dateless API
-            logger.warning("dated_api_failed", error=str(e), falling_back=True)
-            url = "https://api-v3.amtraker.com/v3/trains"
-            try:
-                response = await self.session.get(url)
-                response.raise_for_status()
-                raw_data = response.json()
-            except Exception as fallback_error:
-                logger.error(
-                    "amtrak_api_fallback_failed",
-                    error=str(fallback_error),
-                    original_error=str(e),
-                )
-                raise
+            logger.error(
+                "amtrak_api_failed",
+                error=str(e),
+                url=url,
+            )
+            raise
 
         # Parse the response into our models
         if not raw_data:

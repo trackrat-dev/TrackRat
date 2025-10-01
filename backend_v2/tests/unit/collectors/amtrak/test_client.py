@@ -44,11 +44,11 @@ class TestAmtrakClient:
 
         result = await client.get_all_trains()
 
-        # Verify API was called - now uses dated endpoint first
-        assert mock_session.get.call_count >= 1
-        # First call should be to dated endpoint
+        # Verify API was called - now uses dateless endpoint only
+        assert mock_session.get.call_count == 1
+        # Should call the dateless endpoint
         first_call_url = mock_session.get.call_args_list[0][0][0]
-        assert "https://api-v3.amtraker.com/v3/trains/" in first_call_url
+        assert first_call_url == "https://api-v3.amtraker.com/v3/trains"
 
         # Verify response structure
         assert isinstance(result, dict)
@@ -262,13 +262,13 @@ class TestAmtrakClient:
             (
                 entry
                 for entry in cap.entries
-                if entry.get("event") == "fetching_amtrak_trains_with_date"
+                if entry.get("event") == "fetching_amtrak_trains"
             ),
             None,
         )
         assert (
             fetching_entry is not None
-        ), f"Expected 'fetching_amtrak_trains_with_date' event in {cap.entries}"
+        ), f"Expected 'fetching_amtrak_trains' event in {cap.entries}"
 
         # Also check for success message
         success_entries = [
