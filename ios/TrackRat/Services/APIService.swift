@@ -9,7 +9,10 @@ final class APIService: ObservableObject {
     private var baseURL: String
     private let session = URLSession.shared
     private let storageService = StorageService()
-    
+
+    // Configuration constants
+    private static let DEPARTURE_LIMIT = "1000"
+
     init() {
         let environment = storageService.loadServerEnvironment()
         self.baseURL = environment.baseURL
@@ -40,7 +43,7 @@ final class APIService: ObservableObject {
         var queryItems = [
             URLQueryItem(name: "from", value: fromStationCode),
             URLQueryItem(name: "to", value: toStationCode),
-            URLQueryItem(name: "limit", value: "100")
+            URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT)
         ]
 
         if let date = date {

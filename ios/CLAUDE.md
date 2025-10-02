@@ -179,7 +179,7 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **Eastern Time Zone**: Automatic conversion for all timestamps
 
 ### Endpoints Used (V2 API)
-- `GET /v2/trains/departures?from=X&to=Y&limit=100&date=YYYY-MM-DD` - Search trains between stations
+- `GET /v2/trains/departures?from=X&to=Y&limit=1000&date=YYYY-MM-DD` - Search trains between stations (supports up to 1000 results)
 - `GET /v2/trains/{id}?date=YYYY-MM-DD&include_predictions=true&from_station=X` - Train details with predictions
 - `GET /v2/trains/{id}/history?days=365&from_station=X&to_station=Y&include_route_trains=true` - Historical train data
 - `GET /v2/routes/history?from_station=X&to_station=Y&data_source=NJT&days=30` - Route historical performance
