@@ -1,4 +1,31 @@
 import SwiftUI
+import Combine
+
+// MARK: - Shared drag state for coordinating between BottomSheetView and SheetAwareScrollView
+class BottomSheetDragState: ObservableObject {
+    @Published var translation: CGFloat = 0
+    @Published var isDragging: Bool = false
+
+    func reset() {
+        translation = 0
+        isDragging = false
+    }
+}
+
+// MARK: - Preference Keys for Bottom Sheet communication
+struct DragTranslationPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct IsDraggingPreferenceKey: PreferenceKey {
+    static var defaultValue: Bool = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = nextValue()
+    }
+}
 
 // MARK: - Bottom Sheet Position
 enum BottomSheetPosition: CaseIterable {
@@ -20,12 +47,15 @@ struct BottomSheetView<Content: View>: View {
     @Binding var position: BottomSheetPosition
     let content: Content
     let isScrollable: Bool
-    
+
     // Drag gesture state
     @GestureState private var translation: CGFloat = 0
     @State private var isDragging = false
     @State private var scrollOffset: CGFloat = 0
-    
+
+    // Shared drag state for scrollable content
+    @StateObject private var dragState = BottomSheetDragState()
+
     // Scene phase monitoring for safety
     @Environment(\.scenePhase) private var scenePhase
     
@@ -45,9 +75,16 @@ struct BottomSheetView<Content: View>: View {
                 
                 // Content with clipping and gradient overlay
                 ZStack {
-                    content
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .clipped()
+                    // For scrollable content, we pass the drag state through environment
+                    if isScrollable {
+                        content
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .environmentObject(dragState)
+                    } else {
+                        content
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .clipped()
+                    }
                     
                     // Gradient overlay to indicate hidden content (only when at medium)
                     if position == .medium {
@@ -74,8 +111,15 @@ struct BottomSheetView<Content: View>: View {
                     .ignoresSafeArea()
             )
             .offset(y: safeOffset(for: geometry.size.height))
-            // Animate position changes smoothly
-            .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.95), value: position)
+            // Animate position changes smoothly, but not during active dragging
+            .animation(
+                (isDragging || dragState.isDragging) ? nil : .interactiveSpring(response: 0.3, dampingFraction: 0.95),
+                value: position
+            )
+            .animation(
+                (isDragging || dragState.isDragging) ? nil : .interactiveSpring(response: 0.3, dampingFraction: 0.95),
+                value: dragState.translation
+            )
             .onChange(of: scenePhase) { oldPhase, newPhase in
                 print("🎛️ BottomSheet: Scene phase changed: \(oldPhase) → \(newPhase)")
                 
@@ -114,19 +158,17 @@ struct BottomSheetView<Content: View>: View {
     // Helper function to safely combine position offset and drag translation
     private func safeOffset(for screenHeight: CGFloat) -> CGFloat {
         let baseOffset = position.offsetFor(screenHeight: screenHeight)
-        
-        // When scrollable, ignore translation completely - SheetAwareScrollView handles everything
-        if isScrollable {
-            return baseOffset
-        }
-        
-        // For non-scrollable sheets, apply translation limits
-        var limitedTranslation = translation
-        
+
+        // Use shared drag state for scrollable content, internal for non-scrollable
+        let activeTranslation = isScrollable ? dragState.translation : translation
+
+        // Apply translation limits
+        var limitedTranslation = activeTranslation
+
         // Calculate the offsets for positions
         let mediumOffset = BottomSheetPosition.medium.offsetFor(screenHeight: screenHeight)
         let expandedOffset = BottomSheetPosition.expanded.offsetFor(screenHeight: screenHeight)
-        
+
         // Limit based on current position
         switch position {
         case .medium:
@@ -139,13 +181,13 @@ struct BottomSheetView<Content: View>: View {
             let maxDownwardOffset = mediumOffset - baseOffset
             limitedTranslation = min(maxDownwardOffset, max(0, limitedTranslation))
         }
-        
+
         let combinedOffset = baseOffset + limitedTranslation
-        
+
         // Additional safety: prevent sheet from going above screen or too far below
         let minOffset: CGFloat = 0
         let maxOffset = screenHeight * 0.5  // Medium is the lowest position now
-        
+
         return max(minOffset, min(maxOffset, combinedOffset))
     }
     

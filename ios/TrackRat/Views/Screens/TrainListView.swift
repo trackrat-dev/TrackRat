@@ -1,17 +1,19 @@
 import SwiftUI
 import Combine
+import Sentry
 
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainListViewModel
-    
+
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 6
-    
+
     @State private var destination: String
     @State private var departureStationCode: String
     @State private var departureName: String
     @Binding var sheetPosition: BottomSheetPosition
+    @State private var isClosing = false
     
     
     init(destination: String, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
@@ -52,77 +54,74 @@ struct TrainListView: View {
     }
     
     var body: some View {
-        ZStack {
-            // Black gradient background
-            TrackRatTheme.Colors.primaryBackground
-                .ignoresSafeArea()
-            
-            SheetAwareScrollView(sheetPosition: $sheetPosition) {
-                    VStack(spacing: 16) {
-                        if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
-                            TrackRatLoadingView(message: "Finding your trains...")
-                                .frame(maxWidth: .infinity, minHeight: 200)
-                        } else if let error = viewModel.error {
-                            ErrorView(message: error) {
-                                Task {
-                                    await viewModel.loadTrains(
-                                        destination: destination,
-                                        fromStationCode: departureStationCode
+        // Wrap content in SheetAwareScrollView for proper dragging and scrolling
+        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+            VStack(spacing: 16) {
+                if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
+                    TrackRatLoadingView(message: "Finding your trains...")
+                        .frame(maxWidth: .infinity, minHeight: 200)
+                } else if let error = viewModel.error {
+                    ErrorView(message: error) {
+                        Task {
+                            await viewModel.loadTrains(
+                                destination: destination,
+                                fromStationCode: departureStationCode
+                            )
+                        }
+                    }
+                } else if viewModel.trains.isEmpty {
+                    EmptyStateView(message: "No trains found")
+                } else {
+                    let expressTrains = viewModel.identifyExpressTrains()
+                    ForEach(viewModel.trains) { train in
+                        TrainCard(
+                            train: train,
+                            destination: destination,
+                            departureStationCode: departureStationCode,
+                            onTap: {
+                                appState.currentTrainId = train.id
+                                appState.currentTrain = train  // Store the full train object
+
+                                // Set the route context for bottom sheet expansion
+                                if let destinationCode = Stations.getStationCode(destination) {
+                                    appState.selectedRoute = TripPair(
+                                        departureCode: departureStationCode,
+                                        departureName: departureName,
+                                        destinationCode: destinationCode,
+                                        destinationName: destination,
+                                        lastUsed: Date(),
+                                        isFavorite: false
                                     )
                                 }
-                            }
-                        } else if viewModel.trains.isEmpty {
-                            EmptyStateView(message: "No trains found")
-                        } else {
-                            let expressTrains = viewModel.identifyExpressTrains()
-                            ForEach(viewModel.trains) { train in
-                                TrainCard(
-                                    train: train, 
-                                    destination: destination, 
-                                    departureStationCode: departureStationCode,
-                                    onTap: {
-                                        appState.currentTrainId = train.id
-                                        appState.currentTrain = train  // Store the full train object
-                                        
-                                        // Set the route context for bottom sheet expansion
-                                        if let destinationCode = Stations.getStationCode(destination) {
-                                            appState.selectedRoute = TripPair(
-                                                departureCode: departureStationCode,
-                                                departureName: departureName,
-                                                destinationCode: destinationCode,
-                                                destinationName: destination,
-                                                lastUsed: Date(),
-                                                isFavorite: false
-                                            )
-                                        }
-                                        
-                                        // Use flexible navigation with train number
-                                        // Only pass departure station if it's not empty
-                                        appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
-                                            trainNumber: train.trainId,
-                                            fromStation: departureStationCode.isEmpty ? nil : departureStationCode
-                                        ))
-                                    },
-                                    isExpress: expressTrains.contains(train.trainId)
-                                )
-                            }
-                        }
-                        
-                        // Add spacer at bottom for better scrolling
-                        Spacer(minLength: 50)
+
+                                // Use flexible navigation with train number
+                                // Only pass departure station if it's not empty
+                                appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                                    trainNumber: train.trainId,
+                                    fromStation: departureStationCode.isEmpty ? nil : departureStationCode,
+                                    journeyDate: train.journeyDate
+                                ))
+                            },
+                            isExpress: expressTrains.contains(train.trainId)
+                        )
                     }
-                    .padding()
                 }
-                .refreshable {
-                    await viewModel.loadTrains(
-                        destination: destination,
-                        fromStationCode: departureStationCode
-                    )
-                }
+
+                // Add spacer at bottom for better scrolling
+                Spacer(minLength: 50)
             }
+            .padding()
+        }
+        .refreshable {
+            await viewModel.loadTrains(
+                destination: destination,
+                fromStationCode: departureStationCode
+            )
+        }
         .navigationTitle(destination)
         .navigationBarTitleDisplayMode(.inline)
         .glassmorphicNavigationBar()
+        .toolbar(isClosing ? .hidden : .visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
@@ -146,17 +145,33 @@ struct TrainListView: View {
             
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("Close") {
-                    appState.navigationPath = NavigationPath()
+                    isClosing = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        appState.navigationPath = NavigationPath()
+                    }
                 }
                 .foregroundColor(.white)
                 .font(.body)
             }
         }
         .task {
+            // Start a performance transaction for train search
+            let transaction = SentrySDK.startTransaction(
+                name: "train.search",
+                operation: "navigation"
+            )
+            transaction.setData(value: destination, key: "destination")
+            transaction.setData(value: departureStationCode, key: "departure")
+
+            let span = transaction.startChild(operation: "api.request", description: "Load trains")
+
             await viewModel.loadTrains(
                 destination: destination,
                 fromStationCode: departureStationCode
             )
+
+            span.finish()
+            transaction.finish()
         }
         .onReceive(viewModel.timer) { _ in
             Task {
@@ -240,87 +255,87 @@ struct TrainCard: View {
     }
     
     var body: some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 12) {
-                // Train header
-                HStack {
-                    if isBoardingAtOrigin && !isCancelled {
-                        Image(systemName: "circle.fill")
-                            .foregroundColor(.white)
+        VStack(alignment: .leading, spacing: 12) {
+            // Train header
+            HStack {
+                if isBoardingAtOrigin && !isCancelled {
+                    Image(systemName: "circle.fill")
+                        .foregroundColor(.white)
+                        .font(.caption)
+                }
+
+                HStack(spacing: 4) {
+                    Text("Train \(train.trainId)")
+                        .font(.headline)
+                        .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
+                        .strikethrough(isCancelled)
+
+                    if isExpress {
+                        Image(systemName: "bolt.fill")
                             .font(.caption)
-                    }
-                    
-                    HStack(spacing: 4) {
-                        Text("Train \(train.trainId)")
-                            .font(.headline)
-                            .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
-                            .strikethrough(isCancelled)
-                        
-                        if isExpress {
-                            Image(systemName: "bolt.fill")
-                                .font(.caption)
-                                .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .orange))
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    HStack(spacing: 2) {
-                        Text(departureTime)
-                            .font(.subheadline)
-                            .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
-                        
-                        
-                        Text(" → ")
-                            .font(.subheadline)
-                            .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
-                        
-                        Text(arrivalTime)
-                            .font(.subheadline)
-                            .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
-                        
+                            .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .orange))
                     }
                 }
-                
-                // Show cancellation location
-                if isCancelled {
-                    Text("Cancelled")
+
+                Spacer()
+
+                HStack(spacing: 2) {
+                    Text(departureTime)
+                        .font(.subheadline)
+                        .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
+
+
+                    Text(" → ")
+                        .font(.subheadline)
+                        .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
+
+                    Text(arrivalTime)
+                        .font(.subheadline)
+                        .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
+
+                }
+            }
+
+            // Show cancellation location
+            if isCancelled {
+                Text("Cancelled")
+                    .font(.caption)
+                    .foregroundColor(.red.opacity(0.8))
+                    .fontWeight(.medium)
+            }
+
+            // Show delay status
+            if !isCancelled {
+                let hasDepDelay = train.delayMinutes >= TrainCard.DELAY_THRESHOLD_MINUTES
+                let hasArrDelay = train.arrival?.delayMinutes ?? 0 >= TrainCard.DELAY_THRESHOLD_MINUTES
+
+                if hasDepDelay || hasArrDelay {
+                    Text("Operating with Delays")
                         .font(.caption)
                         .foregroundColor(.red.opacity(0.8))
                         .fontWeight(.medium)
                 }
-                
-                // Show delay status
-                if !isCancelled {
-                    let hasDepDelay = train.delayMinutes >= TrainCard.DELAY_THRESHOLD_MINUTES
-                    let hasArrDelay = train.arrival?.delayMinutes ?? 0 >= TrainCard.DELAY_THRESHOLD_MINUTES
-                    
-                    if hasDepDelay || hasArrDelay {
-                        Text("Operating with Delays")
-                            .font(.caption)
-                            .foregroundColor(.red.opacity(0.8))
-                            .fontWeight(.medium)
-                    }
-                }
-                
-                // Track and status - only show for boarding trains at origin
-                if !isCancelled && isBoardingAtOrigin,
-                   let track = train.track {
-                    Label("Boarding on Track \(track)", systemImage: "tram.fill")
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                        .fontWeight(.medium)
-                }
             }
-            .padding()
-            .background(
-                isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(isScheduledOnly ? 0.7 : 0.9)
-            )
-            .cornerRadius(16)
-            .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+
+            // Track and status - only show for boarding trains at origin
+            if !isCancelled && isBoardingAtOrigin,
+               let track = train.track {
+                Label("Boarding on Track \(track)", systemImage: "tram.fill")
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                    .fontWeight(.medium)
+            }
         }
-        .buttonStyle(.plain)
-        .opacity(isScheduledOnly ? 0.85 : 1.0)
+        .padding()
+        .background(
+            isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9)
+        )
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+        .opacity(1.0)
+        .onTapGesture {
+            onTap()
+        }
     }
 }
 
@@ -459,36 +474,62 @@ class TrainListViewModel: ObservableObject {
         self.apiService = apiService
     }
 
+    private func getCurrentDateInET() -> Date {
+        return Date()
+    }
+
     func loadTrains(destination: String, fromStationCode: String) async {
         self.currentDestination = destination
         self.currentFromStationCode = fromStationCode
-        
+
         isLoading = true
         hasStartedLoading = true
         error = nil
-        
+
         do {
             guard let toStationCode = Stations.getStationCode(destination) else {
                 self.error = "Invalid destination station code for: \(destination)"
                 self.isLoading = false
                 return
             }
+
+            print("🔍 DEBUG: Loading trains from \(fromStationCode) to \(toStationCode)")
+
             // Use injected apiService
             let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
-                toStationCode: toStationCode
+                toStationCode: toStationCode,
+                date: getCurrentDateInET()
             )
-            
+
+            print("🔍 DEBUG: API returned \(fetchedTrains.count) trains")
+            print("🔍 DEBUG: Train IDs: \(fetchedTrains.map { $0.trainId })")
+
             // Filter trains: only exclude trains that have already departed
+            let now = Date()
+            print("🔍 DEBUG: Current time: \(now)")
+
             let filteredTrains = fetchedTrains.filter { train in
-                !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
+                let hasDeparted = train.hasAlreadyDeparted(fromStationCode: fromStationCode)
+                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
+                if hasDeparted {
+                    print("🔍 DEBUG: Train \(train.trainId) filtered out - scheduled: \(departureTime?.description ?? "nil"), hasDeparted: \(hasDeparted)")
+                }
+                return !hasDeparted
             }
-            
+
+            print("🔍 DEBUG: After filtering departed trains: \(filteredTrains.count) trains remain")
+
             // Deduplicate trains by ID to prevent ForEach crashes
             let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
-            
+
+            print("🔍 DEBUG: After deduplication: \(uniqueTrains.count) unique trains")
+            print("🔍 DEBUG: Unique train IDs: \(uniqueTrains.map { $0.trainId })")
+
             // Sort trains by origin station departure time
             trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
+
+            print("🔍 DEBUG: Final sorted trains count: \(trains.count)")
         } catch {
             self.error = error.localizedDescription
         }
@@ -506,9 +547,10 @@ class TrainListViewModel: ObservableObject {
             // Use injected apiService
             let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
-                toStationCode: toStationCode
+                toStationCode: toStationCode,
+                date: getCurrentDateInET()
             )
-            
+
             let now = Date()
             let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
             

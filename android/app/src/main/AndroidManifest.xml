@@ -31,8 +31,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        
-        <!-- TODO: Add TrainTrackingService when implementing live tracking -->
+
+        <!-- Train Tracking Service for ongoing notifications -->
+        <service
+            android:name=".services.TrainTrackingService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- Broadcast Receiver for periodic updates -->
+        <receiver
+            android:name=".services.TrainUpdateReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

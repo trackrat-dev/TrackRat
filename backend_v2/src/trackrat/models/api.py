@@ -23,6 +23,7 @@ def serialize_eastern_datetime(dt: datetime | None) -> str | None:
         return None
     return dt.isoformat()
 
+
 # Enums
 
 
@@ -124,6 +125,7 @@ class TrainDeparture(BaseModel):
     """Train departure information for list view."""
 
     train_id: str
+    journey_date: date
     line: LineInfo
     destination: str
     departure: StationInfo
@@ -141,6 +143,11 @@ class TrainDeparture(BaseModel):
     # Progress and prediction fields
     progress: JourneyProgress | None = None
     predicted_arrival: datetime | None = None
+
+    @field_serializer("journey_date")
+    def serialize_journey_date(self, journey_date: date) -> str:
+        """Serialize date as datetime string for iOS compatibility."""
+        return f"{journey_date.isoformat()}T00:00:00"
 
     @field_serializer("predicted_arrival")
     def serialize_dt(self, dt: datetime | None) -> str | None:
@@ -513,6 +520,7 @@ class IndividualJourneySegment(BaseModel):
     )
     def serialize_dt(self, dt: datetime) -> str:
         return serialize_eastern_datetime(dt) or ""
+
     delay_minutes: float
     congestion_factor: float = Field(..., ge=0.0)
     congestion_level: Literal["normal", "moderate", "heavy", "severe"]

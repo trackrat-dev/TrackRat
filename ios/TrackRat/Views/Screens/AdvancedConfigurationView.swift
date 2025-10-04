@@ -18,13 +18,13 @@ struct AdvancedConfigurationView: View {
     var body: some View {
         let backgroundView = TrackRatTheme.Colors.primaryBackground
             .ignoresSafeArea()
-        
+
         let serverEnvironmentSection = createServerEnvironmentSection()
         let healthCheckSection = createHealthCheckSection()
-        
+
         return ZStack {
             backgroundView
-            
+
             ScrollView {
                 VStack(spacing: 24) {
                     serverEnvironmentSection
@@ -248,16 +248,16 @@ struct AdvancedConfigurationView: View {
     private func testConnection() {
         isTestingConnection = true
         healthCheckResult = nil
-        
+
         Task {
             let result = await BackendWakeupService.shared.performHealthCheck(environment: selectedEnvironment)
-            
+
             await MainActor.run {
                 withAnimation {
                     healthCheckResult = result
                     isTestingConnection = false
                 }
-                
+
                 // Haptic feedback
                 if result.success {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -267,7 +267,7 @@ struct AdvancedConfigurationView: View {
             }
         }
     }
-    
+
 }
 
 

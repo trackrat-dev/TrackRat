@@ -32,6 +32,7 @@ from trackrat.models.api import (
     TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.services.api_cache import ApiCacheService
 from trackrat.services.departure import DepartureService
 from trackrat.services.direct_forecaster import DirectArrivalForecaster
 from trackrat.services.jit import JustInTimeUpdateService
@@ -56,13 +57,16 @@ async def get_departures(
     to_station: str | None = Query(
         None, alias="to", min_length=2, max_length=3, description="Arrival station code"
     ),
+    date: date | None = Query(
+        None, description="Journey date (YYYY-MM-DD, defaults to today)"
+    ),
     time_from: datetime | None = Query(
         None, description="Start time (defaults to now)"
     ),
     time_to: datetime | None = Query(
         None, description="End time (defaults to +24 hours)"
     ),
-    limit: int = Query(50, le=100, description="Maximum results"),
+    limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
 ) -> DeparturesResponse:
     """Get train departures between stations."""
@@ -70,14 +74,47 @@ async def get_departures(
         "get_departures_request",
         from_station=from_station,
         to_station=to_station,
+        date=date,
         time_from=time_from,
         time_to=time_to,
     )
 
+    cache_service = ApiCacheService()
+
+    use_cache = date is None and time_from is None and time_to is None
+
+    if use_cache:
+        cache_params = {
+            "from_station": from_station,
+            "to_station": to_station,
+            "date": None,
+            "limit": limit,
+        }
+
+        cached_response = await cache_service.get_cached_response(
+            db, "/api/v2/trains/departures", cache_params
+        )
+        if cached_response:
+            try:
+                return DeparturesResponse(**cached_response)
+            except (TypeError, ValueError):
+                pass
+
     service = DepartureService()
-    return await service.get_departures(
-        db, from_station, to_station, time_from, time_to, limit
+    response = await service.get_departures(
+        db, from_station, to_station, date, time_from, time_to, limit
     )
+
+    if use_cache:
+        await cache_service.store_cached_response(
+            db,
+            "/api/v2/trains/departures",
+            cache_params,
+            response.model_dump(mode="json"),
+            ttl_seconds=120,
+        )
+
+    return response
 
 
 @router.get("/{train_id}", response_model=TrainDetailsResponse)

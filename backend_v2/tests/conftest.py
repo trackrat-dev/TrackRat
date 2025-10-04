@@ -10,6 +10,21 @@ import structlog
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
+# Disable Sentry completely before any imports
+os.environ["SENTRY_DSN"] = ""
+# Mock sentry_sdk to prevent initialization
+import sys
+from unittest.mock import MagicMock
+
+sys.modules["sentry_sdk"] = MagicMock()
+sys.modules["sentry_sdk.integrations.asyncio"] = MagicMock()
+sys.modules["sentry_sdk.integrations.fastapi"] = MagicMock()
+sys.modules["sentry_sdk.integrations.httpx"] = MagicMock()
+sys.modules["sentry_sdk.integrations.logging"] = MagicMock()
+sys.modules["sentry_sdk.integrations.sqlalchemy"] = MagicMock()
+sys.modules["sentry_sdk.crons"] = MagicMock()
+sys.modules["sentry_sdk._types"] = MagicMock()
+
 from starlette.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
@@ -63,6 +78,7 @@ def test_settings() -> Settings:
         discovery_interval_minutes=60,
         journey_update_interval_minutes=15,
         data_staleness_seconds=60,
+        sentry_dsn="",  # Explicitly disable Sentry
     )
 
 
@@ -218,12 +234,15 @@ def e2e_client(test_settings, sync_engine):
 
     app.dependency_overrides[get_db] = get_e2e_test_db
 
-    # Disable scheduler for tests
+    # Disable scheduler and migrations for tests
     with (
         patch("trackrat.main.get_scheduler") as mock_scheduler,
         patch("trackrat.api.health.get_scheduler") as mock_health_scheduler,
         patch("trackrat.api.trains.NJTransitClient") as mock_njt_client,
+        patch("trackrat.main.init_database") as mock_init_db,
     ):
+        mock_init_db.return_value = AsyncMock()
+
         scheduler = Mock()
         scheduler.start = AsyncMock()
         scheduler.stop = AsyncMock()

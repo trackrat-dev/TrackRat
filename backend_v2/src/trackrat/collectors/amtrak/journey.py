@@ -323,6 +323,11 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     actual_arr = sched_arr
 
                 # Prepare stop data for upsert
+                # Apply time validation to prevent future trains being marked as departed
+                has_departed = amtrak_stop.status == "Departed" and (
+                    not sched_dep or sched_dep <= now_et()
+                )
+
                 stop_data = {
                     "station_name": get_station_name(internal_code),
                     "stop_sequence": stop_sequence,
@@ -333,7 +338,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     "actual_arrival": actual_arr,
                     "actual_departure": actual_dep,
                     "raw_amtrak_status": amtrak_stop.status,
-                    "has_departed_station": (amtrak_stop.status == "Departed"),
+                    "has_departed_station": has_departed,
                     "track": amtrak_stop.platform if amtrak_stop.platform else None,
                     "pickup_only": False,
                     "dropoff_only": False,
@@ -573,7 +578,10 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     status=amtrak_stop.status,
                 )
                 actual_arrival = scheduled_arrival
-            departed: bool = amtrak_stop.status == "Departed"
+            # Validate against scheduled time to prevent stale data issues
+            departed: bool = amtrak_stop.status == "Departed" and (
+                not scheduled_departure or scheduled_departure <= now_et()
+            )
             # status: str = self.STATUS_MAP.get(amtrak_stop.status, amtrak_stop.status)
             track: str | None = amtrak_stop.platform if amtrak_stop.platform else None
             pickup_only: bool = False
@@ -589,7 +597,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 "actual_arrival": actual_arrival,
                 "actual_departure": actual_departure,
                 "raw_amtrak_status": amtrak_stop.status,
-                "has_departed_station": departed,
+                "has_departed_station": departed,  # Now using validated flag
                 "track": track,
                 "pickup_only": pickup_only,
                 "dropoff_only": dropoff_only,

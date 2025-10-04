@@ -121,7 +121,7 @@ class JourneyCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 2)
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 1)
             
             // Determine expected data source based on train type
             let expectedDataSource: String
@@ -319,31 +319,58 @@ struct CongestionMapKitView: UIViewRepresentable {
             mapView.setRegion(region, animated: true)
         }
         
-        // Clear existing overlays and annotations
-        mapView.removeOverlays(mapView.overlays)
-        mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
-        
-        // Clear stored polylines
-        context.coordinator.polylines.removeAll()
-        
-        // Sort segments by congestion factor (ascending) so severe congestion is drawn last (on top)
-        let sortedSegments = segments.sorted { segment1, segment2 in
-            segment1.congestionFactor < segment2.congestionFactor
+        // Build desired overlay state (include congestionLevel to catch visual changes)
+        let desiredOverlayState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
+
+        // Early exit if nothing changed
+        guard desiredOverlayState != context.coordinator.currentOverlayState else {
+            return
         }
-        
-        // Add congestion polylines in sorted order (green first, then yellow, orange, red last)
-        for segment in sortedSegments {
-            if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
-               let toCoords = Stations.getCoordinates(for: segment.toStation) {
-                let coordinates = [fromCoords, toCoords]
-                
-                let polyline = CongestionPolyline(coordinates: coordinates, count: coordinates.count)
-                polyline.segment = segment
-                mapView.addOverlay(polyline)
-                context.coordinator.polylines.append(polyline)
+
+        // Diff overlays
+        let toRemove = context.coordinator.currentOverlayState.subtracting(desiredOverlayState)
+        let toAdd = desiredOverlayState.subtracting(context.coordinator.currentOverlayState)
+
+        // Remove old overlays (batch operation)
+        if !toRemove.isEmpty {
+            let overlaysToRemove = toRemove.compactMap { context.coordinator.overlayMap[$0.segmentID] }
+            if !overlaysToRemove.isEmpty {
+                mapView.removeOverlays(overlaysToRemove)
+            }
+            toRemove.forEach { context.coordinator.overlayMap.removeValue(forKey: $0.segmentID) }
+            context.coordinator.polylines.removeAll { polyline in
+                toRemove.contains { $0.segmentID == polyline.segment?.id }
             }
         }
-        
+
+        // Add new overlays (batch operation)
+        if !toAdd.isEmpty {
+            let segmentsToAdd = segments.filter { toAdd.contains(OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel)) }
+            let sortedSegments = segmentsToAdd.sorted { $0.congestionFactor < $1.congestionFactor }
+
+            var newOverlays: [CongestionPolyline] = []
+            for segment in sortedSegments {
+                if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
+                   let toCoords = Stations.getCoordinates(for: segment.toStation) {
+                    let coordinates = [fromCoords, toCoords]
+                    let polyline = CongestionPolyline(coordinates: coordinates, count: coordinates.count)
+                    polyline.segment = segment
+                    newOverlays.append(polyline)
+                    context.coordinator.overlayMap[segment.id] = polyline
+                    context.coordinator.polylines.append(polyline)
+                }
+            }
+            if !newOverlays.isEmpty {
+                mapView.addOverlays(newOverlays)
+            }
+        }
+
+        // Update state
+        context.coordinator.currentOverlayState = desiredOverlayState
+
+        // Always clear and re-add annotations (they're lightweight)
+        mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
+
         // Add station annotations
         for station in stations {
             let annotation = StationAnnotation()
@@ -352,11 +379,11 @@ struct CongestionMapKitView: UIViewRepresentable {
             annotation.station = station
             mapView.addAnnotation(annotation)
         }
-        
+
         // Add train annotations
         for trainPosition in trainPositions {
             var coordinate: CLLocationCoordinate2D?
-            
+
             // For Amtrak trains that haven't departed yet - ALWAYS show at user's origin station
             if trainPosition.dataSource == "AMTRAK" && trainPosition.lastDepartedStation == nil {
                 // Find the first station in the journey (user's origin)
@@ -370,8 +397,7 @@ struct CongestionMapKitView: UIViewRepresentable {
                 // Train is at a station - show it at the station location
                 coordinate = Stations.getCoordinates(for: atStation)
             }
-            // TODO: Add interpolation for trains between stations (NJ Transit)
-            
+
             if let coord = coordinate {
                 let annotation = TrainAnnotation(trainData: trainPosition, coordinate: coord)
                 mapView.addAnnotation(annotation)
@@ -388,11 +414,19 @@ struct CongestionMapKitView: UIViewRepresentable {
         Coordinator()
     }
     
+    struct OverlayIdentity: Hashable {
+        let segmentID: String
+        let congestionLevel: String
+    }
+
     class Coordinator: NSObject, MKMapViewDelegate {
         var segments: [CongestionSegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
         var polylines: [CongestionPolyline] = []
         weak var mapView: MKMapView?
+
+        var currentOverlayState: Set<OverlayIdentity> = []
+        var overlayMap: [String: CongestionPolyline] = [:]
         
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
@@ -829,7 +863,7 @@ class EmbeddedCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data using existing API
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 2)
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 1)
             
             // Determine expected data source based on train type
             let expectedDataSource: String
@@ -1351,6 +1385,7 @@ private struct SegmentTimeDetailRow: View {
     JourneyCongestionMapView(
         train: TrainV2(
             trainId: "2307",
+            journeyDate: Date(),
             line: LineInfo(code: "NEC", name: "Northeast Corridor", color: "#0066CC"),
             destination: "New York Penn Station",
             departure: StationTiming(code: "TR", name: "Trenton", scheduledTime: Date(), updatedTime: nil, actualTime: nil, track: nil),

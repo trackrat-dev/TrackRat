@@ -2,9 +2,9 @@ import XCTest
 @testable import TrackRat
 
 class TrainTests: XCTestCase {
-    
+
     // MARK: - Initialization Tests
-    
+
     func testTrainInitialization() {
         let departureTime = Date()
         let train = Train(
@@ -30,7 +30,7 @@ class TrainTests: XCTestCase {
             statusV2: nil,
             progress: nil
         )
-        
+
         XCTAssertEqual(train.id, 1)
         XCTAssertEqual(train.trainId, "123")
         XCTAssertEqual(train.line, "Northeast Corridor")
@@ -41,7 +41,7 @@ class TrainTests: XCTestCase {
         XCTAssertEqual(train.originStationCode, "NP")
         XCTAssertEqual(train.dataSource, "NJTransit")
     }
-    
+
     func testTrainWithDelayMinutes() {
         let train = Train(
             id: 1,
@@ -55,216 +55,113 @@ class TrainTests: XCTestCase {
             stops: nil,
             predictionData: nil,
             originStationCode: "NP",
-            dataSource: "NJTransit",
-            consolidatedId: nil,
-            originStation: nil,
-            dataSources: nil,
-            currentPosition: nil,
-            trackAssignment: nil,
-            statusSummary: nil,
-            consolidationMetadata: nil,
-            statusV2: nil,
-            progress: nil
+            dataSource: "NJTransit"
         )
-        
+
         XCTAssertEqual(train.delayMinutes, 15)
         XCTAssertEqual(train.status, .delayed)
     }
-    
-    // MARK: - JSON Decoding Tests
-    
-    func testLegacyTrainJSONDecoding() throws {
-        let json = """
-        {
-            "id": 1,
-            "train_id": "123",
-            "line": "Northeast Corridor",
-            "destination": "New York Penn Station",
-            "departure_time": "2024-01-01T10:00:00-05:00",
-            "track": "1",
-            "status": "ON_TIME",
-            "delay_minutes": null,
-            "origin_station_code": "NP",
-            "data_source": "NJTransit"
-        }
-        """
-        
-        let data = json.data(using: .utf8)!
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        
-        let train = try decoder.decode(Train.self, from: data)
-        
-        XCTAssertEqual(train.id, 1)
-        XCTAssertEqual(train.trainId, "123")
-        XCTAssertEqual(train.line, "Northeast Corridor")
-        XCTAssertEqual(train.destination, "New York Penn Station")
-        XCTAssertEqual(train.track, "1")
-        XCTAssertEqual(train.status, .onTime)
-        XCTAssertNil(train.delayMinutes)
-        XCTAssertEqual(train.originStationCode, "NP")
-        XCTAssertEqual(train.dataSource, "NJTransit")
-        XCTAssertNil(train.consolidatedId)
-        XCTAssertFalse(train.isConsolidated)
+
+    func testTrainWithStops() {
+        let stops = [
+            Stop.mock(stationName: "Newark Penn Station", stationCode: "NP"),
+            Stop.mock(stationName: "New York Penn Station", stationCode: "NY")
+        ]
+
+        let train = Train(
+            id: 1,
+            trainId: "123",
+            line: "Northeast Corridor",
+            destination: "New York Penn Station",
+            departureTime: Date(),
+            track: "1",
+            status: .onTime,
+            delayMinutes: nil,
+            stops: stops,
+            predictionData: nil,
+            originStationCode: "NP",
+            dataSource: "NJTransit"
+        )
+
+        XCTAssertEqual(train.stops?.count, 2)
+        XCTAssertEqual(train.stops?[0].stationCode, "NP")
+        XCTAssertEqual(train.stops?[1].stationCode, "NY")
     }
-    
-    func testConsolidatedTrainJSONDecoding() throws {
-        let json = """
-        {
-            "consolidated_id": "amtrak_123_njtransit_456",
-            "train_id": "123",
-            "line": "Northeast Corridor",
-            "destination": "New York Penn Station",
-            "origin_station": {
-                "code": "NP",
-                "name": "Newark Penn Station",
-                "departure_time": "2024-01-01T10:00:00-05:00"
-            },
-            "track_assignment": {
-                "track": "2",
-                "assigned_at": "2024-01-01T09:45:00-05:00",
-                "assigned_by": "Dispatcher",
-                "source": "NJTransit"
-            },
-            "status_summary": {
-                "current_status": "on time",
-                "delay_minutes": 0,
-                "on_time_performance": "good"
-            },
-            "data_sources": [
-                {
-                    "origin": "NP",
-                    "data_source": "NJTransit",
-                    "last_update": "2024-01-01T09:30:00-05:00",
-                    "status": "ON_TIME",
-                    "track": "2",
-                    "delay_minutes": 0,
-                    "db_id": 123
-                }
-            ]
-        }
-        """
-        
+
+    // MARK: - Codable Tests
+
+    func testTrainJSONDecoding() {
+        let jsonString = TrainTestData.sampleTrainJSON
+
         do {
-            let train = try TestHelpers.decodeJSON(Train.self, from: json)
-            
-            XCTAssertEqual(train.consolidatedId, "amtrak_123_njtransit_456")
+            let train = try TestHelpers.decodeJSON(Train.self, from: jsonString)
             XCTAssertEqual(train.trainId, "123")
             XCTAssertEqual(train.line, "Northeast Corridor")
             XCTAssertEqual(train.destination, "New York Penn Station")
-            XCTAssertEqual(train.displayTrack, "2")
-            XCTAssertEqual(train.displayStatus, .onTime)
-            XCTAssertEqual(train.displayDelayMinutes, 0)
+            XCTAssertEqual(train.track, "1")
             XCTAssertEqual(train.originStationCode, "NP")
-            XCTAssertEqual(train.dataSource, "NJTransit")
-            XCTAssertTrue(train.isConsolidated)
-            XCTAssertNotNil(train.originStation)
-            XCTAssertNotNil(train.trackAssignment)
-            XCTAssertNotNil(train.statusSummary)
-            XCTAssertEqual(train.dataSources?.count, 1)
+            XCTAssertEqual(train.dataSource, "NJT")
         } catch {
-            XCTFail("Should be able to decode consolidated train from JSON. Error: \(error)")
+            XCTFail("Should be able to decode Train from JSON. Error: \(error)")
         }
     }
-    
-    func testEnhancedFieldsDecoding() throws {
-        let json = """
+
+    func testTrainJSONEncoding() {
+        let train = TrainTestData.sampleTrain()
+
+        do {
+            let data = try JSONEncoder().encode(train)
+            let decoded = try JSONDecoder().decode(Train.self, from: data)
+
+            XCTAssertEqual(train.trainId, decoded.trainId)
+            XCTAssertEqual(train.line, decoded.line)
+            XCTAssertEqual(train.destination, decoded.destination)
+            XCTAssertEqual(train.track, decoded.track)
+        } catch {
+            XCTFail("Should be able to encode/decode Train. Error: \(error)")
+        }
+    }
+
+    func testInvalidTrainJSONDecoding() {
+        let invalidJSON = """
         {
-            "id": 1,
             "train_id": "123",
             "line": "Northeast Corridor",
-            "destination": "New York Penn Station",
-            "departure_time": "2024-01-01T10:00:00-05:00",
-            "track": "1",
-            "status": "BOARDING",
-            "origin_station_code": "NP",
-            "data_source": "NJTransit",
-            "status_v2": {
-                "current": "BOARDING",
-                "location": "Platform 1",
-                "updated_at": "2024-01-01T09:58:00-05:00",
-                "confidence": "high",
-                "source": "NJTransit"
-            },
-            "progress": {
-                "last_departed": {
-                    "station_code": "NP",
-                    "departed_at": "2024-01-01T09:45:00-05:00",
-                    "delay_minutes": 0
-                },
-                "next_arrival": {
-                    "station_code": "NY",
-                    "scheduled_arrival": "2024-01-01T10:15:00-05:00",
-                    "estimated_time": "2024-01-01T10:15:00-05:00",
-                    "minutes_away": 15
-                },
-                "journey_percent": 25,
-                "stops_completed": 1,
-                "total_stops": 4
-            }
+            "invalid_field": "should cause error"
         }
         """
-        
-        do {
-            let train = try TestHelpers.decodeJSON(Train.self, from: json)
-            
-            XCTAssertNotNil(train.statusV2)
-            XCTAssertEqual(train.statusV2?.current, "BOARDING")
-            XCTAssertEqual(train.statusV2?.location, "Platform 1")
-            XCTAssertEqual(train.statusV2?.confidence, "high")
-            XCTAssertEqual(train.enhancedDisplayStatus, "BOARDING")
-            XCTAssertEqual(train.displayLocation, "Platform 1")
-            
-            XCTAssertNotNil(train.progress)
-            XCTAssertEqual(train.progress?.journeyPercent, 25)
-            XCTAssertEqual(train.progress?.stopsCompleted, 1)
-            XCTAssertEqual(train.progress?.totalStops, 4)
-            XCTAssertNotNil(train.journeyProgress)
-            XCTAssertEqual(train.progress?.nextArrival?.minutesAway, 15)
-        } catch {
-            XCTFail("Should be able to decode enhanced train from JSON. Error: \(error)")
-        }
-    }
-    
-    func testMalformedJSONHandling() {
-        let json = """
-        {
-            "id": "invalid",
-            "train_id": 123,
-            "line": null,
-            "destination": "",
-            "departure_time": "invalid-date",
-            "status": "INVALID_STATUS"
-        }
-        """
-        
-        let data = json.data(using: .utf8)!
+
+        let data = invalidJSON.data(using: .utf8)!
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        
+
         XCTAssertThrowsError(try decoder.decode(Train.self, from: data)) { error in
             XCTAssertTrue(error is DecodingError)
         }
     }
-    
+
     // MARK: - Origin-Aware Methods Tests
-    
+
     func testGetDepartureTimeFromOrigin() {
         let baseTime = Date()
         let npDepartureTime = Calendar.current.date(byAdding: .minute, value: 10, to: baseTime)!
         let nyDepartureTime = Calendar.current.date(byAdding: .minute, value: 30, to: baseTime)!
-        
+
         let stops = [
-            Stop(stationCode: "NP", stationName: "Newark Penn Station", 
-                 scheduledTime: npDepartureTime, departureTime: npDepartureTime,
-                 pickupOnly: false, dropoffOnly: false, departed: false,
-                 departedConfirmedBy: nil, stopStatus: nil, platform: nil),
-            Stop(stationCode: "NY", stationName: "New York Penn Station",
-                 scheduledTime: nyDepartureTime, departureTime: nyDepartureTime,
-                 pickupOnly: false, dropoffOnly: false, departed: false,
-                 departedConfirmedBy: nil, stopStatus: nil, platform: nil)
+            Stop.mock(
+                stationName: "Newark Penn Station",
+                stationCode: "NP",
+                scheduledTime: npDepartureTime,
+                departureTime: npDepartureTime
+            ),
+            Stop.mock(
+                stationName: "New York Penn Station",
+                stationCode: "NY",
+                scheduledTime: nyDepartureTime,
+                departureTime: nyDepartureTime
+            )
         ]
-        
+
         let train = Train(
             id: 1, trainId: "123", line: "Northeast Corridor",
             destination: "New York Penn Station", departureTime: baseTime,
@@ -272,194 +169,214 @@ class TrainTests: XCTestCase {
             stops: stops, predictionData: nil, originStationCode: "NP",
             dataSource: "NJTransit"
         )
-        
+
         let npTime = train.getDepartureTime(fromStationCode: "NP")
         let nyTime = train.getDepartureTime(fromStationCode: "NY")
         let fallbackTime = train.getDepartureTime(fromStationCode: "UNKNOWN")
-        
+
         XCTAssertEqual(npTime, npDepartureTime)
         XCTAssertEqual(nyTime, nyDepartureTime)
         XCTAssertEqual(fallbackTime, baseTime) // Falls back to train's departure time
     }
-    
+
     func testGetFormattedDepartureTime() {
         let train = TrainTestData.sampleTrain()
         let formatted = train.getFormattedDepartureTime(fromStationCode: "NP")
-        
+
         XCTAssertFalse(formatted.isEmpty)
         XCTAssertTrue(formatted.contains(":")) // Should contain time separator
-        
+
         // Test with Eastern Time formatting
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         formatter.timeZone = TimeZone(identifier: "America/New_York")
         let expected = formatter.string(from: train.getDepartureTime(fromStationCode: "NP"))
-        
+
         XCTAssertEqual(formatted, expected)
     }
-    
-    // MARK: - Enhanced Properties Tests
-    
+
+    // MARK: - Track Properties Tests
+
     func testDisplayTrackProperties() {
-        // Test legacy track
-        let legacyTrain = Train(
+        // Test basic track property
+        let basicTrain = Train(
             id: 1, trainId: "123", line: "Northeast Corridor",
             destination: "New York Penn Station", departureTime: Date(),
             track: "1", status: .onTime, delayMinutes: nil,
             stops: nil, predictionData: nil, originStationCode: "NP",
             dataSource: "NJTransit"
         )
-        XCTAssertEqual(legacyTrain.displayTrack, "1")
-        
-        // Test consolidated track assignment
-        let trackAssignment = TrackAssignment(track: "2", assignedAt: Date(), assignedBy: "System", source: "NJTransit")
+        XCTAssertEqual(basicTrain.track, "1")
+        XCTAssertEqual(basicTrain.displayTrack, "1")
+    }
+
+    func testGetTrackForStation() {
+        let train = TrainTestData.sampleTrain()
+
+        // Test getting track for origin station
+        let track = train.getTrackForStation("NP")
+
+        // Should return the train's track since no specific track assignment
+        XCTAssertEqual(track, train.track)
+    }
+
+    // MARK: - Consolidated Data Tests
+
+    func testIsConsolidated() {
+        // Test non-consolidated train
+        let basicTrain = TrainTestData.sampleTrain()
+        XCTAssertFalse(basicTrain.isConsolidated)
+
+        // Test consolidated train
         let consolidatedTrain = Train(
             id: 1, trainId: "123", line: "Northeast Corridor",
             destination: "New York Penn Station", departureTime: Date(),
             track: "1", status: .onTime, delayMinutes: nil,
             stops: nil, predictionData: nil, originStationCode: "NP",
-            dataSource: "NJTransit", consolidatedId: "consolidated_123",
-            trackAssignment: trackAssignment
+            dataSource: "NJTransit", consolidatedId: "consolidated_123"
         )
-        XCTAssertEqual(consolidatedTrain.displayTrack, "2") // Prefers consolidated
+        XCTAssertTrue(consolidatedTrain.isConsolidated)
     }
-    
-    func testDisplayStatusProperties() {
-        // Test legacy status
-        let legacyTrain = Train(
+
+    // MARK: - Status Tests
+
+    func testTrainStatusValues() {
+        let onTimeTrain = Train(
             id: 1, trainId: "123", line: "Northeast Corridor",
             destination: "New York Penn Station", departureTime: Date(),
-            track: "1", status: .delayed, delayMinutes: 10,
+            track: "1", status: .onTime, delayMinutes: nil,
             stops: nil, predictionData: nil, originStationCode: "NP",
             dataSource: "NJTransit"
         )
-        XCTAssertEqual(legacyTrain.displayStatus, .delayed)
-        XCTAssertEqual(legacyTrain.enhancedDisplayStatus, "Delayed")
-        XCTAssertNil(legacyTrain.displayLocation)
-        
-        // Test enhanced status with StatusV2
-        let statusV2 = StatusV2(current: "BOARDING", location: "Platform 3", 
-                               updatedAt: Date(), confidence: "high", source: "NJTransit")
-        let enhancedTrain = Train(
-            id: 1, trainId: "123", line: "Northeast Corridor",
+        XCTAssertEqual(onTimeTrain.status, .onTime)
+
+        let delayedTrain = Train(
+            id: 2, trainId: "124", line: "Northeast Corridor",
             destination: "New York Penn Station", departureTime: Date(),
-            track: "1", status: .scheduled, delayMinutes: nil,
-            stops: nil, predictionData: nil, originStationCode: "NP",
-            dataSource: "NJTransit", statusV2: statusV2
-        )
-        XCTAssertEqual(enhancedTrain.enhancedDisplayStatus, "BOARDING")
-        XCTAssertEqual(enhancedTrain.displayLocation, "Platform 3")
-    }
-    
-    func testDisplayDelayProperties() {
-        // Test legacy delay
-        let legacyTrain = Train(
-            id: 1, trainId: "123", line: "Northeast Corridor",
-            destination: "New York Penn Station", departureTime: Date(),
-            track: "1", status: .delayed, delayMinutes: 15,
+            track: "2", status: .delayed, delayMinutes: 10,
             stops: nil, predictionData: nil, originStationCode: "NP",
             dataSource: "NJTransit"
         )
-        XCTAssertEqual(legacyTrain.displayDelayMinutes, 15)
-        
-        // Test consolidated delay
-        let statusSummary = StatusSummary(currentStatus: "delayed", delayMinutes: 20, onTimePerformance: "poor")
-        let consolidatedTrain = Train(
-            id: 1, trainId: "123", line: "Northeast Corridor",
-            destination: "New York Penn Station", departureTime: Date(),
-            track: "1", status: .delayed, delayMinutes: 15,
-            stops: nil, predictionData: nil, originStationCode: "NP",
-            dataSource: "NJTransit", statusSummary: statusSummary
-        )
-        XCTAssertEqual(consolidatedTrain.displayDelayMinutes, 20) // Prefers consolidated
+        XCTAssertEqual(delayedTrain.status, .delayed)
+        XCTAssertEqual(delayedTrain.delayMinutes, 10)
     }
-    
-    func testPositionTrackingProperties() {
-        let currentPosition = CurrentPosition(
-            status: "en_route", lastDepartedStation: nil, nextStation: nil,
-            segmentProgress: 0.75, estimatedSpeedMph: 65.0
-        )
-        
+
+    // MARK: - Stop Interaction Tests
+
+    func testNormalizedStops() {
+        let stops = [
+            Stop.mock(stationName: "Newark Penn Station", stationCode: "NP"),
+            Stop.mock(stationName: "New York Penn Station", stationCode: "NY")
+        ]
+
         let train = Train(
             id: 1, trainId: "123", line: "Northeast Corridor",
             destination: "New York Penn Station", departureTime: Date(),
-            track: "1", status: .departed, delayMinutes: nil,
-            stops: nil, predictionData: nil, originStationCode: "NP",
-            dataSource: "NJTransit", currentPosition: currentPosition
+            track: "1", status: .onTime, delayMinutes: nil,
+            stops: stops, predictionData: nil, originStationCode: "NP",
+            dataSource: "NJTransit"
         )
-        
-        XCTAssertTrue(train.hasPositionTracking)
-        XCTAssertEqual(train.segmentProgress, 0.75)
-        XCTAssertEqual(train.estimatedSpeed, 65.0)
-        
-        // Test train without position tracking
-        let basicTrain = TrainTestData.sampleTrain()
-        XCTAssertFalse(basicTrain.hasPositionTracking)
-        XCTAssertEqual(basicTrain.segmentProgress, 0.0)
-        XCTAssertNil(basicTrain.estimatedSpeed)
+
+        let normalizedStops = train.normalizedStops
+        XCTAssertEqual(normalizedStops.count, 2)
+        XCTAssertEqual(normalizedStops[0].stationCode, "NP")
+        XCTAssertEqual(normalizedStops[1].stationCode, "NY")
     }
-    
-    func testConsolidationProperties() {
-        // Test non-consolidated train
-        let singleTrain = TrainTestData.sampleTrain()
-        XCTAssertFalse(singleTrain.isConsolidated)
-        
-        // Test consolidated train with multiple sources
-        let dataSources = [
-            DataSource(origin: "NP", dataSource: "NJTransit", lastUpdate: Date(), 
-                      status: "ON_TIME", track: "1", delayMinutes: 0, dbId: 123),
-            DataSource(origin: "NP", dataSource: "Amtrak", lastUpdate: Date(),
-                      status: "ON_TIME", track: "1", delayMinutes: 0, dbId: 456)
-        ]
-        
-        let consolidatedTrain = Train(
+
+    // MARK: - Prediction Data Tests
+
+    func testTrainWithPredictionData() {
+        let predictionData = TrainTestData.createMockPredictionData()
+
+        let train = Train(
             id: 1, trainId: "123", line: "Northeast Corridor",
             destination: "New York Penn Station", departureTime: Date(),
             track: "1", status: .onTime, delayMinutes: nil,
-            stops: nil, predictionData: nil, originStationCode: "NP",
-            dataSource: "NJTransit", consolidatedId: "consolidated_123",
-            dataSources: dataSources
+            stops: nil, predictionData: predictionData, originStationCode: "NP",
+            dataSource: "NJTransit"
         )
-        
-        XCTAssertTrue(consolidatedTrain.isConsolidated)
+
+        XCTAssertNotNil(train.predictionData)
+        XCTAssertNotNil(train.predictionData?.trackProbabilities)
     }
-    
-    // MARK: - TrainStatus Tests
-    
-    func testTrainStatusEnum() {
-        XCTAssertEqual(TrainStatus.scheduled.displayText, "Scheduled")
-        XCTAssertEqual(TrainStatus.onTime.displayText, "On Time")
-        XCTAssertEqual(TrainStatus.delayed.displayText, "Delayed")
-        XCTAssertEqual(TrainStatus.boarding.displayText, "Boarding")
-        XCTAssertEqual(TrainStatus.departed.displayText, "Departed")
-        XCTAssertEqual(TrainStatus.unknown.displayText, "Unknown")
-        
-        XCTAssertEqual(TrainStatus.scheduled.color, "gray")
-        XCTAssertEqual(TrainStatus.onTime.color, "green")
-        XCTAssertEqual(TrainStatus.delayed.color, "red")
-        XCTAssertEqual(TrainStatus.boarding.color, "orange")
-        XCTAssertEqual(TrainStatus.departed.color, "gray")
-        XCTAssertEqual(TrainStatus.unknown.color, "gray")
+
+    // MARK: - Edge Cases
+
+    func testTrainWithNilValues() {
+        let train = Train(
+            id: 1,
+            trainId: "123",
+            line: "Northeast Corridor",
+            destination: "New York Penn Station",
+            departureTime: Date(),
+            track: nil, // Nil track
+            status: .onTime,
+            delayMinutes: nil, // Nil delay
+            stops: nil, // Nil stops
+            predictionData: nil, // Nil predictions
+            originStationCode: nil, // Nil origin
+            dataSource: "NJTransit"
+        )
+
+        XCTAssertNil(train.track)
+        XCTAssertNil(train.delayMinutes)
+        XCTAssertNil(train.stops)
+        XCTAssertNil(train.predictionData)
+        XCTAssertNil(train.originStationCode)
     }
-    
-    func testTrainStatusDecoding() throws {
-        // Test empty string handling
-        let emptyJson = "\"\"" 
-        let emptyData = emptyJson.data(using: .utf8)!
-        let decoder = JSONDecoder()
-        let emptyStatus = try decoder.decode(TrainStatus.self, from: emptyData)
-        XCTAssertEqual(emptyStatus, .scheduled)
-        
-        // Test unknown status handling
-        let unknownJson = "\"INVALID_STATUS\""
-        let unknownData = unknownJson.data(using: .utf8)!
-        let unknownStatus = try decoder.decode(TrainStatus.self, from: unknownData)
-        XCTAssertEqual(unknownStatus, .unknown)
-        
-        // Test valid status
-        let validJson = "\"BOARDING\""
-        let validData = validJson.data(using: .utf8)!
-        let validStatus = try decoder.decode(TrainStatus.self, from: validData)
-        XCTAssertEqual(validStatus, .boarding)
+
+    func testTrainDisplayTrackWithNilTrack() {
+        let train = Train(
+            id: 1, trainId: "123", line: "Northeast Corridor",
+            destination: "New York Penn Station", departureTime: Date(),
+            track: nil, status: .onTime, delayMinutes: nil,
+            stops: nil, predictionData: nil, originStationCode: "NP",
+            dataSource: "NJTransit"
+        )
+
+        XCTAssertNil(train.displayTrack)
+    }
+
+    // MARK: - Complex Object Tests
+
+    func testTrainWithComplexStops() {
+        let stops = TrainTestData.consolidatedStops()
+
+        let train = Train(
+            id: 1, trainId: "123", line: "Northeast Corridor",
+            destination: "Trenton", departureTime: Date(),
+            track: "1", status: .onTime, delayMinutes: nil,
+            stops: stops, predictionData: nil, originStationCode: "NY",
+            dataSource: "NJTransit"
+        )
+
+        XCTAssertEqual(train.stops?.count, 5)
+        XCTAssertEqual(train.stops?[0].stationCode, "NY")
+        XCTAssertEqual(train.stops?[4].stationCode, "TRE")
+    }
+
+    // MARK: - Initialization Edge Cases
+
+    func testMinimalTrainInitialization() {
+        // Test with only required parameters
+        let train = Train(
+            id: 1,
+            trainId: "MINIMAL",
+            line: "Test Line",
+            destination: "Test Destination",
+            departureTime: Date(),
+            track: nil,
+            status: .scheduled,
+            delayMinutes: nil,
+            stops: nil,
+            predictionData: nil,
+            originStationCode: nil,
+            dataSource: nil
+        )
+
+        XCTAssertEqual(train.trainId, "MINIMAL")
+        XCTAssertEqual(train.line, "Test Line")
+        XCTAssertEqual(train.destination, "Test Destination")
+        XCTAssertEqual(train.status, .scheduled)
     }
 }

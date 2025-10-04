@@ -1,15 +1,18 @@
 import Foundation
 import Combine
+import Sentry
 
 // MARK: - Clean API Service for V2 Backend
-@MainActor
 final class APIService: ObservableObject {
     static let shared = APIService()
     
     private var baseURL: String
     private let session = URLSession.shared
     private let storageService = StorageService()
-    
+
+    // Configuration constants
+    private static let DEPARTURE_LIMIT = "1000"
+
     init() {
         let environment = storageService.loadServerEnvironment()
         self.baseURL = environment.baseURL
@@ -34,23 +37,58 @@ final class APIService: ObservableObject {
     
     // MARK: - Train Search
     
-    func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [TrainV2] {
+    func searchTrains(fromStationCode: String, toStationCode: String, date: Date? = nil) async throws -> [TrainV2] {
         var components = URLComponents(string: "\(baseURL)/v2/trains/departures")!
-        components.queryItems = [
+
+        var queryItems = [
             URLQueryItem(name: "from", value: fromStationCode),
             URLQueryItem(name: "to", value: toStationCode),
-            URLQueryItem(name: "limit", value: "100")
+            URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT)
         ]
-        
+
+        if let date = date {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.timeZone = TimeZone(identifier: "America/New_York")
+            queryItems.append(URLQueryItem(name: "date", value: formatter.string(from: date)))
+        }
+
+        components.queryItems = queryItems
+
         guard let url = components.url else {
             throw APIError.invalidURL
         }
-        
-        let (data, _) = try await session.data(from: url)
-        
+
+        print("🔵 DEBUG API: Fetching trains from URL: \(url)")
+
+        // Create a span for network request tracking
+        let span = SentrySDK.span
+        let networkSpan = span?.startChild(
+            operation: "http.client",
+            description: "GET \(url.path)"
+        )
+        networkSpan?.setData(value: url.absoluteString, key: "url")
+        networkSpan?.setData(value: "GET", key: "method")
+
+        let (data, response) = try await session.data(from: url)
+
+        // Track HTTP response
+        if let httpResponse = response as? HTTPURLResponse {
+            networkSpan?.setData(value: httpResponse.statusCode, key: "status_code")
+        }
+        networkSpan?.finish()
+
         do {
+            let decodingSpan = span?.startChild(operation: "json.decode", description: "Parse departures")
             let response = try decoder.decode(V2DeparturesResponse.self, from: data)
-            return response.departures.map { adaptV2DepartureToTrainV2($0) }
+            decodingSpan?.finish()
+            print("🔵 DEBUG API: Decoded \(response.departures.count) departures from API")
+            print("🔵 DEBUG API: Train IDs in response: \(response.departures.map { $0.trainId })")
+
+            let adaptedTrains = response.departures.map { adaptV2DepartureToTrainV2($0) }
+            print("🔵 DEBUG API: Adapted to \(adaptedTrains.count) TrainV2 objects")
+
+            return adaptedTrains
         } catch {
             print("🔴 V2 DECODING ERROR (searchTrains): \(error)")
             if let jsonString = String(data: data, encoding: .utf8) {
@@ -62,15 +100,16 @@ final class APIService: ObservableObject {
     
     // MARK: - Train Details
     
-    func fetchTrainDetails(id: String, fromStationCode: String? = nil) async throws -> TrainV2 {
+    func fetchTrainDetails(id: String, fromStationCode: String? = nil, date: Date? = nil) async throws -> TrainV2 {
         var components = URLComponents(string: "\(baseURL)/v2/trains/\(id)")!
-        
+
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = TimeZone(identifier: "America/New_York")
-        
+
+        let queryDate = date ?? Date()
         var queryItems = [
-            URLQueryItem(name: "date", value: formatter.string(from: Date())),
+            URLQueryItem(name: "date", value: formatter.string(from: queryDate)),
             URLQueryItem(name: "include_predictions", value: "true")
         ]
         
@@ -111,9 +150,9 @@ final class APIService: ObservableObject {
     
     // MARK: - Flexible Train Details
     
-    func fetchTrainDetailsFlexible(id: String? = nil, trainId: String? = nil, fromStationCode: String? = nil) async throws -> TrainV2 {
+    func fetchTrainDetailsFlexible(id: String? = nil, trainId: String? = nil, fromStationCode: String? = nil, date: Date? = nil) async throws -> TrainV2 {
         let trainNumber = id ?? trainId ?? ""
-        return try await fetchTrainDetails(id: trainNumber, fromStationCode: fromStationCode)
+        return try await fetchTrainDetails(id: trainNumber, fromStationCode: fromStationCode, date: date)
     }
     
     // MARK: - Historical Data (Simplified for V2)
@@ -616,7 +655,7 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 2, maxPerSegment: Int = 100, dataSource: String? = nil) async throws -> CongestionMapResponse {
+    func fetchCongestionData(timeWindowHours: Int = 1, maxPerSegment: Int = 100, dataSource: String? = nil) async throws -> CongestionMapResponse {
         var components = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
         components.queryItems = [
             URLQueryItem(name: "time_window_hours", value: String(timeWindowHours)),
@@ -712,6 +751,7 @@ final class APIService: ObservableObject {
     private func adaptV2DepartureToTrainV2(_ departure: V2TrainDeparture) -> TrainV2 {
         return TrainV2(
             trainId: departure.trainId,
+            journeyDate: departure.journeyDate,
             line: LineInfo(
                 code: departure.line.code,
                 name: departure.line.name,
@@ -828,6 +868,7 @@ final class APIService: ObservableObject {
         
         return TrainV2(
             trainId: details.trainId,
+            journeyDate: details.journeyDate,
             line: LineInfo(
                 code: details.line.code,
                 name: details.line.name,
@@ -862,24 +903,48 @@ final class APIService: ObservableObject {
         journeyDate: Date
     ) async throws -> PlatformPrediction {
         var components = URLComponents(string: "\(baseURL)/v2/predictions/track")!
-        
+
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
         let dateString = dateFormatter.string(from: journeyDate)
-        
+
         components.queryItems = [
             URLQueryItem(name: "station_code", value: stationCode),
             URLQueryItem(name: "train_id", value: trainId),
             URLQueryItem(name: "journey_date", value: dateString)
         ]
-        
+
         guard let url = components.url else {
             throw APIError.invalidURL
         }
-        
-        let (data, _) = try await session.data(from: url)
-        return try decoder.decode(PlatformPrediction.self, from: data)
+
+        print("🌐 [APIService] Fetching predictions from: \(url.absoluteString)")
+
+        let (data, response) = try await session.data(from: url)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            print("📡 [APIService] Response status: \(httpResponse.statusCode)")
+            if httpResponse.statusCode != 200 {
+                print("⚠️ [APIService] Non-200 status code")
+                if let responseStr = String(data: data, encoding: .utf8) {
+                    print("   Response body: \(responseStr)")
+                }
+            }
+        }
+
+        do {
+            // Try to decode the response
+            let prediction = try decoder.decode(PlatformPrediction.self, from: data)
+            print("✅ [APIService] Successfully decoded platform prediction")
+            return prediction
+        } catch {
+            print("❌ [APIService] Decoding error: \(error)")
+            if let responseStr = String(data: data, encoding: .utf8) {
+                print("   Raw response: \(responseStr.prefix(500))...")
+            }
+            throw error
+        }
     }
 }
 
@@ -913,8 +978,8 @@ struct PlatformPrediction: Codable {
     let modelVersion: String
     let stationCode: String
     let trainId: String
-    let featuresUsed: PredictionFeatures?
-    
+    // featuresUsed field removed - no longer needed after migration to historical predictor
+
     enum CodingKeys: String, CodingKey {
         case platformProbabilities = "platform_probabilities"
         case primaryPrediction = "primary_prediction"
@@ -923,30 +988,11 @@ struct PlatformPrediction: Codable {
         case modelVersion = "model_version"
         case stationCode = "station_code"
         case trainId = "train_id"
-        case featuresUsed = "features_used"
+        // featuresUsed removed from CodingKeys after historical predictor migration
     }
 }
 
-/// Features used by the ML model for prediction
-struct PredictionFeatures: Codable {
-    let hourOfDay: Int
-    let dayOfWeek: Int
-    let isAmtrak: Int
-    let lineCode: String?
-    let destination: String?
-    let avgMinutesSinceTrackUsed: Double?
-    let avgMinutesSincePlatformUsed: Double?
-    
-    enum CodingKeys: String, CodingKey {
-        case hourOfDay = "hour_of_day"
-        case dayOfWeek = "day_of_week"
-        case isAmtrak = "is_amtrak"
-        case lineCode = "line_code"
-        case destination
-        case avgMinutesSinceTrackUsed = "avg_minutes_since_track_used"
-        case avgMinutesSincePlatformUsed = "avg_minutes_since_platform_used"
-    }
-}
+// PredictionFeatures struct removed - obsolete after migration from ML to historical predictor
 
 // MARK: - Platform to Track Mapping
 

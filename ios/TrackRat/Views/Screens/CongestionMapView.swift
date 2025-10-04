@@ -213,7 +213,7 @@ class CongestionMapViewModel: ObservableObject {
         print("🚦 CongestionMapViewModel init - data loading deferred")
     }
     
-    func fetchCongestionDataIfNeeded(timeWindowHours: Int = 2, dataSource: String? = nil) async {
+    func fetchCongestionDataIfNeeded(timeWindowHours: Int = 1, dataSource: String? = nil) async {
         // Only fetch if we don't already have data and we're not currently loading
         guard allAggregatedSegments.isEmpty && !isLoading else {
             print("🚦 Skipping congestion data fetch - already have data or loading")
@@ -223,7 +223,7 @@ class CongestionMapViewModel: ObservableObject {
         await fetchCongestionData(timeWindowHours: timeWindowHours, dataSource: dataSource)
     }
     
-    func fetchCongestionData(timeWindowHours: Int = 2, dataSource: String? = nil) async {
+    func fetchCongestionData(timeWindowHours: Int = 1, dataSource: String? = nil) async {
         // Prevent duplicate fetches if already loading
         guard !isLoading else {
             print("🚦 Skipping duplicate fetch - already loading")
@@ -537,35 +537,136 @@ struct SystemCongestionMapView: UIViewRepresentable {
             mapView.setRegion(region, animated: true)
         }
         
-        // Only update map overlays if segments or route have actually changed
-        // This prevents expensive map rebuilds during navigation
-        let segmentIds = segments.map { "\($0.fromStation)-\($0.toStation)" }.sorted()
-        let individualSegmentIds = individualSegments.map { "\($0.fromStation)-\($0.toStation)-\($0.trainId)" }.sorted()
-        let routeId = selectedRoute != nil ? "\(selectedRoute!.departureCode)-\(selectedRoute!.destinationCode)" : "no-route"
-        let currentMapState = "\(segmentIds.joined())-\(individualSegmentIds.joined())-route:\(routeId)"
-        
-        // Check if we need to update (store last state in coordinator)
-        if context.coordinator.lastMapState != currentMapState {
-            context.coordinator.lastMapState = currentMapState
-            
-            // Use background queue for heavy map processing to prevent UI blocking
-            DispatchQueue.global(qos: .userInitiated).async { [weak mapView] in
-                guard let mapView = mapView else { return }
-                
-                // Move back to main queue only for UI updates
-                DispatchQueue.main.async {
-                    // Clear existing overlays and annotations
-                    mapView.removeOverlays(mapView.overlays)
-                    mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
-                    
-                    // Add individual journey segments with offsets to prevent overlap
-                    self.addSegmentsToMapAsync(mapView: mapView, 
-                                             individualSegments: individualSegments, 
-                                             aggregatedSegments: segments,
-                                             selectedRoute: selectedRoute)
+        // Build desired overlay states (include congestionLevel to catch visual changes)
+        let desiredAggregatedState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
+        let desiredIndividualState = Set(individualSegments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: String($0.congestionFactor)) })
+
+        // Check if route changed
+        let routeChanged = selectedRoute != context.coordinator.currentRouteHighlight
+
+        // Early exit if nothing changed
+        guard desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
+              desiredIndividualState != context.coordinator.currentIndividualOverlayState ||
+              routeChanged else {
+            return
+        }
+
+        // Diff aggregated overlays
+        let aggregatedToRemove = context.coordinator.currentAggregatedOverlayState.subtracting(desiredAggregatedState)
+        let aggregatedToAdd = desiredAggregatedState.subtracting(context.coordinator.currentAggregatedOverlayState)
+
+        // Diff individual overlays
+        let individualToRemove = context.coordinator.currentIndividualOverlayState.subtracting(desiredIndividualState)
+        let individualToAdd = desiredIndividualState.subtracting(context.coordinator.currentIndividualOverlayState)
+
+        // Remove old aggregated overlays (batch operation)
+        if !aggregatedToRemove.isEmpty {
+            let overlaysToRemove = aggregatedToRemove.compactMap { context.coordinator.aggregatedOverlayMap[$0.segmentID] }
+            if !overlaysToRemove.isEmpty {
+                mapView.removeOverlays(overlaysToRemove)
+            }
+            aggregatedToRemove.forEach { context.coordinator.aggregatedOverlayMap.removeValue(forKey: $0.segmentID) }
+        }
+
+        // Remove old individual overlays (batch operation)
+        if !individualToRemove.isEmpty {
+            let overlaysToRemove = individualToRemove.compactMap { context.coordinator.individualOverlayMap[$0.segmentID] }
+            if !overlaysToRemove.isEmpty {
+                mapView.removeOverlays(overlaysToRemove)
+            }
+            individualToRemove.forEach { context.coordinator.individualOverlayMap.removeValue(forKey: $0.segmentID) }
+        }
+
+        // Add new aggregated overlays (batch operation)
+        if !aggregatedToAdd.isEmpty {
+            let segmentsToAdd = segments.filter { aggregatedToAdd.contains(OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel)) }
+            let sortedSegments = segmentsToAdd.sorted { $0.congestionFactor < $1.congestionFactor }
+
+            var newOverlays: [SystemCongestionPolyline] = []
+            for segment in sortedSegments {
+                if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
+                   let toCoords = Stations.getCoordinates(for: segment.toStation) {
+                    let coordinates = [fromCoords, toCoords]
+                    let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
+                    polyline.segment = segment
+                    polyline.isDimmed = !individualSegments.isEmpty
+                    newOverlays.append(polyline)
+                    context.coordinator.aggregatedOverlayMap[segment.id] = polyline
+                }
+            }
+            if !newOverlays.isEmpty {
+                mapView.addOverlays(newOverlays)
+            }
+        }
+
+        // Add new individual overlays (batch operation)
+        if !individualToAdd.isEmpty {
+            let segmentsToAdd = individualSegments.filter { individualToAdd.contains(OverlayIdentity(segmentID: $0.id, congestionLevel: String($0.congestionFactor))) }
+            let sortedSegments = segmentsToAdd.sorted { segment1, segment2 in
+                if segment1.congestionFactor != segment2.congestionFactor {
+                    return segment1.congestionFactor < segment2.congestionFactor
+                }
+                return segment1.actualDeparture < segment2.actualDeparture
+            }
+
+            var newOverlays: [IndividualJourneyPolyline] = []
+            var segmentCounts: [String: Int] = [:]
+
+            for individualSegment in sortedSegments {
+                if let fromCoords = Stations.getCoordinates(for: individualSegment.fromStation),
+                   let toCoords = Stations.getCoordinates(for: individualSegment.toStation) {
+                    let segmentKey = "\(individualSegment.fromStation)-\(individualSegment.toStation)"
+                    let offsetIndex = segmentCounts[segmentKey, default: 0]
+                    segmentCounts[segmentKey] = offsetIndex + 1
+
+                    let offsetCoords = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: offsetIndex)
+                    let polyline = IndividualJourneyPolyline(coordinates: offsetCoords, count: offsetCoords.count)
+                    polyline.individualSegment = individualSegment
+                    polyline.offsetIndex = offsetIndex
+                    newOverlays.append(polyline)
+                    context.coordinator.individualOverlayMap[individualSegment.id] = polyline
+                }
+            }
+            if !newOverlays.isEmpty {
+                mapView.addOverlays(newOverlays)
+            }
+        }
+
+        // Update dimming on existing aggregated overlays if individual segments changed
+        if desiredIndividualState != context.coordinator.currentIndividualOverlayState {
+            let shouldDim = !individualSegments.isEmpty
+            for overlay in context.coordinator.aggregatedOverlayMap.values {
+                if overlay.isDimmed != shouldDim {
+                    overlay.isDimmed = shouldDim
+                    if let renderer = mapView.renderer(for: overlay) as? MKPolylineRenderer {
+                        renderer.alpha = shouldDim ? 0.3 : 0.8
+                    }
                 }
             }
         }
+
+        // Handle route highlight changes
+        if routeChanged {
+            // Remove old route highlights
+            let oldRouteOverlays = mapView.overlays.filter { $0 is RouteHighlightPolyline }
+            if !oldRouteOverlays.isEmpty {
+                mapView.removeOverlays(oldRouteOverlays)
+            }
+
+            // Add new route highlight if needed
+            if let route = selectedRoute {
+                addRouteHighlight(mapView: mapView, route: route)
+            }
+
+            context.coordinator.currentRouteHighlight = selectedRoute
+        }
+
+        // Always clear and re-add annotations (they're lightweight)
+        mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
+
+        // Update state
+        context.coordinator.currentAggregatedOverlayState = desiredAggregatedState
+        context.coordinator.currentIndividualOverlayState = desiredIndividualState
         
         // Update coordinator with current segments for tap handling
         context.coordinator.segments = segments
@@ -655,13 +756,23 @@ struct SystemCongestionMapView: UIViewRepresentable {
         mapView.addOverlay(polyline, level: .aboveLabels)  // Ensure it's rendered on top
     }
     
+    struct OverlayIdentity: Hashable {
+        let segmentID: String
+        let congestionLevel: String
+    }
+
     class Coordinator: NSObject, MKMapViewDelegate {
         var segments: [CongestionSegment] = []
         var individualSegments: [IndividualJourneySegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
         var onIndividualSegmentTap: (IndividualJourneySegment) -> Void = { _ in }
         var selectedRoute: TripPair?
-        var lastMapState: String = "" // Track when map content actually changes
+
+        var currentAggregatedOverlayState: Set<OverlayIdentity> = []
+        var aggregatedOverlayMap: [String: SystemCongestionPolyline] = [:]
+        var currentIndividualOverlayState: Set<OverlayIdentity> = []
+        var individualOverlayMap: [String: IndividualJourneyPolyline] = [:]
+        var currentRouteHighlight: TripPair?
         
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
@@ -810,27 +921,27 @@ struct SystemCongestionMapView: UIViewRepresentable {
             let now = Date()
             let timeSinceDeparture = now.timeIntervalSince(departureTime)
             let hoursAgo = timeSinceDeparture / 3600.0
-            
+
             // Scale opacity based on how long ago the train departed
             // Most recent (0-1 hours): 0.9 alpha (most opaque)
-            // 1-3 hours ago: 0.7-0.9 alpha (linear fade)
-            // 3-6 hours ago: 0.4-0.7 alpha (more fade)
-            // 6+ hours ago: 0.3 alpha (most transparent)
-            
+            // 1-2 hours ago: 0.8-0.6 alpha (linear fade)
+            // 2-3 hours ago: 0.6-0.4 alpha (more fade)
+            // 3+ hours ago: 0.3 alpha (most transparent)
+
             if hoursAgo < 0 {
                 // Future departure or very recent - most opaque
                 return 0.9
             } else if hoursAgo <= 1.0 {
                 // 0-1 hours ago: 0.9 to 0.8
                 return 0.9 - CGFloat(hoursAgo) * 0.1
+            } else if hoursAgo <= 2.0 {
+                // 1-2 hours ago: 0.8 to 0.6
+                return 0.8 - CGFloat((hoursAgo - 1.0)) * 0.2
             } else if hoursAgo <= 3.0 {
-                // 1-3 hours ago: 0.8 to 0.6
-                return 0.8 - CGFloat((hoursAgo - 1.0) / 2.0) * 0.2
-            } else if hoursAgo <= 6.0 {
-                // 3-6 hours ago: 0.6 to 0.4
-                return 0.6 - CGFloat((hoursAgo - 3.0) / 3.0) * 0.2
+                // 2-3 hours ago: 0.6 to 0.4
+                return 0.6 - CGFloat((hoursAgo - 2.0)) * 0.2
             } else {
-                // 6+ hours ago: minimum opacity
+                // 3+ hours ago: minimum opacity
                 return 0.3
             }
         }

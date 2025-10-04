@@ -185,19 +185,13 @@ make setup                           # Setup development environment
 ### Critical Issues
 
 #### Backend V2
-- **Schedule Duplication**: SCHEDULED records may duplicate if trains appear early
-- **Pattern Detection**: Amtrak pattern analysis misses irregular services
 - **Test Coverage**: Limited tests for new schedule generation features
-- **Memory Usage**: Pattern analysis loads 22 days of data into memory
 
 #### iOS App
-- **Memory Leaks**: Potential retain cycles in Live Activity push subscriptions
-- **Search Performance**: O(n) station search on every keystroke
 - **Video Loading**: Synchronous thumbnail loading blocks UI thread
 - **Test Coverage**: <10% test coverage, no SwiftLint configuration
 
 #### Android App
-- **Missing Features**: No ongoing notifications (critical for train tracking)
 - **Track Button**: Non-functional "Track This Train" button
 - **Model Confusion**: Duplicate models (Train/TrainV2, Progress/ProgressV2)
 - **Large APK**: 18.3 MB for relatively simple app
@@ -217,10 +211,10 @@ make setup                           # Setup development environment
 ## 🚀 Roadmap
 
 ### Near Term (Next Sprint)
-1. Fix Android ongoing notifications with Foreground Service
-2. Implement iOS memory leak fixes
-3. Add comprehensive test coverage
-4. Optimize search performance
+1. Fix Android "Track This Train" button functionality
+2. Add comprehensive test coverage
+3. Optimize video loading performance
+4. Consolidate duplicate Android models
 
 ### Medium Term (1-2 Months)
 1. WebSocket support for real-time updates

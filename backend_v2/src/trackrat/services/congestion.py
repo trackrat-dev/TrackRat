@@ -743,8 +743,11 @@ class CongestionAnalyzer:
             segments = segment_groups.get(segment_key, [])
             cancellation_count = cancellation_counts.get(segment_key, 0)
 
-            # Calculate total journeys (active + cancelled)
-            total_journeys = len(segments) + cancellation_count
+            # Filter out invalid transit times (≤ 0 minutes)
+            valid_segments = [s for s in segments if s.get("actual_minutes", 0) > 0]
+
+            # Calculate total journeys (valid active + cancelled)
+            total_journeys = len(valid_segments) + cancellation_count
 
             # Skip if we don't have enough data
             if total_journeys < 2:
@@ -758,7 +761,7 @@ class CongestionAnalyzer:
             )
 
             # For segments with only cancellations, create a special entry
-            if len(segments) == 0:
+            if len(valid_segments) == 0:
                 congestion_data.append(
                     SegmentCongestion(
                         from_station=from_station,
@@ -779,7 +782,7 @@ class CongestionAnalyzer:
             # Calculate baseline (scheduled average or median of actuals)
             scheduled_times = [
                 s["scheduled_minutes"]
-                for s in segments
+                for s in valid_segments
                 if s["scheduled_minutes"] is not None
             ]
 
@@ -787,12 +790,12 @@ class CongestionAnalyzer:
                 baseline_minutes = statistics.mean(scheduled_times)
             else:
                 # Use median of actual times as baseline
-                actual_times = [s["actual_minutes"] for s in segments]
+                actual_times = [s["actual_minutes"] for s in valid_segments]
                 baseline_minutes = statistics.median(actual_times)
 
             # Calculate current average (recent 50 samples, sorted by time)
             recent_segments = sorted(
-                segments, key=lambda x: x["departure_time"], reverse=True
+                valid_segments, key=lambda x: x["departure_time"], reverse=True
             )[:50]
             current_avg = statistics.mean(
                 [s["actual_minutes"] for s in recent_segments]

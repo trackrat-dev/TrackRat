@@ -724,11 +724,10 @@ export PATH=$JAVA_HOME/bin:$PATH
 ### 🐛 Bugs to Fix
 
 1. **Track Button Not Working**: The "Track This Train" button in TrainDetailScreen is disabled and non-functional
-2. **Missing Train Tracking Service**: No ForegroundService implementation for ongoing notifications
-3. **Prediction Data Access**: TrainDetailV2 doesn't include prediction data from the API
-4. **Progress Model Inconsistency**: Two different Progress models (Progress vs ProgressV2) need consolidation
-5. **Status Display**: StatusChip appears in two different files with duplicate code
-6. **No All Departures**: "Show all departures" feature removed as backend doesn't support it
+2. **Prediction Data Access**: TrainDetailV2 doesn't include prediction data from the API
+3. **Progress Model Inconsistency**: Two different Progress models (Progress vs ProgressV2) need consolidation
+4. **Status Display**: StatusChip appears in two different files with duplicate code
+5. **No All Departures**: "Show all departures" feature removed as backend doesn't support it
 
 ### ⚠️ Technical Debt
 

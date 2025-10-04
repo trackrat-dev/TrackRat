@@ -1,631 +1,200 @@
-# TrackRat Project Guide for Claude
+# CLAUDE.md
 
-This file provides comprehensive guidance to Claude Code (claude.ai/code) when working with the TrackRat project across both backend and iOS platforms.
+> Think carefully and implement the most concise solution that changes as little code as possible.
 
 ## Project Overview
 
-TrackRat is a full-stack train tracking system that combines a simplified Python backend V2 with native mobile apps (iOS and Android) featuring real-time track predictions for NJ Transit and Amtrak trains. The iOS app includes Live Activity support for Lock Screen updates.
+TrackRat is a multi-platform transit tracking application with:
+- **Backend**: Python (FastAPI + PostgreSQL + APScheduler) in `backend_v2/`
+- **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
+- **Android**: Kotlin (Jetpack Compose) in `android/`
+- **Infrastructure**: Terraform (Google Cloud Platform) in `infra/`
 
-### System Architecture
+## Sentry Configuration
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Data Sources  │     │   Cloud Run     │     │ Mobile Frontends│
-├─────────────────┤     ├─────────────────┤     ├─────────────────┤
-│ • NJ Transit    │────▶│ • API Service   │────▶│ • iOS App       │
-│ • Amtrak APIs   │     │ • Scheduler     │     │ • Android App   │
-│                 │     │ • ML Models     │     │ • Live Activity │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                                │
-                        ┌───────▼────────┐
-                        │   PostgreSQL   │
-                        │   Database     │
-                        └────────────────┘
-                                │
-                        ┌───────▼────────┐
-                        │ Cloud Monitoring│
-                        │ • Dashboards    │
-                        │ • Metrics       │
-                        │ • Alerts       │
-                        └────────────────┘
-```
+- Default organization slug: `andy-fx`
+- Full APM with traces/profiles sampling
+- Correlation ID tracking across requests
 
-### Key Features
+## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
 
-1. **Multi-Station Support**: Backend and iOS app support NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark, plus 44 Southeast Amtrak stations
-2. **Train Consolidation**: Backend merges duplicate trains; iOS app displays unified journey data
-3. **Track Predictions**: Track assignments from NJ Transit API; iOS app displays "Owl" predictions when available
-4. **Real-Time Updates**: Backend updates every 30 minutes + on-demand + hourly validation; iOS app refreshes every 30 seconds
-5. **Journey Planning**: Backend provides smart filtering with bidirectional route support; iOS app enables origin-destination trip selection
-6. **Live Activities**: Real-time train tracking on Lock Screen and Dynamic Island
-7. **Push Notifications**: Background updates for Live Activities with status changes
+### 1. Always use the file-analyzer sub-agent when asked to read files.
+The file-analyzer agent is an expert in extracting and summarizing critical information from files, particularly log files and verbose outputs. It provides concise, actionable summaries that preserve essential information while dramatically reducing context usage.
 
-## iOS Integration Conventions
+### 2. Always use the code-analyzer sub-agent when asked to search code, analyze code, research bugs, or trace logic flow.
 
-### Station Codes
-The iOS app uses these station codes:
-- `NY` - New York Penn Station
-- `NP` - Newark Penn Station  
-- `TR` - Trenton Transit Center
-- `PJ` - Princeton Junction
-- `MP` - Metropark
-- Additional Amtrak stations use standard codes (e.g., `WAS` for Washington Union)
+The code-analyzer agent is an expert in code analysis, logic tracing, and vulnerability detection. It provides concise, actionable summaries that preserve essential information while dramatically reducing context usage.
 
-### Time Handling
-- **Backend**: Stores in Eastern Time, converts to/from UTC as needed
-- **iOS**: Displays in Eastern Time, handles fractional seconds in ISO8601
-- **API**: All timestamps in Eastern Time Zone
+### 3. Always use the test-runner sub-agent to run tests and analyze the test results.
 
-### Data Models
+Using the test-runner agent ensures:
 
-#### Train Model
-- Backend: `Train` table with comprehensive fields
-- iOS: `Train` struct matching API response
-- Key shared fields: `train_id`, `line`, `destination`, `status`, `status_v2`, `track`, `stops`, `progress`
+- Full test output is captured for debugging
+- Main conversation stays clean and focused
+- Context usage is optimized
+- All issues are properly surfaced
+- No approval dialogs interrupt the workflow
 
-#### Predictions
-- Backend: `PredictionData` with track probabilities
-- iOS: `PredictionData` struct with Owl display logic
-- Confidence thresholds: ≥80% (high), 50-79% (medium), <50% (low)
+## Philosophy
 
-#### Status Values
-The system recognizes: `ALL ABOARD`, `BOARDING`, `DEPARTED`, `CANCELLED`, `DELAYED`, etc.
-- New `status_v2` field provides enhanced status resolution
+### Error Handling
 
-## Development Workflow
+- **Fail fast** for critical configuration (missing text model)
+- **Log and continue** for optional features (extraction model)
+- **Graceful degradation** when external services unavailable
+- **User-friendly messages** through resilience layer
 
-### Local Development
+### Testing
 
-For local development, run the components individually:
+- Always use the test-runner agent to execute tests.
+- Do not use mock services for anything ever.
+- Do not move on to the next test until the current test is complete.
+- If the test fails, consider checking if the test is structured correctly before deciding we need to refactor the codebase.
+- Tests to be verbose so we can use them for debugging.
 
+**Test Commands:**
 ```bash
-# Backend V2 development
-cd backend_v2
-poetry run uvicorn trackrat.main:app --reload
-
-# iOS development
-cd ios
-open TrackRat.xcodeproj
-
-# Android development
-cd android
-# Set up Java (required each session unless added to shell profile)
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-export PATH=$JAVA_HOME/bin:$PATH
-# Build debug APK
-./gradlew assembleDebug -x test
-
-# Infrastructure management
-cd infra
-terraform plan
-terraform apply
-```
-
-### Automated Deployment
-
-The system uses GitHub Actions for fully automated CI/CD:
-
-1. **On Push to Main**:
-   - Docker images built and pushed to Artifact Registry
-   - Infrastructure deployed via Terraform
-   - Cloud Run services updated with new images
-   - Database migrations run automatically
-   - Health checks verify deployment success
-
-2. **Manual Operations** (if needed):
-   - Populate secrets in Secret Manager
-   - Train new ML models
-   - Trigger data collection manually
-
-### When Making Backend Changes
-
-1. **API Changes**:
-   - Update OpenAPI spec if modifying endpoints
-   - Consider iOS app and web app compatibility
-   - Maintain backward compatibility when possible
-   - Changes deploy automatically on push to main
-
-2. **Model Changes**:
-   - Update database schema with migrations
-   - Database migrations run automatically during deployment
-   - Ensure API serialization matches frontend expectations
-   - Test with both consolidated and non-consolidated responses
-
-3. **New Features**:
-   - Add corresponding CLI commands
-   - Update scheduler configuration if needed
-   - Consider iOS and web UI implications
-   - Test in development environment first
-
-### When Making iOS Changes
-
-1. **API Integration**:
-   - Use existing `APIService` patterns
-   - Handle all date formats with custom decoder
-   - Always specify `from_station_code` for origin context
-
-2. **UI Updates**:
-   - Maintain glassmorphism design system
-   - Use orange tint color consistently
-   - Follow dark mode preference
-
-3. **Live Activities**:
-   - Test background updates thoroughly
-   - Handle all train statuses appropriately
-   - Ensure auto-end logic works correctly
-
-4. **Testing**:
-   - Test on both simulator and physical devices
-   - Verify Live Activity functionality
-   - Check push notification behavior
-
-## Testing
-
-### Backend V2 Testing
-```bash
-# Run all tests (uses SQLite)
-poetry run pytest
-
-# Unit tests only
-poetry run pytest tests/unit/
-
-# Integration tests
-poetry run pytest tests/integration/
-
-# With coverage
-poetry run pytest --cov=trackrat
-```
-
-### iOS Testing
-```bash
-# Simulator testing
-xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 15'
-
-# Live Activity testing
-# Use LiveActivityDebugView in the app
-```
-
-### End-to-End Testing
-
-1. **Data Flow Verification**:
-   - Start backend V2: `poetry run uvicorn trackrat.main:app`
-   - Monitor health: `curl http://localhost:8000/health`
-   - Check metrics: `curl http://localhost:8000/metrics`
-   - Test iOS app against API
-
-2. **Consolidation Testing**:
-   - Enable consolidation in API: `?consolidate=true`
-   - Verify iOS app handles merged trains correctly
-   - Check track confidence display
-   - Test Live Activity updates with consolidated data
-
-## API Integration Points
-
-### API Endpoints Used by iOS App
-
-1. **Train Departures** (V2):
-   ```
-   GET /api/v2/trains/departures?from=X&to=Y&limit=50
-   ```
-
-2. **Train Details** (V2):
-   ```
-   GET /api/v2/trains/{train_id}?date=YYYY-MM-DD&refresh=true
-   ```
-
-3. **Route History** (V2):
-   ```
-   GET /api/v2/routes/history?from_station=X&to_station=Y&data_source=NJT&days=30
-   ```
-
-4. **Route Congestion** (V2 - NEW):
-   ```
-   GET /api/v2/routes/congestion?time_window_hours=3&data_source=NJT
-   ```
-
-5. **Live Activities**:
-   ```
-   POST /api/v2/live-activities/register    # Register Live Activity
-   DELETE /api/v2/live-activities/{token}   # Unregister Live Activity
-   ```
-
-5. **Health & Metrics**:
-   ```
-   GET /health                  # System health check
-   GET /health/live             # Liveness probe
-   GET /health/ready            # Readiness probe
-   GET /scheduler/status        # Scheduler status
-   GET /metrics                 # Prometheus metrics endpoint
-   ```
-
-### Data Synchronization
-
-1. **Polling Intervals**:
-   - Backend V2: Hourly discovery + just-in-time updates when requested
-   - iOS: 30s (active view), 30s (Live Activity background)
-
-2. **Cache Considerations**:
-   - Backend: Database serves as cache
-   - iOS: No persistent cache, real-time fetching
-
-3. **State Management**:
-   - Backend: Stateless API, database for persistence
-   - iOS: @StateObject for app state, UserDefaults for preferences
-
-## Deployment Considerations
-
-### Backend V2 Deployment
-- **Database**: PostgreSQL with asyncpg driver for development and production
-- **Scheduler**: APScheduler runs in-process, starts automatically
-- **Docker**: Container with APNS validation at startup
-- **Scaling**: Simplified architecture with reduced API calls (~95% reduction)
-- **Health Checks**: Built-in endpoints at `/health` and `/metrics`
-
-### iOS Deployment
-- Update bundle version and build number
-- Test on physical devices for Live Activities
-- Verify push notification certificates
-- Archive and upload to App Store Connect
-
-### Operational Requirements
-
-**Automated Operations:**
-- ✅ Data collection every 30 minutes (discovery) + 5 minutes (journey updates) + hourly validation via integrated scheduler
-- ✅ Auto-scaling based on traffic
-- ✅ Database backups and maintenance
-- ✅ Health monitoring and restart on failure
-
-**Manual Operations:**
-- Configure NJ Transit API credentials
-- Set up APNS certificates for iOS push notifications
-- Monitor system health and performance
-- Rotate secrets quarterly
-
-## Performance Optimization
-
-### Backend V2
-- Just-in-time updates reduce API calls by ~95%
-- PostgreSQL database with efficient queries
-- Async processing throughout the stack
-- Smart caching and staleness checks
-
-### iOS
-- Lazy loading with pagination
-- Background refresh only when needed
-- Efficient Live Activity updates
-- Minimal network requests
-- SwiftUI view composition for performance
-- Haptic feedback optimization
-
-## Security Best Practices
-
-### Backend
-- API credentials in environment variables
-- No sensitive data in logs
-- Proper error handling without exposing internals
-- Rate limiting considerations
-
-### iOS
-- No user tracking or analytics
-- Local storage only for preferences
-- No third-party SDKs
-- Secure API communication
-- Privacy-first Live Activities
-- Local-only trip history
-
-## Troubleshooting Guide
-
-### Common Backend V2 Issues
-1. **No trains found**: Check NJ Transit API credentials in environment
-2. **API timeouts**: Verify network connectivity to NJ Transit/Amtrak
-3. **Database errors**: Run `alembic upgrade head` for migrations
-4. **APNS failures**: Verify certificate in `certs/` directory
-
-### Common iOS Issues
-1. **Live Activities not appearing**: Verify Info.plist configuration
-2. **API connection errors**: Check backend URL and network
-3. **Push notifications failing**: Verify APNS setup
-4. **Background updates failing**: Check background modes configuration
-5. **Live Activity updates not appearing**: Verify push notification certificates
-
-### Integration Issues
-1. **Time mismatches**: Ensure Eastern Time Zone handling
-2. **Missing trains**: Check JIT update logic and data staleness
-3. **No track info**: Verify NJ Transit API is returning track data
-4. **Live Activity data inconsistencies**: Check API response format
-
-## Code Style Guidelines
-
-### Python (Backend)
-- Follow PEP 8 with Black formatting
-- Type hints for all functions
-- Comprehensive docstrings
-- No magic numbers, use constants
-
-### Swift (iOS)
-- Follow Swift API Design Guidelines
-- Use SwiftUI best practices
-- Explicit access control
-- Meaningful variable names
-- Async/await for API calls
-- Combine for reactive programming
-
-## Feature Development Checklist
-
-When adding new features:
-
-- [ ] Design API contract first
-- [ ] Implement backend functionality
-- [ ] Add comprehensive tests
-- [ ] Update API documentation
-- [ ] Implement iOS UI/functionality
-- [ ] Test end-to-end flow
-- [ ] Update all CLAUDE.md files with new features
-- [ ] Consider Live Activity implications
-- [ ] Verify performance impact
-- [ ] Check error handling
-- [ ] Test on physical devices
-- [ ] Verify push notification behavior
-- [ ] Add monitoring dashboards if needed
-- [ ] Update metrics collection
-- [ ] Document in Recent Enhancements section
-
-## Recent Enhancements
-
-### Train Validation Service (NEW)
-Automated hourly validation system for comprehensive train coverage monitoring:
-- **Backend**: New `TrainValidationService` class performs hourly validation checks
-- **Coverage**: Validates key routes (NY→WI, NY→PJ, MP→NY, NY→HL) across NJT and Amtrak
-- **Metrics**: New Prometheus metrics `train_validation_coverage_percent` and `missing_trains_detected_total`
-- **Debugging**: Detailed logging identifies missing trains and API discrepancies
-- **Scheduler**: Integrated hourly validation job running at :05 past each hour
-- **Benefits**: Ensures data completeness and identifies API integration issues automatically
-
-### Southeast Amtrak Station Expansion
-Major expansion of Amtrak station coverage across the Southeast corridor:
-- **iOS**: Added 44 new stations across NC, SC, GA, FL, VA, WV to Stations.swift
-- **Coverage**: Now includes Charlotte, Raleigh, Atlanta, Miami, Jacksonville, Tampa, Orlando
-- **Trains**: Full support for Silver Star, Silver Meteor, Carolinian, Piedmont, Crescent
-- **Total Stations**: Expanded from ~100 to ~144 stations system-wide
-- **Benefits**: Complete Southeast corridor coverage for Amtrak travelers
-
-### Bidirectional Route Support Fix
-Critical fix for train route handling:
-- **Backend**: Fixed departure service logic to handle trains in both directions
-- **Logic Change**: Updated from `to_seq > from_seq` to `to_seq != from_seq`
-- **Impact**: Northbound trains from Southeast stations now properly displayed
-- **Benefits**: Full bidirectional support for all train routes
-
-### Android App Implementation
-Complete Android application now available:
-- **UI**: Material Design 3 with dynamic theming
-- **Features**: Train tracking, station selection, real-time updates
-- **Architecture**: Kotlin with Jetpack Compose, Repository pattern
-- **Status**: Fully functional debug build available
-- **Benefits**: Cross-platform support for Android users
-
-### Transit Time Tracking & Congestion Analysis
-Comprehensive analytics system for route performance monitoring:
-- **Backend**: New `TransitAnalyzer` service calculates segment times, dwell times, and journey progress
-- **Database**: Added `segment_transit_times`, `station_dwell_times`, and `journey_progress` tables
-- **API**: New `/api/v2/routes/congestion` endpoint provides real-time network congestion data
-- **Analysis**: Automatic delay breakdown categorization (on-time, slight, significant, major)
-- **Visualization**: Color-coded congestion levels (Normal→Green, Moderate→Yellow, Heavy→Orange, Severe→Red)
-- **Benefits**: Real-time network performance monitoring and historical route analysis
-
-### Enhanced Status Resolution (StatusV2)
-The system now supports intelligent status conflict resolution:
-- **Backend**: New `status_v2` field with DEPARTED > BOARDING priority
-- **iOS**: Enhanced display using `statusV2` with fallback to legacy
-- **Benefits**: Solves the "stuck BOARDING" issue when trains depart
-
-### Real-time Progress Tracking
-New `progress` field provides detailed journey information:
-- **Backend**: Calculates stops completed, minutes to arrival, journey percentage
-- **iOS**: Enhanced Live Activities and progress bars using this data
-- **Benefits**: Accurate progress visualization and time-to-arrival
-
-### API Changes Summary
-- **New Endpoints**: `/api/v2/routes/congestion` for real-time network congestion analysis
-- **Enhanced Endpoints**: `/api/v2/routes/history` with delay breakdown and track usage stats  
-- **New Fields**: `status_v2`, `progress` (both optional for backward compatibility)
-- **Enhanced Data**: `last_departed`, `next_arrival`, `journey_percent`
-- **New Models**: `SegmentCongestion`, `CongestionMapResponse`, `DelayBreakdown`, `AggregateStats`
-- **No Breaking Changes**: All existing fields preserved
-
-### Executive Dashboard
-High-level monitoring dashboard for system health and performance:
-- **Infrastructure**: Google Cloud Monitoring dashboards deployed via Terraform
-- **Metrics**: System health score, daily trains processed, prediction accuracy, API uptime
-- **Monitoring**: Four dashboards (Executive, Operations, Business KPIs, Troubleshooting)
-- **Access**: Via GCP Console (no frontend implementation)
-- **Benefits**: At-a-glance system health monitoring for stakeholders
-
-### Model Prediction Accuracy Tracking
-Real-time tracking of ML model performance:
-- **Backend**: Automatic accuracy calculation when actual track is assigned
-- **Metrics**: `model_prediction_accuracy` Prometheus metric by station
-- **API**: Enhanced `/health` endpoint with quality metrics
-- **Monitoring**: Accuracy trends displayed in executive dashboard
-- **Benefits**: Continuous model performance monitoring and alerting
-
-### ML Track Prediction System (IMPLEMENTED)
-Sophisticated machine learning system for track assignment prediction:
-- **TrackPredictionFeatures**: Feature extraction service with 6 core features (hour, day, line, destination, time-based patterns)
-- **Station-Specific Models**: Individual RandomForest models per station for optimal accuracy
-- **Real-time Occupancy Filtering**: TrackOccupancyService filters predictions based on occupied tracks
-- **Platform Aggregation**: Track-level predictions aggregated to platform-level for user display
-- **Arrival Forecasting**: SimpleArrivalForecaster provides ML-powered ETA predictions
-- **API Integration**: Predictions available via `/api/v2/predictions/track-assignment/{station}` endpoint
-- **Benefits**: Intelligent track predictions with confidence scoring and real-time availability
-
-## Architecture Decisions
-
-### Why These Choices?
-
-1. **Station-Specific Models**: Better accuracy than combined model
-2. **Train Consolidation**: Unified view across data sources
-3. **30-Second Refresh**: Balance between real-time and battery life
-4. **Eastern Time Zone**: Natural for Northeast Corridor users
-5. **No User Accounts**: Privacy-first approach
-6. **StatusV2 Design**: Resolves conflicts while maintaining compatibility
-7. **Progress Tracking**: Provides real-time journey visualization
-8. **Live Activities**: Native iOS integration for real-time updates
-9. **SwiftUI Architecture**: Modern declarative UI framework
-
-### Future Considerations
-
-1. **Backend V2**:
-   - Enhanced ML track prediction models with occupancy detection
-   - GraphQL API for more efficient queries
-   - WebSocket support for real-time updates
-   - Additional transit systems (LIRR, Metro-North, SEPTA, PATH)
-   - Redis caching layer
-
-2. **iOS**:
-   - Widget Extension
-   - Apple Watch app
-   - Offline mode with caching
-   - iPad optimization
-   - Siri Shortcuts integration
-   - CarPlay support
-
-3. **Android**:
-   - Widget support (planned)
-   - Wear OS app (planned)
-   - Material You dynamic theming (implemented)
-   - Offline caching (planned)
-   - Android Auto support (planned)
-
-## Development Tools
-
-### Development Commands
-
-```bash
-# Run tests and linting
-make test                            # Run all tests
-make lint                            # Run linting checks  
-make clean                           # Clean build artifacts
-
-# Backend commands
-make backend-test                    # Run backend tests
-make backend-migrate                 # Run database migrations
-
-# Infrastructure commands
-# CRITICAL: Always run linting before infrastructure changes
-cd infra
-make test                            # Run quick validation tests
-make staging-plan                    # Plan staging changes
-make staging-apply                   # Apply staging changes
-make prod-plan                       # Plan production changes
-make prod-apply                      # Apply production changes
-
-# Setup development environment
-make setup                           # Install dependencies and initialize
-```
-
-## Quick Reference
-
-### Backend V2 Commands
-```bash
-# Start development server (scheduler starts automatically)
-poetry run uvicorn trackrat.main:app --reload
-
-# Database management
-poetry run alembic upgrade head           # Apply migrations
-poetry run alembic revision -m "desc"     # Create new migration
-
-# Run tests
-poetry run pytest                         # Run all tests
-poetry run pytest tests/unit/             # Unit tests only
-```
-
-### iOS Commands
-```bash
-# Build iOS app for simulator
-xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16'
-
-# Check for compilation errors only
-xcodebuild -scheme TrackRat -sdk iphonesimulator build -destination 'platform=iOS Simulator,name=iPhone 16' 2>&1 | grep -E "(error|failed|BUILD FAILED)" || echo "BUILD SUCCESSFUL"
-
-# Run iOS tests
+# Backend
+poetry run pytest                    # All tests
+poetry run pytest --cov=trackrat    # With coverage
+poetry run pytest tests/unit/        # Unit only
+
+# iOS
 xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'
 
-# Open Xcode project
-open ios/TrackRat.xcodeproj
-
-# Show available destinations
-xcodebuild -scheme TrackRat -showdestinations
+# Android
+./gradlew test
 ```
 
-### iOS Key Files
-```
-TrackRat/App/TrackRatApp.swift      # App entry point
-TrackRat/Services/APIService.swift   # API integration
-TrackRat/Services/LiveActivityService.swift  # Live Activities
-TrackRat/Models/Train.swift          # Core data model
-TrackRat/Views/                      # All UI components
-```
+### Architecture Patterns
 
-### Android Commands
+**Backend Data Collection (Multi-Phase):**
+1. Schedule Generation (daily) - creates SCHEDULED records
+2. Discovery (30min) - updates to OBSERVED when trains appear
+3. Collection (15min) - fetches full journey details
+4. JIT Updates (on-demand) - refreshes stale data (>60s)
+5. Validation (hourly) - ensures coverage
+
+**Key Design Principles:**
+- Single Journey Record: One database row per train per day
+- Horizontal Scaling: Database-coordinated scheduler with row-level locking
+- API Response Caching: 15-minute pre-computed responses for congestion endpoints
+
+**iOS Architecture:**
+- MVVM embedded within view files (no separate ViewModel files)
+- Singleton services pattern (`APIService.shared`, `LiveActivityService.shared`)
+- `@StateObject AppState` for global state management
+- NavigationPath for type-safe navigation
+
+
+## Tone and Behavior
+
+- Criticism is welcome. Please tell me when I am wrong or mistaken, or even when you think I might be wrong or mistaken.
+- Please tell me if there is a better approach than the one I am taking.
+- Please tell me if there is a relevant standard or convention that I appear to be unaware of.
+- Be skeptical.
+- Be concise.
+- Short summaries are OK, but don't give an extended breakdown unless we are working through the details of a plan.
+- Do not flatter, and do not give compliments unless I am specifically asking for your judgement.
+- Occasional pleasantries are fine.
+- Feel free to ask many questions. If you are in doubt of my intent, don't guess. Ask.
+
+## Debugging UI Issues
+
+When the user reports a UI bug with specific screen text or titles:
+
+1. **ALWAYS search for the exact text first** before making assumptions about which file to edit
+   - Use `Grep` to find where the text appears: `grep -r "exact text from user" ios/`
+   - Multiple views may have similar functionality but different implementations
+
+2. **Confirm the correct file** with the user if there's any ambiguity
+   - Example: "Where would you like to leave from?" appears in TripSelectionView.swift
+   - Example: "Where would you like to go?" appears in DestinationPickerView.swift
+   - Don't assume based on similar code patterns or naming conventions
+
+3. **Test hypotheses systematically**
+   - If a fix works in one view but not another, they likely have different implementations
+   - Don't continue trying variations in the wrong file
+   - Re-verify you're editing the correct file when user reports the fix didn't work
+
+4. **When user says "it's not working"**
+   - Ask which specific screen/view they're testing on
+   - Verify you're editing the file that corresponds to that screen
+   - Search for the screen's title text to confirm the file
+
+This prevents wasting time editing incorrect files when the user has given clear indicators (screen titles, specific text) about which view has the problem.
+
+## Development Workflows
+
+### Backend Development
 ```bash
-# Set up Java environment (macOS with Homebrew)
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-export PATH=$JAVA_HOME/bin:$PATH
+cd backend_v2
+poetry install
+alembic upgrade head
 
-# Verify Java setup
-java -version  # Should show OpenJDK 17
+# Run locally
+poetry run uvicorn trackrat.main:app --reload
 
-# Build debug APK (skip tests for quick build)
-./gradlew assembleDebug -x test
-
-# Build with tests
-./gradlew build
-
-# Install on connected device/emulator
-./gradlew installDebug
-
-# Run the app
-./gradlew installDebug && adb shell am start -n com.trackrat.android/.MainActivity
-
-# Clean build artifacts
-./gradlew clean
-
-# APK output location
-# Debug: app/build/outputs/apk/debug/app-debug.apk
+# Lint & type check
+poetry run black . && poetry run ruff check . && poetry run mypy src/
+# Or use: make lint
 ```
 
-### Android Key Files
-```
-app/src/main/java/com/trackrat/android/
-├── data/
-│   ├── api/TrackRatApi.kt          # API interface
-│   ├── models/                      # Data models
-│   └── repository/                  # Repository pattern
-├── ui/
-│   ├── trainlist/                   # Train list UI
-│   └── theme/                       # Material Design theme
-└── MainActivity.kt                   # App entry point
+### iOS Development
+```bash
+cd ios
+open TrackRat.xcodeproj
+# Build: Cmd+B, Run: Cmd+R
+
+# CLI build
+xcodebuild -scheme TrackRat -sdk iphonesimulator build \
+  -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
+### Infrastructure Management
+```bash
+cd infra
+make test              # ALWAYS run first
+make staging-plan      # Review changes
+make staging-apply     # Deploy to staging
+make prod-plan         # Review prod changes
+make prod-apply        # Deploy to production
+```
 
-### API Base URLs
-- Development: `http://localhost:8000/api`
-- Production: `https://prod.api.trackrat.net/api`
+**CRITICAL**: Always run `make test` before applying infrastructure changes.
 
-## Contact for Questions
+## Key File Locations
 
-When working on this project, refer to:
-- **Backend V2 details**: `backend_v2/CLAUDE.md` - Simplified V2 backend development
-- **iOS details**: `ios/CLAUDE.md` - iOS app development with Live Activities
-- **Android details**: `android/CLAUDE.md` - Android app development
-- **Infrastructure**: `infra/CLAUDE.md` - Terraform and GCP infrastructure  
-- **Integration guidance**: This file for backend-mobile integration
+- Backend services: `backend_v2/src/trackrat/services/`
+- Backend API endpoints: `backend_v2/src/trackrat/api/`
+- Backend models: `backend_v2/src/trackrat/models/`
+- Backend tests: `backend_v2/tests/`
+- iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`
+- iOS services: `ios/TrackRat/Services/`
+- iOS models: `ios/TrackRat/Models/`
+- iOS tests: `ios/TrackRatTests/`
+- Android app: `android/app/src/main/java/com/trackrat/android/`
+- Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)
 
-### Quick Reference
+## Common API Endpoints
 
-**For Developers**: Backend and iOS components have detailed CLAUDE.md files with development workflows.
+```
+/api/v2/trains/departures
+/api/v2/trains/{train_id}
+/api/v2/routes/congestion
+/api/v2/live-activities/register
+/health
+```
 
-**For Infrastructure**: Use `infra/CLAUDE.md` for Terraform operations and Cloud Run deployment details.
+## ABSOLUTE RULES:
 
-Remember: The goal is seamless integration between an efficient backend V2 (with ~95% fewer API calls) and an intuitive iOS frontend experience with Live Activities.
+- NO PARTIAL IMPLEMENTATION
+- NO SIMPLIFICATION : no "//This is simplified stuff for now, complete implementation would blablabla"
+- NO CODE DUPLICATION : check existing codebase to reuse functions and constants Read files before writing new functions. Use common sense function name to find them easily.
+- NO DEAD CODE : either use or delete from codebase completely
+- IMPLEMENT TEST FOR EVERY FUNCTIONS
+- NO CHEATER TESTS : test must be accurate, reflect real usage and be designed to reveal flaws. No useless tests! Design tests to be verbose so we can use them for debuging.
+- NO INCONSISTENT NAMING - read existing codebase naming patterns.
+- NO OVER-ENGINEERING - Don't add unnecessary abstractions, factory patterns, or middleware when simple functions would work. Don't think "enterprise" when you need "working"
+- NO MIXED CONCERNS - Don't put validation logic inside API handlers, database queries inside UI components, etc. instead of proper separation
+- NO RESOURCE LEAKS - Don't forget to close database connections, clear timeouts, remove event listeners, or clean up file handles

@@ -17,15 +17,16 @@ enum GestureMode {
 /// - Otherwise: normal scrolling behavior
 struct SheetAwareScrollView<Content: View>: View {
     @Binding var sheetPosition: BottomSheetPosition
+    @EnvironmentObject var dragState: BottomSheetDragState  // Shared drag state
     let showsIndicators: Bool
     let content: Content
-    
+
     @State private var isScrolledToTop: Bool = true  // Track if we're at scroll top
     @State private var gestureMode: GestureMode = .idle
-    
+
     // ScrollView recreation ID - changing this forces SwiftUI to recreate the ScrollView
     @State private var scrollViewID = UUID()
-    
+
     // Scene phase monitoring to detect app lifecycle changes
     @Environment(\.scenePhase) private var scenePhase
     
@@ -46,13 +47,13 @@ struct SheetAwareScrollView<Content: View>: View {
                     // Track position with a background GeometryReader
                     GeometryReader { innerGeo in
                         Color.clear
-                            .onChange(of: innerGeo.frame(in: .global).minY) { newValue in
+                            .onChange(of: innerGeo.frame(in: .global).minY) { _, newValue in
                                 // Check if we're at the top
                                 // The scroll view content starts at the same Y as the scroll view itself when at top
                                 let scrollViewTop = geometry.frame(in: .global).minY
                                 let contentTop = newValue
                                 let wasScrolledToTop = isScrolledToTop
-                                
+
                                 // We're at top if content hasn't moved up (within small tolerance)
                                 isScrolledToTop = contentTop >= (scrollViewTop - 2)
                                 
@@ -65,6 +66,9 @@ struct SheetAwareScrollView<Content: View>: View {
                     
                     // Actual content
                     content
+                        .onAppear {
+                            print("📜 SheetAwareScrollView: Content appeared")
+                        }
                 }
             }
             .id(scrollViewID)  // Forces ScrollView recreation when ID changes
@@ -73,22 +77,21 @@ struct SheetAwareScrollView<Content: View>: View {
                 isScrolledToTop = true
                 gestureMode = .idle
             }
-            .onChange(of: scenePhase) { oldPhase, newPhase in
-                print("🔄 Scene phase changed: \(oldPhase) → \(newPhase)")
-                
+            .onChange(of: scenePhase) { newPhase in
+                print("🔄 Scene phase changed to: \(newPhase)")
+
                 switch newPhase {
                 case .active:
                     // App became active - always recreate ScrollView when resuming
-                    if oldPhase == .background || oldPhase == .inactive {
-                        // Force ScrollView recreation to ensure clean state
-                        print("🔧 App resumed: Forcing ScrollView recreation")
-                        scrollViewID = UUID()
-                        
-                        // Reset all gesture-related state to defaults
-                        gestureMode = .idle
-                        isScrolledToTop = true
-                        print("✅ ScrollView recreated with fresh state")
-                    }
+                    // Force ScrollView recreation to ensure clean state
+                    print("🔧 App resumed: Forcing ScrollView recreation")
+                    scrollViewID = UUID()
+
+                    // Reset all gesture-related state to defaults
+                    gestureMode = .idle
+                    isScrolledToTop = true
+                    dragState.reset()
+                    print("✅ ScrollView recreated with fresh state")
                     
                 case .inactive:
                     // App is transitioning - reset gesture state for safety
@@ -153,14 +156,22 @@ struct SheetAwareScrollView<Content: View>: View {
     
     private func handleDragGesture(value: DragGesture.Value) {
         let translation = value.translation.height
-        
+
         // Determine mode once at the start of gesture
         if gestureMode == .idle {
             gestureMode = determineGestureMode(translation: translation)
             print("🔄 Gesture: \(gestureMode) (Sheet: \(sheetPosition), Translation: \(String(format: "%.1f", translation)))")
+
+            // Set dragging state when we start moving the sheet
+            if gestureMode == .sheetMoving {
+                dragState.isDragging = true
+            }
         }
-        
-        // No position changes during drag - wait for gesture end
+
+        // Update translation in real-time when moving the sheet
+        if gestureMode == .sheetMoving {
+            dragState.translation = translation
+        }
     }
     
     private func handleDragEnd(value: DragGesture.Value) {
@@ -168,63 +179,71 @@ struct SheetAwareScrollView<Content: View>: View {
             // Always reset gesture mode at the end
             gestureMode = .idle
         }
-        
+
         // Only make position changes if we're in sheetMoving mode
         guard gestureMode == .sheetMoving else {
             return
         }
-        
+
         let translation = value.translation.height
         let velocity = value.predictedEndTranslation.height - translation
-        
+
         print("🎯 Gesture ended with translation: \(translation), velocity: \(velocity)")
-        
+
         // Determine intent based on velocity and translation
         // Velocity threshold for "intentional" swipe
         let velocityThreshold: CGFloat = 50
-        
+
         // Translation threshold for "sufficient" drag
         let translationThreshold: CGFloat = 50
-        
+
         // Determine if user intended to change position
         let shouldChangePosition: Bool
         let targetPosition: BottomSheetPosition
-        
+
         switch sheetPosition {
         case .medium:
             // From medium, can only go to expanded (swipe up)
             let hasStrongUpwardVelocity = velocity < -velocityThreshold
             let hasSufficientUpwardDrag = translation < -translationThreshold
-            
+
             shouldChangePosition = hasStrongUpwardVelocity || hasSufficientUpwardDrag
             targetPosition = .expanded
-            
+
             print("📊 From medium: velocity=\(velocity), translation=\(translation)")
             print("   Strong velocity: \(hasStrongUpwardVelocity), Sufficient drag: \(hasSufficientUpwardDrag)")
-            
+
         case .expanded:
             // From expanded, can only go to medium (swipe down)
             // We already verified we're at scroll top in determineGestureMode
             let hasStrongDownwardVelocity = velocity > velocityThreshold
             let hasSufficientDownwardDrag = translation > translationThreshold
-            
+
             shouldChangePosition = hasStrongDownwardVelocity || hasSufficientDownwardDrag
             targetPosition = .medium
-            
+
             print("📊 From expanded: velocity=\(velocity), translation=\(translation)")
             print("   Strong velocity: \(hasStrongDownwardVelocity), Sufficient drag: \(hasSufficientDownwardDrag)")
         }
-        
-        // Apply position change if determined
+
+        // Apply position change and reset translation with animation
         if shouldChangePosition {
             print("✅ Changing position to: \(targetPosition)")
             withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
                 sheetPosition = targetPosition
+                dragState.translation = 0  // Reset translation to 0 with animation
             }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } else {
             print("❌ Not changing position - insufficient velocity/translation")
+            // Snap back to current position
+            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.95)) {
+                dragState.translation = 0  // Reset translation to 0 with animation
+            }
         }
+
+        // Reset dragging state
+        dragState.isDragging = false
     }
     
 }

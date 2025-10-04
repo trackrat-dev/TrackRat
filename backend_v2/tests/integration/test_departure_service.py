@@ -9,6 +9,7 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock
 
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.services.departure import DepartureService
@@ -494,3 +495,275 @@ class TestDepartureServiceIntegration:
         assert response.metadata["to_station"]["code"] == "TR"
         assert response.metadata["to_station"]["name"] == "Trenton"
         assert response.metadata["count"] == len(response.departures)
+
+    async def test_bulk_station_refresh_performance(self, db_session: AsyncSession):
+        """Test that station refresh efficiently updates multiple trains with single query."""
+        service = DepartureService()
+
+        # Create 20 NJT journeys that need refresh
+        train_ids = []
+        for i in range(20):
+            train_id = f"38{40 + i}"
+            train_ids.append(train_id)
+            journey = TrainJourney(
+                train_id=train_id,
+                journey_date=now_et().date(),
+                data_source="NJT",
+                line_code="NE",
+                line_name="Northeast Corridor",
+                destination="Trenton",
+                origin_station_code="NY",
+                terminal_station_code="TR",
+                scheduled_departure=now_et() + timedelta(hours=1, minutes=i * 2),
+                last_updated_at=now_et() - timedelta(minutes=10),
+                update_count=1,
+            )
+            stop = JourneyStop(
+                station_code="NY",
+                station_name="New York Penn Station",
+                scheduled_departure=now_et() + timedelta(hours=1, minutes=i * 2),
+                stop_sequence=0,
+                has_departed_station=False,
+                raw_njt_departed_flag="NO",
+            )
+            journey.stops = [stop]
+            db_session.add(journey)
+
+        await db_session.commit()
+
+        # Mock NJT API to return all 20 trains
+        mock_items = [
+            {
+                "TRAIN_ID": train_id,
+                "DESTINATION": "Trenton Transit Center",
+                "BACKCOLOR": "#F7505E ",
+                "STOPS": [
+                    {
+                        "STATION_2CHAR": "NY",
+                        "STATIONNAME": "New York Penn Station",
+                        "TIME": "10:00",
+                        "DEP_TIME": "10:00",
+                        "DEPARTED": "NO",
+                    },
+                    {
+                        "STATION_2CHAR": "TR",
+                        "STATIONNAME": "Trenton",
+                        "TIME": "11:00",
+                        "DEPARTED": "NO",
+                    },
+                ],
+            }
+            for train_id in train_ids
+        ]
+
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt:
+            mock_client = AsyncMock()
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": mock_items}
+            )
+            mock_client.close = AsyncMock()
+            mock_njt.return_value = mock_client
+
+            # Refresh station data
+            await service._ensure_fresh_station_data(db_session, "NY")
+
+        # Verify all journeys were updated
+        updated_journeys = await db_session.execute(
+            select(TrainJourney).where(
+                and_(
+                    TrainJourney.train_id.in_(train_ids),
+                    TrainJourney.data_source == "NJT",
+                )
+            )
+        )
+        journeys = list(updated_journeys.scalars().all())
+
+        assert len(journeys) == 20
+
+        # Verify each journey was updated
+        for journey in journeys:
+            assert journey.update_count == 2
+            assert journey.destination == "Trenton Transit Center"
+            assert journey.line_color == "#F7505E"
+            assert journey.has_complete_journey is True
+            assert journey.stops_count == 2
+
+            # Verify stops were updated
+            assert len(journey.stops) == 2
+
+    async def test_bulk_refresh_handles_missing_journeys(
+        self, db_session: AsyncSession
+    ):
+        """Test that station refresh gracefully handles trains not in database."""
+        service = DepartureService()
+
+        # Create only 5 journeys
+        existing_ids = [f"38{40 + i}" for i in range(5)]
+        for train_id in existing_ids:
+            journey = TrainJourney(
+                train_id=train_id,
+                journey_date=now_et().date(),
+                data_source="NJT",
+                line_code="NE",
+                destination="Trenton",
+                origin_station_code="NY",
+                terminal_station_code="TR",
+                scheduled_departure=now_et() + timedelta(hours=1),
+                last_updated_at=now_et() - timedelta(minutes=10),
+                update_count=1,
+            )
+            stop = JourneyStop(
+                station_code="NY",
+                station_name="New York Penn Station",
+                scheduled_departure=now_et() + timedelta(hours=1),
+                stop_sequence=0,
+            )
+            journey.stops = [stop]
+            db_session.add(journey)
+
+        await db_session.commit()
+
+        # API returns 10 trains (5 exist, 5 don't)
+        all_train_ids = [f"38{40 + i}" for i in range(10)]
+        mock_items = [
+            {
+                "TRAIN_ID": train_id,
+                "DESTINATION": "Trenton",
+                "BACKCOLOR": "#F7505E",
+                "STOPS": [
+                    {
+                        "STATION_2CHAR": "NY",
+                        "STATIONNAME": "New York Penn Station",
+                        "TIME": "10:00",
+                        "DEPARTED": "NO",
+                    }
+                ],
+            }
+            for train_id in all_train_ids
+        ]
+
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt:
+            mock_client = AsyncMock()
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": mock_items}
+            )
+            mock_client.close = AsyncMock()
+            mock_njt.return_value = mock_client
+
+            # Should not crash
+            await service._ensure_fresh_station_data(db_session, "NY")
+
+        # Verify only existing 5 were updated
+        updated = await db_session.execute(
+            select(TrainJourney).where(
+                and_(
+                    TrainJourney.train_id.in_(all_train_ids),
+                    TrainJourney.update_count > 1,
+                )
+            )
+        )
+        assert len(list(updated.scalars().all())) == 5
+
+    async def test_bulk_refresh_handles_amtrak_trains(self, db_session: AsyncSession):
+        """Test that station refresh ignores Amtrak trains in NJT station data."""
+        service = DepartureService()
+
+        # Create 2 NJT journeys
+        njt_ids = ["3840", "3842"]
+        for train_id in njt_ids:
+            journey = TrainJourney(
+                train_id=train_id,
+                journey_date=now_et().date(),
+                data_source="NJT",
+                line_code="NE",
+                destination="Trenton",
+                origin_station_code="NY",
+                terminal_station_code="TR",
+                scheduled_departure=now_et() + timedelta(hours=1),
+                last_updated_at=now_et() - timedelta(minutes=10),
+                update_count=1,
+            )
+            stop = JourneyStop(
+                station_code="NY",
+                station_name="New York Penn Station",
+                scheduled_departure=now_et() + timedelta(hours=1),
+                stop_sequence=0,
+            )
+            journey.stops = [stop]
+            db_session.add(journey)
+
+        await db_session.commit()
+
+        # API returns 2 NJT + 2 Amtrak trains
+        mock_items = [
+            {"TRAIN_ID": "3840", "DESTINATION": "Trenton", "STOPS": []},
+            {"TRAIN_ID": "3842", "DESTINATION": "Trenton", "STOPS": []},
+            {"TRAIN_ID": "A2150", "DESTINATION": "Boston", "STOPS": []},
+            {"TRAIN_ID": "A2160", "DESTINATION": "Washington", "STOPS": []},
+        ]
+
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt:
+            mock_client = AsyncMock()
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": mock_items}
+            )
+            mock_client.close = AsyncMock()
+            mock_njt.return_value = mock_client
+
+            await service._ensure_fresh_station_data(db_session, "NY")
+
+        # Verify only NJT trains were updated
+        updated = await db_session.execute(
+            select(TrainJourney).where(
+                and_(
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.update_count > 1,
+                )
+            )
+        )
+        updated_journeys = list(updated.scalars().all())
+        assert len(updated_journeys) == 2
+        assert all(j.train_id in njt_ids for j in updated_journeys)
+
+    async def test_bulk_refresh_empty_api_response(self, db_session: AsyncSession):
+        """Test that station refresh handles empty API response gracefully."""
+        service = DepartureService()
+
+        # Create journey that needs refresh
+        journey = TrainJourney(
+            train_id="3840",
+            journey_date=now_et().date(),
+            data_source="NJT",
+            line_code="NE",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            scheduled_departure=now_et() + timedelta(hours=1),
+            last_updated_at=now_et() - timedelta(minutes=10),
+            update_count=1,
+        )
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn Station",
+            scheduled_departure=now_et() + timedelta(hours=1),
+            stop_sequence=0,
+        )
+        journey.stops = [stop]
+        db_session.add(journey)
+        await db_session.commit()
+
+        # API returns empty list
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt:
+            mock_client = AsyncMock()
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_client.close = AsyncMock()
+            mock_njt.return_value = mock_client
+
+            # Should not crash
+            await service._ensure_fresh_station_data(db_session, "NY")
+
+        # Verify journey was not updated
+        refreshed = await db_session.get(TrainJourney, journey.id)
+        assert refreshed.update_count == 1

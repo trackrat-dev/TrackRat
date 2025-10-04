@@ -90,6 +90,7 @@ struct V2TrainPosition: Codable {
 
 struct V2TrainDeparture: Codable {
     let trainId: String
+    let journeyDate: Date?
     let line: V2LineInfo
     let destination: String
     let departure: V2StationInfo
@@ -99,9 +100,10 @@ struct V2TrainDeparture: Codable {
     let dataSource: String
     let observationType: String?
     let isCancelled: Bool
-    
+
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
+        case journeyDate = "journey_date"
         case line, destination, departure, arrival
         case trainPosition = "train_position"
         case dataFreshness = "data_freshness"

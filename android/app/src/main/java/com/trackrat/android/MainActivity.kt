@@ -85,11 +85,15 @@ fun TrackRatAppNavHost() {
             TrainListScreen(
                 fromStation = args.fromStation,
                 toStation = args.toStation,
-                onNavigateBack = { 
+                onNavigateBack = {
                     navigator.navigateBack()
                 },
                 onTrainClicked = { trainId ->
-                    navigator.navigateToTrainDetail(trainId)
+                    navigator.navigateToTrainDetail(
+                        trainId = trainId,
+                        originCode = args.fromStation,
+                        destinationCode = args.toStation
+                    )
                 }
             )
         }
@@ -103,7 +107,9 @@ fun TrackRatAppNavHost() {
             TrainDetailScreen(
                 trainId = args.trainId,
                 date = args.date,
-                onNavigateBack = { 
+                originCode = args.originCode,
+                destinationCode = args.destinationCode,
+                onNavigateBack = {
                     navigator.navigateBack()
                 }
             )

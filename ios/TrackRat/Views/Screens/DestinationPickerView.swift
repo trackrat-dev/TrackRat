@@ -7,7 +7,8 @@ struct DestinationPickerView: View {
     @FocusState private var searchFieldFocused: Bool
     @State private var navigationBarVisible = false
     @Binding var sheetPosition: BottomSheetPosition
-    
+    @State private var searchTask: Task<Void, Never>?
+
     private var searchResults: [String] {
         let results = Stations.search(searchText)
         // Filter out the current departure station
@@ -35,13 +36,9 @@ struct DestinationPickerView: View {
     }
     
     var body: some View {
-        ZStack {
-            // Black gradient background
-            TrackRatTheme.Colors.primaryBackground
-                .ignoresSafeArea()
-            
-            SheetAwareScrollView(sheetPosition: $sheetPosition) {
-                VStack(spacing: 16) {
+        // Wrap content in SheetAwareScrollView for proper scrolling and dragging
+        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+            VStack(spacing: 16) {
                     // Simple centered title
                     Text("Where would you like to go?")
                         .font(.system(size: 26, weight: .semibold))
@@ -92,8 +89,16 @@ struct DestinationPickerView: View {
                                     .autocorrectionDisabled(true)
                                     .textInputAutocapitalization(.never)
                                     .onChange(of: searchText) { _, newValue in
-                                        withAnimation(.easeInOut(duration: 0.3)) {
-                                            isSearching = !newValue.isEmpty
+                                        searchTask?.cancel()
+                                        searchTask = Task {
+                                            try? await Task.sleep(for: .milliseconds(200))
+                                            if !Task.isCancelled {
+                                                await MainActor.run {
+                                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                                        isSearching = !newValue.isEmpty
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     .onSubmit {
@@ -120,42 +125,41 @@ struct DestinationPickerView: View {
                         if isSearching {
                             VStack(spacing: 8) {
                                 ForEach(searchResults, id: \.self) { station in
-                                    HStack {
-                                        // Main station button
-                                        Button {
-                                            selectDestination(station)
-                                        } label: {
+                                    Button {
+                                        selectDestination(station)
+                                    } label: {
+                                        HStack {
                                             HStack {
                                                 Text(Stations.displayName(for: station))
                                                     .font(.body)
                                                     .foregroundColor(.white)
                                                 Spacer()
                                             }
-                                        }
-                                        
-                                        // Station icon - shows home/work icon or interactive heart
-                                        if let code = Stations.getStationCode(station) {
-                                            StationIconView(
-                                                stationCode: code,
-                                                isStationFavorited: appState.isStationFavorited(code: code)
-                                            ) {
-                                                withAnimation(.easeInOut(duration: 0.2)) {
-                                                    appState.toggleFavoriteStation(code: code, name: station)
+
+                                            if let code = Stations.getStationCode(station) {
+                                                StationIconView(
+                                                    stationCode: code,
+                                                    isStationFavorited: appState.isStationFavorited(code: code)
+                                                ) {
+                                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                                        appState.toggleFavoriteStation(code: code, name: station)
+                                                    }
+                                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                                 }
-                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                                .padding(.leading, 8)
                                             }
-                                            .padding(.leading, 8)
                                         }
+                                        .padding()
+                                        .background(
+                                            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                                .fill(TrackRatTheme.Colors.surfaceCard)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                                                )
+                                        )
                                     }
-                                    .padding()
-                                    .background(
-                                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                            .fill(TrackRatTheme.Colors.surfaceCard)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                                    .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
-                                            )
-                                    )
+                                    .buttonStyle(.plain)
                                     .padding(.horizontal)
                                 }
                             }
@@ -182,7 +186,6 @@ struct DestinationPickerView: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
         }
         .navigationBarHidden(true)
         .onAppear {
@@ -227,9 +230,9 @@ struct FavoriteDestinationButton: View {
                     .font(.callout)
                     .fontWeight(.medium)
                     .foregroundColor(.white)
-                
+
                 Spacer()
-                
+
                 // Station icon - shows home/work icon or interactive heart
                 StationIconView(
                     stationCode: station.id,
@@ -253,6 +256,7 @@ struct FavoriteDestinationButton: View {
                     )
             )
         }
+        .buttonStyle(.plain)
     }
 }
 

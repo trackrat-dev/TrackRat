@@ -73,7 +73,9 @@ temp/
 
 # Debug and test scripts (keep out of repo)
 debug_*.py
-test_*.py
+# Don't ignore test files in tests/ directory
+# test_*.py
 fix_*.py
 *_debug.py
-*_test.py
+# Don't ignore test files in tests/ directory
+# *_test.py

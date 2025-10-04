@@ -1,4 +1,5 @@
 import SwiftUI
+import Sentry
 import ActivityKit
 import WidgetKit
 import UserNotifications
@@ -58,30 +59,111 @@ struct TrackRatApp: App {
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     // Store device token for Live Activity registration
     private static var storedDeviceToken: String?
-    
+
     @MainActor static var deviceToken: String? {
         get { storedDeviceToken }
         set { storedDeviceToken = newValue }
     }
+
+    // MARK: - Sentry Configuration
+
+    private func configureSentry() {
+        // Determine environment
+        let environment = getCurrentEnvironment()
+        let isDevelopment = environment == "development"
+        let isStaging = environment == "staging"
+        let isProduction = environment == "production"
+
+        SentrySDK.start { options in
+            // Basic configuration
+            options.dsn = "https://f46282b1deb1de34493decb5c3c54c05@o4510043461058560.ingest.us.sentry.io/4510043476393984"
+            options.debug = isDevelopment // Only enable debug in development
+
+            options.tracesSampleRate = 1.0
+            options.profilesSampleRate = 1.0
+
+            // Session replay configuration
+            // Using 100% sampling for all environments as requested
+            options.sessionReplay.sessionSampleRate = 1.0  // 100% session replay
+            options.sessionReplay.onErrorSampleRate = 1.0   // 100% replay on errors
+
+            options.experimental.enableLogs = !isProduction
+        }
+    }
+
+    private func getCurrentEnvironment() -> String {
+        // Check for environment configuration
+        let storageService = StorageService()
+        let serverEnv = storageService.loadServerEnvironment()
+
+        switch serverEnv {
+        case .local:
+            return "development"
+        case .staging:
+            return "staging"
+        case .production:
+            return "production"
+        }
+    }
+
+    private func configureSessionReplayConsent() {
+        // Check if user has consented to session replay
+        let hasConsented = UserDefaults.standard.bool(forKey: "sentry_session_replay_consent")
+
+        if !hasConsented && getCurrentEnvironment() == "production" {
+            // We'll request consent later in the app flow
+            // For now, disable session replay until consent is given
+            if #available(iOS 16.0, *) {
+                // Session replay consent will be handled in settings
+            }
+        }
+    }
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        // Start app cold start transaction
+        let startupTransaction = SentrySDK.startTransaction(
+            name: "app.cold_start",
+            operation: "app_lifecycle",
+            bindToScope: true
+        )
+
+        // Track Sentry initialization
+        let sentrySpan = startupTransaction.startChild(operation: "sentry.init", description: "Initialize Sentry SDK")
+        configureSentry()
+        sentrySpan.finish()
+
+        configureSessionReplayConsent()
+
+        // Track notification setup
+        let notificationSpan = startupTransaction.startChild(operation: "notifications.setup", description: "Configure notifications")
         UNUserNotificationCenter.current().delegate = self
         setupNotificationCategories()
         registerBackgroundTasks()
+        notificationSpan.finish()
         
         // Request notification permissions (required for Live Activities)
+        let permissionSpan = startupTransaction.startChild(operation: "permissions.request", description: "Request notification permissions")
         Task {
             await requestNotificationPermissions()
+            permissionSpan.finish()
         }
-        
+
         // Register for remote notifications (push notifications)
         application.registerForRemoteNotifications()
-        
+
         // Wake up backend on app launch
         print("📱 App Launch: Triggering backend wake-up...")
+        let backendSpan = startupTransaction.startChild(operation: "backend.wakeup", description: "Wake up backend service")
         Task {
             BackendWakeupService.shared.wakeupBackend()
+            backendSpan.finish()
+
+            // Finish the startup transaction after backend wakeup
+            startupTransaction.setData(value: "cold_start", key: "launch_type")
+            startupTransaction.setData(value: launchOptions?.isEmpty == false, key: "has_launch_options")
+            startupTransaction.finish()
         }
-        
+
         return true
     }
     
@@ -414,24 +496,42 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             return
         }
 
-        // It's good practice to store these before starting an async task
-        // trainId in attributes is already a String, matching what fetchTrainDetailsFlexible expects for trainNumber
-        // let trainIdString = activityAttributes.trainId
-        // Guarding Int conversion is not strictly necessary here if APIService.fetchTrainDetailsFlexible expects trainId as String (trainNumber)
-        // guard let _ = Int(trainIdString) else {
-        //     print("Invalid trainId in Live Activity attributes: \(trainIdString)")
-        //     task.setTaskCompleted(success: false)
-        //     return
-        // }
-
         print("Performing background fetch for Live Activity: Train \(activityAttributes.trainNumber)")
 
+        // Use Task with proper completion and timeout
         Task {
-            await LiveActivityService.shared.fetchAndUpdateTrain()
-            // The fetchAndUpdateTrain method itself handles errors internally by logging them.
-            // We assume success here unless a more specific error handling from fetchAndUpdateTrain is needed.
-            print("Background fetch completed for Live Activity: Train \(activityAttributes.trainNumber)")
-            task.setTaskCompleted(success: true)
+            do {
+                // Add 25-second timeout to prevent hanging
+                try await withTimeout(seconds: 25) {
+                    await LiveActivityService.shared.fetchAndUpdateTrain()
+                }
+                print("Background fetch completed successfully for Live Activity: Train \(activityAttributes.trainNumber)")
+                task.setTaskCompleted(success: true)
+            } catch {
+                print("Background fetch failed or timed out: \(error)")
+                task.setTaskCompleted(success: false)
+            }
+        }
+    }
+
+    // Helper function for timeout
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            // Add the actual operation
+            group.addTask {
+                try await operation()
+            }
+
+            // Add timeout task
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw CancellationError()
+            }
+
+            // Wait for first to complete and cancel the other
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 

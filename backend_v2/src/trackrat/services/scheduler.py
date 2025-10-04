@@ -5,6 +5,7 @@ Uses APScheduler to run periodic tasks within the FastAPI application.
 """
 
 import asyncio
+from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -15,6 +16,23 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
+
+try:
+    from sentry_sdk.crons import capture_checkin
+
+    SENTRY_AVAILABLE = True
+except ImportError:
+    SENTRY_AVAILABLE = False
+
+    def capture_checkin(  # type: ignore[misc]
+        monitor_slug: str | None = None,
+        check_in_id: str | None = None,
+        status: str | None = None,
+        duration: float | None = None,
+        monitor_config: Any = None,
+    ) -> str:
+        return ""
+
 
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
@@ -37,6 +55,76 @@ from trackrat.utils.time import (
 )
 
 logger = get_logger(__name__)
+
+
+def with_sentry_cron(
+    monitor_slug: str,
+) -> Callable[
+    [Callable[..., Coroutine[Any, Any, Any]]], Callable[..., Coroutine[Any, Any, Any]]
+]:
+    """Decorator to add Sentry cron monitoring to scheduled jobs.
+
+    Args:
+        monitor_slug: Unique identifier for the cron job in Sentry
+
+    Returns:
+        Decorated function with Sentry cron monitoring
+    """
+
+    def decorator(
+        func: Callable[..., Coroutine[Any, Any, Any]]
+    ) -> Callable[..., Coroutine[Any, Any, Any]]:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Start check-in if Sentry is available
+            check_in_id = None
+            if SENTRY_AVAILABLE:
+                check_in_id = capture_checkin(
+                    monitor_slug=monitor_slug,
+                    status="in_progress",
+                )
+                logger.debug(
+                    "sentry_cron_checkin_started",
+                    monitor=monitor_slug,
+                    check_in_id=check_in_id,
+                )
+
+            try:
+                # Execute the actual function
+                result = await func(*args, **kwargs)
+
+                # Mark as successful
+                if SENTRY_AVAILABLE and check_in_id:
+                    capture_checkin(
+                        monitor_slug=monitor_slug,
+                        status="ok",
+                        check_in_id=check_in_id,
+                    )
+                    logger.debug(
+                        "sentry_cron_checkin_success",
+                        monitor=monitor_slug,
+                        check_in_id=check_in_id,
+                    )
+
+                return result
+            except Exception as e:
+                # Mark as failed
+                if SENTRY_AVAILABLE and check_in_id:
+                    capture_checkin(
+                        monitor_slug=monitor_slug,
+                        status="error",
+                        check_in_id=check_in_id,
+                    )
+                    logger.debug(
+                        "sentry_cron_checkin_error",
+                        monitor=monitor_slug,
+                        check_in_id=check_in_id,
+                        error=str(e),
+                    )
+                raise
+
+        return wrapper
+
+    return decorator
 
 
 class SchedulerService:
@@ -138,6 +226,17 @@ class SchedulerService:
             max_instances=1,
         )
 
+        # Schedule departures API cache pre-computation (every 90 seconds)
+        self.scheduler.add_job(
+            self.precompute_departure_cache,
+            trigger=IntervalTrigger(seconds=90),
+            id="departure_cache_precompute",
+            name="Departure Cache Pre-computation",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+
         # Schedule train validation (every hour)
         self.scheduler.add_job(
             self.run_train_validation,
@@ -201,6 +300,7 @@ class SchedulerService:
 
         logger.info("scheduler_stopped")
 
+    @with_sentry_cron("njt-train-discovery")
     async def run_njt_discovery(self) -> None:
         """Run NJ Transit train discovery for all configured stations."""
         task_id = f"njt_discovery_{now_et().isoformat()}"
@@ -263,6 +363,7 @@ class SchedulerService:
             if not executed:
                 logger.debug("njt_discovery_skipped_still_fresh")
 
+    @with_sentry_cron("amtrak-train-discovery")
     async def run_amtrak_discovery(self) -> None:
         """Run Amtrak train discovery for trains serving NYP."""
         task_id = f"amtrak_discovery_{now_et().isoformat()}"
@@ -316,6 +417,7 @@ class SchedulerService:
             if not executed:
                 logger.debug("amtrak_discovery_skipped_still_fresh")
 
+    @with_sentry_cron("journey-update-check")
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
         task_id = f"journey_check_{now_et().isoformat()}"
@@ -383,6 +485,7 @@ class SchedulerService:
                 if window_start <= scheduled_dep <= window_end:
                     trains.append(train)
 
+        scheduled_count = 0
         for train in trains:
             # Schedule collection at departure time
             job_id = f"departure_collection_{train.train_id}_{train.journey_date}"
@@ -399,16 +502,15 @@ class SchedulerService:
                     name=f"Departure collection for {train.train_id}",
                     replace_existing=True,
                 )
+                scheduled_count += 1
 
-                logger.info(
-                    "scheduled_departure_collection",
-                    train_id=train.train_id,
-                    departure_time=(
-                        train.scheduled_departure.isoformat()
-                        if train.scheduled_departure
-                        else "unknown"
-                    ),
-                )
+        # Log batch summary instead of individual trains
+        if scheduled_count > 0:
+            logger.info(
+                "scheduler.departure.scheduled",
+                count=scheduled_count,
+                window_minutes=10,
+            )
 
     async def schedule_periodic_updates(self, session: AsyncSession) -> None:
         """Schedule periodic updates for active trains."""
@@ -444,6 +546,7 @@ class SchedulerService:
                 if last_updated < cutoff_time:
                     trains.append(train)
 
+        scheduled_count = 0
         for train in trains:
             # Use deterministic job ID to prevent duplicate updates
             job_id = f"periodic_update_{train.train_id}_{train.journey_date}"
@@ -459,15 +562,14 @@ class SchedulerService:
                     replace_existing=True,
                     max_instances=1,  # Prevent overlapping instances
                 )
+                scheduled_count += 1
 
+        # Log batch summary instead of individual trains
+        if scheduled_count > 0:
             logger.info(
-                "scheduled_periodic_update",
-                train_id=train.train_id,
-                last_updated=(
-                    ensure_timezone_aware(train.last_updated_at).isoformat()
-                    if train.last_updated_at
-                    else "unknown"
-                ),
+                "scheduler.periodic.scheduled",
+                count=scheduled_count,
+                total_active_trains=len(trains),
             )
 
     async def collect_journey(self, train_id: str, journey_date: datetime) -> None:
@@ -475,8 +577,11 @@ class SchedulerService:
         task_id = f"journey_{train_id}_{now_et().isoformat()}"
 
         try:
-            logger.info(
-                "collecting_journey", train_id=train_id, journey_date=journey_date
+            # Debug level for individual collection start
+            logger.debug(
+                "journey.collection.started",
+                train_id=train_id,
+                journey_date=journey_date,
             )
 
             # Track running task
@@ -497,22 +602,24 @@ class SchedulerService:
             )
 
             if result:
-                logger.info(
-                    "journey_collection_completed",
+                # Debug level for successful collection
+                logger.debug(
+                    "journey.collection.completed",
                     train_id=train_id,
                     is_completed=result.get("is_completed", False),
                     stops_count=result.get("stops_count", 0),
                 )
             else:
+                # Error for actual failures
                 logger.error(
-                    "journey_collection_failed",
+                    "journey.collection.failed",
                     train_id=train_id,
                     error="No result returned from collection",
                 )
 
         except Exception as e:
             logger.error(
-                "journey_collection_error",
+                "journey.collection.error",
                 train_id=train_id,
                 error=str(e),
                 error_type=type(e).__name__,
@@ -529,10 +636,14 @@ class SchedulerService:
             for station_result in discovery_result.get("station_results", {}).values():
                 for train_id in station_result.get("new_train_ids", []):
                     # Get the journey record
+                    # Look for journeys from today or tomorrow to handle midnight edge case
+                    current_date = now_et().date()
                     stmt = select(TrainJourney).where(
                         and_(
                             TrainJourney.train_id == train_id,
-                            TrainJourney.journey_date == now_et().date(),
+                            TrainJourney.journey_date.in_(
+                                [current_date, current_date + timedelta(days=1)]
+                            ),
                             TrainJourney.data_source == "NJT",
                         )
                     )
@@ -1237,7 +1348,14 @@ class SchedulerService:
                                 track=stop_data.TRACK or None,
                                 track_assigned_at=now_et() if stop_data.TRACK else None,
                                 raw_njt_departed_flag=stop_data.DEPARTED,
-                                has_departed_station=(stop_data.DEPARTED == "YES"),
+                                # Time validation: Never mark as departed if scheduled time is in future
+                                has_departed_station=(
+                                    stop_data.DEPARTED == "YES"
+                                    and (
+                                        not scheduled_departure
+                                        or scheduled_departure <= now_et()
+                                    )
+                                ),
                             )
                             session.add(stop)
 
@@ -1840,6 +1958,7 @@ class SchedulerService:
 
         return content_state
 
+    @with_sentry_cron("live-activity-token-cleanup")
     async def cleanup_expired_live_activity_tokens(self) -> None:
         """Clean up expired Live Activity tokens by marking them as inactive."""
 
@@ -1911,6 +2030,7 @@ class SchedulerService:
             if not executed:
                 logger.debug("live_activity_token_cleanup_skipped_still_fresh")
 
+    @with_sentry_cron("congestion-cache-precompute")
     async def precompute_congestion_cache(self) -> None:
         """Pre-compute congestion API responses for common parameter combinations."""
         task_id = f"congestion_cache_{now_et().isoformat()}"
@@ -1971,6 +2091,50 @@ class SchedulerService:
             if not executed:
                 logger.debug("congestion_cache_precompute_skipped_still_fresh")
 
+    @with_sentry_cron("departure-cache-precompute")
+    async def precompute_departure_cache(self) -> None:
+        """Pre-compute departure API responses for popular station pairs."""
+        task_id = f"departure_cache_{now_et().isoformat()}"
+
+        async def do_cache_work() -> None:
+            try:
+                logger.info("starting_departure_cache_precomputation")
+
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                from trackrat.services.api_cache import ApiCacheService
+
+                async with get_session() as session:
+                    cache_service = ApiCacheService()
+                    await cache_service.precompute_departure_responses(session)
+
+                logger.info("departure_cache_precomputation_completed")
+
+            except Exception as e:
+                logger.error(
+                    "departure_cache_precomputation_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(2)  # Round up 1.5 to 2 minutes
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="departure_cache_precompute",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_cache_work,
+            )
+
+            if not executed:
+                logger.debug("departure_cache_precompute_skipped_still_fresh")
+
+    @with_sentry_cron("live-activity-updates")
     async def update_live_activities(self) -> None:
         """Update all active Live Activities with current train data."""
         task_id = f"live_activity_update_{now_et().isoformat()}"
@@ -2193,6 +2357,7 @@ class SchedulerService:
             if not executed:
                 logger.debug("live_activity_updates_skipped_still_fresh")
 
+    @with_sentry_cron("train-validation")
     async def run_train_validation(self) -> None:
         """Run end-to-end validation of train discovery and API accessibility."""
         task_id = f"train_validation_{now_et().isoformat()}"
@@ -2263,6 +2428,7 @@ class SchedulerService:
             > threshold_seconds
         )
 
+    @with_sentry_cron("njt-schedule-collection")
     async def collect_njt_schedules(self) -> None:
         """Collect NJT schedule data once daily at 12:30 AM.
 
@@ -2323,6 +2489,7 @@ class SchedulerService:
             if not executed:
                 logger.debug("njt_schedule_collection_skipped_still_fresh")
 
+    @with_sentry_cron("amtrak-schedule-generation")
     async def generate_amtrak_schedules(self) -> None:
         """Generate Amtrak schedules based on historical patterns.
 

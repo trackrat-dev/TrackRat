@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.models.api import AmtrakTrainData, AmtrakStationData
 from trackrat.models.database import TrainJourney
+from trackrat.utils.time import ET
 from tests.factories.amtrak import create_amtrak_train_data, create_amtrak_station_data
 
 
@@ -320,9 +321,13 @@ class TestAmtrakJourneyCollector:
         # Mock the session query to return no existing journey
         mock_db_session.scalar.return_value = None
 
+        # Mock flush and refresh to do nothing
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
+
         # Mock time functions
         with patch("trackrat.collectors.amtrak.journey.now_et") as mock_now:
-            mock_now.return_value = datetime(2025, 7, 5, 14, 0, 0)
+            mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
             result = await journey_collector._convert_to_journey(
                 mock_db_session, sample_train_data
@@ -340,6 +345,9 @@ class TestAmtrakJourneyCollector:
             # Verify correct number of session.add calls:
             # 1 journey + 4 stops + 1 snapshot = 6 total
             assert mock_db_session.add.call_count == 6
+            # Verify flush and refresh were called
+            mock_db_session.flush.assert_called()
+            mock_db_session.refresh.assert_called()
 
     @pytest.mark.asyncio
     async def test_convert_to_journey_existing_journey(
@@ -352,11 +360,17 @@ class TestAmtrakJourneyCollector:
         existing_journey.stops = []
         existing_journey.snapshots = []
         existing_journey.update_count = 5
+        existing_journey.observation_type = "SCHEDULED"
         mock_db_session.scalar.return_value = existing_journey
+
+        # Mock flush, refresh, and execute to do nothing
+        mock_db_session.flush = AsyncMock()
+        mock_db_session.refresh = AsyncMock()
+        mock_db_session.execute = AsyncMock()
 
         # Mock time functions
         with patch("trackrat.collectors.amtrak.journey.now_et") as mock_now:
-            mock_now.return_value = datetime(2025, 7, 5, 14, 0, 0)
+            mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
             result = await journey_collector._convert_to_journey(
                 mock_db_session, sample_train_data
@@ -364,6 +378,9 @@ class TestAmtrakJourneyCollector:
 
             assert result == existing_journey
             assert result.update_count == 6  # Should increment
+            # Verify flush and refresh were called
+            mock_db_session.flush.assert_called()
+            mock_db_session.refresh.assert_called()
 
     @pytest.mark.asyncio
     async def test_convert_to_journey_no_tracked_origin(

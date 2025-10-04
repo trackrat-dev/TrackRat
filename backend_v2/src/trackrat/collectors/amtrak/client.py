@@ -29,7 +29,7 @@ class AmtrakClient(BaseClient):
         Args:
             timeout: Request timeout in seconds
         """
-        self.base_url = "https://api-v3.amtraker.com/v3/trains"
+        # Don't set base_url in init anymore - will build URL with date
         self.timeout = timeout
         self._session: httpx.AsyncClient | None = None
 
@@ -81,6 +81,10 @@ class AmtrakClient(BaseClient):
     async def get_all_trains(self) -> dict[str, list[AmtrakTrainData]]:
         """Fetch all active trains from Amtrak API.
 
+        Uses the dateless API endpoint which returns all currently active trains.
+        The dated API endpoint has been unreliable, returning empty data even when
+        trains are running.
+
         Returns:
             Dictionary mapping train numbers to lists of train data
         """
@@ -89,59 +93,62 @@ class AmtrakClient(BaseClient):
             logger.debug("returning_cached_amtrak_data")
             return self._cache
 
-        try:
-            logger.info("fetching_amtrak_trains", url=self.base_url)
+        # Use dateless API which reliably returns all active trains
+        url = "https://api-v3.amtraker.com/v3/trains"
 
-            response = await self.session.get(self.base_url)
+        raw_data = None
+
+        try:
+            logger.info("fetching_amtrak_trains", url=url)
+
+            response = await self.session.get(url)
             response.raise_for_status()
 
             raw_data = response.json()
 
-            # Parse the response into our models
-            parsed_data = {}
-            for train_num, train_list in raw_data.items():
-                if not isinstance(train_list, list):
+        except Exception as e:
+            logger.error(
+                "amtrak_api_failed",
+                error=str(e),
+                url=url,
+            )
+            raise
+
+        # Parse the response into our models
+        if not raw_data:
+            logger.error("no_amtrak_data_received")
+            return {}
+
+        parsed_data = {}
+        for train_num, train_list in raw_data.items():
+            if not isinstance(train_list, list):
+                continue
+
+            parsed_trains = []
+            for train_dict in train_list:
+                try:
+                    train = AmtrakTrainData(**train_dict)
+                    parsed_trains.append(train)
+                except Exception as e:
+                    logger.warning(
+                        "failed_to_parse_train", train_num=train_num, error=str(e)
+                    )
                     continue
 
-                parsed_trains = []
-                for train_dict in train_list:
-                    try:
-                        train = AmtrakTrainData(**train_dict)
-                        parsed_trains.append(train)
-                    except Exception as e:
-                        logger.warning(
-                            "failed_to_parse_train", train_num=train_num, error=str(e)
-                        )
-                        continue
+            if parsed_trains:
+                parsed_data[train_num] = parsed_trains
 
-                if parsed_trains:
-                    parsed_data[train_num] = parsed_trains
+        # Update cache
+        self._cache = parsed_data
+        self._cache_time = datetime.now()
 
-            # Update cache
-            self._cache = parsed_data
-            self._cache_time = datetime.now()
+        logger.info(
+            "amtrak_data_fetched",
+            train_count=len(parsed_data),
+            total_instances=sum(len(trains) for trains in parsed_data.values()),
+        )
 
-            logger.info(
-                "amtrak_data_fetched",
-                train_count=len(parsed_data),
-                total_instances=sum(len(trains) for trains in parsed_data.values()),
-            )
-
-            return parsed_data
-
-        except httpx.TimeoutException:
-            logger.error("amtrak_api_timeout", timeout=self.timeout)
-            raise
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                "amtrak_api_http_error",
-                status_code=e.response.status_code,
-                response_text=e.response.text[:500],
-            )
-            raise
-        except Exception as e:
-            logger.error("amtrak_api_error", error=str(e), error_type=type(e).__name__)
-            raise
+        return parsed_data
 
     def _is_cache_valid(self) -> bool:
         """Check if the cache is still valid.

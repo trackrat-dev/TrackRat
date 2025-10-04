@@ -2,6 +2,7 @@ import Foundation
 import ActivityKit
 import UserNotifications
 import UIKit
+import Sentry
 
 @available(iOS 16.1, *)
 class LiveActivityService: ObservableObject {
@@ -28,23 +29,53 @@ class LiveActivityService: ObservableObject {
         origin: String,
         destination: String
     ) async throws {
+        // Start performance transaction for Live Activity lifecycle
+        let transaction = SentrySDK.startTransaction(
+            name: "live_activity.start",
+            operation: "live_activity"
+        )
+        transaction.setData(value: train.trainId, key: "train_id")
+        transaction.setData(value: "\(originCode) → \(destinationCode)", key: "route")
+
         // End any existing activity first
+        let endSpan = transaction.startChild(operation: "activity.cleanup", description: "End existing activity")
         await endCurrentActivity()
-        
+        endSpan.finish()
+
         // Record Live Activity start for Rat Sense
         RatSenseService.shared.recordLiveActivityStart(from: originCode, to: destinationCode)
-        
+
         // Request notification permissions
-        try await requestNotificationPermissions()
+        let permissionSpan = transaction.startChild(operation: "permissions.request", description: "Request notifications")
+        do {
+            try await requestNotificationPermissions()
+            permissionSpan.setData(value: true, key: "granted")
+        } catch {
+            permissionSpan.setData(value: false, key: "granted")
+            permissionSpan.setData(value: error.localizedDescription, key: "error")
+            throw error
+        }
+        permissionSpan.finish()
         
         // Get scheduled times for the user's journey
         let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: originCode)
-        
+
         // Fetch full train details to get correct destination timing
-        let detailedTrain = try await APIService.shared.fetchTrainDetails(
-            id: train.trainId, 
-            fromStationCode: originCode
-        )
+        let detailsSpan = transaction.startChild(operation: "api.fetch", description: "Fetch train details")
+        let detailedTrain: TrainV2
+        do {
+            detailedTrain = try await APIService.shared.fetchTrainDetails(
+                id: train.trainId,
+                fromStationCode: originCode
+            )
+            detailsSpan.setData(value: detailedTrain.stops?.count ?? 0, key: "stops_count")
+        } catch {
+            detailsSpan.setData(value: error.localizedDescription, key: "error")
+            detailsSpan.finish()
+            transaction.finish(status: .internalError)
+            throw error
+        }
+        detailsSpan.finish()
         let scheduledArrivalTime = detailedTrain.getScheduledArrivalTime(toStationName: destination)
         
         // Create activity attributes
@@ -101,31 +132,56 @@ class LiveActivityService: ObservableObject {
         print("  - Scheduled Arrival: \(scheduledArrivalTime?.description ?? "none")")
         
         // Start the activity
+        let activitySpan = transaction.startChild(operation: "activity.create", description: "Create Live Activity")
         do {
             let activity = try Activity<TrainActivityAttributes>.request(
                 attributes: attributes,
                 content: ActivityContent(state: initialState, staleDate: Date().addingTimeInterval(120)),
                 pushType: .token
             )
-            
+            activitySpan.setData(value: activity.id, key: "activity_id")
+            activitySpan.finish()
+
             await MainActor.run {
                 self.currentActivity = activity
                 self.isActivityActive = true
             }
-            
+
             // Subscribe to push token updates (async)
+            let tokenSpan = transaction.startChild(operation: "push.token.subscribe", description: "Subscribe to push token")
             startPushTokenSubscription(for: activity, train: train, from: originCode, to: destinationCode)
-            
+            tokenSpan.finish()
+
             // Start periodic updates every 30 seconds
             startPeriodicUpdates()
-            
+
             print("✅ Live Activity started successfully")
             print("  - Activity ID: \(activity.id)")
-            
+
+            // Successfully complete the transaction
+            transaction.setData(value: activity.id, key: "activity_id")
+            transaction.setData(value: true, key: "success")
+            transaction.finish()
+
         } catch {
+            activitySpan.setData(value: error.localizedDescription, key: "error")
+            activitySpan.finish()
+
             print("❌ Failed to start Live Activity: \(error)")
             print("  - Error type: \(type(of: error))")
             print("  - Error details: \(error.localizedDescription)")
+
+            // Capture error to Sentry
+            SentrySDK.capture(error: error) { scope in
+                scope.setContext(value: [
+                    "train_id": train.trainId,
+                    "route": "\(origin) → \(destination)",
+                    "error_type": String(describing: type(of: error))
+                ], key: "live_activity_start_failure")
+            }
+
+            transaction.setData(value: false, key: "success")
+            transaction.finish(status: .internalError)
             throw error
         }
     }
@@ -133,40 +189,52 @@ class LiveActivityService: ObservableObject {
     /// End the current Live Activity
     func endCurrentActivity() async {
         guard let activity = currentActivity else { return }
-        
-        // Stop periodic updates
+
+        // Stop periodic updates first
         stopPeriodicUpdates()
-        
-        // Cancel push token subscription
-        pushTokenTask?.cancel()
+
+        // Cancel push token subscription and wait for completion
+        if let task = pushTokenTask {
+            task.cancel()
+            // Give the task a moment to complete
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        }
         pushTokenTask = nil
-        
+
         // Unregister push token if we have one
         if let pushToken = currentPushToken {
             let tokenString = pushToken.map { String(format: "%02x", $0) }.joined()
-            try? await APIService.shared.unregisterLiveActivityToken(pushToken: tokenString)
+            do {
+                try await APIService.shared.unregisterLiveActivityToken(pushToken: tokenString)
+                print("✅ Unregistered push token from server")
+            } catch {
+                print("⚠️ Failed to unregister push token: \(error)")
+                // Continue with cleanup anyway
+            }
         }
-        
+
         // End the activity
         await activity.end(dismissalPolicy: .immediate)
-        
-        await MainActor.run {
-            self.currentActivity = nil
-            self.isActivityActive = false
-            self.currentPushToken = nil
+
+        // Clear all references with weak self for extra safety
+        await MainActor.run { [weak self] in
+            self?.currentActivity = nil
+            self?.isActivityActive = false
+            self?.currentPushToken = nil
         }
-        
-        print("🛑 Live Activity ended")
+
+        print("🛑 Live Activity ended and cleaned up")
     }
     
     // MARK: - Updates
     
     private func startPeriodicUpdates() {
         stopPeriodicUpdates()
-        
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
-            Task {
-                await self.fetchAndUpdateTrain()
+
+        // Use weak self in timer closure to avoid retain cycle
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { [weak self] in
+                await self?.fetchAndUpdateTrain()
             }
         }
     }
@@ -178,12 +246,25 @@ class LiveActivityService: ObservableObject {
     
     func fetchAndUpdateTrain() async {
         guard let activity = currentActivity else { return }
-        
+
+        // Start a transaction for Live Activity update
+        let transaction = SentrySDK.startTransaction(
+            name: "live_activity.update",
+            operation: "live_activity"
+        )
+        transaction.setData(value: activity.attributes.trainId, key: "train_id")
+        transaction.setData(value: activity.id, key: "activity_id")
+
         do {
+            // Fetch train details
+            let fetchSpan = transaction.startChild(operation: "api.fetch", description: "Fetch train update")
             let train = try await APIService.shared.fetchTrainDetails(
                 id: activity.attributes.trainId,
                 fromStationCode: activity.attributes.originStationCode
             )
+            fetchSpan.setData(value: train.delayMinutes, key: "delay_minutes")
+            fetchSpan.setData(value: train.track ?? "none", key: "track")
+            fetchSpan.finish()
             
             // Calculate context-aware progress for user's journey
             let context = JourneyContext(from: activity.attributes.originStationCode, to: activity.attributes.destination)
@@ -233,14 +314,24 @@ class LiveActivityService: ObservableObject {
             print("  - Scheduled Arrival: \(scheduledArrivalTime?.description ?? "none")")
             
             // Update the activity
+            let updateSpan = transaction.startChild(operation: "activity.update", description: "Update Live Activity content")
             await activity.update(
                 ActivityContent(state: updatedState, staleDate: Date().addingTimeInterval(120))
             )
-            
+            updateSpan.setData(value: progress, key: "journey_progress")
+            updateSpan.setData(value: currentStop, key: "current_stop")
+            updateSpan.finish()
+
             print("✅ Live Activity updated successfully")
-            
+
+            // Record metrics for the update
+            transaction.setData(value: progress, key: "journey_progress")
+            transaction.setData(value: hasTrainDeparted, key: "has_departed")
+            transaction.setData(value: train.delayMinutes, key: "delay_minutes")
+
             // Auto-end if journey is complete using comprehensive check
             if shouldEndActivity(train: train, activity: activity) {
+                let endSpan = transaction.startChild(operation: "activity.auto_end", description: "Auto-end completed journey")
                 print("🏁 Live Activity ending due to journey completion")
                 print("  - Notifying server to stop updates...")
                 
@@ -258,11 +349,27 @@ class LiveActivityService: ObservableObject {
                 
                 // Then end locally
                 await endCurrentActivity()
+                endSpan.finish()
             }
-            
+
+            // Successfully complete the transaction
+            transaction.finish()
+
         } catch {
             print("❌ Failed to update Live Activity: \(error)")
             print("  - Error details: \(error.localizedDescription)")
+
+            // Capture error to Sentry
+            SentrySDK.capture(error: error) { scope in
+                scope.setContext(value: [
+                    "train_id": activity.attributes.trainId,
+                    "activity_id": activity.id,
+                    "error_type": String(describing: type(of: error))
+                ], key: "live_activity_update_failure")
+            }
+
+            transaction.setData(value: error.localizedDescription, key: "error")
+            transaction.finish(status: .internalError)
         }
     }
     
@@ -271,28 +378,38 @@ class LiveActivityService: ObservableObject {
     private func startPushTokenSubscription(for activity: Activity<TrainActivityAttributes>, train: TrainV2, from originCode: String, to destinationCode: String) {
         // Cancel any existing subscription
         pushTokenTask?.cancel()
-        
-        pushTokenTask = Task {
+
+        pushTokenTask = Task { [weak self] in
+            guard let self = self else { return }
+
             print("🔄 Starting push token subscription for Live Activity...")
-            
+
             do {
                 for await pushToken in activity.pushTokenUpdates {
-                    print("📡 Received Live Activity push token: \(pushToken.prefix(20))...")
-                    
-                    // Store the token for later use (e.g., unregistration)
-                    await MainActor.run {
-                        self.currentPushToken = pushToken
+                    // Check for cancellation
+                    if Task.isCancelled {
+                        print("⚠️ Push token subscription cancelled")
+                        break
                     }
-                    
+
+                    print("📡 Received Live Activity push token: \(pushToken.prefix(20))...")
+
+                    // Store the token for later use (e.g., unregistration)
+                    await MainActor.run { [weak self] in
+                        self?.currentPushToken = pushToken
+                    }
+
                     // Register with backend
-                    await registerPushToken(pushToken, for: train, from: originCode, to: destinationCode)
-                    
+                    await self.registerPushToken(pushToken, for: train, from: originCode, to: destinationCode)
+
                     // We only need the first token, so break
                     break
                 }
             } catch {
                 print("❌ Push token subscription failed: \(error)")
             }
+
+            print("✅ Push token subscription task completed")
         }
     }
     
@@ -301,25 +418,24 @@ class LiveActivityService: ObservableObject {
     private func registerPushToken(_ token: Data, for train: TrainV2, from originCode: String, to destinationCode: String) async {
         let tokenString = token.map { String(format: "%02x", $0) }.joined()
         print("🔧 Converting push token to string: \(tokenString.prefix(20))...")
-        
-        Task {
-            for activity in Activity<TrainActivityAttributes>.activities {
-                if activity.id == currentActivity?.id {
-                    print("📤 Making HTTP request to register Live Activity token...")
-                    do {
-                        try await APIService.shared.registerLiveActivityToken(
-                            pushToken: tokenString,
-                            activityId: activity.id,
-                            trainNumber: train.trainId,
-                            originCode: originCode,
-                            destinationCode: destinationCode
-                        )
-                        print("✅ Live Activity token registration successful")
-                    } catch {
-                        print("❌ Live Activity token registration failed: \(error)")
-                    }
-                    break // Only register for the current activity
+
+        // Remove nested Task - we're already in async context
+        for activity in Activity<TrainActivityAttributes>.activities {
+            if activity.id == currentActivity?.id {
+                print("📤 Making HTTP request to register Live Activity token...")
+                do {
+                    try await APIService.shared.registerLiveActivityToken(
+                        pushToken: tokenString,
+                        activityId: activity.id,
+                        trainNumber: train.trainId,
+                        originCode: originCode,
+                        destinationCode: destinationCode
+                    )
+                    print("✅ Live Activity token registration successful")
+                } catch {
+                    print("❌ Live Activity token registration failed: \(error)")
                 }
+                break // Only register for the current activity
             }
         }
     }

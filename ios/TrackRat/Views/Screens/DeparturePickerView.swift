@@ -40,11 +40,12 @@ struct StationIconView: View {
                 .foregroundColor(.orange)
         } else {
             // Regular favorite heart icon - interactive
-            Button(action: onHeartTap) {
-                Image(systemName: isStationFavorited ? "heart.fill" : "heart")
-                    .font(.system(size: fontSize))
-                    .foregroundColor(.orange)
-            }
+            Image(systemName: isStationFavorited ? "heart.fill" : "heart")
+                .font(.system(size: fontSize))
+                .foregroundColor(.orange)
+                .onTapGesture {
+                    onHeartTap()
+                }
         }
     }
 }
@@ -65,7 +66,8 @@ struct DeparturePickerView: View {
     @State private var navigationBarVisible = false
     @State private var trainSearchError: String?
     @State private var isSearchingTrain = false
-    
+    @State private var searchTask: Task<Void, Never>?
+
     private var searchResults: (stations: [String], trainNumber: String?) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
         
@@ -111,46 +113,46 @@ struct DeparturePickerView: View {
     @ViewBuilder
     private var trainSearchResultView: some View {
         if let trainNumber = searchResults.trainNumber {
-            Button {
-                searchForTrain(trainNumber)
-            } label: {
-                HStack {
-                    Image(systemName: "tram.fill")
+            HStack {
+                Image(systemName: "tram.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.orange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Train \(trainNumber)")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text("Search for this train")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                }
+
+                Spacer()
+
+                if isSearchingTrain {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: "arrow.right.circle.fill")
                         .font(.system(size: 20))
                         .foregroundColor(.orange)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Train \(trainNumber)")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text("Search for this train")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                    }
-                    
-                    Spacer()
-                    
-                    if isSearchingTrain {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .orange))
-                            .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.orange)
-                    }
                 }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.orange.opacity(0.2))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.orange, lineWidth: 1.5)
-                        )
-                )
             }
-            .disabled(isSearchingTrain)
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.orange.opacity(0.2))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.orange, lineWidth: 1.5)
+                    )
+            )
+            .onTapGesture {
+                if !isSearchingTrain {
+                    searchForTrain(trainNumber)
+                }
+            }
             .padding(.horizontal, 24)
             
             // Show train search error if any
@@ -188,12 +190,9 @@ struct DeparturePickerView: View {
     
     @ViewBuilder
     private var mainContent: some View {
-        ZStack {
-            TrackRatTheme.Colors.primaryBackground
-                .ignoresSafeArea()
-            
-            SheetAwareScrollView(sheetPosition: $sheetPosition) {
-                VStack(spacing: 16) {
+        // Wrap content in SheetAwareScrollView for proper scrolling and dragging
+        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+            VStack(spacing: 16) {
                     titleSection
                     
                     Spacer()
@@ -208,7 +207,6 @@ struct DeparturePickerView: View {
                     Spacer()
                 }
             }
-        }
     }
     
     @ViewBuilder
@@ -232,24 +230,23 @@ struct DeparturePickerView: View {
         VStack(spacing: 12) {
             // Rat Sense suggestion
             if let suggestion = ratSenseService.suggestedJourney {
-                Button {
-                    selectRatSenseSuggestion(suggestion)
-                } label: {
-                    Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.orange.opacity(0.3))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
-                                )
-                        )
-                }
-                .padding(.horizontal, 24)
+                Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.orange.opacity(0.3))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.orange.opacity(0.6), lineWidth: 1.5)
+                            )
+                    )
+                    .onTapGesture {
+                        selectRatSenseSuggestion(suggestion)
+                    }
+                    .padding(.horizontal, 24)
             }
             
             // Search field
@@ -263,11 +260,19 @@ struct DeparturePickerView: View {
                 .autocorrectionDisabled(true)
                 .textInputAutocapitalization(.never)
                 .onChange(of: searchText) { _, newValue in
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        isSearching = !newValue.isEmpty
-                    }
-                    if trainSearchError != nil {
-                        trainSearchError = nil
+                    searchTask?.cancel()
+                    searchTask = Task {
+                        try? await Task.sleep(for: .milliseconds(200))
+                        if !Task.isCancelled {
+                            await MainActor.run {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    isSearching = !newValue.isEmpty
+                                }
+                                if trainSearchError != nil {
+                                    trainSearchError = nil
+                                }
+                            }
+                        }
                     }
                 }
                 .onChange(of: searchFieldFocused) { _, newValue in
@@ -316,22 +321,16 @@ struct DeparturePickerView: View {
     private var stationResultsView: some View {
         ForEach(searchResults.stations, id: \.self) { station in
             HStack {
-                Button {
-                    if let code = Stations.getStationCode(station) {
-                        selectDeparture(name: station, code: code)
-                    }
-                } label: {
-                    HStack {
-                        Text(station)
-                            .font(.body)
-                            .foregroundColor(.white)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
+                HStack {
+                    Text(station)
+                        .font(.body)
+                        .foregroundColor(.white)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.6))
                 }
-                
+
                 if let code = Stations.getStationCode(station) {
                     StationIconView(
                         stationCode: code,
@@ -455,7 +454,8 @@ struct DeparturePickerView: View {
                     appState.currentTrainId = train.id
                     appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                         trainNumber: trainNumber,
-                        fromStation: nil  // No specific departure station when searching globally
+                        fromStation: nil,  // No specific departure station when searching globally
+                        journeyDate: train.journeyDate
                     ))
                     
                     // Reset search
@@ -549,18 +549,17 @@ struct DepartureButton: View {
     var body: some View {
         HStack {
             // Main station button
-            Button {
+            HStack {
+                Text(Stations.displayName(for: name))
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.white.opacity(0.7))
+                    .font(.caption)
+            }
+            .onTapGesture {
                 onTap()
-            } label: {
-                HStack {
-                    Text(Stations.displayName(for: name))
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .foregroundColor(.white.opacity(0.7))
-                        .font(.caption)
-                }
             }
             
             // Station icon - shows home/work icon or interactive heart

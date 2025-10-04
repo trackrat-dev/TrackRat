@@ -24,6 +24,7 @@ struct TrainV2: Identifiable, Codable {
         return "\(trainId)-\(departure.code)-\(timeString)"
     }
     let trainId: String
+    let journeyDate: Date?
     let line: LineInfo
     let destination: String
     let departure: StationTiming
@@ -33,12 +34,13 @@ struct TrainV2: Identifiable, Codable {
     let observationType: String?
     let isCancelled: Bool
     let isCompleted: Bool
-    
+
     // Optional detailed stops (populated from detail endpoint)
     var stops: [StopV2]? = nil
-    
+
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
+        case journeyDate = "journey_date"
         case line
         case destination
         case departure
@@ -250,8 +252,8 @@ struct TrainV2: Identifiable, Codable {
         
         // Fallback: Use scheduled time with buffer for delays
         if let scheduledDeparture = getDepartureTime(fromStationCode: fromStationCode) {
-            // Allow 15 minutes past scheduled time for delays/late boarding
-            let departureWithBuffer = scheduledDeparture.addingTimeInterval(15 * 60)
+            // Allow 1 minute past scheduled time for delays/late boarding
+            let departureWithBuffer = scheduledDeparture.addingTimeInterval(1 * 60)
             return departureWithBuffer < now
         }
         

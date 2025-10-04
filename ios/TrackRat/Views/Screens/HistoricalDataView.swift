@@ -540,6 +540,7 @@ class HistoricalDataViewModel: ObservableObject {
 #Preview {
     HistoricalDataView(train: TrainV2(
         trainId: "3923",
+        journeyDate: Date(),
         line: LineInfo(code: "NEC", name: "Northeast Corridor", color: "#0066CC"),
         destination: "Trenton",
         departure: StationTiming(
@@ -820,7 +821,7 @@ class CongestionDataViewModel: ObservableObject {
         error = nil
         
         do {
-            let response = try await apiService.fetchCongestionData(timeWindowHours: 2)
+            let response = try await apiService.fetchCongestionData(timeWindowHours: 1)
             congestionData = response
             lastUpdated = Date()
             

@@ -15,7 +15,8 @@ struct TripSelectionView: View {
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var liveActivityService = LiveActivityService.shared
     @StateObject private var ratSenseService = RatSenseService.shared
-    
+    @State private var searchTask: Task<Void, Never>?
+
     // Train validation state - now supports multiple train results
     @State private var trainValidationStates: [String: TrainValidationState] = [:]
     @State private var validationTasks: [String: Task<Void, Never>] = [:]
@@ -72,14 +73,9 @@ struct TripSelectionView: View {
     
     
     var body: some View {
-        ZStack {
-            // Theme background
-            TrackRatTheme.Colors.surface
-                .ignoresSafeArea()
-            
-            // Use SheetAwareScrollView for smart scrolling
-            SheetAwareScrollView(sheetPosition: $sheetPosition) {
-                VStack(spacing: 8) {
+        // Wrap content in SheetAwareScrollView for proper scrolling and dragging
+        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+            VStack(spacing: 8) {
                     // Rat Sense suggestion at the top
                     if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive, !isSearching {
                         Button {
@@ -107,6 +103,9 @@ struct TripSelectionView: View {
                 Text("Where would you like to leave from?")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundColor(.white)
+                    .onAppear {
+                        print("🎯 TripSelectionView title text appeared!")
+                    }
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
@@ -127,12 +126,20 @@ struct TripSelectionView: View {
                             .autocorrectionDisabled(true)
                             .textInputAutocapitalization(.never)
                             .onChange(of: searchText) { _, newValue in
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    isSearching = !newValue.isEmpty
+                                searchTask?.cancel()
+                                searchTask = Task {
+                                    try? await Task.sleep(for: .milliseconds(200))
+                                    if !Task.isCancelled {
+                                        await MainActor.run {
+                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                                isSearching = !newValue.isEmpty
+                                            }
+
+                                            // Start train validation with debouncing
+                                            startTrainValidation(for: newValue)
+                                        }
+                                    }
                                 }
-                                
-                                // Start train validation with debouncing
-                                startTrainValidation(for: newValue)
                             }
                             .onChange(of: searchFieldFocused) { _, newValue in
                                 if newValue {
@@ -182,44 +189,43 @@ struct TripSelectionView: View {
                             }
                             
                             ForEach(searchResults.stations.prefix(5), id: \.self) { station in
-                                HStack {
-                                    // Main station button
-                                    Button {
-                                        if let code = Stations.getStationCode(station) {
-                                            selectOriginStation(name: station, code: code)
-                                        }
-                                    } label: {
+                                Button {
+                                    if let code = Stations.getStationCode(station) {
+                                        selectOriginStation(name: station, code: code)
+                                    }
+                                } label: {
+                                    HStack {
                                         HStack {
                                             Text(station)
                                                 .font(.body)
                                                 .foregroundColor(.white)
                                             Spacer()
                                         }
-                                    }
-                                    
-                                    // Station icon - shows home/work icon or interactive heart
-                                    if let code = Stations.getStationCode(station) {
-                                        StationIconView(
-                                            stationCode: code,
-                                            isStationFavorited: appState.isStationFavorited(code: code)
-                                        ) {
-                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                appState.toggleFavoriteStation(code: code, name: station)
+
+                                        if let code = Stations.getStationCode(station) {
+                                            StationIconView(
+                                                stationCode: code,
+                                                isStationFavorited: appState.isStationFavorited(code: code)
+                                            ) {
+                                                withAnimation(.easeInOut(duration: 0.2)) {
+                                                    appState.toggleFavoriteStation(code: code, name: station)
+                                                }
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             }
-                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            .padding(.leading, 8)
                                         }
-                                        .padding(.leading, 8)
                                     }
+                                    .padding()
+                                    .background(
+                                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                            .fill(TrackRatTheme.Colors.surfaceCard)
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                                                    .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                                            )
+                                    )
                                 }
-                                .padding()
-                                .background(
-                                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                        .fill(TrackRatTheme.Colors.surfaceCard)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                                .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
-                                        )
-                                )
+                                .buttonStyle(.plain)
                                 .padding(.horizontal)
                             }
                         }
@@ -252,7 +258,6 @@ struct TripSelectionView: View {
                     // Spacer to push content to top and fill remaining space
                     Spacer(minLength: 100) // Ensure some minimum space at bottom
                 }
-            }
         }
         .onAppear {
             print("🐀🐀🐀 TripSelectionView appeared - updating Rat Sense")
@@ -515,7 +520,8 @@ struct TripSelectionView: View {
                     appState.currentTrainId = foundTrain.id
                     appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
                         trainNumber: trainNumber,
-                        fromStation: nil  // No specific departure station when searching globally
+                        fromStation: nil,  // No specific departure station when searching globally
+                        journeyDate: foundTrain.journeyDate
                     ))
                     
                     // Reset search
@@ -568,9 +574,9 @@ struct FavoriteStationButton: View {
                     .font(.callout)
                     .fontWeight(.medium)
                     .foregroundColor(.white)
-                
+
                 Spacer()
-                
+
                 // Station icon - shows home/work icon or interactive heart
                 StationIconView(
                     stationCode: station.id,
@@ -582,7 +588,7 @@ struct FavoriteStationButton: View {
                     }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
-                
+
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white.opacity(0.6))
@@ -598,6 +604,7 @@ struct FavoriteStationButton: View {
                     )
             )
         }
+        .buttonStyle(.plain)
     }
 }
 

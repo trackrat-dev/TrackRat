@@ -1,13 +1,15 @@
 import SwiftUI
 import Combine
 import ActivityKit
+import Sentry
 
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @Binding var sheetPosition: BottomSheetPosition
-    
+    @State private var isClosing = false
+
     let trainId: Int  // Keep for backwards compatibility
     
     // Legacy initializer for database ID
@@ -19,67 +21,64 @@ struct TrainDetailsView: View {
     }
     
     // New initializer for train number
-    init(trainNumber: String, fromStation: String? = nil, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
+    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
         self.trainId = 0  // Not used for train number based initialization
         self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
-            fromStationCode: fromStation
+            fromStationCode: fromStation,
+            journeyDate: journeyDate
         )
         self._viewModel = StateObject(wrappedValue: VModel)
     }
     
     
     var body: some View {
-        ZStack {
-            // Black gradient background
-            TrackRatTheme.Colors.primaryBackground
-                .ignoresSafeArea()
-            
-            SheetAwareScrollView(sheetPosition: $sheetPosition) {
-                VStack {
-                    if viewModel.isLoading && viewModel.train == nil {
-                        TrackRatLoadingView(message: "Loading train details...")
-                            .frame(maxWidth: .infinity, minHeight: 400)
-                    } else if let error = viewModel.error {
-                        ErrorView(message: error) {
-                            Task {
-                                await viewModel.loadTrainDetails(
-                                    fromStationCode: appState.departureStationCode,
-                                    selectedDestinationName: appState.selectedDestination
-                                )
-                            }
-                        }
-                    } else if let train = viewModel.train {
-                        VStack(spacing: 16) {
-                            CombinedDetailsCard(
-                                train: train,
-                                selectedDestination: appState.selectedDestination,
-                                displayableTrainStops: viewModel.displayableTrainStops,
-                                hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
-                                hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
-                                journeyProgressPercentage: viewModel.journeyProgressPercentage,
-                                journeyStopsCompleted: viewModel.journeyStopsCompleted,
-                                journeyTotalStops: viewModel.journeyTotalStops
+        // Wrap content in SheetAwareScrollView for proper dragging and scrolling
+        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+            VStack {
+                if viewModel.isLoading && viewModel.train == nil {
+                    TrackRatLoadingView(message: "Loading train details...")
+                        .frame(maxWidth: .infinity, minHeight: 400)
+                } else if let error = viewModel.error {
+                    ErrorView(message: error) {
+                        Task {
+                            await viewModel.loadTrainDetails(
+                                fromStationCode: appState.departureStationCode,
+                                selectedDestinationName: appState.selectedDestination
                             )
                         }
-                        .padding()
-                        // Force view update by using a composite ID that includes changing data
-                        .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
                     }
-                } // VStack
-                .refreshable {
-                    await viewModel.loadTrainDetails(
-                        fromStationCode: appState.departureStationCode,
-                        selectedDestinationName: appState.selectedDestination
-                    )
+                } else if let train = viewModel.train {
+                    VStack(spacing: 16) {
+                        CombinedDetailsCard(
+                            train: train,
+                            selectedDestination: appState.selectedDestination,
+                            displayableTrainStops: viewModel.displayableTrainStops,
+                            hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
+                            hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
+                            journeyProgressPercentage: viewModel.journeyProgressPercentage,
+                            journeyStopsCompleted: viewModel.journeyStopsCompleted,
+                            journeyTotalStops: viewModel.journeyTotalStops
+                        )
+                    }
+                    .padding()
+                    // Force view update by using a composite ID that includes changing data
+                    .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
                 }
-            } // SheetAwareScrollView
-        } // ZStack
+            } // VStack
+        }
+        .refreshable {
+            await viewModel.loadTrainDetails(
+                fromStationCode: appState.departureStationCode,
+                selectedDestinationName: appState.selectedDestination
+            )
+        }
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)
         .trackRatNavigationBarStyle()
+        .toolbar(isClosing ? .hidden : .visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(alignment: .center, spacing: 12) {
@@ -107,7 +106,10 @@ struct TrainDetailsView: View {
                     }
                     
                     Button("Close") {
-                        appState.navigationPath.removeLast(appState.navigationPath.count)
+                        isClosing = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            appState.navigationPath = NavigationPath()
+                        }
                     }
                     .font(.body)
                     .fontWeight(.medium)
@@ -118,10 +120,22 @@ struct TrainDetailsView: View {
             }
         }
         .task {
+            // Start transaction for train details view
+            let transaction = SentrySDK.startTransaction(
+                name: "train.details_view",
+                operation: "navigation"
+            )
+            transaction.setData(value: viewModel.trainNumber ?? "unknown", key: "train_number")
+            transaction.setData(value: appState.departureStationCode ?? "none", key: "from_station")
+            transaction.setData(value: appState.selectedDestination ?? "none", key: "to_station")
+
             await viewModel.loadTrainDetails(
                 fromStationCode: appState.departureStationCode,
-                selectedDestinationName: appState.selectedDestination
+                selectedDestinationName: appState.selectedDestination,
+                transaction: transaction
             )
+
+            // Transaction will be finished in the view model
         }
         .onReceive(viewModel.timer) { _ in
             // Always refresh when the view is visible
@@ -752,30 +766,33 @@ class TrainDetailsViewModel: ObservableObject {
     
     // Flexible initialization parameters
     private let databaseId: Int?
-    private let trainNumber: String?
+    let trainNumber: String?  // Made public for transaction tracking
     private let preferredStationCode: String?
-    
+    private let journeyDate: Date?
+
     // Store current origin and destination for stop filtering
     private var currentOriginStationCode: String?
     private var currentDestinationName: String?
-    
+
     private let apiService = APIService.shared
-    
+
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    
+
     // Legacy initializer for backwards compatibility
     init(trainId: Int) {
         self.databaseId = trainId
         self.trainNumber = nil
         self.preferredStationCode = nil
+        self.journeyDate = nil
     }
-    
+
     // New flexible initializer
-    init(databaseId: Int? = nil, trainNumber: String? = nil, fromStationCode: String? = nil) {
+    init(databaseId: Int? = nil, trainNumber: String? = nil, fromStationCode: String? = nil, journeyDate: Date? = nil) {
         self.databaseId = databaseId
         self.trainNumber = trainNumber
         self.preferredStationCode = fromStationCode
+        self.journeyDate = journeyDate
     }
     
     // Computed property for backwards compatibility
@@ -879,24 +896,45 @@ class TrainDetailsViewModel: ObservableObject {
         journeyProgressPercentage = totalStops > 0 ? (completedStops * 100) / totalStops : 0
     }
     
-    func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+    func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil, transaction: Span? = nil) async {
         isLoading = true
         error = nil
-        
+
         // Store current origin and destination for filtering
         self.currentOriginStationCode = fromStationCode
         self.currentDestinationName = selectedDestinationName
-        
+
         do {
+            // Track API fetch
+            let fetchSpan = transaction?.startChild(operation: "api.train_details", description: "Fetch train details")
+
             // Use the flexible API method
             train = try await apiService.fetchTrainDetailsFlexible(
                 id: databaseId.map(String.init),
                 trainId: trainNumber,
-                fromStationCode: fromStationCode ?? preferredStationCode
+                fromStationCode: fromStationCode ?? preferredStationCode,
+                date: journeyDate
             )
-            
+
+            // Track stops and delays
+            fetchSpan?.setData(value: train?.stops?.count ?? 0, key: "stops_count")
+            fetchSpan?.setData(value: train?.delayMinutes ?? 0, key: "delay_minutes")
+            fetchSpan?.setData(value: train?.track ?? "none", key: "track")
+            fetchSpan?.finish()
+
+            // Track computation
+            let computeSpan = transaction?.startChild(operation: "compute.properties", description: "Calculate journey metrics")
+
             // Update all computed properties after setting train
             updateComputedProperties()
+
+            computeSpan?.finish()
+
+            // Successfully complete transaction
+            transaction?.setData(value: true, key: "success")
+            transaction?.setData(value: train?.stops?.count ?? 0, key: "total_stops")
+            transaction?.finish()
+
         } catch {
             // Handle APIError.noData specifically
             if let apiError = error as? APIError {
@@ -909,8 +947,13 @@ class TrainDetailsViewModel: ObservableObject {
             } else {
                 self.error = error.localizedDescription
             }
+
+            // Track error in transaction
+            transaction?.setData(value: false, key: "success")
+            transaction?.setData(value: self.error ?? "unknown", key: "error")
+            transaction?.finish(status: .internalError)
         }
-        
+
         isLoading = false
     }
     
@@ -927,7 +970,8 @@ class TrainDetailsViewModel: ObservableObject {
             let newTrain = try await apiService.fetchTrainDetailsFlexible(
                 id: databaseId.map(String.init),
                 trainId: trainNumber,
-                fromStationCode: fromStationCode ?? preferredStationCode
+                fromStationCode: fromStationCode ?? preferredStationCode,
+                date: journeyDate
             )
             
             print("✅ TrainDetailsView refresh successful for train \(identifier)")
@@ -1041,19 +1085,31 @@ struct SegmentedTrackPredictionView: View {
     @State private var showWaitingLink = false
     
     private var predictionSegments: [TrackPredictionSegment] {
-        guard let predictionData = adjustedPredictions,
-              let trackProbabilities = predictionData.trackProbabilities else {
+        print("🔍 [TrackPredictionView] Computing prediction segments")
+        guard let predictionData = adjustedPredictions else {
+            print("❌ [TrackPredictionView] No adjustedPredictions data")
             return []
         }
-        
+
+        guard let trackProbabilities = predictionData.trackProbabilities else {
+            print("❌ [TrackPredictionView] No trackProbabilities in prediction data")
+            return []
+        }
+
+        print("✅ [TrackPredictionView] Have \(trackProbabilities.count) track probabilities")
+
         let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
+        print("   Grouped into \(platformProbabilities.count) platforms")
+
         let sortedPlatforms = platformProbabilities.sorted { first, second in
             let firstNum = extractPlatformNumber(from: first.key)
             let secondNum = extractPlatformNumber(from: second.key)
             return firstNum < secondNum
         }
-        
-        return createSegments(from: sortedPlatforms)
+
+        let segments = createSegments(from: sortedPlatforms)
+        print("   Created \(segments.count) segments")
+        return segments
     }
     
     private var hasOnlyLowConfidencePredictions: Bool {
@@ -1126,10 +1182,21 @@ struct SegmentedTrackPredictionView: View {
     }
     
     private func loadAdjustedPredictions() async {
+        print("🔄 [TrainDetailsView] Loading predictions for train \(train.trainId)")
+        print("   - Origin: \(train.originStationCode ?? "nil")")
+        print("   - Is NY Penn: \(isDepartingFromNYPenn)")
+
         isLoadingPredictions = true
         adjustedPredictions = await StaticTrackDistributionService.shared.getAdjustedPredictionData(for: train)
         isLoadingPredictions = false
-        
+
+        if let predictions = adjustedPredictions {
+            let trackCount = predictions.trackProbabilities?.count ?? 0
+            print("✅ [TrainDetailsView] Got predictions with \(trackCount) tracks")
+        } else {
+            print("⚠️ [TrainDetailsView] No predictions returned")
+        }
+
         // Show the waiting link with animation after predictions load
         if isDepartingFromNYPenn {
             withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {

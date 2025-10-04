@@ -2,7 +2,7 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** September 2025
+**Last Updated:** September 27, 2025
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Key Features:** Multi-transit support (NJT + Amtrak), ML predictions, API caching, schedule generation
 
@@ -129,7 +129,9 @@ station_dwell_times (
 journey_progress (
     journey_id, last_departed_station, next_station,
     stops_completed, stops_total, journey_percent,
-    initial_delay_minutes, total_delay_minutes
+    initial_delay_minutes, total_delay_minutes,
+    cumulative_transit_delay, cumulative_dwell_delay,
+    prediction_confidence, prediction_based_on
 )
 
 -- Historical snapshots for ML training
@@ -307,13 +309,14 @@ poetry run pytest --cov=trackrat
 ### Environment Variables
 
 ```bash
-# Required
+# Required - NJ Transit API
 TRACKRAT_NJT_API_TOKEN=your_nj_transit_api_token
 TRACKRAT_NJT_API_URL=https://raildata.njtransit.com/api
-TRACKRAT_AMTRAK_API_TOKEN=your_amtrak_api_token
-TRACKRAT_AMTRAK_API_URL=https://maps.amtrak.com/services
 
-# Optional (defaults to PostgreSQL)
+# Note: Amtrak uses public API - no authentication required
+# Amtrak data collected from https://api-v3.amtraker.com/v3/trains
+
+# Database Configuration (defaults to PostgreSQL)
 TRACKRAT_DATABASE_URL=postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb
 TRACKRAT_LOG_LEVEL=INFO
 TRACKRAT_ENVIRONMENT=development
@@ -327,6 +330,15 @@ APNS_ENVIRONMENT=dev
 
 # Backup Settings (optional)
 TRACKRAT_GCS_BACKUP_BUCKET=your-backup-bucket
+
+# Sentry Error Tracking (optional)
+SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
+SENTRY_TRACES_SAMPLE_RATE=0.1           # 10% of transactions for APM
+SENTRY_PROFILES_SAMPLE_RATE=0.1         # 10% profiling
+SENTRY_ENABLE_TRACING=true               # Enable performance monitoring
+
+# Cloud Run Configuration (for horizontal scaling)
+K_REVISION=revision-name                 # Automatically set by Cloud Run
 ```
 
 ### Settings Management
@@ -349,10 +361,10 @@ The backend uses async/await throughout:
 ### 2. Error Handling
 
 Comprehensive error handling with:
-- Custom exceptions in `utils/exceptions.py`
+- FastAPI HTTPException patterns in `api/utils.py`
 - Retry logic for API calls
 - Graceful degradation
-- Structured error logging
+- Structured error logging with Sentry integration
 
 ### 3. Performance Optimizations
 
@@ -363,10 +375,15 @@ Comprehensive error handling with:
 
 ### 4. Monitoring & Observability
 
-- Prometheus metrics at `/metrics`
-- Structured JSON logging
-- Health checks with detailed status
-- Request correlation IDs
+- **Sentry APM**: Full error tracking and performance monitoring
+  - Custom context processors for train data
+  - Correlation ID tracking across requests
+  - Environment-specific sampling rates
+  - Transaction filtering for health checks
+- **Prometheus metrics** at `/metrics`
+- **Structured JSON logging** with correlation IDs
+- **Health checks** with detailed scheduler and database status
+- **Request middleware** for correlation ID propagation
 
 ## Common Tasks
 
@@ -426,8 +443,11 @@ docker build -t trackrat-backend-v2 .
 # Run container
 docker run -p 8000:8000 \
   -e TRACKRAT_NJT_API_TOKEN=xxx \
+  -e TRACKRAT_DATABASE_URL=postgresql+asyncpg://... \
   -e APNS_TEAM_ID=xxx \
   -e APNS_KEY_ID=xxx \
+  -e SENTRY_DSN=https://... \
+  -e K_REVISION=local-dev \
   trackrat-backend-v2
 ```
 
@@ -436,12 +456,14 @@ docker run -p 8000:8000 \
 ### Production Checklist
 
 - [ ] Set production DATABASE_URL
-- [ ] Configure secrets in environment
-- [ ] Enable Prometheus scraping
-- [ ] Set up log aggregation
-- [ ] Configure health check monitoring
+- [ ] Configure secrets in environment (NJT API token, APNS keys)
+- [ ] Set SENTRY_DSN for error tracking
+- [ ] Enable Prometheus scraping on `/metrics`
+- [ ] Set up log aggregation (Cloud Logging, etc.)
+- [ ] Configure health check monitoring (`/health/live`, `/health/ready`)
 - [ ] Review database connection pool settings
 - [ ] Enable CORS for frontend domains
+- [ ] Verify K_REVISION is set (automatic in Cloud Run)
 
 ## Troubleshooting
 
@@ -574,8 +596,7 @@ The backend is organized into service classes for better maintainability:
 - **TransitAnalyzer** (`services/transit_analyzer.py`): Transit time and dwell time analysis
 - **CongestionAnalyzer** (`services/congestion.py`): Real-time network congestion monitoring
 - **DirectArrivalForecaster** (`services/direct_forecaster.py`): Direct arrival predictions from recent data
-- **TrackPredictionFeatures** (`services/ml_features.py`): ML feature extraction for predictions
-- **TrackPredictionService** (`services/ml_predictor.py`): ML-powered track assignment predictions
+- **HistoricalTrackPredictor** (`services/historical_track_predictor.py`): Historical pattern-based track predictions
 - **TrackOccupancyService** (`services/track_occupancy.py`): Real-time track availability
 
 #### Infrastructure
@@ -594,14 +615,18 @@ The backend is organized into service classes for better maintainability:
 - ✅ Added support for SCHEDULED vs OBSERVED journey types
 - ✅ Fixed stop_sequence nullable issue for schedule-only stops
 - ✅ Added departure_source tracking for analytics
+- ✅ Full Sentry integration with APM and custom context
+- ✅ Journey progress table with cumulative delay tracking
+- ✅ Historical track predictor using pattern analysis
+- ✅ Correlation ID middleware for request tracing
 
 ### Known Issues & Areas for Improvement
-- ⚠️ Schedule generation may create duplicates if trains appear early
-- ⚠️ Amtrak pattern detection could miss irregular service patterns
 - ⚠️ Cache invalidation strategy could be more sophisticated
-- ⚠️ ML model accuracy tracking needs more comprehensive metrics
-- ⚠️ Test coverage for new schedule features is limited
-- ⚠️ Validation service hardcodes route pairs (should be configurable)
+- ⚠️ Test coverage for schedule generation features needs expansion
+- ⚠️ Validation service route pairs are hardcoded (should be configurable)
+- ⚠️ Track prediction accuracy metrics need dashboard visualization
+- ℹ️ Note: ML model files (`ml_features.py`, `ml_predictor.py`) were planned but not implemented
+- ℹ️ Current track prediction uses historical pattern analysis instead
 
 ### Performance Characteristics
 - API response time: <100ms (p95) with caching

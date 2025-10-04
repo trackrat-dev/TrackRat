@@ -162,15 +162,15 @@ struct WaitingLocationCard: View {
                 )
             case 1:
                 return (
-                    title: "Avoid \"The Pit\"",
+                    title: "Enter at 7th Ave & 33rd St",
                     imageName: "nj_transit_1",
-                    directions: "\nStart at 7th Ave and 33rd Street and go down the escalator through the big triangle entrance."
+                    directions: "\nStart at 7th Ave and 33rd Street and go down the escalator at the entrance with the large triangle."
                 )
             case 2:
                 return (
                     title: "Go straight until you find the Exit Concourse",
                     imageName: "nj_transit_2",
-                    directions: "\nGo down the long hallway until you see signs for the Exit Concourse on your left.\n\nIt's a long walk and you'll need to pass many restaurants and other concourses."
+                    directions: "\nContinue straight down the long hallway until you see signs for the Exit Concourse on your left.\n\nIt's a long walk and you'll need to pass many restaurants and other concourses."
                 )
             case 3:
                 return (

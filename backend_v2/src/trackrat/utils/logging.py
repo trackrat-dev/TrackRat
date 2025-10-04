@@ -32,6 +32,13 @@ def setup_logging() -> None:
     logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
     logging.getLogger("asyncpg").setLevel(logging.WARNING)
 
+    # Suppress noisy APScheduler logs (Phase 1: only show warnings and errors)
+    logging.getLogger("apscheduler.scheduler").setLevel(logging.WARNING)
+    logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
+
+    # Suppress uvicorn access logs for health checks (will handle in middleware)
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+
     # Processors for structlog
     processors: list[Processor] = [
         structlog.stdlib.add_log_level,
