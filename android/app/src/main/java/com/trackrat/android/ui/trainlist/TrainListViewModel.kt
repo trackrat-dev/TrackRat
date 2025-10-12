@@ -146,18 +146,9 @@ class TrainListViewModel @Inject constructor(
                 val uniqueTrains = result.data.departures
                     .map { departure -> TrainMappers.departureToTrain(departure, fromStation) }
                     .distinctBy { it.trainId }
-                    .filter { train -> 
-                        // Filter out trains that departed more than 30 minutes ago
-                        val departureTime = train.getScheduledDepartureTime(fromStation)
-                        if (departureTime != null && train.status == "DEPARTED") {
-                            val minutesAgo = java.time.Duration.between(
-                                departureTime,
-                                java.time.ZonedDateTime.now(java.time.ZoneId.of("America/New_York"))
-                            ).toMinutes()
-                            minutesAgo <= 30
-                        } else {
-                            true // Keep all non-departed trains or trains without departure time
-                        }
+                    .filter { train ->
+                        // Filter using iOS-style logic: only show trains that haven't departed yet
+                        !train.hasAlreadyDeparted(fromStation)
                     }
                     .sortedBy { it.getScheduledDepartureTime(fromStation) }
                 
@@ -224,18 +215,9 @@ class TrainListViewModel @Inject constructor(
                             val uniqueTrains = result.data.departures
                                 .map { departure -> TrainMappers.departureToTrain(departure, fromStation) }
                                 .distinctBy { it.trainId }
-                                .filter { train -> 
-                                    // Filter out trains that departed more than 30 minutes ago
-                                    val departureTime = train.getScheduledDepartureTime(fromStation)
-                                    if (departureTime != null && train.status == "DEPARTED") {
-                                        val minutesAgo = java.time.Duration.between(
-                                            departureTime,
-                                            java.time.ZonedDateTime.now(java.time.ZoneId.of("America/New_York"))
-                                        ).toMinutes()
-                                        minutesAgo <= 30
-                                    } else {
-                                        true // Keep all non-departed trains or trains without departure time
-                                    }
+                                .filter { train ->
+                                    // Filter using iOS-style logic: only show trains that haven't departed yet
+                                    !train.hasAlreadyDeparted(fromStation)
                                 }
                                 .sortedBy { it.getScheduledDepartureTime(fromStation) }
                             

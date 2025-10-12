@@ -50,4 +50,50 @@ data class TrainV2(
      */
     val displayStatus: String
         get() = statusV2?.enhancedStatus ?: status
+
+    /**
+     * Check if train has departed from a specific station
+     * Mirrors iOS TrainV2.hasTrainDepartedFromStation()
+     */
+    private fun hasTrainDepartedFromStation(stationCode: String): Boolean {
+        return stops?.find { it.stationCode == stationCode }?.hasDepartedStation ?: false
+    }
+
+    /**
+     * Check if train has already departed from the specified station
+     * Mirrors iOS TrainV2.hasAlreadyDeparted(fromStationCode:)
+     *
+     * Priority order (matching iOS):
+     * 1. Use stop's hasDepartedStation flag (most accurate)
+     * 2. Check actual departure time from stop data
+     * 3. Check scheduled time + 1 minute buffer
+     * 4. Return false if no data (safe default - keep train in list)
+     */
+    fun hasAlreadyDeparted(fromStationCode: String): Boolean {
+        val now = ZonedDateTime.now(java.time.ZoneId.of("America/New_York"))
+
+        // First priority: Use existing stop data method (most accurate)
+        if (hasTrainDepartedFromStation(fromStationCode)) {
+            return true
+        }
+
+        // Second priority: Check actual departure time from stop data
+        val stop = stops?.find { it.stationCode == fromStationCode }
+        if (stop != null) {
+            stop.actualDeparture?.let { actualDeparture ->
+                return actualDeparture.isBefore(now)
+            }
+        }
+
+        // Third priority: Check scheduled time with buffer for delays
+        val scheduledDeparture = getScheduledDepartureTime(fromStationCode)
+        if (scheduledDeparture != null) {
+            // Allow 1 minute past scheduled time for delays/late boarding (matching iOS)
+            val departureWithBuffer = scheduledDeparture.plusMinutes(1)
+            return departureWithBuffer.isBefore(now)
+        }
+
+        // If no departure time available, don't filter out (safe default)
+        return false
+    }
 }
