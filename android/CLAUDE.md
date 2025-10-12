@@ -65,11 +65,12 @@ app/build/outputs/apk/debug/app-debug.apk
 - **Language**: Kotlin (100% Kotlin, no Java)
 - **UI Framework**: Jetpack Compose (declarative UI matching SwiftUI approach)
 - **Architecture**: MVVM with Unidirectional Data Flow
+- **Maps**: Google Maps SDK with Compose integration
 - **Dependency Injection**: Hilt (compile-time DI)
 - **Networking**: Retrofit2 + OkHttp3 + Moshi
 - **Async Operations**: Kotlin Coroutines + Flow
 - **Local Storage**: DataStore Preferences (no Room DB yet)
-- **Navigation**: Jetpack Navigation Compose
+- **Navigation**: Jetpack Navigation Compose (within bottom sheet overlay)
 - **Design System**: Material3 with custom theming
 
 ### Project Structure
@@ -85,41 +86,70 @@ android/
 │   │   │   │   ├── TrackRatApiService.kt    # Retrofit API interface
 │   │   │   │   └── ZonedDateTimeAdapter.kt  # Eastern Time handling
 │   │   │   ├── models/
-│   │   │   │   ├── TrainV2.kt              # Core train model with V2 fields
-│   │   │   │   ├── StatusV2.kt             # Enhanced status model
-│   │   │   │   ├── Progress.kt             # Journey progress tracking
-│   │   │   │   ├── PredictionData.kt       # Owl ML predictions
-│   │   │   │   ├── Stop.kt                 # Station stop with times
+│   │   │   │   ├── TrainV2.kt              # Train list model with V2 fields
+│   │   │   │   ├── TrainDetailV2.kt        # Train detail model
+│   │   │   │   ├── DepartureV2.kt          # Enhanced departure data
+│   │   │   │   ├── StatusV2.kt             # Enhanced status with location
+│   │   │   │   ├── Progress.kt / ProgressV2.kt  # Journey progress (both exist)
+│   │   │   │   ├── PredictionData.kt       # Track prediction from API
+│   │   │   │   ├── PlatformPrediction.kt   # ML platform predictions
+│   │   │   │   ├── CongestionSegment.kt    # Network congestion data
+│   │   │   │   ├── Stop.kt / StopDetail.kt # Station stops
 │   │   │   │   ├── DeparturesResponse.kt   # API response wrapper
 │   │   │   │   └── ApiResult.kt            # Result wrapper for errors
 │   │   │   ├── preferences/
 │   │   │   │   └── UserPreferencesRepository.kt  # DataStore preferences
-│   │   │   └── repository/
-│   │   │       └── TrackRatRepository.kt   # Data repository pattern
+│   │   │   ├── repository/
+│   │   │   │   ├── TrackRatRepository.kt   # Data repository pattern
+│   │   │   │   └── TrackingStateRepository.kt  # Notification state
+│   │   │   └── services/
+│   │   │       ├── TrackPredictionService.kt    # ML prediction logic
+│   │   │       └── BackendHealthService.kt      # Server validation
 │   │   ├── di/
 │   │   │   ├── NetworkModule.kt            # Network DI configuration
 │   │   │   └── AppModule.kt                # App-level DI providers
+│   │   ├── services/
+│   │   │   ├── TrainTrackingService.kt     # Foreground service
+│   │   │   └── TrainTrackingNotificationManager.kt  # Notification UI
 │   │   ├── ui/
 │   │   │   ├── components/
-│   │   │   │   ├── LoadingSkeletons.kt     # Shimmer loading effects
-│   │   │   │   └── ErrorContent.kt         # Error state UI
+│   │   │   │   ├── DraggableBottomSheet.kt      # Spring-animated sheet
+│   │   │   │   ├── BottomSheetDragState.kt      # Gesture coordination
+│   │   │   │   ├── SheetAwareScrollView.kt      # Smart scrolling
+│   │   │   │   ├── LoadingSkeletons.kt          # Shimmer loading
+│   │   │   │   └── ErrorContent.kt              # Error state UI
 │   │   │   ├── theme/
 │   │   │   │   ├── Color.kt                # Color definitions (Orange!)
 │   │   │   │   ├── Theme.kt                # Material3 theme setup
 │   │   │   │   └── Type.kt                 # Typography definitions
+│   │   │   ├── map/
+│   │   │   │   ├── MapContainerScreen.kt        # Root screen with map
+│   │   │   │   ├── MapContainerViewModel.kt     # Map logic & congestion
+│   │   │   │   └── PolylineHitDetector.kt       # Tap detection utility
 │   │   │   ├── stationselection/
-│   │   │   │   ├── StationSelectionScreen.kt    # Origin/destination picker
+│   │   │   │   ├── StationSelectionScreen.kt    # Origin picker
 │   │   │   │   └── StationSelectionViewModel.kt # Station selection logic
+│   │   │   ├── destinationselection/
+│   │   │   │   └── DestinationSelectionScreen.kt  # Destination picker
 │   │   │   ├── trainlist/
 │   │   │   │   ├── TrainListScreen.kt          # Departure list UI
 │   │   │   │   └── TrainListViewModel.kt       # Train list logic
-│   │   │   └── traindetail/
-│   │   │       ├── TrainDetailScreen.kt        # Journey detail UI
-│   │   │       └── TrainDetailViewModel.kt     # Detail logic
+│   │   │   ├── traindetail/
+│   │   │   │   ├── TrainDetailScreen.kt         # Journey detail UI
+│   │   │   │   ├── TrainDetailViewModel.kt      # Detail logic
+│   │   │   │   └── SegmentedTrackPredictionBar.kt  # Platform predictions
+│   │   │   └── profile/
+│   │   │       ├── ProfileScreen.kt             # User settings
+│   │   │       ├── FavoriteStationsScreen.kt    # Favorites management
+│   │   │       └── AdvancedConfigScreen.kt      # Server switching
 │   │   └── utils/
 │   │       ├── Constants.kt                # App constants
-│   │       └── HapticFeedbackHelper.kt     # Haptic feedback utility
-│   └── src/test/                           # Unit tests
+│   │       ├── HapticFeedbackHelper.kt     # Haptic feedback utility
+│   │       ├── Stations.kt                 # 150+ station coordinates
+│   │       └── EnvironmentManager.kt       # Dev/prod switching
+│   ├── src/test/                           # Unit tests
+│   └── src/main/res/raw/
+│       └── dark_map_style.json             # Dark mode map styling
 └── build.gradle.kts                        # Gradle build configuration
 ```
 
@@ -147,28 +177,47 @@ GET /trains/departures?from={from}&to={to}&limit=50
 // Get train details with refresh
 GET /trains/{trainId}?date={date}&refresh=true
 
+// Get track predictions (NY Penn only)
+GET /predictions/track?train_id={trainId}&date={date}
+
+// Get congestion data (✅ implemented)
+GET /routes/congestion?time_window_hours=3&max_per_segment=200
+
 // Get route history (not yet implemented in UI)
 GET /routes/history?from_station={from}&to_station={to}
-
-// Get congestion data (not yet implemented in UI)
-GET /routes/congestion?time_window_hours=3
 ```
 
 ### 2. Data Models
 
 **Train Model Hierarchy**:
-- `TrainV2`: Complete V2 model with all fields
-- `Train`: Legacy model (deprecated, remove in cleanup)
+- `TrainV2`: Train list model with V2 fields
+- `TrainDetailV2`: Train detail model with full journey data
+- `DepartureV2`: Enhanced departure with position and freshness
 - `StatusV2`: Enhanced status with location context
-- `Progress`: Real-time journey tracking
-- `PredictionData`: ML track predictions with confidence
+- `Progress` / `ProgressV2`: Real-time journey tracking (⚠️ duplicates exist)
+- `PredictionData`: Track prediction from API (single track confidence)
+- `PlatformPrediction`: ML platform predictions (NY Penn only)
+- `CongestionSegment`: Network congestion data with color/severity
+- `Stop` / `StopDetail`: Station stop information
 
 **Critical Field Mappings**:
 ```kotlin
+// TrainV2 (used in train list)
 @Json(name = "train_id") val trainId: String          // Can be alphanumeric
 @Json(name = "status_v2") val statusV2: StatusV2?     // Enhanced status
 @Json(name = "progress") val progress: Progress?       // Journey progress
-@Json(name = "prediction") val prediction: PredictionData?  // Owl predictions
+@Json(name = "prediction") val prediction: PredictionData?  // Track prediction
+
+// DepartureV2 (enhanced departure data)
+@Json(name = "train") val train: TrainV2
+@Json(name = "train_position") val trainPosition: String?  // e.g., "between NY and NP"
+@Json(name = "data_freshness") val dataFreshness: String?  // e.g., "2 minutes ago"
+
+// CongestionSegment
+@Json(name = "from_station") val fromStation: String
+@Json(name = "to_station") val toStation: String
+@Json(name = "congestion_factor") val congestionFactor: Double  // 1.0-2.0+
+@Json(name = "color") val color: String  // "green", "yellow", "orange", "red"
 ```
 
 ### 3. Time Handling
@@ -184,18 +233,31 @@ val ET_ZONE = ZoneId.of("America/New_York")
 
 ### 4. UI Components
 
+**App Architecture**:
+- `MapContainerScreen`: Root screen with Google Maps + draggable bottom sheet
+- Bottom sheet contains `NavHost` with all app screens
+- Sheet positions: MEDIUM (50% height) and EXPANDED (100% height)
+- Navigation embedded within bottom sheet overlay
+
 **Screen Flow**:
-1. `StationSelectionScreen` → Select origin/destination or search by train
-2. `TrainListScreen` → Show departures with 30-second refresh
-3. `TrainDetailScreen` → Full journey with stops and progress
+1. `MapContainerScreen` → Root with map background
+2. `StationSelectionScreen` → Select origin (sheet content)
+3. `DestinationSelectionScreen` → Select destination
+4. `TrainListScreen` → Show departures with 30-second refresh
+5. `TrainDetailScreen` → Full journey with stops and progress
+6. `ProfileScreen` → Settings and server switching (not fully wired)
 
 **Key UI Features**:
+- Google Maps with congestion overlay and route visualization
+- Draggable bottom sheet with spring animation
+- Sheet-aware scrolling (gesture coordination)
 - Pull-to-refresh on train list
 - 30-second auto-refresh timer
 - Loading skeletons with shimmer
 - Error states with retry
 - Haptic feedback on interactions
 - Orange accent color theme
+- Dark mode map styling
 
 ### 5. State Management
 
@@ -220,30 +282,209 @@ class TrainListViewModel @Inject constructor(
 
 ## Critical Implementation Requirements
 
-### 1. Ongoing Notifications (Android Live Activities Equivalent)
+### 1. Bottom Sheet Gesture Coordination System
 
-**Implementation Strategy**:
+**BottomSheetDragState** - Shared gesture state machine (`BottomSheetDragState.kt`):
 ```kotlin
-// 1. Create ForegroundService
-class TrainTrackingService : Service() {
-    // Update notification every 30 seconds
-    // Use NotificationCompat.Builder with custom layout
-    // Show journey progress, next stop, delays
+enum class GestureMode {
+    IDLE,           // No active gesture
+    SHEET_MOVING,   // Sheet is expanding/collapsing
+    SCROLLING       // Content is scrolling
 }
 
-// 2. Custom notification layout (RemoteViews)
+// Gesture routing logic matching iOS SheetAwareScrollView
+fun determineGestureMode(
+    currentPosition: SheetPosition,
+    isAtScrollTop: Boolean,
+    isDraggingUp: Boolean
+): GestureMode {
+    return when {
+        currentPosition == MEDIUM && isDraggingUp -> SHEET_MOVING
+        currentPosition == EXPANDED && isAtScrollTop && !isDraggingUp -> SHEET_MOVING
+        currentPosition == EXPANDED -> SCROLLING
+        else -> IDLE
+    }
+}
+```
+
+**DraggableBottomSheet** - Low-level gesture capture (`DraggableBottomSheet.kt`):
+```kotlin
+// Key parameters
+isScrollable: Boolean = false  // Enable gesture coordination
+
+// Gesture thresholds (matching iOS)
+val VELOCITY_THRESHOLD = 50f
+val TRANSLATION_THRESHOLD = 50f
+val DEAD_ZONE = 5.px
+
+// Low-level gesture handling
+awaitPointerEventScope {
+    val down = awaitFirstDown(requireUnconsumed = false)
+
+    verticalDrag(down.id) { change ->
+        if (shouldCaptureGesture(translation, velocity)) {
+            change.consume()  // Capture gesture from children
+            dragState.translation.value = translation
+        }
+    }
+}
+```
+
+**SheetAwareScrollView** - Smart scroll wrapper (`SheetAwareScrollView.kt`):
+```kotlin
+// For Column with verticalScroll
+SheetAwareScrollView(
+    dragState = dragState,
+    scrollState = rememberScrollState()
+) {
+    Column { /* content */ }
+}
+
+// For LazyColumn
+SheetAwareLazyColumn(
+    dragState = dragState,
+    state = rememberLazyListState()
+) {
+    items(trains) { /* content */ }
+}
+
+// Coordinated scrolling
+when (dragState.gestureMode.value) {
+    SHEET_MOVING -> scrollEnabled = false
+    SCROLLING -> scrollEnabled = true
+    IDLE -> scrollEnabled = true
+}
+```
+
+**"One Swipe = One Action" Pattern**:
+- FROM MEDIUM + swipe up → expands sheet to EXPANDED
+- FROM EXPANDED + at top + swipe down → collapses to MEDIUM
+- FROM EXPANDED + mid-scroll + swipe down → scrolls content up
+- Haptic feedback on position changes
+- Spring animation (dampingRatio=0.8, stiffness=400f)
+
+### 2. Map Integration & Congestion Overlay
+
+**MapContainerViewModel** - Congestion data management (`MapContainerViewModel.kt`):
+```kotlin
+// Fetch congestion on launch, refresh every 5 minutes
+init {
+    fetchCongestionData()
+    viewModelScope.launch {
+        while (true) {
+            delay(5 * 60 * 1000)  // 5 minutes
+            fetchCongestionData()
+        }
+    }
+}
+
+// Camera animation with sheet-aware offset
+fun animateCameraToRoute(fromStation: String, toStation: String) {
+    val bounds = calculateRegion(fromCoords, toCoords)
+    val offset = when (sheetPosition) {
+        MEDIUM -> -0.10  // ~7 miles south
+        EXPANDED -> -0.38  // ~25 miles south
+        else -> 0.0
+    }
+    cameraPositionState.animate(
+        update = CameraUpdateFactory.newLatLngBounds(bounds, 0),
+        durationMs = 250
+    )
+}
+```
+
+**PolylineHitDetector** - Tap detection utility (`PolylineHitDetector.kt`):
+```kotlin
+// Screen-coordinate-based tap detection
+fun detectPolylineHit(
+    tapLatLng: LatLng,
+    polylines: List<Polyline>,
+    projection: Projection,
+    tolerancePx: Float = 30f
+): String? {
+    val tapPoint = projection.toScreenLocation(tapLatLng)
+
+    polylines.forEach { polyline ->
+        val segmentPoints = polyline.points.map {
+            projection.toScreenLocation(it)
+        }
+
+        segmentPoints.zipWithNext().forEach { (p1, p2) ->
+            val distance = distanceToLineSegment(tapPoint, p1, p2)
+            if (distance <= tolerancePx) {
+                return polyline.tag as? String
+            }
+        }
+    }
+    return null
+}
+```
+
+**Congestion Visualization**:
+```kotlin
+// Color scheme matching iOS
+val color = when (segment.color) {
+    "green" -> Color(0xFF34C759)
+    "yellow" -> Color(0xFFFFCC00)
+    "orange" -> Color(0xFFFF9500)
+    "red" -> Color(0xFFFF3B30)
+    else -> Color.Gray
+}
+
+// Dynamic width based on congestion (5-11pt)
+val width = (5f + (segment.congestionFactor - 1.0f) * 6f).coerceIn(5f, 11f)
+
+// Selected segment highlighting
+val selectedWidth = 9f
+val selectedColor = Color(0xFF007AFF)  // iOS blue
+
+// Polyline rendering
+Polyline(
+    points = segment.coordinates,
+    color = if (isSelected) selectedColor else color,
+    width = if (isSelected) selectedWidth else width,
+    zIndex = if (isSelected) 15f else 5f
+)
+```
+
+### 3. Ongoing Notifications (Android Live Activities Equivalent)
+
+**TrainTrackingService** - Foreground service (`TrainTrackingService.kt`):
+```kotlin
+class TrainTrackingService : Service() {
+    // ✅ IMPLEMENTED
+    // 30-second updates via AlarmManager
+    // Custom notification layout with RemoteViews
+    // Journey progress, next stop, delays
+    // Auto-stop on arrival
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val trainId = intent?.getStringExtra(EXTRA_TRAIN_ID)
+        val date = intent?.getStringExtra(EXTRA_DATE)
+
+        // Register alarm for updates
+        scheduleNextUpdate()
+
+        // Start foreground with notification
+        startForeground(NOTIFICATION_ID, createNotification())
+
+        return START_STICKY
+    }
+}
+
+// TrainTrackingNotificationManager - Custom layouts
 val notification = NotificationCompat.Builder(context, CHANNEL_ID)
     .setCustomContentView(customView)
     .setOngoing(true)  // Cannot be dismissed
     .setPriority(NotificationCompat.PRIORITY_HIGH)
     .build()
 
-// 3. Register in manifest
+// Manifest registration
 <service android:name=".services.TrainTrackingService"
     android:foregroundServiceType="dataSync" />
 ```
 
-### 2. StatusV2 Display Logic
+### 4. StatusV2 Display Logic
 
 **Always prefer StatusV2 when available**:
 ```kotlin
@@ -264,7 +505,43 @@ fun isTrainBoarding(train: TrainV2): Boolean {
 }
 ```
 
-### 3. Owl Prediction Display
+### 5. Track Prediction Display
+
+**SegmentedTrackPredictionBar** - Platform probability visualization (`SegmentedTrackPredictionBar.kt`):
+```kotlin
+// NY Penn Station only, pre-track-assignment
+fun shouldShowPredictions(train: TrainDetailV2): Boolean {
+    return train.origin == "NY" &&  // New York Penn Station
+           train.track == null &&   // No track assigned yet
+           platformPredictions.isNotEmpty()
+}
+
+// Platform grouping (converts track probabilities back to platforms)
+val platformGroups = predictions
+    .groupBy { it.platform }
+    .mapValues { (_, tracks) -> tracks.sumOf { it.probability } }
+    .filter { it.value >= 0.17 }  // 17% threshold
+
+// Segmented bar visualization
+Row {
+    platformGroups.forEach { (platform, probability) ->
+        Box(
+            modifier = Modifier
+                .weight(probability.toFloat())
+                .background(platformColor(platform))
+        ) {
+            Text("${platform}: ${(probability * 100).toInt()}%")
+        }
+    }
+}
+
+// "No clear favorite" message if all < 17%
+if (platformGroups.isEmpty()) {
+    Text("No clear favorite platform")
+}
+```
+
+### 6. Owl Prediction Display (Individual Track)
 
 **Confidence-based visualization**:
 ```kotlin
@@ -294,7 +571,7 @@ when (prediction?.confidence) {
 }
 ```
 
-### 4. Progress Visualization
+### 7. Progress Visualization
 
 **Journey progress tracking**:
 ```kotlin
@@ -322,7 +599,7 @@ Text(
 )
 ```
 
-### 5. Auto-Refresh Implementation
+### 8. Auto-Refresh Implementation
 
 **30-second refresh pattern (implemented in TrainListScreen)**:
 ```kotlin
@@ -350,11 +627,13 @@ if (pullToRefreshState.isRefreshing) {
 
 | iOS Feature | Android Implementation | Status |
 |------------|------------------------|---------|
-| Live Activities | Foreground Service + Ongoing Notification | ❌ Not implemented |
+| Live Activities | TrainTrackingService + Ongoing Notification | ✅ Implemented |
+| MapKit | Google Maps SDK | ✅ Implemented |
 | SwiftUI | Jetpack Compose | ✅ Implemented |
 | UserDefaults | DataStore Preferences | ✅ Implemented |
 | URLSession | Retrofit + OkHttp | ✅ Implemented |
 | Combine | Kotlin Flow | ✅ Implemented |
+| Sheet Gestures | BottomSheetDragState + DraggableBottomSheet | ✅ Implemented |
 | Core Location | Not needed (no location features) | N/A |
 | Push Notifications | FCM (Firebase Cloud Messaging) | ❌ Not implemented |
 | Widgets | Glance API widgets | ❌ Not implemented |
@@ -632,24 +911,28 @@ val onClick = remember { { handleClick() } }
 
 ## Future Enhancements Roadmap
 
-### Phase 1: MVP Completion (High Priority)
+### Phase 1: MVP Completion ✅ COMPLETE
 - ✅ Core navigation and screens
 - ✅ API integration
-- ✅ Basic UI with Material3
-- ❌ Ongoing notifications (Foreground Service)
-- ❌ StatusV2 display logic
-- ❌ Progress visualization
-- ❌ Owl prediction confidence display
+- ✅ Map-based UI with Material3
+- ✅ Ongoing notifications (TrainTrackingService)
+- ✅ StatusV2 display logic
+- ✅ Progress visualization
+- ✅ Track prediction display (segmented bar + confidence)
+- ✅ Bottom sheet gesture coordination
 
-### Phase 2: Feature Parity with iOS (Medium Priority)
-- ❌ Push notifications (FCM)
-- ❌ Route history screen
-- ❌ Congestion visualization
-- ❌ Deep linking support
-- ❌ Trip favorites
-- ❌ Share functionality
+### Phase 2: Feature Parity with iOS ✅ COMPLETE
+- ✅ Map integration with Google Maps
+- ✅ Congestion visualization with tap detection
+- ✅ Route polyline visualization
+- ✅ Station favorites
+- ✅ Profile system with server switching
+- ❌ Push notifications (FCM) - not needed yet
+- ❌ Route history screen - backend endpoint exists, UI not built
+- ❌ Deep linking support - not implemented
+- ❌ Share functionality - not implemented
 
-### Phase 3: Android-Specific Enhancements (Low Priority)
+### Phase 3: Android-Specific Enhancements (Future)
 - ❌ Home screen widgets (Glance API)
 - ❌ Wear OS companion app
 - ❌ Android Auto integration
@@ -686,17 +969,38 @@ Expected error responses:
 ### ✅ Successfully Implemented Features
 
 **Core Functionality:**
-- **Navigation**: Type-safe navigation with Compose Navigation
-- **4 Main Screens**: Station selection, destination selection, train list, train detail
-- **API Integration**: Full V2 API support with consolidation enabled
+- **Map-Based UI**: Google Maps with dark mode styling as root screen
+- **Bottom Sheet Navigation**: Draggable sheet with MEDIUM/EXPANDED positions
+- **Gesture Coordination**: "One swipe = one action" pattern matching iOS
+- **6 Main Screens**: Map container, station selection, destination selection, train list, train detail, profile
+- **API Integration**: Full V2 API support (departures, details, predictions, congestion)
 - **Real-time Updates**: 30-second auto-refresh and pull-to-refresh
 - **Glassmorphic UI**: Matching iOS design aesthetic
-- **Favorites**: Station favorites with heart icons
+- **Station Favorites**: Heart icons with DataStore persistence
 - **Progress Tracking**: Journey progress bars with stop counts
-- **Track Predictions**: Owl predictions with confidence visualization
+- **Track Predictions**: Segmented platform probability bar (NY Penn only)
+- **Congestion Overlay**: Color-coded polylines with tap-to-highlight
+- **Ongoing Notifications**: TrainTrackingService with 30-second updates
 - **Boarding Status**: Orange card highlighting for boarding trains
 - **HTML Entity Decoding**: Proper display of emojis in destination names
-- **Environment Switching**: Debug builds can switch between environments
+- **Environment Switching**: Debug builds can switch between prod/staging servers
+
+**Map Features:**
+- ✅ Congestion polylines with dynamic width (5-11pt) based on severity
+- ✅ Color scheme: green/yellow/orange/red matching iOS
+- ✅ Tap detection with 30px tolerance
+- ✅ Selected segment highlighting (iOS blue, thicker line)
+- ✅ Route polyline visualization
+- ✅ Camera animation with zoom-aware offset for sheet visibility
+- ✅ 5-minute auto-refresh of congestion data
+- ✅ 150+ station coordinates synchronized with iOS and backend
+
+**Notification Features:**
+- ✅ Foreground service with custom notification layouts
+- ✅ 30-second updates via AlarmManager
+- ✅ Journey progress, next stop, and delay information
+- ✅ Auto-stop on train arrival
+- ✅ Persistent tracking state with TrackingStateRepository
 
 **Build Commands:**
 ```bash
@@ -712,44 +1016,134 @@ export PATH=$JAVA_HOME/bin:$PATH
 ```
 
 **Implementation Status:**
-- ✅ HTML entity decoding for destination names (airplane emojis display correctly)
-- ✅ Support for DepartureV2 API model with enhanced train position and data freshness
+- ✅ Map-based architecture matching iOS MapContainerView
+- ✅ Bottom sheet gesture coordination with GestureMode state machine
+- ✅ Congestion overlay with interactive tap detection
+- ✅ Track predictions (both segmented bar and individual confidence)
+- ✅ Ongoing notifications (TrainTrackingService)
 - ✅ StatusV2 integration for better status display
 - ✅ Progress tracking for journey visualization
+- ✅ Profile system with favorites and server switching
+- ✅ DepartureV2 API model with enhanced train position and data freshness
+- ✅ HTML entity decoding for destination names
 - ✅ Core app functionality works and APK builds successfully
 - ⚠️  Unit tests need updates for new TrainV2 constructor (can be addressed later)
+- ⚠️  ProfileScreen not fully wired to main navigation (intentionally disabled)
 
 ## Known Issues & Areas for Improvement
 
-### 🐛 Bugs to Fix
-
-1. **Track Button Not Working**: The "Track This Train" button in TrainDetailScreen is disabled and non-functional
-2. **Prediction Data Access**: TrainDetailV2 doesn't include prediction data from the API
-3. **Progress Model Inconsistency**: Two different Progress models (Progress vs ProgressV2) need consolidation
-4. **Status Display**: StatusChip appears in two different files with duplicate code
-5. **No All Departures**: "Show all departures" feature removed as backend doesn't support it
-
 ### ⚠️ Technical Debt
 
-1. **Duplicate Models**: Multiple versions of similar models (Train/TrainV2, Progress/ProgressV2)
-2. **Missing Tests**: Unit tests need updating for new constructors
-3. **Hard-coded Values**: API base URL and other configs should be in BuildConfig
-4. **No Error Recovery**: Limited retry logic for network failures
-5. **Memory Leaks**: No proper lifecycle management for auto-refresh coroutines
+1. **Duplicate Models**: Multiple versions of similar models need consolidation
+   - `Progress` vs `ProgressV2` (both exist in codebase)
+   - `Stop` vs `StopDetail` (different use cases but similar)
+   - Consider single model with optional fields
 
-### 🚀 Performance Issues
+2. **Missing Tests**: Unit tests need updating
+   - TrainV2 constructor changes broke existing tests
+   - New features (map, predictions, notifications) lack test coverage
+   - Repository and ViewModel tests need mocking updates
 
-1. **No Caching**: API responses are not cached locally
-2. **Excessive Recomposition**: Train list items may recompose unnecessarily
-3. **Large APK Size**: 18.3 MB is quite large for a simple app
-4. **No Pagination**: Train list loads all items at once
+3. **ProfileScreen Not Wired**: Profile navigation is commented out
+   - Functionality exists but not accessible from main UI
+   - Need UI/UX decision on where to place profile entry point
+   - Consider tab bar, settings icon, or gesture
 
-## Recent Enhancements & Fixes (September 2025)
+4. **Hard-coded Values**: Some configuration should be externalized
+   - Maps API key in manifest (currently placeholder-based)
+   - API base URLs in NetworkModule (need BuildConfig integration)
+   - Station coordinates in Stations.kt (consider loading from backend)
 
-### Recent Updates
+5. **Limited Error Recovery**: Network failures could be handled better
+   - No exponential backoff for retries
+   - Limited offline support
+   - No caching of API responses
+
+### 🚀 Performance Opportunities
+
+1. **API Response Caching**: All responses are fetched fresh
+   - Consider caching train details for 60 seconds
+   - Cache departures for 30 seconds
+   - Cache congestion data for 5 minutes
+   - Use Room database or in-memory cache
+
+2. **Recomposition Optimization**: Some composables may recompose excessively
+   - Audit `remember`, `derivedStateOf`, and `@Stable` usage
+   - Add keys to LazyColumn items
+   - Profile with Layout Inspector
+
+3. **APK Size**: Current debug APK is ~18MB
+   - Enable ProGuard/R8 for release builds
+   - Remove unused resources
+   - Consider code splitting for large features
+
+4. **No Pagination**: Train list loads all results
+   - Backend supports `limit` parameter
+   - Consider lazy loading for large result sets
+   - Add "Load more" button or infinite scroll
+
+### 🔮 Future Enhancements
+
+1. **Deep Linking**: Support opening specific trains from URLs
+2. **Share Functionality**: Share train status with others
+3. **Route History Screen**: UI for `/routes/history` endpoint
+4. **Home Screen Widgets**: Glance API widget for favorite routes
+5. **Notification Actions**: Quick actions in ongoing notification
+6. **Offline Mode**: Cache recent data for offline viewing
+
+## Recent Enhancements & Fixes (October 2025)
+
+### Major Features Added
+
+1. **Map-Based UI Architecture (October 12, 2025)**
+   - Migrated from list-based to map-centered interface
+   - `MapContainerScreen` as root with Google Maps integration
+   - Draggable bottom sheet with MEDIUM/EXPANDED positions
+   - 150+ station coordinates synchronized across iOS/Android/backend
+   - Dark mode map styling with Material3 integration
+
+2. **Bottom Sheet Gesture Coordination (October 12, 2025)**
+   - `BottomSheetDragState` with GestureMode state machine
+   - "One swipe = one action" pattern matching iOS
+   - Low-level gesture capture with `awaitPointerEventScope`
+   - `SheetAwareScrollView` and `SheetAwareLazyColumn` smart wrappers
+   - Haptic feedback on position changes
+   - Velocity (50f) + translation (50f) thresholds
+
+3. **Congestion Overlay System (October 12, 2025)**
+   - Real-time congestion polylines with 5-minute auto-refresh
+   - Color-coded severity: green/yellow/orange/red
+   - Dynamic width scaling (5-11pt) based on congestion factor
+   - `PolylineHitDetector` with 30px tap tolerance
+   - Tap-to-highlight with iOS blue selection color
+   - Camera animation with zoom-aware offset for sheet visibility
+
+4. **Track Prediction System (October 12, 2025)**
+   - `TrackPredictionService` for ML-based platform predictions
+   - `SegmentedTrackPredictionBar` with platform probability grouping
+   - NY Penn Station only, pre-track-assignment
+   - 17% threshold for platform display
+   - "No clear favorite" message for low-confidence predictions
+
+5. **Profile System (Earlier October 2025)**
+   - ProfileScreen with user settings
+   - FavoriteStationsScreen for managing favorites
+   - AdvancedConfigScreen with server switching
+   - BackendHealthService for environment validation
+   - EnvironmentManager for debug builds
+
+6. **Ongoing Notifications (Earlier October 2025)**
+   - `TrainTrackingService` foreground service
+   - 30-second updates via AlarmManager
+   - Custom notification layouts with RemoteViews
+   - Journey progress, next stop, and delay display
+   - Auto-stop on train arrival
+   - TrackingStateRepository for persistent state
+
+### Earlier Enhancements (September 2025)
 
 1. **Enhanced Navigation System**
-   - Type-safe navigation with `TrackRatNavigator`
+   - Type-safe navigation with Jetpack Compose Navigation
    - Separate destination selection screen
    - Proper back stack management
 
@@ -768,15 +1162,10 @@ export PATH=$JAVA_HOME/bin:$PATH
    - Dynamic status chip colors
    - Visual distinction for different states
 
-5. **Track Predictions UI**
-   - Confidence-based styling (checkmark, normal, question mark)
-   - Owl emoji integration
-   - Platform-level aggregation display
-
-6. **Environment Management**
-   - `EnvironmentManager` for switching between dev/prod
-   - BuildConfig flags for environment control
-   - Debug-only switching capability
+5. **DepartureV2 API Integration**
+   - Enhanced departure data with train position
+   - Data freshness indicators
+   - StatusV2 integration for better status display
 
 ## Contact for Support
 
