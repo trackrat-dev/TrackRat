@@ -67,7 +67,8 @@ fun MapContainerScreen(
             position = sheetPosition,
             onPositionChange = { newPosition ->
                 viewModel.updateSheetPosition(newPosition)
-            }
+            },
+            isScrollable = true  // Enable gesture coordination with scrollable content
         ) {
             // Navigation content within sheet
             NavHost(
