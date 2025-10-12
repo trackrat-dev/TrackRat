@@ -291,30 +291,12 @@ private fun TrainCardContent(
             verticalAlignment = Alignment.Top
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Train ${train.trainId}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = textColor
-                    )
-                    if (!train.lineCode.isNullOrEmpty()) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = Color(Constants.BRAND_ORANGE).copy(alpha = 0.1f)
-                        ) {
-                            Text(
-                                text = train.lineCode,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(Constants.BRAND_ORANGE),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = "Train ${train.trainId}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
                 Text(
                     text = "to ${train.destination ?: train.terminalStationName}",
                     style = MaterialTheme.typography.bodyMedium,

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Train
@@ -35,9 +36,10 @@ import androidx.compose.ui.text.style.TextAlign
 fun StationSelectionScreen(
     viewModel: StationSelectionViewModel = hiltViewModel(),
     onNavigateToDestination: (originCode: String) -> Unit,
-    onNavigateToTrainDetail: (trainId: String) -> Unit
+    onNavigateToTrainDetail: (trainId: String) -> Unit,
+    onNavigateToProfile: () -> Unit = {}
 ) {
-    val departureStations by viewModel.departureStations.collectAsState()
+    val departureStations by viewModel.displayedDepartureStations.collectAsState()
     val selectedOrigin by viewModel.selectedOrigin.collectAsState()
     var searchText by remember { mutableStateOf("") }
 
@@ -62,15 +64,30 @@ fun StationSelectionScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Header
-            Text(
-                text = "Where would you like to leave from?",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
+            // Header with Profile button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Where would you like to leave from?",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Profile button
+                IconButton(onClick = onNavigateToProfile) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = "Profile",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
             
             // Search bar
             GlassmorphicSearchCard(

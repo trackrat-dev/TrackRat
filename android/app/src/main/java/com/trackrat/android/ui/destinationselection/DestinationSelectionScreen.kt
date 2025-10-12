@@ -36,18 +36,13 @@ fun DestinationSelectionScreen(
     onNavigateToTrains: (destinationCode: String?) -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val displayedStations by viewModel.displayedDestinationStations.collectAsState(initial = emptyList())
-    val searchResults by viewModel.searchResults.collectAsState()
+    val displayedStations by viewModel.displayedDestinationStations.collectAsState()
     val selectedDestination by viewModel.selectedDestination.collectAsState()
     var searchText by remember { mutableStateOf("") }
 
     // Filter out origin station from available destinations
     val availableStations = remember(displayedStations, originStation) {
         displayedStations.filter { it.code != originStation }
-    }
-    
-    val filteredResults = remember(searchResults, originStation) {
-        searchResults.filter { it.code != originStation }
     }
 
     Scaffold(
@@ -136,9 +131,7 @@ fun DestinationSelectionScreen(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val stationsToShow = if (searchText.isNotBlank()) filteredResults else availableStations
-                
-                items(stationsToShow) { station ->
+                items(availableStations) { station ->
                     GlassmorphicCard(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -186,9 +179,9 @@ fun DestinationSelectionScreen(
                         }
                     }
                 }
-                
-                // Show message if no stations found in search
-                if (searchText.isNotBlank() && filteredResults.isEmpty()) {
+
+                // Show message if no stations found
+                if (availableStations.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -197,7 +190,11 @@ fun DestinationSelectionScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "No stations found matching \"$searchText\"",
+                                text = if (searchText.isNotBlank()) {
+                                    "No stations found matching \"$searchText\""
+                                } else {
+                                    "No stations available"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                             )

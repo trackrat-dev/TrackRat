@@ -34,4 +34,11 @@ interface TrackRatApiService {
         @Query("date") date: String,
         @Query("refresh") refresh: Boolean = false
     ): TrainDetailsResponse
+
+    /**
+     * Health check endpoint
+     * Returns backend server status
+     */
+    @GET("../health")  // Go up one level from /api/v2 to /health
+    suspend fun getHealth(): Map<String, String>
 }

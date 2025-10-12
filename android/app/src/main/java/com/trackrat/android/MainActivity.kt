@@ -16,7 +16,10 @@ import com.trackrat.android.navigation.createTrackRatNavigator
 import com.trackrat.android.navigation.getDestinationSelectionArgs
 import com.trackrat.android.navigation.getTrainDetailArgs
 import com.trackrat.android.navigation.getTrainListArgs
+import com.trackrat.android.ui.advanced.AdvancedConfigScreen
 import com.trackrat.android.ui.destinationselection.DestinationSelectionScreen
+import com.trackrat.android.ui.favorites.FavoriteStationsScreen
+import com.trackrat.android.ui.profile.ProfileScreen
 import com.trackrat.android.ui.stationselection.StationSelectionScreen
 import com.trackrat.android.ui.trainlist.TrainListScreen
 import com.trackrat.android.ui.traindetail.TrainDetailScreen
@@ -55,6 +58,9 @@ fun TrackRatAppNavHost() {
                 },
                 onNavigateToTrainDetail = { trainId ->
                     navigator.navigateToTrainDetail(trainId)
+                },
+                onNavigateToProfile = {
+                    navigator.navigateToProfile()
                 }
             )
         }
@@ -112,6 +118,27 @@ fun TrackRatAppNavHost() {
                 onNavigateBack = {
                     navigator.navigateBack()
                 }
+            )
+        }
+
+        // Profile Screen
+        composable(TrackRatDestinations.Profile.route) {
+            ProfileScreen(
+                navigator = navigator
+            )
+        }
+
+        // Favorite Stations Screen
+        composable(TrackRatDestinations.FavoriteStations.route) {
+            FavoriteStationsScreen(
+                navigator = navigator
+            )
+        }
+
+        // Advanced Configuration Screen
+        composable(TrackRatDestinations.AdvancedConfig.route) {
+            AdvancedConfigScreen(
+                navigator = navigator
             )
         }
     }
