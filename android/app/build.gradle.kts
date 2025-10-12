@@ -20,6 +20,9 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Google Maps API key
+        manifestPlaceholders["mapsApiKey"] = "AIzaSyB4M3XKsAmRzG_KZJwFaN-068hJmT8BiXE"
     }
 
     buildTypes {
@@ -128,6 +131,11 @@ dependencies {
 
     // Navigation Compose
     implementation("androidx.navigation:navigation-compose:2.7.7")
+
+    // Google Maps
+    implementation("com.google.maps.android:maps-compose:4.3.3")
+    implementation("com.google.android.gms:play-services-maps:18.2.0")
+    implementation("com.google.android.gms:play-services-location:21.1.0")
 }
 
 kapt {

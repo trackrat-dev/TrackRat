@@ -33,6 +33,7 @@ class TrainDetailViewModel @Inject constructor(
     application: Application,
     private val repository: TrackRatRepository,
     private val trackingStateRepository: TrackingStateRepository,
+    private val trackPredictionService: com.trackrat.android.data.services.TrackPredictionService,
     private val savedStateHandle: SavedStateHandle
 ) : AndroidViewModel(application) {
 
@@ -43,7 +44,9 @@ class TrainDetailViewModel @Inject constructor(
         val isRefreshing: Boolean = false,
         val error: ApiException? = null,
         val lastUpdated: Long = 0L,
-        val canRetry: Boolean = false
+        val canRetry: Boolean = false,
+        val platformPredictions: Map<String, Double>? = null,
+        val isLoadingPredictions: Boolean = false
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -133,19 +136,24 @@ class TrainDetailViewModel @Inject constructor(
         when (val result = repository.getTrainDetails(trainId, date, refresh = true)) {
             is ApiResult.Success -> {
                 val currentTime = System.currentTimeMillis()
+                val train = result.data.train
+
                 _uiState.value = _uiState.value.copy(
-                    train = result.data.train,
+                    train = train,
                     isLoading = false,
                     isRefreshing = false,
                     error = null,
                     lastUpdated = currentTime,
                     canRetry = false
                 )
-                
+
                 // Save state for restoration
                 savedStateHandle[KEY_LAST_UPDATED] = currentTime
-                savedStateHandle[KEY_TRAIN_STATUS] = result.data.train.rawTrainState ?: ""
-                
+                savedStateHandle[KEY_TRAIN_STATUS] = train.rawTrainState ?: ""
+
+                // Load predictions if applicable
+                loadPredictions(train)
+
                 // Start auto-refresh only on successful load
                 startAutoRefresh(trainId, date)
             }
@@ -279,6 +287,50 @@ class TrainDetailViewModel @Inject constructor(
         autoRefreshJob?.cancel()
     }
     
+    /**
+     * Load track predictions for a train if applicable
+     */
+    private fun loadPredictions(train: TrainDetailV2) {
+        android.util.Log.d("TrainDetailVM", "🔍 loadPredictions called for train ${train.trainId}")
+        android.util.Log.d("TrainDetailVM", "   - Origin: ${train.route.origin} (${train.route.originCode})")
+        android.util.Log.d("TrainDetailVM", "   - First stop track: ${train.stops.firstOrNull()?.track}")
+
+        if (!trackPredictionService.shouldShowPredictions(train)) {
+            android.util.Log.d("TrainDetailVM", "   ❌ shouldShowPredictions returned false - not loading")
+            _uiState.value = _uiState.value.copy(
+                platformPredictions = null,
+                isLoadingPredictions = false
+            )
+            return
+        }
+
+        android.util.Log.d("TrainDetailVM", "   ✅ shouldShowPredictions returned true - loading predictions")
+
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoadingPredictions = true)
+
+            val predictions = trackPredictionService.getPredictionData(train)
+
+            android.util.Log.d("TrainDetailVM", "   📊 Got ${predictions?.size ?: 0} platform predictions")
+            predictions?.forEach { (platform, prob) ->
+                android.util.Log.d("TrainDetailVM", "      - $platform: ${String.format("%.1f%%", prob * 100)}")
+            }
+
+            _uiState.value = _uiState.value.copy(
+                platformPredictions = predictions,
+                isLoadingPredictions = false
+            )
+        }
+    }
+
+    /**
+     * Check if predictions should be shown for current train
+     */
+    fun shouldShowPredictions(): Boolean {
+        val train = _uiState.value.train ?: return false
+        return trackPredictionService.shouldShowPredictions(train)
+    }
+
     /**
      * Get display status for the train
      */

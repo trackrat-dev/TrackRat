@@ -200,17 +200,16 @@ fun TrainDetailScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         uiState.train?.let { train ->
-                            // Train header info
-                            item {
-                                TrainHeaderCard(
-                                    train = train,
-                                    viewModel = viewModel
-                                )
-                            }
+
                             
-                            // Track Predictions section (replacing Journey Progress)
-                            item {
-                                TrackPredictionsCard(train)
+                            // Track Predictions section (iOS-style segmented visualization)
+                            if (viewModel.shouldShowPredictions()) {
+                                item {
+                                    SegmentedTrackPredictionBar(
+                                        platformPredictions = uiState.platformPredictions ?: emptyMap(),
+                                        isLoading = uiState.isLoadingPredictions
+                                    )
+                                }
                             }
                             
                             // Journey stops
@@ -261,247 +260,8 @@ fun TrainDetailScreen(
     }
 }
 
-@Composable
-fun TrainHeaderCard(
-    train: TrainDetailV2,
-    viewModel: TrainDetailViewModel
-) {
-    val isTracking by viewModel.isTrackingTrain.collectAsState()
-    
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Train ID and Line
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "Train ${train.trainId}",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    // Train number not available in TrainDetailV2
-                }
-                
-                // Status
-                StatusChip(
-                    status = viewModel.getTrainDisplayStatus(train),
-                    isBoarding = viewModel.isTrainBoarding(train)
-                )
-            }
-            
-            // Line and destination
-            if (!train.line.code.isNullOrEmpty()) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFFFF6600).copy(alpha = 0.1f)
-                    ) {
-                        Text(
-                            text = train.line.code ?: "",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color(0xFFFF6600),
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                    Text(
-                        text = train.line.name ?: "Unknown Line",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            
-            // Track and prediction
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Track info - get from first stop if available
-                val firstStopTrack = train.stops.firstOrNull()?.track
-                if (!firstStopTrack.isNullOrEmpty()) {
-                    Column {
-                        Text(
-                            text = "Track",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
-                        ) {
-                            Text(
-                                text = firstStopTrack,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                            )
-                        }
-                    }
-                }
-                
-                // Owl prediction not available in TrainDetailV2
-                /* train.prediction?.let { prediction ->
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "Owl Prediction",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        PredictionChipDetailed(prediction = prediction)
-                    }
-                } */
-            }
-            
-            // Tracking button
-            Button(
-                onClick = { viewModel.toggleTracking() },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isTracking) Color.Gray else Color(0xFFFF6600)
-                )
-            ) {
-                Icon(
-                    imageVector = if (isTracking) Icons.Default.Circle else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (isTracking) "Stop Tracking" else "Track This Train",
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
-        }
-    }
-}
 
-@Composable
-fun TrackPredictionsCard(train: TrainDetailV2) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Header with icon
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.DirectionsRailway,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = Color(0xFFFF6600)
-                )
-                Text(
-                    text = "Track Predictions",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            
-            // Track assignment information
-            val stopsWithTracks = train.stops.filter { !it.track.isNullOrEmpty() }
-            
-            if (stopsWithTracks.isNotEmpty()) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    stopsWithTracks.forEach { stop ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = stop.station.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                val displayTime = stop.scheduledDeparture ?: stop.scheduledArrival
-                                displayTime?.let { time ->
-                                    Text(
-                                        text = formatTime(time.toString()),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            
-                            // Track badge
-                            stop.track?.let { track ->
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFFFF6600).copy(alpha = 0.2f)
-                                ) {
-                                    Text(
-                                        text = "Track $track",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFFF6600),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // No track predictions available
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Track assignments not yet available",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            
-            // Note about predictions
-            if (stopsWithTracks.isEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Track assignments will appear here when available",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
+// Old TrackPredictionsCard removed - replaced with SegmentedTrackPredictionBar
 
 @Composable
 fun StopCard(
@@ -545,11 +305,6 @@ fun StopCard(
                     text = stop.station.name,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (isOrigin || isTerminal) FontWeight.Bold else FontWeight.Normal
-                )
-                Text(
-                    text = stop.station.code,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             

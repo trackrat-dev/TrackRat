@@ -36,6 +36,20 @@ interface TrackRatApiService {
     ): TrainDetailsResponse
 
     /**
+     * Get ML-based platform predictions for a train at a specific station
+     * @param stationCode Station code (e.g., "NY")
+     * @param trainId Train identifier
+     * @param journeyDate Journey date in YYYY-MM-DD format
+     * @return Platform prediction data with probabilities
+     */
+    @GET("predictions/track")
+    suspend fun getPlatformPrediction(
+        @Query("station_code") stationCode: String,
+        @Query("train_id") trainId: String,
+        @Query("journey_date") journeyDate: String
+    ): com.trackrat.android.data.models.PlatformPrediction
+
+    /**
      * Health check endpoint
      * Returns backend server status
      */
