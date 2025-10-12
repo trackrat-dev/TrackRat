@@ -50,6 +50,18 @@ interface TrackRatApiService {
     ): com.trackrat.android.data.models.PlatformPrediction
 
     /**
+     * Get route congestion data showing train density across network segments
+     * @param timeWindowHours Time window in hours for congestion data (default 3)
+     * @param maxPerSegment Maximum trains per segment to return (default 200)
+     * @return Congestion response with individual segment data
+     */
+    @GET("routes/congestion")
+    suspend fun getCongestionData(
+        @Query("time_window_hours") timeWindowHours: Int = 3,
+        @Query("max_per_segment") maxPerSegment: Int = 200
+    ): com.trackrat.android.data.models.CongestionResponse
+
+    /**
      * Health check endpoint
      * Returns backend server status
      */

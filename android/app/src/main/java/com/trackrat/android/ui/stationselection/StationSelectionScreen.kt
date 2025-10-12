@@ -26,6 +26,7 @@ import com.trackrat.android.data.models.Station
 import com.trackrat.android.ui.components.GlassmorphicCard
 import com.trackrat.android.ui.components.GlassmorphicCardElevated
 import com.trackrat.android.ui.components.GlassmorphicSearchCard
+import com.trackrat.android.ui.map.MapContainerViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StationSelectionScreen(
+    mapViewModel: MapContainerViewModel,
     viewModel: StationSelectionViewModel = hiltViewModel(),
     onNavigateToDestination: (originCode: String) -> Unit,
     onNavigateToTrainDetail: (trainId: String) -> Unit,
@@ -45,6 +47,12 @@ fun StationSelectionScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // Reset map to default view when navigating back to station selection
+    LaunchedEffect(Unit) {
+        mapViewModel.clearSelectedRoute()
+        mapViewModel.resetToDefaultView()
+    }
 
     // Check if search text looks like a train number
     val isTrainSearch = searchText.isNotBlank() && (
@@ -230,11 +238,4 @@ fun StationSelectionScreen(
 
 // Simplified station selection - old complex content functions removed
 
-@Preview(showBackground = true)
-@Composable
-fun StationSelectionScreenPreview() {
-    StationSelectionScreen(
-        onNavigateToDestination = { _ -> },
-        onNavigateToTrainDetail = { _ -> }
-    )
-}
+// Preview removed - requires MapContainerViewModel which cannot be instantiated in preview

@@ -1,8 +1,10 @@
 package com.trackrat.android.ui.map
 
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.gms.maps.model.CameraPosition
@@ -10,8 +12,10 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.trackrat.android.data.MapRegion
 import com.trackrat.android.data.Stations
+import com.trackrat.android.data.api.TrackRatApiService
 import com.trackrat.android.ui.components.BottomSheetPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,16 +26,51 @@ import kotlin.math.ln
 import kotlin.math.max
 
 /**
+ * Data class for selected route polyline
+ */
+data class SelectedRoute(
+    val fromStation: String,
+    val toStation: String,
+    val fromLatLng: LatLng,
+    val toLatLng: LatLng
+)
+
+/**
+ * Data class for rendered congestion segment polyline
+ */
+data class CongestionPolyline(
+    val fromLatLng: LatLng,
+    val toLatLng: LatLng,
+    val congestionFactor: Double,
+    val color: Color,
+    val width: Float
+)
+
+/**
  * ViewModel for MapContainerScreen
  * Manages map camera position, sheet position, and region calculations
  * Matches iOS MapContainerViewModel logic
  */
 @HiltViewModel
-class MapContainerViewModel @Inject constructor() : ViewModel() {
+class MapContainerViewModel @Inject constructor(
+    private val apiService: TrackRatApiService
+) : ViewModel() {
 
     // Sheet position state
     private val _sheetPosition = MutableStateFlow(BottomSheetPosition.MEDIUM)
     val sheetPosition: StateFlow<BottomSheetPosition> = _sheetPosition.asStateFlow()
+
+    // Selected route state
+    private val _selectedRoute = MutableStateFlow<SelectedRoute?>(null)
+    val selectedRoute: StateFlow<SelectedRoute?> = _selectedRoute.asStateFlow()
+
+    // Congestion polylines state
+    private val _congestionPolylines = MutableStateFlow<List<CongestionPolyline>>(emptyList())
+    val congestionPolylines: StateFlow<List<CongestionPolyline>> = _congestionPolylines.asStateFlow()
+
+    // Selected segment state (for tap-to-highlight)
+    private val _selectedSegmentId = MutableStateFlow<String?>(null)
+    val selectedSegmentId: StateFlow<String?> = _selectedSegmentId.asStateFlow()
 
     // Camera position state (initialized to Newark Penn Station default)
     var cameraPositionState by mutableStateOf(
@@ -51,6 +90,43 @@ class MapContainerViewModel @Inject constructor() : ViewModel() {
         _sheetPosition.value = position
         // Adjust map center for new sheet position if needed
         // This will be implemented when we add route selection
+    }
+
+    /**
+     * Set selected route and animate map to show the route
+     */
+    fun setSelectedRoute(fromStationCode: String, toStationCode: String) {
+        val fromCoords = Stations.getCoordinates(fromStationCode)
+        val toCoords = Stations.getCoordinates(toStationCode)
+
+        if (fromCoords != null && toCoords != null) {
+            _selectedRoute.value = SelectedRoute(
+                fromStation = fromStationCode,
+                toStation = toStationCode,
+                fromLatLng = fromCoords,
+                toLatLng = toCoords
+            )
+            animateToRoute(fromCoords, toCoords)
+        }
+    }
+
+    /**
+     * Clear the selected route polyline
+     */
+    fun clearSelectedRoute() {
+        _selectedRoute.value = null
+        _selectedSegmentId.value = null // Also clear segment selection
+    }
+
+    /**
+     * Select a congestion segment for highlighting
+     * @param segment The segment to highlight, or null to clear selection
+     */
+    fun selectSegment(segment: CongestionPolyline?) {
+        _selectedSegmentId.value = segment?.let {
+            // Create unique ID from coordinates
+            "${it.fromLatLng.latitude},${it.fromLatLng.longitude}-${it.toLatLng.latitude},${it.toLatLng.longitude}"
+        }
     }
 
     /**
@@ -182,5 +258,92 @@ class MapContainerViewModel @Inject constructor() : ViewModel() {
         // Base zoom 10 for 0.3° span, adjust logarithmically
         val zoom = 10 - (ln(span / 0.3) / ln(2.0))
         return zoom.toFloat().coerceIn(6f, 15f)
+    }
+
+    /**
+     * Load congestion data from API and convert to polylines
+     * Automatically refreshes every 5 minutes
+     */
+    fun loadCongestionData() {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "Loading congestion data...")
+                val response = apiService.getCongestionData(
+                    timeWindowHours = 3,
+                    maxPerSegment = 200
+                )
+
+                Log.d(TAG, "Received ${response.individualSegments.size} total segments from API")
+
+                // Track matching statistics
+                var matchedSegments = 0
+                var missingFromStations = mutableSetOf<String>()
+                var missingToStations = mutableSetOf<String>()
+
+                // Convert API segments to polylines with coordinates
+                val polylines = response.individualSegments.mapNotNull { segment ->
+                    val fromCoords = Stations.getCoordinates(segment.fromStation)
+                    val toCoords = Stations.getCoordinates(segment.toStation)
+
+                    if (fromCoords != null && toCoords != null) {
+                        matchedSegments++
+                        CongestionPolyline(
+                            fromLatLng = fromCoords,
+                            toLatLng = toCoords,
+                            congestionFactor = segment.congestionFactor,
+                            color = getCongestionColor(segment.congestionFactor),
+                            width = getCongestionWidth(segment.congestionFactor)
+                        )
+                    } else {
+                        // Track missing stations for debugging
+                        if (fromCoords == null) missingFromStations.add(segment.fromStation)
+                        if (toCoords == null) missingToStations.add(segment.toStation)
+                        null // Skip segments with unknown station codes
+                    }
+                }
+
+                _congestionPolylines.value = polylines
+
+                Log.d(TAG, "Successfully matched $matchedSegments segments with coordinates")
+                Log.d(TAG, "Created ${polylines.size} polylines for rendering")
+
+                if (missingFromStations.isNotEmpty() || missingToStations.isNotEmpty()) {
+                    Log.w(TAG, "Missing station coordinates - From: ${missingFromStations.size} stations, To: ${missingToStations.size} stations")
+                    Log.w(TAG, "Missing from stations: ${missingFromStations.sorted().take(10)}")
+                    Log.w(TAG, "Missing to stations: ${missingToStations.sorted().take(10)}")
+                }
+
+                // Schedule next refresh in 5 minutes
+                delay(300_000) // 5 minutes
+                loadCongestionData() // Recursive call for continuous refresh
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading congestion data", e)
+                // Log error but don't crash - map still works without congestion
+                _congestionPolylines.value = emptyList()
+            }
+        }
+    }
+
+    companion object {
+        private const val TAG = "MapViewModel"
+    }
+
+    /**
+     * Get color for congestion level
+     * Matching iOS color scheme
+     */
+    private fun getCongestionColor(factor: Double): Color = when {
+        factor < 1.05 -> Color(0xFF34C759)  // Green - normal
+        factor < 1.25 -> Color(0xFFFFCC00)  // Yellow - slight delay
+        factor < 2.0 -> Color(0xFFFF9500)   // Orange - moderate delay
+        else -> Color(0xFFFF3B30)           // Red - severe delay
+    }
+
+    /**
+     * Get polyline width based on congestion factor
+     * Range from 5pt (normal) to 11pt (severe)
+     */
+    private fun getCongestionWidth(factor: Double): Float {
+        return (5.0 + (factor - 1.0) * 6.0).coerceIn(5.0, 11.0).toFloat()
     }
 }

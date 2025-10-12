@@ -1,8 +1,10 @@
 package com.trackrat.android.ui.map
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -12,6 +14,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.*
+import com.trackrat.android.R
 import com.trackrat.android.ui.components.BottomSheetPosition
 import com.trackrat.android.ui.components.DraggableBottomSheet
 import com.trackrat.android.ui.destinationselection.DestinationSelectionScreen
@@ -37,7 +40,7 @@ import java.time.LocalDate
 @Composable
 fun MapContainerScreen(
     mainNavController: NavHostController,
-    viewModel: MapContainerViewModel = hiltViewModel()
+    viewModel: MapContainerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     // Navigation controller for content within the bottom sheet
     val sheetNavController = rememberNavController()
@@ -45,22 +48,81 @@ fun MapContainerScreen(
     // Observe sheet position from ViewModel
     val sheetPosition by viewModel.sheetPosition.collectAsState()
 
+    // Observe selected route, congestion data, and selected segment
+    val selectedRoute by viewModel.selectedRoute.collectAsState()
+    val congestionPolylines by viewModel.congestionPolylines.collectAsState()
+    val selectedSegmentId by viewModel.selectedSegmentId.collectAsState()
+
+    // Load congestion data on initial composition
+    LaunchedEffect(Unit) {
+        viewModel.loadCongestionData()
+    }
+
+    // Dark mode styling
+    val context = LocalContext.current
+    val isDarkMode = isSystemInDarkTheme()
+    val mapProperties = remember(isDarkMode) {
+        MapProperties(
+            mapStyleOptions = if (isDarkMode) {
+                MapStyleOptions.loadRawResourceStyle(context, R.raw.dark_map_style)
+            } else {
+                null
+            }
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Background: Google Maps
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = viewModel.cameraPositionState,
+            properties = mapProperties,
             uiSettings = MapUiSettings(
                 zoomControlsEnabled = false,
                 compassEnabled = false,
                 myLocationButtonEnabled = false,
                 mapToolbarEnabled = false
-            )
-            // TODO: Add dark map style
-            // TODO: Add polylines for routes
-            // TODO: Add station markers
-            // TODO: Add congestion overlays
-        )
+            ),
+            onMapClick = { latLng ->
+                // Detect taps on congestion polylines
+                viewModel.cameraPositionState.projection?.let { projection ->
+                    val tappedSegment = PolylineHitDetector.findTappedSegment(
+                        tapLatLng = latLng,
+                        segments = congestionPolylines,
+                        projection = projection,
+                        tolerancePx = 30f // Matching iOS 30pt tolerance
+                    )
+                    viewModel.selectSegment(tappedSegment)
+                }
+            }
+        ) {
+            // Render congestion polylines (below route highlight)
+            congestionPolylines.forEach { polyline ->
+                // Create unique ID for this polyline
+                val polylineId = "${polyline.fromLatLng.latitude},${polyline.fromLatLng.longitude}-${polyline.toLatLng.latitude},${polyline.toLatLng.longitude}"
+                val isSelected = selectedSegmentId == polylineId
+
+                Polyline(
+                    points = listOf(polyline.fromLatLng, polyline.toLatLng),
+                    color = if (isSelected)
+                        androidx.compose.ui.graphics.Color(0xFF007AFF) // iOS blue for selected
+                    else
+                        polyline.color, // Normal congestion color
+                    width = if (isSelected) 9f else polyline.width, // Thicker when selected
+                    zIndex = if (isSelected) 15f else 5f // Higher z-index when selected
+                )
+            }
+
+            // Render selected route polyline (above congestion)
+            selectedRoute?.let { route ->
+                Polyline(
+                    points = listOf(route.fromLatLng, route.toLatLng),
+                    color = androidx.compose.ui.graphics.Color(0xFF007AFF), // iOS blue
+                    width = 7f,
+                    zIndex = 10f // Above congestion overlays
+                )
+            }
+        }
 
         // Foreground: Draggable bottom sheet with navigation
         DraggableBottomSheet(
@@ -78,6 +140,7 @@ fun MapContainerScreen(
                 // Station Selection (home screen)
                 composable("station_selection") {
                     StationSelectionScreen(
+                        mapViewModel = viewModel, // Pass shared ViewModel
                         onNavigateToDestination = { fromStation ->
                             // Navigate to destination picker
                             sheetNavController.navigate("destination_selection/$fromStation")
@@ -103,12 +166,17 @@ fun MapContainerScreen(
                     val fromStation = backStackEntry.arguments?.getString("from") ?: ""
                     DestinationSelectionScreen(
                         originStation = fromStation,
+                        mapViewModel = viewModel, // Pass shared ViewModel
                         onNavigateBack = {
                             sheetNavController.popBackStack()
                         },
                         onNavigateToTrains = { destinationCode ->
-                            // Navigate to train list
-                            sheetNavController.navigate("train_list/$fromStation/$destinationCode")
+                            destinationCode?.let { destination ->
+                                // Set route polyline when destination is selected
+                                viewModel.setSelectedRoute(fromStation, destination)
+                                // Navigate to train list
+                                sheetNavController.navigate("train_list/$fromStation/$destination")
+                            }
                         }
                     )
                 }

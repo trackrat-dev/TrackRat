@@ -21,9 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.trackrat.android.data.Stations
 import com.trackrat.android.data.models.Station
 import com.trackrat.android.ui.components.GlassmorphicCard
 import com.trackrat.android.ui.components.GlassmorphicSearchCard
+import com.trackrat.android.ui.map.MapContainerViewModel
 import com.trackrat.android.ui.stationselection.StationSelectionViewModel
 import kotlinx.coroutines.launch
 
@@ -31,6 +33,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun DestinationSelectionScreen(
     originStation: String,
+    mapViewModel: MapContainerViewModel,
     viewModel: StationSelectionViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
     onNavigateToTrains: (destinationCode: String?) -> Unit
@@ -135,8 +138,14 @@ fun DestinationSelectionScreen(
                     GlassmorphicCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { 
+                            .clickable {
                                 viewModel.selectDestination(station)
+                                // Animate map to show the route
+                                val fromCoords = Stations.getCoordinates(originStation)
+                                val toCoords = Stations.getCoordinates(station.code)
+                                if (fromCoords != null && toCoords != null) {
+                                    mapViewModel.animateToRoute(fromCoords, toCoords)
+                                }
                                 onNavigateToTrains(station.code)
                             }
                     ) {
@@ -206,12 +215,4 @@ fun DestinationSelectionScreen(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun DestinationSelectionScreenPreview() {
-    DestinationSelectionScreen(
-        originStation = "NY",
-        onNavigateBack = {},
-        onNavigateToTrains = {}
-    )
-}
+// Preview removed - requires MapContainerViewModel which cannot be instantiated in preview
