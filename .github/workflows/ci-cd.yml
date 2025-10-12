@@ -31,7 +31,7 @@ env:
   SERVICE_NAME: trackcast-inference
   # Deployment method: 'terraform' (default) or 'ocuroot'
   # Can be overridden via repository variables or workflow_dispatch
-  DEPLOYMENT_METHOD: terraform
+  DEPLOYMENT_METHOD: ocuroot
 
 jobs:
   # Simplified CI/CD: Run all tests unconditionally
