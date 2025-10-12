@@ -318,8 +318,10 @@ jobs:
       - name: Setup Ocuroot
         if: env.DEPLOYMENT_METHOD == 'ocuroot'
         run: |
+          set -xe
           echo "📥 Installing Ocuroot..."
-          wget -q -O ocuroot https://github.com/ocuroot/ocuroot/releases/latest/download/ocuroot_linux_amd64
+          wget -q -O ocuroot.tar.gz https://github.com/ocuroot/ocuroot/releases/download/v0.3.16/ocuroot_linux-amd64.tar.gz
+          tar -xzf ocuroot.tar.gz
           chmod +x ocuroot
           sudo mv ocuroot /usr/local/bin/
           ocuroot version
@@ -548,8 +550,10 @@ jobs:
       - name: Setup Ocuroot
         if: env.DEPLOYMENT_METHOD == 'ocuroot'
         run: |
+          set -xe
           echo "📥 Installing Ocuroot..."
-          wget -q -O ocuroot https://github.com/ocuroot/ocuroot/releases/latest/download/ocuroot_linux_amd64
+          wget -q -O ocuroot.tar.gz https://github.com/ocuroot/ocuroot/releases/download/v0.3.16/ocuroot_linux-amd64.tar.gz
+          tar -xzf ocuroot.tar.gz
           chmod +x ocuroot
           sudo mv ocuroot /usr/local/bin/
           ocuroot version
