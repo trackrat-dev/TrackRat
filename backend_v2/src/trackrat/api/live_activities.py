@@ -96,7 +96,9 @@ async def unregister_live_activity(
     )
     await db.commit()
 
-    if result.rowcount == 0:
+    # Type narrowing for mypy - rowcount is always available after execute
+    deleted_count = result.rowcount or 0
+    if deleted_count == 0:
         raise HTTPException(status_code=404, detail="Token not found")
 
     logger.info("live_activity_unregistered", push_token=push_token)

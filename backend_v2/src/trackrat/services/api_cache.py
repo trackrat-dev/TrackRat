@@ -356,7 +356,8 @@ class ApiCacheService:
         result = await db.execute(delete_stmt)
         await db.commit()
 
-        deleted_count = result.rowcount
+        # Type narrowing for mypy - rowcount is always available after execute
+        deleted_count: int = result.rowcount or 0
         if deleted_count > 0:
             logger.info("cleaned_up_expired_cache", deleted_count=deleted_count)
 

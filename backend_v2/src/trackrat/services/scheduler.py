@@ -1998,7 +1998,8 @@ class SchedulerService:
 
                     session.commit()
 
-                    cleaned_count = result.rowcount
+                    # Type narrowing for mypy - rowcount is always available after execute
+                    cleaned_count: int = result.rowcount or 0
                     logger.info(
                         "live_activity_token_cleanup_completed",
                         tokens_cleaned=cleaned_count,

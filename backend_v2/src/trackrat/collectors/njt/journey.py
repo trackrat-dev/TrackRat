@@ -226,10 +226,12 @@ class JourneyCollector(BaseJourneyCollector):
 
         result = await session.execute(stmt)
 
-        if result.rowcount > 0:
+        # Type narrowing for mypy - rowcount is always available after execute
+        expired_count = result.rowcount or 0
+        if expired_count > 0:
             logger.info(
                 "expired_old_journeys",
-                count=result.rowcount,
+                count=expired_count,
                 cutoff_date=cutoff_date.isoformat(),
             )
 
