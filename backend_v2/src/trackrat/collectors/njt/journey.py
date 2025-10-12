@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -224,14 +225,12 @@ class JourneyCollector(BaseJourneyCollector):
             .values(is_expired=True)
         )
 
-        result = await session.execute(stmt)
+        result: CursorResult[tuple[()]] = await session.execute(stmt)
 
-        # Type narrowing for mypy - rowcount is always available after execute
-        expired_count = result.rowcount or 0
-        if expired_count > 0:
+        if result.rowcount and result.rowcount > 0:
             logger.info(
                 "expired_old_journeys",
-                count=expired_count,
+                count=result.rowcount,
                 cutoff_date=cutoff_date.isoformat(),
             )
 

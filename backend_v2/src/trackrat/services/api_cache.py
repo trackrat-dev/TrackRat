@@ -10,6 +10,7 @@ from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import and_, delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -353,11 +354,10 @@ class ApiCacheService:
             CachedApiResponse.expires_at <= now_et()
         )
 
-        result = await db.execute(delete_stmt)
+        result: CursorResult[tuple[()]] = await db.execute(delete_stmt)
         await db.commit()
 
-        # Type narrowing for mypy - rowcount is always available after execute
-        deleted_count: int = result.rowcount or 0
+        deleted_count = result.rowcount or 0
         if deleted_count > 0:
             logger.info("cleaned_up_expired_cache", deleted_count=deleted_count)
 

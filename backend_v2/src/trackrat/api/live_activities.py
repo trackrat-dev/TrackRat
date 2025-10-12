@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -91,14 +92,12 @@ async def unregister_live_activity(
     push_token: str, db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:
     """Stop tracking a Live Activity."""
-    result = await db.execute(
+    result: CursorResult[tuple[()]] = await db.execute(
         delete(LiveActivityToken).where(LiveActivityToken.push_token == push_token)
     )
     await db.commit()
 
-    # Type narrowing for mypy - rowcount is always available after execute
-    deleted_count = result.rowcount or 0
-    if deleted_count == 0:
+    if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Token not found")
 
     logger.info("live_activity_unregistered", push_token=push_token)

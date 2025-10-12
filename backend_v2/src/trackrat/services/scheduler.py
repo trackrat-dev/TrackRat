@@ -14,6 +14,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import and_, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -1985,7 +1986,7 @@ class SchedulerService:
                     current_time = now_et()
 
                     # Update expired tokens to inactive
-                    result = session.execute(
+                    result: CursorResult[tuple[()]] = session.execute(
                         update(LiveActivityToken)
                         .where(
                             and_(
@@ -1998,8 +1999,7 @@ class SchedulerService:
 
                     session.commit()
 
-                    # Type narrowing for mypy - rowcount is always available after execute
-                    cleaned_count: int = result.rowcount or 0
+                    cleaned_count = result.rowcount or 0
                     logger.info(
                         "live_activity_token_cleanup_completed",
                         tokens_cleaned=cleaned_count,
