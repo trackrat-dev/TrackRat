@@ -10,6 +10,15 @@ on:
   pull_request:
     branches: [main, production]
   workflow_dispatch:
+    inputs:
+      deployment_method:
+        description: 'Deployment method (terraform or ocuroot)'
+        required: false
+        default: 'terraform'
+        type: choice
+        options:
+          - terraform
+          - ocuroot
 
 permissions:
   contents: read
@@ -20,6 +29,9 @@ env:
   TFLINT_VERSION: 'v0.50.0'
   REGION: us-central1
   SERVICE_NAME: trackcast-inference
+  # Deployment method: 'terraform' (default) or 'ocuroot'
+  # Can be overridden via repository variables or workflow_dispatch
+  DEPLOYMENT_METHOD: terraform
 
 jobs:
   # Simplified CI/CD: Run all tests unconditionally
@@ -288,13 +300,38 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Determine Deployment Method
+        id: deploy_method
+        run: |
+          # Use workflow_dispatch input if provided, otherwise use env default
+          METHOD="${{ github.event.inputs.deployment_method || env.DEPLOYMENT_METHOD }}"
+
+          echo "📦 Deployment Method: $METHOD"
+          echo "DEPLOYMENT_METHOD=$METHOD" >> $GITHUB_ENV
+          echo "method=$METHOD" >> $GITHUB_OUTPUT
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      # Step 1: Ensure Artifact Registry repository exists
+      - name: Setup Ocuroot
+        if: env.DEPLOYMENT_METHOD == 'ocuroot'
+        run: |
+          echo "📥 Installing Ocuroot..."
+          wget -q -O ocuroot https://github.com/ocuroot/ocuroot/releases/latest/download/ocuroot_linux_amd64
+          chmod +x ocuroot
+          sudo mv ocuroot /usr/local/bin/
+          ocuroot version
+          echo "✅ Ocuroot installed"
+
+      # ============================================================================
+      # TERRAFORM DEPLOYMENT PATH
+      # ============================================================================
+
+      # Step 1: Ensure Artifact Registry repository exists (Terraform method)
       - name: Setup Artifact Registry Repository
+        if: env.DEPLOYMENT_METHOD == 'terraform'
         working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
         run: |
           echo "🏗️ Setting up Artifact Registry repository..."
@@ -317,8 +354,9 @@ jobs:
 
           echo "✅ Artifact Registry repository ready"
 
-      # Step 2: Determine deployment image
+      # Step 2: Determine deployment image (Terraform method)
       - name: Determine deployment image
+        if: env.DEPLOYMENT_METHOD == 'terraform'
         run: |
           echo "🐳 Determining deployment image..."
 
@@ -336,8 +374,9 @@ jobs:
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "✅ Using image: $IMAGE_TAG"
 
-      # Step 3: Deploy all infrastructure including Cloud Run services
+      # Step 3: Deploy all infrastructure including Cloud Run services (Terraform method)
       - name: Deploy Infrastructure and Services
+        if: env.DEPLOYMENT_METHOD == 'terraform'
         working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
         run: |
           echo "🏗️ Deploying infrastructure and services..."
@@ -366,87 +405,87 @@ jobs:
 
           echo "✅ Infrastructure and services deployed"
 
+      # ============================================================================
+      # OCUROOT DEPLOYMENT PATH
+      # ============================================================================
+
+      - name: Initialize Ocuroot State
+        if: env.DEPLOYMENT_METHOD == 'ocuroot'
+        env:
+          OCUROOT_LOCAL_MODE: "false"
+          OCUROOT_ENV: staging
+        run: |
+          echo "🔧 Initializing Ocuroot state..."
+
+          # Check if environments are registered
+          if ! ocuroot state get @/environment/staging 2>/dev/null; then
+            echo "Registering environments..."
+            ocuroot release new environments/release.ocu.star
+          fi
+
+          echo "✅ Ocuroot state initialized"
+
+      - name: Deploy via Ocuroot
+        if: env.DEPLOYMENT_METHOD == 'ocuroot'
+        env:
+          OCUROOT_LOCAL_MODE: "false"
+          OCUROOT_ENV: staging
+          OCUROOT_INPUT_gcp_project: ${{ env.PROJECT_ID }}
+          OCUROOT_INPUT_environment: staging
+          OCUROOT_INPUT_year: ${{ steps.version.outputs.year }}
+          OCUROOT_INPUT_month: ${{ steps.version.outputs.month }}
+          OCUROOT_INPUT_day: ${{ steps.version.outputs.day }}
+          OCUROOT_INPUT_sha: ${{ github.sha }}
+        run: |
+          echo "🚀 Deploying via Ocuroot..."
+          echo "   Environment: staging"
+          echo "   Project: ${{ env.PROJECT_ID }}"
+          echo ""
+
+          # Run Ocuroot release
+          ocuroot release new backend_v2/release.ocu.star --cascade || {
+            echo "❌ Ocuroot deployment failed"
+            echo "DEPLOYMENT_FAILED=true" >> $GITHUB_ENV
+            exit 1
+          }
+
+          echo "✅ Ocuroot deployment complete"
+
       # Step 4: Get final service URL if not set
       - name: Get Service URL
         run: |
-          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
-            SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          # Get SERVICE_URL based on deployment method
+          if [[ "${{ env.DEPLOYMENT_METHOD }}" == "ocuroot" && -z "$SERVICE_URL" ]]; then
+            # Try to get from Ocuroot state first
+            SERVICE_URL=$(ocuroot state get backend_v2/release.ocu.star/@/deploy/staging#output/service_url 2>/dev/null || echo "")
+          fi
+
+          # Fallback to gcloud if not set
+          if [[ -z "$SERVICE_URL" ]]; then
+            SERVICE_URL=$(gcloud run services describe trackrat-api-staging \
               --region=${{ env.REGION }} \
+              --project=${{ env.PROJECT_ID }} \
               --format='value(status.url)' 2>/dev/null || echo "")
-            echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
           fi
-          echo "🔗 Service URL: ${{ env.SERVICE_URL }}"
 
-      # Step 5: Health checks
-      - name: Health Check
+          echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+          echo "🔗 Service URL: $SERVICE_URL"
+
+      # Step 5: Verify Deployment
+      - name: Verify Deployment
+        if: env.SERVICE_URL != ''
         run: |
-          echo "🏥 Performing health check..."
+          chmod +x scripts/verify-deployment.sh
+          ./scripts/verify-deployment.sh "${{ env.SERVICE_URL }}" "staging"
 
-          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
-            echo "⚠️ Service URL not available, skipping health check"
-            exit 0
-          fi
-
-          # Wait a moment for the service to be ready
-          sleep 30
-
-          # Check health endpoint
-          HEALTH_URL="${{ env.SERVICE_URL }}/health"
-
-          for i in {1..5}; do
-            echo "Health check attempt $i/5..."
-
-            if curl -f -s "$HEALTH_URL" > /dev/null; then
-              echo "✅ Health check passed!"
-              curl -s "$HEALTH_URL" | jq '.' || echo "Health endpoint returned non-JSON response"
-              break
-            else
-              echo "❌ Health check failed, retrying in 30 seconds..."
-              if [ $i -eq 5 ]; then
-                echo "❌ All health checks failed"
-                exit 1
-              fi
-              sleep 30
-            fi
-          done
-
-      # Step 6: Test API endpoints
-      - name: Test API Endpoints
-        run: |
-          echo "🧪 Testing API endpoints..."
-
-          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
-            echo "⚠️ Service URL not available, skipping API tests"
-            exit 0
-          fi
-
-          # Test V2 trains endpoint
-          TRAINS_URL="${{ env.SERVICE_URL }}/api/v2/trains/departures?from=NY&limit=5"
-          echo "Testing: $TRAINS_URL"
-
-          if curl -f -s "$TRAINS_URL" > /dev/null; then
-            echo "✅ V2 Trains API endpoint is responding"
-          else
-            echo "⚠️ V2 Trains API endpoint check failed (may be expected if no data)"
-          fi
-
-          # Test health endpoint
-          HEALTH_URL="${{ env.SERVICE_URL }}/health"
-          echo "Testing: $HEALTH_URL"
-
-          if curl -f -s "$HEALTH_URL" > /dev/null; then
-            echo "✅ Health endpoint is responding"
-          else
-            echo "⚠️ Health endpoint check failed"
-          fi
-
-      # Step 7: Deployment summary
+      # Step 6: Deployment summary
       - name: Deployment Summary
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           echo "## 🚀 Staging Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Method**: \`${{ env.DEPLOYMENT_METHOD }}\`" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Infrastructure and Application deployed successfully**" >> $GITHUB_STEP_SUMMARY
           echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
           echo "🏥 **Health Check**: [${{ env.SERVICE_URL }}/health](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
@@ -491,13 +530,38 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Determine Deployment Method
+        id: deploy_method
+        run: |
+          # Use workflow_dispatch input if provided, otherwise use env default
+          METHOD="${{ github.event.inputs.deployment_method || env.DEPLOYMENT_METHOD }}"
+
+          echo "📦 Deployment Method: $METHOD"
+          echo "DEPLOYMENT_METHOD=$METHOD" >> $GITHUB_ENV
+          echo "method=$METHOD" >> $GITHUB_OUTPUT
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      # Step 1: Ensure Artifact Registry repository exists
+      - name: Setup Ocuroot
+        if: env.DEPLOYMENT_METHOD == 'ocuroot'
+        run: |
+          echo "📥 Installing Ocuroot..."
+          wget -q -O ocuroot https://github.com/ocuroot/ocuroot/releases/latest/download/ocuroot_linux_amd64
+          chmod +x ocuroot
+          sudo mv ocuroot /usr/local/bin/
+          ocuroot version
+          echo "✅ Ocuroot installed"
+
+      # ============================================================================
+      # TERRAFORM DEPLOYMENT PATH
+      # ============================================================================
+
+      # Step 1: Ensure Artifact Registry repository exists (Terraform method)
       - name: Setup Artifact Registry Repository
+        if: env.DEPLOYMENT_METHOD == 'terraform'
         working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
         run: |
           echo "🏗️ Setting up Artifact Registry repository..."
@@ -520,8 +584,9 @@ jobs:
 
           echo "✅ Artifact Registry repository ready"
 
-      # Step 2: Determine deployment image
+      # Step 2: Determine deployment image (Terraform method)
       - name: Determine deployment image
+        if: env.DEPLOYMENT_METHOD == 'terraform'
         run: |
           echo "🐳 Determining deployment image..."
 
@@ -539,8 +604,9 @@ jobs:
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           echo "✅ Using image: $IMAGE_TAG"
 
-      # Step 3: Deploy all infrastructure including Cloud Run services
+      # Step 3: Deploy all infrastructure including Cloud Run services (Terraform method)
       - name: Deploy Infrastructure and Services
+        if: env.DEPLOYMENT_METHOD == 'terraform'
         working-directory: ./infra/environments/${{ env.ENVIRONMENT }}
         run: |
           echo "🏗️ Deploying infrastructure and services..."
@@ -569,87 +635,87 @@ jobs:
 
           echo "✅ Infrastructure and services deployed"
 
+      # ============================================================================
+      # OCUROOT DEPLOYMENT PATH
+      # ============================================================================
+
+      - name: Initialize Ocuroot State
+        if: env.DEPLOYMENT_METHOD == 'ocuroot'
+        env:
+          OCUROOT_LOCAL_MODE: "false"
+          OCUROOT_ENV: production
+        run: |
+          echo "🔧 Initializing Ocuroot state..."
+
+          # Check if environments are registered
+          if ! ocuroot state get @/environment/production 2>/dev/null; then
+            echo "Registering environments..."
+            ocuroot release new environments/release.ocu.star
+          fi
+
+          echo "✅ Ocuroot state initialized"
+
+      - name: Deploy via Ocuroot
+        if: env.DEPLOYMENT_METHOD == 'ocuroot'
+        env:
+          OCUROOT_LOCAL_MODE: "false"
+          OCUROOT_ENV: production
+          OCUROOT_INPUT_gcp_project: ${{ env.PROJECT_ID }}
+          OCUROOT_INPUT_environment: production
+          OCUROOT_INPUT_year: ${{ steps.version.outputs.year }}
+          OCUROOT_INPUT_month: ${{ steps.version.outputs.month }}
+          OCUROOT_INPUT_day: ${{ steps.version.outputs.day }}
+          OCUROOT_INPUT_sha: ${{ github.sha }}
+        run: |
+          echo "🚀 Deploying via Ocuroot..."
+          echo "   Environment: production"
+          echo "   Project: ${{ env.PROJECT_ID }}"
+          echo ""
+
+          # Run Ocuroot release
+          ocuroot release new backend_v2/release.ocu.star --cascade || {
+            echo "❌ Ocuroot deployment failed"
+            echo "DEPLOYMENT_FAILED=true" >> $GITHUB_ENV
+            exit 1
+          }
+
+          echo "✅ Ocuroot deployment complete"
+
       # Step 4: Get final service URL if not set
       - name: Get Service URL
         run: |
-          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
-            SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+          # Get SERVICE_URL based on deployment method
+          if [[ "${{ env.DEPLOYMENT_METHOD }}" == "ocuroot" && -z "$SERVICE_URL" ]]; then
+            # Try to get from Ocuroot state first
+            SERVICE_URL=$(ocuroot state get backend_v2/release.ocu.star/@/deploy/production#output/service_url 2>/dev/null || echo "")
+          fi
+
+          # Fallback to gcloud if not set
+          if [[ -z "$SERVICE_URL" ]]; then
+            SERVICE_URL=$(gcloud run services describe trackrat-api-prod \
               --region=${{ env.REGION }} \
+              --project=${{ env.PROJECT_ID }} \
               --format='value(status.url)' 2>/dev/null || echo "")
-            echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
           fi
-          echo "🔗 Service URL: ${{ env.SERVICE_URL }}"
 
-      # Step 5: Health checks
-      - name: Health Check
+          echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+          echo "🔗 Service URL: $SERVICE_URL"
+
+      # Step 5: Verify Deployment
+      - name: Verify Deployment
+        if: env.SERVICE_URL != ''
         run: |
-          echo "🏥 Performing health check..."
+          chmod +x scripts/verify-deployment.sh
+          ./scripts/verify-deployment.sh "${{ env.SERVICE_URL }}" "production"
 
-          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
-            echo "⚠️ Service URL not available, skipping health check"
-            exit 0
-          fi
-
-          # Wait a moment for the service to be ready
-          sleep 30
-
-          # Check health endpoint
-          HEALTH_URL="${{ env.SERVICE_URL }}/health"
-
-          for i in {1..5}; do
-            echo "Health check attempt $i/5..."
-
-            if curl -f -s "$HEALTH_URL" > /dev/null; then
-              echo "✅ Health check passed!"
-              curl -s "$HEALTH_URL" | jq '.' || echo "Health endpoint returned non-JSON response"
-              break
-            else
-              echo "❌ Health check failed, retrying in 30 seconds..."
-              if [ $i -eq 5 ]; then
-                echo "❌ All health checks failed"
-                exit 1
-              fi
-              sleep 30
-            fi
-          done
-
-      # Step 6: Test API endpoints
-      - name: Test API Endpoints
-        run: |
-          echo "🧪 Testing API endpoints..."
-
-          if [[ -z "${{ env.SERVICE_URL }}" ]]; then
-            echo "⚠️ Service URL not available, skipping API tests"
-            exit 0
-          fi
-
-          # Test V2 trains endpoint
-          TRAINS_URL="${{ env.SERVICE_URL }}/api/v2/trains/departures?from=NY&limit=5"
-          echo "Testing: $TRAINS_URL"
-
-          if curl -f -s "$TRAINS_URL" > /dev/null; then
-            echo "✅ V2 Trains API endpoint is responding"
-          else
-            echo "⚠️ V2 Trains API endpoint check failed (may be expected if no data)"
-          fi
-
-          # Test health endpoint
-          HEALTH_URL="${{ env.SERVICE_URL }}/health"
-          echo "Testing: $HEALTH_URL"
-
-          if curl -f -s "$HEALTH_URL" > /dev/null; then
-            echo "✅ Health endpoint is responding"
-          else
-            echo "⚠️ Health endpoint check failed"
-          fi
-
-      # Step 7: Deployment summary
+      # Step 6: Deployment summary
       - name: Deployment Summary
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           echo "## 🚀 Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Method**: \`${{ env.DEPLOYMENT_METHOD }}\`" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Infrastructure and Application deployed successfully**" >> $GITHUB_STEP_SUMMARY
           echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
           echo "🏥 **Health Check**: [${{ env.SERVICE_URL }}/health](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,327 @@
+"""TrackRat Backend Release Definition
+
+This release definition handles:
+1. Building Docker images
+2. Deploying via Terraform to Cloud Run
+3. Health checks and verification
+4. Rollback capabilities
+"""
+
+ocuroot("0.3.0")
+
+load("/lib/terraform.star", "setup_terraform")
+load("/lib/secrets.star", "store_output", "get_output")
+load("encoding/json.star", json="json")
+
+def build(prev_build_number):
+    """Build and push Docker image to Artifact Registry
+
+    Args:
+        prev_build_number: Previous build number for incrementing
+
+    Returns:
+        Dictionary with build outputs (build_number, image_tag, version, timestamp)
+    """
+
+    # Increment build number
+    build_number = (prev_build_number or 0) + 1
+
+    # Generate version string
+    # Format: YYYY.MM.DD-buildN-githash
+    version = "{}.{}.{}-build{}-{}".format(
+        inputs.get("year", "2025"),
+        inputs.get("month", "01"),
+        inputs.get("day", "01"),
+        build_number,
+        inputs.get("sha", "unknown")[:7]
+    )
+
+    # Determine project and repository
+    project_id = inputs.get("gcp_project", "trackrat-staging")
+    env = inputs.get("environment", "staging")
+
+    # Repository name based on environment
+    if "staging" in env:
+        repository = "trackcast-inference-staging"
+    else:
+        repository = "trackcast-inference-prod"
+
+    # Full image tag
+    image_tag = "us-central1-docker.pkg.dev/{}/{}/trackcast-inference:{}".format(
+        project_id, repository, version
+    )
+
+    print("=" * 60)
+    print("🐳 DOCKER BUILD")
+    print("=" * 60)
+    print("   Version: {}".format(version))
+    print("   Image: {}".format(image_tag))
+    print("   Build number: {}".format(build_number))
+    print("")
+
+    # Build and push with Docker buildx
+    print("📦 Building Docker image...")
+    host.shell("""
+        docker buildx build \
+            --platform linux/amd64 \
+            --cache-from type=registry,ref=us-central1-docker.pkg.dev/{}/{}/trackcast-inference:cache \
+            --cache-to type=registry,ref=us-central1-docker.pkg.dev/{}/{}/trackcast-inference:cache,mode=max \
+            --tag {} \
+            --tag us-central1-docker.pkg.dev/{}/{}/trackcast-inference:latest \
+            --push \
+            backend_v2/
+    """.format(project_id, repository, project_id, repository, image_tag, project_id, repository))
+
+    print("✅ Docker image built and pushed")
+
+    # Also tag as latest-stable for rollback purposes
+    host.shell("""
+        docker pull {}
+        docker tag {} us-central1-docker.pkg.dev/{}/{}/trackcast-inference:latest-stable
+        docker push us-central1-docker.pkg.dev/{}/{}/trackcast-inference:latest-stable
+    """.format(image_tag, image_tag, project_id, repository, project_id, repository))
+
+    print("✅ Tagged as latest-stable for rollback")
+
+    # Return build outputs
+    return {
+        "build_number": build_number,
+        "image_tag": image_tag,
+        "version": version,
+        "timestamp": host.shell("date -u '+%Y-%m-%d %H:%M:%S UTC'", capture_output=True).stdout.strip()
+    }
+
+def deploy_infrastructure(image_tag, environment):
+    """Deploy backend using Terraform
+
+    Args:
+        image_tag: Docker image tag to deploy
+        environment: Ocuroot environment object
+
+    Returns:
+        Dictionary of Terraform outputs
+    """
+
+    print("")
+    print("=" * 60)
+    print("🚀 TERRAFORM DEPLOYMENT")
+    print("=" * 60)
+    print("   Environment: {}".format(environment.name))
+    print("   Project: {}".format(environment.attributes["gcp_project"]))
+    print("   Image: {}".format(image_tag))
+    print("")
+
+    # Setup Terraform
+    print("🔧 Setting up Terraform...")
+    tf = setup_terraform(environment, "backend")
+
+    # Prepare Terraform variables
+    terraform_vars = {
+        "project_id": environment.attributes["gcp_project"],
+        "region": environment.attributes["gcp_region"],
+        "zone": environment.attributes["gcp_zone"],
+        "api_image_url": image_tag,
+        "scheduler_image_url": image_tag
+    }
+
+    print("")
+    print("📋 Terraform variables:")
+    for k, v in terraform_vars.items():
+        print("   {}: {}".format(k, v))
+    print("")
+
+    # Plan changes
+    print("📝 Planning Terraform changes...")
+    tf.plan(vars=terraform_vars)
+
+    # Apply changes
+    print("")
+    print("⚡ Applying Terraform changes...")
+    outputs = tf.apply(vars=terraform_vars)
+
+    print("")
+    print("=" * 60)
+    print("✅ TERRAFORM DEPLOYMENT COMPLETE")
+    print("=" * 60)
+
+    # Extract service URL
+    service_url = outputs.get("trackrat_api_service_url", "")
+
+    if not service_url:
+        # Fallback: get URL from gcloud
+        print("⚠️  Service URL not in Terraform outputs, fetching from gcloud...")
+        result = host.shell("""
+            gcloud run services describe {} \
+                --region={} \
+                --project={} \
+                --format='value(status.url)'
+        """.format(
+            environment.attributes["service_name"],
+            environment.attributes["gcp_region"],
+            environment.attributes["gcp_project"]
+        ), capture_output=True, check=False)
+
+        if result.returncode == 0:
+            service_url = result.stdout.strip()
+            outputs["trackrat_api_service_url"] = service_url
+
+    if service_url:
+        print("🔗 Service URL: {}".format(service_url))
+
+        # Run health checks
+        print("")
+        print("🏥 Running health checks...")
+        verify_deployment(service_url)
+
+        # Store outputs in Secret Manager for other services
+        print("")
+        print("💾 Storing deployment outputs...")
+        store_output("service_url", service_url, environment)
+        store_output("image_tag", image_tag, environment)
+        print("✅ Outputs stored in Secret Manager")
+    else:
+        print("⚠️  Could not determine service URL")
+
+    return outputs
+
+def verify_deployment(service_url):
+    """Verify deployment with health checks
+
+    Args:
+        service_url: Base URL of the deployed service
+    """
+
+    health_url = "{}/health".format(service_url)
+
+    print("   Endpoint: {}".format(health_url))
+    print("   Waiting for service to be ready...")
+
+    # Wait for service to come up
+    host.shell("sleep 30")
+
+    # Try health checks with retries
+    max_retries = 5
+    for attempt in range(1, max_retries + 1):
+        print("   Attempt {}/{}...".format(attempt, max_retries))
+
+        result = host.shell(
+            "curl -f -s {}".format(health_url),
+            check=False,
+            capture_output=True
+        )
+
+        if result.returncode == 0:
+            print("✅ Health check passed!")
+
+            # Pretty print the response
+            try:
+                health_data = json.decode(result.stdout)
+                print("")
+                print("   Health Status:")
+                print("   - Status: {}".format(health_data.get("status", "unknown")))
+                print("   - Database: {}".format(health_data.get("database", "unknown")))
+                print("   - Scheduler: {}".format(health_data.get("scheduler", "unknown")))
+            except:
+                print("   Response: {}".format(result.stdout[:200]))
+
+            return
+
+        if attempt < max_retries:
+            print("   Retrying in 30 seconds...")
+            host.shell("sleep 30")
+
+    # All retries failed
+    fail("❌ Health checks failed after {} attempts".format(max_retries))
+
+def rollback_infrastructure(environment):
+    """Rollback to the previous stable version
+
+    Args:
+        environment: Ocuroot environment object
+    """
+
+    print("")
+    print("=" * 60)
+    print("⏪ ROLLBACK")
+    print("=" * 60)
+    print("   Environment: {}".format(environment.name))
+    print("")
+
+    # Get previous image from Secret Manager
+    previous_image = get_output("image_tag", environment)
+
+    if not previous_image:
+        # Fallback to latest-stable tag
+        project_id = environment.attributes["gcp_project"]
+        repository = environment.attributes["artifact_registry"]
+        previous_image = "us-central1-docker.pkg.dev/{}/{}/trackcast-inference:latest-stable".format(
+            project_id, repository
+        )
+        print("⚠️  No previous image in Secret Manager, using latest-stable")
+
+    print("   Rolling back to: {}".format(previous_image))
+
+    # Setup Terraform
+    tf = setup_terraform(environment, "backend")
+
+    # Deploy previous image
+    terraform_vars = {
+        "project_id": environment.attributes["gcp_project"],
+        "region": environment.attributes["gcp_region"],
+        "zone": environment.attributes["gcp_zone"],
+        "api_image_url": previous_image,
+        "scheduler_image_url": previous_image
+    }
+
+    tf.plan(vars=terraform_vars)
+    tf.apply(vars=terraform_vars)
+
+    print("✅ Rollback complete")
+
+# ============================================================================
+# RELEASE PHASES
+# ============================================================================
+
+# Phase 1: Build
+# Builds Docker image and pushes to Artifact Registry
+phase(
+    "build",
+    work=[
+        task(
+            build,
+            name="build-backend"
+        )
+    ]
+)
+
+# Phase 2: Deploy to Staging
+# Deploys to staging environment automatically
+phase(
+    "staging",
+    work=[
+        deploy(
+            up=deploy_infrastructure,
+            down=rollback_infrastructure,
+            environment=e,
+            inputs={
+                "image_tag": ref("./@/task/build-backend#output/image_tag")
+            }
+        ) for e in environments() if e.attributes.get("type") == "staging"
+    ]
+)
+
+# Phase 3: Deploy to Production
+# Deploys to production environment (requires approval if configured)
+phase(
+    "production",
+    work=[
+        deploy(
+            up=deploy_infrastructure,
+            down=rollback_infrastructure,
+            environment=e,
+            inputs={
+                "image_tag": ref("./@/task/build-backend#output/image_tag")
+            }
+        ) for e in environments() if e.attributes.get("type") == "production"
+    ]
+)

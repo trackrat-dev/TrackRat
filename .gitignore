@@ -24,3 +24,7 @@ ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/andy.xcuserdatad/UserInter
 # Terraform plans
 *.tfplan
 tfplan
+
+# Ocuroot local state and cache
+.ocuroot/
+.ocuroot-store
