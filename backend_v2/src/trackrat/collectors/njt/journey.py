@@ -5,7 +5,7 @@ Collects complete journey details using the getTrainStopList API.
 """
 
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.engine import CursorResult
@@ -225,7 +225,7 @@ class JourneyCollector(BaseJourneyCollector):
             .values(is_expired=True)
         )
 
-        result: CursorResult[tuple[()]] = await session.execute(stmt)
+        result = cast(CursorResult[tuple[()]], await session.execute(stmt))
 
         if result.rowcount and result.rowcount > 0:
             logger.info(

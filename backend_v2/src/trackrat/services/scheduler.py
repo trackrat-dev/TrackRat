@@ -7,7 +7,7 @@ Uses APScheduler to run periodic tasks within the FastAPI application.
 import asyncio
 from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -1986,15 +1986,18 @@ class SchedulerService:
                     current_time = now_et()
 
                     # Update expired tokens to inactive
-                    result: CursorResult[tuple[()]] = session.execute(
-                        update(LiveActivityToken)
-                        .where(
-                            and_(
-                                LiveActivityToken.is_active.is_(True),
-                                LiveActivityToken.expires_at <= current_time,
+                    result = cast(
+                        CursorResult[tuple[()]],
+                        session.execute(
+                            update(LiveActivityToken)
+                            .where(
+                                and_(
+                                    LiveActivityToken.is_active.is_(True),
+                                    LiveActivityToken.expires_at <= current_time,
+                                )
                             )
-                        )
-                        .values(is_active=False)
+                            .values(is_active=False)
+                        ),
                     )
 
                     session.commit()
