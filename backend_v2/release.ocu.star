@@ -11,17 +11,40 @@ ocuroot("0.3.0")
 
 load("/lib/terraform.star", "setup_terraform")
 load("/lib/secrets.star", "store_output", "get_output")
-load("encoding/json.star", json="json")
 
-def build(prev_build_number):
+def build(prev_build_number=None, year=None, month=None, day=None, sha=None, gcp_project=None, environment=None):
     """Build and push Docker image to Artifact Registry
 
     Args:
         prev_build_number: Previous build number for incrementing
+        year: Year for version string (defaults to current year)
+        month: Month for version string (defaults to current month)
+        day: Day for version string (defaults to current day)
+        sha: Git commit SHA (defaults to "unknown")
+        gcp_project: GCP project ID (defaults to "trackrat-staging")
+        environment: Environment name (defaults to "staging")
 
     Returns:
         Dictionary with build outputs (build_number, image_tag, version, timestamp)
     """
+
+    # Get current date if not provided
+    if not year:
+        year = host.shell("date +%Y").stdout.strip()
+    if not month:
+        month = host.shell("date +%m").stdout.strip()
+    if not day:
+        day = host.shell("date +%d").stdout.strip()
+
+    # Get git SHA if not provided
+    if not sha:
+        sha = host.shell("git rev-parse HEAD").stdout.strip()
+
+    # Default values
+    if not gcp_project:
+        gcp_project = "trackrat-staging"
+    if not environment:
+        environment = "staging"
 
     # Increment build number
     build_number = (prev_build_number or 0) + 1
@@ -29,16 +52,16 @@ def build(prev_build_number):
     # Generate version string
     # Format: YYYY.MM.DD-buildN-githash
     version = "{}.{}.{}-build{}-{}".format(
-        inputs.get("year", "2025"),
-        inputs.get("month", "01"),
-        inputs.get("day", "01"),
+        year,
+        month,
+        day,
         build_number,
-        inputs.get("sha", "unknown")[:7]
+        sha[:7]
     )
 
     # Determine project and repository
-    project_id = inputs.get("gcp_project", "trackrat-staging")
-    env = inputs.get("environment", "staging")
+    project_id = gcp_project
+    env = environment
 
     # Repository name based on environment
     if "staging" in env:
@@ -60,8 +83,10 @@ def build(prev_build_number):
     print("")
 
     # Build and push with Docker buildx
+    # Note: ocuroot runs from backend_v2/ directory, but Docker needs repo root
     print("📦 Building Docker image...")
     host.shell("""
+        cd ../backend_v2 && \
         docker buildx build \
             --platform linux/amd64 \
             --cache-from type=registry,ref=us-central1-docker.pkg.dev/{}/{}/trackcast-inference:cache \
@@ -69,17 +94,16 @@ def build(prev_build_number):
             --tag {} \
             --tag us-central1-docker.pkg.dev/{}/{}/trackcast-inference:latest \
             --push \
-            backend_v2/
+            .
     """.format(project_id, repository, project_id, repository, image_tag, project_id, repository))
 
     print("✅ Docker image built and pushed")
 
     # Also tag as latest-stable for rollback purposes
     host.shell("""
-        docker pull {}
-        docker tag {} us-central1-docker.pkg.dev/{}/{}/trackcast-inference:latest-stable
+        docker tag {} us-central1-docker.pkg.dev/{}/{}/trackcast-inference:latest-stable && \
         docker push us-central1-docker.pkg.dev/{}/{}/trackcast-inference:latest-stable
-    """.format(image_tag, image_tag, project_id, repository, project_id, repository))
+    """.format(image_tag, project_id, repository, project_id, repository))
 
     print("✅ Tagged as latest-stable for rollback")
 
@@ -88,7 +112,7 @@ def build(prev_build_number):
         "build_number": build_number,
         "image_tag": image_tag,
         "version": version,
-        "timestamp": host.shell("date -u '+%Y-%m-%d %H:%M:%S UTC'", capture_output=True).stdout.strip()
+        "timestamp": host.shell("date -u '+%Y-%m-%d %H:%M:%S UTC'").stdout.strip()
     }
 
 def deploy_infrastructure(image_tag, environment):
@@ -159,7 +183,7 @@ def deploy_infrastructure(image_tag, environment):
             environment.attributes["service_name"],
             environment.attributes["gcp_region"],
             environment.attributes["gcp_project"]
-        ), capture_output=True, check=False)
+        ), check=False)
 
         if result.returncode == 0:
             service_url = result.stdout.strip()
@@ -206,8 +230,7 @@ def verify_deployment(service_url):
 
         result = host.shell(
             "curl -f -s {}".format(health_url),
-            check=False,
-            capture_output=True
+            check=False
         )
 
         if result.returncode == 0:
@@ -230,10 +253,11 @@ def verify_deployment(service_url):
     # All retries failed
     fail("❌ Health checks failed after {} attempts".format(max_retries))
 
-def rollback_infrastructure(environment):
+def rollback_infrastructure(image_tag, environment):
     """Rollback to the previous stable version
 
     Args:
+        image_tag: Docker image tag (ignored, we fetch from Secret Manager)
         environment: Ocuroot environment object
     """
 
@@ -309,16 +333,16 @@ phase(
 
 # Phase 3: Deploy to Production
 # Deploys to production environment (requires approval if configured)
-phase(
-    "production",
-    work=[
-        deploy(
-            up=deploy_infrastructure,
-            down=rollback_infrastructure,
-            environment=e,
-            inputs={
-                "image_tag": ref("./@/task/build-backend#output/image_tag")
-            }
-        ) for e in environments() if e.attributes.get("type") == "production"
-    ]
-)
+#phase(
+#    "production",
+#    work=[
+#        deploy(
+#            up=deploy_infrastructure,
+#            down=rollback_infrastructure,
+#            environment=e,
+#            inputs={
+#                "image_tag": ref("./@/task/build-backend#output/image_tag")
+#            }
+#        ) for e in environments() if e.attributes.get("type") == "production"
+#    ]
+#)
