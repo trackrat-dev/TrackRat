@@ -213,16 +213,13 @@ def verify_deployment(service_url):
         if result.returncode == 0:
             print("✅ Health check passed!")
 
-            # Pretty print the response
-            try:
-                health_data = json.decode(result.stdout)
-                print("")
-                print("   Health Status:")
-                print("   - Status: {}".format(health_data.get("status", "unknown")))
-                print("   - Database: {}".format(health_data.get("database", "unknown")))
-                print("   - Scheduler: {}".format(health_data.get("scheduler", "unknown")))
-            except:
-                print("   Response: {}".format(result.stdout[:200]))
+            # Pretty print the response (best effort)
+            health_data = json.decode(result.stdout)
+            print("")
+            print("   Health Status:")
+            print("   - Status: {}".format(health_data.get("status", "unknown")))
+            print("   - Database: {}".format(health_data.get("database", "unknown")))
+            print("   - Scheduler: {}".format(health_data.get("scheduler", "unknown")))
 
             return
 
