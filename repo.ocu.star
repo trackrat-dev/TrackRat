@@ -10,8 +10,8 @@ ocuroot("0.3.0")
 repo_alias("github.com/bokonon1/TrackRat")
 
 # Configure state storage based on mode
-# Local mode uses filesystem, cloud mode uses GCS
-def setup_store():
+# Local mode uses filesystem, cloud mode uses git
+def setup_and_configure_store():
     env_vars = host.env()
     local_mode = "OCUROOT_LOCAL_MODE" in env_vars
 
@@ -20,37 +20,30 @@ def setup_store():
         print("   State storage: ./.ocuroot/state")
         print("   Intent storage: ./.ocuroot/intent")
         print("")
-        print("   To use cloud storage, unset OCUROOT_LOCAL_MODE")
+        print("   To use git storage, unset OCUROOT_LOCAL_MODE")
         print("")
 
-        return store.fs("./.ocuroot/state"), store.fs("./.ocuroot/intent")
+        state_store = store.fs("./.ocuroot/state")
+        intent_store = store.fs("./.ocuroot/intent")
+        store.set(state_store, intent=intent_store)
+    else:
+        # Cloud mode - use git backend for shared state
+        env = env_vars.get("OCUROOT_ENV", "staging")
 
-    # Cloud mode
-    env = env_vars.get("OCUROOT_ENV", "staging")
-    project_map = {
-        "staging": "trackrat-staging",
-        "production": "trackrat-prod"
-    }
-    project_id = project_map.get(env, "trackrat-staging")
+        print("☁️  OCUROOT CLOUD MODE")
+        print("   Environment: {}".format(env))
+        print("   State storage: Git repository (ocuroot-state branch)")
+        print("")
 
-    print("☁️  OCUROOT CLOUD MODE")
-    print("   Environment: {}".format(env))
-    print("   Project: {}".format(project_id))
-    print("   State bucket: {}-ocuroot-state".format(project_id))
-    print("")
+        # Use git backend pointing to this repository's ocuroot-state branch
+        # Using SSH URL for authentication
+        store.set(
+            store.git("git@github.com:bokonon1/trackrat-ocuroot-state.git", branch="state"),
+            intent=store.git("git@github.com:bokonon1/trackrat-ocuroot-state.git", branch="intent"),
+        )
 
-    return store.gcs(
-        bucket="{}-ocuroot-state".format(project_id),
-        prefix="state/",
-        project=project_id
-    ), None
-
-# Initialize store
-state_store, intent_store = setup_store()
-
-# Call store.set with appropriate arguments
-# In local mode, intent_store will be set; in cloud mode it will be None
-store.set(state_store, intent=intent_store) if intent_store else store.set(state_store)
+# Initialize and configure store
+setup_and_configure_store()
 
 # Trigger handler for automatic workflow cascading
 def do_trigger(commit):
