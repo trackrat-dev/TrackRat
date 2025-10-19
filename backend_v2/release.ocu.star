@@ -11,7 +11,6 @@ Note: Uses Ocuroot for deployment orchestration
 
 ocuroot("0.3.0")
 
-load("@ocuroot//encoding/json.star", json="json")
 load("/lib/terraform.star", "setup_terraform")
 load("/lib/secrets.star", "store_output", "get_output")
 
@@ -246,15 +245,9 @@ def verify_deployment(service_url):
 
         if result.returncode == 0:
             print("✅ Health check passed!")
-
-            # Pretty print the response (best effort)
-            health_data = json.decode(result.stdout)
             print("")
-            print("   Health Status:")
-            print("   - Status: {}".format(health_data.get("status", "unknown")))
-            print("   - Database: {}".format(health_data.get("database", "unknown")))
-            print("   - Scheduler: {}".format(health_data.get("scheduler", "unknown")))
-
+            print("   Response:")
+            print(result.stdout)
             return
 
         if attempt < max_retries:

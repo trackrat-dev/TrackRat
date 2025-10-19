@@ -5,8 +5,6 @@ within Ocuroot release workflows, handling initialization, planning, and
 applying changes with proper state management.
 """
 
-load("@ocuroot//encoding/json.star", json="json")
-
 def setup_terraform(environment, module_name):
     """Setup Terraform with GCS backend for the given environment and module
 
@@ -157,21 +155,22 @@ def setup_terraform(environment, module_name):
 
         print("✅ Terraform apply completed")
 
-        # Get outputs
+        # Get outputs using individual terraform output commands
         print("📤 Retrieving Terraform outputs...")
-        output_result = host.shell(
-            "terraform output -json",
+
+        # Get service URL output
+        outputs = {}
+        service_url_result = host.shell(
+            "terraform output -raw trackrat_api_service_url 2>/dev/null || echo ''",
             dir=tf_dir,
             env={"TF_DATA_DIR": cache_dir},
-            capture_output=True
+            capture_output=True,
+            check=False
         )
 
-        outputs = {}
-        if output_result.stdout:
-            output_data = json.decode(output_result.stdout)
-            for k, v in output_data.items():
-                outputs[k] = v["value"]
-            print("   Found {} outputs".format(len(outputs)))
+        if service_url_result.returncode == 0 and service_url_result.stdout.strip():
+            outputs["trackrat_api_service_url"] = service_url_result.stdout.strip()
+            print("   Found service URL output")
 
         return outputs
 
@@ -205,18 +204,18 @@ def setup_terraform(environment, module_name):
         """
         print("📤 Retrieving Terraform outputs...")
 
-        output_result = host.shell(
-            "terraform output -json",
+        # Get service URL output
+        outputs = {}
+        service_url_result = host.shell(
+            "terraform output -raw trackrat_api_service_url 2>/dev/null || echo ''",
             dir=tf_dir,
             env={"TF_DATA_DIR": cache_dir},
-            capture_output=True
+            capture_output=True,
+            check=False
         )
 
-        outputs = {}
-        if output_result.stdout:
-            output_data = json.decode(output_result.stdout)
-            for k, v in output_data.items():
-                outputs[k] = v["value"]
+        if service_url_result.returncode == 0 and service_url_result.stdout.strip():
+            outputs["trackrat_api_service_url"] = service_url_result.stdout.strip()
 
         return outputs
 
