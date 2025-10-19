@@ -40,29 +40,36 @@ def set_secret(secret_name, value, project_id):
     """
     print("🔐 Storing secret: {} in project {}".format(secret_name, project_id))
 
-    # Try to create the secret first
+    # Try to create the secret first (capture both stdout and stderr, allow failure)
     create_result = host.shell(
-        "echo -n '{}' | gcloud secrets create {} --data-file=- --project={} --replication-policy=automatic 2>/dev/null".format(
+        "echo -n '{}' | gcloud secrets create {} --data-file=- --project={} --replication-policy=automatic 2>&1 || true".format(
             value, secret_name, project_id
         )
     )
 
-    if create_result.stdout.strip() or "Created" in create_result.stderr:
+    # Check if creation succeeded
+    output_lower = create_result.stdout.lower()
+    if "created secret" in output_lower or create_result.exit_code == 0:
         print("✅ Secret created")
         return
 
-    # If creation failed (likely already exists), add a new version
-    print("   Secret exists, adding new version...")
-    update_result = host.shell(
-        "echo -n '{}' | gcloud secrets versions add {} --data-file=- --project={} 2>&1".format(
-            value, secret_name, project_id
+    # If creation failed, check if it's because the secret already exists
+    if "already exists" in output_lower or "subject of a conflict" in output_lower:
+        print("   Secret exists, adding new version...")
+        update_result = host.shell(
+            "echo -n '{}' | gcloud secrets versions add {} --data-file=- --project={} 2>&1".format(
+                value, secret_name, project_id
+            )
         )
-    )
 
-    if "Created version" not in update_result.stdout:
-        fail("Failed to create or update secret '{}'".format(secret_name))
-
-    print("✅ Secret updated")
+        if update_result.exit_code == 0 or "created version" in update_result.stdout.lower():
+            print("✅ Secret updated")
+            return
+        else:
+            fail("Failed to update secret '{}': {}".format(secret_name, update_result.stdout))
+    else:
+        # Some other error occurred
+        fail("Failed to create secret '{}': {}".format(secret_name, create_result.stdout))
 
 def store_output(key, value, environment):
     """Store a deployment output as a secret for cross-phase access
