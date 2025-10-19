@@ -21,9 +21,15 @@ def setup_terraform(environment, module_name):
     tf_state_bucket = "{}-terraform-state".format(project_id)
     tf_state_prefix = "terraform/state"
 
+    # Get absolute paths
+    # Ocuroot runs from backend_v2/ directory
+    pwd_result = host.shell("pwd")
+    current_dir = pwd_result.stdout.strip()
+
     # Setup working directory (relative to repository root, not backend_v2/)
     tf_dir = "../infra/environments/{}".format(environment["attributes"]["terraform_env"])
-    cache_dir = ".ocuroot/terraform/{}/{}".format(environment["name"], module_name)
+    # Use absolute path for TF_DATA_DIR to avoid Terraform confusion
+    cache_dir = "{}/.ocuroot/terraform/{}/{}".format(current_dir, environment["name"], module_name)
 
     # Backend configuration for GCS
     backend_config = [
