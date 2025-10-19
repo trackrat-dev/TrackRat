@@ -411,6 +411,26 @@ jobs:
       # OCUROOT DEPLOYMENT PATH
       # ============================================================================
 
+      # Generate image tag for Ocuroot deployment
+      - name: Determine deployment image for Ocuroot
+        if: env.DEPLOYMENT_METHOD == 'ocuroot'
+        run: |
+          echo "🐳 Determining deployment image..."
+
+          # Generate the same version string as in the build step
+          VERSION="$(date -u +%Y.%m.%d)-build${{ github.run_number }}-${GITHUB_SHA:0:7}"
+
+          # Use the specific version for deployment
+          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${VERSION}"
+
+          echo "Using version: $VERSION"
+          echo "Using image tag: $IMAGE_TAG"
+
+          # Export for later steps
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "✅ Using image: $IMAGE_TAG"
+
       - name: Initialize Ocuroot State
         if: env.DEPLOYMENT_METHOD == 'ocuroot'
         env:
@@ -434,14 +454,12 @@ jobs:
           OCUROOT_ENV: staging
           OCUROOT_INPUT_gcp_project: ${{ env.PROJECT_ID }}
           OCUROOT_INPUT_environment: staging
-          OCUROOT_INPUT_year: ${{ steps.version.outputs.year }}
-          OCUROOT_INPUT_month: ${{ steps.version.outputs.month }}
-          OCUROOT_INPUT_day: ${{ steps.version.outputs.day }}
-          OCUROOT_INPUT_sha: ${{ github.sha }}
+          OCUROOT_INPUT_image_tag: ${{ env.IMAGE_TAG }}
         run: |
           echo "🚀 Deploying via Ocuroot..."
           echo "   Environment: staging"
           echo "   Project: ${{ env.PROJECT_ID }}"
+          echo "   Image: ${{ env.IMAGE_TAG }}"
           echo ""
 
           # Run Ocuroot release
@@ -643,6 +661,26 @@ jobs:
       # OCUROOT DEPLOYMENT PATH
       # ============================================================================
 
+      # Generate image tag for Ocuroot deployment
+      - name: Determine deployment image for Ocuroot
+        if: env.DEPLOYMENT_METHOD == 'ocuroot'
+        run: |
+          echo "🐳 Determining deployment image..."
+
+          # Generate the same version string as in the build step
+          VERSION="$(date -u +%Y.%m.%d)-build${{ github.run_number }}-${GITHUB_SHA:0:7}"
+
+          # Use the specific version for deployment
+          IMAGE_TAG="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${VERSION}"
+
+          echo "Using version: $VERSION"
+          echo "Using image tag: $IMAGE_TAG"
+
+          # Export for later steps
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+          echo "✅ Using image: $IMAGE_TAG"
+
       - name: Initialize Ocuroot State
         if: env.DEPLOYMENT_METHOD == 'ocuroot'
         env:
@@ -666,14 +704,12 @@ jobs:
           OCUROOT_ENV: production
           OCUROOT_INPUT_gcp_project: ${{ env.PROJECT_ID }}
           OCUROOT_INPUT_environment: production
-          OCUROOT_INPUT_year: ${{ steps.version.outputs.year }}
-          OCUROOT_INPUT_month: ${{ steps.version.outputs.month }}
-          OCUROOT_INPUT_day: ${{ steps.version.outputs.day }}
-          OCUROOT_INPUT_sha: ${{ github.sha }}
+          OCUROOT_INPUT_image_tag: ${{ env.IMAGE_TAG }}
         run: |
           echo "🚀 Deploying via Ocuroot..."
           echo "   Environment: production"
           echo "   Project: ${{ env.PROJECT_ID }}"
+          echo "   Image: ${{ env.IMAGE_TAG }}"
           echo ""
 
           # Run Ocuroot release
