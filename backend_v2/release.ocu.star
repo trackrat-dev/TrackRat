@@ -5,6 +5,8 @@ This release definition handles:
 2. Deploying via Terraform to Cloud Run
 3. Health checks and verification
 4. Rollback capabilities
+
+Note: Uses Ocuroot for deployment orchestration
 """
 
 ocuroot("0.3.0")
