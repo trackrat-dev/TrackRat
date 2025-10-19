@@ -42,12 +42,12 @@ def is_running_in_ci():
     # Default: assume local environment
     return False
 
-def build(prev_build_number=None, year=None, month=None, day=None, sha=None, gcp_project=None, environment=None, image_tag=None):
+def build(prev_build_number=None, year=None, month=None, day=None, sha=None, gcp_project=None, environment=None):
     """Build and push Docker image to Artifact Registry (local) or use pre-built image (CI)
 
     When running in CI (GitHub Actions):
         - Skips Docker build
-        - Uses image_tag provided via OCUROOT_INPUT_image_tag
+        - Uses image_tag from OCUROOT_INPUT_image_tag environment variable
         - Returns immediately with provided tag
 
     When running locally:
@@ -63,7 +63,6 @@ def build(prev_build_number=None, year=None, month=None, day=None, sha=None, gcp
         sha: Git commit SHA (defaults to "unknown")
         gcp_project: GCP project ID (defaults to "trackrat-staging")
         environment: Environment name (defaults to "staging")
-        image_tag: Pre-built image tag (CI only, provided via OCUROOT_INPUT_image_tag)
 
     Returns:
         Dictionary with build outputs (build_number, image_tag, version, timestamp)
@@ -77,9 +76,12 @@ def build(prev_build_number=None, year=None, month=None, day=None, sha=None, gcp
         print("🔍 DETECTED CI ENVIRONMENT")
         print("=" * 60)
 
+        # Read image_tag from environment variable (set by GitHub Actions)
+        image_tag = host.shell("echo ${OCUROOT_INPUT_image_tag:-}").stdout.strip()
+
         # Validate that image_tag was provided by CI
         if not image_tag:
-            fail("Running in CI but no image_tag provided. Please set OCUROOT_INPUT_image_tag environment variable.")
+            fail("Running in CI but OCUROOT_INPUT_image_tag environment variable is not set. GitHub Actions must provide the pre-built image tag.")
 
         print("📦 Using pre-built Docker image from GitHub Actions")
         print("   Image: {}".format(image_tag))
@@ -376,7 +378,7 @@ def rollback_infrastructure(image_tag, environment):
 
 # Task: Build Docker image and push to Artifact Registry
 # This runs before any deployment phases
-# - In CI: Uses pre-built image from GitHub Actions (via OCUROOT_INPUT_image_tag)
+# - In CI: Uses pre-built image from GitHub Actions (via OCUROOT_INPUT_image_tag env var)
 # - Locally: Builds Docker image and pushes to registry
 task(
     name="build-backend",
@@ -385,12 +387,9 @@ task(
         "prev_build_number": input(
             ref="./task/build-backend#output/build_number",
             default=0
-        ),
-        "image_tag": input(
-            name="image_tag",
-            description="Pre-built Docker image tag (CI only, provided by GitHub Actions)",
-            default=""  # Empty string means "not provided" - only used in CI
         )
+        # Note: image_tag is read directly from OCUROOT_INPUT_image_tag env var in CI
+        # Ocuroot doesn't support input() with only default value
     }
 )
 
