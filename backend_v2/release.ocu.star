@@ -186,14 +186,14 @@ def deploy_infrastructure(image_tag, environment):
             gcloud run services describe {} \
                 --region={} \
                 --project={} \
-                --format='value(status.url)'
+                --format='value(status.url)' 2>/dev/null || echo ''
         """.format(
             environment["attributes"]["service_name"],
             environment["attributes"]["gcp_region"],
             environment["attributes"]["gcp_project"]
-        ), check=False)
+        ))
 
-        if result.returncode == 0:
+        if result.stdout.strip():
             service_url = result.stdout.strip()
             outputs["trackrat_api_service_url"] = service_url
 
@@ -239,11 +239,10 @@ def verify_deployment(service_url):
         print("   Attempt {}/{}...".format(attempt, max_retries))
 
         result = host.shell(
-            "curl -f -s {}".format(health_url),
-            check=False
+            "curl -f -s {} 2>/dev/null || echo ''".format(health_url)
         )
 
-        if result.returncode == 0:
+        if result.stdout.strip():
             print("✅ Health check passed!")
             print("")
             print("   Response:")

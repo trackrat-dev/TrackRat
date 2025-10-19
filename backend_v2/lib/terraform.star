@@ -34,17 +34,13 @@ def setup_terraform(environment, module_name):
     def _ensure_terraform():
         """Ensure Terraform is installed"""
         # Check if terraform is available
-        check_result = host.shell(
-            "which terraform",
-            capture_output=True,
-            check=False
-        )
+        check_result = host.shell("which terraform 2>/dev/null || echo ''")
 
-        if check_result.returncode != 0:
+        if not check_result.stdout.strip():
             print("⚠️  Terraform not found, attempting installation...")
 
             # Detect OS and install accordingly
-            os_type = host.shell("uname -s", capture_output=True).stdout.strip().lower()
+            os_type = host.shell("uname -s").stdout.strip().lower()
 
             if os_type == "darwin":
                 # macOS with Homebrew
@@ -170,12 +166,10 @@ def setup_terraform(environment, module_name):
         service_url_result = host.shell(
             "terraform output -raw trackrat_api_service_url 2>/dev/null || echo ''",
             dir=tf_dir,
-            env={"TF_DATA_DIR": cache_dir},
-            capture_output=True,
-            check=False
+            env={"TF_DATA_DIR": cache_dir}
         )
 
-        if service_url_result.returncode == 0 and service_url_result.stdout.strip():
+        if service_url_result.stdout.strip():
             outputs["trackrat_api_service_url"] = service_url_result.stdout.strip()
             print("   Found service URL output")
 
@@ -216,12 +210,10 @@ def setup_terraform(environment, module_name):
         service_url_result = host.shell(
             "terraform output -raw trackrat_api_service_url 2>/dev/null || echo ''",
             dir=tf_dir,
-            env={"TF_DATA_DIR": cache_dir},
-            capture_output=True,
-            check=False
+            env={"TF_DATA_DIR": cache_dir}
         )
 
-        if service_url_result.returncode == 0 and service_url_result.stdout.strip():
+        if service_url_result.stdout.strip():
             outputs["trackrat_api_service_url"] = service_url_result.stdout.strip()
 
         return outputs

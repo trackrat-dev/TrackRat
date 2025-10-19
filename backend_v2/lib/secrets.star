@@ -18,18 +18,15 @@ def get_secret(secret_name, project_id):
     print("🔐 Reading secret: {} from project {}".format(secret_name, project_id))
 
     result = host.shell(
-        "gcloud secrets versions access latest --secret={} --project={}".format(
+        "gcloud secrets versions access latest --secret={} --project={} 2>/dev/null || echo ''".format(
             secret_name, project_id
-        ),
-        capture_output=True,
-        check=False
+        )
     )
 
-    if result.returncode != 0:
+    value = result.stdout.strip()
+    if not value:
         print("⚠️  Secret '{}' not found or inaccessible".format(secret_name))
         return None
-
-    value = result.stdout.strip()
     print("✅ Secret retrieved")
     return value
 
@@ -45,27 +42,24 @@ def set_secret(secret_name, value, project_id):
 
     # Try to create the secret first
     create_result = host.shell(
-        "echo -n '{}' | gcloud secrets create {} --data-file=- --project={} --replication-policy=automatic".format(
+        "echo -n '{}' | gcloud secrets create {} --data-file=- --project={} --replication-policy=automatic 2>/dev/null".format(
             value, secret_name, project_id
-        ),
-        check=False,
-        capture_output=True
+        )
     )
 
-    if create_result.returncode == 0:
+    if create_result.stdout.strip() or "Created" in create_result.stderr:
         print("✅ Secret created")
         return
 
     # If creation failed (likely already exists), add a new version
     print("   Secret exists, adding new version...")
     update_result = host.shell(
-        "echo -n '{}' | gcloud secrets versions add {} --data-file=- --project={}".format(
+        "echo -n '{}' | gcloud secrets versions add {} --data-file=- --project={} 2>&1".format(
             value, secret_name, project_id
-        ),
-        check=False
+        )
     )
 
-    if update_result.returncode != 0:
+    if "Created version" not in update_result.stdout:
         fail("Failed to create or update secret '{}'".format(secret_name))
 
     print("✅ Secret updated")
@@ -115,11 +109,10 @@ def list_secrets(project_id, prefix=""):
         print("   Filtering by prefix: {}".format(prefix))
 
     result = host.shell(
-        "gcloud secrets list --project={} --format='value(name)'".format(project_id),
-        capture_output=True
+        "gcloud secrets list --project={} --format='value(name)' 2>/dev/null || echo ''".format(project_id)
     )
 
-    if result.returncode != 0:
+    if not result.stdout.strip():
         print("⚠️  Failed to list secrets")
         return []
 
