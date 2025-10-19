@@ -80,15 +80,12 @@ def setup_terraform(environment, module_name):
         # Build backend config arguments
         backend_args = " ".join(["-backend-config={}".format(c) for c in backend_config])
 
-        # Initialize
-        result = host.shell(
+        # Initialize (will fail the release if command fails)
+        host.shell(
             "terraform init {}".format(backend_args),
             dir=tf_dir,
             env={"TF_DATA_DIR": cache_dir}
         )
-
-        if result.returncode != 0:
-            fail("Terraform init failed")
 
         print("✅ Terraform initialized")
 
@@ -96,14 +93,11 @@ def setup_terraform(environment, module_name):
         """Validate Terraform configuration"""
         print("🔍 Validating Terraform configuration...")
 
-        result = host.shell(
+        host.shell(
             "terraform validate",
             dir=tf_dir,
             env={"TF_DATA_DIR": cache_dir}
         )
-
-        if result.returncode != 0:
-            fail("Terraform validation failed")
 
         print("✅ Terraform configuration is valid")
 
@@ -121,17 +115,13 @@ def setup_terraform(environment, module_name):
 
         env_vars = _build_env_vars(vars)
 
-        result = host.shell(
+        host.shell(
             "terraform plan -out=tfplan",
             dir=tf_dir,
             env=env_vars
         )
 
-        if result.returncode != 0:
-            fail("Terraform plan failed")
-
         print("✅ Terraform plan completed")
-        return result
 
     def apply(vars={}):
         """Apply Terraform configuration
@@ -147,14 +137,11 @@ def setup_terraform(environment, module_name):
         env_vars = _build_env_vars(vars)
 
         # Apply the plan
-        result = host.shell(
+        host.shell(
             "terraform apply -auto-approve tfplan",
             dir=tf_dir,
             env=env_vars
         )
-
-        if result.returncode != 0:
-            fail("Terraform apply failed")
 
         print("✅ Terraform apply completed")
 
@@ -186,14 +173,11 @@ def setup_terraform(environment, module_name):
 
         env_vars = _build_env_vars(vars)
 
-        result = host.shell(
+        host.shell(
             "terraform destroy -auto-approve",
             dir=tf_dir,
             env=env_vars
         )
-
-        if result.returncode != 0:
-            fail("Terraform destroy failed")
 
         print("✅ Terraform destroy completed")
 
