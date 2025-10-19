@@ -33,7 +33,14 @@ def setup_terraform(environment, module_name):
 
     def _ensure_terraform():
         """Ensure Terraform is installed"""
-        if not host.which("terraform"):
+        # Check if terraform is available
+        check_result = host.shell(
+            "which terraform",
+            capture_output=True,
+            check=False
+        )
+
+        if check_result.returncode != 0:
             print("⚠️  Terraform not found, attempting installation...")
 
             # Detect OS and install accordingly
