@@ -11,6 +11,7 @@ Note: Uses Ocuroot for deployment orchestration
 
 ocuroot("0.3.0")
 
+load("@ocuroot//encoding/json.star", json="json")
 load("/lib/terraform.star", "setup_terraform")
 load("/lib/secrets.star", "store_output", "get_output")
 

@@ -5,7 +5,7 @@ within Ocuroot release workflows, handling initialization, planning, and
 applying changes with proper state management.
 """
 
-load("encoding/json.star", json="json")
+load("@ocuroot//encoding/json.star", json="json")
 
 def setup_terraform(environment, module_name):
     """Setup Terraform with GCS backend for the given environment and module
