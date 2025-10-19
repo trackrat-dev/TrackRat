@@ -80,8 +80,8 @@ def store_output(key, value, environment):
         value: Output value
         environment: Ocuroot environment object
     """
-    secret_name = "ocuroot-output-{}-{}".format(environment.name, key)
-    project_id = environment.attributes["gcp_project"]
+    secret_name = "ocuroot-output-{}-{}".format(environment["name"], key)
+    project_id = environment["attributes"]["gcp_project"]
 
     set_secret(secret_name, str(value), project_id)
 
@@ -95,8 +95,8 @@ def get_output(key, environment):
     Returns:
         Output value or None if not found
     """
-    secret_name = "ocuroot-output-{}-{}".format(environment.name, key)
-    project_id = environment.attributes["gcp_project"]
+    secret_name = "ocuroot-output-{}-{}".format(environment["name"], key)
+    project_id = environment["attributes"]["gcp_project"]
 
     return get_secret(secret_name, project_id)
 

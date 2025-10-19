@@ -19,13 +19,13 @@ def setup_terraform(environment, module_name):
     """
 
     # Extract environment configuration
-    project_id = environment.attributes["gcp_project"]
+    project_id = environment["attributes"]["gcp_project"]
     tf_state_bucket = "{}-terraform-state".format(project_id)
     tf_state_prefix = "terraform/state"
 
     # Setup working directory
-    tf_dir = "infra/environments/{}".format(environment.attributes["terraform_env"])
-    cache_dir = ".ocuroot/terraform/{}/{}".format(environment.name, module_name)
+    tf_dir = "infra/environments/{}".format(environment["attributes"]["terraform_env"])
+    cache_dir = ".ocuroot/terraform/{}/{}".format(environment["name"], module_name)
 
     # Backend configuration for GCS
     backend_config = [
@@ -71,7 +71,7 @@ def setup_terraform(environment, module_name):
         """Initialize Terraform with GCS backend"""
         _ensure_terraform()
 
-        print("🔧 Initializing Terraform for {} environment...".format(environment.name))
+        print("🔧 Initializing Terraform for {} environment...".format(environment["name"]))
         print("   Working directory: {}".format(tf_dir))
         print("   State bucket: {}".format(tf_state_bucket))
         print("   Cache directory: {}".format(cache_dir))
@@ -182,7 +182,7 @@ def setup_terraform(environment, module_name):
             vars: Dictionary of Terraform variables
         """
         print("🗑️  Destroying Terraform resources...")
-        print("⚠️  This will destroy infrastructure in {} environment!".format(environment.name))
+        print("⚠️  This will destroy infrastructure in {} environment!".format(environment["name"]))
 
         env_vars = _build_env_vars(vars)
 

@@ -12,6 +12,10 @@ ocuroot("0.3.0")
 load("/lib/terraform.star", "setup_terraform")
 load("/lib/secrets.star", "store_output", "get_output")
 
+# Configure state storage (use local mode for testing, git mode for production)
+# For local testing: state stored in .store/ directory
+# For CI/CD: set OCUROOT_LOCAL_MODE=false to use git-based state
+
 def build(prev_build_number=None, year=None, month=None, day=None, sha=None, gcp_project=None, environment=None):
     """Build and push Docker image to Artifact Registry
 
@@ -108,12 +112,14 @@ def build(prev_build_number=None, year=None, month=None, day=None, sha=None, gcp
     print("✅ Tagged as latest-stable for rollback")
 
     # Return build outputs
-    return {
-        "build_number": build_number,
-        "image_tag": image_tag,
-        "version": version,
-        "timestamp": host.shell("date -u '+%Y-%m-%d %H:%M:%S UTC'").stdout.strip()
-    }
+    return done(
+        outputs={
+            "build_number": build_number,
+            "image_tag": image_tag,
+            "version": version,
+            "timestamp": host.shell("date -u '+%Y-%m-%d %H:%M:%S UTC'").stdout.strip()
+        },
+    )
 
 def deploy_infrastructure(image_tag, environment):
     """Deploy backend using Terraform
@@ -130,8 +136,8 @@ def deploy_infrastructure(image_tag, environment):
     print("=" * 60)
     print("🚀 TERRAFORM DEPLOYMENT")
     print("=" * 60)
-    print("   Environment: {}".format(environment.name))
-    print("   Project: {}".format(environment.attributes["gcp_project"]))
+    print("   Environment: {}".format(environment["name"]))
+    print("   Project: {}".format(environment["attributes"]["gcp_project"]))
     print("   Image: {}".format(image_tag))
     print("")
 
@@ -141,9 +147,9 @@ def deploy_infrastructure(image_tag, environment):
 
     # Prepare Terraform variables
     terraform_vars = {
-        "project_id": environment.attributes["gcp_project"],
-        "region": environment.attributes["gcp_region"],
-        "zone": environment.attributes["gcp_zone"],
+        "project_id": environment["attributes"]["gcp_project"],
+        "region": environment["attributes"]["gcp_region"],
+        "zone": environment["attributes"]["gcp_zone"],
         "api_image_url": image_tag,
         "scheduler_image_url": image_tag
     }
@@ -180,9 +186,9 @@ def deploy_infrastructure(image_tag, environment):
                 --project={} \
                 --format='value(status.url)'
         """.format(
-            environment.attributes["service_name"],
-            environment.attributes["gcp_region"],
-            environment.attributes["gcp_project"]
+            environment["attributes"]["service_name"],
+            environment["attributes"]["gcp_region"],
+            environment["attributes"]["gcp_project"]
         ), check=False)
 
         if result.returncode == 0:
@@ -206,7 +212,9 @@ def deploy_infrastructure(image_tag, environment):
     else:
         print("⚠️  Could not determine service URL")
 
-    return outputs
+    return done(
+        outputs=outputs,
+    )
 
 def verify_deployment(service_url):
     """Verify deployment with health checks
@@ -265,7 +273,7 @@ def rollback_infrastructure(image_tag, environment):
     print("=" * 60)
     print("⏪ ROLLBACK")
     print("=" * 60)
-    print("   Environment: {}".format(environment.name))
+    print("   Environment: {}".format(environment["name"]))
     print("")
 
     # Get previous image from Secret Manager
@@ -273,8 +281,8 @@ def rollback_infrastructure(image_tag, environment):
 
     if not previous_image:
         # Fallback to latest-stable tag
-        project_id = environment.attributes["gcp_project"]
-        repository = environment.attributes["artifact_registry"]
+        project_id = environment["attributes"]["gcp_project"]
+        repository = environment["attributes"]["artifact_registry"]
         previous_image = "us-central1-docker.pkg.dev/{}/{}/trackcast-inference:latest-stable".format(
             project_id, repository
         )
@@ -287,9 +295,9 @@ def rollback_infrastructure(image_tag, environment):
 
     # Deploy previous image
     terraform_vars = {
-        "project_id": environment.attributes["gcp_project"],
-        "region": environment.attributes["gcp_region"],
-        "zone": environment.attributes["gcp_zone"],
+        "project_id": environment["attributes"]["gcp_project"],
+        "region": environment["attributes"]["gcp_region"],
+        "zone": environment["attributes"]["gcp_zone"],
         "api_image_url": previous_image,
         "scheduler_image_url": previous_image
     }
@@ -303,19 +311,20 @@ def rollback_infrastructure(image_tag, environment):
 # RELEASE PHASES
 # ============================================================================
 
-# Phase 1: Build
-# Builds Docker image and pushes to Artifact Registry
-phase(
-    "build",
-    work=[
-        task(
-            build,
-            name="build-backend"
-        )
-    ]
+# Task: Build Docker image and push to Artifact Registry
+# This runs before any deployment phases
+task(
+    name="build-backend",
+    fn=build,
+    inputs={
+        "prev_build_number": input(
+            ref="./task/build-backend#output/build_number",
+            default=0
+        ),
+    }
 )
 
-# Phase 2: Deploy to Staging
+# Phase 1: Deploy to Staging
 # Deploys to staging environment automatically
 phase(
     "staging",
@@ -325,13 +334,13 @@ phase(
             down=rollback_infrastructure,
             environment=e,
             inputs={
-                "image_tag": ref("./@/task/build-backend#output/image_tag")
+                "image_tag": input(ref="./task/build-backend#output/image_tag")
             }
         ) for e in environments() if e.attributes.get("type") == "staging"
     ]
 )
 
-# Phase 3: Deploy to Production
+# Phase 2: Deploy to Production
 # Deploys to production environment (requires approval if configured)
 #phase(
 #    "production",
@@ -341,7 +350,7 @@ phase(
 #            down=rollback_infrastructure,
 #            environment=e,
 #            inputs={
-#                "image_tag": ref("./@/task/build-backend#output/image_tag")
+#                "image_tag": input(ref="./task/build-backend#output/image_tag")
 #            }
 #        ) for e in environments() if e.attributes.get("type") == "production"
 #    ]
