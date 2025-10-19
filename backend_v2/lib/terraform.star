@@ -87,9 +87,9 @@ def setup_terraform(environment, module_name):
         backend_args = " ".join(["-backend-config={}".format(c) for c in backend_config])
 
         # Initialize (will fail the release if command fails)
+        # Use cd in command since dir parameter doesn't work in Ocuroot
         host.shell(
-            "terraform init {}".format(backend_args),
-            dir=tf_dir,
+            "cd {} && terraform init {}".format(tf_dir, backend_args),
             env={"TF_DATA_DIR": cache_dir}
         )
 
@@ -99,9 +99,9 @@ def setup_terraform(environment, module_name):
         """Validate Terraform configuration"""
         print("🔍 Validating Terraform configuration...")
 
+        # Use cd in command since dir parameter doesn't work in Ocuroot
         host.shell(
-            "terraform validate",
-            dir=tf_dir,
+            "cd {} && terraform validate".format(tf_dir),
             env={"TF_DATA_DIR": cache_dir}
         )
 
@@ -121,9 +121,9 @@ def setup_terraform(environment, module_name):
 
         env_vars = _build_env_vars(vars)
 
+        # Use cd in command since dir parameter doesn't work in Ocuroot
         host.shell(
-            "terraform plan -out=tfplan",
-            dir=tf_dir,
+            "cd {} && terraform plan -out=tfplan".format(tf_dir),
             env=env_vars
         )
 
@@ -143,9 +143,9 @@ def setup_terraform(environment, module_name):
         env_vars = _build_env_vars(vars)
 
         # Apply the plan
+        # Use cd in command since dir parameter doesn't work in Ocuroot
         host.shell(
-            "terraform apply -auto-approve tfplan",
-            dir=tf_dir,
+            "cd {} && terraform apply -auto-approve tfplan".format(tf_dir),
             env=env_vars
         )
 
@@ -155,10 +155,10 @@ def setup_terraform(environment, module_name):
         print("📤 Retrieving Terraform outputs...")
 
         # Get service URL output
+        # Use cd in command since dir parameter doesn't work in Ocuroot
         outputs = {}
         service_url_result = host.shell(
-            "terraform output -raw trackrat_api_service_url 2>/dev/null || echo ''",
-            dir=tf_dir,
+            "cd {} && terraform output -raw trackrat_api_service_url 2>/dev/null || echo ''".format(tf_dir),
             env={"TF_DATA_DIR": cache_dir}
         )
 
@@ -179,9 +179,9 @@ def setup_terraform(environment, module_name):
 
         env_vars = _build_env_vars(vars)
 
+        # Use cd in command since dir parameter doesn't work in Ocuroot
         host.shell(
-            "terraform destroy -auto-approve",
-            dir=tf_dir,
+            "cd {} && terraform destroy -auto-approve".format(tf_dir),
             env=env_vars
         )
 
@@ -196,10 +196,10 @@ def setup_terraform(environment, module_name):
         print("📤 Retrieving Terraform outputs...")
 
         # Get service URL output
+        # Use cd in command since dir parameter doesn't work in Ocuroot
         outputs = {}
         service_url_result = host.shell(
-            "terraform output -raw trackrat_api_service_url 2>/dev/null || echo ''",
-            dir=tf_dir,
+            "cd {} && terraform output -raw trackrat_api_service_url 2>/dev/null || echo ''".format(tf_dir),
             env={"TF_DATA_DIR": cache_dir}
         )
 
