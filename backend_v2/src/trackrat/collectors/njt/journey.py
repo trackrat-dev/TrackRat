@@ -1155,6 +1155,9 @@ class JourneyCollector(BaseJourneyCollector):
             )
 
         # Update the stop_sequence for each stop
+        # CRITICAL FIX (Issue #256): Always assign sequences to ensure they persist
+        # This fixes duplicate sequence bugs where stops from schedule generation
+        # conflict with journey collection (e.g., both Trenton and Hamilton with seq=0)
         changes_made = False
         for i, stop in enumerate(stops):
             if stop.stop_sequence != i:
@@ -1175,8 +1178,11 @@ class JourneyCollector(BaseJourneyCollector):
                         else None
                     ),
                 )
-                stop.stop_sequence = i
                 changes_made = True
+
+            # Always assign the sequence to ensure SQLAlchemy marks it as dirty
+            # even when the value appears unchanged
+            stop.stop_sequence = i
 
         if changes_made:
             logger.info(
