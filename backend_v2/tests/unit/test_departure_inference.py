@@ -56,6 +56,7 @@ class TestDepartureInference:
         session.commit = AsyncMock()
         session.flush = AsyncMock()
         session.rollback = AsyncMock()
+        session.delete = AsyncMock()  # Async in newer SQLAlchemy
         session.add = Mock()  # Non-async
         session.add_all = Mock()  # Non-async
 

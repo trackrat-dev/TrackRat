@@ -50,6 +50,7 @@ class StopBuilder:
         # Basic fields
         stop.ITEM = f"{station_code} | {station_name}"
         stop.STATIONCODE = station_code
+        stop.STATION_2CHAR = station_code  # 2-character station code
         stop.STATIONNAME = f"{station_name} Station"
 
         # Time fields - corrected to match actual NJT API semantics
@@ -125,6 +126,7 @@ def create_stop_list_response(
 
     # Stops list
     response.STOPS = stops or []
+    response.ITEMS = stops or []  # Alias for compatibility with different API endpoints
 
     return response
 

@@ -10,6 +10,7 @@ from typing import Any, cast
 from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 from structlog import get_logger
 
 from trackrat.collectors.base import BaseJourneyCollector
@@ -1084,6 +1085,31 @@ class JourneyCollector(BaseJourneyCollector):
             stop.pickup_only = bool(stop_data.PICKUP)
             stop.dropoff_only = bool(stop_data.DROPOFF)
 
+        # Flush changes so newly created/updated stops are visible in the database
+        await session.flush()
+
+        # Delete phantom stops that don't appear in API response
+        # This removes schedule-generated placeholder stops that don't match reality
+        api_station_codes = {stop_data.STATION_2CHAR for stop_data in stops_data}
+        stmt = select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+        result = await session.execute(stmt)
+        all_stops = list(result.scalars().all())
+
+        for stop in all_stops:
+            if stop.station_code not in api_station_codes:
+                logger.warning(
+                    "deleting_phantom_stop",
+                    journey_id=journey.id,
+                    train_id=journey.train_id,
+                    station_code=stop.station_code,
+                    stop_sequence=stop.stop_sequence,
+                    had_scheduled_times=bool(
+                        stop.scheduled_arrival or stop.scheduled_departure
+                    ),
+                    had_actual_times=bool(stop.actual_departure or stop.actual_arrival),
+                )
+                await session.delete(stop)
+
         # Re-sequence all stops for this journey to ensure consistency
         await self._resequence_stops(session, journey)
 
@@ -1183,6 +1209,8 @@ class JourneyCollector(BaseJourneyCollector):
             # Always assign the sequence to ensure SQLAlchemy marks it as dirty
             # even when the value appears unchanged
             stop.stop_sequence = i
+            # Explicitly mark field as modified to ensure persistence even for no-op assignments
+            flag_modified(stop, "stop_sequence")
 
         if changes_made:
             logger.info(
