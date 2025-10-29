@@ -87,59 +87,6 @@ struct MyProfileView: View {
                     //     )
                     // }
                     
-                    // Support section
-                    VStack(spacing: 16) {
-                        // Section header
-                        HStack {
-                            Text("Support")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-                        
-                        // Report Issues & Request Features
-                        Button {
-                            if let signalURL = URL(string: "https://signal.me/#eu/iG3LNnu-IycTUbwrWF1nwrlR-u-TN5gtBO0tXtJk3Nder7TtfzFPa6On6N9dl3e-") {
-                                openURL(signalURL)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "exclamationmark.bubble.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Report Issues")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                    
-                                    Text("Send new ideas too!")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                        .multilineTextAlignment(.leading)
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                    }
-
                     // Settings section
                     VStack(spacing: 16) {
                         // Section header
@@ -204,6 +151,11 @@ struct MyProfileView: View {
                                         .font(.headline)
                                         .fontWeight(.medium)
                                         .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+
+                                    Text("Report issues and send new ideas here!")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
                                         .multilineTextAlignment(.leading)
                                 }
                                 
