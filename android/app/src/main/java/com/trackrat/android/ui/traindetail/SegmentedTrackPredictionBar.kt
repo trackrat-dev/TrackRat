@@ -46,27 +46,18 @@ fun SegmentedTrackPredictionBar(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFFF6600).copy(alpha = 0.05f))
-            .border(1.dp, Color(0xFFFF6600).copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .background(Color(0xFFFFB84D).copy(alpha = 0.05f))
+            .border(1.dp, Color(0xFFFFB84D).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // Header
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "\uD83D\uDE8B", // Train emoji
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                text = "Track Predictions",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
-            )
-        }
+        Text(
+            text = "Track Predictions",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFFFFB84D)
+        )
 
         when {
             isLoading -> {
@@ -78,7 +69,7 @@ fun SegmentedTrackPredictionBar(
                 ) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(32.dp),
-                        color = Color(0xFFFF6600)
+                        color = Color(0xFFFFB84D)
                     )
                 }
             }
@@ -212,7 +203,7 @@ private fun PlatformSegment(
         modifier = modifier
             .fillMaxHeight()
             .scale(scale)
-            .background(Color(0xFFFF6600).copy(alpha = 0.3f))
+            .background(Color(0xFFFFB84D).copy(alpha = 0.5f))
             .border(1.dp, Color.Black)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
