@@ -153,7 +153,7 @@ struct MyProfileView: View {
                         .padding(.horizontal)
                          // Follow our YouTube Channel
                         Button {
-                            if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-Development/shorts") {
+                            if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-App/shorts") {
                                 openURL(youtubeURL)
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             }
