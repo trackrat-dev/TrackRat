@@ -58,14 +58,9 @@ struct FavoriteStationsView: View {
     }
     
     var body: some View {
-        ZStack {
-            // Background
-            Color.black
-                .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // Header
-                VStack(spacing: 16) {
+        VStack(spacing: 0) {
+            // Header
+            VStack(spacing: 16) {
                     HStack {
                         Button("Done") {
                             dismiss()
@@ -209,10 +204,6 @@ struct FavoriteStationsView: View {
                         }
                     }
                     .padding(.bottom, 40)
-                }
-                .refreshable {
-                    loadFavoriteStations()
-                }
             }
         }
         .navigationBarHidden(true)

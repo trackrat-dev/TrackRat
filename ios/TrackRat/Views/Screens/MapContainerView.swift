@@ -1,6 +1,23 @@
 import SwiftUI
 import MapKit
 
+// MARK: - PresentationDetent Extension for Map Offsets
+extension PresentationDetent {
+    /// Convert presentation detent to map offset for positioning
+    var mapOffset: Double {
+        switch self {
+        case .fraction(0.15):  // Collapsed - 15% height
+            return -0.06    // Minimal adjustment (~4 miles)
+        case .medium:          // Medium - 50% height
+            return -0.10    // Small-medium adjustment (~7 miles)
+        case .large:           // Expanded - 100% height
+            return -0.38    // Significant adjustment (~25 miles)
+        default:
+            return -0.10    // Default to medium offset
+        }
+    }
+}
+
 // MARK: - Map Region View Model
 @MainActor
 class MapRegionViewModel: ObservableObject {
@@ -27,7 +44,7 @@ class MapRegionViewModel: ObservableObject {
         self.mapRegion = MapContainerView.calculateRegionForRoute(
             from: fromCoord,
             to: toCoord,
-            sheetPosition: .medium
+            sheetDetent: .medium
         )
         
         print("🗺️ MapRegionVM Init: Initial region set - Center: \(mapRegion.center.latitude), \(mapRegion.center.longitude), Span: \(mapRegion.span.latitudeDelta)°")
@@ -36,7 +53,8 @@ class MapRegionViewModel: ObservableObject {
 
 struct MapContainerView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var bottomSheetPosition: BottomSheetPosition = .medium
+    @State private var selectedDetent: PresentationDetent = .medium
+    @State private var isSheetPresented = true  // Always show sheet (persistent)
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
@@ -49,7 +67,7 @@ struct MapContainerView: View {
     static func calculateRegionForRoute(
         from: CLLocationCoordinate2D,
         to: CLLocationCoordinate2D,
-        sheetPosition: BottomSheetPosition
+        sheetDetent: PresentationDetent
     ) -> MKCoordinateRegion {
         print("🗺️ Route: Calculating region from (\(from.latitude), \(from.longitude)) to (\(to.latitude), \(to.longitude))")
         
@@ -61,7 +79,7 @@ struct MapContainerView: View {
             print("🗺️ Route: Same location detected - using single station view")
             // For single station, use a comfortable fixed zoom
             let singleStationSpan = MKCoordinateSpan(latitudeDelta: 0.3, longitudeDelta: 0.3)
-            let offset = calculateZoomAwareOffset(for: sheetPosition, span: singleStationSpan)
+            let offset = calculateZoomAwareOffset(for: sheetDetent, span: singleStationSpan)
             
             return MKCoordinateRegion(
                 center: CLLocationCoordinate2D(
@@ -88,7 +106,7 @@ struct MapContainerView: View {
         )
         
         // Calculate zoom-aware offset to account for bottom sheet
-        let offset = calculateZoomAwareOffset(for: sheetPosition, span: finalSpan)
+        let offset = calculateZoomAwareOffset(for: sheetDetent, span: finalSpan)
         
         // Adjust center to position content in visible area above bottom sheet
         let adjustedCenter = CLLocationCoordinate2D(
@@ -158,24 +176,22 @@ struct MapContainerView: View {
                 
                 Spacer()
             }
-            
-            
-            // Bottom sheet with navigation content (marked as scrollable)
-            BottomSheetView(position: $bottomSheetPosition, isScrollable: true) {
-                NavigationStack(path: $appState.navigationPath) {
-                    TripSelectionView(
-                        sheetPosition: $bottomSheetPosition,
-                        onBottomSheetPositionChange: { newPosition in
-                            bottomSheetPosition = newPosition
-                        }
-                    )
+        }
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $isSheetPresented) {
+            NavigationStack(path: $appState.navigationPath) {
+                TripSelectionView()
                     .navigationDestination(for: NavigationDestination.self) { destination in
                         bottomSheetNavigationContent(for: destination)
                     }
-                }
             }
+            .presentationDetents([.fraction(0.15), .medium, .large], selection: $selectedDetent)
+            .presentationDragIndicator(.visible)
+            .interactiveDismissDisabled(true)
+            .presentationBackgroundInteraction(.enabled)
+            .presentationBackground(.ultraThinMaterial)
+            .presentationContentInteraction(.resizes)
         }
-        .preferredColorScheme(.dark)
         .task {
             // Load congestion data when map container appears, but don't block UI
             // Use detached task to prevent UI lag during origin station selection
@@ -205,12 +221,12 @@ struct MapContainerView: View {
                     print("🔗 Navigation path set with \(appState.navigationPath.count) destinations")
                     
                     // Expand bottom sheet to full screen immediately
-                    bottomSheetPosition = .expanded
+                    selectedDetent = .large
                     print("🔗 Bottom sheet expanded")
                     
                     // Animate map to route if available
                     if let route = appState.selectedRoute {
-                        animateMapToRoute(route, targetSheetPosition: .expanded)
+                        animateMapToRoute(route, targetSheetDetent: .large)
                         print("🔗 Map animated to route")
                     }
                 }
@@ -227,7 +243,7 @@ struct MapContainerView: View {
         }
         .onAppear {
             print("🗺️ MapContainer: onAppear called")
-            print("🗺️ MapContainer: bottomSheetPosition = \(bottomSheetPosition)")
+            print("🗺️ MapContainer: selectedDetent = \(selectedDetent)")
             print("🗺️ MapContainer: Map already initialized by view model - Center: \(mapRegionVM.mapRegion.center.latitude), \(mapRegionVM.mapRegion.center.longitude), Span: \(mapRegionVM.mapRegion.span.latitudeDelta)°")
             
             // Check for active Live Activity first
@@ -246,7 +262,7 @@ struct MapContainerView: View {
             // Animate map to show selected route when it changes
             if let route = newRoute {
                 // Use current bottom sheet position since we're not changing it here
-                animateMapToRoute(route, targetSheetPosition: bottomSheetPosition)
+                animateMapToRoute(route, targetSheetDetent: selectedDetent)
             }
         }
         // Removed automatic map animation when user selects origin station
@@ -287,7 +303,7 @@ struct MapContainerView: View {
             if shouldExpand {
                 print("🔗 Deep link expansion requested")
                 withAnimation(.easeInOut(duration: 0.3)) {
-                    bottomSheetPosition = .expanded
+                    selectedDetent = .large
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
@@ -303,17 +319,17 @@ struct MapContainerView: View {
         if navigationPath.isEmpty {
             // Back to home - reset to default Newark Penn view
             resetToDefaultMapView()
-            bottomSheetPosition = .medium
+            selectedDetent = .medium
         } else {
             // Check if we're navigating to train details
             if isNavigatingToTrainDetails(navigationPath) {
                 // DO NOT animate the map when navigating to train details
                 // The map should already be properly positioned from the train list view
                 // Removing animation prevents the map from jumping/refocusing
-                
+
                 // Just snap bottom sheet to full screen (100%) when navigating to train details
                 withAnimation(.easeInOut(duration: 0.3)) {
-                    bottomSheetPosition = .expanded
+                    selectedDetent = .large
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
@@ -459,20 +475,20 @@ struct MapContainerView: View {
         return stationCodes
     }
     
-    private func animateMapToRoute(_ route: TripPair, targetSheetPosition: BottomSheetPosition? = nil) {
+    private func animateMapToRoute(_ route: TripPair, targetSheetDetent: PresentationDetent? = nil) {
         // Get coordinates for departure and destination
         guard let fromCoords = Stations.getCoordinates(for: route.departureCode),
               let toCoords = Stations.getCoordinates(for: route.destinationCode) else {
             print("🗺️ AnimateRoute: Could not get coordinates for route \(route.departureCode) → \(route.destinationCode)")
             return
         }
-        
+
         // Use the unified calculation for consistency
-        let sheetPosition = targetSheetPosition ?? bottomSheetPosition
+        let sheetDetent = targetSheetDetent ?? selectedDetent
         let region = Self.calculateRegionForRoute(
             from: fromCoords,
             to: toCoords,
-            sheetPosition: sheetPosition
+            sheetDetent: sheetDetent
         )
         
         // Animate to the calculated region
@@ -481,20 +497,8 @@ struct MapContainerView: View {
         }
     }
     
-    private static func calculateVisibleAreaOffset(for position: BottomSheetPosition) -> Double {
-        // Calculate latitude offset to center content in the actual visible map area
-        // Negative offsets move map center south (down), positioning stations in visible area above bottom sheet
-        // Values tuned for northeast corridor geography (roughly 25 miles per 0.1°)
-        switch position {
-        case .medium:       // 50% visible area, center should be at 25% from top
-            return -0.10    // Small-medium adjustment south (~7 miles)
-        case .expanded:     // 0% visible area - position in off-screen area
-            return -0.38    // Significant adjustment south (~25 miles) to keep stations at very top
-        }
-    }
-    
-    static func calculateZoomAwareOffset(for position: BottomSheetPosition, span: MKCoordinateSpan) -> Double {
-        let baseOffset = calculateVisibleAreaOffset(for: position)
+    static func calculateZoomAwareOffset(for detent: PresentationDetent, span: MKCoordinateSpan) -> Double {
+        let baseOffset = detent.mapOffset
         let avgSpan = (span.latitudeDelta + span.longitudeDelta) / 2
         let scaleFactor = max(1.0, avgSpan / 0.3) // Scale based on span vs minimum zoom
         let cappedScale = min(scaleFactor, 3.0) // Cap at 3x to prevent extreme offsets
@@ -522,7 +526,7 @@ struct MapContainerView: View {
             let region = Self.calculateRegionForRoute(
                 from: fromCoord,
                 to: toCoord,
-                sheetPosition: .medium
+                sheetDetent: .medium
             )
             
             withAnimation(.easeInOut(duration: 0.25)) {
@@ -553,23 +557,23 @@ struct MapContainerView: View {
             appState.activeTrainRoute = route
             
             // Optionally animate map to show the route
-            animateMapToRoute(route, targetSheetPosition: bottomSheetPosition)
+            animateMapToRoute(route, targetSheetDetent: selectedDetent)
         }
     }
-    
-    private func animateMapToStation(_ stationCode: String, targetSheetPosition: BottomSheetPosition? = nil) {
+
+    private func animateMapToStation(_ stationCode: String, targetSheetDetent: PresentationDetent? = nil) {
         // Get coordinates for the station
         guard let coords = Stations.getCoordinates(for: stationCode) else {
             print("🗺️ AnimateStation: Could not get coordinates for station \(stationCode)")
             return
         }
-        
+
         // Use the unified calculation for single station (pass same coordinate twice)
-        let sheetPosition = targetSheetPosition ?? bottomSheetPosition
+        let sheetDetent = targetSheetDetent ?? selectedDetent
         let region = Self.calculateRegionForRoute(
             from: coords,
             to: coords,
-            sheetPosition: sheetPosition
+            sheetDetent: sheetDetent
         )
         
         // Animate to the calculated region
@@ -582,15 +586,15 @@ struct MapContainerView: View {
     private func bottomSheetNavigationContent(for destination: NavigationDestination) -> some View {
         switch destination {
         case .departureSelector:
-            DeparturePickerView(sheetPosition: $bottomSheetPosition)
+            DeparturePickerView()
         case .destinationPicker:
-            DestinationPickerView(sheetPosition: $bottomSheetPosition)
+            DestinationPickerView()
         case .trainList(let stationName):
-            TrainListView(destination: stationName, sheetPosition: $bottomSheetPosition)
+            TrainListView(destination: stationName)
         case .trainDetails(let trainId):
-            TrainDetailsView(trainId: trainId, sheetPosition: $bottomSheetPosition)
+            TrainDetailsView(trainId: trainId)
         case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
-            TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate, sheetPosition: $bottomSheetPosition)
+            TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate)
         case .advancedConfiguration:
             AdvancedConfigurationView()
         case .myProfile:
@@ -604,7 +608,7 @@ struct MapContainerView: View {
                 onDismiss: {
                     // Reset to default map view and collapse bottom sheet
                     resetToDefaultMapView()
-                    bottomSheetPosition = .medium
+                    selectedDetent = .medium
                 }
             )
         }

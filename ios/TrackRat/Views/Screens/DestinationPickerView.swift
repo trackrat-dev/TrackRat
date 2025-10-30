@@ -6,7 +6,6 @@ struct DestinationPickerView: View {
     @State private var isSearching = false
     @FocusState private var searchFieldFocused: Bool
     @State private var navigationBarVisible = false
-    @Binding var sheetPosition: BottomSheetPosition
     @State private var searchTask: Task<Void, Never>?
 
     private var searchResults: [String] {
@@ -36,8 +35,8 @@ struct DestinationPickerView: View {
     }
     
     var body: some View {
-        // Wrap content in SheetAwareScrollView for proper scrolling and dragging
-        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+        // Native sheet handles scrolling automatically
+        ScrollView {
             VStack(spacing: 16) {
                     // Simple centered title
                     Text("Where would you like to go?")
@@ -46,7 +45,7 @@ struct DestinationPickerView: View {
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 10)
+                        .padding(.top, 20)
                     
                     // Search results and favorite stations container
                     VStack(alignment: .leading, spacing: 16) {
@@ -261,6 +260,6 @@ struct FavoriteDestinationButton: View {
 }
 
 #Preview {
-    DestinationPickerView(sheetPosition: .constant(.expanded))
+    DestinationPickerView()
         .environmentObject(AppState())
 }

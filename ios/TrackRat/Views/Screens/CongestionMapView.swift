@@ -1069,9 +1069,6 @@ struct SegmentTrainDetailsView: View {
                     }
                 }
             }
-            .refreshable {
-                await viewModel.loadTrainDetails()
-            }
         }
         .task {
             await viewModel.loadTrainDetails()

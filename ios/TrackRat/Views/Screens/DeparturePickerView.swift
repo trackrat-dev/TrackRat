@@ -53,13 +53,6 @@ struct StationIconView: View {
 struct DeparturePickerView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var ratSenseService = RatSenseService.shared
-    @Binding var sheetPosition: BottomSheetPosition
-    
-    init(sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
-        print("🐀🐀🐀 DeparturePickerView init - ensuring RatSense is initialized")
-        _ = RatSenseService.shared
-        self._sheetPosition = sheetPosition
-    }
     @State private var searchText = ""
     @State private var isSearching = false
     @FocusState private var searchFieldFocused: Bool
@@ -190,8 +183,8 @@ struct DeparturePickerView: View {
     
     @ViewBuilder
     private var mainContent: some View {
-        // Wrap content in SheetAwareScrollView for proper scrolling and dragging
-        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+        // Native sheet handles scrolling automatically
+        ScrollView {
             VStack(spacing: 16) {
                     titleSection
                     
@@ -584,6 +577,6 @@ struct DepartureButton: View {
 }
 
 #Preview {
-    DeparturePickerView(sheetPosition: .constant(.expanded))
+    DeparturePickerView()
         .environmentObject(AppState())
 }

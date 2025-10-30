@@ -7,14 +7,8 @@ struct MyProfileView: View {
     @State private var showOnboarding = false
     
     var body: some View {
-        let backgroundView = TrackRatTheme.Colors.primaryBackground
-            .ignoresSafeArea()
-        
-        return ZStack {
-            backgroundView
-            
-            ScrollView {
-                VStack(spacing: 24) {
+        ScrollView {
+            VStack(spacing: 24) {
                     // Profile image - aligned to top
                     // VStack {
                     //     Image("my-profile")
@@ -286,10 +280,9 @@ struct MyProfileView: View {
                             )
                         }
                     }
-                }
-                .padding()
-                .padding(.bottom, 40)
             }
+            .padding()
+            .padding(.bottom, 40)
         }
         .navigationTitle("My Profile")
         .fullScreenCover(isPresented: $showOnboarding) {

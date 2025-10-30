@@ -7,23 +7,20 @@ struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
-    @Binding var sheetPosition: BottomSheetPosition
     @State private var isClosing = false
 
     let trainId: Int  // Keep for backwards compatibility
-    
+
     // Legacy initializer for database ID
-    init(trainId: Int, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
+    init(trainId: Int) {
         self.trainId = trainId
-        self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(trainId: trainId)
         self._viewModel = StateObject(wrappedValue: VModel)
     }
-    
+
     // New initializer for train number
-    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
+    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil) {
         self.trainId = 0  // Not used for train number based initialization
-        self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
@@ -35,8 +32,8 @@ struct TrainDetailsView: View {
     
     
     var body: some View {
-        // Wrap content in SheetAwareScrollView for proper dragging and scrolling
-        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+        // Native sheet handles scrolling automatically
+        ScrollView {
             VStack {
                 if viewModel.isLoading && viewModel.train == nil {
                     TrackRatLoadingView(message: "Loading train details...")
@@ -68,12 +65,6 @@ struct TrainDetailsView: View {
                     .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
                 }
             } // VStack
-        }
-        .refreshable {
-            await viewModel.loadTrainDetails(
-                fromStationCode: appState.departureStationCode,
-                selectedDestinationName: appState.selectedDestination
-            )
         }
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)
