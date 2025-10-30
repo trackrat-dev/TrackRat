@@ -168,7 +168,90 @@ struct MyProfileView: View {
                         }
                         
                     }
-                    
+
+                    // Service Alerts section
+                    VStack(spacing: 16) {
+                        // Section header
+                        HStack {
+                            Text("Service Alerts")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+
+                        // NJ Transit Advisories
+                        Button {
+                            if let url = URL(string: "https://www.njtransit.com/travel-alerts-to") {
+                                openURL(url)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("NJ Transit Advisories")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+
+                        // Amtrak Service Alerts
+                        Button {
+                            if let url = URL(string: "https://www.amtrak.com/service-alerts-and-notices") {
+                                openURL(url)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Amtrak Service Alerts")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                    }
+
                     // Settings section
                     VStack(spacing: 16) {
                         // Section header
