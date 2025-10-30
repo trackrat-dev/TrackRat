@@ -16,7 +16,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from trackrat.services.scheduler import SchedulerService, with_sentry_cron
+from trackrat.services.scheduler import SchedulerService
 from trackrat.settings import Settings
 
 
@@ -32,7 +32,6 @@ class TestSchedulerService:
             journey_update_interval_minutes=15,
             data_staleness_seconds=60,
             environment="testing",
-            sentry_dsn="",  # Disable Sentry for tests
         )
 
     @pytest.fixture
@@ -511,8 +510,7 @@ class TestSchedulerService:
 
                     mock_freshness_check.side_effect = execute_task_func
 
-                    # The with_sentry_cron decorator will re-raise the exception
-                    # so we need to catch it in the test
+                    # The task will re-raise the exception
                     with pytest.raises(RuntimeError, match="Task failed!"):
                         await scheduler_service.run_njt_discovery()
 
@@ -558,87 +556,6 @@ class TestSchedulerService:
             status = scheduler_service.get_status()
             assert len(status["active_tasks"]) == 1
             assert "test_task" in status["active_tasks"]
-
-
-class TestSentryCronDecorator:
-    """Test cases for the with_sentry_cron decorator."""
-
-    @pytest.mark.asyncio
-    async def test_sentry_cron_success_without_sentry(self):
-        """Test decorator works when Sentry is not available."""
-        with patch("trackrat.services.scheduler.SENTRY_AVAILABLE", False):
-
-            @with_sentry_cron("test-monitor")
-            async def test_func():
-                return "success"
-
-            result = await test_func()
-            assert result == "success"
-
-    @pytest.mark.asyncio
-    async def test_sentry_cron_success_with_sentry(self):
-        """Test decorator reports success to Sentry when available."""
-        with patch("trackrat.services.scheduler.SENTRY_AVAILABLE", True):
-            with patch("trackrat.services.scheduler.capture_checkin") as mock_checkin:
-                mock_checkin.return_value = "check-in-id-123"
-
-                @with_sentry_cron("test-monitor")
-                async def test_func():
-                    return "success"
-
-                result = await test_func()
-                assert result == "success"
-
-                # Verify Sentry check-ins
-                assert mock_checkin.call_count == 2
-
-                # First call: in_progress
-                first_call = mock_checkin.call_args_list[0]
-                assert first_call.kwargs["monitor_slug"] == "test-monitor"
-                assert first_call.kwargs["status"] == "in_progress"
-
-                # Second call: ok
-                second_call = mock_checkin.call_args_list[1]
-                assert second_call.kwargs["monitor_slug"] == "test-monitor"
-                assert second_call.kwargs["status"] == "ok"
-                assert second_call.kwargs["check_in_id"] == "check-in-id-123"
-
-    @pytest.mark.asyncio
-    async def test_sentry_cron_failure_with_sentry(self):
-        """Test decorator reports failure to Sentry on exception."""
-        with patch("trackrat.services.scheduler.SENTRY_AVAILABLE", True):
-            with patch("trackrat.services.scheduler.capture_checkin") as mock_checkin:
-                mock_checkin.return_value = "check-in-id-456"
-
-                @with_sentry_cron("test-monitor")
-                async def failing_func():
-                    raise RuntimeError("Test error")
-
-                with pytest.raises(RuntimeError, match="Test error"):
-                    await failing_func()
-
-                # Verify Sentry check-ins
-                assert mock_checkin.call_count == 2
-
-                # First call: in_progress
-                first_call = mock_checkin.call_args_list[0]
-                assert first_call.kwargs["status"] == "in_progress"
-
-                # Second call: error
-                second_call = mock_checkin.call_args_list[1]
-                assert second_call.kwargs["status"] == "error"
-                assert second_call.kwargs["check_in_id"] == "check-in-id-456"
-
-    @pytest.mark.asyncio
-    async def test_sentry_cron_passes_arguments(self):
-        """Test decorator passes through function arguments correctly."""
-
-        @with_sentry_cron("test-monitor")
-        async def func_with_args(a, b, c=None):
-            return f"{a}-{b}-{c}"
-
-        result = await func_with_args("foo", "bar", c="baz")
-        assert result == "foo-bar-baz"
 
 
 class TestSchedulerHorizontalScaling:

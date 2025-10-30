@@ -1,6 +1,5 @@
 import SwiftUI
 import Combine
-import Sentry
 
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
@@ -113,23 +112,10 @@ struct TrainListView: View {
             }
         }
         .task {
-            // Start a performance transaction for train search
-            let transaction = SentrySDK.startTransaction(
-                name: "train.search",
-                operation: "navigation"
-            )
-            transaction.setData(value: destination, key: "destination")
-            transaction.setData(value: departureStationCode, key: "departure")
-
-            let span = transaction.startChild(operation: "api.request", description: "Load trains")
-
             await viewModel.loadTrains(
                 destination: destination,
                 fromStationCode: departureStationCode
             )
-
-            span.finish()
-            transaction.finish()
         }
         .onReceive(viewModel.timer) { _ in
             Task {

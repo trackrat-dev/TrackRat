@@ -78,7 +78,6 @@ def test_settings() -> Settings:
         discovery_interval_minutes=60,
         journey_update_interval_minutes=15,
         data_staleness_seconds=60,
-        sentry_dsn="",  # Explicitly disable Sentry
     )
 
 
