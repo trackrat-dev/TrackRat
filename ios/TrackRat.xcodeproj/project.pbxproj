@@ -37,7 +37,6 @@
 		A16D6EF12E1703C7008C6996 /* rat-train-icon@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */; };
 		A16D6EF22E1703C7008C6996 /* Contents.json in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE72E1703C7008C6996 /* Contents.json */; };
 		A16D6EF32E1703C7008C6996 /* rat-train-icon.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE82E1703C7008C6996 /* rat-train-icon.png */; };
-		A17329642E54A8A2006BF187 /* FavoriteStationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329622E54A8A2006BF187 /* FavoriteStationsView.swift */; };
 		A17329652E54A8A2006BF187 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329632E54A8A2006BF187 /* OnboardingView.swift */; };
 		A17329672E54A8B1006BF187 /* StationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329662E54A8B1006BF187 /* StationRow.swift */; };
 		A17329692E54D46E006BF187 /* intro_animation.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A17329682E54D46E006BF187 /* intro_animation.mp4 */; };
@@ -152,7 +151,6 @@
 		A16D6EE82E1703C7008C6996 /* rat-train-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon.png"; sourceTree = "<group>"; };
 		A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon@2x.png"; sourceTree = "<group>"; };
 		A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon@3x.png"; sourceTree = "<group>"; };
-		A17329622E54A8A2006BF187 /* FavoriteStationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FavoriteStationsView.swift; path = Views/Screens/FavoriteStationsView.swift; sourceTree = "<group>"; };
 		A17329632E54A8A2006BF187 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = Views/Screens/OnboardingView.swift; sourceTree = "<group>"; };
 		A17329662E54A8B1006BF187 /* StationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationRow.swift; path = Views/Components/StationRow.swift; sourceTree = "<group>"; };
 		A17329682E54D46E006BF187 /* intro_animation.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro_animation.mp4; sourceTree = "<group>"; };
@@ -284,7 +282,6 @@
 				A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */,
 				A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */,
 				A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */,
-				A17329622E54A8A2006BF187 /* FavoriteStationsView.swift */,
 				A17329632E54A8A2006BF187 /* OnboardingView.swift */,
 				A17329682E54D46E006BF187 /* intro_animation.mp4 */,
 				A17329662E54A8B1006BF187 /* StationRow.swift */,
@@ -608,7 +605,6 @@
 				A1CB28332E3D634C004A49E6 /* JourneyCongestionMapView.swift in Sources */,
 				A10684812E36B6EC0052C4AE /* ThemeManager.swift in Sources */,
 				A1AA1BB32DEF00BB001FA904 /* TrackRatTheme.swift in Sources */,
-				A17329642E54A8A2006BF187 /* FavoriteStationsView.swift in Sources */,
 				A17329652E54A8A2006BF187 /* OnboardingView.swift in Sources */,
 				A1AA1BB52DEF00CC001FA904 /* TrackRatLoadingView.swift in Sources */,
 				A1AA1BB92DEF00EE001FA904 /* TrackRatMascot.swift in Sources */,

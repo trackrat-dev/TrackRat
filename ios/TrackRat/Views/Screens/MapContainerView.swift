@@ -598,7 +598,7 @@ struct MapContainerView: View {
         case .myProfile:
             MyProfileView()
         case .favoriteStations:
-            FavoriteStationsView()
+            OnboardingView(isRepeating: true)
         case .congestionMap:
             // Since map is always visible, show map controls and expand bottom sheet
             CongestionMapControlsView(

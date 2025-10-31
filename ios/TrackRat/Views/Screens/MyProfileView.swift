@@ -4,8 +4,7 @@ struct MyProfileView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.openURL) private var openURL
-    @State private var showOnboarding = false
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -296,40 +295,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
-                        
-                        // Repeat Onboarding
-                        Button {
-                            showOnboarding = true
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Repeat Onboarding")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        
+
                         // Advanced Configuration
                         Button {
                             appState.navigationPath.append(NavigationDestination.advancedConfiguration)
@@ -368,10 +334,6 @@ struct MyProfileView: View {
             .padding(.bottom, 40)
         }
         .navigationTitle("My Profile")
-        .fullScreenCover(isPresented: $showOnboarding) {
-            OnboardingView(isRepeating: true)
-                .environmentObject(appState)
-        }
     }
 }
 
