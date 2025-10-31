@@ -6,14 +6,12 @@ extension PresentationDetent {
     /// Convert presentation detent to map offset for positioning
     var mapOffset: Double {
         switch self {
-        case .fraction(0.15):  // Collapsed - 15% height
-            return -0.06    // Minimal adjustment (~4 miles)
-        case .medium:          // Medium - 50% height
-            return -0.10    // Small-medium adjustment (~7 miles)
+        case .fraction(0.50):  // Collapsed - 50% height
+            return -0.08    // Small adjustment (~5 miles)
         case .large:           // Expanded - 100% height
-            return -0.38    // Significant adjustment (~25 miles)
+            return -0.08    // map is totally hidden, seems better to not make adjustments that will require the map to move
         default:
-            return -0.10    // Default to medium offset
+            return -0.08    // Default to collapsed offset
         }
     }
 }
@@ -44,7 +42,7 @@ class MapRegionViewModel: ObservableObject {
         self.mapRegion = MapContainerView.calculateRegionForRoute(
             from: fromCoord,
             to: toCoord,
-            sheetDetent: .medium
+            sheetDetent: .fraction(0.50)
         )
         
         print("🗺️ MapRegionVM Init: Initial region set - Center: \(mapRegion.center.latitude), \(mapRegion.center.longitude), Span: \(mapRegion.span.latitudeDelta)°")
@@ -53,7 +51,7 @@ class MapRegionViewModel: ObservableObject {
 
 struct MapContainerView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var selectedDetent: PresentationDetent = .medium
+    @State private var selectedDetent: PresentationDetent = .fraction(0.50)
     @State private var isSheetPresented = true  // Always show sheet (persistent)
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
@@ -185,7 +183,7 @@ struct MapContainerView: View {
                         bottomSheetNavigationContent(for: destination)
                     }
             }
-            .presentationDetents([.fraction(0.15), .medium, .large], selection: $selectedDetent)
+            .presentationDetents([.fraction(0.50), .large], selection: $selectedDetent)
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(true)
             .presentationBackgroundInteraction(.enabled)
@@ -319,7 +317,7 @@ struct MapContainerView: View {
         if navigationPath.isEmpty {
             // Back to home - reset to default Newark Penn view
             resetToDefaultMapView()
-            selectedDetent = .medium
+            selectedDetent = .fraction(0.50)
         } else {
             // Check if we're navigating to train details
             if isNavigatingToTrainDetails(navigationPath) {
@@ -526,7 +524,7 @@ struct MapContainerView: View {
             let region = Self.calculateRegionForRoute(
                 from: fromCoord,
                 to: toCoord,
-                sheetDetent: .medium
+                sheetDetent: .fraction(0.50)
             )
             
             withAnimation(.easeInOut(duration: 0.25)) {
@@ -608,7 +606,7 @@ struct MapContainerView: View {
                 onDismiss: {
                     // Reset to default map view and collapse bottom sheet
                     resetToDefaultMapView()
-                    selectedDetent = .medium
+                    selectedDetent = .fraction(0.50)
                 }
             )
         }
