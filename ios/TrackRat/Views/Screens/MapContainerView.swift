@@ -306,6 +306,18 @@ struct MapContainerView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
         }
+        .onChange(of: appState.shouldExpandSheet) { _, shouldExpand in
+            // Handle navigation-based sheet expansion (e.g., My Profile)
+            if shouldExpand {
+                print("📱 Navigation sheet expansion requested")
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    selectedDetent = .large
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Reset flag after handling
+                appState.shouldExpandSheet = false
+            }
+        }
         .sheet(item: $selectedSegment) { segment in
             SegmentTrainDetailsView(segment: segment)
                 .presentationDetents([.height(600), .large])
