@@ -100,7 +100,7 @@ export function TrainListPage() {
             <TrainCard
               key={`${train.train_id}-${index}`}
               train={train}
-              onClick={() => navigate(`/train/${train.train_id}`)}
+              onClick={() => navigate(`/train/${train.train_id}/${from}/${to}`)}
             />
           ))}
         </div>

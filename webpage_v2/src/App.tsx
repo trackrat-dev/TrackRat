@@ -12,7 +12,7 @@ function App() {
         <Routes>
           <Route path="/" element={<TripSelectionPage />} />
           <Route path="/trains/:from/:to" element={<TrainListPage />} />
-          <Route path="/train/:trainId" element={<TrainDetailsPage />} />
+          <Route path="/train/:trainId/:from?/:to?" element={<TrainDetailsPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
         </Routes>
       </Layout>

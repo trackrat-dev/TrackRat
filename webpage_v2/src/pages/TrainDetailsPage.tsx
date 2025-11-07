@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { TrainDetails } from '../types';
 import { apiService } from '../services/api';
@@ -9,7 +9,7 @@ import { TrackPredictionBar } from '../components/TrackPredictionBar';
 import { formatTimeAgo, getTodayDateString } from '../utils/date';
 
 export function TrainDetailsPage() {
-  const { trainId } = useParams<{ trainId: string }>();
+  const { trainId, from, to } = useParams<{ trainId: string; from?: string; to?: string }>();
   const navigate = useNavigate();
 
   const [train, setTrain] = useState<TrainDetails | null>(null);
@@ -51,6 +51,45 @@ export function TrainDetailsPage() {
   if (error || !train) {
     return <ErrorMessage message={error || 'Train not found'} onRetry={fetchTrainDetails} />;
   }
+
+  // Filter stops based on user's journey (from/to params)
+  const { displayableStops, hasPreviousStops, hasLaterStops } = useMemo(() => {
+    if (!train || !from || !to) {
+      return {
+        displayableStops: train?.stops || [],
+        hasPreviousStops: false,
+        hasLaterStops: false
+      };
+    }
+
+    const stops = train.stops;
+
+    // Find origin station index by station code (case-insensitive)
+    const originIndex = stops.findIndex(
+      stop => stop.station.code.toUpperCase() === from.toUpperCase()
+    );
+
+    // Find destination station index by station code (case-insensitive)
+    const destinationIndex = stops.findIndex(
+      stop => stop.station.code.toUpperCase() === to.toUpperCase()
+    );
+
+    // If both indices found and valid, filter to inclusive range
+    if (originIndex !== -1 && destinationIndex !== -1 && originIndex <= destinationIndex) {
+      return {
+        displayableStops: stops.slice(originIndex, destinationIndex + 1),
+        hasPreviousStops: originIndex > 0,
+        hasLaterStops: destinationIndex < stops.length - 1
+      };
+    }
+
+    // Fallback: show all stops
+    return {
+      displayableStops: stops,
+      hasPreviousStops: false,
+      hasLaterStops: false
+    };
+  }, [train, from, to]);
 
   // Check if we should show track predictions
   // Show for NY Penn departures without track assignment
@@ -123,11 +162,24 @@ export function TrainDetailsPage() {
       )}
 
       <h3 className="text-xl font-semibold mb-4">Stops</h3>
+
+      {hasPreviousStops && (
+        <div className="mb-3 p-4 bg-surface/50 backdrop-blur-xl border border-white/10 rounded-xl text-center text-white/60 text-sm">
+          Train has previous stops
+        </div>
+      )}
+
       <div className="space-y-3">
-        {train.stops.map((stop) => (
+        {displayableStops.map((stop) => (
           <StopCard key={`${stop.station.code}-${stop.stop_sequence}`} stop={stop} />
         ))}
       </div>
+
+      {hasLaterStops && (
+        <div className="mt-3 p-4 bg-surface/50 backdrop-blur-xl border border-white/10 rounded-xl text-center text-white/60 text-sm">
+          Train has later stops
+        </div>
+      )}
     </div>
   );
 }
