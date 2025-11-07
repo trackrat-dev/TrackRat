@@ -104,17 +104,17 @@ export function TrainDetailsPage() {
       <div className="mb-6">
         <button
           onClick={() => navigate(-1)}
-          className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2"
+          className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
         >
           ← Back
         </button>
       </div>
 
-      <div className="bg-surface/70 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6">
+      <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-3xl font-bold">Train {train.train_id}</h2>
-            <div className="text-white/60 mt-1">{train.line.name}</div>
+            <h2 className="text-3xl font-bold text-text-primary">Train {train.train_id}</h2>
+            <div className="text-text-muted mt-1">{train.line.name}</div>
           </div>
           {train.is_cancelled && (
             <span className="px-3 py-1 bg-error/20 text-error rounded-full text-sm font-semibold">
@@ -125,27 +125,27 @@ export function TrainDetailsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <div className="text-sm text-white/60">Origin</div>
-            <div className="font-semibold">{train.route.origin}</div>
+            <div className="text-sm text-text-muted">Origin</div>
+            <div className="font-semibold text-text-primary">{train.route.origin}</div>
           </div>
           <div>
-            <div className="text-sm text-white/60">Destination</div>
-            <div className="font-semibold">{train.route.destination}</div>
+            <div className="text-sm text-text-muted">Destination</div>
+            <div className="font-semibold text-text-primary">{train.route.destination}</div>
           </div>
         </div>
 
         <div className="flex items-center justify-between text-sm">
-          <div className="text-white/60">
+          <div className="text-text-muted">
             {lastUpdated && `Updated ${formatTimeAgo(lastUpdated.toISOString())}`}
           </div>
-          <div className="text-white/60">{train.data_source}</div>
+          <div className="text-text-muted">{train.data_source}</div>
         </div>
       </div>
 
       <button
         onClick={fetchTrainDetails}
         disabled={loading}
-        className="w-full mb-6 py-3 bg-surface/50 backdrop-blur-xl border border-white/10 rounded-xl font-semibold hover:bg-white/5 transition-all disabled:opacity-50"
+        className="w-full mb-6 py-3 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl font-semibold hover:bg-surface transition-all disabled:opacity-50 text-text-primary"
       >
         {loading ? 'Refreshing...' : '🔄 Refresh'}
       </button>
@@ -161,10 +161,10 @@ export function TrainDetailsPage() {
         </div>
       )}
 
-      <h3 className="text-xl font-semibold mb-4">Stops</h3>
+      <h3 className="text-xl font-semibold mb-4 text-text-primary">Stops</h3>
 
       {hasPreviousStops && (
-        <div className="mb-3 p-4 bg-surface/50 backdrop-blur-xl border border-white/10 rounded-xl text-center text-white/60 text-sm">
+        <div className="mb-3 p-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-center text-text-muted text-sm">
           Train has previous stops
         </div>
       )}
@@ -176,7 +176,7 @@ export function TrainDetailsPage() {
       </div>
 
       {hasLaterStops && (
-        <div className="mt-3 p-4 bg-surface/50 backdrop-blur-xl border border-white/10 rounded-xl text-center text-white/60 text-sm">
+        <div className="mt-3 p-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-center text-text-muted text-sm">
           Train has later stops
         </div>
       )}

@@ -5,15 +5,20 @@ export default {
     extend: {
       colors: {
         primary: {
-          start: '#667eea',
-          end: '#764ba2',
+          start: '#8B5A3C',
+          end: '#D4753E',
         },
-        accent: '#ff6b35',
-        background: '#0a0a0a',
-        surface: '#1a1a1a',
-        success: '#10b981',
-        warning: '#fbbf24',
-        error: '#ef4444',
+        accent: '#CC5500',
+        background: '#F5F1E8',
+        surface: '#EAE3D2',
+        success: '#6B8E23',
+        warning: '#D4753E',
+        error: '#A52A2A',
+        text: {
+          primary: '#2D1B0E',
+          secondary: '#4A3728',
+          muted: '#7B6C5D',
+        },
       },
       fontFamily: {
         sans: [

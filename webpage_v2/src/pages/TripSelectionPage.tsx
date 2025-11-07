@@ -39,27 +39,27 @@ export function TripSelectionPage() {
       <div className="space-y-4 mb-8">
         <button
           onClick={() => setShowDeparturePicker(true)}
-          className="w-full bg-surface/70 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-left hover:bg-white/5 transition-all"
+          className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-6 text-left hover:bg-surface transition-all"
         >
-          <div className="text-sm text-white/60 mb-1">From</div>
-          <div className="text-lg font-semibold">
+          <div className="text-sm text-text-muted mb-1">From</div>
+          <div className="text-lg font-semibold text-text-primary">
             {selectedDeparture ? selectedDeparture.name : 'Select departure station'}
           </div>
           {selectedDeparture && (
-            <div className="text-sm text-white/50 mt-1">{selectedDeparture.code}</div>
+            <div className="text-sm text-text-muted mt-1">{selectedDeparture.code}</div>
           )}
         </button>
 
         <button
           onClick={() => setShowDestinationPicker(true)}
-          className="w-full bg-surface/70 backdrop-blur-xl border border-white/10 rounded-2xl p-6 text-left hover:bg-white/5 transition-all"
+          className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-6 text-left hover:bg-surface transition-all"
         >
-          <div className="text-sm text-white/60 mb-1">To</div>
-          <div className="text-lg font-semibold">
+          <div className="text-sm text-text-muted mb-1">To</div>
+          <div className="text-lg font-semibold text-text-primary">
             {selectedDestination ? selectedDestination.name : 'Select destination station'}
           </div>
           {selectedDestination && (
-            <div className="text-sm text-white/50 mt-1">{selectedDestination.code}</div>
+            <div className="text-sm text-text-muted mt-1">{selectedDestination.code}</div>
           )}
         </button>
 
@@ -88,14 +88,14 @@ export function TripSelectionPage() {
                     setDestination(to);
                   }
                 }}
-                className="w-full bg-surface/50 backdrop-blur-xl border border-white/10 rounded-xl p-4 text-left hover:bg-white/5 transition-all"
+                className="w-full bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4 text-left hover:bg-surface transition-all"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">{trip.departureName}</div>
-                    <div className="text-sm text-white/60">to {trip.destinationName}</div>
+                    <div className="font-medium text-text-primary">{trip.departureName}</div>
+                    <div className="text-sm text-text-muted">to {trip.destinationName}</div>
                   </div>
-                  <div className="text-2xl">→</div>
+                  <div className="text-2xl text-text-secondary">→</div>
                 </div>
               </button>
             ))}
@@ -121,10 +121,10 @@ export function TripSelectionPage() {
                     }
                   }
                 }}
-                className="bg-surface/50 backdrop-blur-xl border border-white/10 rounded-xl p-3 text-left hover:bg-white/5 transition-all"
+                className="bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-3 text-left hover:bg-surface transition-all"
               >
-                <div className="font-medium text-sm">{station.name}</div>
-                <div className="text-xs text-white/50 mt-1">{station.id}</div>
+                <div className="font-medium text-sm text-text-primary">{station.name}</div>
+                <div className="text-xs text-text-muted mt-1">{station.id}</div>
               </button>
             ))}
           </div>

@@ -88,15 +88,15 @@ export function TrainListPage() {
       <div className="mb-6">
         <button
           onClick={() => navigate('/')}
-          className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2"
+          className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
         >
           ← Back
         </button>
-        <h2 className="text-2xl font-bold">
+        <h2 className="text-2xl font-bold text-text-primary">
           {fromStation.name} → {toStation.name}
         </h2>
         {lastUpdated && (
-          <div className="text-sm text-white/60 mt-2">
+          <div className="text-sm text-text-muted mt-2">
             Updated {formatTimeAgo(lastUpdated.toISOString())}
           </div>
         )}
@@ -105,7 +105,7 @@ export function TrainListPage() {
       <button
         onClick={fetchTrains}
         disabled={loading}
-        className="w-full mb-4 py-3 bg-surface/50 backdrop-blur-xl border border-white/10 rounded-xl font-semibold hover:bg-white/5 transition-all disabled:opacity-50"
+        className="w-full mb-4 py-3 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl font-semibold hover:bg-surface transition-all disabled:opacity-50 text-text-primary"
       >
         {loading ? 'Refreshing...' : '🔄 Refresh'}
       </button>
@@ -115,7 +115,7 @@ export function TrainListPage() {
       ) : error ? (
         <ErrorMessage message={error} onRetry={fetchTrains} />
       ) : trains.length === 0 ? (
-        <div className="text-center py-12 text-white/60">
+        <div className="text-center py-12 text-text-muted">
           No trains found for this route
         </div>
       ) : (

@@ -34,12 +34,12 @@ export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: 
 
   if (loading) {
     return (
-      <div className="mt-3 p-3 bg-orange-500/5 border border-orange-500/20 rounded-xl">
+      <div className="mt-3 p-3 bg-accent/5 border border-accent/20 rounded-xl">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-lg">🚋</span>
-          <span className="text-sm font-semibold text-white/90">Track Predictions</span>
+          <span className="text-sm font-semibold text-text-primary">Track Predictions</span>
         </div>
-        <div className="h-16 bg-white/5 rounded-lg animate-pulse" />
+        <div className="h-16 bg-text-muted/10 rounded-lg animate-pulse" />
       </div>
     );
   }
@@ -73,20 +73,20 @@ export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: 
   const hasOnlyLowConfidence = visibleSegments.every(s => s.probability < 0.17);
 
   return (
-    <div className="mt-3 p-3 bg-orange-500/5 border border-orange-500/20 rounded-xl">
+    <div className="mt-3 p-3 bg-accent/5 border border-accent/20 rounded-xl">
       <div className="flex items-center gap-2 mb-2">
         <span className="text-lg">🚋</span>
-        <span className="text-sm font-semibold text-white/90">Track Predictions</span>
+        <span className="text-sm font-semibold text-text-primary">Track Predictions</span>
       </div>
 
       {hasOnlyLowConfidence ? (
-        <div className="py-4 text-center text-sm text-white/60">
+        <div className="py-4 text-center text-sm text-text-muted">
           No clear favorite
         </div>
       ) : (
         <>
           {/* Segmented bar */}
-          <div className="flex h-16 rounded-lg overflow-hidden border border-white/20">
+          <div className="flex h-16 rounded-lg overflow-hidden border border-text-muted/30">
             {visibleSegments.map((segment) => {
               const widthPercent = segment.probability * 100;
               const showLabel = segment.probability >= 0.15;
@@ -94,11 +94,11 @@ export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: 
               return (
                 <div
                   key={segment.platformName}
-                  className="flex flex-col items-center justify-center bg-orange-500/30 border-r border-white/10 last:border-r-0"
+                  className="flex flex-col items-center justify-center bg-accent/40 border-r border-text-muted/20 last:border-r-0"
                   style={{ width: `${widthPercent}%` }}
                 >
                   {showLabel && (
-                    <span className="text-xs font-medium text-black text-center leading-tight px-1">
+                    <span className="text-xs font-semibold text-white text-center leading-tight px-1">
                       Tracks<br />{segment.platformName}
                     </span>
                   )}
@@ -120,7 +120,7 @@ export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: 
                   style={{ width: `${widthPercent}%` }}
                 >
                   {showPercentage && (
-                    <span className="text-xs font-medium text-white/80">
+                    <span className="text-xs font-medium text-text-secondary">
                       {Math.round(segment.probability * 100)}%
                     </span>
                   )}

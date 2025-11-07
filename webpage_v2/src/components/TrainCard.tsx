@@ -22,14 +22,14 @@ export function TrainCard({ train, onClick }: TrainCardProps) {
   return (
     <button
       onClick={onClick}
-      className="w-full bg-surface/70 backdrop-blur-xl border border-white/10 rounded-2xl p-4 hover:bg-white/5 transition-all text-left"
+      className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4 hover:bg-surface transition-all text-left"
     >
       <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="text-lg font-semibold text-white">
+          <div className="text-lg font-semibold text-text-primary">
             Train {train.train_id}
           </div>
-          <div className="text-sm text-white/60">{train.line.name}</div>
+          <div className="text-sm text-text-muted">{train.line.name}</div>
         </div>
         <span className={getStatusBadgeClass(status)}>
           {train.is_cancelled ? 'Cancelled' : formatDelayText(delayMinutes)}
@@ -38,8 +38,8 @@ export function TrainCard({ train, onClick }: TrainCardProps) {
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <div className="text-sm text-white/60">Departure</div>
-          <div className="font-medium">
+          <div className="text-sm text-text-muted">Departure</div>
+          <div className="font-medium text-text-primary">
             {formatTime(train.departure.scheduled_time)}
             {train.departure.actual_time && delayMinutes > 0 && (
               <span className="text-warning ml-2">
@@ -50,15 +50,15 @@ export function TrainCard({ train, onClick }: TrainCardProps) {
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="text-sm text-white/60">Arrival</div>
-          <div className="font-medium">
+          <div className="text-sm text-text-muted">Arrival</div>
+          <div className="font-medium text-text-primary">
             {formatTime(train.arrival.scheduled_time)}
           </div>
         </div>
 
         <div className="flex items-center justify-between text-sm">
-          <div className="text-white/60">{train.destination}</div>
-          <div className="text-white/60">{train.data_source}</div>
+          <div className="text-text-muted">{train.destination}</div>
+          <div className="text-text-muted">{train.data_source}</div>
         </div>
       </div>
     </button>
