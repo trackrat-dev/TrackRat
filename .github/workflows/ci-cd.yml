@@ -434,7 +434,7 @@ jobs:
       - name: Initialize Ocuroot State
         if: env.DEPLOYMENT_METHOD == 'ocuroot'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.OCUROOT_PAT }}
           OCUROOT_ENV: staging
         run: |
           echo "🔧 Initializing Ocuroot state..."
@@ -450,7 +450,7 @@ jobs:
       - name: Deploy via Ocuroot
         if: env.DEPLOYMENT_METHOD == 'ocuroot'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.OCUROOT_PAT }}
           OCUROOT_ENV: staging
           OCUROOT_INPUT_gcp_project: ${{ env.PROJECT_ID }}
           OCUROOT_INPUT_environment: staging
@@ -474,7 +474,7 @@ jobs:
       # Step 4: Get final service URL if not set
       - name: Get Service URL
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.OCUROOT_PAT }}
         run: |
           # Get SERVICE_URL based on deployment method
           if [[ "${{ env.DEPLOYMENT_METHOD }}" == "ocuroot" && -z "$SERVICE_URL" ]]; then
@@ -686,7 +686,7 @@ jobs:
       - name: Initialize Ocuroot State
         if: env.DEPLOYMENT_METHOD == 'ocuroot'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.OCUROOT_PAT }}
           OCUROOT_ENV: production
         run: |
           echo "🔧 Initializing Ocuroot state..."
@@ -702,7 +702,7 @@ jobs:
       - name: Deploy via Ocuroot
         if: env.DEPLOYMENT_METHOD == 'ocuroot'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.OCUROOT_PAT }}
           OCUROOT_ENV: production
           OCUROOT_INPUT_gcp_project: ${{ env.PROJECT_ID }}
           OCUROOT_INPUT_environment: production
@@ -726,7 +726,7 @@ jobs:
       # Step 4: Get final service URL if not set
       - name: Get Service URL
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.OCUROOT_PAT }}
         run: |
           # Get SERVICE_URL based on deployment method
           if [[ "${{ env.DEPLOYMENT_METHOD }}" == "ocuroot" && -z "$SERVICE_URL" ]]; then
