@@ -13,14 +13,20 @@ repo_alias("github.com/bokonon1/TrackRat")
 # Local mode uses filesystem, cloud mode uses git
 def setup_and_configure_store():
     env_vars = host.env()
-    local_mode = "OCUROOT_LOCAL_MODE" in env_vars
 
-    if local_mode:
+    # Check if local mode is explicitly enabled (must be "true", "1", or "yes")
+    local_mode_value = env_vars.get("OCUROOT_LOCAL_MODE", "")
+    use_local_mode = local_mode_value.lower() in ["true", "1", "yes"]
+
+    # Detect if we're running in CI based on GH_TOKEN presence
+    in_ci = "GH_TOKEN" in env_vars
+
+    if use_local_mode:
         print("🏠 OCUROOT LOCAL MODE")
         print("   State storage: ./.ocuroot/state")
         print("   Intent storage: ./.ocuroot/intent")
         print("")
-        print("   To use git storage, unset OCUROOT_LOCAL_MODE")
+        print("   To use git storage, unset OCUROOT_LOCAL_MODE or set to false")
         print("")
 
         state_store = store.fs("./.ocuroot/state")
@@ -32,14 +38,27 @@ def setup_and_configure_store():
 
         print("☁️  OCUROOT CLOUD MODE")
         print("   Environment: {}".format(env))
-        print("   State storage: Git repository (ocuroot-state branch)")
+        print("   State storage: Git repository")
         print("")
 
-        # Use git backend pointing to this repository's ocuroot-state branch
-        # Using SSH URL for authentication
+        # Use git backend pointing to the trackrat-ocuroot-state repository
+        # In CI: use HTTPS with token authentication
+        # Locally: use SSH authentication
+        if in_ci:
+            # CI mode - use HTTPS with token
+            token = env_vars["GH_TOKEN"]
+            state_url = "https://x-access-token:{}@github.com/bokonon1/trackrat-ocuroot-state.git".format(token)
+            print("   Authentication: HTTPS with token (CI mode)")
+        else:
+            # Local development - use SSH
+            state_url = "git@github.com:bokonon1/trackrat-ocuroot-state.git"
+            print("   Authentication: SSH (local mode)")
+
+        print("")
+
         store.set(
-            store.git("git@github.com:bokonon1/trackrat-ocuroot-state.git", branch="state"),
-            intent=store.git("git@github.com:bokonon1/trackrat-ocuroot-state.git", branch="intent"),
+            store.git(state_url, branch="state"),
+            intent=store.git(state_url, branch="intent"),
         )
 
 # Initialize and configure store
