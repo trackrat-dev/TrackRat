@@ -22,13 +22,37 @@ export function TrainListPage() {
   const fromStation = from ? getStationByCode(from) : null;
   const toStation = to ? getStationByCode(to) : null;
 
+  // Check if train has already departed from the origin station
+  const hasTrainDeparted = (train: Train): boolean => {
+    const now = new Date();
+
+    // Get departure time (prefer actual, fallback to scheduled)
+    const departureTimeStr = train.departure.actual_time || train.departure.scheduled_time;
+
+    if (!departureTimeStr) {
+      // If no departure time, don't filter out (safe default)
+      return false;
+    }
+
+    const departureTime = new Date(departureTimeStr);
+
+    // Add 1 minute buffer to account for delays (matching iOS implementation)
+    const departureWithBuffer = new Date(departureTime.getTime() + 60 * 1000);
+
+    return departureWithBuffer < now;
+  };
+
   const fetchTrains = async () => {
     if (!from || !to) return;
 
     try {
       setError(null);
       const response = await apiService.getDepartures(from, to);
-      setTrains(response.departures);
+
+      // Filter out trains that have already departed from the origin station
+      const upcomingTrains = response.departures.filter(train => !hasTrainDeparted(train));
+
+      setTrains(upcomingTrains);
       setLastUpdated(new Date());
       setLoading(false);
 
