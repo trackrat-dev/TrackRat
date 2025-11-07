@@ -1,7 +1,6 @@
 import { Train } from '../types';
 import { formatTime, getDelayMinutes } from '../utils/date';
 import { formatDelayText, getStatusBadgeClass } from '../utils/formatting';
-import { TrackPredictionBar } from './TrackPredictionBar';
 
 interface TrainCardProps {
   train: Train;
@@ -19,12 +18,6 @@ export function TrainCard({ train, onClick }: TrainCardProps) {
     : delayMinutes > 0
     ? 'delayed'
     : 'on time';
-
-  // Check if we should show track predictions
-  const shouldShowPredictions =
-    train.departure.code === 'NY' &&  // Only NY Penn
-    !train.departure.track &&         // No track assigned
-    !train.is_cancelled;              // Not cancelled
 
   return (
     <button
@@ -68,15 +61,6 @@ export function TrainCard({ train, onClick }: TrainCardProps) {
           <div className="text-white/60">{train.data_source}</div>
         </div>
       </div>
-
-      {/* Track predictions for NY Penn Station */}
-      {shouldShowPredictions && (
-        <TrackPredictionBar
-          trainId={train.train_id}
-          originStationCode={train.departure.code}
-          journeyDate={train.journey_date}
-        />
-      )}
     </button>
   );
 }
