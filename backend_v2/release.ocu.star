@@ -42,7 +42,66 @@ def is_running_in_ci():
     # Default: assume local environment
     return False
 
-def build(prev_build_number=None, year=None, month=None, day=None, sha=None, gcp_project=None, environment=None):
+def test_backend(prev_test_status=None):
+    """Run backend tests and code quality checks
+
+    Executes the full test suite including:
+    - Code formatting (black)
+    - Type checking (mypy)
+    - Linting (ruff)
+    - Unit and integration tests (pytest)
+
+    The test script manages its own PostgreSQL container if needed.
+
+    Args:
+        prev_test_status: Previous test status for state tracking
+
+    Returns:
+        Dictionary with test outputs (status, timestamp)
+    """
+    print("=" * 60)
+    print("🧪 BACKEND TESTING")
+    print("=" * 60)
+    print("")
+
+    # Check if we're in CI or local environment
+    in_ci = is_running_in_ci()
+    if in_ci:
+        print("📍 Running in CI environment")
+    else:
+        print("📍 Running in local environment")
+    print("")
+
+    # Run the existing test script (handles database setup automatically)
+    print("🚀 Running test suite via run_tests_with_db.sh...")
+    print("")
+
+    result = host.shell("""
+        cd backend_v2 && \
+        chmod +x run_tests_with_db.sh && \
+        ./run_tests_with_db.sh
+    """)
+
+    # If tests failed, the shell command will have non-zero exit code
+    # and ocuroot will automatically fail the release
+
+    timestamp = host.shell("date -u '+%Y-%m-%d %H:%M:%S UTC'").stdout.strip()
+
+    print("")
+    print("=" * 60)
+    print("✅ BACKEND TESTING COMPLETE")
+    print("=" * 60)
+    print("   Timestamp: {}".format(timestamp))
+    print("")
+
+    return done(
+        outputs={
+            "test_status": "passed",
+            "timestamp": timestamp
+        }
+    )
+
+def build(test_status=None, prev_build_number=None, year=None, month=None, day=None, sha=None, gcp_project=None, environment=None):
     """Build and push Docker image to Artifact Registry (local) or use pre-built image (CI)
 
     When running in CI (GitHub Actions):
@@ -56,6 +115,7 @@ def build(prev_build_number=None, year=None, month=None, day=None, sha=None, gcp
         - Returns newly built image tag
 
     Args:
+        test_status: Test status from test-backend task (dependency to ensure tests ran)
         prev_build_number: Previous build number for incrementing
         year: Year for version string (defaults to current year)
         month: Month for version string (defaults to current month)
@@ -376,14 +436,32 @@ def rollback_infrastructure(image_tag, environment):
 # RELEASE PHASES
 # ============================================================================
 
+# Task: Run backend tests and code quality checks
+# This ensures all tests pass before building or deploying
+# The test script (run_tests_with_db.sh) manages its own PostgreSQL container
+task(
+    name="test-backend",
+    fn=test_backend,
+    inputs={
+        "prev_test_status": input(
+            ref="./task/test-backend#output/test_status",
+            default="none"
+        )
+    }
+)
+
 # Task: Build Docker image and push to Artifact Registry
-# This runs before any deployment phases
+# This runs after tests pass (enforced via test_status input dependency)
 # - In CI: Uses pre-built image from GitHub Actions (via OCUROOT_INPUT_image_tag env var)
 # - Locally: Builds Docker image and pushes to registry
 task(
     name="build-backend",
     fn=build,
     inputs={
+        # Depend on test results - build won't run if tests haven't passed
+        "test_status": input(
+            ref="./task/test-backend#output/test_status"
+        ),
         "prev_build_number": input(
             ref="./task/build-backend#output/build_number",
             default=0
