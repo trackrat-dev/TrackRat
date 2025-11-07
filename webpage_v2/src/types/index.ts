@@ -151,3 +151,15 @@ export interface UITrainCard extends Train {
   status: TrainStatus;
   delayMinutes: number;
 }
+
+// Track Prediction Types
+
+export interface PlatformPrediction {
+  platform_probabilities: Record<string, number>;
+  primary_prediction: string;
+  confidence: number;
+  top_3: string[];
+  model_version: string;
+  station_code: string;
+  train_id: string;
+}

@@ -86,11 +86,26 @@ The app connects to the TrackRat backend API at `https://prod.api.trackrat.net/a
 
 ## Deployment
 
+### Automated Deployment (GitHub Pages)
+
+The app automatically deploys to GitHub Pages when changes are pushed to the `main` branch.
+
+**Live URL:** https://bokonon1.github.io/TrackRat/
+
+**How it works:**
+1. Push changes to `webpage_v2/` directory
+2. GitHub Actions automatically builds and deploys
+3. Changes appear at the live URL within ~2 minutes
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+
+### Manual Deployment
+
 The app can be deployed to any static hosting service:
 
-- Vercel (recommended)
+- GitHub Pages (automated via Actions)
+- Vercel
 - Netlify
-- GitHub Pages
 - Cloudflare Pages
 
 ```bash

@@ -1,4 +1,4 @@
-import { DeparturesResponse, TrainDetailsResponse, HealthResponse } from '../types';
+import { DeparturesResponse, TrainDetailsResponse, HealthResponse, PlatformPrediction } from '../types';
 
 const BASE_URL = 'https://prod.api.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
@@ -63,6 +63,21 @@ class APIService {
   async checkHealth(): Promise<HealthResponse> {
     const url = `${BASE_URL}/../health`;
     return this.fetch<HealthResponse>(url, false);
+  }
+
+  async getPlatformPrediction(
+    stationCode: string,
+    trainId: string,
+    journeyDate: string
+  ): Promise<PlatformPrediction | null> {
+    try {
+      const url = `${BASE_URL}/predictions/track?station_code=${stationCode}&train_id=${trainId}&journey_date=${journeyDate}`;
+      return await this.fetch<PlatformPrediction>(url, false); // Don't cache predictions
+    } catch (error) {
+      // Fail silently - predictions are optional
+      console.warn('Failed to fetch platform predictions:', error);
+      return null;
+    }
   }
 
   clearCache(): void {

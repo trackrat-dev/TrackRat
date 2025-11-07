@@ -7,7 +7,7 @@ import { FavoritesPage } from './pages/FavoritesPage';
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/TrackRat">
       <Layout>
         <Routes>
           <Route path="/" element={<TripSelectionPage />} />

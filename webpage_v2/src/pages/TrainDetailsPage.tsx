@@ -5,6 +5,7 @@ import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
+import { TrackPredictionBar } from '../components/TrackPredictionBar';
 import { formatTimeAgo, getTodayDateString } from '../utils/date';
 
 export function TrainDetailsPage() {
@@ -50,6 +51,14 @@ export function TrainDetailsPage() {
   if (error || !train) {
     return <ErrorMessage message={error || 'Train not found'} onRetry={fetchTrainDetails} />;
   }
+
+  // Check if we should show track predictions
+  // Show for NY Penn departures without track assignment
+  const originStop = train.stops.find(s => s.station.code === train.route.origin_code);
+  const shouldShowPredictions =
+    train.route.origin_code === 'NY' &&  // Only NY Penn
+    !originStop?.track &&                 // No track assigned
+    !train.is_cancelled;                  // Not cancelled
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -101,6 +110,17 @@ export function TrainDetailsPage() {
       >
         {loading ? 'Refreshing...' : '🔄 Refresh'}
       </button>
+
+      {/* Track predictions for NY Penn Station */}
+      {shouldShowPredictions && (
+        <div className="mb-6">
+          <TrackPredictionBar
+            trainId={train.train_id}
+            originStationCode={train.route.origin_code}
+            journeyDate={train.journey_date}
+          />
+        </div>
+      )}
 
       <h3 className="text-xl font-semibold mb-4">Stops</h3>
       <div className="space-y-3">
