@@ -6,7 +6,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { TrackPredictionBar } from '../components/TrackPredictionBar';
-import { formatTimeAgo, getTodayDateString } from '../utils/date';
+import { getTodayDateString } from '../utils/date';
 
 export function TrainDetailsPage() {
   const { trainId, from, to } = useParams<{ trainId: string; from?: string; to?: string }>();
@@ -15,7 +15,6 @@ export function TrainDetailsPage() {
   const [train, setTrain] = useState<TrainDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchTrainDetails = async () => {
     if (!trainId) return;
@@ -24,7 +23,6 @@ export function TrainDetailsPage() {
       setError(null);
       const response = await apiService.getTrainDetails(trainId, getTodayDateString());
       setTrain(response.train);
-      setLastUpdated(new Date());
       setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load train details');
@@ -135,21 +133,8 @@ export function TrainDetailsPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-sm">
-          <div className="text-text-muted">
-            {lastUpdated && `Updated ${formatTimeAgo(lastUpdated.toISOString())}`}
-          </div>
-          <div className="text-text-muted">{train.data_source}</div>
-        </div>
+        <div className="text-sm text-text-muted">{train.data_source}</div>
       </div>
-
-      <button
-        onClick={fetchTrainDetails}
-        disabled={loading}
-        className="w-full mb-6 py-3 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl font-semibold hover:bg-surface transition-all disabled:opacity-50 text-text-primary"
-      >
-        {loading ? 'Refreshing...' : '🔄 Refresh'}
-      </button>
 
       {/* Track predictions for NY Penn Station */}
       {shouldShowPredictions && (
@@ -172,7 +157,12 @@ export function TrainDetailsPage() {
 
       <div className="space-y-3">
         {displayableStops.map((stop) => (
-          <StopCard key={`${stop.station.code}-${stop.stop_sequence}`} stop={stop} />
+          <StopCard
+            key={`${stop.station.code}-${stop.stop_sequence}`}
+            stop={stop}
+            isOrigin={from ? stop.station.code.toUpperCase() === from.toUpperCase() : false}
+            isDestination={to ? stop.station.code.toUpperCase() === to.toUpperCase() : false}
+          />
         ))}
       </div>
 

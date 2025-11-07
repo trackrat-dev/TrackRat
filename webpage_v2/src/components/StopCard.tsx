@@ -3,9 +3,11 @@ import { formatTime, getDelayMinutes } from '../utils/date';
 
 interface StopCardProps {
   stop: Stop;
+  isOrigin?: boolean;
+  isDestination?: boolean;
 }
 
-export function StopCard({ stop }: StopCardProps) {
+export function StopCard({ stop, isOrigin = false, isDestination = false }: StopCardProps) {
   const departureDelay = getDelayMinutes(
     stop.scheduled_departure,
     stop.actual_departure
@@ -30,7 +32,7 @@ export function StopCard({ stop }: StopCardProps) {
       </div>
 
       <div className="space-y-1 text-sm">
-        {stop.scheduled_arrival && (
+        {stop.scheduled_arrival && !isOrigin && (
           <div className="flex justify-between">
             <span className="text-text-muted">Arrival:</span>
             <span className="font-medium text-text-primary">
@@ -44,7 +46,7 @@ export function StopCard({ stop }: StopCardProps) {
           </div>
         )}
 
-        {stop.scheduled_departure && (
+        {stop.scheduled_departure && !isDestination && (
           <div className="flex justify-between">
             <span className="text-text-muted">Departure:</span>
             <span className="font-medium text-text-primary">
