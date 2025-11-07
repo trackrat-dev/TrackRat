@@ -40,19 +40,8 @@ export function TrainDetailsPage() {
     return () => clearInterval(interval);
   }, [trainId]);
 
-  if (!trainId) {
-    return <ErrorMessage message="Invalid train ID" onRetry={() => navigate('/')} />;
-  }
-
-  if (loading && !train) {
-    return <LoadingSpinner />;
-  }
-
-  if (error || !train) {
-    return <ErrorMessage message={error || 'Train not found'} onRetry={fetchTrainDetails} />;
-  }
-
   // Filter stops based on user's journey (from/to params)
+  // Must be called before early returns to maintain hook order
   const { displayableStops, hasPreviousStops, hasLaterStops } = useMemo(() => {
     if (!train || !from || !to) {
       return {
@@ -90,6 +79,18 @@ export function TrainDetailsPage() {
       hasLaterStops: false
     };
   }, [train, from, to]);
+
+  if (!trainId) {
+    return <ErrorMessage message="Invalid train ID" onRetry={() => navigate('/')} />;
+  }
+
+  if (loading && !train) {
+    return <LoadingSpinner />;
+  }
+
+  if (error || !train) {
+    return <ErrorMessage message={error || 'Train not found'} onRetry={fetchTrainDetails} />;
+  }
 
   // Check if we should show track predictions
   // Show for NY Penn departures without track assignment
