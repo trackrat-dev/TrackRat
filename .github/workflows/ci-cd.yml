@@ -116,27 +116,6 @@ jobs:
           export CLEANUP_DB=false
           ./run_tests_with_db.sh
 
-      - name: Test Summary
-        if: always()
-        run: |
-          echo "## 🧪 Backend Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ **All tests passed**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Test Suite:**" >> $GITHUB_STEP_SUMMARY
-            echo "- ✅ Code formatting (black)" >> $GITHUB_STEP_SUMMARY
-            echo "- ✅ Type checking (mypy)" >> $GITHUB_STEP_SUMMARY
-            echo "- ✅ Linting (ruff)" >> $GITHUB_STEP_SUMMARY
-            echo "- ✅ Unit & integration tests (pytest)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ **Tests failed**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Please check the logs above for details." >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Test Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-
       - name: Clean up Python environment
         working-directory: ./backend_v2
         run: |
@@ -482,13 +461,8 @@ jobs:
           echo "   Project: ${{ env.PROJECT_ID }}"
           echo "   Image: ${{ env.IMAGE_TAG }}"
           echo ""
-          echo "📝 Note: Ocuroot will run the full test suite as a quality gate"
-          echo "   before deploying. This ensures the pre-built image is validated."
-          echo ""
 
           # Run Ocuroot release
-          # This executes: test-backend task → build-backend task → deploy to staging
-          # The build task uses the pre-built image from earlier in this workflow
           ocuroot release new backend_v2/release.ocu.star --cascade || {
             echo "❌ Ocuroot deployment failed"
             echo "DEPLOYMENT_FAILED=true" >> $GITHUB_ENV
@@ -739,13 +713,8 @@ jobs:
           echo "   Project: ${{ env.PROJECT_ID }}"
           echo "   Image: ${{ env.IMAGE_TAG }}"
           echo ""
-          echo "📝 Note: Ocuroot will run the full test suite as a quality gate"
-          echo "   before deploying. This ensures the pre-built image is validated."
-          echo ""
 
           # Run Ocuroot release
-          # This executes: test-backend task → build-backend task → deploy to production
-          # The build task uses the pre-built image from earlier in this workflow
           ocuroot release new backend_v2/release.ocu.star --cascade || {
             echo "❌ Ocuroot deployment failed"
             echo "DEPLOYMENT_FAILED=true" >> $GITHUB_ENV
