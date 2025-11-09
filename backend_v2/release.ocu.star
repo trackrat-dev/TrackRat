@@ -393,34 +393,82 @@ task(
     }
 )
 
-# Phase 1: Deploy to Staging
-# Deploys to staging environment automatically
-phase(
-    "staging",
-    work=[
-        deploy(
-            up=deploy_infrastructure,
-            down=rollback_infrastructure,
-            environment=e,
-            inputs={
-                "image_tag": input(ref="./task/build-backend#output/image_tag")
-            }
-        ) for e in environments() if e.attributes.get("type") == "staging"
-    ]
-)
+# ============================================================================
+# CONDITIONAL PHASE DEFINITION BASED ON ENVIRONMENT
+# ============================================================================
+# SAFETY: Only define the phase for the current deployment environment
+# This prevents accidental cross-environment deployments even if --cascade is used
 
-# Phase 2: Deploy to Production
-# Deploys to production environment (requires approval if configured)
-phase(
-    "production",
-    work=[
-        deploy(
-            up=deploy_infrastructure,
-            down=rollback_infrastructure,
-            environment=e,
-            inputs={
-                "image_tag": input(ref="./call/build-backend#output/image_tag")
-            }
-        ) for e in environments() if e.attributes.get("type") == "production"
-    ]
-)
+# Get the deployment environment from environment variable
+env_vars = env()
+deployment_env = env_vars.get("OCUROOT_ENV", "")
+
+print("")
+print("=" * 60)
+print("🔍 DEPLOYMENT ENVIRONMENT CONFIGURATION")
+print("=" * 60)
+print("   OCUROOT_ENV: {}".format(deployment_env if deployment_env else "NOT SET"))
+print("")
+
+# Conditionally define deployment phase based on environment
+if deployment_env == "staging":
+    print("✅ Configuring STAGING deployment phase")
+    print("   Will deploy to: staging environment only")
+    print("   Production phase: NOT DEFINED (safe)")
+    print("")
+
+    # Phase 1: Deploy to Staging
+    # Only defined when OCUROOT_ENV=staging
+    phase(
+        "staging",
+        work=[
+            deploy(
+                up=deploy_infrastructure,
+                down=rollback_infrastructure,
+                environment=e,
+                inputs={
+                    "image_tag": input(ref="./call/build-backend#output/image_tag")
+                }
+            ) for e in environments() if e.attributes.get("type") == "staging"
+        ]
+    )
+
+elif deployment_env == "production":
+    print("✅ Configuring PRODUCTION deployment phase")
+    print("   Will deploy to: production environment only")
+    print("   Staging phase: NOT DEFINED (safe)")
+    print("⚠️  WARNING: Production deployment configured")
+    print("")
+
+    # Phase 2: Deploy to Production
+    # Only defined when OCUROOT_ENV=production
+    phase(
+        "production",
+        work=[
+            deploy(
+                up=deploy_infrastructure,
+                down=rollback_infrastructure,
+                environment=e,
+                inputs={
+                    "image_tag": input(ref="./call/build-backend#output/image_tag")
+                }
+            ) for e in environments() if e.attributes.get("type") == "production"
+        ]
+    )
+
+else:
+    # Safety: Fail explicitly if environment is not set or invalid
+    print("❌ ERROR: Invalid or missing OCUROOT_ENV")
+    print("   Expected: 'staging' or 'production'")
+    print("   Received: '{}'".format(deployment_env))
+    print("")
+    print("   This is a safety mechanism to prevent accidental deployments.")
+    print("   The deployment environment must be explicitly specified.")
+    print("")
+    print("   To fix this error:")
+    print("   - Ensure OCUROOT_ENV is set in your environment")
+    print("   - Valid values: staging, production")
+    print("   - In CI/CD: This should be set automatically by the workflow")
+    print("   - Locally: export OCUROOT_ENV=staging (or production)")
+    print("")
+    fail("OCUROOT_ENV must be set to either 'staging' or 'production'")

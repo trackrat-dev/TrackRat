@@ -242,29 +242,30 @@ runs:
         echo "   Image: ${{ env.IMAGE_TAG }}"
         echo ""
 
-        # SAFETY: Explicitly specify the phase to prevent cascade execution
-        # This ensures ONLY the intended environment is deployed to
-        PHASE_NAME="${{ inputs.ocuroot_env }}"
-
-        # SAFETY CHECK: Validate phase name is exactly "staging" or "production"
-        if [[ "$PHASE_NAME" != "staging" ]] && [[ "$PHASE_NAME" != "production" ]]; then
-          echo "❌ ERROR: Invalid phase name: $PHASE_NAME"
-          echo "   Phase must be either 'staging' or 'production'"
-          echo "   This is a safety check to prevent accidental deployments"
-          exit 1
-        fi
-
-        echo "   Phase: $PHASE_NAME (explicit - no cascade)"
+        # SAFETY: The release.ocu.star file now uses conditional phase definition
+        # based on OCUROOT_ENV. This ensures ONLY the intended environment's
+        # phase is defined and can be deployed to.
+        echo "   OCUROOT_ENV is set to: ${{ inputs.ocuroot_env }}"
+        echo "   This will only define and execute the ${{ inputs.ocuroot_env }} phase"
         echo ""
 
-        # Run Ocuroot release with explicit phase (NO --cascade flag!)
-        ocuroot release new backend_v2/release.ocu.star "$PHASE_NAME" || {
+        # Run Ocuroot release
+        # The release file will:
+        # 1. Check OCUROOT_ENV environment variable
+        # 2. Only define the matching phase (staging OR production, never both)
+        # 3. Fail with clear error if OCUROOT_ENV is invalid or missing
+        ocuroot release new backend_v2/release.ocu.star || {
           echo "❌ Ocuroot deployment failed"
+          echo "   Check the logs above for details"
+          echo "   Common issues:"
+          echo "   - OCUROOT_ENV not set or invalid"
+          echo "   - Phase configuration error"
+          echo "   - Infrastructure deployment failure"
           echo "DEPLOYMENT_FAILED=true" >> $GITHUB_ENV
           exit 1
         }
 
-        echo "✅ Ocuroot deployment complete for $PHASE_NAME only"
+        echo "✅ Ocuroot deployment complete for ${{ inputs.ocuroot_env }} environment"
 
     # Step 11: Get final service URL if not set
     - name: Get Service URL
