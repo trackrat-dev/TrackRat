@@ -125,6 +125,8 @@ export function TrainListPage() {
               key={`${train.train_id}-${index}`}
               train={train}
               onClick={() => navigate(`/train/${train.train_id}/${from}/${to}`)}
+              from={from}
+              to={to}
             />
           ))}
         </div>

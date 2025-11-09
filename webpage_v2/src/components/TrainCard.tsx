@@ -1,13 +1,17 @@
 import { Train } from '../types';
 import { formatTime, getDelayMinutes } from '../utils/date';
 import { formatDelayText, getStatusBadgeClass } from '../utils/formatting';
+import { ShareButton } from './ShareButton';
+import { buildTrainShareData } from '../utils/share';
 
 interface TrainCardProps {
   train: Train;
   onClick: () => void;
+  from?: string;
+  to?: string;
 }
 
-export function TrainCard({ train, onClick }: TrainCardProps) {
+export function TrainCard({ train, onClick, from, to }: TrainCardProps) {
   const delayMinutes = getDelayMinutes(
     train.departure.scheduled_time,
     train.departure.actual_time || undefined
@@ -25,15 +29,29 @@ export function TrainCard({ train, onClick }: TrainCardProps) {
       className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4 hover:bg-surface transition-all text-left"
     >
       <div className="flex items-start justify-between mb-3">
-        <div>
+        <div className="flex-1">
           <div className="text-lg font-semibold text-text-primary">
             Train {train.train_id}
           </div>
           <div className="text-sm text-text-muted">{train.line.name}</div>
         </div>
-        <span className={getStatusBadgeClass(status)}>
-          {train.is_cancelled ? 'Cancelled' : formatDelayText(delayMinutes)}
-        </span>
+        <div className="flex items-center gap-2">
+          <div onClick={(e) => e.stopPropagation()}>
+            <ShareButton
+              shareData={buildTrainShareData({
+                trainId: train.train_id,
+                origin: train.departure.name,
+                destination: train.destination,
+                from: from,
+                to: to,
+              })}
+              className="scale-90"
+            />
+          </div>
+          <span className={getStatusBadgeClass(status)}>
+            {train.is_cancelled ? 'Cancelled' : formatDelayText(delayMinutes)}
+          </span>
+        </div>
       </div>
 
       <div className="space-y-2">

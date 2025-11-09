@@ -6,7 +6,9 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { TrackPredictionBar } from '../components/TrackPredictionBar';
+import { ShareButton } from '../components/ShareButton';
 import { getTodayDateString } from '../utils/date';
+import { buildTrainShareData } from '../utils/share';
 
 export function TrainDetailsPage() {
   const { trainId, from, to } = useParams<{ trainId: string; from?: string; to?: string }>();
@@ -111,15 +113,26 @@ export function TrainDetailsPage() {
 
       <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
-          <div>
+          <div className="flex-1">
             <h2 className="text-3xl font-bold text-text-primary">Train {train.train_id}</h2>
             <div className="text-text-muted mt-1">{train.line.name}</div>
           </div>
-          {train.is_cancelled && (
-            <span className="px-3 py-1 bg-error/20 text-error rounded-full text-sm font-semibold">
-              Cancelled
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            <ShareButton
+              shareData={buildTrainShareData({
+                trainId: train.train_id,
+                origin: train.route.origin,
+                destination: train.route.destination,
+                from: from,
+                to: to,
+              })}
+            />
+            {train.is_cancelled && (
+              <span className="px-3 py-1 bg-error/20 text-error rounded-full text-sm font-semibold">
+                Cancelled
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
