@@ -43,6 +43,7 @@ fun StationSelectionScreen(
 ) {
     val departureStations by viewModel.displayedDepartureStations.collectAsState()
     val selectedOrigin by viewModel.selectedOrigin.collectAsState()
+    val ratSenseSuggestions by viewModel.ratSenseSuggestions.collectAsState()
     var searchText by remember { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -96,7 +97,59 @@ fun StationSelectionScreen(
                     )
                 }
             }
-            
+
+            // RatSense AI Suggestions
+            if (ratSenseSuggestions.isNotEmpty() && searchText.isBlank()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "RatSense Suggestions",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    ratSenseSuggestions.take(2).forEach { suggestion ->
+                        GlassmorphicCardElevated(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    // Navigate to destination selection with suggested from station
+                                    onNavigateToDestination(suggestion.from)
+                                }
+                        ) {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${suggestion.from} → ${suggestion.to}",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onBackground
+                                        )
+                                        Text(
+                                            text = suggestion.reason,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Suggested",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Search bar
             GlassmorphicSearchCard(
                 modifier = Modifier.fillMaxWidth()

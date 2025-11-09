@@ -7,6 +7,7 @@ import com.trackrat.android.data.models.Station
 import com.trackrat.android.data.models.Stations
 import com.trackrat.android.data.preferences.UserPreferencesRepository
 import com.trackrat.android.data.repository.TrackRatRepository
+import com.trackrat.android.services.RatSenseService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -25,15 +27,20 @@ import javax.inject.Inject
 class StationSelectionViewModel @Inject constructor(
     private val repository: TrackRatRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val ratSenseService: RatSenseService,
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
-    
+
     companion object {
         // SavedState keys for state restoration
         private const val KEY_SELECTED_ORIGIN = "selected_origin_code"
         private const val KEY_SELECTED_DESTINATION = "selected_destination_code"
         private const val KEY_SEARCH_QUERY = "search_query"
     }
+
+    // RatSense AI suggestions
+    private val _ratSenseSuggestions = MutableStateFlow<List<RatSenseService.JourneySuggestion>>(emptyList())
+    val ratSenseSuggestions: StateFlow<List<RatSenseService.JourneySuggestion>> = _ratSenseSuggestions.asStateFlow()
 
     // Search results - shared between departure and destination searches
     private val _searchResults = MutableStateFlow<List<Station>>(emptyList())
@@ -105,6 +112,18 @@ class StationSelectionViewModel @Inject constructor(
     init {
         // Restore state from SavedStateHandle if available
         restoreState()
+
+        // Load RatSense AI suggestions
+        loadRatSenseSuggestions()
+    }
+
+    /**
+     * Load RatSense AI journey suggestions
+     */
+    fun loadRatSenseSuggestions() {
+        viewModelScope.launch {
+            _ratSenseSuggestions.value = ratSenseService.getSuggestions()
+        }
     }
     
     /**

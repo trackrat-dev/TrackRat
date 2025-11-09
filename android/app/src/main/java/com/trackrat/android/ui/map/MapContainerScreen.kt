@@ -1,5 +1,6 @@
 package com.trackrat.android.ui.map
 
+import android.net.Uri
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -40,10 +41,38 @@ import java.time.LocalDate
 @Composable
 fun MapContainerScreen(
     mainNavController: NavHostController,
+    deepLinkUri: Uri? = null,
     viewModel: MapContainerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     // Navigation controller for content within the bottom sheet
     val sheetNavController = rememberNavController()
+
+    // Handle deep link navigation
+    LaunchedEffect(deepLinkUri) {
+        deepLinkUri?.let { uri ->
+            when (uri.host) {
+                "train" -> {
+                    // Extract train number from path: trackrat://train/3515
+                    val trainNumber = uri.pathSegments.firstOrNull()
+                    if (trainNumber != null) {
+                        val today = LocalDate.now().toString()
+                        sheetNavController.navigate("train_details/$trainNumber/$today")
+                    }
+                }
+                "journey" -> {
+                    // Extract from/to parameters: trackrat://journey?from=NY&to=TR
+                    val fromStation = uri.getQueryParameter("from")
+                    val toStation = uri.getQueryParameter("to")
+                    if (fromStation != null && toStation != null) {
+                        // Set the route visualization
+                        viewModel.setSelectedRoute(fromStation, toStation)
+                        // Navigate to train list
+                        sheetNavController.navigate("train_list/$fromStation/$toStation")
+                    }
+                }
+            }
+        }
+    }
 
     // Observe sheet position from ViewModel
     val sheetPosition by viewModel.sheetPosition.collectAsState()
@@ -151,7 +180,8 @@ fun MapContainerScreen(
                             sheetNavController.navigate("train_details/$trainId/$today")
                         },
                         onNavigateToProfile = {
-                            // TODO: Navigate to profile (can add later)
+                            // Navigate to profile using main nav controller (full-screen overlay)
+                            mainNavController.navigate("profile")
                         }
                     )
                 }
