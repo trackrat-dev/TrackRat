@@ -385,7 +385,7 @@ task(
     fn=build,
     inputs={
         "prev_build_number": input(
-            ref="./task/build-backend#output/build_number",
+            ref="./@/call/build-backend#output/build_number",
             default=0
         )
         # Note: image_tag is read directly from OCUROOT_INPUT_image_tag env var in CI
@@ -411,16 +411,16 @@ phase(
 
 # Phase 2: Deploy to Production
 # Deploys to production environment (requires approval if configured)
-#phase(
-#    "production",
-#    work=[
-#        deploy(
-#            up=deploy_infrastructure,
-#            down=rollback_infrastructure,
-#            environment=e,
-#            inputs={
-#                "image_tag": input(ref="./task/build-backend#output/image_tag")
-#            }
-#        ) for e in environments() if e.attributes.get("type") == "production"
-#    ]
-#)
+phase(
+    "production",
+    work=[
+        deploy(
+            up=deploy_infrastructure,
+            down=rollback_infrastructure,
+            environment=e,
+            inputs={
+                "image_tag": input(ref="./call/build-backend#output/image_tag")
+            }
+        ) for e in environments() if e.attributes.get("type") == "production"
+    ]
+)
