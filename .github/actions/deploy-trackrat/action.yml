@@ -216,6 +216,8 @@ runs:
         echo "🔧 Initializing Ocuroot state..."
 
         # Check if environments are registered
+        # NOTE: Environment registration uses default behavior (no phase specified)
+        # This is safe because environments/release.ocu.star only registers environments
         if ! ocuroot state get @/environment/${{ inputs.ocuroot_env }} 2>/dev/null; then
           echo "Registering environments..."
           ocuroot release new environments/release.ocu.star
@@ -240,14 +242,29 @@ runs:
         echo "   Image: ${{ env.IMAGE_TAG }}"
         echo ""
 
-        # Run Ocuroot release
-        ocuroot release new backend_v2/release.ocu.star --cascade || {
+        # SAFETY: Explicitly specify the phase to prevent cascade execution
+        # This ensures ONLY the intended environment is deployed to
+        PHASE_NAME="${{ inputs.ocuroot_env }}"
+
+        # SAFETY CHECK: Validate phase name is exactly "staging" or "production"
+        if [[ "$PHASE_NAME" != "staging" ]] && [[ "$PHASE_NAME" != "production" ]]; then
+          echo "❌ ERROR: Invalid phase name: $PHASE_NAME"
+          echo "   Phase must be either 'staging' or 'production'"
+          echo "   This is a safety check to prevent accidental deployments"
+          exit 1
+        fi
+
+        echo "   Phase: $PHASE_NAME (explicit - no cascade)"
+        echo ""
+
+        # Run Ocuroot release with explicit phase (NO --cascade flag!)
+        ocuroot release new backend_v2/release.ocu.star "$PHASE_NAME" || {
           echo "❌ Ocuroot deployment failed"
           echo "DEPLOYMENT_FAILED=true" >> $GITHUB_ENV
           exit 1
         }
 
-        echo "✅ Ocuroot deployment complete"
+        echo "✅ Ocuroot deployment complete for $PHASE_NAME only"
 
     # Step 11: Get final service URL if not set
     - name: Get Service URL
