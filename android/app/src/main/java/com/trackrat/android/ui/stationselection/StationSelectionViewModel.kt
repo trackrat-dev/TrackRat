@@ -7,14 +7,16 @@ import com.trackrat.android.data.models.Station
 import com.trackrat.android.data.models.Stations
 import com.trackrat.android.data.preferences.UserPreferencesRepository
 import com.trackrat.android.data.repository.TrackRatRepository
+import com.trackrat.android.services.RatSenseService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -25,9 +27,10 @@ import javax.inject.Inject
 class StationSelectionViewModel @Inject constructor(
     private val repository: TrackRatRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val ratSenseService: RatSenseService,
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
-    
+
     companion object {
         // SavedState keys for state restoration
         private const val KEY_SELECTED_ORIGIN = "selected_origin_code"
@@ -35,20 +38,12 @@ class StationSelectionViewModel @Inject constructor(
         private const val KEY_SEARCH_QUERY = "search_query"
     }
 
-    // Departure stations (main 5 stations)
-    private val _departureStations = MutableStateFlow(Stations.DEPARTURE_STATIONS)
-    val departureStations: StateFlow<List<Station>> = _departureStations.asStateFlow()
+    // RatSense AI suggestions
+    private val _ratSenseSuggestions = MutableStateFlow<List<RatSenseService.JourneySuggestion>>(emptyList())
+    val ratSenseSuggestions: StateFlow<List<RatSenseService.JourneySuggestion>> = _ratSenseSuggestions.asStateFlow()
 
-    // All stations (for destination selection)
-    private val _allStations = MutableStateFlow(Stations.ALL_STATIONS)
-    val allStations: StateFlow<List<Station>> = _allStations.asStateFlow()
-    
-    // Track if we're searching for destinations
-    private val _isSearchingDestinations = MutableStateFlow(false)
-
-    // Search results
+    // Search results - shared between departure and destination searches
     private val _searchResults = MutableStateFlow<List<Station>>(emptyList())
-    val searchResults: StateFlow<List<Station>> = _searchResults.asStateFlow()
 
     // Selected stations
     private val _selectedOrigin = MutableStateFlow<Station?>(null)
@@ -58,71 +53,76 @@ class StationSelectionViewModel @Inject constructor(
     val selectedDestination: StateFlow<Station?> = _selectedDestination.asStateFlow()
 
     // User preferences including favorite stations
-    val userPreferences = userPreferencesRepository.userPreferencesFlow
-    
-    // Track search state
-    private val _isSearching = MutableStateFlow(false)
-    
-    // Combine departure stations with favorites to show only favorites by default
-    val displayedDepartureStations: Flow<List<Station>> = combine(
+    private val userPreferences = userPreferencesRepository.userPreferencesFlow
+
+    /**
+     * Stations to display on the departure selection screen.
+     * Shows search results when searching, otherwise shows favorites (or all departure stations if no favorites).
+     */
+    val displayedDepartureStations: StateFlow<List<Station>> = combine(
         userPreferences,
-        _isSearching,
         _searchResults
-    ) { prefs, isSearching, searchResults ->
+    ) { prefs, searchResults ->
         when {
-            // If searching, show search results (all matching stations)
-            isSearching && searchResults.isNotEmpty() -> searchResults
-            // If not searching, show only favorites (or all if no favorites)
+            // If we have search results, show them
+            searchResults.isNotEmpty() -> searchResults
+            // Otherwise show favorites, or all departure stations if no favorites
             else -> {
                 val favoriteStationCodes = prefs.favoriteStations
                 if (favoriteStationCodes.isEmpty()) {
-                    // If no favorites, show all departure stations
                     Stations.DEPARTURE_STATIONS
                 } else {
-                    // Show only favorited stations
-                    Stations.DEPARTURE_STATIONS.filter { station ->
-                        station.code in favoriteStationCodes
-                    }
+                    Stations.DEPARTURE_STATIONS.filter { it.code in favoriteStationCodes }
                 }
             }
         }
-    }
-    
-    // Combine all stations with favorites to show only favorites by default for destinations
-    val displayedDestinationStations: Flow<List<Station>> = combine(
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = Stations.DEPARTURE_STATIONS
+    )
+
+    /**
+     * Stations to display on the destination selection screen.
+     * Shows search results when searching, otherwise shows favorites (or all stations if no favorites).
+     */
+    val displayedDestinationStations: StateFlow<List<Station>> = combine(
         userPreferences,
-        _isSearchingDestinations,
-        _searchResults,
-        _allStations
-    ) { prefs, isSearching, searchResults, allStations ->
+        _searchResults
+    ) { prefs, searchResults ->
         when {
-            // If searching, show search results (all matching stations)
-            isSearching && searchResults.isNotEmpty() -> searchResults
-            // If not searching, show only favorites (or all if no favorites)
+            // If we have search results, show them
+            searchResults.isNotEmpty() -> searchResults
+            // Otherwise show favorites, or all stations if no favorites
             else -> {
                 val favoriteStationCodes = prefs.favoriteStations
                 if (favoriteStationCodes.isEmpty()) {
-                    // If no favorites, show all stations
-                    allStations
+                    Stations.ALL_STATIONS
                 } else {
-                    // Show only favorited stations
-                    allStations.filter { station ->
-                        station.code in favoriteStationCodes
-                    }
+                    Stations.ALL_STATIONS.filter { it.code in favoriteStationCodes }
                 }
             }
         }
-    }
-    
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = Stations.ALL_STATIONS
+    )
+
     init {
         // Restore state from SavedStateHandle if available
         restoreState()
-        
-        // Update displayed stations based on favorites
+
+        // Load RatSense AI suggestions
+        loadRatSenseSuggestions()
+    }
+
+    /**
+     * Load RatSense AI journey suggestions
+     */
+    fun loadRatSenseSuggestions() {
         viewModelScope.launch {
-            displayedDepartureStations.collect { stations ->
-                _departureStations.value = stations
-            }
+            _ratSenseSuggestions.value = ratSenseService.getSuggestions()
         }
     }
     
@@ -143,41 +143,31 @@ class StationSelectionViewModel @Inject constructor(
     }
 
     /**
-     * Search stations by query (for departure selection)
+     * Search stations by query.
+     * Updates search results which are used by both departure and destination screens.
      */
     fun searchStations(query: String) {
         savedStateHandle[KEY_SEARCH_QUERY] = query
-        _isSearching.value = query.isNotBlank()
         _searchResults.value = if (query.isBlank()) {
             emptyList()
         } else {
             Stations.search(query)
         }
     }
-    
+
     /**
-     * Search stations by query (for destination selection)
+     * Search destinations - alias for searchStations for clarity in destination screen.
      */
-    fun searchDestinations(query: String) {
-        savedStateHandle[KEY_SEARCH_QUERY] = query
-        _isSearchingDestinations.value = query.isNotBlank()
-        _searchResults.value = if (query.isBlank()) {
-            emptyList()
-        } else {
-            Stations.search(query)
-        }
-    }
+    fun searchDestinations(query: String) = searchStations(query)
     
     /**
-     * Clear selections
+     * Clear selections and search results
      */
     fun clearSelections() {
         _selectedOrigin.value = null
         _selectedDestination.value = null
         _searchResults.value = emptyList()
-        _isSearching.value = false
-        _isSearchingDestinations.value = false
-        
+
         // Clear saved state
         savedStateHandle.remove<String>(KEY_SELECTED_ORIGIN)
         savedStateHandle.remove<String>(KEY_SELECTED_DESTINATION)
@@ -192,7 +182,8 @@ class StationSelectionViewModel @Inject constructor(
     }
     
     /**
-     * Check if a station is favorited
+     * Check if a station is favorited.
+     * Returns a Flow that emits true/false as favorite status changes.
      */
     fun isStationFavorited(stationCode: String): Flow<Boolean> {
         return userPreferences.map { prefs ->

@@ -1,0 +1,327 @@
+name: Deploy TrackRat
+description: Shared deployment logic for TrackRat backend to staging/production
+
+inputs:
+  environment:
+    description: 'Environment name (staging or production)'
+    required: true
+  project_id:
+    description: 'GCP Project ID (trackrat-staging or trackrat-prod)'
+    required: true
+  repository:
+    description: 'Artifact Registry repository name'
+    required: true
+  environment_dir:
+    description: 'Terraform environment directory (staging or prod)'
+    required: true
+  service_name:
+    description: 'Cloud Run service name'
+    required: true
+  service_url:
+    description: 'Expected service URL for verification'
+    required: true
+  ocuroot_env:
+    description: 'Ocuroot environment name (staging or production)'
+    required: true
+  deployment_method:
+    description: 'Deployment method (terraform or ocuroot)'
+    required: true
+    default: 'ocuroot'
+  gcp_sa_key:
+    description: 'GCP Service Account Key (secret)'
+    required: true
+  ocuroot_pat:
+    description: 'Ocuroot PAT token (secret)'
+    required: true
+  github_sha:
+    description: 'Git SHA for versioning'
+    required: true
+  github_run_number:
+    description: 'GitHub run number for versioning'
+    required: true
+  tf_version:
+    description: 'Terraform version to use'
+    required: true
+    default: '1.7.0'
+  region:
+    description: 'GCP region'
+    required: true
+    default: 'us-central1'
+
+runs:
+  using: composite
+  steps:
+    # Step 1: Authenticate to Google Cloud
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ inputs.gcp_sa_key }}
+
+    # Step 2: Set up Cloud SDK
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    # Step 3: Setup Terraform
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.tf_version }}
+
+    # Step 4: Setup Ocuroot if needed
+    - name: Setup Ocuroot
+      if: inputs.deployment_method == 'ocuroot'
+      shell: bash
+      run: |
+        set -xe
+        echo "📥 Installing Ocuroot..."
+        wget -q -O ocuroot.tar.gz https://github.com/ocuroot/ocuroot/releases/download/v0.3.16/ocuroot_linux-amd64.tar.gz
+        tar -xzf ocuroot.tar.gz
+        chmod +x ocuroot
+        sudo mv ocuroot /usr/local/bin/
+        ocuroot version
+        echo "✅ Ocuroot installed"
+
+    # ============================================================================
+    # TERRAFORM DEPLOYMENT PATH
+    # ============================================================================
+
+    # Step 5: Setup Artifact Registry Repository (Terraform path)
+    - name: Setup Artifact Registry Repository
+      if: inputs.deployment_method == 'terraform'
+      shell: bash
+      working-directory: ./infra/environments/${{ inputs.environment_dir }}
+      run: |
+        echo "🏗️ Setting up Artifact Registry repository..."
+
+        # Initialize Terraform
+        terraform init
+
+        # Create minimal terraform.tfvars for repository setup
+        cat > terraform.tfvars << EOF
+        project_id = "${{ inputs.project_id }}"
+        region = "${{ inputs.region }}"
+        zone = "${{ inputs.region }}-b"
+        api_image_url = "us-central1-docker.pkg.dev/${{ inputs.project_id }}/${{ inputs.repository }}/trackcast-inference:placeholder"
+        scheduler_image_url = "us-central1-docker.pkg.dev/${{ inputs.project_id }}/${{ inputs.repository }}/trackcast-inference:placeholder"
+        EOF
+
+        # Target only the artifact registry repository
+        terraform plan -target=module.infrastructure.module.artifact_registry -var-file=terraform.tfvars -out=registry-plan
+        terraform apply -auto-approve registry-plan
+
+        echo "✅ Artifact Registry repository ready"
+
+    # Step 6: Determine deployment image (Terraform path)
+    - name: Determine deployment image
+      if: inputs.deployment_method == 'terraform'
+      shell: bash
+      run: |
+        echo "🐳 Determining deployment image..."
+
+        # Generate the same version string as in the build step
+        VERSION="$(date -u +%Y.%m.%d)-build${{ inputs.github_run_number }}-${{ inputs.github_sha }}"
+        VERSION="${VERSION:0:50}"  # Truncate to first 50 chars (date-build-sha format)
+
+        # Extract just the SHA part (last 7 chars)
+        SHA_SHORT="${{ inputs.github_sha }}"
+        SHA_SHORT="${SHA_SHORT:0:7}"
+
+        # Rebuild with short SHA
+        VERSION="$(date -u +%Y.%m.%d)-build${{ inputs.github_run_number }}-${SHA_SHORT}"
+
+        # Use the specific version for deployment
+        IMAGE_TAG="us-central1-docker.pkg.dev/${{ inputs.project_id }}/${{ inputs.repository }}/trackcast-inference:${VERSION}"
+
+        echo "Using version: $VERSION"
+        echo "Using image tag: $IMAGE_TAG"
+
+        # Export for later steps
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+        echo "✅ Using image: $IMAGE_TAG"
+
+    # Step 7: Deploy Infrastructure and Services (Terraform path)
+    - name: Deploy Infrastructure and Services
+      if: inputs.deployment_method == 'terraform'
+      shell: bash
+      working-directory: ./infra/environments/${{ inputs.environment_dir }}
+      run: |
+        echo "🏗️ Deploying infrastructure and services..."
+
+        # Initialize Terraform
+        terraform init
+
+        # Create terraform.tfvars with all variables including image URLs
+        cat > terraform.tfvars << EOF
+        project_id = "${{ inputs.project_id }}"
+        region = "${{ inputs.region }}"
+        zone = "${{ inputs.region }}-b"
+        api_image_url = "${{ env.IMAGE_TAG }}"
+        scheduler_image_url = "${{ env.IMAGE_TAG }}"
+        EOF
+
+        # Plan and apply everything
+        terraform plan -var-file=terraform.tfvars -out=tfplan
+        terraform apply -auto-approve tfplan
+
+        # Get service URL
+        SERVICE_URL=$(terraform output -raw trackrat_api_service_url 2>/dev/null || echo "")
+        if [[ -n "$SERVICE_URL" ]]; then
+          echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+        fi
+
+        echo "✅ Infrastructure and services deployed"
+
+    # ============================================================================
+    # OCUROOT DEPLOYMENT PATH
+    # ============================================================================
+
+    # Step 8: Generate image tag for Ocuroot deployment
+    - name: Determine deployment image for Ocuroot
+      if: inputs.deployment_method == 'ocuroot'
+      shell: bash
+      run: |
+        echo "🐳 Determining deployment image..."
+
+        # Generate the same version string as in the build step
+        VERSION="$(date -u +%Y.%m.%d)-build${{ inputs.github_run_number }}-${{ inputs.github_sha }}"
+        VERSION="${VERSION:0:50}"  # Truncate to first 50 chars
+
+        # Extract just the SHA part (last 7 chars)
+        SHA_SHORT="${{ inputs.github_sha }}"
+        SHA_SHORT="${SHA_SHORT:0:7}"
+
+        # Rebuild with short SHA
+        VERSION="$(date -u +%Y.%m.%d)-build${{ inputs.github_run_number }}-${SHA_SHORT}"
+
+        # Use the specific version for deployment
+        IMAGE_TAG="us-central1-docker.pkg.dev/${{ inputs.project_id }}/${{ inputs.repository }}/trackcast-inference:${VERSION}"
+
+        echo "Using version: $VERSION"
+        echo "Using image tag: $IMAGE_TAG"
+
+        # Export for later steps
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+        echo "✅ Using image: $IMAGE_TAG"
+
+    # Step 9: Initialize Ocuroot State
+    - name: Initialize Ocuroot State
+      if: inputs.deployment_method == 'ocuroot'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.ocuroot_pat }}
+        OCUROOT_ENV: ${{ inputs.ocuroot_env }}
+      run: |
+        echo "🔧 Initializing Ocuroot state..."
+
+        # Check if environments are registered
+        # NOTE: Environment registration uses default behavior (no phase specified)
+        # This is safe because environments/release.ocu.star only registers environments
+        if ! ocuroot state get @/environment/${{ inputs.ocuroot_env }} 2>/dev/null; then
+          echo "Registering environments..."
+          ocuroot release new environments/release.ocu.star
+        fi
+
+        echo "✅ Ocuroot state initialized"
+
+    # Step 10: Deploy via Ocuroot
+    - name: Deploy via Ocuroot
+      if: inputs.deployment_method == 'ocuroot'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.ocuroot_pat }}
+        OCUROOT_ENV: ${{ inputs.ocuroot_env }}
+        OCUROOT_INPUT_gcp_project: ${{ inputs.project_id }}
+        OCUROOT_INPUT_environment: ${{ inputs.ocuroot_env }}
+        OCUROOT_INPUT_image_tag: ${{ env.IMAGE_TAG }}
+      run: |
+        echo "🚀 Deploying via Ocuroot..."
+        echo "   Environment: ${{ inputs.ocuroot_env }}"
+        echo "   Project: ${{ inputs.project_id }}"
+        echo "   Image: ${{ env.IMAGE_TAG }}"
+        echo ""
+
+        # SAFETY: The release.ocu.star file now uses conditional phase definition
+        # based on OCUROOT_ENV. This ensures ONLY the intended environment's
+        # phase is defined and can be deployed to.
+        echo "   OCUROOT_ENV is set to: ${{ inputs.ocuroot_env }}"
+        echo "   This will only define and execute the ${{ inputs.ocuroot_env }} phase"
+        echo ""
+
+        # Run Ocuroot release
+        # The release file will:
+        # 1. Check OCUROOT_ENV environment variable
+        # 2. Only define the matching phase (staging OR production, never both)
+        # 3. Fail with clear error if OCUROOT_ENV is invalid or missing
+        ocuroot release new backend_v2/release.ocu.star || {
+          echo "❌ Ocuroot deployment failed"
+          echo "   Check the logs above for details"
+          echo "   Common issues:"
+          echo "   - OCUROOT_ENV not set or invalid"
+          echo "   - Phase configuration error"
+          echo "   - Infrastructure deployment failure"
+          echo "DEPLOYMENT_FAILED=true" >> $GITHUB_ENV
+          exit 1
+        }
+
+        echo "✅ Ocuroot deployment complete for ${{ inputs.ocuroot_env }} environment"
+
+    # Step 11: Get final service URL if not set
+    - name: Get Service URL
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.ocuroot_pat }}
+      run: |
+        # Get SERVICE_URL based on deployment method
+        if [[ "${{ inputs.deployment_method }}" == "ocuroot" && -z "$SERVICE_URL" ]]; then
+          # Try to get from Ocuroot state first
+          SERVICE_URL=$(ocuroot state get backend_v2/release.ocu.star/@/deploy/${{ inputs.ocuroot_env }}#output/service_url 2>/dev/null || echo "")
+        fi
+
+        # Fallback to gcloud if not set
+        if [[ -z "$SERVICE_URL" ]]; then
+          SERVICE_URL=$(gcloud run services describe ${{ inputs.service_name }} \
+            --region=${{ inputs.region }} \
+            --project=${{ inputs.project_id }} \
+            --format='value(status.url)' 2>/dev/null || echo "")
+        fi
+
+        echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+        echo "🔗 Service URL: $SERVICE_URL"
+
+    # Step 12: Verify Deployment
+    - name: Verify Deployment
+      if: env.SERVICE_URL != ''
+      shell: bash
+      run: |
+        chmod +x scripts/verify-deployment.sh
+        ./scripts/verify-deployment.sh "${{ env.SERVICE_URL }}" "${{ inputs.ocuroot_env }}"
+
+    # Step 13: Deployment summary
+    - name: Deployment Summary
+      shell: bash
+      env:
+        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+      run: |
+        ENV_NAME="${{ inputs.environment }}"
+        ENV_NAME_CAPITALIZED="$(echo $ENV_NAME | sed 's/^./\U&/')"
+
+        echo "## 🚀 $ENV_NAME_CAPITALIZED Deployment Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment Method**: \`${{ inputs.deployment_method }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Infrastructure and Application deployed successfully**" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 **Service URL**: [${{ env.SERVICE_URL }}](${{ env.SERVICE_URL }})" >> $GITHUB_STEP_SUMMARY
+        echo "🏥 **Health Check**: [${{ env.SERVICE_URL }}/health](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
+        echo "📊 **API Endpoints**:" >> $GITHUB_STEP_SUMMARY
+        echo "- [V2 Trains API](${{ env.SERVICE_URL }}/api/v2/trains/departures?from=NY&limit=5)" >> $GITHUB_STEP_SUMMARY
+        echo "- [Health API](${{ env.SERVICE_URL }}/health)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Version**: \`${{ env.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Docker Image**: \`${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Deploy Trigger**: ${COMMIT_MESSAGE}" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🔧 **Next Steps**:" >> $GITHUB_STEP_SUMMARY
+        echo "- Start data collection: \`trackcast start-scheduler\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Check service logs in [Cloud Run Console](https://console.cloud.google.com/run/detail/${{ inputs.region }}/trackcast-inference/logs?project=${{ inputs.project_id }})" >> $GITHUB_STEP_SUMMARY

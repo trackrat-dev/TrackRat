@@ -34,4 +34,37 @@ interface TrackRatApiService {
         @Query("date") date: String,
         @Query("refresh") refresh: Boolean = false
     ): TrainDetailsResponse
+
+    /**
+     * Get ML-based platform predictions for a train at a specific station
+     * @param stationCode Station code (e.g., "NY")
+     * @param trainId Train identifier
+     * @param journeyDate Journey date in YYYY-MM-DD format
+     * @return Platform prediction data with probabilities
+     */
+    @GET("predictions/track")
+    suspend fun getPlatformPrediction(
+        @Query("station_code") stationCode: String,
+        @Query("train_id") trainId: String,
+        @Query("journey_date") journeyDate: String
+    ): com.trackrat.android.data.models.PlatformPrediction
+
+    /**
+     * Get route congestion data showing train density across network segments
+     * @param timeWindowHours Time window in hours for congestion data (default 3)
+     * @param maxPerSegment Maximum trains per segment to return (default 200)
+     * @return Congestion response with individual segment data
+     */
+    @GET("routes/congestion")
+    suspend fun getCongestionData(
+        @Query("time_window_hours") timeWindowHours: Int = 3,
+        @Query("max_per_segment") maxPerSegment: Int = 200
+    ): com.trackrat.android.data.models.CongestionResponse
+
+    /**
+     * Health check endpoint
+     * Returns backend server status
+     */
+    @GET("../health")  // Go up one level from /api/v2 to /health
+    suspend fun getHealth(): Map<String, String>
 }

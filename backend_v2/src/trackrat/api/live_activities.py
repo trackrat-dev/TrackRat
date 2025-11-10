@@ -5,10 +5,12 @@ Simple registration and unregistration for iOS Live Activity tokens.
 """
 
 from datetime import datetime, timedelta
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -91,8 +93,11 @@ async def unregister_live_activity(
     push_token: str, db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:
     """Stop tracking a Live Activity."""
-    result = await db.execute(
-        delete(LiveActivityToken).where(LiveActivityToken.push_token == push_token)
+    result = cast(
+        CursorResult[tuple[()]],
+        await db.execute(
+            delete(LiveActivityToken).where(LiveActivityToken.push_token == push_token)
+        ),
     )
     await db.commit()
 

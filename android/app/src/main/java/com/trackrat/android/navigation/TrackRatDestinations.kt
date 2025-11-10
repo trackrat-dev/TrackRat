@@ -115,6 +115,21 @@ sealed class TrackRatDestinations(
             }
         }
     }
+
+    /**
+     * Profile screen - settings and support
+     */
+    data object Profile : TrackRatDestinations("profile")
+
+    /**
+     * Favorite Stations screen
+     */
+    data object FavoriteStations : TrackRatDestinations("favorite_stations")
+
+    /**
+     * Advanced Configuration screen - server switching
+     */
+    data object AdvancedConfig : TrackRatDestinations("advanced_config")
 }
 
 /**

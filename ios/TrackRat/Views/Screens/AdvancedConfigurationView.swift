@@ -16,23 +16,16 @@ struct AdvancedConfigurationView: View {
     }
     
     var body: some View {
-        let backgroundView = TrackRatTheme.Colors.primaryBackground
-            .ignoresSafeArea()
-
         let serverEnvironmentSection = createServerEnvironmentSection()
         let healthCheckSection = createHealthCheckSection()
 
-        return ZStack {
-            backgroundView
-
-            ScrollView {
+        return ScrollView {
                 VStack(spacing: 24) {
                     serverEnvironmentSection
                     healthCheckSection
                 }
                 .padding()
                 .padding(.bottom, 40)
-            }
         }
         .navigationTitle("Advanced Configuration")
         .navigationBarTitleDisplayMode(.inline)

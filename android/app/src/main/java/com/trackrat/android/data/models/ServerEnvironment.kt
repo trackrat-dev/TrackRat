@@ -15,12 +15,14 @@ data class ServerEnvironment(
         
         /**
          * Get default environments based on build configuration
+         * Matches iOS ServerEnvironment.allCases
          */
         fun getAvailableEnvironments(): List<ServerEnvironment> = listOf(
             production(),
+            staging(),
             local()
         )
-        
+
         /**
          * Production environment
          */
@@ -29,12 +31,22 @@ data class ServerEnvironment(
             baseURL = "https://prod.api.trackrat.net/api/v2/",
             isProduction = true
         )
-        
+
+        /**
+         * Staging environment - matches iOS staging
+         */
+        fun staging() = ServerEnvironment(
+            name = "Staging",
+            baseURL = "https://staging.api.trackrat.net/api/v2/",
+            isProduction = false
+        )
+
         /**
          * Local development environment (for emulator)
+         * Matches iOS localhost
          */
         fun local() = ServerEnvironment(
-            name = "Local Development",
+            name = "Local",
             baseURL = "http://10.0.2.2:8000/api/v2/",
             isProduction = false
         )

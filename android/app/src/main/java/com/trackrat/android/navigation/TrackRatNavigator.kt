@@ -49,7 +49,28 @@ class TrackRatNavigator(private val navController: NavController) {
         val route = TrackRatDestinations.TrainDetail.createRoute(trainId, date, originCode, destinationCode)
         navController.navigate(route)
     }
-    
+
+    /**
+     * Navigate to profile screen
+     */
+    fun navigateToProfile() {
+        navController.navigate(TrackRatDestinations.Profile.route)
+    }
+
+    /**
+     * Navigate to favorite stations screen
+     */
+    fun navigateToFavoriteStations() {
+        navController.navigate(TrackRatDestinations.FavoriteStations.route)
+    }
+
+    /**
+     * Navigate to advanced configuration screen
+     */
+    fun navigateToAdvancedConfig() {
+        navController.navigate(TrackRatDestinations.AdvancedConfig.route)
+    }
+
     /**
      * Navigate back to the previous screen
      */

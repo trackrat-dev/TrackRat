@@ -1,6 +1,5 @@
 import SwiftUI
 import Combine
-import Sentry
 
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
@@ -12,50 +11,19 @@ struct TrainListView: View {
     @State private var destination: String
     @State private var departureStationCode: String
     @State private var departureName: String
-    @Binding var sheetPosition: BottomSheetPosition
     @State private var isClosing = false
-    
-    
-    init(destination: String, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
+
+
+    init(destination: String) {
         self._destination = State(initialValue: destination)
         self._departureStationCode = State(initialValue: "")
         self._departureName = State(initialValue: "")
-        self._sheetPosition = sheetPosition
         self._viewModel = StateObject(wrappedValue: TrainListViewModel())
     }
     
-    private func handleToolbarDrag(value: DragGesture.Value) {
-        let translation = value.translation.height
-        
-        // Swipe down to collapse, swipe up to expand
-        if translation > 50 {
-            // Dragging down - step down one position
-            switch sheetPosition {
-            case .expanded:
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                    sheetPosition = .medium
-                }
-            case .medium:
-                break // Already at lowest position
-            }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } else if translation < -50 {
-            // Dragging up - step up one position
-            switch sheetPosition {
-            case .medium:
-                withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                    sheetPosition = .expanded
-                }
-            case .expanded:
-                break // Already at highest
-            }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
-    }
-    
     var body: some View {
-        // Wrap content in SheetAwareScrollView for proper dragging and scrolling
-        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+        // Native sheet handles scrolling automatically
+        ScrollView {
             VStack(spacing: 16) {
                 if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
                     TrackRatLoadingView(message: "Finding your trains...")
@@ -112,12 +80,6 @@ struct TrainListView: View {
             }
             .padding()
         }
-        .refreshable {
-            await viewModel.loadTrains(
-                destination: destination,
-                fromStationCode: departureStationCode
-            )
-        }
         .navigationTitle(destination)
         .navigationBarTitleDisplayMode(.inline)
         .glassmorphicNavigationBar()
@@ -135,12 +97,7 @@ struct TrainListView: View {
                     }
                 }
                 .contentShape(Rectangle())
-                .gesture(
-                    DragGesture()
-                        .onEnded { value in
-                            handleToolbarDrag(value: value)
-                        }
-                )
+                // Native sheet handles drag gestures automatically
             }
             
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -155,23 +112,10 @@ struct TrainListView: View {
             }
         }
         .task {
-            // Start a performance transaction for train search
-            let transaction = SentrySDK.startTransaction(
-                name: "train.search",
-                operation: "navigation"
-            )
-            transaction.setData(value: destination, key: "destination")
-            transaction.setData(value: departureStationCode, key: "departure")
-
-            let span = transaction.startChild(operation: "api.request", description: "Load trains")
-
             await viewModel.loadTrains(
                 destination: destination,
                 fromStationCode: departureStationCode
             )
-
-            span.finish()
-            transaction.finish()
         }
         .onReceive(viewModel.timer) { _ in
             Task {

@@ -687,9 +687,6 @@ struct CongestionDataView: View {
                         .frame(maxWidth: .infinity, minHeight: 400)
                     }
                 }
-                .refreshable {
-                    await viewModel.loadCongestionData()
-                }
             }
             .navigationTitle("Route Congestion (beta)")
             .navigationBarTitleDisplayMode(.inline)

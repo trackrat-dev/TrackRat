@@ -1,29 +1,25 @@
 import SwiftUI
 import Combine
 import ActivityKit
-import Sentry
 
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
-    @Binding var sheetPosition: BottomSheetPosition
     @State private var isClosing = false
 
     let trainId: Int  // Keep for backwards compatibility
-    
+
     // Legacy initializer for database ID
-    init(trainId: Int, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
+    init(trainId: Int) {
         self.trainId = trainId
-        self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(trainId: trainId)
         self._viewModel = StateObject(wrappedValue: VModel)
     }
-    
+
     // New initializer for train number
-    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil, sheetPosition: Binding<BottomSheetPosition> = .constant(.expanded)) {
+    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil) {
         self.trainId = 0  // Not used for train number based initialization
-        self._sheetPosition = sheetPosition
         let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
@@ -35,8 +31,8 @@ struct TrainDetailsView: View {
     
     
     var body: some View {
-        // Wrap content in SheetAwareScrollView for proper dragging and scrolling
-        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+        // Native sheet handles scrolling automatically
+        ScrollView {
             VStack {
                 if viewModel.isLoading && viewModel.train == nil {
                     TrackRatLoadingView(message: "Loading train details...")
@@ -68,12 +64,6 @@ struct TrainDetailsView: View {
                     .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
                 }
             } // VStack
-        }
-        .refreshable {
-            await viewModel.loadTrainDetails(
-                fromStationCode: appState.departureStationCode,
-                selectedDestinationName: appState.selectedDestination
-            )
         }
         .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
         .navigationBarTitleDisplayMode(.inline)
@@ -120,22 +110,10 @@ struct TrainDetailsView: View {
             }
         }
         .task {
-            // Start transaction for train details view
-            let transaction = SentrySDK.startTransaction(
-                name: "train.details_view",
-                operation: "navigation"
-            )
-            transaction.setData(value: viewModel.trainNumber ?? "unknown", key: "train_number")
-            transaction.setData(value: appState.departureStationCode ?? "none", key: "from_station")
-            transaction.setData(value: appState.selectedDestination ?? "none", key: "to_station")
-
             await viewModel.loadTrainDetails(
                 fromStationCode: appState.departureStationCode,
-                selectedDestinationName: appState.selectedDestination,
-                transaction: transaction
+                selectedDestinationName: appState.selectedDestination
             )
-
-            // Transaction will be finished in the view model
         }
         .onReceive(viewModel.timer) { _ in
             // Always refresh when the view is visible
@@ -896,7 +874,7 @@ class TrainDetailsViewModel: ObservableObject {
         journeyProgressPercentage = totalStops > 0 ? (completedStops * 100) / totalStops : 0
     }
     
-    func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil, transaction: Span? = nil) async {
+    func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         isLoading = true
         error = nil
 
@@ -905,9 +883,6 @@ class TrainDetailsViewModel: ObservableObject {
         self.currentDestinationName = selectedDestinationName
 
         do {
-            // Track API fetch
-            let fetchSpan = transaction?.startChild(operation: "api.train_details", description: "Fetch train details")
-
             // Use the flexible API method
             train = try await apiService.fetchTrainDetailsFlexible(
                 id: databaseId.map(String.init),
@@ -916,24 +891,8 @@ class TrainDetailsViewModel: ObservableObject {
                 date: journeyDate
             )
 
-            // Track stops and delays
-            fetchSpan?.setData(value: train?.stops?.count ?? 0, key: "stops_count")
-            fetchSpan?.setData(value: train?.delayMinutes ?? 0, key: "delay_minutes")
-            fetchSpan?.setData(value: train?.track ?? "none", key: "track")
-            fetchSpan?.finish()
-
-            // Track computation
-            let computeSpan = transaction?.startChild(operation: "compute.properties", description: "Calculate journey metrics")
-
             // Update all computed properties after setting train
             updateComputedProperties()
-
-            computeSpan?.finish()
-
-            // Successfully complete transaction
-            transaction?.setData(value: true, key: "success")
-            transaction?.setData(value: train?.stops?.count ?? 0, key: "total_stops")
-            transaction?.finish()
 
         } catch {
             // Handle APIError.noData specifically
@@ -947,11 +906,6 @@ class TrainDetailsViewModel: ObservableObject {
             } else {
                 self.error = error.localizedDescription
             }
-
-            // Track error in transaction
-            transaction?.setData(value: false, key: "success")
-            transaction?.setData(value: self.error ?? "unknown", key: "error")
-            transaction?.finish(status: .internalError)
         }
 
         isLoading = false

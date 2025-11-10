@@ -4,17 +4,10 @@ struct MyProfileView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.openURL) private var openURL
-    @State private var showOnboarding = false
-    
+
     var body: some View {
-        let backgroundView = TrackRatTheme.Colors.primaryBackground
-            .ignoresSafeArea()
-        
-        return ZStack {
-            backgroundView
-            
-            ScrollView {
-                VStack(spacing: 24) {
+        ScrollView {
+            VStack(spacing: 24) {
                     // Profile image - aligned to top
                     // VStack {
                     //     Image("my-profile")
@@ -87,59 +80,6 @@ struct MyProfileView: View {
                     //     )
                     // }
                     
-                    // Support section
-                    VStack(spacing: 16) {
-                        // Section header
-                        HStack {
-                            Text("Support")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-                        
-                        // Report Issues & Request Features
-                        Button {
-                            if let signalURL = URL(string: "https://signal.me/#eu/iG3LNnu-IycTUbwrWF1nwrlR-u-TN5gtBO0tXtJk3Nder7TtfzFPa6On6N9dl3e-") {
-                                openURL(signalURL)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "exclamationmark.bubble.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Report Issues")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                    
-                                    Text("Send new ideas too!")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                        .multilineTextAlignment(.leading)
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                    }
-
                     // Settings section
                     VStack(spacing: 16) {
                         // Section header
@@ -153,7 +93,7 @@ struct MyProfileView: View {
                         .padding(.horizontal)
                          // Follow our YouTube Channel
                         Button {
-                            if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-Development/shorts") {
+                            if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-App/shorts") {
                                 openURL(youtubeURL)
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             }
@@ -205,6 +145,11 @@ struct MyProfileView: View {
                                         .fontWeight(.medium)
                                         .foregroundColor(.white)
                                         .multilineTextAlignment(.leading)
+
+                                    Text("Report issues and send new ideas here!")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
+                                        .multilineTextAlignment(.leading)
                                 }
                                 
                                 Spacer()
@@ -222,7 +167,90 @@ struct MyProfileView: View {
                         }
                         
                     }
-                    
+
+                    // Service Alerts section
+                    VStack(spacing: 16) {
+                        // Section header
+                        HStack {
+                            Text("Service Alerts")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+
+                        // NJ Transit Advisories
+                        Button {
+                            if let url = URL(string: "https://www.njtransit.com/travel-alerts-to") {
+                                openURL(url)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("NJ Transit Advisories")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+
+                        // Amtrak Service Alerts
+                        Button {
+                            if let url = URL(string: "https://www.amtrak.com/service-alerts-and-notices") {
+                                openURL(url)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Amtrak Service Alerts")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                    }
+
                     // Settings section
                     VStack(spacing: 16) {
                         // Section header
@@ -267,40 +295,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
-                        
-                        // Repeat Onboarding
-                        Button {
-                            showOnboarding = true
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Repeat Onboarding")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        
+
                         // Advanced Configuration
                         Button {
                             appState.navigationPath.append(NavigationDestination.advancedConfiguration)
@@ -334,16 +329,11 @@ struct MyProfileView: View {
                             )
                         }
                     }
-                }
-                .padding()
-                .padding(.bottom, 40)
             }
+            .padding()
+            .padding(.bottom, 40)
         }
         .navigationTitle("My Profile")
-        .fullScreenCover(isPresented: $showOnboarding) {
-            OnboardingView(isRepeating: true)
-                .environmentObject(appState)
-        }
     }
 }
 

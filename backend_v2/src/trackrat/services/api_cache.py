@@ -7,9 +7,10 @@ Pre-computes expensive API responses and serves from cache for sub-100ms respons
 import hashlib
 import json
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -353,10 +354,10 @@ class ApiCacheService:
             CachedApiResponse.expires_at <= now_et()
         )
 
-        result = await db.execute(delete_stmt)
+        result = cast(CursorResult[tuple[()]], await db.execute(delete_stmt))
         await db.commit()
 
-        deleted_count = result.rowcount
+        deleted_count = result.rowcount or 0
         if deleted_count > 0:
             logger.info("cleaned_up_expired_cache", deleted_count=deleted_count)
 

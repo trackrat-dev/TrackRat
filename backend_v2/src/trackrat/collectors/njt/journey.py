@@ -5,10 +5,12 @@ Collects complete journey details using the getTrainStopList API.
 """
 
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 from structlog import get_logger
 
 from trackrat.collectors.base import BaseJourneyCollector
@@ -224,9 +226,9 @@ class JourneyCollector(BaseJourneyCollector):
             .values(is_expired=True)
         )
 
-        result = await session.execute(stmt)
+        result = cast(CursorResult[tuple[()]], await session.execute(stmt))
 
-        if result.rowcount > 0:
+        if result.rowcount and result.rowcount > 0:
             logger.info(
                 "expired_old_journeys",
                 count=result.rowcount,
@@ -1083,6 +1085,31 @@ class JourneyCollector(BaseJourneyCollector):
             stop.pickup_only = bool(stop_data.PICKUP)
             stop.dropoff_only = bool(stop_data.DROPOFF)
 
+        # Flush changes so newly created/updated stops are visible in the database
+        await session.flush()
+
+        # Delete phantom stops that don't appear in API response
+        # This removes schedule-generated placeholder stops that don't match reality
+        api_station_codes = {stop_data.STATION_2CHAR for stop_data in stops_data}
+        stmt = select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+        result = await session.execute(stmt)
+        all_stops = list(result.scalars().all())
+
+        for stop in all_stops:
+            if stop.station_code not in api_station_codes:
+                logger.warning(
+                    "deleting_phantom_stop",
+                    journey_id=journey.id,
+                    train_id=journey.train_id,
+                    station_code=stop.station_code,
+                    stop_sequence=stop.stop_sequence,
+                    had_scheduled_times=bool(
+                        stop.scheduled_arrival or stop.scheduled_departure
+                    ),
+                    had_actual_times=bool(stop.actual_departure or stop.actual_arrival),
+                )
+                await session.delete(stop)
+
         # Re-sequence all stops for this journey to ensure consistency
         await self._resequence_stops(session, journey)
 
@@ -1154,6 +1181,9 @@ class JourneyCollector(BaseJourneyCollector):
             )
 
         # Update the stop_sequence for each stop
+        # CRITICAL FIX (Issue #256): Always assign sequences to ensure they persist
+        # This fixes duplicate sequence bugs where stops from schedule generation
+        # conflict with journey collection (e.g., both Trenton and Hamilton with seq=0)
         changes_made = False
         for i, stop in enumerate(stops):
             if stop.stop_sequence != i:
@@ -1174,8 +1204,13 @@ class JourneyCollector(BaseJourneyCollector):
                         else None
                     ),
                 )
-                stop.stop_sequence = i
                 changes_made = True
+
+            # Always assign the sequence to ensure SQLAlchemy marks it as dirty
+            # even when the value appears unchanged
+            stop.stop_sequence = i
+            # Explicitly mark field as modified to ensure persistence even for no-op assignments
+            flag_modified(stop, "stop_sequence")
 
         if changes_made:
             logger.info(

@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Train
@@ -25,6 +26,7 @@ import com.trackrat.android.data.models.Station
 import com.trackrat.android.ui.components.GlassmorphicCard
 import com.trackrat.android.ui.components.GlassmorphicCardElevated
 import com.trackrat.android.ui.components.GlassmorphicSearchCard
+import com.trackrat.android.ui.map.MapContainerViewModel
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -33,16 +35,25 @@ import androidx.compose.ui.text.style.TextAlign
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StationSelectionScreen(
+    mapViewModel: MapContainerViewModel,
     viewModel: StationSelectionViewModel = hiltViewModel(),
     onNavigateToDestination: (originCode: String) -> Unit,
-    onNavigateToTrainDetail: (trainId: String) -> Unit
+    onNavigateToTrainDetail: (trainId: String) -> Unit,
+    onNavigateToProfile: () -> Unit = {}
 ) {
-    val departureStations by viewModel.departureStations.collectAsState()
+    val departureStations by viewModel.displayedDepartureStations.collectAsState()
     val selectedOrigin by viewModel.selectedOrigin.collectAsState()
+    val ratSenseSuggestions by viewModel.ratSenseSuggestions.collectAsState()
     var searchText by remember { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // Reset map to default view when navigating back to station selection
+    LaunchedEffect(Unit) {
+        mapViewModel.clearSelectedRoute()
+        mapViewModel.resetToDefaultView()
+    }
 
     // Check if search text looks like a train number
     val isTrainSearch = searchText.isNotBlank() && (
@@ -62,16 +73,83 @@ fun StationSelectionScreen(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Header
-            Text(
-                text = "Where would you like to leave from?",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            
+            // Header with Profile button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Where would you like to leave from?",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Profile button
+                IconButton(onClick = onNavigateToProfile) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = "Profile",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+
+            // RatSense AI Suggestions
+            if (ratSenseSuggestions.isNotEmpty() && searchText.isBlank()) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "RatSense Suggestions",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    ratSenseSuggestions.take(2).forEach { suggestion ->
+                        GlassmorphicCardElevated(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    // Navigate to destination selection with suggested from station
+                                    onNavigateToDestination(suggestion.from)
+                                }
+                        ) {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${suggestion.from} → ${suggestion.to}",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onBackground
+                                        )
+                                        Text(
+                                            text = suggestion.reason,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = "Suggested",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Search bar
             GlassmorphicSearchCard(
                 modifier = Modifier.fillMaxWidth()
@@ -213,11 +291,4 @@ fun StationSelectionScreen(
 
 // Simplified station selection - old complex content functions removed
 
-@Preview(showBackground = true)
-@Composable
-fun StationSelectionScreenPreview() {
-    StationSelectionScreen(
-        onNavigateToDestination = { _ -> },
-        onNavigateToTrainDetail = { _ -> }
-    )
-}
+// Preview removed - requires MapContainerViewModel which cannot be instantiated in preview

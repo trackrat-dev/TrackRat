@@ -20,19 +20,7 @@ struct TripSelectionView: View {
     // Train validation state - now supports multiple train results
     @State private var trainValidationStates: [String: TrainValidationState] = [:]
     @State private var validationTasks: [String: Task<Void, Never>] = [:]
-    
-    // Sheet position binding for coordination
-    @Binding var sheetPosition: BottomSheetPosition
-    
-    // Callback to control bottom sheet position
-    let onBottomSheetPositionChange: ((BottomSheetPosition) -> Void)?
-    
-    init(sheetPosition: Binding<BottomSheetPosition> = .constant(.medium), 
-         onBottomSheetPositionChange: ((BottomSheetPosition) -> Void)? = nil) {
-        self._sheetPosition = sheetPosition
-        self.onBottomSheetPositionChange = onBottomSheetPositionChange
-    }
-    
+
     // Get favorite stations
     private var favoriteStations: [FavoriteStation] {
         return appState.favoriteStations
@@ -73,8 +61,8 @@ struct TripSelectionView: View {
     
     
     var body: some View {
-        // Wrap content in SheetAwareScrollView for proper scrolling and dragging
-        SheetAwareScrollView(sheetPosition: $sheetPosition) {
+        // Native sheet handles scrolling automatically
+        ScrollView {
             VStack(spacing: 8) {
                     // Rat Sense suggestion at the top
                     if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive, !isSearching {
@@ -96,9 +84,10 @@ struct TripSelectionView: View {
                                 )
                         }
                         .padding(.horizontal)
-                        .padding(.top, 12)
+                        .padding(.top, 20)
+                        .padding(.bottom, 8)
                     }
-                    
+
                     // Top title
                 Text("Where would you like to leave from?")
                     .font(.system(size: 26, weight: .semibold))
@@ -142,10 +131,7 @@ struct TripSelectionView: View {
                                 }
                             }
                             .onChange(of: searchFieldFocused) { _, newValue in
-                                if newValue {
-                                    // When search field gains focus, expand to medium to show favorites
-                                    onBottomSheetPositionChange?(.medium)
-                                }
+                                // Native sheet automatically handles expansion when keyboard appears
                             }
                             .onSubmit {
                                 if let firstResult = searchResults.stations.first,
@@ -156,8 +142,8 @@ struct TripSelectionView: View {
                         
                         // Profile icon - moved from top navigation
                         Button {
-                            // Expand bottom sheet to 100% height when profile is tapped
-                            onBottomSheetPositionChange?(.expanded)
+                            // Navigate to profile - sheet will auto-expand
+                            appState.shouldExpandSheet = true
                             appState.navigationPath.append(NavigationDestination.myProfile)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {
@@ -325,10 +311,7 @@ struct TripSelectionView: View {
         appState.selectedRoute = nil
         
         // Snap bottom sheet to medium (50%) position for better map visibility
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            onBottomSheetPositionChange?(.medium)
-        }
-        
+        // Native sheet will handle positioning automatically
         appState.navigationPath.append(NavigationDestination.destinationPicker)
         
         // Reset search with animation

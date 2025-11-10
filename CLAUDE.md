@@ -8,6 +8,7 @@ TrackRat is a multi-platform transit tracking application with:
 - **Backend**: Python (FastAPI + PostgreSQL + APScheduler) in `backend_v2/`
 - **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
 - **Android**: Kotlin (Jetpack Compose) in `android/`
+- **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/CLAUDE.md`
 - **Infrastructure**: Terraform (Google Cloud Platform) in `infra/`
 
 ## Sentry Configuration
@@ -64,6 +65,11 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 
 # Android
 ./gradlew test
+
+# Web
+cd webpage_v2
+npm run build                        # TypeScript compile + build check
+# Note: No automated tests yet (MVP phase)
 ```
 
 ### Architecture Patterns
@@ -85,6 +91,13 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 - Singleton services pattern (`APIService.shared`, `LiveActivityService.shared`)
 - `@StateObject AppState` for global state management
 - NavigationPath for type-safe navigation
+
+**Web Architecture:**
+- React functional components with hooks (no classes)
+- Zustand for global state management (simpler than Redux)
+- localStorage for persistence (no backend user accounts)
+- 30-second polling for real-time updates (no WebSocket)
+- Mobile-first responsive design with Tailwind CSS
 
 
 ## Tone and Behavior
@@ -151,6 +164,19 @@ xcodebuild -scheme TrackRat -sdk iphonesimulator build \
   -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
+### Web Development
+```bash
+cd webpage_v2
+npm install
+npm run dev          # Starts dev server at http://localhost:3000
+npm run build        # TypeScript compile + Vite build
+npm run preview      # Preview production build locally
+```
+
+**Deployment:** Automatic via GitHub Actions on push to `main`
+- Workflow: `.github/workflows/deploy-webpage.yml`
+- Output: Deployed to GitHub Pages at `https://andytubeee.github.io/TrackRat/`
+
 ### Infrastructure Management
 ```bash
 cd infra
@@ -174,17 +200,28 @@ make prod-apply        # Deploy to production
 - iOS models: `ios/TrackRat/Models/`
 - iOS tests: `ios/TrackRatTests/`
 - Android app: `android/app/src/main/java/com/trackrat/android/`
+- Web pages: `webpage_v2/src/pages/`
+- Web components: `webpage_v2/src/components/`
+- Web services: `webpage_v2/src/services/`
+- Web store: `webpage_v2/src/store/appStore.ts`
 - Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)
 
 ## Common API Endpoints
 
 ```
-/api/v2/trains/departures
-/api/v2/trains/{train_id}
-/api/v2/routes/congestion
-/api/v2/live-activities/register
-/health
+/api/v2/trains/departures          # List departures for route
+/api/v2/trains/{train_id}          # Train details with all stops
+/api/v2/routes/congestion          # Network congestion data (iOS only)
+/api/v2/predictions/track          # ML platform predictions (Web, iOS)
+/api/v2/live-activities/register   # iOS Live Activity registration
+/health                            # Health check
 ```
+
+**API Environments:**
+- Production: `https://prod.api.trackrat.net/api/v2`
+- Staging: `https://staging.api.trackrat.net/api/v2`
+- Web uses: Production only
+- iOS uses: Both (configurable)
 
 ## ABSOLUTE RULES:
 

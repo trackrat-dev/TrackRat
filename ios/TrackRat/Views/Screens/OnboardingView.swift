@@ -7,7 +7,6 @@ struct OnboardingView: View {
     @Environment(\.dismiss) private var dismiss
     
     @State private var showVideo = true
-    @State private var currentPage = 0
     @State private var homeStation: Station? = nil
     @State private var workStation: Station? = nil
     @State private var otherFavorites: [Station] = []
@@ -24,11 +23,9 @@ struct OnboardingView: View {
     }
     
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
-    
+
     let isRepeating: Bool
-    
-    private let totalPages = 3
-    
+
     init(isRepeating: Bool = false) {
         self.isRepeating = isRepeating
     }
@@ -38,68 +35,25 @@ struct OnboardingView: View {
             // Background
             Color.black
                 .ignoresSafeArea()
-            
-            if showVideo {
-                // Show intro video first
+
+            if showVideo && !isRepeating {
+                // Show intro video first (only on first onboarding, not when repeating)
                 OnboardingVideoView {
                     withAnimation(.easeInOut(duration: 0.5)) {
                         showVideo = false
                     }
                 }
             } else {
-                // Show onboarding screens after video
+                // Show station selection after video
                 VStack(spacing: 0) {
-                    // Content area
-                    TabView(selection: $currentPage) {
-                        // Screen 1: Welcome + Station Setup
-                        welcomeAndSetupView()
-                            .tag(0)
-                        
-                        // Screen 2: Your Favorite Stations
-                        favoriteStationsView()
-                            .tag(1)
-                        
-                        // Screen 3: Key Features
-                        keyFeaturesView()
-                            .tag(2)
-                    }
-                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                    .animation(.easeInOut, value: currentPage)
-                
-                // Page indicator and navigation
-                VStack(spacing: 20) {
-                    // Page indicators
-                    HStack(spacing: 8) {
-                        ForEach(0..<totalPages, id: \.self) { index in
-                            Circle()
-                                .fill(index == currentPage ? Color.orange : Color.gray.opacity(0.3))
-                                .frame(width: 8, height: 8)
-                                .animation(.easeInOut, value: currentPage)
-                        }
-                    }
-                    
-                    // Navigation buttons
-                    HStack {
-                        if currentPage > 0 {
-                            Button("Back") {
-                                withAnimation {
-                                    currentPage -= 1
-                                }
-                            }
-                            .foregroundColor(.white.opacity(0.7))
-                        }
-                        
-                        Spacer()
-                        
-                        Button(currentPage == totalPages - 1 ? "Let's go!" : "Continue") {
-                            if currentPage == totalPages - 1 {
-                                if !isCompletingOnboarding {
-                                    completeOnboarding()
-                                }
-                            } else {
-                                withAnimation {
-                                    currentPage += 1
-                                }
+                    // Station selection content
+                    welcomeAndSetupView()
+
+                    // Continue/Skip button
+                    VStack(spacing: 20) {
+                        Button((homeStation != nil || workStation != nil) ? "Continue" : "Skip") {
+                            if !isCompletingOnboarding {
+                                completeOnboarding()
                             }
                         }
                         .font(.headline)
@@ -110,9 +64,8 @@ struct OnboardingView: View {
                         .cornerRadius(12)
                         .disabled(isCompletingOnboarding)
                     }
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
                 }
             }
         }
@@ -201,7 +154,7 @@ struct OnboardingView: View {
                     HStack {
                         Image(systemName: "star.fill")
                             .foregroundColor(.orange)
-                        Text("Other Favorites (Optional)")
+                        Text("Favorites")
                             .font(.headline)
                             .foregroundColor(.white)
                         Spacer()
@@ -270,108 +223,7 @@ struct OnboardingView: View {
         }
         .padding(.horizontal, 20)
     }
-    
-    // MARK: - Screen 2: Your Favorite Stations
-    private func favoriteStationsView() -> some View {
-        VStack(spacing: 32) {
-            Spacer()
-            
-            VStack(spacing: 16) {
-                Text("Your Favorites")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                
-                Text("To update these in the future, just click the heart icon while browsing stations!")
-                    .font(.body)
-                    .foregroundColor(.white.opacity(0.8))
-                    .multilineTextAlignment(.center)
-            }
-            
-            VStack(spacing: 12) {
-                // Add selected stations
-                if let home = homeStation {
-                    FavoriteStationRow(
-                        stationCode: home.code,
-                        stationName: home.name,
-                        isFavorite: true
-                    )
-                }
-                
-                if let work = workStation, work.code != homeStation?.code {
-                    FavoriteStationRow(
-                        stationCode: work.code,
-                        stationName: work.name,
-                        isFavorite: true
-                    )
-                }
-                
-                ForEach(otherFavorites.filter { station in
-                    station.code != homeStation?.code && station.code != workStation?.code
-                }, id: \.code) { station in
-                    FavoriteStationRow(
-                        stationCode: station.code,
-                        stationName: station.name,
-                        isFavorite: true
-                    )
-                }
-            }
-            
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-    }
-    
-    // MARK: - Screen 3: Key Features
-    private func keyFeaturesView() -> some View {
-        VStack(spacing: 32) {
-            Spacer()
-            
-            VStack(spacing: 16) {
-                Text("Why TrackRat?")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            
-            VStack(spacing: 16) {
-                FeatureCard(
-                    icon: "bolt.fill",
-                    title: "Fast!",
-                    description: "Real-time updates every 30 seconds\nwith intelligent caching"
-                )
-                FeatureCard(
-                    icon: "brain.head.profile",
-                    title: "Departure Track Predictions",
-                    description: "AI-powered track assignments\nbefore official announcements"
-                )
-                FeatureCard(
-                    icon: "tram.fill",
-                    title: "Live Progress Updates",
-                    description: "Track trains on your Lock Screen\nwith real-time updates"
-                )
-                FeatureCard(
-                    icon: "map.fill",
-                    title: "View Congestion & Delays",
-                    description: "System-wide delay visualization\n🟢 On time  🟡 5-15m  🟠 15-30m  🔴 30m+"
-                )
-                FeatureCard(
-                    icon: "speedometer",
-                    title: "Arrival Time Forecasts",
-                    description: ""
-                )
-                
-                
-            }
-            
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-    }
-    
+
     // MARK: - Helper Functions
     
     private func clearAllPreviousData() {
@@ -654,15 +506,10 @@ struct StationPickerSheet: View {
         }
         
         if searchText.isEmpty {
-            // Show popular stations when not searching
-            let popularCodes = ["NY", "NP", "TR", "PJ", "MP"]
-            let popularStations = popularCodes.compactMap { code -> Station? in
-                guard let name = Stations.displayName(for: code) else { return nil }
-                return Station(code: code, name: name)
-            }
-            return popularStations + allStations.filter { station in
-                !popularCodes.contains(station.code)
-            }
+            // Show NY Penn Station first, then all others alphabetically
+            let nyPenn = allStations.first { $0.code == "NY" }
+            let otherStations = allStations.filter { $0.code != "NY" }.sorted { $0.name < $1.name }
+            return [nyPenn].compactMap { $0 } + otherStations
         } else {
             return allStations.filter { station in
                 station.name.localizedCaseInsensitiveContains(searchText) ||

@@ -25,7 +25,6 @@ print_error() {
 }
 
 # Default project IDs (can be overridden)
-DEV_PROJECT_ID=${DEV_PROJECT_ID:-"trackrat-dev"}
 STAGING_PROJECT_ID=${STAGING_PROJECT_ID:-"trackrat-staging"}
 PROD_PROJECT_ID=${PROD_PROJECT_ID:-"trackrat-prod"}
 
@@ -123,14 +122,11 @@ main() {
     fi
     
     print_status "Using the following project IDs:"
-    echo "  Dev: $DEV_PROJECT_ID"
     echo "  Staging: $STAGING_PROJECT_ID"
     echo "  Prod: $PROD_PROJECT_ID"
     echo ""
     
     # Setup each environment
-    setup_environment "dev" $DEV_PROJECT_ID
-    echo ""
     setup_environment "staging" $STAGING_PROJECT_ID
     echo ""
     setup_environment "prod" $PROD_PROJECT_ID
@@ -138,7 +134,6 @@ main() {
     
     print_status "Terraform backend setup completed successfully!"
     print_status "You can now initialize Terraform in each environment:"
-    echo "  cd environments/dev && terraform init"
     echo "  cd environments/staging && terraform init"
     echo "  cd environments/prod && terraform init"
 }

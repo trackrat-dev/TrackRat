@@ -1,5 +1,4 @@
 import SwiftUI
-import Sentry
 import ActivityKit
 import WidgetKit
 import UserNotifications
@@ -65,87 +64,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         set { storedDeviceToken = newValue }
     }
 
-    // MARK: - Sentry Configuration
-
-    private func configureSentry() {
-        // Determine environment
-        let environment = getCurrentEnvironment()
-        let isDevelopment = environment == "development"
-        let isStaging = environment == "staging"
-        let isProduction = environment == "production"
-
-        SentrySDK.start { options in
-            // Basic configuration
-            options.dsn = "https://f46282b1deb1de34493decb5c3c54c05@o4510043461058560.ingest.us.sentry.io/4510043476393984"
-            options.debug = isDevelopment // Only enable debug in development
-
-            options.tracesSampleRate = 1.0
-            options.profilesSampleRate = 1.0
-
-            // Session replay configuration
-            // Using 100% sampling for all environments as requested
-            options.sessionReplay.sessionSampleRate = 1.0  // 100% session replay
-            options.sessionReplay.onErrorSampleRate = 1.0   // 100% replay on errors
-
-            options.experimental.enableLogs = !isProduction
-        }
-    }
-
-    private func getCurrentEnvironment() -> String {
-        // Check for environment configuration
-        let storageService = StorageService()
-        let serverEnv = storageService.loadServerEnvironment()
-
-        switch serverEnv {
-        case .local:
-            return "development"
-        case .staging:
-            return "staging"
-        case .production:
-            return "production"
-        }
-    }
-
-    private func configureSessionReplayConsent() {
-        // Check if user has consented to session replay
-        let hasConsented = UserDefaults.standard.bool(forKey: "sentry_session_replay_consent")
-
-        if !hasConsented && getCurrentEnvironment() == "production" {
-            // We'll request consent later in the app flow
-            // For now, disable session replay until consent is given
-            if #available(iOS 16.0, *) {
-                // Session replay consent will be handled in settings
-            }
-        }
-    }
-
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        // Start app cold start transaction
-        let startupTransaction = SentrySDK.startTransaction(
-            name: "app.cold_start",
-            operation: "app_lifecycle",
-            bindToScope: true
-        )
-
-        // Track Sentry initialization
-        let sentrySpan = startupTransaction.startChild(operation: "sentry.init", description: "Initialize Sentry SDK")
-        configureSentry()
-        sentrySpan.finish()
-
-        configureSessionReplayConsent()
-
-        // Track notification setup
-        let notificationSpan = startupTransaction.startChild(operation: "notifications.setup", description: "Configure notifications")
+        // Set up notification delegate
         UNUserNotificationCenter.current().delegate = self
         setupNotificationCategories()
         registerBackgroundTasks()
-        notificationSpan.finish()
-        
+
         // Request notification permissions (required for Live Activities)
-        let permissionSpan = startupTransaction.startChild(operation: "permissions.request", description: "Request notification permissions")
         Task {
             await requestNotificationPermissions()
-            permissionSpan.finish()
         }
 
         // Register for remote notifications (push notifications)
@@ -153,15 +80,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
         // Wake up backend on app launch
         print("📱 App Launch: Triggering backend wake-up...")
-        let backendSpan = startupTransaction.startChild(operation: "backend.wakeup", description: "Wake up backend service")
         Task {
             BackendWakeupService.shared.wakeupBackend()
-            backendSpan.finish()
-
-            // Finish the startup transaction after backend wakeup
-            startupTransaction.setData(value: "cold_start", key: "launch_type")
-            startupTransaction.setData(value: launchOptions?.isEmpty == false, key: "has_launch_options")
-            startupTransaction.finish()
         }
 
         return true
@@ -597,7 +517,10 @@ final class AppState: ObservableObject {
     @Published var deepLinkFromStation: String? = nil
     @Published var deepLinkToStation: String? = nil
     @Published var shouldExpandForDeepLink: Bool = false
-    
+
+    // Sheet expansion for navigation
+    @Published var shouldExpandSheet: Bool = false
+
     private let apiService = APIService()
     private let storageService = StorageService()
     

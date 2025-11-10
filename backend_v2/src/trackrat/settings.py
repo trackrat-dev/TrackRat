@@ -130,55 +130,6 @@ class Settings(BaseSettings):
         description="APNS Environment (dev for sandbox, prod for production)",
     )
 
-    # Sentry Configuration
-    sentry_dsn: str = Field(
-        default_factory=lambda: os.getenv("SENTRY_DSN", ""),
-        description="Sentry Data Source Name for error tracking",
-    )
-    sentry_traces_sample_rate: float = Field(
-        default_factory=lambda: float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.2")),
-        description="Sentry transaction sampling rate (0.0-1.0)",
-        ge=0.0,
-        le=1.0,
-    )
-    sentry_profiles_sample_rate: float = Field(
-        default_factory=lambda: float(os.getenv("SENTRY_PROFILES_SAMPLE_RATE", "0.1")),
-        description="Sentry profiling sampling rate (0.0-1.0)",
-        ge=0.0,
-        le=1.0,
-    )
-    sentry_enable_tracing: bool = Field(
-        default_factory=lambda: os.getenv("SENTRY_ENABLE_TRACING", "true").lower()
-        == "true",
-        description="Enable Sentry distributed tracing",
-    )
-
-    @property
-    def sentry_environment(self) -> str:
-        """Get Sentry environment based on application environment."""
-        # Map application environment to Sentry environment
-        if self.environment == "development":
-            return "development"
-        elif self.environment == "staging":
-            return "staging"
-        elif self.environment == "production":
-            return "production"
-        else:
-            return "testing"
-
-    @property
-    def sentry_sample_rates(self) -> tuple[float, float]:
-        """Get environment-specific sampling rates for traces and profiles."""
-        if self.environment == "staging":
-            # Higher sampling in staging for testing
-            return (1.0, 0.5)
-        elif self.environment == "production":
-            # Lower sampling in production to control costs
-            return (self.sentry_traces_sample_rate, self.sentry_profiles_sample_rate)
-        else:
-            # Development/testing: sample everything for debugging
-            return (1.0, 1.0)
-
     @property
     def apns_auth_key_content(self) -> str:
         """

@@ -21,9 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.trackrat.android.data.Stations
 import com.trackrat.android.data.models.Station
 import com.trackrat.android.ui.components.GlassmorphicCard
 import com.trackrat.android.ui.components.GlassmorphicSearchCard
+import com.trackrat.android.ui.map.MapContainerViewModel
 import com.trackrat.android.ui.stationselection.StationSelectionViewModel
 import kotlinx.coroutines.launch
 
@@ -31,13 +33,13 @@ import kotlinx.coroutines.launch
 @Composable
 fun DestinationSelectionScreen(
     originStation: String,
+    mapViewModel: MapContainerViewModel,
     viewModel: StationSelectionViewModel = hiltViewModel(),
     onNavigateBack: () -> Unit,
     onNavigateToTrains: (destinationCode: String?) -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val displayedStations by viewModel.displayedDestinationStations.collectAsState(initial = emptyList())
-    val searchResults by viewModel.searchResults.collectAsState()
+    val displayedStations by viewModel.displayedDestinationStations.collectAsState()
     val selectedDestination by viewModel.selectedDestination.collectAsState()
     var searchText by remember { mutableStateOf("") }
 
@@ -45,30 +47,19 @@ fun DestinationSelectionScreen(
     val availableStations = remember(displayedStations, originStation) {
         displayedStations.filter { it.code != originStation }
     }
-    
-    val filteredResults = remember(searchResults, originStation) {
-        searchResults.filter { it.code != originStation }
-    }
 
     Scaffold(
         modifier = Modifier.background(MaterialTheme.colorScheme.background),
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = "Where would you like to go?",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Text(
-                            text = "from $originStation",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
-                        )
-                    }
+                    Text(
+                        text = "Where would you like to go?",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -136,14 +127,18 @@ fun DestinationSelectionScreen(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val stationsToShow = if (searchText.isNotBlank()) filteredResults else availableStations
-                
-                items(stationsToShow) { station ->
+                items(availableStations) { station ->
                     GlassmorphicCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { 
+                            .clickable {
                                 viewModel.selectDestination(station)
+                                // Animate map to show the route
+                                val fromCoords = Stations.getCoordinates(originStation)
+                                val toCoords = Stations.getCoordinates(station.code)
+                                if (fromCoords != null && toCoords != null) {
+                                    mapViewModel.animateToRoute(fromCoords, toCoords)
+                                }
                                 onNavigateToTrains(station.code)
                             }
                     ) {
@@ -186,9 +181,9 @@ fun DestinationSelectionScreen(
                         }
                     }
                 }
-                
-                // Show message if no stations found in search
-                if (searchText.isNotBlank() && filteredResults.isEmpty()) {
+
+                // Show message if no stations found
+                if (availableStations.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -197,7 +192,11 @@ fun DestinationSelectionScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "No stations found matching \"$searchText\"",
+                                text = if (searchText.isNotBlank()) {
+                                    "No stations found matching \"$searchText\""
+                                } else {
+                                    "No stations available"
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                             )
@@ -209,12 +208,4 @@ fun DestinationSelectionScreen(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun DestinationSelectionScreenPreview() {
-    DestinationSelectionScreen(
-        originStation = "NY",
-        onNavigateBack = {},
-        onNavigateToTrains = {}
-    )
-}
+// Preview removed - requires MapContainerViewModel which cannot be instantiated in preview

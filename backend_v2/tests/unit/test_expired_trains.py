@@ -85,6 +85,7 @@ async def test_api_error_count_reset_on_success():
     session = AsyncMock(spec=AsyncSession)
     session.flush = AsyncMock()
     session.add = Mock()  # session.add is synchronous, not async
+    session.delete = AsyncMock()  # session.delete is async in newer SQLAlchemy
 
     # Mock for multiple session.execute calls - need to handle many calls for stops, deletes, etc.
     mock_result_generic = AsyncMock()
