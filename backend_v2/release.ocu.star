@@ -398,45 +398,16 @@ task(
 # ============================================================================
 # SAFETY: Both phases are always defined (Starlark requirement), but only one
 # will have work items based on OCUROOT_ENV. Empty phases won't execute.
+# Each phase explicitly filters for its own environment to satisfy Ocuroot's validator.
 
-def get_deployment_work(environment_type):
-    """Generate deployment work list based on environment type and OCUROOT_ENV.
-
-    This function ensures that only the matching environment gets work items,
-    preventing cross-environment deployments even if both phases are defined.
-
-    Args:
-        environment_type: Either "staging" or "production"
-
-    Returns:
-        List of deploy work items, or empty list if environment doesn't match
-    """
-    current_env = env().get("OCUROOT_ENV", "")
-
-    # SAFETY CHECK: Only return work if environment matches
-    if current_env != environment_type:
-        return []  # Empty work list - phase will exist but won't execute
-
-    # Return actual work items for matching environment
-    return [
-        deploy(
-            up=deploy_infrastructure,
-            down=rollback_infrastructure,
-            environment=e,
-            inputs={
-                "image_tag": input(ref="./call/build-backend#output/image_tag")
-            }
-        ) for e in environments() if e.attributes.get("type") == environment_type
-    ]
-
-def validate_and_log_environment():
+def validate_environment():
     """Validate OCUROOT_ENV and log the configuration.
 
-    This function handles all validation and logging to avoid
+    This function handles validation and logging to avoid
     module-level if statements (not allowed in Starlark).
 
     Returns:
-        Tuple of (deployment_env, staging_work, production_work)
+        The validated deployment environment
     """
     deployment_env = env().get("OCUROOT_ENV", "")
 
@@ -468,43 +439,59 @@ def validate_and_log_environment():
     print("✅ Environment validated: {}".format(deployment_env))
     print("")
 
-    # Determine which phase will have work
-    staging_work = get_deployment_work("staging")
-    production_work = get_deployment_work("production")
-
-    print("📋 Phase configuration:")
-    print("   Staging phase: {} work item(s)".format(len(staging_work)))
-    print("   Production phase: {} work item(s)".format(len(production_work)))
-    print("")
-
     # Log which phase will execute
     if deployment_env == "staging":
+        print("📋 Phase configuration:")
+        print("   Staging phase: will have work items")
+        print("   Production phase: will be empty (safe)")
+        print("")
         print("✅ STAGING deployment configured")
-        print("   Staging phase will execute with {} deployment(s)".format(len(staging_work)))
-        print("   Production phase is empty (safe)")
     elif deployment_env == "production":
+        print("📋 Phase configuration:")
+        print("   Staging phase: will be empty (safe)")
+        print("   Production phase: will have work items")
+        print("")
         print("✅ PRODUCTION deployment configured")
-        print("   Production phase will execute with {} deployment(s)".format(len(production_work)))
-        print("   Staging phase is empty (safe)")
         print("⚠️  WARNING: Production deployment ready")
 
     print("")
+    return deployment_env
 
-    return deployment_env, staging_work, production_work
-
-# Call the validation function and get the work lists
-deployment_env, staging_work, production_work = validate_and_log_environment()
+# Validate and get the current environment
+deployment_env = validate_environment()
 
 # Phase 1: Deploy to Staging
-# Always defined, but only has work when OCUROOT_ENV=staging
+# Always defined, explicitly filters for staging environment only
+# Work list is populated only when OCUROOT_ENV=staging
 phase(
     "staging",
-    work=staging_work
+    work=[
+        deploy(
+            up=deploy_infrastructure,
+            down=rollback_infrastructure,
+            environment=e,
+            inputs={
+                "image_tag": input(ref="./call/build-backend#output/image_tag")
+            }
+        ) for e in environments()
+        if e.attributes.get("type") == "staging"  # Explicit filter: staging only
+    ] if deployment_env == "staging" else []  # Conditional: populate only for staging deployment
 )
 
 # Phase 2: Deploy to Production
-# Always defined, but only has work when OCUROOT_ENV=production
+# Always defined, explicitly filters for production environment only
+# Work list is populated only when OCUROOT_ENV=production
 phase(
     "production",
-    work=production_work
+    work=[
+        deploy(
+            up=deploy_infrastructure,
+            down=rollback_infrastructure,
+            environment=e,
+            inputs={
+                "image_tag": input(ref="./call/build-backend#output/image_tag")
+            }
+        ) for e in environments()
+        if e.attributes.get("type") == "production"  # Explicit filter: production only
+    ] if deployment_env == "production" else []  # Conditional: populate only for production deployment
 )
