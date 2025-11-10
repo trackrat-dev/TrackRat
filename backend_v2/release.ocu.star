@@ -394,81 +394,117 @@ task(
 )
 
 # ============================================================================
-# CONDITIONAL PHASE DEFINITION BASED ON ENVIRONMENT
+# ENVIRONMENT-AWARE PHASE CONFIGURATION
 # ============================================================================
-# SAFETY: Only define the phase for the current deployment environment
-# This prevents accidental cross-environment deployments even if --cascade is used
+# SAFETY: Both phases are always defined (Starlark requirement), but only one
+# will have work items based on OCUROOT_ENV. Empty phases won't execute.
 
-# Get the deployment environment from environment variable
-env_vars = env()
-deployment_env = env_vars.get("OCUROOT_ENV", "")
+def get_deployment_work(environment_type):
+    """Generate deployment work list based on environment type and OCUROOT_ENV.
 
-print("")
-print("=" * 60)
-print("🔍 DEPLOYMENT ENVIRONMENT CONFIGURATION")
-print("=" * 60)
-print("   OCUROOT_ENV: {}".format(deployment_env if deployment_env else "NOT SET"))
-print("")
+    This function ensures that only the matching environment gets work items,
+    preventing cross-environment deployments even if both phases are defined.
 
-# Conditionally define deployment phase based on environment
-if deployment_env == "staging":
-    print("✅ Configuring STAGING deployment phase")
-    print("   Will deploy to: staging environment only")
-    print("   Production phase: NOT DEFINED (safe)")
+    Args:
+        environment_type: Either "staging" or "production"
+
+    Returns:
+        List of deploy work items, or empty list if environment doesn't match
+    """
+    current_env = env().get("OCUROOT_ENV", "")
+
+    # SAFETY CHECK: Only return work if environment matches
+    if current_env != environment_type:
+        return []  # Empty work list - phase will exist but won't execute
+
+    # Return actual work items for matching environment
+    return [
+        deploy(
+            up=deploy_infrastructure,
+            down=rollback_infrastructure,
+            environment=e,
+            inputs={
+                "image_tag": input(ref="./call/build-backend#output/image_tag")
+            }
+        ) for e in environments() if e.attributes.get("type") == environment_type
+    ]
+
+def validate_and_log_environment():
+    """Validate OCUROOT_ENV and log the configuration.
+
+    This function handles all validation and logging to avoid
+    module-level if statements (not allowed in Starlark).
+
+    Returns:
+        Tuple of (deployment_env, staging_work, production_work)
+    """
+    deployment_env = env().get("OCUROOT_ENV", "")
+
+    print("")
+    print("=" * 60)
+    print("🔍 DEPLOYMENT ENVIRONMENT CONFIGURATION")
+    print("=" * 60)
+    print("   OCUROOT_ENV: {}".format(deployment_env if deployment_env else "NOT SET"))
+
+    # Validate environment
+    if deployment_env not in ["staging", "production"]:
+        print("")
+        print("❌ ERROR: Invalid or missing OCUROOT_ENV")
+        print("   Expected: 'staging' or 'production'")
+        print("   Received: '{}'".format(deployment_env))
+        print("")
+        print("   This is a safety mechanism to prevent accidental deployments.")
+        print("   The deployment environment must be explicitly specified.")
+        print("")
+        print("   To fix this error:")
+        print("   - Ensure OCUROOT_ENV is set in your environment")
+        print("   - Valid values: staging, production")
+        print("   - In CI/CD: This should be set automatically by the workflow")
+        print("   - Locally: export OCUROOT_ENV=staging (or production)")
+        print("")
+        fail("OCUROOT_ENV must be set to either 'staging' or 'production'")
+
+    print("")
+    print("✅ Environment validated: {}".format(deployment_env))
     print("")
 
-    # Phase 1: Deploy to Staging
-    # Only defined when OCUROOT_ENV=staging
-    phase(
-        "staging",
-        work=[
-            deploy(
-                up=deploy_infrastructure,
-                down=rollback_infrastructure,
-                environment=e,
-                inputs={
-                    "image_tag": input(ref="./call/build-backend#output/image_tag")
-                }
-            ) for e in environments() if e.attributes.get("type") == "staging"
-        ]
-    )
+    # Determine which phase will have work
+    staging_work = get_deployment_work("staging")
+    production_work = get_deployment_work("production")
 
-elif deployment_env == "production":
-    print("✅ Configuring PRODUCTION deployment phase")
-    print("   Will deploy to: production environment only")
-    print("   Staging phase: NOT DEFINED (safe)")
-    print("⚠️  WARNING: Production deployment configured")
+    print("📋 Phase configuration:")
+    print("   Staging phase: {} work item(s)".format(len(staging_work)))
+    print("   Production phase: {} work item(s)".format(len(production_work)))
     print("")
 
-    # Phase 2: Deploy to Production
-    # Only defined when OCUROOT_ENV=production
-    phase(
-        "production",
-        work=[
-            deploy(
-                up=deploy_infrastructure,
-                down=rollback_infrastructure,
-                environment=e,
-                inputs={
-                    "image_tag": input(ref="./call/build-backend#output/image_tag")
-                }
-            ) for e in environments() if e.attributes.get("type") == "production"
-        ]
-    )
+    # Log which phase will execute
+    if deployment_env == "staging":
+        print("✅ STAGING deployment configured")
+        print("   Staging phase will execute with {} deployment(s)".format(len(staging_work)))
+        print("   Production phase is empty (safe)")
+    elif deployment_env == "production":
+        print("✅ PRODUCTION deployment configured")
+        print("   Production phase will execute with {} deployment(s)".format(len(production_work)))
+        print("   Staging phase is empty (safe)")
+        print("⚠️  WARNING: Production deployment ready")
 
-else:
-    # Safety: Fail explicitly if environment is not set or invalid
-    print("❌ ERROR: Invalid or missing OCUROOT_ENV")
-    print("   Expected: 'staging' or 'production'")
-    print("   Received: '{}'".format(deployment_env))
     print("")
-    print("   This is a safety mechanism to prevent accidental deployments.")
-    print("   The deployment environment must be explicitly specified.")
-    print("")
-    print("   To fix this error:")
-    print("   - Ensure OCUROOT_ENV is set in your environment")
-    print("   - Valid values: staging, production")
-    print("   - In CI/CD: This should be set automatically by the workflow")
-    print("   - Locally: export OCUROOT_ENV=staging (or production)")
-    print("")
-    fail("OCUROOT_ENV must be set to either 'staging' or 'production'")
+
+    return deployment_env, staging_work, production_work
+
+# Call the validation function and get the work lists
+deployment_env, staging_work, production_work = validate_and_log_environment()
+
+# Phase 1: Deploy to Staging
+# Always defined, but only has work when OCUROOT_ENV=staging
+phase(
+    "staging",
+    work=staging_work
+)
+
+# Phase 2: Deploy to Production
+# Always defined, but only has work when OCUROOT_ENV=production
+phase(
+    "production",
+    work=production_work
+)
