@@ -21,23 +21,23 @@ def upgrade() -> None:
     """Apply migration."""
     # Add composite index on train_journeys for congestion queries
     # This optimizes: WHERE last_updated_at >= cutoff AND is_cancelled = false AND data_source = ?
+    # Note: Not using CONCURRENTLY to avoid transaction block issues in migrations
     op.create_index(
         "idx_congestion_journey_lookup",
         "train_journeys",
         ["last_updated_at", "is_cancelled", "data_source"],
         unique=False,
-        postgresql_concurrently=True,
     )
 
     # Add covering index on journey_stops for consecutive stop joins
     # This optimizes the self-join: js1.journey_id = js2.journey_id AND js2.stop_sequence = js1.stop_sequence + 1
     # Using postgresql_include for columns only needed in SELECT, not WHERE
+    # Note: Not using CONCURRENTLY to avoid transaction block issues in migrations
     op.create_index(
         "idx_journey_stops_sequence_lookup",
         "journey_stops",
         ["journey_id", "stop_sequence", "station_code"],
         unique=False,
-        postgresql_concurrently=True,
         postgresql_include=[
             "scheduled_departure",
             "scheduled_arrival",
