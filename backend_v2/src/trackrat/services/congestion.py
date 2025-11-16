@@ -209,7 +209,10 @@ class CongestionAnalyzer:
         return congestion_results
 
     async def get_network_congestion_optimized(
-        self, db: AsyncSession, time_window_hours: int = 3, data_source: str | None = None
+        self,
+        db: AsyncSession,
+        time_window_hours: int = 3,
+        data_source: str | None = None,
     ) -> list[SegmentCongestion]:
         """
         Optimized congestion calculation using database-level aggregation.

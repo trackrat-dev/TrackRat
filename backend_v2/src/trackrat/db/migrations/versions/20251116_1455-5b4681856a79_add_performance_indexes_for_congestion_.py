@@ -5,13 +5,14 @@ Revises: 7f9960a4f7c3
 Create Date: 2025-11-16 14:55:42.029052
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '5b4681856a79'
-down_revision = '7f9960a4f7c3'
+revision = "5b4681856a79"
+down_revision = "7f9960a4f7c3"
 branch_labels = None
 depends_on = None
 
@@ -37,7 +38,12 @@ def upgrade() -> None:
         ["journey_id", "stop_sequence", "station_code"],
         unique=False,
         postgresql_concurrently=True,
-        postgresql_include=["scheduled_departure", "scheduled_arrival", "actual_departure", "actual_arrival"],
+        postgresql_include=[
+            "scheduled_departure",
+            "scheduled_arrival",
+            "actual_departure",
+            "actual_arrival",
+        ],
     )
 
 
