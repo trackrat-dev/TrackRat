@@ -58,13 +58,23 @@ class CongestionAnalyzer:
         self._cache_ttl = 300  # 5 minutes cache
 
     async def get_network_congestion_with_trains(
-        self, db: AsyncSession, time_window_hours: int = 3, max_per_segment: int = 100
+        self,
+        db: AsyncSession,
+        time_window_hours: int = 3,
+        max_per_segment: int = 100,
+        data_source: str | None = None,
     ) -> tuple[list[SegmentCongestion], list[TrainJourney], list[Any]]:
         """
         Get congestion data, train journeys, and individual journey segments.
 
         This optimized version uses database aggregation for congestion calculation
         while still providing journey data for train positions.
+
+        Args:
+            db: Database session
+            time_window_hours: How many hours to look back
+            max_per_segment: Maximum segments per route (0 = unlimited)
+            data_source: Optional filter by data source (NJT or AMTRAK)
 
         Returns:
             Tuple of (aggregated segments, train journeys, individual segments)
@@ -74,32 +84,53 @@ class CongestionAnalyzer:
 
         # OPTIMIZATION: Use database aggregation for congestion segments
         aggregated_segments = await self.get_network_congestion_optimized(
-            db, time_window_hours
+            db, time_window_hours, data_source
         )
 
         # Still need to load journeys for train positions, but we can be selective
         # Only load non-cancelled journeys that are actually moving
+        conditions = [
+            TrainJourney.last_updated_at >= cutoff_time,
+            TrainJourney.is_cancelled.is_not(True),  # Skip cancelled trains
+        ]
+
+        # Add data_source filter if specified
+        if data_source:
+            conditions.append(TrainJourney.data_source == data_source)
+
         stmt = (
             select(TrainJourney)
-            .where(
-                and_(
-                    TrainJourney.last_updated_at >= cutoff_time,
-                    TrainJourney.is_cancelled.is_not(True),  # Skip cancelled trains
-                )
-            )
+            .where(and_(*conditions))
             .options(
                 selectinload(TrainJourney.stops), selectinload(TrainJourney.progress)
             )
         )
 
+        # Execute with performance logging
+        query_start = now_et()
         result = await db.execute(stmt)
         journeys = list(result.scalars().all())
+        query_duration_ms = (now_et() - query_start).total_seconds() * 1000
+
+        if query_duration_ms > 100:
+            logger.warning(
+                "slow_journey_load_query",
+                duration_ms=round(query_duration_ms, 2),
+                journey_count=len(journeys),
+                data_source=data_source,
+            )
+        else:
+            logger.debug(
+                "journey_load_completed",
+                duration_ms=round(query_duration_ms, 2),
+                journey_count=len(journeys),
+            )
 
         # Use SQL-based individual segments calculation for better performance and accuracy
         individual_segments = []
         if max_per_segment >= 0:  # 0 means unlimited, positive means limited
             individual_segments = await self.get_individual_segments_optimized(
-                db, time_window_hours, max_per_segment
+                db, time_window_hours, max_per_segment, data_source
             )
 
         return aggregated_segments, journeys, individual_segments
@@ -178,7 +209,7 @@ class CongestionAnalyzer:
         return congestion_results
 
     async def get_network_congestion_optimized(
-        self, db: AsyncSession, time_window_hours: int = 3
+        self, db: AsyncSession, time_window_hours: int = 3, data_source: str | None = None
     ) -> list[SegmentCongestion]:
         """
         Optimized congestion calculation using database-level aggregation.
@@ -189,18 +220,20 @@ class CongestionAnalyzer:
         Args:
             db: Database session
             time_window_hours: How many hours to look back
+            data_source: Optional filter by data source (NJT or AMTRAK)
 
         Returns:
             List of segment congestion data
         """
-        # Check cache first (same as original)
-        cache_key = f"congestion_{time_window_hours}"
+        # Check cache first (include data_source in cache key)
+        cache_key = f"congestion_{time_window_hours}_{data_source or 'all'}"
         if cache_key in self._cache:
             cached_data, timestamp = self._cache[cache_key]
             if (now_et() - timestamp).total_seconds() < self._cache_ttl:
                 logger.debug(
                     "returning_cached_congestion_data",
                     cache_age_seconds=(now_et() - timestamp).total_seconds(),
+                    data_source=data_source,
                 )
                 return cached_data
 
@@ -244,6 +277,8 @@ class CongestionAnalyzer:
                 js2.stop_sequence = js1.stop_sequence + 1
                 -- Within time window
                 AND tj.last_updated_at >= :cutoff_time
+                -- Data source filter (if specified)
+                AND (:data_source IS NULL OR tj.data_source = :data_source)
                 -- Valid stations
                 AND js1.station_code IS NOT NULL
                 AND js2.station_code IS NOT NULL
@@ -253,6 +288,15 @@ class CongestionAnalyzer:
                 -- Ensure arrival is after departure (positive transit time)
                 AND COALESCE(js2.actual_arrival, js2.scheduled_arrival) >
                     COALESCE(js1.actual_departure, js1.scheduled_departure)
+        ),
+        segment_with_recency AS (
+            -- Add recency window for efficient filtering
+            SELECT
+                *,
+                MAX(departure_time) OVER (
+                    PARTITION BY from_station, to_station, data_source
+                ) as max_departure_time
+            FROM segment_data
         ),
         segment_aggregates AS (
             -- Aggregate by segment (from-to-datasource)
@@ -270,19 +314,13 @@ class CongestionAnalyzer:
                 ) FILTER (WHERE NOT is_cancelled AND actual_minutes > 0) as median_actual,
                 -- Cancellation metrics
                 COUNT(*) FILTER (WHERE is_cancelled) as cancelled_count,
-                -- Recent samples (approximation - last 50 by departure time)
+                -- Recent samples (last hour) - now using window function result
                 AVG(actual_minutes) FILTER (
                     WHERE NOT is_cancelled
                     AND actual_minutes > 0
-                    AND departure_time >= (
-                        SELECT MAX(departure_time) - INTERVAL '1 hour'
-                        FROM segment_data sd2
-                        WHERE sd2.from_station = segment_data.from_station
-                        AND sd2.to_station = segment_data.to_station
-                        AND sd2.data_source = segment_data.data_source
-                    )
+                    AND departure_time >= max_departure_time - INTERVAL '1 hour'
                 ) as recent_avg
-            FROM segment_data
+            FROM segment_with_recency
             GROUP BY from_station, to_station, data_source
         )
         SELECT
@@ -304,8 +342,29 @@ class CongestionAnalyzer:
         """
         )
 
-        result = await db.execute(query, {"cutoff_time": cutoff_time})
+        # Execute query with performance logging
+        query_start = now_et()
+        result = await db.execute(
+            query, {"cutoff_time": cutoff_time, "data_source": data_source}
+        )
         rows = result.fetchall()
+        query_duration_ms = (now_et() - query_start).total_seconds() * 1000
+
+        # Log slow queries (>100ms threshold)
+        if query_duration_ms > 100:
+            logger.warning(
+                "slow_congestion_query",
+                duration_ms=round(query_duration_ms, 2),
+                time_window_hours=time_window_hours,
+                data_source=data_source,
+                row_count=len(rows),
+            )
+        else:
+            logger.debug(
+                "congestion_query_completed",
+                duration_ms=round(query_duration_ms, 2),
+                row_count=len(rows),
+            )
 
         congestion_results = []
         for row in rows:
@@ -366,7 +425,11 @@ class CongestionAnalyzer:
         return congestion_results
 
     async def get_individual_segments_optimized(
-        self, db: AsyncSession, time_window_hours: int = 3, max_per_segment: int = 100
+        self,
+        db: AsyncSession,
+        time_window_hours: int = 3,
+        max_per_segment: int = 100,
+        data_source: str | None = None,
     ) -> list[Any]:
         """
         Get individual journey segments using SQL-based approach.
@@ -379,6 +442,7 @@ class CongestionAnalyzer:
             db: Database session
             time_window_hours: How many hours to look back
             max_per_segment: Maximum segments per route (0 = unlimited)
+            data_source: Optional filter by data source (NJT or AMTRAK)
 
         Returns:
             List of IndividualJourneySegment objects for visualization
@@ -430,6 +494,8 @@ class CongestionAnalyzer:
                     js2.stop_sequence = js1.stop_sequence + 1
                     -- Within time window
                     AND tj.last_updated_at >= :cutoff_time
+                    -- Data source filter (if specified)
+                    AND (:data_source IS NULL OR tj.data_source = :data_source)
                     -- Active journeys only (cancelled trains handled separately)
                     AND NOT tj.is_cancelled
                     -- Valid stations
@@ -519,6 +585,8 @@ class CongestionAnalyzer:
                     js2.stop_sequence = js1.stop_sequence + 1
                     -- Within time window
                     AND tj.last_updated_at >= :cutoff_time
+                    -- Data source filter (if specified)
+                    AND (:data_source IS NULL OR tj.data_source = :data_source)
                     -- Active journeys only
                     AND NOT tj.is_cancelled
                     -- Valid stations
@@ -559,13 +627,33 @@ class CongestionAnalyzer:
             """
             )
 
-        # Execute query
-        params: dict[str, Any] = {"cutoff_time": cutoff_time}
+        # Execute query with performance logging
+        params: dict[str, Any] = {
+            "cutoff_time": cutoff_time,
+            "data_source": data_source,
+        }
         if max_per_segment > 0:
             params["max_per_segment"] = max_per_segment
 
+        query_start = now_et()
         result = await db.execute(query, params)
         rows = result.fetchall()
+        query_duration_ms = (now_et() - query_start).total_seconds() * 1000
+
+        if query_duration_ms > 100:
+            logger.warning(
+                "slow_individual_segments_query",
+                duration_ms=round(query_duration_ms, 2),
+                segment_count=len(rows),
+                max_per_segment=max_per_segment,
+                data_source=data_source,
+            )
+        else:
+            logger.debug(
+                "individual_segments_query_completed",
+                duration_ms=round(query_duration_ms, 2),
+                segment_count=len(rows),
+            )
 
         # Convert to IndividualJourneySegment objects
         individual_segments = []
