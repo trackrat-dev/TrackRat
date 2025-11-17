@@ -281,7 +281,7 @@ class CongestionAnalyzer:
                 -- Within time window
                 AND tj.last_updated_at >= :cutoff_time
                 -- Data source filter (if specified)
-                AND (:data_source::text IS NULL OR tj.data_source = :data_source::text)
+                AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                 -- Valid stations
                 AND js1.station_code IS NOT NULL
                 AND js2.station_code IS NOT NULL
@@ -498,7 +498,7 @@ class CongestionAnalyzer:
                     -- Within time window
                     AND tj.last_updated_at >= :cutoff_time
                     -- Data source filter (if specified)
-                    AND (:data_source::text IS NULL OR tj.data_source = :data_source::text)
+                    AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                     -- Active journeys only (cancelled trains handled separately)
                     AND NOT tj.is_cancelled
                     -- Valid stations
@@ -589,7 +589,7 @@ class CongestionAnalyzer:
                     -- Within time window
                     AND tj.last_updated_at >= :cutoff_time
                     -- Data source filter (if specified)
-                    AND (:data_source::text IS NULL OR tj.data_source = :data_source::text)
+                    AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                     -- Active journeys only
                     AND NOT tj.is_cancelled
                     -- Valid stations
