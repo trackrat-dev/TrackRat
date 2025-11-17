@@ -1525,7 +1525,12 @@ struct PredictionExplanationSheet: View {
                                 .font(.headline)
                                 .foregroundColor(.primary)
 
-                            Text("TrackRat looks at the progress of trains immediately ahead of you to predict your arrival times at each station on your journey. This is independent from but used in combination with the delay predictions from NJ Transit and Amtrak and only shown when delays are expected.")
+                            Text("TrackRat looks at the progress of trains immediately ahead of you to predict your arrival times at each station on your journey.")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Text("This is independent from but used in combination with the delay predictions from NJ Transit and Amtrak and only shown when delays are expected.")
                                 .font(.body)
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -1533,15 +1538,6 @@ struct PredictionExplanationSheet: View {
                         .padding(.horizontal, 20)
                         .padding(.bottom, 20)
                     }
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
                 }
             }
         }
