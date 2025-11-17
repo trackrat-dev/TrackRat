@@ -99,7 +99,7 @@ struct TripSelectionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
-                .padding(.top, (ratSenseService.suggestedJourney != nil && !isSearching) ? 16 : 28)
+                .padding(.top, (ratSenseService.suggestedJourney != nil && !isSearching) ? 8 : 28)
                 
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
