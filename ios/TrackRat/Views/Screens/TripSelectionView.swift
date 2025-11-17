@@ -142,8 +142,7 @@ struct TripSelectionView: View {
                         
                         // Profile icon - moved from top navigation
                         Button {
-                            // Navigate to profile - sheet will auto-expand
-                            appState.shouldExpandSheet = true
+                            // Navigate to profile - expansion happens in MyProfileView.onAppear
                             appState.navigationPath.append(NavigationDestination.myProfile)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {
