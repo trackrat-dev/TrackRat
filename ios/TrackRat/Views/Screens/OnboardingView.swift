@@ -226,37 +226,59 @@ struct OnboardingView: View {
     }
 
     // MARK: - Helper Functions
-    
+
     private func clearAllPreviousData() {
         // Only clear once per onboarding session
         guard !hasClearedPreviousData else {
             print("🧹 OnboardingView: Previous data already cleared, skipping")
             return
         }
-        
+
         hasClearedPreviousData = true
         print("🧹 OnboardingView: Clearing all previous data for fresh start")
-        
+
         // Clear RatSense data (home/work stations and all history)
         let ratSense = RatSenseService.shared
         ratSense.clearAllData()
-        
+
         // Clear all favorite stations from AppState
         let existingFavorites = Array(appState.favoriteStations)
         for station in existingFavorites {
             appState.removeFavoriteStation(code: station.id)
         }
-        
+
         // Force reload favorites to ensure UI reflects cleared state
         appState.loadFavoriteStations()
-        
+
         // Clear local state variables to ensure fresh start
         homeStation = nil
         workStation = nil
         otherFavorites = []
-        
+
         print("🧹 OnboardingView: All previous data cleared successfully")
         print("🧹 Cleared: RatSense data, AppState favorites, local state")
+    }
+
+    private func clearPersistedData() {
+        // This function only clears persisted data, not the UI state
+        // Used when editing favorites to preserve user's new selections
+        print("🧹 OnboardingView: Clearing persisted data only (preserving UI selections)")
+
+        // Clear RatSense data (home/work stations and all history)
+        let ratSense = RatSenseService.shared
+        ratSense.clearAllData()
+
+        // Clear all favorite stations from AppState
+        let existingFavorites = Array(appState.favoriteStations)
+        for station in existingFavorites {
+            appState.removeFavoriteStation(code: station.id)
+        }
+
+        // Force reload favorites to ensure UI reflects cleared state
+        appState.loadFavoriteStations()
+
+        print("🧹 OnboardingView: Persisted data cleared, UI selections preserved")
+        print("🧹 Current selections: home=\(homeStation?.code ?? "none"), work=\(workStation?.code ?? "none"), others=\(otherFavorites.count)")
     }
     
     private func loadExistingStationsIfNeeded() {
@@ -313,10 +335,11 @@ struct OnboardingView: View {
 
         print("🎯 OnboardingView: Completing onboarding with selected stations")
 
-        // When repeating (editing favorites), clear all previous data now before saving new selections
-        if isRepeating && !hasClearedPreviousData {
-            print("🧹 OnboardingView: Clearing previous data before saving new selections")
-            clearAllPreviousData()
+        // When repeating (editing favorites), clear only persisted data before saving new selections
+        // This preserves the UI state (user's new selections)
+        if isRepeating {
+            print("🔄 OnboardingView: Editing favorites - clearing old persisted data")
+            clearPersistedData()
         }
 
         // Save selected stations as favorites
