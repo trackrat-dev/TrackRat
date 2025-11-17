@@ -334,6 +334,11 @@ struct MyProfileView: View {
             .padding(.bottom, 40)
         }
         .navigationTitle("My Profile")
+        .onAppear {
+            // Trigger sheet expansion after view loads to ensure smooth animation
+            // This happens after navigation completes and content is rendered
+            appState.shouldExpandSheet = true
+        }
     }
 }
 
