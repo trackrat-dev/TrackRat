@@ -45,7 +45,7 @@ struct DestinationPickerView: View {
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 20)
+                        .padding(.top, 28)
                     
                     // Search results and favorite stations container
                     VStack(alignment: .leading, spacing: 16) {
