@@ -12,6 +12,7 @@ struct TripSelectionView: View {
     @Environment(\.openURL) private var openURL
     @State private var searchText = ""
     @State private var isSearching = false
+    @State private var isNavigatingToProfile = false
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var liveActivityService = LiveActivityService.shared
     @StateObject private var ratSenseService = RatSenseService.shared
@@ -65,7 +66,7 @@ struct TripSelectionView: View {
         ScrollView {
             VStack(spacing: 8) {
                     // Rat Sense suggestion at the top
-                    if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive, !isSearching {
+                    if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive, !isSearching, !isNavigatingToProfile {
                         Button {
                             selectRatSenseSuggestion(suggestion)
                         } label: {
@@ -99,7 +100,7 @@ struct TripSelectionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
-                .padding(.top, (ratSenseService.suggestedJourney != nil && !isSearching) ? 8 : 28)
+                .padding(.top, (ratSenseService.suggestedJourney != nil && !isSearching && !isNavigatingToProfile) ? 8 : 28)
                 
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
@@ -142,6 +143,8 @@ struct TripSelectionView: View {
                         
                         // Profile icon - moved from top navigation
                         Button {
+                            // Immediately hide RatSense to prevent content shift during navigation
+                            isNavigatingToProfile = true
                             // Navigate to profile - expansion happens in MyProfileView.onAppear
                             appState.navigationPath.append(NavigationDestination.myProfile)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -246,11 +249,14 @@ struct TripSelectionView: View {
         }
         .onAppear {
             print("🐀🐀🐀 TripSelectionView appeared - updating Rat Sense")
-            
+
+            // Reset navigation flag when returning to this view
+            isNavigatingToProfile = false
+
             // Debug: Check what's in storage
             print("🐀 DEBUG: Home station = \(ratSenseService.getHomeStation() ?? "nil")")
             print("🐀 DEBUG: Work station = \(ratSenseService.getWorkStation() ?? "nil")")
-            
+
             ratSenseService.updateSuggestion()
             appState.loadRecentTrips()
             appState.loadFavoriteStations()
