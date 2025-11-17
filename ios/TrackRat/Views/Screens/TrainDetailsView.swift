@@ -1511,7 +1511,7 @@ struct PredictionExplanationSheet: View {
                             VStack(spacing: 8) {
                                 Text("🐀✨")
                                     .font(.system(size: 56))
-                                Text("Rat Magic Prediction")
+                                Text("Arrival Time Forecasts")
                                     .font(.title2)
                                     .fontWeight(.semibold)
                             }
@@ -1525,59 +1525,7 @@ struct PredictionExplanationSheet: View {
                                 .font(.headline)
                                 .foregroundColor(.primary)
 
-                            Text("This is an AI-powered arrival prediction based on historical train performance data. When our system detects a potential delay of 4+ minutes, we show you when the train is likely to actually arrive.")
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            Divider()
-                                .padding(.vertical, 4)
-
-                            Text("Color Guide")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack(spacing: 12) {
-                                    Text("5-9 min delay")
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.black)
-                                    Spacer()
-                                    Text("Black")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-
-                                HStack(spacing: 12) {
-                                    Text("10-19 min delay")
-                                        .fontWeight(.medium)
-                                        .foregroundColor(Color(red: 0.8, green: 0.4, blue: 0))
-                                    Spacer()
-                                    Text("Orange")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-
-                                HStack(spacing: 12) {
-                                    Text("20+ min delay")
-                                        .fontWeight(.medium)
-                                        .foregroundColor(Color(red: 0.7, green: 0, blue: 0))
-                                    Spacer()
-                                    Text("Red")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(.leading, 8)
-
-                            Divider()
-                                .padding(.vertical, 4)
-
-                            Text("Why is this helpful?")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-
-                            Text("Instead of rushing to catch a train that's running late, you can see a more accurate arrival time and plan accordingly. This helps you avoid unnecessary waiting on the platform.")
+                            Text("TrackRat looks at the progress of trains immediately ahead of you to predict your arrival times at each station on your journey. This is independent from but used in combination with the delay predictions from NJ Transit and Amtrak and only shown when delays are expected.")
                                 .font(.body)
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
