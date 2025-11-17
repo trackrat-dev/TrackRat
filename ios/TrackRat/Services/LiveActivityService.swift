@@ -6,14 +6,15 @@ import UIKit
 @available(iOS 16.1, *)
 class LiveActivityService: ObservableObject {
     static let shared = LiveActivityService()
-    
+
     @Published var currentActivity: Activity<TrainActivityAttributes>?
     @Published var isActivityActive: Bool = false
-    
+
     private var updateTimer: Timer?
     private var pushTokenTask: Task<Void, Never>?
     private var currentPushToken: Data?
-    
+    private let cacheService = TrainCacheService.shared
+
     private init() {
         checkCurrentActivity()
     }
@@ -207,7 +208,18 @@ class LiveActivityService: ObservableObject {
                 id: activity.attributes.trainId,
                 fromStationCode: activity.attributes.originStationCode
             )
-            
+
+            // Cache the fresh train data for instant loading in TrainDetailsView
+            await MainActor.run {
+                cacheService.cacheTrain(
+                    train,
+                    trainId: activity.attributes.trainId,
+                    trainNumber: nil,
+                    date: nil,
+                    fromStation: activity.attributes.originStationCode
+                )
+            }
+
             // Calculate context-aware progress for user's journey
             let context = JourneyContext(from: activity.attributes.originStationCode, to: activity.attributes.destination)
             let progress = train.calculateJourneyProgress(for: context)
