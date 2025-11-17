@@ -10,7 +10,6 @@ from typing import Any, cast
 from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import flag_modified
 from structlog import get_logger
 
 from trackrat.collectors.base import BaseJourneyCollector
@@ -1016,6 +1015,18 @@ class JourneyCollector(BaseJourneyCollector):
                         station=stop_data.STATION_2CHAR,
                     )
 
+                # Update sequence to match API order (fixes schedule-generated stops)
+                # This ensures schedule-created stops get corrected to their actual position
+                if stop.stop_sequence != sequence:
+                    logger.info(
+                        "correcting_stop_sequence",
+                        train_id=journey.train_id,
+                        station=stop_data.STATION_2CHAR,
+                        old_sequence=stop.stop_sequence,
+                        new_sequence=sequence,
+                    )
+                stop.stop_sequence = sequence
+
             # Always update actual_arrival with latest TIME value (live estimate)
             # This represents the current estimated/actual arrival time
             stop.actual_arrival = api_arrival_time
@@ -1206,11 +1217,8 @@ class JourneyCollector(BaseJourneyCollector):
                 )
                 changes_made = True
 
-            # Always assign the sequence to ensure SQLAlchemy marks it as dirty
-            # even when the value appears unchanged
+            # Always assign the sequence (SQLAlchemy automatically tracks changes to scalar fields)
             stop.stop_sequence = i
-            # Explicitly mark field as modified to ensure persistence even for no-op assignments
-            flag_modified(stop, "stop_sequence")
 
         if changes_made:
             logger.info(
@@ -1218,6 +1226,28 @@ class JourneyCollector(BaseJourneyCollector):
                 journey_id=journey.id,
                 train_id=journey.train_id,
                 total_stops=len(stops),
+            )
+
+        # Phase 2: Verify sequences were actually assigned in the session
+        # This helps detect if SQLAlchemy isn't tracking changes properly
+        sequence_mismatches = []
+        for i, stop in enumerate(stops):
+            if stop.stop_sequence != i:
+                sequence_mismatches.append(
+                    {
+                        "station": stop.station_code,
+                        "expected": i,
+                        "actual": stop.stop_sequence,
+                    }
+                )
+
+        if sequence_mismatches:
+            logger.error(
+                "sequence_assignment_verification_failed",
+                journey_id=journey.id,
+                train_id=journey.train_id,
+                mismatches=sequence_mismatches,
+                message="Sequences not properly assigned in session - this indicates a deeper SQLAlchemy issue",
             )
 
         # Validation: Check for anomalies in the final sequence

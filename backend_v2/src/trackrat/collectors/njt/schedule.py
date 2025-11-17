@@ -293,11 +293,13 @@ class NJTScheduleCollector:
 
         # Create a single stop for the departure station
         # (Schedule API doesn't provide full stop list)
+        # Note: stop_sequence=None because we don't know where this station falls
+        # in the actual journey until we get the full stop list from the API
         departure_stop = JourneyStop(
             journey=new_journey,
             station_code=station_code,
             station_name=station_name,
-            stop_sequence=0,
+            stop_sequence=None,  # Will be set during journey collection
             scheduled_departure=scheduled_departure,
             scheduled_arrival=scheduled_departure,  # Same as departure for origin
             track=track if track and track != line else None,
