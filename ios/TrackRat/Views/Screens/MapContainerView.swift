@@ -348,6 +348,22 @@ struct MapContainerView: View {
             if isOnTrainDetails(navigationPath) {
                 switchToJourneyFocus()
             }
+
+            // Handle profile view navigation
+            if isOnProfileView(navigationPath) {
+                // Delay expansion until after navigation completes
+                Task {
+                    // Wait for navigation animation to fully complete (350ms)
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+
+                    await MainActor.run {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            selectedDetent = .large
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+            }
         }
     }
     
@@ -367,7 +383,17 @@ struct MapContainerView: View {
         // and current train info to infer if we're on train details
         return appState.currentTrainId != nil && appState.selectedRoute != nil
     }
-    
+
+    private func isOnProfileView(_ navigationPath: NavigationPath) -> Bool {
+        // Check if we're currently on the profile view
+        // Since we can't directly inspect NavigationPath, we need to track this differently
+        // For now, we'll check if the path is not empty and we're not on train details
+        // A more robust solution would track the actual destination
+        return !navigationPath.isEmpty &&
+               appState.currentTrainId == nil &&
+               appState.selectedRoute == nil
+    }
+
     private func switchToJourneyFocus() {
         guard let route = appState.selectedRoute,
               let trainId = appState.currentTrainId else {
