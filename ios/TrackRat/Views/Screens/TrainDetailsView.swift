@@ -474,8 +474,9 @@ struct StopRowV2: View {
     let train: TrainV2
     let departureStationCode: String?
     let shouldShowJourneyPredictions: Bool
-    
+
     @State private var showPulse = false
+    @State private var showPredictionExplanation = false
     
     // Helper to check if this stop is cancelled
     private var isCancelled: Bool {
@@ -680,12 +681,18 @@ struct StopRowV2: View {
                         .foregroundColor(predictionDelayColor(predicted: predictedArrival, scheduled: stop.scheduledArrival))
                 }
                 .frame(maxHeight: .infinity, alignment: .center)
+                .onTapGesture {
+                    showPredictionExplanation = true
+                }
             } 
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .background(backgroundColor)
         .cornerRadius(8)
+        .sheet(isPresented: $showPredictionExplanation) {
+            PredictionExplanationSheet()
+        }
     }
     
     private var stopColor: Color {
@@ -1411,6 +1418,113 @@ struct PennStationWaitingLink: View {
         .sheet(isPresented: $showingGuide) {
             PennStationGuideView(isAmtrak: isAmtrak)
         }
+    }
+}
+
+// MARK: - Prediction Explanation Sheet
+struct PredictionExplanationSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Content
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Header with emoji
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                Text("🐀✨")
+                                    .font(.system(size: 56))
+                                Text("Rat Magic Prediction")
+                                    .font(.title2)
+                                    .fontWeight(.semibold)
+                            }
+                            Spacer()
+                        }
+                        .padding(.top, 8)
+
+                        // Explanation
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("What is this?")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+
+                            Text("This is an AI-powered arrival prediction based on historical train performance data. When our system detects a potential delay of 4+ minutes, we show you when the train is likely to actually arrive.")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Divider()
+                                .padding(.vertical, 4)
+
+                            Text("Color Guide")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(spacing: 12) {
+                                    Text("5-9 min delay")
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.black)
+                                    Spacer()
+                                    Text("Black")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                HStack(spacing: 12) {
+                                    Text("10-19 min delay")
+                                        .fontWeight(.medium)
+                                        .foregroundColor(Color(red: 0.8, green: 0.4, blue: 0))
+                                    Spacer()
+                                    Text("Orange")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                HStack(spacing: 12) {
+                                    Text("20+ min delay")
+                                        .fontWeight(.medium)
+                                        .foregroundColor(Color(red: 0.7, green: 0, blue: 0))
+                                    Spacer()
+                                    Text("Red")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.leading, 8)
+
+                            Divider()
+                                .padding(.vertical, 4)
+
+                            Text("Why is this helpful?")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+
+                            Text("Instead of rushing to catch a train that's running late, you can see a more accurate arrival time and plan accordingly. This helps you avoid unnecessary waiting on the platform.")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 }
 
