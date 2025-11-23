@@ -239,13 +239,13 @@ class CongestionAnalyzer:
             SELECT DISTINCT ON (journey_id)
                 journey_id,
                 station_code,
+                station_name,
                 stop_sequence,
                 scheduled_departure,
                 scheduled_arrival,
                 actual_departure,
                 actual_arrival,
-                track,
-                status
+                track
             FROM journey_stops
             WHERE journey_id = ANY(:journey_ids)
                 AND actual_departure IS NOT NULL
@@ -268,13 +268,13 @@ class CongestionAnalyzer:
                 stop = JourneyStop(
                     journey_id=row.journey_id,
                     station_code=row.station_code,
+                    station_name=row.station_name,
                     stop_sequence=row.stop_sequence,
                     scheduled_departure=row.scheduled_departure,
                     scheduled_arrival=row.scheduled_arrival,
                     actual_departure=row.actual_departure,
                     actual_arrival=row.actual_arrival,
                     track=row.track,
-                    status=row.status,
                 )
                 # Set the stops list with just this one stop
                 journey.stops = [stop]
