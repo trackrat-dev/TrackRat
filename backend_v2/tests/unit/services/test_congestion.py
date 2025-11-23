@@ -376,14 +376,19 @@ class TestCongestionAnalyzer:
 
                 # Mock journey query - first call gets journey list
                 mock_journey_result = Mock()
-                mock_journey_result.scalars.return_value.all.return_value = [mock_journey]
+                mock_journey_result.scalars.return_value.all.return_value = [
+                    mock_journey
+                ]
 
                 # Mock current positions query - second call gets empty position list
                 mock_positions_result = Mock()
                 mock_positions_result.fetchall.return_value = []
 
                 # Configure mock_db.execute to return different results for different calls
-                mock_db.execute.side_effect = [mock_journey_result, mock_positions_result]
+                mock_db.execute.side_effect = [
+                    mock_journey_result,
+                    mock_positions_result,
+                ]
 
                 aggregated, journeys, individual = (
                     await congestion_analyzer.get_network_congestion_with_trains(
