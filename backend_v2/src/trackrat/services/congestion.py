@@ -312,7 +312,7 @@ class CongestionAnalyzer:
                 set_committed_value(journey, "stops", stops_list)  # type: ignore[no-untyped-call]
             else:
                 # Fallback for tests with Mock objects
-                journey.stops = stops_list
+                journey.stops = stops_list  # type: ignore[assignment]
 
         logger.debug(
             "loaded_current_positions",
