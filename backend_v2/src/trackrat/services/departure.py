@@ -223,16 +223,23 @@ class DepartureService:
         iterating through stops. Falls back to stops-based calculation only
         when progress data is not available.
         """
+        from sqlalchemy import inspect
+
         # OPTIMIZATION: Use pre-computed journey_progress if available
-        if journey.progress:
+        # Use inspect to check if relationship is loaded without triggering lazy load
+        state = inspect(journey)
+        progress = state.attrs.progress.loaded_value
+
+        # If progress is loaded and not None, use it
+        if progress is not None:
             # Journey progress table has the position already computed
             return TrainPosition(
-                last_departed_station_code=journey.progress.last_departed_station,
+                last_departed_station_code=progress.last_departed_station,
                 at_station_code=None,  # Progress doesn't track "at station" state
-                next_station_code=journey.progress.next_station,
+                next_station_code=progress.next_station,
                 between_stations=(
-                    journey.progress.last_departed_station is not None
-                    and journey.progress.next_station is not None
+                    progress.last_departed_station is not None
+                    and progress.next_station is not None
                 ),
             )
 
