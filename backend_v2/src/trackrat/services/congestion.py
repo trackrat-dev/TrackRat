@@ -227,10 +227,13 @@ class CongestionAnalyzer:
             db: Database session
             journeys: List of journey objects to populate with current position
         """
-        from trackrat.models.database import JourneyStop
+        from dataclasses import dataclass
 
         # Get journey IDs
         journey_ids = [j.id for j in journeys]
+
+        if not journey_ids:
+            return
 
         # Single query to get the latest departed stop for each journey
         # Uses DISTINCT ON to get one row per journey_id (the most recent)
@@ -245,7 +248,9 @@ class CongestionAnalyzer:
                 scheduled_arrival,
                 actual_departure,
                 actual_arrival,
-                track
+                track,
+                has_departed_station,
+                raw_amtrak_status
             FROM journey_stops
             WHERE journey_id = ANY(:journey_ids)
                 AND actual_departure IS NOT NULL
@@ -256,31 +261,53 @@ class CongestionAnalyzer:
         result = await db.execute(query, {"journey_ids": journey_ids})
         rows = result.fetchall()
 
+        # Create a simple dataclass to hold stop data without SQLAlchemy machinery
+        @dataclass
+        class SimpleStop:
+            journey_id: int
+            station_code: str
+            station_name: str
+            stop_sequence: int | None
+            scheduled_departure: datetime | None
+            scheduled_arrival: datetime | None
+            actual_departure: datetime | None
+            actual_arrival: datetime | None
+            track: str | None
+            has_departed_station: bool
+            raw_amtrak_status: str | None
+
         # Create a map of journey_id -> current position data
-        position_map = {row.journey_id: row for row in rows}
+        position_map: dict[int, SimpleStop] = {}
+        for row in rows:
+            position_map[row.journey_id] = SimpleStop(
+                journey_id=row.journey_id,
+                station_code=row.station_code,
+                station_name=row.station_name,
+                stop_sequence=row.stop_sequence,
+                scheduled_departure=row.scheduled_departure,
+                scheduled_arrival=row.scheduled_arrival,
+                actual_departure=row.actual_departure,
+                actual_arrival=row.actual_arrival,
+                track=row.track,
+                has_departed_station=row.has_departed_station,
+                raw_amtrak_status=row.raw_amtrak_status,
+            )
 
         # Populate each journey's stops list with just the current position
-        # This satisfies any code that expects journey.stops to exist
+        # Using a simple dataclass instead of ORM object to avoid greenlet issues
+        # Use set_committed_value to tell SQLAlchemy the relationship is already loaded
+        from sqlalchemy.orm.attributes import set_committed_value
+
         for journey in journeys:
             if journey.id in position_map:
-                row = position_map[journey.id]
-                # Create a minimal JourneyStop object
-                stop = JourneyStop(
-                    journey_id=row.journey_id,
-                    station_code=row.station_code,
-                    station_name=row.station_name,
-                    stop_sequence=row.stop_sequence,
-                    scheduled_departure=row.scheduled_departure,
-                    scheduled_arrival=row.scheduled_arrival,
-                    actual_departure=row.actual_departure,
-                    actual_arrival=row.actual_arrival,
-                    track=row.track,
-                )
-                # Set the stops list with just this one stop
-                journey.stops = [stop]
+                stops_list = [position_map[journey.id]]
             else:
                 # No departed stops yet - empty list
-                journey.stops = []
+                stops_list = []
+
+            # Use set_committed_value to mark the relationship as loaded
+            # This prevents SQLAlchemy from trying to lazy-load in async context
+            set_committed_value(journey, "stops", stops_list)
 
         logger.debug(
             "loaded_current_positions",
