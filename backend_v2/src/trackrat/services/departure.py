@@ -216,7 +216,27 @@ class DepartureService:
         )
 
     def _calculate_train_position(self, journey: TrainJourney) -> TrainPosition:
-        """Calculate current train position based on stops data."""
+        """
+        Calculate current train position.
+
+        OPTIMIZATION: Uses journey_progress table when available to avoid
+        iterating through stops. Falls back to stops-based calculation only
+        when progress data is not available.
+        """
+        # OPTIMIZATION: Use pre-computed journey_progress if available
+        if journey.progress:
+            # Journey progress table has the position already computed
+            return TrainPosition(
+                last_departed_station_code=journey.progress.last_departed_station,
+                at_station_code=None,  # Progress doesn't track "at station" state
+                next_station_code=journey.progress.next_station,
+                between_stations=(
+                    journey.progress.last_departed_station is not None
+                    and journey.progress.next_station is not None
+                ),
+            )
+
+        # Fallback: Calculate from stops if progress not available
         if not journey.stops:
             return TrainPosition()
 

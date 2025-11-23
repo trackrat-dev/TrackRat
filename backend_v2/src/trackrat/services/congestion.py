@@ -87,7 +87,7 @@ class CongestionAnalyzer:
             db, time_window_hours, data_source
         )
 
-        # Still need to load journeys for train positions, but we can be selective
+        # Load journeys with minimal data - we'll get current positions separately
         # Only load non-cancelled journeys that are actually moving
         conditions = [
             TrainJourney.last_updated_at >= cutoff_time,
@@ -98,12 +98,12 @@ class CongestionAnalyzer:
         if data_source:
             conditions.append(TrainJourney.data_source == data_source)
 
+        # OPTIMIZATION: Don't load stops here - they're not needed for basic journey info
+        # We only need stops for current position, which we'll load separately below
         stmt = (
             select(TrainJourney)
             .where(and_(*conditions))
-            .options(
-                selectinload(TrainJourney.stops), selectinload(TrainJourney.progress)
-            )
+            .options(selectinload(TrainJourney.progress))
         )
 
         # Execute with performance logging
@@ -125,6 +125,11 @@ class CongestionAnalyzer:
                 duration_ms=round(query_duration_ms, 2),
                 journey_count=len(journeys),
             )
+
+        # OPTIMIZATION: Load current positions for all journeys in a single efficient query
+        # This replaces N queries (one per journey) with 1 query
+        if journeys:
+            await self._load_current_positions(db, journeys)
 
         # Use SQL-based individual segments calculation for better performance and accuracy
         individual_segments = []
@@ -207,6 +212,81 @@ class CongestionAnalyzer:
         )
 
         return congestion_results
+
+    async def _load_current_positions(
+        self, db: AsyncSession, journeys: list[TrainJourney]
+    ) -> None:
+        """
+        Load current positions (latest departed stop) for all journeys in a single query.
+
+        This method efficiently loads the most recent stop with an actual departure
+        for each journey, avoiding the N+1 query problem that would occur if we
+        loaded all stops for each journey.
+
+        Args:
+            db: Database session
+            journeys: List of journey objects to populate with current position
+        """
+        from trackrat.models.database import JourneyStop
+
+        # Get journey IDs
+        journey_ids = [j.id for j in journeys]
+
+        # Single query to get the latest departed stop for each journey
+        # Uses DISTINCT ON to get one row per journey_id (the most recent)
+        query = text(
+            """
+            SELECT DISTINCT ON (journey_id)
+                journey_id,
+                station_code,
+                stop_sequence,
+                scheduled_departure,
+                scheduled_arrival,
+                actual_departure,
+                actual_arrival,
+                track,
+                status
+            FROM journey_stops
+            WHERE journey_id = ANY(:journey_ids)
+                AND actual_departure IS NOT NULL
+            ORDER BY journey_id, actual_departure DESC NULLS LAST
+            """
+        )
+
+        result = await db.execute(query, {"journey_ids": journey_ids})
+        rows = result.fetchall()
+
+        # Create a map of journey_id -> current position data
+        position_map = {row.journey_id: row for row in rows}
+
+        # Populate each journey's stops list with just the current position
+        # This satisfies any code that expects journey.stops to exist
+        for journey in journeys:
+            if journey.id in position_map:
+                row = position_map[journey.id]
+                # Create a minimal JourneyStop object
+                stop = JourneyStop(
+                    journey_id=row.journey_id,
+                    station_code=row.station_code,
+                    stop_sequence=row.stop_sequence,
+                    scheduled_departure=row.scheduled_departure,
+                    scheduled_arrival=row.scheduled_arrival,
+                    actual_departure=row.actual_departure,
+                    actual_arrival=row.actual_arrival,
+                    track=row.track,
+                    status=row.status,
+                )
+                # Set the stops list with just this one stop
+                journey.stops = [stop]
+            else:
+                # No departed stops yet - empty list
+                journey.stops = []
+
+        logger.debug(
+            "loaded_current_positions",
+            journey_count=len(journeys),
+            positions_found=len(position_map),
+        )
 
     async def get_network_congestion_optimized(
         self,
