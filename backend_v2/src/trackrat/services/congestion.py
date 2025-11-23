@@ -307,7 +307,12 @@ class CongestionAnalyzer:
 
             # Use set_committed_value to mark the relationship as loaded
             # This prevents SQLAlchemy from trying to lazy-load in async context
-            set_committed_value(journey, "stops", stops_list)
+            # Check if it's a real SQLAlchemy instance (not a Mock in tests)
+            if hasattr(journey, "_sa_instance_state"):
+                set_committed_value(journey, "stops", stops_list)  # type: ignore[no-untyped-call]
+            else:
+                # Fallback for tests with Mock objects
+                journey.stops = stops_list
 
         logger.debug(
             "loaded_current_positions",
