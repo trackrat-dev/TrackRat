@@ -70,11 +70,12 @@ struct OnboardingView: View {
             }
         }
         .onAppear {
-            // Always clear all previous data first for a fresh start
-            clearAllPreviousData()
-            
-            // Then load existing stations if this is a repeat onboarding
-            // (which will typically be empty after clearing)
+            // Only clear data on first onboarding, not when editing favorites
+            if !isRepeating {
+                clearAllPreviousData()
+            }
+
+            // Load existing stations for editing when repeating
             loadExistingStationsIfNeeded()
         }
         .sheet(isPresented: $showStationPicker) {
@@ -225,78 +226,123 @@ struct OnboardingView: View {
     }
 
     // MARK: - Helper Functions
-    
+
     private func clearAllPreviousData() {
         // Only clear once per onboarding session
         guard !hasClearedPreviousData else {
             print("🧹 OnboardingView: Previous data already cleared, skipping")
             return
         }
-        
+
         hasClearedPreviousData = true
         print("🧹 OnboardingView: Clearing all previous data for fresh start")
-        
+
         // Clear RatSense data (home/work stations and all history)
         let ratSense = RatSenseService.shared
         ratSense.clearAllData()
-        
+
         // Clear all favorite stations from AppState
         let existingFavorites = Array(appState.favoriteStations)
         for station in existingFavorites {
             appState.removeFavoriteStation(code: station.id)
         }
-        
+
         // Force reload favorites to ensure UI reflects cleared state
         appState.loadFavoriteStations()
-        
+
         // Clear local state variables to ensure fresh start
         homeStation = nil
         workStation = nil
         otherFavorites = []
-        
+
         print("🧹 OnboardingView: All previous data cleared successfully")
         print("🧹 Cleared: RatSense data, AppState favorites, local state")
     }
+
+    private func clearPersistedData() {
+        // This function only clears persisted data, not the UI state
+        // Used when editing favorites to preserve user's new selections
+        print("🧹 OnboardingView: Clearing persisted data only (preserving UI selections)")
+
+        // Clear RatSense data (home/work stations and all history)
+        let ratSense = RatSenseService.shared
+        ratSense.clearAllData()
+
+        // Clear all favorite stations from AppState
+        let existingFavorites = Array(appState.favoriteStations)
+        for station in existingFavorites {
+            appState.removeFavoriteStation(code: station.id)
+        }
+
+        // Force reload favorites to ensure UI reflects cleared state
+        appState.loadFavoriteStations()
+
+        print("🧹 OnboardingView: Persisted data cleared, UI selections preserved")
+        print("🧹 Current selections: home=\(homeStation?.code ?? "none"), work=\(workStation?.code ?? "none"), others=\(otherFavorites.count)")
+    }
     
     private func loadExistingStationsIfNeeded() {
-        // This method is now effectively obsolete since we always clear all data first
-        // Keeping it for backward compatibility but it should find no existing data
-        guard !hasLoadedExistingStations && isRepeating else { 
-            print("🔄 OnboardingView: Skipping existing station load (cleared=\(hasClearedPreviousData), repeating=\(isRepeating))")
-            return 
+        // Only load existing stations when repeating (editing favorites)
+        guard isRepeating && !hasLoadedExistingStations else {
+            print("🔄 OnboardingView: Skipping existing station load (repeating=\(isRepeating), loaded=\(hasLoadedExistingStations))")
+            return
         }
-        
+
         hasLoadedExistingStations = true
         let ratSense = RatSenseService.shared
-        
-        // This should typically be empty since we cleared all data
+
+        print("🔄 OnboardingView: Loading existing stations for editing")
+
+        // Load home station if set
         if let homeCode = ratSense.getHomeStation(),
            let homeName = Stations.displayName(for: homeCode) {
-            print("⚠️ OnboardingView: Found unexpected home station after clear: \(homeCode)")
+            print("🏠 OnboardingView: Loading home station: \(homeCode)")
             DispatchQueue.main.async {
                 self.homeStation = Station(code: homeCode, name: homeName)
             }
         }
-        
+
+        // Load work station if set
         if let workCode = ratSense.getWorkStation(),
            let workName = Stations.displayName(for: workCode) {
-            print("⚠️ OnboardingView: Found unexpected work station after clear: \(workCode)")
+            print("🏢 OnboardingView: Loading work station: \(workCode)")
             DispatchQueue.main.async {
                 self.workStation = Station(code: workCode, name: workName)
             }
         }
-        
-        print("🔄 OnboardingView: Existing station load completed (should be empty)")
+
+        // Load other favorites (excluding home and work)
+        let homeCode = ratSense.getHomeStation()
+        let workCode = ratSense.getWorkStation()
+        let otherFavs = appState.favoriteStations
+            .filter { $0.id != homeCode && $0.id != workCode }
+            .map { Station(code: $0.id, name: $0.name) }
+
+        if !otherFavs.isEmpty {
+            print("⭐ OnboardingView: Loading \(otherFavs.count) other favorite stations")
+            DispatchQueue.main.async {
+                self.otherFavorites = otherFavs
+            }
+        }
+
+        print("🔄 OnboardingView: Existing station load completed")
     }
     
     private func completeOnboarding() {
         // Prevent double-taps
         guard !isCompletingOnboarding else { return }
         isCompletingOnboarding = true
-        
+
         print("🎯 OnboardingView: Completing onboarding with selected stations")
-        
-        // Save selected stations as favorites (data was already cleared at start)
+
+        // When repeating (editing favorites), clear only persisted data before saving new selections
+        // This preserves the UI state (user's new selections)
+        if isRepeating {
+            print("🔄 OnboardingView: Editing favorites - clearing old persisted data")
+            clearPersistedData()
+        }
+
+        // Save selected stations as favorites
         // Save to RatSense first to ensure persistence
         if let home = homeStation {
             print("🏠 Setting home station: \(home.code) - \(home.name)")
@@ -305,7 +351,7 @@ struct OnboardingView: View {
         } else {
             print("🏠 No home station selected")
         }
-        
+
         if let work = workStation {
             print("🏢 Setting work station: \(work.code) - \(work.name)")
             RatSenseService.shared.setWorkStation(work.code)
@@ -313,18 +359,18 @@ struct OnboardingView: View {
         } else {
             print("🏢 No work station selected")
         }
-        
+
         for other in otherFavorites {
             print("⭐ Adding other favorite: \(other.code) - \(other.name)")
             appState.addFavoriteStation(code: other.code, name: other.name)
         }
-        
+
         // Force immediate synchronization of favorites
         appState.loadFavoriteStations()
-        
+
         // Provide haptic feedback
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        
+
         // Mark onboarding as complete only after all data is saved
         // Use a slight delay to ensure all state updates are processed
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

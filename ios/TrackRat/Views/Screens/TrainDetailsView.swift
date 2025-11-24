@@ -474,8 +474,9 @@ struct StopRowV2: View {
     let train: TrainV2
     let departureStationCode: String?
     let shouldShowJourneyPredictions: Bool
-    
+
     @State private var showPulse = false
+    @State private var showPredictionExplanation = false
     
     // Helper to check if this stop is cancelled
     private var isCancelled: Bool {
@@ -680,12 +681,18 @@ struct StopRowV2: View {
                         .foregroundColor(predictionDelayColor(predicted: predictedArrival, scheduled: stop.scheduledArrival))
                 }
                 .frame(maxHeight: .infinity, alignment: .center)
+                .onTapGesture {
+                    showPredictionExplanation = true
+                }
             } 
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .background(backgroundColor)
         .cornerRadius(8)
+        .sheet(isPresented: $showPredictionExplanation) {
+            PredictionExplanationSheet()
+        }
     }
     
     private var stopColor: Color {
@@ -753,6 +760,7 @@ class TrainDetailsViewModel: ObservableObject {
     private var currentDestinationName: String?
 
     private let apiService = APIService.shared
+    private let cacheService = TrainCacheService.shared
 
     // Timer for auto-refresh
     let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -875,73 +883,146 @@ class TrainDetailsViewModel: ObservableObject {
     }
     
     func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
-        isLoading = true
         error = nil
 
         // Store current origin and destination for filtering
         self.currentOriginStationCode = fromStationCode
         self.currentDestinationName = selectedDestinationName
 
-        do {
-            // Use the flexible API method
-            train = try await apiService.fetchTrainDetailsFlexible(
-                id: databaseId.map(String.init),
-                trainId: trainNumber,
-                fromStationCode: fromStationCode ?? preferredStationCode,
-                date: journeyDate
-            )
-
-            // Update all computed properties after setting train
+        // CACHE-FIRST STRATEGY: Check cache before showing loading indicator
+        if let cachedTrain = cacheService.getCachedTrain(
+            trainId: databaseId.map(String.init),
+            trainNumber: trainNumber,
+            date: journeyDate,
+            fromStation: fromStationCode ?? preferredStationCode
+        ) {
+            // Load from cache immediately - NO loading indicator
+            print("📦 Loading from cache - instant display")
+            train = cachedTrain
             updateComputedProperties()
 
-        } catch {
-            // Handle APIError.noData specifically
-            if let apiError = error as? APIError {
-                switch apiError {
-                case .noData:
-                    self.error = "Train not found"
-                default:
-                    self.error = apiError.localizedDescription
-                }
-            } else {
-                self.error = error.localizedDescription
-            }
-        }
+            // Now fetch fresh data in background (silent)
+            await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, selectedDestinationName: selectedDestinationName)
+        } else {
+            // No cache available - show loading indicator and fetch
+            print("🌐 No cache available - fetching from network")
+            isLoading = true
 
-        isLoading = false
+            do {
+                // Use the flexible API method
+                let fetchedTrain = try await apiService.fetchTrainDetailsFlexible(
+                    id: databaseId.map(String.init),
+                    trainId: trainNumber,
+                    fromStationCode: fromStationCode ?? preferredStationCode,
+                    date: journeyDate
+                )
+
+                train = fetchedTrain
+
+                // Cache the newly fetched train
+                cacheService.cacheTrain(
+                    fetchedTrain,
+                    trainId: databaseId.map(String.init),
+                    trainNumber: trainNumber,
+                    date: journeyDate,
+                    fromStation: fromStationCode ?? preferredStationCode
+                )
+
+                // Update all computed properties after setting train
+                updateComputedProperties()
+
+            } catch {
+                // Handle APIError.noData specifically
+                if let apiError = error as? APIError {
+                    switch apiError {
+                    case .noData:
+                        self.error = "Train not found"
+                    default:
+                        self.error = apiError.localizedDescription
+                    }
+                } else {
+                    self.error = error.localizedDescription
+                }
+            }
+
+            isLoading = false
+        }
     }
-    
-    func refreshTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
-        // Store current origin and destination for filtering
-        self.currentOriginStationCode = fromStationCode
-        self.currentDestinationName = selectedDestinationName
-        
-        // Silent refresh
+
+    /// Fetches fresh data in background without showing loading indicator
+    private func refreshTrainDetailsInBackground(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         do {
             let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
-            print("🔄 TrainDetailsView refreshing train \(identifier) from \(fromStationCode ?? preferredStationCode ?? "none")")
-            
+            print("🔄 Background refresh for train \(identifier)")
+
             let newTrain = try await apiService.fetchTrainDetailsFlexible(
                 id: databaseId.map(String.init),
                 trainId: trainNumber,
                 fromStationCode: fromStationCode ?? preferredStationCode,
                 date: journeyDate
             )
-            
+
+            // Cache the fresh data
+            cacheService.cacheTrain(
+                newTrain,
+                trainId: databaseId.map(String.init),
+                trainNumber: trainNumber,
+                date: journeyDate,
+                fromStation: fromStationCode ?? preferredStationCode
+            )
+
+            print("✅ Background refresh successful - updating UI")
+
+            // Update UI with fresh data (seamless update)
+            train = newTrain
+            updateComputedProperties()
+
+        } catch {
+            // Silent failure for background refresh - user already has cached data
+            print("⚠️ Background refresh failed (not critical): \(error)")
+        }
+    }
+    
+    func refreshTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+        // Store current origin and destination for filtering
+        self.currentOriginStationCode = fromStationCode
+        self.currentDestinationName = selectedDestinationName
+
+        // Silent refresh
+        do {
+            let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
+            print("🔄 TrainDetailsView refreshing train \(identifier) from \(fromStationCode ?? preferredStationCode ?? "none")")
+
+            let newTrain = try await apiService.fetchTrainDetailsFlexible(
+                id: databaseId.map(String.init),
+                trainId: trainNumber,
+                fromStationCode: fromStationCode ?? preferredStationCode,
+                date: journeyDate
+            )
+
             print("✅ TrainDetailsView refresh successful for train \(identifier)")
-            
+
+            // Cache the fresh data
+            cacheService.cacheTrain(
+                newTrain,
+                trainId: databaseId.map(String.init),
+                trainNumber: trainNumber,
+                date: journeyDate,
+                fromStation: fromStationCode ?? preferredStationCode
+            )
+
             // Check if Live Activity should auto-end (Primary Fix)
             if #available(iOS 16.1, *) {
                 let liveService = LiveActivityService.shared
                 if liveService.isActivityActive,
                    let currentActivity = liveService.currentActivity,
                    currentActivity.attributes.trainNumber == newTrain.trainId {
-                    
+
                     print("🔍 Checking Live Activity auto-end for train \(newTrain.trainId)")
-                    
+
                     if liveService.shouldEndActivity(train: newTrain, activity: currentActivity) {
                         print("🏁 Auto-ending Live Activity from TrainDetailsView refresh")
-                        
+
                         Task {
                             await liveService.endCurrentActivity()
                         }
@@ -950,7 +1031,7 @@ class TrainDetailsViewModel: ObservableObject {
                     }
                 }
             }
-            
+
             // Check for boarding status change
             if let currentTrain = train {
                 // Check for track assignment
@@ -958,7 +1039,7 @@ class TrainDetailsViewModel: ObservableObject {
                     triggerTrackAssignedHaptic = true
                 }
             }
-            
+
             // Ensure UI updates properly on main queue
             DispatchQueue.main.async { [weak self] in
                 self?.objectWillChange.send()
@@ -1411,6 +1492,57 @@ struct PennStationWaitingLink: View {
         .sheet(isPresented: $showingGuide) {
             PennStationGuideView(isAmtrak: isAmtrak)
         }
+    }
+}
+
+// MARK: - Prediction Explanation Sheet
+struct PredictionExplanationSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Content
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Header with emoji
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                Text("🐀✨")
+                                    .font(.system(size: 56))
+                                Text("Arrival Time Forecasts")
+                                    .font(.title2)
+                                    .fontWeight(.semibold)
+                            }
+                            Spacer()
+                        }
+                        .padding(.top, 8)
+
+                        // Explanation
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("What is this?")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+
+                            Text("TrackRat looks at the progress of trains immediately ahead of you to predict your arrival times at each station on your journey.")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Text("This is independent from but used in combination with the delay predictions from NJ Transit and Amtrak and only shown when delays are expected.")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 }
 

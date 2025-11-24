@@ -216,7 +216,43 @@ class DepartureService:
         )
 
     def _calculate_train_position(self, journey: TrainJourney) -> TrainPosition:
-        """Calculate current train position based on stops data."""
+        """
+        Calculate current train position.
+
+        OPTIMIZATION: Uses journey_progress table when available to avoid
+        iterating through stops. Falls back to stops-based calculation only
+        when progress data is not available.
+        """
+        from sqlalchemy import inspect
+        from sqlalchemy.orm.base import NO_VALUE
+
+        from trackrat.models.database import JourneyProgress
+
+        # OPTIMIZATION: Use pre-computed journey_progress if available
+        # Use inspect to check if relationship is loaded without triggering lazy load
+        state = inspect(journey)
+
+        # Check if progress relationship is loaded and get its value
+        progress_value = state.attrs.progress.loaded_value if state else NO_VALUE
+
+        # If progress is loaded and not None, use it (with type guard)
+        if (
+            progress_value is not NO_VALUE
+            and progress_value is not None
+            and isinstance(progress_value, JourneyProgress)
+        ):
+            # Journey progress table has the position already computed
+            return TrainPosition(
+                last_departed_station_code=progress_value.last_departed_station,
+                at_station_code=None,  # Progress doesn't track "at station" state
+                next_station_code=progress_value.next_station,
+                between_stations=(
+                    progress_value.last_departed_station is not None
+                    and progress_value.next_station is not None
+                ),
+            )
+
+        # Fallback: Calculate from stops if progress not available
         if not journey.stops:
             return TrainPosition()
 

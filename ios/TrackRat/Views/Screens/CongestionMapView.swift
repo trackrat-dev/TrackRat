@@ -248,7 +248,7 @@ class CongestionMapViewModel: ObservableObject {
             )
             
             print("🚦 API response received: \(response.aggregatedSegments.count) aggregated, \(response.individualSegments.count) individual segments")
-            
+
             // Debug: Print first few segments to see what we're getting
             if !response.individualSegments.isEmpty {
                 print("🚦 Sample individual segments:")
@@ -262,57 +262,68 @@ class CongestionMapViewModel: ObservableObject {
                     print("  \(index): \(segment.fromStation) → \(segment.toStation)")
                 }
             }
-            
-            // Store all segments
-            allAggregatedSegments = response.aggregatedSegments
-            allIndividualSegments = response.individualSegments
-            
-            // Extract unique stations from both segment types
-            var stationMap: [String: MapStation] = [:]
-            
-            // From aggregated segments
-            for segment in allAggregatedSegments {
-                if let coords = Stations.getCoordinates(for: segment.fromStation) {
-                    stationMap[segment.fromStation] = MapStation(
-                        code: segment.fromStation,
-                        name: segment.fromStationDisplayName,
-                        coordinate: coords
-                    )
+
+            // OPTIMIZATION: Process station data in background to avoid blocking UI
+            // This moves the heavy coordinate lookups off the main thread
+            let processedData = await Task.detached(priority: .userInitiated) {
+                // Store segments (immutable copy for background processing)
+                let aggregatedSegments = response.aggregatedSegments
+                let individualSegments = response.individualSegments
+
+                // Extract unique stations from both segment types
+                var stationMap: [String: MapStation] = [:]
+
+                // From aggregated segments
+                for segment in aggregatedSegments {
+                    if let coords = Stations.getCoordinates(for: segment.fromStation) {
+                        stationMap[segment.fromStation] = MapStation(
+                            code: segment.fromStation,
+                            name: segment.fromStationDisplayName,
+                            coordinate: coords
+                        )
+                    }
+                    if let coords = Stations.getCoordinates(for: segment.toStation) {
+                        stationMap[segment.toStation] = MapStation(
+                            code: segment.toStation,
+                            name: segment.toStationDisplayName,
+                            coordinate: coords
+                        )
+                    }
                 }
-                if let coords = Stations.getCoordinates(for: segment.toStation) {
-                    stationMap[segment.toStation] = MapStation(
-                        code: segment.toStation,
-                        name: segment.toStationDisplayName,
-                        coordinate: coords
-                    )
+
+                // From individual segments
+                for segment in individualSegments {
+                    if let coords = Stations.getCoordinates(for: segment.fromStation) {
+                        stationMap[segment.fromStation] = MapStation(
+                            code: segment.fromStation,
+                            name: segment.fromStationName,
+                            coordinate: coords
+                        )
+                    } else {
+                        print("🚦 ⚠️ No coordinates for station: \(segment.fromStation)")
+                    }
+                    if let coords = Stations.getCoordinates(for: segment.toStation) {
+                        stationMap[segment.toStation] = MapStation(
+                            code: segment.toStation,
+                            name: segment.toStationName,
+                            coordinate: coords
+                        )
+                    } else {
+                        print("🚦 ⚠️ No coordinates for station: \(segment.toStation)")
+                    }
                 }
-            }
-            
-            // From individual segments
-            for segment in allIndividualSegments {
-                if let coords = Stations.getCoordinates(for: segment.fromStation) {
-                    stationMap[segment.fromStation] = MapStation(
-                        code: segment.fromStation,
-                        name: segment.fromStationName,
-                        coordinate: coords
-                    )
-                } else {
-                    print("🚦 ⚠️ No coordinates for station: \(segment.fromStation)")
-                }
-                if let coords = Stations.getCoordinates(for: segment.toStation) {
-                    stationMap[segment.toStation] = MapStation(
-                        code: segment.toStation,
-                        name: segment.toStationName,
-                        coordinate: coords
-                    )
-                } else {
-                    print("🚦 ⚠️ No coordinates for station: \(segment.toStation)")
-                }
-            }
-            
-            allStations = Array(stationMap.values)
-            print("🚦 Processed \(allStations.count) stations from segments")
-            
+
+                let stations = Array(stationMap.values)
+                print("🚦 Processed \(stations.count) stations from segments in background")
+
+                return (aggregatedSegments, individualSegments, stations)
+            }.value
+
+            // Update state on main thread with processed data
+            allAggregatedSegments = processedData.0
+            allIndividualSegments = processedData.1
+            allStations = processedData.2
+
             // Filter based on current display mode
             applyDisplayModeFilter()
             
@@ -328,7 +339,10 @@ class CongestionMapViewModel: ObservableObject {
     func updateDisplayMode(_ mode: CongestionDisplayMode) async {
         print("🚦 Updating display mode to: \(mode)")
         displayMode = mode
-        await fetchCongestionData() // Re-fetch with new mode
+
+        // OPTIMIZATION: Only re-filter cached data instead of re-fetching from API
+        // This is instant and doesn't require a network call
+        applyDisplayModeFilter()
     }
     
     private func applyDisplayModeFilter() {

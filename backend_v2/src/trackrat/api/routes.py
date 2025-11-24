@@ -299,19 +299,9 @@ async def get_route_congestion(
     analyzer = CongestionAnalyzer()
     aggregated_segments, journeys, individual_segments = (
         await analyzer.get_network_congestion_with_trains(
-            db, time_window_hours, max_per_segment
+            db, time_window_hours, max_per_segment, data_source
         )
     )
-
-    # Filter by data source if specified
-    if data_source:
-        aggregated_segments = [
-            c for c in aggregated_segments if c.data_source == data_source
-        ]
-        individual_segments = [
-            s for s in individual_segments if s.data_source == data_source
-        ]
-        journeys = [j for j in journeys if j.data_source == data_source]
 
     # Extract train positions from journeys
     departure_service = DepartureService()
