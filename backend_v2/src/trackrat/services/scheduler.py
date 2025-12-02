@@ -375,25 +375,26 @@ class SchedulerService:
         window_start = now_et()
         window_end = window_start + timedelta(minutes=10)
 
-        # Get candidates without timezone comparison in SQL
-        stmt = select(TrainJourney).where(
-            and_(
-                TrainJourney.data_source == "NJT",
-                TrainJourney.has_complete_journey.is_not(True),
-                TrainJourney.is_cancelled.is_not(True),
+        # PERFORMANCE FIX: Add time window filtering at database level to avoid
+        # loading all incomplete journeys into memory as the database scales.
+        # Also limit results to prevent memory issues.
+        stmt = (
+            select(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.has_complete_journey.is_not(True),
+                    TrainJourney.is_cancelled.is_not(True),
+                    # Filter at database level - trains departing within window
+                    TrainJourney.scheduled_departure >= window_start,
+                    TrainJourney.scheduled_departure <= window_end,
+                )
             )
+            .limit(100)  # Safety limit to prevent memory issues
         )
 
         result = await session.execute(stmt)
-        all_trains = result.scalars().all()
-
-        # Filter with proper timezone handling
-        trains = []
-        for train in all_trains:
-            if train.scheduled_departure:
-                scheduled_dep = ensure_timezone_aware(train.scheduled_departure)
-                if window_start <= scheduled_dep <= window_end:
-                    trains.append(train)
+        trains = list(result.scalars().all())
 
         scheduled_count = 0
         for train in trains:
