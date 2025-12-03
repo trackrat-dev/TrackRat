@@ -140,15 +140,21 @@ struct MapContainerView: View {
             )
             .ignoresSafeArea()
             
-            // Optional: Show subtle loading indicator when data is loading
-            if mapViewModel.isLoading && mapViewModel.segments.isEmpty {
-                VStack {
-                    Spacer()
+            // Operations summary pill (network scope)
+            VStack {
+                Spacer()
+
+                OperationsSummaryView(scope: .network)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+
+                // Show subtle loading indicator when data is loading
+                if mapViewModel.isLoading && mapViewModel.segments.isEmpty {
                     HStack {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .orange))
                             .scaleEffect(0.8)
-                        
+
                         Text("Loading traffic data...")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -158,9 +164,9 @@ struct MapContainerView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(.ultraThinMaterial)
                     )
-                    .padding(.bottom, 120) // Above bottom sheet
                 }
             }
+            .padding(.bottom, 120) // Above bottom sheet
             
             // Gradient overlay at top for better readability
             VStack {

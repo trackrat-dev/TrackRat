@@ -727,7 +727,76 @@ final class APIService: ObservableObject {
             throw error
         }
     }
-    
+
+    // MARK: - Operations Summary
+
+    /// Fetch operations summary for network, route, or train scope
+    /// - Parameters:
+    ///   - scope: Summary scope (network, route, or train)
+    ///   - fromStation: Origin station code (required for route, optional for train)
+    ///   - toStation: Destination station code (required for route)
+    ///   - trainId: Train ID (required for train scope)
+    ///   - dataSource: Optional filter by NJT or AMTRAK
+    /// - Returns: OperationsSummaryResponse with headline and body
+    func fetchOperationsSummary(
+        scope: SummaryScope,
+        fromStation: String? = nil,
+        toStation: String? = nil,
+        trainId: String? = nil,
+        dataSource: String? = nil
+    ) async throws -> OperationsSummaryResponse {
+        var components = URLComponents(string: "\(baseURL)/v2/routes/summary")!
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "scope", value: scope.rawValue)
+        ]
+
+        if let fromStation = fromStation {
+            queryItems.append(URLQueryItem(name: "from_station", value: fromStation))
+        }
+
+        if let toStation = toStation {
+            queryItems.append(URLQueryItem(name: "to_station", value: toStation))
+        }
+
+        if let trainId = trainId {
+            queryItems.append(URLQueryItem(name: "train_id", value: trainId))
+        }
+
+        if let dataSource = dataSource {
+            queryItems.append(URLQueryItem(name: "data_source", value: dataSource))
+        }
+
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        print("📊 Fetching operations summary from: \(url)")
+
+        let (data, response) = try await session.data(from: url)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            if httpResponse.statusCode == 400 {
+                throw APIError.invalidParameters
+            } else if httpResponse.statusCode != 200 {
+                throw APIError.noData
+            }
+        }
+
+        do {
+            let response = try decoder.decode(OperationsSummaryResponse.self, from: data)
+            print("✅ Operations summary decoded: \(response.headline)")
+            return response
+        } catch {
+            print("🔴 DECODING ERROR (fetchOperationsSummary): \(error)")
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+            }
+            throw error
+        }
+    }
+
     // MARK: - V2 API Adapters
     
     private func adaptV2DepartureToTrainV2(_ departure: V2TrainDeparture) -> TrainV2 {

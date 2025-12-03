@@ -22,9 +22,11 @@ from trackrat.models.api import (
     DelayBreakdown,
     HighlightedTrain,
     HistoricalRouteInfo,
+    OperationsSummaryResponse,
     RouteHistoryResponse,
     SegmentTrainDetail,
     SegmentTrainDetailsResponse,
+    SummaryMetricsResponse,
     TrainLocationData,
 )
 from trackrat.models.api import (
@@ -655,3 +657,100 @@ def _calculate_segment_summary(
         "average_congestion_factor": round(avg_congestion_factor, 2),
         "on_time_percentage": round(on_time_percentage, 1),
     }
+
+
+@router.get("/summary", response_model=OperationsSummaryResponse)
+@handle_errors
+async def get_operations_summary(
+    scope: str = Query(
+        ...,
+        description="Summary scope: 'network', 'route', or 'train'",
+        pattern="^(network|route|train)$",
+    ),
+    from_station: str | None = Query(
+        None,
+        min_length=1,
+        max_length=3,
+        description="Origin station code (for route/train)",
+    ),
+    to_station: str | None = Query(
+        None,
+        min_length=1,
+        max_length=3,
+        description="Destination station code (for route)",
+    ),
+    train_id: str | None = Query(None, description="Train ID (for train scope)"),
+    data_source: str | None = Query(None, description="Filter by NJT or AMTRAK"),
+    db: AsyncSession = Depends(get_db),
+) -> OperationsSummaryResponse:
+    """
+    Get a natural language summary of recent train operations.
+
+    Three scopes are available:
+    - network: Overall system status across all lines (past 90 minutes)
+    - route: Performance between origin and destination (past 90 minutes)
+    - train: Historical performance of a specific train (past 30 days)
+
+    The response includes:
+    - headline: Short summary (max 50 chars) for collapsed view
+    - body: Detailed summary (2-4 sentences) for expanded view
+    - metrics: Raw statistics for optional UI display
+    """
+    from trackrat.services.summary import SummaryService
+
+    logger.info(
+        "get_operations_summary_request",
+        scope=scope,
+        from_station=from_station,
+        to_station=to_station,
+        train_id=train_id,
+        data_source=data_source,
+    )
+
+    # Validate parameters based on scope
+    if scope == "route":
+        if not from_station or not to_station:
+            raise HTTPException(
+                status_code=400,
+                detail="from_station and to_station are required for route scope",
+            )
+    elif scope == "train":
+        if not train_id:
+            raise HTTPException(
+                status_code=400,
+                detail="train_id is required for train scope",
+            )
+
+    summary_service = SummaryService()
+
+    if scope == "network":
+        summary = await summary_service.get_network_summary(db, data_source)
+    elif scope == "route":
+        summary = await summary_service.get_route_summary(
+            db, from_station, to_station, data_source  # type: ignore[arg-type]
+        )
+    else:  # train
+        summary = await summary_service.get_train_summary(
+            db, train_id, from_station, to_station  # type: ignore[arg-type]
+        )
+
+    # Convert to response model
+    metrics = None
+    if summary.metrics:
+        metrics = SummaryMetricsResponse(
+            on_time_percentage=summary.metrics.on_time_percentage,
+            average_delay_minutes=summary.metrics.average_delay_minutes,
+            cancellation_count=summary.metrics.cancellation_count,
+            train_count=summary.metrics.train_count,
+            most_common_track=summary.metrics.most_common_track,
+        )
+
+    return OperationsSummaryResponse(
+        headline=summary.headline,
+        body=summary.body,
+        scope=summary.scope,
+        time_window_minutes=summary.time_window_minutes,
+        data_freshness_seconds=summary.data_freshness_seconds,
+        generated_at=summary.generated_at,
+        metrics=metrics,
+    )

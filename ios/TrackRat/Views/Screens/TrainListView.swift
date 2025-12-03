@@ -40,6 +40,17 @@ struct TrainListView: View {
                 } else if viewModel.trains.isEmpty {
                     EmptyStateView(message: "No trains found")
                 } else {
+                    // Route summary (if we have both origin and destination)
+                    if !departureStationCode.isEmpty,
+                       let destinationCode = Stations.getStationCode(destination) {
+                        OperationsSummaryView(
+                            scope: .route,
+                            fromStation: departureStationCode,
+                            toStation: destinationCode
+                        )
+                        .padding(.bottom, 4)
+                    }
+
                     let expressTrains = viewModel.identifyExpressTrains()
                     ForEach(viewModel.trains) { train in
                         TrainCard(

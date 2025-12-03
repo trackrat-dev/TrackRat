@@ -853,29 +853,102 @@ extension CongestionSegment {
     var fromStationDisplayName: String {
         fromStationName.isEmpty ? Stations.displayNameForCode(fromStation) : fromStationName
     }
-    
+
     var toStationDisplayName: String {
         toStationName.isEmpty ? Stations.displayNameForCode(toStation) : toStationName
     }
-    
+
     var averageTransitTimeText: String {
         return ""
     }
-    
+
     var sampleCountText: String {
         "\(sampleCount) train\(sampleCount == 1 ? "" : "s")"
     }
-    
+
     var delayText: String {
         return ""
     }
-    
+
     var congestionFactorDisplay: String {
         let percentage = Int((congestionFactor - 1) * 100)
         if percentage > 0 {
             return "+\(percentage)% slower"
         } else {
             return "Normal time"
+        }
+    }
+}
+
+// MARK: - Operations Summary Models
+
+/// Summary scope for operations summary API
+enum SummaryScope: String, Codable {
+    case network
+    case route
+    case train
+}
+
+/// Raw metrics included with summary response
+struct SummaryMetrics: Codable {
+    let onTimePercentage: Double?
+    let averageDelayMinutes: Double?
+    let cancellationCount: Int?
+    let trainCount: Int?
+    let mostCommonTrack: String?
+
+    enum CodingKeys: String, CodingKey {
+        case onTimePercentage = "on_time_percentage"
+        case averageDelayMinutes = "average_delay_minutes"
+        case cancellationCount = "cancellation_count"
+        case trainCount = "train_count"
+        case mostCommonTrack = "most_common_track"
+    }
+}
+
+/// Response for operations summary endpoint
+struct OperationsSummaryResponse: Codable {
+    /// Short headline for collapsed view (max 50 chars)
+    let headline: String
+
+    /// Detailed summary (2-4 sentences) for expanded view
+    let body: String
+
+    /// Summary scope: network, route, or train
+    let scope: String
+
+    /// Time window in minutes (90 for recent, 43200 for 30-day)
+    let timeWindowMinutes: Int
+
+    /// Age of data in seconds
+    let dataFreshnessSeconds: Int
+
+    /// When summary was generated
+    let generatedAt: Date
+
+    /// Raw metrics for optional UI display
+    let metrics: SummaryMetrics?
+
+    enum CodingKeys: String, CodingKey {
+        case headline
+        case body
+        case scope
+        case timeWindowMinutes = "time_window_minutes"
+        case dataFreshnessSeconds = "data_freshness_seconds"
+        case generatedAt = "generated_at"
+        case metrics
+    }
+
+    /// Formatted data freshness for display
+    var dataFreshnessFormatted: String {
+        if dataFreshnessSeconds < 60 {
+            return "just now"
+        } else if dataFreshnessSeconds < 3600 {
+            let minutes = dataFreshnessSeconds / 60
+            return "\(minutes) min ago"
+        } else {
+            let hours = dataFreshnessSeconds / 3600
+            return "\(hours) hr ago"
         }
     }
 }
