@@ -53,6 +53,7 @@ struct MapContainerView: View {
     @EnvironmentObject private var appState: AppState
     @State private var selectedDetent: PresentationDetent = .fraction(0.50)
     @State private var isSheetPresented = true  // Always show sheet (persistent)
+    @State private var sheetExpansionTask: Task<Void, Never>?  // Track pending expansion for cancellation
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
@@ -217,10 +218,10 @@ struct MapContainerView: View {
                         journeyDate: nil
                     ))
                     print("🔗 Navigation path set with \(appState.navigationPath.count) destinations")
-                    
-                    // Expand bottom sheet to full screen immediately
-                    selectedDetent = .large
-                    print("🔗 Bottom sheet expanded")
+
+                    // Expand bottom sheet with delay to allow NavigationStack to layout first
+                    expandSheetWithDelay()
+                    print("🔗 Bottom sheet expansion scheduled")
                     
                     // Animate map to route if available
                     if let route = appState.selectedRoute {
@@ -300,10 +301,8 @@ struct MapContainerView: View {
             // Handle deep link expansion request
             if shouldExpand {
                 print("🔗 Deep link expansion requested")
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    selectedDetent = .large
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Use delayed expansion to allow NavigationStack to layout first
+                expandSheetWithDelay()
             }
         }
         .sheet(item: $selectedSegment) { segment in
@@ -316,6 +315,8 @@ struct MapContainerView: View {
     private func handleNavigationChange(_ navigationPath: NavigationPath) {
         if navigationPath.isEmpty {
             // Back to home - reset to default Newark Penn view
+            // Cancel any pending sheet expansion (user navigated back quickly)
+            sheetExpansionTask?.cancel()
             resetToDefaultMapView()
             selectedDetent = .fraction(0.50)
         } else {
@@ -347,10 +348,19 @@ struct MapContainerView: View {
     /// Expands the sheet to large with a small delay to allow NavigationStack content to layout first.
     /// This prevents the visual glitch where the sheet expands before new view content is rendered.
     private func expandSheetWithDelay(triggerHaptic: Bool = true) {
-        Task {
+        // Skip if already expanded - no need to animate
+        guard selectedDetent != .large else { return }
+
+        // Cancel any pending expansion to handle rapid navigation
+        sheetExpansionTask?.cancel()
+
+        sheetExpansionTask = Task {
             // Wait briefly for NavigationStack to mount and start laying out the new view
-            // 100ms is enough for view initialization without feeling sluggish
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            // 150ms provides safety margin for view initialization without feeling sluggish
+            try? await Task.sleep(nanoseconds: 150_000_000)
+
+            // Check if cancelled (e.g., user navigated back quickly)
+            guard !Task.isCancelled else { return }
 
             await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.3)) {
