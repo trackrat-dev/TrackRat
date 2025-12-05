@@ -145,9 +145,8 @@ struct TripSelectionView: View {
                         Button {
                             // Immediately hide RatSense to prevent content shift during navigation
                             isNavigatingToProfile = true
-                            // Trigger sheet expansion for profile view
-                            appState.shouldExpandSheet = true
-                            // Navigate to profile
+                            // Navigate to profile - sheet expansion is handled by handleNavigationChange
+                            // with a small delay to allow NavigationStack to layout first
                             appState.navigationPath.append(NavigationDestination.myProfile)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {

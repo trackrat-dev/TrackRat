@@ -518,9 +518,6 @@ final class AppState: ObservableObject {
     @Published var deepLinkToStation: String? = nil
     @Published var shouldExpandForDeepLink: Bool = false
 
-    // Sheet expansion for navigation
-    @Published var shouldExpandSheet: Bool = false
-
     private let apiService = APIService()
     private let storageService = StorageService()
     

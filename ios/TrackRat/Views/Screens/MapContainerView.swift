@@ -306,18 +306,6 @@ struct MapContainerView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
         }
-        .onChange(of: appState.shouldExpandSheet) { _, shouldExpand in
-            // Handle navigation-based sheet expansion (e.g., My Profile)
-            if shouldExpand {
-                print("📱 Navigation sheet expansion requested")
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    selectedDetent = .large
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                // Reset flag after handling
-                appState.shouldExpandSheet = false
-            }
-        }
         .sheet(item: $selectedSegment) { segment in
             SegmentTrainDetailsView(segment: segment)
                 .presentationDetents([.height(600), .large])
@@ -337,13 +325,11 @@ struct MapContainerView: View {
                 // The map should already be properly positioned from the train list view
                 // Removing animation prevents the map from jumping/refocusing
 
-                // Just snap bottom sheet to full screen (100%) when navigating to train details
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    selectedDetent = .large
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Delay sheet expansion slightly to allow NavigationStack to layout first
+                // This prevents the "empty bottom" glitch where sheet expands before content renders
+                expandSheetWithDelay()
             }
-            
+
             // Handle train details for map mode switching
             if isOnTrainDetails(navigationPath) {
                 switchToJourneyFocus()
@@ -351,17 +337,27 @@ struct MapContainerView: View {
 
             // Handle profile view navigation
             if isOnProfileView(navigationPath) {
-                // Delay expansion until after navigation completes
-                Task {
-                    // Wait for navigation animation to fully complete (350ms)
-                    try? await Task.sleep(nanoseconds: 350_000_000)
+                // Delay sheet expansion slightly to allow NavigationStack to layout first
+                // Haptic feedback is already triggered by the button action
+                expandSheetWithDelay(triggerHaptic: false)
+            }
+        }
+    }
 
-                    await MainActor.run {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            selectedDetent = .large
-                        }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
+    /// Expands the sheet to large with a small delay to allow NavigationStack content to layout first.
+    /// This prevents the visual glitch where the sheet expands before new view content is rendered.
+    private func expandSheetWithDelay(triggerHaptic: Bool = true) {
+        Task {
+            // Wait briefly for NavigationStack to mount and start laying out the new view
+            // 100ms is enough for view initialization without feeling sluggish
+            try? await Task.sleep(nanoseconds: 100_000_000)
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    selectedDetent = .large
+                }
+                if triggerHaptic {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }
         }
