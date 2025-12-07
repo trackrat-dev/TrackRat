@@ -313,22 +313,13 @@ struct MapContainerView: View {
     
     private func handleNavigationChange(_ navigationPath: NavigationPath) {
         if navigationPath.isEmpty {
-            // Back to home - reset to default Newark Penn view
-            // Cancel any pending sheet expansion (user navigated back quickly)
+            // Back to home - cancel any pending operations
             sheetExpansionTask?.cancel()
-            appState.pendingNavigation = nil  // Clear any pending navigation
-            resetToDefaultMapView()
+            appState.pendingNavigation = nil
             selectedDetent = .fraction(0.50)
-        } else {
-            // NOTE: Sheet expansion for train details and profile view is now handled by
-            // pendingNavigation pattern - the sheet expands FIRST, then navigation happens.
-            // This eliminates the glitch where sheet expands with empty space.
-
-            // Handle train details for map mode switching
-            if isOnTrainDetails(navigationPath) {
-                switchToJourneyFocus()
-            }
+            // Note: Map stays static - no resetToDefaultMapView() call
         }
+        // Note: Map stays static during all navigation - no switchToJourneyFocus() call
     }
 
     /// Expands the sheet to large with a small delay to allow NavigationStack content to layout first.
