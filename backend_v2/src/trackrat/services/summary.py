@@ -265,6 +265,61 @@ class SummaryService:
 
         return summary
 
+    async def _get_similar_trains_journeys(
+        self,
+        db: AsyncSession,
+        from_station: str,
+        to_station: str,
+        data_source: str,
+    ) -> list[TrainJourney]:
+        """
+        Get journeys from similar trains (same route + carrier) in the past 90 minutes.
+        """
+        cutoff_time = now_et() - timedelta(minutes=SUMMARY_TIME_WINDOW_MINUTES)
+
+        stmt = (
+            select(TrainJourney)
+            .join(
+                JourneyStop,
+                and_(
+                    JourneyStop.journey_id == TrainJourney.id,
+                    JourneyStop.station_code.in_([from_station, to_station]),
+                ),
+            )
+            .where(
+                and_(
+                    TrainJourney.last_updated_at >= cutoff_time,
+                    TrainJourney.data_source == data_source,
+                )
+            )
+            .group_by(TrainJourney.id)
+            .having(func.count(func.distinct(JourneyStop.station_code)) == 2)
+            .options(selectinload(TrainJourney.stops))
+        )
+
+        result = await db.execute(stmt)
+        all_journeys = list(result.scalars().all())
+
+        # Filter to journeys that actually travel from origin to destination
+        route_journeys = []
+        for journey in all_journeys:
+            from_stop = None
+            to_stop = None
+            for stop in journey.stops:
+                if stop.station_code == from_station:
+                    from_stop = stop
+                elif stop.station_code == to_station:
+                    to_stop = stop
+
+            if (
+                from_stop
+                and to_stop
+                and (from_stop.stop_sequence or 0) < (to_stop.stop_sequence or 0)
+            ):
+                route_journeys.append(journey)
+
+        return route_journeys
+
     async def get_train_summary(
         self,
         db: AsyncSession,
@@ -273,7 +328,9 @@ class SummaryService:
         to_station: str | None = None,
     ) -> OperationsSummary:
         """
-        Generate a train-specific operations summary based on historical performance.
+        Generate a train-specific operations summary combining:
+        1. Similar trains' performance (same route + carrier) from past 90 minutes
+        2. This specific train's historical performance
 
         Args:
             db: Database session
@@ -311,18 +368,40 @@ class SummaryService:
         )
 
         result = await db.execute(stmt)
-        journeys = list(result.scalars().all())
+        train_journeys = list(result.scalars().all())
 
         logger.info(
             "train_summary_query",
             train_id=train_id,
-            journey_count=len(journeys),
+            journey_count=len(train_journeys),
             days=30,
         )
 
+        # Get similar trains if we have route context
+        similar_journeys: list[TrainJourney] = []
+        data_source: str | None = None
+
+        if from_station and to_station and train_journeys:
+            # Determine carrier from this train's journeys
+            data_source = train_journeys[0].data_source
+            similar_journeys = await self._get_similar_trains_journeys(
+                db, from_station, to_station, data_source
+            )
+            logger.info(
+                "similar_trains_query",
+                train_id=train_id,
+                similar_count=len(similar_journeys),
+                data_source=data_source,
+            )
+
         # Generate summary
         summary = self._generate_train_summary(
-            journeys, train_id, from_station, to_station
+            train_journeys,
+            similar_journeys,
+            train_id,
+            from_station,
+            to_station,
+            data_source,
         )
 
         # Cache the result
@@ -635,119 +714,156 @@ class SummaryService:
             ),
         )
 
-    def _generate_train_summary(
+    def _calculate_on_time_stats(
         self,
         journeys: list[TrainJourney],
-        train_id: str,
-        from_station: str | None,
-        to_station: str | None,
-    ) -> OperationsSummary:
-        """Generate train-specific summary based on 30-day history."""
-        if not journeys:
-            return OperationsSummary(
-                headline="No historical data",
-                body=f"No historical data available for Train {train_id}.",
-                scope="train",
-                time_window_minutes=30 * 24 * 60,  # 30 days in minutes
-                data_freshness_seconds=0,
-                generated_at=now_et(),
-                metrics=None,
-            )
+        to_station: str | None = None,
+    ) -> tuple[float, float, int]:
+        """
+        Calculate on-time percentage and average delay for a list of journeys.
 
-        # Calculate historical performance
+        Args:
+            journeys: List of journeys to analyze
+            to_station: If provided, calculate delay at this station instead of final stop
+
+        Returns:
+            Tuple of (on_time_percentage, average_delay_minutes, sample_count)
+        """
         on_time_count = 0
         total_delay = 0.0
         delay_samples = 0
-        station_delays: dict[str, list[float]] = defaultdict(list)
 
         for journey in journeys:
             if journey.is_cancelled:
                 continue
 
-            # Calculate overall delay
-            if journey.stops:
-                last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
-                if last_stop.actual_arrival and last_stop.scheduled_arrival:
-                    delay = (
-                        last_stop.actual_arrival - last_stop.scheduled_arrival
-                    ).total_seconds() / 60
-                    delay = max(0, delay)
-                    total_delay += delay
-                    delay_samples += 1
-                    if delay <= 5:
-                        on_time_count += 1
+            if not journey.stops:
+                continue
 
-                # Track per-station delays
-                for stop in journey.stops:
-                    if stop.actual_arrival and stop.scheduled_arrival:
-                        stop_delay = (
-                            stop.actual_arrival - stop.scheduled_arrival
-                        ).total_seconds() / 60
-                        station_delays[stop.station_code].append(stop_delay)
+            # Find the stop to measure delay at
+            if to_station:
+                target_stop = next(
+                    (s for s in journey.stops if s.station_code == to_station), None
+                )
+            else:
+                target_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-        on_time_pct = (on_time_count / delay_samples * 100) if delay_samples > 0 else 0
-        avg_delay = total_delay / delay_samples if delay_samples > 0 else 0
+            if target_stop and target_stop.actual_arrival and target_stop.scheduled_arrival:
+                delay = (
+                    target_stop.actual_arrival - target_stop.scheduled_arrival
+                ).total_seconds() / 60
+                delay = max(0, delay)
+                total_delay += delay
+                delay_samples += 1
+                if delay <= 5:
+                    on_time_count += 1
 
-        # Find problem stations (where delays typically occur)
-        problem_stations = []
-        for station_code, delays in station_delays.items():
-            avg_station_delay = sum(delays) / len(delays)
-            if avg_station_delay > 3 and len(delays) >= 3:
-                problem_stations.append((station_code, avg_station_delay))
-        problem_stations.sort(key=lambda x: x[1], reverse=True)
+        if delay_samples == 0:
+            return 0.0, 0.0, 0
 
-        # Generate headline based on on-time percentage (primary) and average delay (secondary)
-        if on_time_pct >= 90:
-            headline = "Usually runs on time"
-        elif on_time_pct >= 75:
-            headline = f"Usually runs {avg_delay:.0f} min late"
+        on_time_pct = (on_time_count / delay_samples) * 100
+        avg_delay = total_delay / delay_samples
+        return on_time_pct, avg_delay, delay_samples
+
+    def _generate_train_summary(
+        self,
+        train_journeys: list[TrainJourney],
+        similar_journeys: list[TrainJourney],
+        train_id: str,
+        from_station: str | None,
+        to_station: str | None,
+        data_source: str | None,
+    ) -> OperationsSummary:
+        """
+        Generate train-specific summary combining similar trains and historical data.
+
+        Args:
+            train_journeys: Historical journeys for this specific train
+            similar_journeys: Recent journeys from similar trains (same route + carrier)
+            train_id: Train number
+            from_station: Origin station code
+            to_station: Destination station code
+            data_source: Carrier (NJT or AMTRAK)
+        """
+        # Calculate stats for similar trains (past 90 minutes)
+        similar_on_time_pct, similar_avg_delay, similar_count = self._calculate_on_time_stats(
+            similar_journeys, to_station
+        )
+
+        # Calculate stats for this specific train (historical)
+        train_on_time_pct, train_avg_delay, train_count = self._calculate_on_time_stats(
+            train_journeys, to_station
+        )
+
+        has_similar_data = similar_count > 0
+        has_train_data = train_count > 0
+        carrier_name = "NJ Transit" if data_source == "NJT" else "Amtrak" if data_source else None
+
+        # Generate headline
+        headline_parts = []
+
+        if has_similar_data:
+            headline_parts.append(f"Similar trains: {similar_on_time_pct:.0f}% on time")
+
+        if has_train_data:
+            headline_parts.append(f"Train {train_id}: {train_on_time_pct:.0f}% historically")
+
+        if headline_parts:
+            headline = " · ".join(headline_parts)
         else:
-            headline = f"Often runs {avg_delay:.0f}+ min late"
+            headline = "View On-Time Stats"
 
         # Generate body
         body_parts = []
-        body_parts.append(
-            f"Over the past 30 days, Train {train_id} has been on time {on_time_pct:.0f}% of the time."
-        )
 
-        if problem_stations:
-            worst_station = problem_stations[0]
-            station_name = get_station_name(worst_station[0])
-            body_parts.append(f"It tends to pick up delays around {station_name}.")
+        if has_similar_data and carrier_name:
+            similar_text = (
+                f"Over the past 90 minutes, {similar_count} similar {carrier_name} "
+                f"train{'s' if similar_count != 1 else ''} departed on time "
+                f"{similar_on_time_pct:.0f}% of the time"
+            )
+            if similar_avg_delay >= 1:
+                similar_text += f" ({similar_avg_delay:.0f} min avg delay)"
+            similar_text += "."
+            body_parts.append(similar_text)
 
-        # Check today's status
-        today = now_et().date()
-        today_journey = next((j for j in journeys if j.journey_date == today), None)
-        if today_journey:
-            if today_journey.is_cancelled:
-                body_parts.append("Today's service was cancelled.")
-            elif today_journey.stops:
-                first_stop = min(
-                    today_journey.stops, key=lambda s: s.stop_sequence or 0
-                )
-                if first_stop.actual_departure and first_stop.scheduled_departure:
-                    dep_delay = (
-                        first_stop.actual_departure - first_stop.scheduled_departure
-                    ).total_seconds() / 60
-                    if dep_delay > 1:
-                        body_parts.append(
-                            f"Today it departed {dep_delay:.0f} minutes late."
-                        )
-                    elif dep_delay < -1:
-                        body_parts.append("Today it departed on time.")
+        if has_train_data:
+            train_text = (
+                f"Historically, Train {train_id} departs on time "
+                f"{train_on_time_pct:.0f}% of the time"
+            )
+            if train_avg_delay >= 1:
+                train_text += f" ({train_avg_delay:.0f} min avg delay)"
+            train_text += "."
+            body_parts.append(train_text)
+
+        if not body_parts:
+            body_parts.append(f"No performance data available for Train {train_id}.")
 
         body = " ".join(body_parts)
+
+        # Use train stats for metrics if available, otherwise similar trains
+        if has_train_data:
+            metrics = SummaryMetrics(
+                on_time_percentage=train_on_time_pct,
+                average_delay_minutes=train_avg_delay,
+                train_count=train_count,
+            )
+        elif has_similar_data:
+            metrics = SummaryMetrics(
+                on_time_percentage=similar_on_time_pct,
+                average_delay_minutes=similar_avg_delay,
+                train_count=similar_count,
+            )
+        else:
+            metrics = None
 
         return OperationsSummary(
             headline=headline,
             body=body,
             scope="train",
-            time_window_minutes=30 * 24 * 60,  # 30 days in minutes
+            time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
             data_freshness_seconds=0,
             generated_at=now_et(),
-            metrics=SummaryMetrics(
-                on_time_percentage=on_time_pct,
-                average_delay_minutes=avg_delay,
-                train_count=len(journeys),
-            ),
+            metrics=metrics,
         )

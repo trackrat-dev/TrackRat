@@ -642,8 +642,8 @@ class OperationsSummaryResponse(BaseModel):
 
     headline: str = Field(
         ...,
-        max_length=50,
-        description="Short headline for collapsed view (max 50 chars)",
+        max_length=100,
+        description="Headline for collapsed view (max 100 chars)",
     )
     body: str = Field(
         ..., max_length=500, description="Detailed summary (2-4 sentences)"
