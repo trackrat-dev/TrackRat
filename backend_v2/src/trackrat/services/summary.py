@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -424,10 +424,11 @@ class SummaryService:
         data_source: str | None = None
 
         if from_station and to_station and train_journeys:
-            # Determine carrier from this train's journeys
-            data_source = train_journeys[0].data_source
+            # Determine carrier from this train's journeys (data_source is non-nullable)
+            journey_data_source = train_journeys[0].data_source or "NJT"
+            data_source = journey_data_source
             similar_journeys = await self._get_similar_trains_journeys(
-                db, from_station, to_station, data_source
+                db, from_station, to_station, journey_data_source
             )
             logger.info(
                 "similar_trains_query",
@@ -455,7 +456,7 @@ class SummaryService:
         self, journeys: list[TrainJourney]
     ) -> dict[str, LineStats]:
         """Calculate statistics grouped by line."""
-        stats: dict[str, dict] = defaultdict(
+        stats: dict[str, dict[str, Any]] = defaultdict(
             lambda: {
                 "line_name": "",
                 "line_code": "",
@@ -793,7 +794,11 @@ class SummaryService:
             else:
                 target_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-            if target_stop and target_stop.actual_arrival and target_stop.scheduled_arrival:
+            if (
+                target_stop
+                and target_stop.actual_arrival
+                and target_stop.scheduled_arrival
+            ):
                 delay = (
                     target_stop.actual_arrival - target_stop.scheduled_arrival
                 ).total_seconds() / 60
@@ -851,11 +856,15 @@ class SummaryService:
         # Calculate stats for this specific train (historical)
         train_stats = self._calculate_on_time_stats(train_journeys, to_station)
 
-        carrier_name = "NJ Transit" if data_source == "NJT" else "Amtrak" if data_source else None
+        carrier_name = (
+            "NJ Transit" if data_source == "NJT" else "Amtrak" if data_source else None
+        )
 
         # Generate headline
         if similar_stats.has_data:
-            headline = f"Recent departures: {similar_stats.on_time_percentage:.0f}% on time"
+            headline = (
+                f"Recent departures: {similar_stats.on_time_percentage:.0f}% on time"
+            )
         else:
             headline = "View On-Time Stats"
 
@@ -869,7 +878,9 @@ class SummaryService:
                 f"{similar_stats.on_time_percentage:.0f}% departed on-time"
             )
             if similar_stats.average_delay_minutes >= 1:
-                similar_text += f" ({similar_stats.average_delay_minutes:.0f} min avg delay)"
+                similar_text += (
+                    f" ({similar_stats.average_delay_minutes:.0f} min avg delay)"
+                )
             similar_text += "."
 
             # Add cancellation info for similar trains
@@ -888,7 +899,9 @@ class SummaryService:
                 f"{train_stats.on_time_percentage:.0f}% of the time"
             )
             if train_stats.average_delay_minutes >= 1:
-                train_text += f" ({train_stats.average_delay_minutes:.0f} min avg delay)"
+                train_text += (
+                    f" ({train_stats.average_delay_minutes:.0f} min avg delay)"
+                )
             train_text += "."
 
             # Add cancellation info for this train's history

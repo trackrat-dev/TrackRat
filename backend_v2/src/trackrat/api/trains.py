@@ -67,7 +67,8 @@ async def get_departures(
         None, description="End time (defaults to +24 hours)"
     ),
     hide_departed: bool = Query(
-        False, description="Hide trains that have already departed from the origin station"
+        False,
+        description="Hide trains that have already departed from the origin station",
     ),
     limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
