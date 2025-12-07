@@ -64,7 +64,33 @@ class SummaryMetrics:
     average_delay_minutes: float | None = None
     cancellation_count: int | None = None
     train_count: int | None = None
-    most_common_track: str | None = None
+
+
+@dataclass
+class CarrierRouteStats:
+    """Statistics for a single carrier on a route."""
+
+    carrier_name: str  # "NJ Transit" or "Amtrak"
+    train_count: int
+    on_time_count: int
+    cancellation_count: int
+    total_delay_minutes: float
+
+    @property
+    def non_cancelled_count(self) -> int:
+        return self.train_count - self.cancellation_count
+
+    @property
+    def on_time_percentage(self) -> float:
+        if self.non_cancelled_count <= 0:
+            return 0.0
+        return (self.on_time_count / self.non_cancelled_count) * 100
+
+    @property
+    def average_delay_minutes(self) -> float:
+        if self.non_cancelled_count <= 0:
+            return 0.0
+        return self.total_delay_minutes / self.non_cancelled_count
 
 
 @dataclass
@@ -461,33 +487,22 @@ class SummaryService:
         else:
             return "Major disruptions"
 
-    def _generate_route_summary(
+    def _calculate_carrier_route_stats(
         self,
         journeys: list[TrainJourney],
-        from_station: str,
         to_station: str,
-    ) -> OperationsSummary:
-        """Generate route-specific summary."""
-        from_name = get_station_name(from_station)
-        to_name = get_station_name(to_station)
-
+    ) -> CarrierRouteStats | None:
+        """Calculate route statistics for a list of journeys from the same carrier."""
         if not journeys:
-            return OperationsSummary(
-                headline=f"{from_name} to {to_name}: No data",
-                body=f"No trains have completed this route in the past 90 minutes.",
-                scope="route",
-                time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
-                data_freshness_seconds=0,
-                generated_at=now_et(),
-                metrics=None,
-            )
+            return None
 
-        # Calculate statistics
+        # Determine carrier name from first journey
+        data_source = journeys[0].data_source
+        carrier_name = "NJ Transit" if data_source == "NJT" else "Amtrak"
+
         on_time_count = 0
         cancellation_count = 0
         total_delay = 0.0
-        track_counts: dict[str, int] = defaultdict(int)
-        late_trains: list[tuple[str, float]] = []
 
         for journey in journeys:
             if journey.is_cancelled:
@@ -496,16 +511,10 @@ class SummaryService:
 
             # Find the destination stop for delay calculation
             to_stop = None
-            from_stop_data = None
             for stop in journey.stops:
                 if stop.station_code == to_station:
                     to_stop = stop
-                if stop.station_code == from_station:
-                    from_stop_data = stop
-
-            # Track usage at origin
-            if from_stop_data and from_stop_data.track:
-                track_counts[from_stop_data.track] += 1
+                    break
 
             if to_stop and to_stop.actual_arrival and to_stop.scheduled_arrival:
                 delay = (
@@ -515,42 +524,101 @@ class SummaryService:
                 total_delay += delay
                 if delay <= 5:
                     on_time_count += 1
-                elif delay > 10:
-                    late_trains.append((journey.train_id, delay))
             else:
+                # No arrival data, assume on time
                 on_time_count += 1
 
-        non_cancelled = len(journeys) - cancellation_count
-        on_time_pct = (on_time_count / non_cancelled * 100) if non_cancelled > 0 else 0
-        avg_delay = total_delay / non_cancelled if non_cancelled > 0 else 0
-
-        # Most common track
-        most_common_track = (
-            max(track_counts, key=track_counts.get) if track_counts else None
+        return CarrierRouteStats(
+            carrier_name=carrier_name,
+            train_count=len(journeys),
+            on_time_count=on_time_count,
+            cancellation_count=cancellation_count,
+            total_delay_minutes=total_delay,
         )
 
-        # Generate headline
-        headline = f"{from_name} to {to_name}: {on_time_pct:.0f}% on time"
+    def _format_carrier_description(self, stats: CarrierRouteStats) -> str:
+        """Format a single carrier's statistics as a sentence fragment."""
+        train_word = "train" if stats.train_count == 1 else "trains"
 
-        # Generate body
-        body_parts = []
-        body_parts.append(
-            f"{len(journeys)} train(s) have completed this route in the past 90 minutes."
+        # Base: "NJ Transit had 9 trains follow this route with 100% departing on time"
+        desc = (
+            f"{stats.carrier_name} had {stats.train_count} {train_word} follow this route "
+            f"with {stats.on_time_percentage:.0f}% departing on time"
         )
 
-        if non_cancelled > 0:
-            body_parts.append(f"{on_time_count} arrived within 5 minutes of schedule.")
+        # Add delay and/or cancellation info in parentheses if applicable
+        extras = []
+        if stats.non_cancelled_count > 0 and stats.average_delay_minutes >= 1:
+            extras.append(f"{stats.average_delay_minutes:.0f} min avg delay")
+        if stats.cancellation_count > 0:
+            extras.append(f"{stats.cancellation_count} cancelled")
 
-        if late_trains:
-            worst = max(late_trains, key=lambda x: x[1])
-            body_parts.append(f"Train {worst[0]} ran {worst[1]:.0f} minutes late.")
+        if extras:
+            desc += f" ({', '.join(extras)})"
 
-        if most_common_track:
-            body_parts.append(
-                f"Track {most_common_track} has been the most common departure track."
+        return desc
+
+    def _generate_route_summary(
+        self,
+        journeys: list[TrainJourney],
+        from_station: str,
+        to_station: str,
+    ) -> OperationsSummary:
+        """Generate route-specific summary with carrier breakdown."""
+        from_name = get_station_name(from_station)
+        to_name = get_station_name(to_station)
+
+        if not journeys:
+            return OperationsSummary(
+                headline=f"{from_name} to {to_name}: No data",
+                body="No trains have completed this route in the past 90 minutes.",
+                scope="route",
+                time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
+                data_freshness_seconds=0,
+                generated_at=now_et(),
+                metrics=None,
             )
 
-        body = " ".join(body_parts)
+        # Group journeys by carrier
+        njt_journeys = [j for j in journeys if j.data_source == "NJT"]
+        amtrak_journeys = [j for j in journeys if j.data_source == "AMTRAK"]
+
+        # Calculate stats for each carrier
+        njt_stats = self._calculate_carrier_route_stats(njt_journeys, to_station)
+        amtrak_stats = self._calculate_carrier_route_stats(amtrak_journeys, to_station)
+
+        # Build carrier descriptions
+        carrier_descriptions = []
+        if njt_stats:
+            carrier_descriptions.append(self._format_carrier_description(njt_stats))
+        if amtrak_stats:
+            carrier_descriptions.append(self._format_carrier_description(amtrak_stats))
+
+        # Build body text
+        if len(carrier_descriptions) == 1:
+            body = f"Over the past 90 minutes, {carrier_descriptions[0]}."
+        else:
+            # Join with period and space for multiple carriers
+            body = f"Over the past 90 minutes, {carrier_descriptions[0]}. {carrier_descriptions[1]}."
+
+        # Calculate aggregate metrics for the response
+        total_trains = len(journeys)
+        total_on_time = (njt_stats.on_time_count if njt_stats else 0) + (
+            amtrak_stats.on_time_count if amtrak_stats else 0
+        )
+        total_cancellations = (njt_stats.cancellation_count if njt_stats else 0) + (
+            amtrak_stats.cancellation_count if amtrak_stats else 0
+        )
+        total_delay = (njt_stats.total_delay_minutes if njt_stats else 0) + (
+            amtrak_stats.total_delay_minutes if amtrak_stats else 0
+        )
+
+        non_cancelled = total_trains - total_cancellations
+        on_time_pct = (total_on_time / non_cancelled * 100) if non_cancelled > 0 else 0
+        avg_delay = total_delay / non_cancelled if non_cancelled > 0 else 0
+
+        # Generate headline (still useful for other contexts like network view)
+        headline = f"{from_name} to {to_name}: {on_time_pct:.0f}% on time"
 
         return OperationsSummary(
             headline=headline,
@@ -562,9 +630,8 @@ class SummaryService:
             metrics=SummaryMetrics(
                 on_time_percentage=on_time_pct,
                 average_delay_minutes=avg_delay,
-                cancellation_count=cancellation_count,
-                train_count=len(journeys),
-                most_common_track=most_common_track,
+                cancellation_count=total_cancellations,
+                train_count=total_trains,
             ),
         )
 

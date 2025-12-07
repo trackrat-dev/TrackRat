@@ -895,14 +895,12 @@ struct SummaryMetrics: Codable {
     let averageDelayMinutes: Double?
     let cancellationCount: Int?
     let trainCount: Int?
-    let mostCommonTrack: String?
 
     enum CodingKeys: String, CodingKey {
         case onTimePercentage = "on_time_percentage"
         case averageDelayMinutes = "average_delay_minutes"
         case cancellationCount = "cancellation_count"
         case trainCount = "train_count"
-        case mostCommonTrack = "most_common_track"
     }
 }
 

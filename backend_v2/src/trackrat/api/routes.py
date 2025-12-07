@@ -748,7 +748,6 @@ async def get_operations_summary(
             average_delay_minutes=summary.metrics.average_delay_minutes,
             cancellation_count=summary.metrics.cancellation_count,
             train_count=summary.metrics.train_count,
-            most_common_track=summary.metrics.most_common_track,
         )
 
     return OperationsSummaryResponse(

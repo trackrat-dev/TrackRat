@@ -635,9 +635,6 @@ class SummaryMetricsResponse(BaseModel):
         None, ge=0, description="Number of cancellations"
     )
     train_count: int | None = Field(None, ge=0, description="Total number of trains")
-    most_common_track: str | None = Field(
-        None, description="Most commonly assigned track"
-    )
 
 
 class OperationsSummaryResponse(BaseModel):
