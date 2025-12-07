@@ -86,7 +86,7 @@ struct OperationsSummaryView: View {
                         Spacer()
                         Text("Updated \(summary.dataFreshnessFormatted)")
                             .font(.caption2)
-                            .foregroundColor(.tertiary)
+                            .foregroundStyle(.tertiary)
                     }
                 }
                 .padding(.horizontal, 14)

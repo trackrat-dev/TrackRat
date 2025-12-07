@@ -40,6 +40,8 @@
 		A17329652E54A8A2006BF187 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329632E54A8A2006BF187 /* OnboardingView.swift */; };
 		A17329672E54A8B1006BF187 /* StationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329662E54A8B1006BF187 /* StationRow.swift */; };
 		A17329692E54D46E006BF187 /* intro_animation.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A17329682E54D46E006BF187 /* intro_animation.mp4 */; };
+		A17A63DE2EE60474003BD685 /* OperationsSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */; };
+		A17A63DF2EE60474003BD685 /* OperationsSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */; };
 		A17B1E6F2E7F05B00026D42E /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		A17B1E712E7F05B00026D42E /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
@@ -156,6 +158,7 @@
 		A17329632E54A8A2006BF187 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = Views/Screens/OnboardingView.swift; sourceTree = "<group>"; };
 		A17329662E54A8B1006BF187 /* StationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationRow.swift; path = Views/Components/StationRow.swift; sourceTree = "<group>"; };
 		A17329682E54D46E006BF187 /* intro_animation.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro_animation.mp4; sourceTree = "<group>"; };
+		A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OperationsSummaryView.swift; path = TrackRat/Views/Components/OperationsSummaryView.swift; sourceTree = "<group>"; };
 		A17B9F372E17FD0A00B370A6 /* StationButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationButton.swift; path = Views/Components/StationButton.swift; sourceTree = "<group>"; };
 		A183B7E02E6352E80024FADC /* LegacySheetAwareScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LegacySheetAwareScrollView.swift; path = Views/Components/LegacySheetAwareScrollView.swift; sourceTree = "<group>"; };
 		A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyProfileView.swift; path = Views/Screens/MyProfileView.swift; sourceTree = "<group>"; };
@@ -256,6 +259,7 @@
 				A16D6EE62E16A558008C6996 /* Recovered References */,
 				A19899522E8067020079E596 /* TrainV2Tests.swift */,
 				A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */,
+				A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -618,6 +622,7 @@
 				A1AC62B02E60A30300D1A16C /* PennStationGuideView.swift in Sources */,
 				A11A2C332E27C1A400B74BB5 /* StaticTrackDistributionService.swift in Sources */,
 				A1AD0D0D2E106D32003DA39F /* LiveActivityModels.swift in Sources */,
+				A17A63DE2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
 				A1875C7F2E400F4F00FCC7FC /* MyProfileView.swift in Sources */,
 				A1CB28302E3D6189004A49E6 /* AdvancedConfigurationView.swift in Sources */,
 				A1CB28312E3D6189004A49E6 /* CongestionMapView.swift in Sources */,
@@ -637,6 +642,7 @@
 				A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */,
 				A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */,
 				A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */,
+				A17A63DF2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
 				A1BA60F02DFC73650002FB39 /* StorageServiceTests.swift in Sources */,
 				A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */,
 				A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */,
