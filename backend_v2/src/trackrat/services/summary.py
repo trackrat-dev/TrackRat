@@ -621,7 +621,7 @@ class SummaryService:
 
         # Base: "NJ Transit had 9 trains follow this route with 100% departing on time"
         desc = (
-            f"{stats.carrier_name} had {stats.train_count} {train_word} follow this route "
+            f"there were {stats.train_count} {stats.carrier_name} {train_word} on this route "
             f"with {stats.on_time_percentage:.0f}% departing on time"
         )
 
@@ -803,13 +803,7 @@ class SummaryService:
         headline_parts = []
 
         if has_similar_data:
-            headline_parts.append(f"Similar trains: {similar_on_time_pct:.0f}% on time")
-
-        if has_train_data:
-            headline_parts.append(f"Train {train_id}: {train_on_time_pct:.0f}% historically")
-
-        if headline_parts:
-            headline = " · ".join(headline_parts)
+            headline = f"Recent departures: {similar_on_time_pct:.0f}% on time"
         else:
             headline = "View On-Time Stats"
 
@@ -818,9 +812,9 @@ class SummaryService:
 
         if has_similar_data and carrier_name:
             similar_text = (
-                f"Over the past 90 minutes, {similar_count} similar {carrier_name} "
-                f"train{'s' if similar_count != 1 else ''} departed on time "
-                f"{similar_on_time_pct:.0f}% of the time"
+                f"There were {similar_count} similar {carrier_name} "
+                f"train{'s' if similar_count != 1 else ''} in the past 90 minutes and "
+                f"{similar_on_time_pct:.0f}% departed on-time"
             )
             if similar_avg_delay >= 1:
                 similar_text += f" ({similar_avg_delay:.0f} min avg delay)"
@@ -829,7 +823,7 @@ class SummaryService:
 
         if has_train_data:
             train_text = (
-                f"Historically, Train {train_id} departs on time "
+                f"Train {train_id} historically departs on time "
                 f"{train_on_time_pct:.0f}% of the time"
             )
             if train_avg_delay >= 1:
