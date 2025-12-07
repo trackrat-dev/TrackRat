@@ -48,6 +48,14 @@ struct TrainDetailsView: View {
                     }
                 } else if let train = viewModel.train {
                     VStack(spacing: 16) {
+                        // Train historical performance summary
+                        OperationsSummaryView(
+                            scope: .train,
+                            fromStation: appState.departureStationCode,
+                            toStation: appState.destinationStationCode,
+                            trainId: train.trainId
+                        )
+
                         CombinedDetailsCard(
                             train: train,
                             selectedDestination: appState.selectedDestination,
