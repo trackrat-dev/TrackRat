@@ -322,8 +322,6 @@ class JustInTimeUpdateService:
             session, train_id, journey_date, force_refresh
         )
 
-        if journey:
-            # Ensure stops are loaded
-            await session.refresh(journey, ["stops"])
-
+        # Note: stops are already loaded via selectinload in ensure_fresh_data()
+        # No need to refresh - that would cause a redundant database query
         return journey

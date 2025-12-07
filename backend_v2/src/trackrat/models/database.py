@@ -163,6 +163,17 @@ class JourneyStop(Base):
         UniqueConstraint("journey_id", "station_code", name="unique_journey_stop"),
         Index("idx_station_times", "station_code", "scheduled_departure"),
         Index("idx_journey_sequence", "journey_id", "stop_sequence"),
+        # Performance optimization: composite index for track occupancy queries
+        # Used by track_occupancy.py to find occupied tracks at a station
+        Index(
+            "idx_track_occupancy_lookup",
+            "station_code",
+            "has_departed_station",
+            "scheduled_departure",
+        ),
+        # Performance optimization: composite index for track distribution queries
+        # Used by historical_track_predictor.py for GROUP BY aggregations
+        Index("idx_stop_track_distribution", "station_code", "track"),
     )
 
 

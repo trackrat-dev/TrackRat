@@ -38,6 +38,7 @@ class DepartureService:
         time_from: datetime | None = None,
         time_to: datetime | None = None,
         limit: int = 50,
+        hide_departed: bool = False,
     ) -> DeparturesResponse:
         """Get train departures between stations."""
 
@@ -83,6 +84,20 @@ class DepartureService:
         # Determine the target date for prioritization
         target_date = date if date else now_et().date()
 
+        # Build additional filters for hide_departed
+        departure_filters = [
+            JourneyStop.scheduled_departure >= time_from,
+            JourneyStop.scheduled_departure <= time_to,
+            journey_date_filter,
+            # Include both data sources
+            TrainJourney.data_source.in_(["NJT", "AMTRAK"]),
+        ]
+
+        # PERFORMANCE: Filter out trains that have already departed from origin station
+        # This reduces payload size significantly when using hide_departed=true
+        if hide_departed:
+            departure_filters.append(JourneyStop.has_departed_station.is_(False))
+
         stmt = (
             select(TrainJourney)
             .join(
@@ -92,15 +107,7 @@ class DepartureService:
                     JourneyStop.station_code == from_station,
                 ),
             )
-            .where(
-                and_(
-                    JourneyStop.scheduled_departure >= time_from,
-                    JourneyStop.scheduled_departure <= time_to,
-                    journey_date_filter,
-                    # Include both data sources
-                    TrainJourney.data_source.in_(["NJT", "AMTRAK"]),
-                )
-            )
+            .where(and_(*departure_filters))
             .options(selectinload(TrainJourney.stops))
             .order_by(
                 # Prioritize trains with the target journey_date

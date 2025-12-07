@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, distinct, func, select
+from sqlalchemy import and_, distinct, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
@@ -76,7 +76,31 @@ async def get_route_history(
     end_date = now_et().date()
     start_date = end_date - timedelta(days=days)
 
-    # Query all journeys for this data source and date range
+    # PERFORMANCE FIX: Use database-level filtering with EXISTS subqueries
+    # to avoid loading all journeys into memory then filtering in Python.
+    # This uses aliases to check that the journey has both stations in correct order.
+    from_stop_alias = aliased(JourneyStop, name="from_stop")
+    to_stop_alias = aliased(JourneyStop, name="to_stop")
+
+    # Subquery: journey has from_station with stop_sequence < to_station's sequence
+    route_filter = exists(
+        select(from_stop_alias.id).where(
+            and_(
+                from_stop_alias.journey_id == TrainJourney.id,
+                from_stop_alias.station_code == from_station,
+                exists(
+                    select(to_stop_alias.id).where(
+                        and_(
+                            to_stop_alias.journey_id == TrainJourney.id,
+                            to_stop_alias.station_code == to_station,
+                            to_stop_alias.stop_sequence > from_stop_alias.stop_sequence,
+                        )
+                    )
+                ),
+            )
+        )
+    )
+
     stmt = (
         select(TrainJourney)
         .where(
@@ -84,40 +108,22 @@ async def get_route_history(
                 TrainJourney.data_source == data_source,
                 TrainJourney.journey_date >= start_date,
                 TrainJourney.journey_date <= end_date,
+                route_filter,
             )
         )
         .options(selectinload(TrainJourney.stops))
+        .limit(5000)  # Safety limit to prevent memory issues with large date ranges
     )
 
     result = await db.execute(stmt)
-    all_journeys = list(result.scalars().all())
+    route_journeys = list(result.scalars().all())
 
-    # Filter to only journeys that travel from origin to destination
-    route_journeys = []
+    # Filter highlighted train journeys from the already-filtered route journeys
     highlighted_train_journeys = []
-
-    for journey in all_journeys:
-        from_stop = None
-        to_stop = None
-
-        # Find the origin and destination stops
-        for stop in journey.stops:
-            if stop.station_code == from_station:
-                from_stop = stop
-            elif stop.station_code == to_station:
-                to_stop = stop
-
-        # Include if both stations found and in correct order
-        if (
-            from_stop
-            and to_stop
-            and (from_stop.stop_sequence or 0) < (to_stop.stop_sequence or 0)
-        ):
-            route_journeys.append(journey)
-
-            # Also collect for highlighted train if specified
-            if highlight_train and journey.train_id == highlight_train:
-                highlighted_train_journeys.append(journey)
+    if highlight_train:
+        highlighted_train_journeys = [
+            j for j in route_journeys if j.train_id == highlight_train
+        ]
 
     # Calculate aggregate statistics for all route journeys
     aggregate_stats = _calculate_route_stats(route_journeys, from_station)

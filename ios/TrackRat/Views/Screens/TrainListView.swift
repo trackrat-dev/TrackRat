@@ -12,6 +12,8 @@ struct TrainListView: View {
     @State private var departureStationCode: String
     @State private var departureName: String
     @State private var isClosing = false
+    // PERFORMANCE: Track visibility to prevent polling when view is not visible
+    @State private var isViewVisible = false
 
 
     init(destination: String) {
@@ -129,11 +131,15 @@ struct TrainListView: View {
             )
         }
         .onReceive(viewModel.timer) { _ in
+            // PERFORMANCE: Only refresh when view is visible to prevent API stampede
+            // when multiple views have timers running
+            guard isViewVisible else { return }
             Task {
                 await viewModel.refreshTrains()
             }
         }
         .onAppear {
+            isViewVisible = true
             // Initialize state from app state
             if departureStationCode.isEmpty {
                 departureStationCode = appState.departureStationCode ?? "NY"
@@ -160,6 +166,10 @@ struct TrainListView: View {
                     isFavorite: false
                 )
             }
+        }
+        .onDisappear {
+            // PERFORMANCE: Stop polling when view is not visible
+            isViewVisible = false
         }
     }
 }

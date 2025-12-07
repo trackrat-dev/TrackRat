@@ -7,6 +7,8 @@ struct TrainDetailsView: View {
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @State private var isClosing = false
+    // PERFORMANCE: Track visibility to prevent polling when view is not visible
+    @State private var isViewVisible = false
 
     let trainId: Int  // Keep for backwards compatibility
 
@@ -124,13 +126,28 @@ struct TrainDetailsView: View {
             )
         }
         .onReceive(viewModel.timer) { _ in
-            // Always refresh when the view is visible
+            // PERFORMANCE: Only refresh when view is visible AND LiveActivity isn't polling
+            // for the same train (to prevent duplicate API calls)
+            guard isViewVisible else { return }
+
+            // Skip polling if LiveActivity is already tracking this train
+            if let activity = liveActivityService.currentActivity,
+               activity.attributes.trainNumber == viewModel.train?.trainId {
+                return
+            }
+
             Task {
                 await viewModel.refreshTrainDetails(
                     fromStationCode: appState.departureStationCode,
                     selectedDestinationName: appState.selectedDestination
                 )
             }
+        }
+        .onAppear {
+            isViewVisible = true
+        }
+        .onDisappear {
+            isViewVisible = false
         }
         .onChange(of: viewModel.triggerBoardingHaptic) { oldValue, newValue in
             if newValue {
@@ -909,8 +926,21 @@ class TrainDetailsViewModel: ObservableObject {
             train = cachedTrain
             updateComputedProperties()
 
-            // Now fetch fresh data in background (silent)
-            await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, selectedDestinationName: selectedDestinationName)
+            // PERFORMANCE FIX: Only fetch fresh data in background if cache is older than 30 seconds
+            // This prevents the double-fetch issue where we always hit the API even with a fresh cache.
+            // The 30-second timer will refresh the data anyway, so no need for immediate background fetch
+            // when cache is fresh.
+            let cacheAge = cacheService.getCacheAge(
+                trainId: databaseId.map(String.init),
+                trainNumber: trainNumber,
+                date: journeyDate,
+                fromStation: fromStationCode ?? preferredStationCode
+            )
+            if cacheAge == nil || cacheAge! > 30 {
+                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, selectedDestinationName: selectedDestinationName)
+            } else {
+                print("📦 Cache is fresh (\(Int(cacheAge!))s old) - skipping background refresh")
+            }
         } else {
             // No cache available - show loading indicator and fetch
             print("🌐 No cache available - fetching from network")
