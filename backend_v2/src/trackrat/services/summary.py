@@ -14,14 +14,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.config.stations import get_station_name
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.utils.time import ensure_timezone_aware, now_et
+from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
 

@@ -331,7 +331,10 @@ class TestSummaryService:
             journey.stops = [stop]
             journeys.append(journey)
 
-        summary = summary_service._generate_train_summary(journeys, "1234", None, None)
+        # New signature: train_journeys, similar_journeys, train_id, from_station, to_station, data_source
+        summary = summary_service._generate_train_summary(
+            journeys, journeys, "1234", "NY", "TR", "NJT"
+        )
 
         assert summary.scope == "train"
         assert "on time" in summary.headline.lower()
@@ -363,17 +366,26 @@ class TestSummaryService:
             journey.stops = [stop]
             journeys.append(journey)
 
-        summary = summary_service._generate_train_summary(journeys, "9999", None, None)
+        # New signature: train_journeys, similar_journeys, train_id, from_station, to_station, data_source
+        summary = summary_service._generate_train_summary(
+            journeys, journeys, "9999", "NY", "TR", "NJT"
+        )
 
         assert summary.scope == "train"
-        assert "late" in summary.headline.lower()
+        assert (
+            "on time" in summary.headline.lower()
+        )  # Changed: now shows on-time percentage
 
     def test_generate_train_summary_no_history(self, summary_service):
         """Test train summary with no historical data."""
-        summary = summary_service._generate_train_summary([], "1234", None, None)
+        # New signature: train_journeys, similar_journeys, train_id, from_station, to_station, data_source
+        summary = summary_service._generate_train_summary(
+            [], [], "1234", "NY", "TR", "NJT"
+        )
 
         assert summary.scope == "train"
-        assert "no" in summary.headline.lower()
+        # With no data, headline shows "View On-Time Stats"
+        assert "view" in summary.headline.lower() or "stats" in summary.headline.lower()
 
     def test_cache_works(self, summary_service):
         """Test that caching prevents redundant calculations."""
@@ -411,14 +423,12 @@ class TestSummaryMetrics:
             average_delay_minutes=4.2,
             cancellation_count=2,
             train_count=24,
-            most_common_track="7",
         )
 
         assert metrics.on_time_percentage == 85.5
         assert metrics.average_delay_minutes == 4.2
         assert metrics.cancellation_count == 2
         assert metrics.train_count == 24
-        assert metrics.most_common_track == "7"
 
     def test_summary_metrics_optional_fields(self):
         """Test SummaryMetrics with optional fields as None."""
@@ -428,7 +438,6 @@ class TestSummaryMetrics:
         assert metrics.average_delay_minutes is None
         assert metrics.cancellation_count is None
         assert metrics.train_count is None
-        assert metrics.most_common_track is None
 
 
 class TestOperationsSummary:
