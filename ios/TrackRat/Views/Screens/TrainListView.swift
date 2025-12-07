@@ -75,13 +75,13 @@ struct TrainListView: View {
                                     )
                                 }
 
-                                // Use flexible navigation with train number
-                                // Only pass departure station if it's not empty
-                                appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                                // Use pendingNavigation to expand sheet FIRST, then navigate
+                                // This prevents the glitch where sheet expands with empty space
+                                appState.pendingNavigation = .trainDetailsFlexible(
                                     trainNumber: train.trainId,
                                     fromStation: departureStationCode.isEmpty ? nil : departureStationCode,
                                     journeyDate: train.journeyDate
-                                ))
+                                )
                             },
                             isExpress: expressTrains.contains(train.trainId)
                         )

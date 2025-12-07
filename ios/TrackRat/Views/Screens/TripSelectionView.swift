@@ -145,10 +145,9 @@ struct TripSelectionView: View {
                         Button {
                             // Immediately hide RatSense to prevent content shift during navigation
                             isNavigatingToProfile = true
-                            // Navigate to profile - sheet expansion is handled by handleNavigationChange
-                            // with a small delay to allow NavigationStack to layout first
-                            appState.navigationPath.append(NavigationDestination.myProfile)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            // Use pendingNavigation to expand sheet FIRST, then navigate
+                            // This prevents the glitch where sheet expands with empty space
+                            appState.pendingNavigation = .myProfile
                         } label: {
                             Image(systemName: "person.circle.fill")
                                 .font(.system(size: 24))
@@ -276,38 +275,32 @@ struct TripSelectionView: View {
         appState.departureStationCode = trip.departureCode
         appState.selectedDestination = trip.destinationName
         appState.selectedRoute = trip  // Set selected route for map highlighting
-        appState.navigationPath.append(NavigationDestination.trainList(destination: trip.destinationName))
-        
-        // Reset search state but maintain bottom sheet position
+
+        // Use pendingNavigation to expand sheet FIRST, then navigate
+        appState.pendingNavigation = .trainList(destination: trip.destinationName)
+
+        // Reset search state
         withAnimation(.easeInOut(duration: 0.3)) {
             searchText = ""
             isSearching = false
             searchFieldFocused = false
         }
-        // DON'T reset bottom sheet position - maintain current height
-        // onBottomSheetPositionChange?(.compact)
-        
-        // Haptic feedback
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
     private func selectRatSenseSuggestion(_ suggestion: RatSenseService.SuggestedJourney) {
         print("🐀🐀🐀 Rat Sense suggestion selected: \(suggestion.fromStation) → \(suggestion.toStation)")
-        
+
         // Record the journey search
         ratSenseService.recordJourneySearch(from: suggestion.fromStation, to: suggestion.toStation)
-        
+
         // Set both departure and destination
         appState.selectedDeparture = suggestion.fromStationName
         appState.departureStationCode = suggestion.fromStation
         appState.selectedDestination = suggestion.toStationName
         appState.destinationStationCode = suggestion.toStation
-        
-        // Navigate directly to train list
-        appState.navigationPath.append(NavigationDestination.trainList(destination: suggestion.toStationName))
-        
-        // Haptic feedback
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        // Use pendingNavigation to expand sheet FIRST, then navigate
+        appState.pendingNavigation = .trainList(destination: suggestion.toStationName)
     }
     
     private func selectOriginStation(name: String, code: String) {
@@ -507,12 +500,13 @@ struct TripSelectionView: View {
                 await MainActor.run {
                     // Success - navigate to train details
                     appState.currentTrainId = foundTrain.id
-                    appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                    // Use pendingNavigation to expand sheet FIRST, then navigate
+                    appState.pendingNavigation = .trainDetailsFlexible(
                         trainNumber: trainNumber,
                         fromStation: nil,  // No specific departure station when searching globally
                         journeyDate: foundTrain.journeyDate
-                    ))
-                    
+                    )
+
                     // Reset search
                     withAnimation(.easeInOut(duration: 0.3)) {
                         searchText = ""

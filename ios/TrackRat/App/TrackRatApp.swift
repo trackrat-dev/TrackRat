@@ -518,6 +518,10 @@ final class AppState: ObservableObject {
     @Published var deepLinkToStation: String? = nil
     @Published var shouldExpandForDeepLink: Bool = false
 
+    // Pending navigation - set by views to request navigation that requires sheet expansion first
+    // MapContainerView observes this and handles: expand sheet → wait → navigate
+    @Published var pendingNavigation: NavigationDestination? = nil
+
     private let apiService = APIService()
     private let storageService = StorageService()
     

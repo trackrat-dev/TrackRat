@@ -58,14 +58,13 @@ struct ActiveTripsSection: View {
                             lastUsed: Date(),
                             isFavorite: false
                         )
-                        
-                        // Navigate to train details using flexible navigation
-                        appState.navigationPath.append(
-                            NavigationDestination.trainDetailsFlexible(
-                                trainNumber: activity.attributes.trainNumber,
-                                fromStation: activity.attributes.originStationCode,
-                                journeyDate: nil  // TODO: Add journeyDate to LiveActivity attributes
-                            )
+
+                        // Use pendingNavigation to expand sheet FIRST, then navigate
+                        // This prevents the glitch where sheet expands with empty space
+                        appState.pendingNavigation = .trainDetailsFlexible(
+                            trainNumber: activity.attributes.trainNumber,
+                            fromStation: activity.attributes.originStationCode,
+                            journeyDate: nil  // TODO: Add journeyDate to LiveActivity attributes
                         )
                     } label: {
                         HStack {
