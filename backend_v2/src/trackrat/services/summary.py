@@ -678,7 +678,7 @@ class SummaryService:
             body = f"Over the past 90 minutes, {carrier_descriptions[0]}."
         else:
             # Join with period and space for multiple carriers
-            body = f"Over the past 90 minutes, {carrier_descriptions[0]}. {carrier_descriptions[1]}."
+            body = f"Over the past 90 minutes, {carrier_descriptions[0]}.\n\nT{carrier_descriptions[1][1:]}."
 
         # Calculate aggregate metrics for the response
         total_trains = len(journeys)
@@ -818,12 +818,12 @@ class SummaryService:
             )
             if similar_avg_delay >= 1:
                 similar_text += f" ({similar_avg_delay:.0f} min avg delay)"
-            similar_text += "."
+            similar_text += ".\n"
             body_parts.append(similar_text)
 
         if has_train_data:
             train_text = (
-                f"Train {train_id} historically departs on time "
+                f"\nTrain {train_id} historically departs on time "
                 f"{train_on_time_pct:.0f}% of the time"
             )
             if train_avg_delay >= 1:
