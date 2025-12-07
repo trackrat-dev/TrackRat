@@ -70,11 +70,6 @@ struct TrainStatsSummaryView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "chart.bar.fill")
-                        .foregroundColor(.orange.opacity(0.8))
-                        .font(.subheadline)
-                        .padding(.top, 2)
-
                     Text(summary.headline)
                         .font(.subheadline)
                         .foregroundColor(.primary)

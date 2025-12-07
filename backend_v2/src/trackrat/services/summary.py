@@ -94,6 +94,20 @@ class CarrierRouteStats:
 
 
 @dataclass
+class OnTimeStats:
+    """Statistics for on-time performance calculation."""
+
+    on_time_percentage: float
+    average_delay_minutes: float
+    total_count: int  # Total trains including cancellations
+    cancellation_count: int
+
+    @property
+    def has_data(self) -> bool:
+        return self.total_count > 0
+
+
+@dataclass
 class OperationsSummary:
     """Complete operations summary with headline and body."""
 
@@ -718,23 +732,26 @@ class SummaryService:
         self,
         journeys: list[TrainJourney],
         to_station: str | None = None,
-    ) -> tuple[float, float, int]:
+    ) -> OnTimeStats:
         """
         Calculate on-time percentage and average delay for a list of journeys.
+        Cancellations count against on-time percentage.
 
         Args:
             journeys: List of journeys to analyze
             to_station: If provided, calculate delay at this station instead of final stop
 
         Returns:
-            Tuple of (on_time_percentage, average_delay_minutes, sample_count)
+            OnTimeStats with percentage, delay, counts
         """
         on_time_count = 0
         total_delay = 0.0
         delay_samples = 0
+        cancellation_count = 0
 
         for journey in journeys:
             if journey.is_cancelled:
+                cancellation_count += 1
                 continue
 
             if not journey.stops:
@@ -758,12 +775,27 @@ class SummaryService:
                 if delay <= 5:
                     on_time_count += 1
 
-        if delay_samples == 0:
-            return 0.0, 0.0, 0
+        total_count = delay_samples + cancellation_count
 
-        on_time_pct = (on_time_count / delay_samples) * 100
-        avg_delay = total_delay / delay_samples
-        return on_time_pct, avg_delay, delay_samples
+        if total_count == 0:
+            return OnTimeStats(
+                on_time_percentage=0.0,
+                average_delay_minutes=0.0,
+                total_count=0,
+                cancellation_count=0,
+            )
+
+        # On-time percentage: cancellations count as "not on time"
+        on_time_pct = (on_time_count / total_count) * 100
+        # Average delay: only from trains that actually ran
+        avg_delay = total_delay / delay_samples if delay_samples > 0 else 0.0
+
+        return OnTimeStats(
+            on_time_percentage=on_time_pct,
+            average_delay_minutes=avg_delay,
+            total_count=total_count,
+            cancellation_count=cancellation_count,
+        )
 
     def _generate_train_summary(
         self,
@@ -786,49 +818,59 @@ class SummaryService:
             data_source: Carrier (NJT or AMTRAK)
         """
         # Calculate stats for similar trains (past 90 minutes)
-        similar_on_time_pct, similar_avg_delay, similar_count = self._calculate_on_time_stats(
-            similar_journeys, to_station
-        )
+        similar_stats = self._calculate_on_time_stats(similar_journeys, to_station)
 
         # Calculate stats for this specific train (historical)
-        train_on_time_pct, train_avg_delay, train_count = self._calculate_on_time_stats(
-            train_journeys, to_station
-        )
+        train_stats = self._calculate_on_time_stats(train_journeys, to_station)
 
-        has_similar_data = similar_count > 0
-        has_train_data = train_count > 0
         carrier_name = "NJ Transit" if data_source == "NJT" else "Amtrak" if data_source else None
 
         # Generate headline
-        headline_parts = []
-
-        if has_similar_data:
-            headline = f"Recent departures: {similar_on_time_pct:.0f}% on time"
+        if similar_stats.has_data:
+            headline = f"Recent departures: {similar_stats.on_time_percentage:.0f}% on time"
         else:
             headline = "View On-Time Stats"
 
         # Generate body
         body_parts = []
 
-        if has_similar_data and carrier_name:
+        if similar_stats.has_data and carrier_name:
             similar_text = (
-                f"There were {similar_count} similar {carrier_name} "
-                f"train{'s' if similar_count != 1 else ''} in the past 90 minutes and "
-                f"{similar_on_time_pct:.0f}% departed on-time"
+                f"There were {similar_stats.total_count} similar {carrier_name} "
+                f"train{'s' if similar_stats.total_count != 1 else ''} in the past 90 minutes and "
+                f"{similar_stats.on_time_percentage:.0f}% departed on-time"
             )
-            if similar_avg_delay >= 1:
-                similar_text += f" ({similar_avg_delay:.0f} min avg delay)"
-            similar_text += ".\n"
+            if similar_stats.average_delay_minutes >= 1:
+                similar_text += f" ({similar_stats.average_delay_minutes:.0f} min avg delay)"
+            similar_text += "."
+
+            # Add cancellation info for similar trains
+            if similar_stats.cancellation_count > 0:
+                similar_text += (
+                    f" {similar_stats.cancellation_count} "
+                    f"{'was' if similar_stats.cancellation_count == 1 else 'were'} cancelled."
+                )
+
+            similar_text += "\n"
             body_parts.append(similar_text)
 
-        if has_train_data:
+        if train_stats.has_data:
             train_text = (
                 f"\nTrain {train_id} historically departs on time "
-                f"{train_on_time_pct:.0f}% of the time"
+                f"{train_stats.on_time_percentage:.0f}% of the time"
             )
-            if train_avg_delay >= 1:
-                train_text += f" ({train_avg_delay:.0f} min avg delay)"
+            if train_stats.average_delay_minutes >= 1:
+                train_text += f" ({train_stats.average_delay_minutes:.0f} min avg delay)"
             train_text += "."
+
+            # Add cancellation info for this train's history
+            if train_stats.cancellation_count > 0:
+                train_text += (
+                    f" It has been cancelled {train_stats.cancellation_count} "
+                    f"time{'s' if train_stats.cancellation_count != 1 else ''} "
+                    f"in the past 30 days."
+                )
+
             body_parts.append(train_text)
 
         if not body_parts:
@@ -837,17 +879,19 @@ class SummaryService:
         body = " ".join(body_parts)
 
         # Use train stats for metrics if available, otherwise similar trains
-        if has_train_data:
+        if train_stats.has_data:
             metrics = SummaryMetrics(
-                on_time_percentage=train_on_time_pct,
-                average_delay_minutes=train_avg_delay,
-                train_count=train_count,
+                on_time_percentage=train_stats.on_time_percentage,
+                average_delay_minutes=train_stats.average_delay_minutes,
+                cancellation_count=train_stats.cancellation_count,
+                train_count=train_stats.total_count,
             )
-        elif has_similar_data:
+        elif similar_stats.has_data:
             metrics = SummaryMetrics(
-                on_time_percentage=similar_on_time_pct,
-                average_delay_minutes=similar_avg_delay,
-                train_count=similar_count,
+                on_time_percentage=similar_stats.on_time_percentage,
+                average_delay_minutes=similar_stats.average_delay_minutes,
+                cancellation_count=similar_stats.cancellation_count,
+                train_count=similar_stats.total_count,
             )
         else:
             metrics = None
