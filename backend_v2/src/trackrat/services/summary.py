@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -219,11 +219,26 @@ class SummaryService:
                 )
                 return cached_data
 
-        cutoff_time = now_et() - timedelta(minutes=SUMMARY_TIME_WINDOW_MINUTES)
+        current_time = now_et()
+        cutoff_time = current_time - timedelta(minutes=SUMMARY_TIME_WINDOW_MINUTES)
 
-        # Query journeys that include both stations
+        # Query trains that departed from the origin station within the time window
+        # Must be: >= cutoff_time AND <= now (already departed, not future scheduled)
+        # Use actual_departure if available, otherwise scheduled_departure
         conditions = [
-            TrainJourney.last_updated_at >= cutoff_time,
+            or_(
+                # Has actual departure within window
+                and_(
+                    JourneyStop.actual_departure >= cutoff_time,
+                    JourneyStop.actual_departure <= current_time,
+                ),
+                # No actual departure yet, but scheduled within window and in the past
+                and_(
+                    JourneyStop.actual_departure.is_(None),
+                    JourneyStop.scheduled_departure >= cutoff_time,
+                    JourneyStop.scheduled_departure <= current_time,
+                ),
+            ),
         ]
         if data_source:
             conditions.append(TrainJourney.data_source == data_source)
@@ -234,19 +249,17 @@ class SummaryService:
                 JourneyStop,
                 and_(
                     JourneyStop.journey_id == TrainJourney.id,
-                    JourneyStop.station_code.in_([from_station, to_station]),
+                    JourneyStop.station_code == from_station,
                 ),
             )
             .where(and_(*conditions))
-            .group_by(TrainJourney.id)
-            .having(func.count(func.distinct(JourneyStop.station_code)) == 2)
             .options(selectinload(TrainJourney.stops))
         )
 
         result = await db.execute(stmt)
         all_journeys = list(result.scalars().all())
 
-        # Filter to journeys that actually travel from origin to destination
+        # Filter to journeys that actually travel to the destination
         route_journeys = []
         for journey in all_journeys:
             from_stop = None
@@ -287,34 +300,49 @@ class SummaryService:
         data_source: str,
     ) -> list[TrainJourney]:
         """
-        Get journeys from similar trains (same route + carrier) in the past 90 minutes.
+        Get journeys from similar trains (same route + carrier) that departed
+        from the origin station in the past 90 minutes.
         """
-        cutoff_time = now_et() - timedelta(minutes=SUMMARY_TIME_WINDOW_MINUTES)
+        current_time = now_et()
+        cutoff_time = current_time - timedelta(minutes=SUMMARY_TIME_WINDOW_MINUTES)
 
+        # Query trains that departed from the origin station within the time window
+        # Must be: >= cutoff_time AND <= now (already departed, not future scheduled)
+        # Use actual_departure if available, otherwise scheduled_departure
         stmt = (
             select(TrainJourney)
             .join(
                 JourneyStop,
                 and_(
                     JourneyStop.journey_id == TrainJourney.id,
-                    JourneyStop.station_code.in_([from_station, to_station]),
+                    JourneyStop.station_code == from_station,
                 ),
             )
             .where(
                 and_(
-                    TrainJourney.last_updated_at >= cutoff_time,
                     TrainJourney.data_source == data_source,
+                    or_(
+                        # Has actual departure within window
+                        and_(
+                            JourneyStop.actual_departure >= cutoff_time,
+                            JourneyStop.actual_departure <= current_time,
+                        ),
+                        # No actual departure yet, but scheduled within window and in the past
+                        and_(
+                            JourneyStop.actual_departure.is_(None),
+                            JourneyStop.scheduled_departure >= cutoff_time,
+                            JourneyStop.scheduled_departure <= current_time,
+                        ),
+                    ),
                 )
             )
-            .group_by(TrainJourney.id)
-            .having(func.count(func.distinct(JourneyStop.station_code)) == 2)
             .options(selectinload(TrainJourney.stops))
         )
 
         result = await db.execute(stmt)
         all_journeys = list(result.scalars().all())
 
-        # Filter to journeys that actually travel from origin to destination
+        # Filter to journeys that actually travel to the destination
         route_journeys = []
         for journey in all_journeys:
             from_stop = None
