@@ -48,7 +48,8 @@ struct TrainListView: View {
                         OperationsSummaryView(
                             scope: .route,
                             fromStation: departureStationCode,
-                            toStation: destinationCode
+                            toStation: destinationCode,
+                            isExpandable: true
                         )
                         .padding(.bottom, 4)
                     }

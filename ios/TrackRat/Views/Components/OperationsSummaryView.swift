@@ -8,17 +8,20 @@ struct OperationsSummaryView: View {
     let fromStation: String?
     let toStation: String?
     let trainId: String?
+    let isExpandable: Bool
 
     @State private var summary: OperationsSummaryResponse?
     @State private var isLoading = true
     @State private var hasError = false
+    @State private var isExpanded = false
     @Environment(\.scenePhase) private var scenePhase
 
-    init(scope: SummaryScope, fromStation: String? = nil, toStation: String? = nil, trainId: String? = nil) {
+    init(scope: SummaryScope, fromStation: String? = nil, toStation: String? = nil, trainId: String? = nil, isExpandable: Bool = false) {
         self.scope = scope
         self.fromStation = fromStation
         self.toStation = toStation
         self.trainId = trainId
+        self.isExpandable = isExpandable
     }
 
     var body: some View {
@@ -44,18 +47,23 @@ struct OperationsSummaryView: View {
                 // Hide on error - show nothing
                 EmptyView()
             } else if let summary = summary {
-                // Success state - show the summary body
-                Text(summary.body)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(2)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(.systemGray6).opacity(0.9))
-                    )
+                if isExpandable {
+                    // Collapsible view - headline collapsed, body expanded
+                    collapsibleView(summary: summary)
+                } else {
+                    // Simple view - show the summary body only
+                    Text(summary.body)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(.systemGray6).opacity(0.9))
+                        )
+                }
             }
         }
         .task {
@@ -88,6 +96,58 @@ struct OperationsSummaryView: View {
             hasError = true
             isLoading = false
         }
+    }
+
+    private func collapsibleView(summary: OperationsSummaryResponse) -> some View {
+        VStack(spacing: 0) {
+            // Collapsed header (always visible, tappable)
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    isExpanded.toggle()
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(summary.headline)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer()
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.top, 2)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+
+            // Expanded content
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                        .padding(.horizontal, 14)
+
+                    Text(summary.body)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 12)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(.systemGray6).opacity(0.9))
+        )
     }
 }
 
