@@ -320,7 +320,9 @@ class LiveActivityService: ObservableObject {
                         break
                     }
 
+                    #if DEBUG
                     print("📡 Received Live Activity push token: \(pushToken.prefix(20))...")
+                    #endif
 
                     // Store the token for later use (e.g., unregistration)
                     await MainActor.run { [weak self] in
@@ -345,7 +347,9 @@ class LiveActivityService: ObservableObject {
     
     private func registerPushToken(_ token: Data, for train: TrainV2, from originCode: String, to destinationCode: String) async {
         let tokenString = token.map { String(format: "%02x", $0) }.joined()
+        #if DEBUG
         print("🔧 Converting push token to string: \(tokenString.prefix(20))...")
+        #endif
 
         // Remove nested Task - we're already in async context
         for activity in Activity<TrainActivityAttributes>.activities {

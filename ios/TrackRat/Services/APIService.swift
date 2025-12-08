@@ -637,10 +637,12 @@ final class APIService: ObservableObject {
         let encoder = JSONEncoder()
         request.httpBody = try encoder.encode(body)
         
+        #if DEBUG
         print("📱 Registering Live Activity token (V2):")
         print("  Token: \(pushToken.prefix(10))...")
         print("  Train: \(trainNumber)")
         print("  Route: \(originCode) → \(destinationCode)")
+        #endif
         
         let (_, response) = try await session.data(for: request)
         
