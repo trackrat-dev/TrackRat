@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
@@ -131,11 +130,12 @@ struct TrainListView: View {
                 fromStationCode: departureStationCode
             )
         }
-        .onReceive(viewModel.timer) { _ in
-            // PERFORMANCE: Only refresh when view is visible to prevent API stampede
-            // when multiple views have timers running
+        .task(id: isViewVisible) {
+            // Auto-refresh task that cancels automatically when view disappears
             guard isViewVisible else { return }
-            Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled, isViewVisible else { break }
                 await viewModel.refreshTrains()
             }
         }
@@ -386,10 +386,7 @@ class TrainListViewModel: ObservableObject {
     private var currentDestination: String?
     private var currentFromStationCode: String?
     private let apiService: APIService
-    
-    // Timer for auto-refresh
-    let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    
+
     // MARK: - Express Train Identification
     
     /// Identify express trains using 15% faster travel time threshold

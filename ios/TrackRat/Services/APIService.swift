@@ -96,7 +96,9 @@ final class APIService: ObservableObject {
     // MARK: - Train Search
     
     func searchTrains(fromStationCode: String, toStationCode: String, date: Date? = nil) async throws -> [TrainV2] {
-        var components = URLComponents(string: "\(baseURL)/v2/trains/departures")!
+        guard var components = URLComponents(string: "\(baseURL)/v2/trains/departures") else {
+            throw APIError.invalidURL
+        }
 
         var queryItems = [
             URLQueryItem(name: "from", value: fromStationCode),
@@ -217,8 +219,8 @@ final class APIService: ObservableObject {
         }
         
         print("📊 Fetching historical data from: \(url)")
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
+
+        let (data, _) = try await session.data(from: url)
         
         // Debug: Print raw response
         if let jsonString = String(data: data, encoding: .utf8) {
@@ -375,8 +377,8 @@ final class APIService: ObservableObject {
         }
         
         print("📊 Fetching route historical data from: \(url)")
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
+
+        let (data, _) = try await session.data(from: url)
         
         // Debug: Print raw response
         if let jsonString = String(data: data, encoding: .utf8) {

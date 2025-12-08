@@ -108,7 +108,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: BACKGROUND_REFRESH_TASK_ID, using: nil) { task in
-            self.handleAppRefresh(task: task as! BGAppRefreshTask)
+            guard let bgTask = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self.handleAppRefresh(task: bgTask)
         }
     }
 
@@ -451,7 +455,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             }
 
             // Wait for first to complete and cancel the other
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                group.cancelAll()
+                throw CancellationError()
+            }
             group.cancelAll()
             return result
         }
