@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 import ActivityKit
 
 struct TrainDetailsView: View {
@@ -124,18 +123,19 @@ struct TrainDetailsView: View {
                 selectedDestinationName: appState.selectedDestination
             )
         }
-        .onReceive(viewModel.timer) { _ in
-            // PERFORMANCE: Only refresh when view is visible AND LiveActivity isn't polling
-            // for the same train (to prevent duplicate API calls)
+        .task(id: isViewVisible) {
+            // Auto-refresh task that cancels automatically when view disappears
             guard isViewVisible else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled, isViewVisible else { break }
 
-            // Skip polling if LiveActivity is already tracking this train
-            if let activity = liveActivityService.currentActivity,
-               activity.attributes.trainNumber == viewModel.train?.trainId {
-                return
-            }
+                // Skip polling if LiveActivity is already tracking this train
+                if let activity = liveActivityService.currentActivity,
+                   activity.attributes.trainNumber == viewModel.train?.trainId {
+                    continue
+                }
 
-            Task {
                 await viewModel.refreshTrainDetails(
                     fromStationCode: appState.departureStationCode,
                     selectedDestinationName: appState.selectedDestination
@@ -785,9 +785,6 @@ class TrainDetailsViewModel: ObservableObject {
 
     private let apiService = APIService.shared
     private let cacheService = TrainCacheService.shared
-
-    // Timer for auto-refresh
-    let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     // Legacy initializer for backwards compatibility
     init(trainId: Int) {
