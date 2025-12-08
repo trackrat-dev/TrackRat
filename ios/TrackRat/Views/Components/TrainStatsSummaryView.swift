@@ -87,6 +87,7 @@ struct TrainStatsSummaryView: View {
                         .fontWeight(.medium)
                         .padding(.top, 2)
                 }
+                .contentShape(Rectangle())
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
             }
