@@ -692,7 +692,7 @@ class SummaryService:
 
         if not journeys:
             return OperationsSummary(
-                headline=f"{from_name} to {to_name}: No data",
+                headline="Recent departures: No data",
                 body="No trains have completed this route in the past 90 minutes.",
                 scope="route",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
@@ -739,8 +739,8 @@ class SummaryService:
         on_time_pct = (total_on_time / non_cancelled * 100) if non_cancelled > 0 else 0
         avg_delay = total_delay / non_cancelled if non_cancelled > 0 else 0
 
-        # Generate headline (still useful for other contexts like network view)
-        headline = f"{from_name} to {to_name}: {on_time_pct:.0f}% on time"
+        # Generate headline matching train scope format
+        headline = f"Recent departures: {on_time_pct:.0f}% on time"
 
         return OperationsSummary(
             headline=headline,

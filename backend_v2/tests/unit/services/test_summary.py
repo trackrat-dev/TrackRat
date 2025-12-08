@@ -293,7 +293,8 @@ class TestSummaryService:
         summary = summary_service._generate_route_summary(route_journeys, "NY", "NP")
 
         assert summary.scope == "route"
-        assert "NY" in summary.headline or "New York" in summary.headline
+        assert "Recent departures:" in summary.headline
+        assert "% on time" in summary.headline
         assert summary.metrics is not None
         assert summary.metrics.train_count == 2
 
