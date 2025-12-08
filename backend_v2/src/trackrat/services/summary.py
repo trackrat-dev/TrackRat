@@ -873,7 +873,7 @@ class SummaryService:
 
         if similar_stats.has_data and carrier_name:
             similar_text = (
-                f"There were {similar_stats.total_count} similar {carrier_name} "
+                f"There {'was' if similar_stats.total_count == 1 else 'were'} {similar_stats.total_count} similar {carrier_name} "
                 f"train{'s' if similar_stats.total_count != 1 else ''} in the past 90 minutes and "
                 f"{similar_stats.on_time_percentage:.0f}% departed on-time"
             )
