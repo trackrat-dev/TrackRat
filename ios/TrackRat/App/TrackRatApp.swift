@@ -127,20 +127,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let tokenString = deviceToken.map { String(format: "%02x", $0) }.joined()
+
+        #if DEBUG
         print("📱 Device token received: \(tokenString)")
-        
-        // DEBUG: Print actual bundle ID being used
         if let bundleId = Bundle.main.bundleIdentifier {
             print("📱 iOS App Bundle ID: \(bundleId)")
         }
-        
+        #endif
+
         // Store device token for Live Activity registration
         Task { @MainActor in
             AppDelegate.deviceToken = tokenString
         }
-        
-        // Device token received - Live Activities will handle their own registration
-        print("📱 Device token received: \(tokenString) - Live Activities ready")
+
+        #if DEBUG
+        print("📱 Device token stored - Live Activities ready")
+        #endif
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
