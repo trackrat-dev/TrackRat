@@ -693,7 +693,7 @@ class SummaryService:
 
         # Base: "there were 9 NJ Transit trains on this route with 100% departing on time"
         desc = (
-            f"there were {total} {stats.carrier_name} {train_word} on this route "
+            f"there {'was' if total == 1 else 'were'} {total} {stats.carrier_name} {train_word} on this route "
             f"with {stats.on_time_percentage:.0f}% departing on time"
         )
 
