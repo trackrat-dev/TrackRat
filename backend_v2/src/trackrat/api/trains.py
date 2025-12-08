@@ -105,8 +105,18 @@ async def get_departures(
         if cached_response:
             try:
                 return DeparturesResponse(**cached_response)
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "cache_deserialization_failed",
+                    endpoint="/api/v2/trains/departures",
+                    params=cache_params,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                # Invalidate corrupted cache entry
+                await cache_service.invalidate_cache_entry(
+                    db, "/api/v2/trains/departures", cache_params
+                )
 
     service = DepartureService()
     response = await service.get_departures(
