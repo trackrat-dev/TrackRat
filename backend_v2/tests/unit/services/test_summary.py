@@ -256,11 +256,13 @@ class TestSummaryService:
         )
 
     def test_generate_network_summary_empty(self, summary_service):
-        """Test network summary with no data."""
+        """Test network summary with no data returns empty headline."""
         summary = summary_service._generate_network_summary({})
 
         assert summary.scope == "network"
-        assert "no" in summary.headline.lower()
+        # With no data, headline and body should be empty so iOS can hide the section
+        assert summary.headline == ""
+        assert summary.body == ""
         assert summary.metrics is None
 
     def test_get_network_headline_thresholds(self, summary_service):
@@ -299,17 +301,20 @@ class TestSummaryService:
         assert summary.metrics.train_count == 2
 
     def test_generate_route_summary_empty(self, summary_service):
-        """Test route summary with no data."""
+        """Test route summary with no data returns empty headline."""
         summary = summary_service._generate_route_summary([], "NY", "NP")
 
         assert summary.scope == "route"
-        assert "no" in summary.headline.lower() or "no data" in summary.body.lower()
+        # With no data, headline and body should be empty so iOS can hide the section
+        assert summary.headline == ""
+        assert summary.body == ""
+        assert summary.metrics is None
 
     def test_generate_train_summary_good_performance(self, summary_service):
         """Test train summary for train with good historical performance."""
         current_time = datetime.now(UTC)
 
-        # Create 10 on-time journeys
+        # Create 10 on-time journeys with proper origin stop
         journeys = []
         for i in range(10):
             journey = Mock(spec=TrainJourney)
@@ -318,18 +323,29 @@ class TestSummaryService:
             journey.is_cancelled = False
             journey.journey_date = (current_time - timedelta(days=i)).date()
 
-            # All on-time
-            stop = Mock()
-            stop.station_code = "TR"
-            stop.stop_sequence = 3
-            stop.scheduled_arrival = current_time - timedelta(days=i)
-            stop.actual_arrival = (
+            # Origin stop (NY) with departure times - on-time (2 min delay)
+            origin_stop = Mock()
+            origin_stop.station_code = "NY"
+            origin_stop.stop_sequence = 1
+            origin_stop.scheduled_departure = current_time - timedelta(days=i, hours=1)
+            origin_stop.actual_departure = (
+                current_time - timedelta(days=i, hours=1) + timedelta(minutes=2)
+            )
+            origin_stop.scheduled_arrival = None
+            origin_stop.actual_arrival = None
+
+            # Destination stop (TR)
+            dest_stop = Mock()
+            dest_stop.station_code = "TR"
+            dest_stop.stop_sequence = 3
+            dest_stop.scheduled_arrival = current_time - timedelta(days=i)
+            dest_stop.actual_arrival = (
                 current_time - timedelta(days=i) + timedelta(minutes=2)
             )
-            stop.scheduled_departure = None
-            stop.actual_departure = None
+            dest_stop.scheduled_departure = None
+            dest_stop.actual_departure = None
 
-            journey.stops = [stop]
+            journey.stops = [origin_stop, dest_stop]
             journeys.append(journey)
 
         # New signature: train_journeys, similar_journeys, train_id, from_station, to_station, data_source
@@ -345,7 +361,7 @@ class TestSummaryService:
         """Test train summary for train with poor historical performance."""
         current_time = datetime.now(UTC)
 
-        # Create 10 late journeys
+        # Create 10 late journeys with proper origin stop
         journeys = []
         for i in range(10):
             journey = Mock(spec=TrainJourney)
@@ -354,17 +370,29 @@ class TestSummaryService:
             journey.is_cancelled = False
             journey.journey_date = (current_time - timedelta(days=i)).date()
 
-            stop = Mock()
-            stop.station_code = "TR"
-            stop.stop_sequence = 3
-            stop.scheduled_arrival = current_time - timedelta(days=i)
-            stop.actual_arrival = (
+            # Origin stop (NY) with departure times - late (15 min delay)
+            origin_stop = Mock()
+            origin_stop.station_code = "NY"
+            origin_stop.stop_sequence = 1
+            origin_stop.scheduled_departure = current_time - timedelta(days=i, hours=1)
+            origin_stop.actual_departure = (
+                current_time - timedelta(days=i, hours=1) + timedelta(minutes=15)
+            )
+            origin_stop.scheduled_arrival = None
+            origin_stop.actual_arrival = None
+
+            # Destination stop (TR)
+            dest_stop = Mock()
+            dest_stop.station_code = "TR"
+            dest_stop.stop_sequence = 3
+            dest_stop.scheduled_arrival = current_time - timedelta(days=i)
+            dest_stop.actual_arrival = (
                 current_time - timedelta(days=i) + timedelta(minutes=15)
             )
-            stop.scheduled_departure = None
-            stop.actual_departure = None
+            dest_stop.scheduled_departure = None
+            dest_stop.actual_departure = None
 
-            journey.stops = [stop]
+            journey.stops = [origin_stop, dest_stop]
             journeys.append(journey)
 
         # New signature: train_journeys, similar_journeys, train_id, from_station, to_station, data_source
@@ -373,20 +401,81 @@ class TestSummaryService:
         )
 
         assert summary.scope == "train"
-        assert (
-            "on time" in summary.headline.lower()
-        )  # Changed: now shows on-time percentage
+        assert "on time" in summary.headline.lower()  # Shows on-time percentage (0%)
+        assert summary.metrics.on_time_percentage == 0  # All late
 
     def test_generate_train_summary_no_history(self, summary_service):
-        """Test train summary with no historical data."""
+        """Test train summary with no historical data returns empty headline."""
         # New signature: train_journeys, similar_journeys, train_id, from_station, to_station, data_source
         summary = summary_service._generate_train_summary(
             [], [], "1234", "NY", "TR", "NJT"
         )
 
         assert summary.scope == "train"
-        # With no data, headline shows "View On-Time Stats"
-        assert "view" in summary.headline.lower() or "stats" in summary.headline.lower()
+        # With no data, headline and body should be empty so iOS can hide the section
+        assert summary.headline == ""
+        assert summary.body == ""
+        assert summary.metrics is None
+
+    def test_generate_train_summary_no_history_but_similar_trains(
+        self, summary_service
+    ):
+        """Test train summary with no history but similar trains shows similar train stats."""
+        current_time = datetime.now(UTC)
+
+        # Create similar trains (not this specific train, but same route)
+        # Similar trains need departure data from the user's origin station (NY)
+        similar_journeys = []
+        for i in range(5):
+            journey = Mock(spec=TrainJourney)
+            journey.id = i + 100
+            journey.train_id = f"999{i}"  # Different train IDs
+            journey.is_cancelled = False
+            journey.journey_date = current_time.date()
+
+            # Origin stop (NY) with departure times - on-time (2 min delay)
+            origin_stop = Mock()
+            origin_stop.station_code = "NY"
+            origin_stop.stop_sequence = 1
+            origin_stop.scheduled_departure = current_time - timedelta(
+                minutes=60 + i * 10
+            )
+            origin_stop.actual_departure = origin_stop.scheduled_departure + timedelta(
+                minutes=2
+            )
+            origin_stop.scheduled_arrival = None
+            origin_stop.actual_arrival = None
+
+            # Destination stop (TR)
+            dest_stop = Mock()
+            dest_stop.station_code = "TR"
+            dest_stop.stop_sequence = 3
+            dest_stop.scheduled_arrival = current_time - timedelta(minutes=30 + i * 10)
+            dest_stop.actual_arrival = dest_stop.scheduled_arrival + timedelta(
+                minutes=2
+            )
+            dest_stop.scheduled_departure = None
+            dest_stop.actual_departure = None
+
+            journey.stops = [origin_stop, dest_stop]
+            similar_journeys.append(journey)
+
+        # No historical data for this specific train, but have similar trains
+        summary = summary_service._generate_train_summary(
+            [],  # No historical journeys for this train
+            similar_journeys,  # But we have similar trains
+            "1234",
+            "NY",
+            "TR",
+            "NJT",
+        )
+
+        assert summary.scope == "train"
+        # Should show similar trains data even with no history for this train
+        assert "on time" in summary.headline.lower()
+        assert "NJ Transit" in summary.body
+        assert summary.metrics is not None
+        assert summary.metrics.train_count == 5
 
     def test_cache_works(self, summary_service):
         """Test that caching prevents redundant calculations."""

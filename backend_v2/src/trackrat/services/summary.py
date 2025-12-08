@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
-from trackrat.config.stations import get_station_name
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import now_et
 
@@ -67,44 +66,30 @@ class SummaryMetrics:
 
 
 @dataclass
-class CarrierRouteStats:
-    """Statistics for a single carrier on a route."""
-
-    carrier_name: str  # "NJ Transit" or "Amtrak"
-    train_count: int
-    on_time_count: int
-    cancellation_count: int
-    total_delay_minutes: float
-
-    @property
-    def non_cancelled_count(self) -> int:
-        return self.train_count - self.cancellation_count
-
-    @property
-    def on_time_percentage(self) -> float:
-        if self.non_cancelled_count <= 0:
-            return 0.0
-        return (self.on_time_count / self.non_cancelled_count) * 100
-
-    @property
-    def average_delay_minutes(self) -> float:
-        if self.non_cancelled_count <= 0:
-            return 0.0
-        return self.total_delay_minutes / self.non_cancelled_count
-
-
-@dataclass
 class OnTimeStats:
-    """Statistics for on-time performance calculation."""
+    """Statistics for on-time departure performance.
+
+    Used consistently across train, route, and network summaries.
+    Calculates stats based on departure delay from origin station.
+    """
 
     on_time_percentage: float
     average_delay_minutes: float
-    total_count: int  # Total trains including cancellations
+    total_count: int  # Non-cancelled trains with departure data
     cancellation_count: int
+    carrier_name: str | None = None  # Optional, used for route summary
 
     @property
     def has_data(self) -> bool:
-        return self.total_count > 0
+        return self.total_count > 0 or self.cancellation_count > 0
+
+    @property
+    def non_cancelled_count(self) -> int:
+        return self.total_count
+
+    @property
+    def train_count_with_cancellations(self) -> int:
+        return self.total_count + self.cancellation_count
 
 
 @dataclass
@@ -419,16 +404,35 @@ class SummaryService:
             days=30,
         )
 
-        # Get similar trains if we have route context
-        similar_journeys: list[TrainJourney] = []
+        # Determine data_source: first check historical journeys, then query today's journey
         data_source: str | None = None
+        if train_journeys:
+            data_source = train_journeys[0].data_source or "NJT"
+        elif from_station and to_station:
+            # No historical data - look up today's journey to get data_source
+            today = now_et().date()
+            today_stmt = select(TrainJourney.data_source).where(
+                and_(
+                    TrainJourney.train_id == train_id,
+                    TrainJourney.journey_date == today,
+                )
+            )
+            today_result = await db.execute(today_stmt)
+            today_data_source = today_result.scalar()
+            if today_data_source:
+                data_source = today_data_source
+                logger.info(
+                    "train_summary_data_source_from_today",
+                    train_id=train_id,
+                    data_source=data_source,
+                )
 
-        if from_station and to_station and train_journeys:
-            # Determine carrier from this train's journeys (data_source is non-nullable)
-            journey_data_source = train_journeys[0].data_source or "NJT"
-            data_source = journey_data_source
+        # Get similar trains if we have route context and data_source
+        similar_journeys: list[TrainJourney] = []
+
+        if from_station and to_station and data_source:
             similar_journeys = await self._get_similar_trains_journeys(
-                db, from_station, to_station, journey_data_source
+                db, from_station, to_station, data_source
             )
             logger.info(
                 "similar_trains_query",
@@ -512,9 +516,10 @@ class SummaryService:
     ) -> OperationsSummary:
         """Generate network-wide summary from line statistics."""
         if not line_stats:
+            # No data - return empty so iOS can hide the section
             return OperationsSummary(
-                headline="No recent train data",
-                body="No train operations recorded in the past 90 minutes.",
+                headline="",
+                body="",
                 scope="network",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
@@ -609,68 +614,92 @@ class SummaryService:
         else:
             return "Major disruptions"
 
-    def _calculate_carrier_route_stats(
+    def _calculate_departure_stats(
         self,
         journeys: list[TrainJourney],
-        to_station: str,
-    ) -> CarrierRouteStats | None:
-        """Calculate route statistics for a list of journeys from the same carrier."""
-        if not journeys:
-            return None
+        from_station: str,
+        carrier_name: str | None = None,
+    ) -> OnTimeStats:
+        """
+        Calculate on-time departure statistics for a list of journeys.
 
-        # Determine carrier name from first journey
-        data_source = journeys[0].data_source
-        carrier_name = "NJ Transit" if data_source == "NJT" else "Amtrak"
+        Uses departure delay from the origin station, which is more reliable
+        than arrival delay for recent trains that haven't completed their journey.
 
+        Args:
+            journeys: List of journeys to analyze
+            from_station: Origin station code to measure departure delay
+            carrier_name: Optional carrier name for route summaries
+
+        Returns:
+            OnTimeStats with percentage, delay, and counts
+        """
         on_time_count = 0
         cancellation_count = 0
         total_delay = 0.0
+        counted_trains = 0
 
         for journey in journeys:
             if journey.is_cancelled:
                 cancellation_count += 1
                 continue
 
-            # Find the destination stop for delay calculation
-            to_stop = None
-            for stop in journey.stops:
-                if stop.station_code == to_station:
-                    to_stop = stop
-                    break
+            # Find the origin stop for departure delay calculation
+            from_stop = next(
+                (s for s in journey.stops if s.station_code == from_station), None
+            )
 
-            if to_stop and to_stop.actual_arrival and to_stop.scheduled_arrival:
-                delay = (
-                    to_stop.actual_arrival - to_stop.scheduled_arrival
-                ).total_seconds() / 60
-                delay = max(0, delay)
-                total_delay += delay
-                if delay <= 5:
+            if from_stop and from_stop.scheduled_departure:
+                counted_trains += 1
+                if from_stop.actual_departure:
+                    delay = (
+                        from_stop.actual_departure - from_stop.scheduled_departure
+                    ).total_seconds() / 60
+                    delay = max(0, delay)
+                    total_delay += delay
+                    if delay <= 5:
+                        on_time_count += 1
+                else:
+                    # Has scheduled but no actual yet - assume on time (hasn't departed)
                     on_time_count += 1
-            else:
-                # No arrival data, assume on time
-                on_time_count += 1
 
-        return CarrierRouteStats(
-            carrier_name=carrier_name,
-            train_count=len(journeys),
-            on_time_count=on_time_count,
+        if counted_trains == 0 and cancellation_count == 0:
+            return OnTimeStats(
+                on_time_percentage=0.0,
+                average_delay_minutes=0.0,
+                total_count=0,
+                cancellation_count=0,
+                carrier_name=carrier_name,
+            )
+
+        # On-time percentage based on non-cancelled trains
+        on_time_pct = (
+            (on_time_count / counted_trains * 100) if counted_trains > 0 else 0.0
+        )
+        avg_delay = (total_delay / counted_trains) if counted_trains > 0 else 0.0
+
+        return OnTimeStats(
+            on_time_percentage=on_time_pct,
+            average_delay_minutes=avg_delay,
+            total_count=counted_trains,
             cancellation_count=cancellation_count,
-            total_delay_minutes=total_delay,
+            carrier_name=carrier_name,
         )
 
-    def _format_carrier_description(self, stats: CarrierRouteStats) -> str:
+    def _format_carrier_description(self, stats: OnTimeStats) -> str:
         """Format a single carrier's statistics as a sentence fragment."""
-        train_word = "train" if stats.train_count == 1 else "trains"
+        total = stats.train_count_with_cancellations
+        train_word = "train" if total == 1 else "trains"
 
-        # Base: "NJ Transit had 9 trains follow this route with 100% departing on time"
+        # Base: "there were 9 NJ Transit trains on this route with 100% departing on time"
         desc = (
-            f"there were {stats.train_count} {stats.carrier_name} {train_word} on this route "
+            f"there were {total} {stats.carrier_name} {train_word} on this route "
             f"with {stats.on_time_percentage:.0f}% departing on time"
         )
 
         # Add delay and/or cancellation info in parentheses if applicable
         extras = []
-        if stats.non_cancelled_count > 0 and stats.average_delay_minutes >= 1:
+        if stats.total_count > 0 and stats.average_delay_minutes >= 1:
             extras.append(f"{stats.average_delay_minutes:.0f} min avg delay")
         if stats.cancellation_count > 0:
             extras.append(f"{stats.cancellation_count} cancelled")
@@ -687,13 +716,11 @@ class SummaryService:
         to_station: str,
     ) -> OperationsSummary:
         """Generate route-specific summary with carrier breakdown."""
-        from_name = get_station_name(from_station)
-        to_name = get_station_name(to_station)
-
         if not journeys:
+            # No data - return empty so iOS can hide the section
             return OperationsSummary(
-                headline="Recent departures: No data",
-                body="No trains have completed this route in the past 90 minutes.",
+                headline="",
+                body="",
                 scope="route",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
@@ -705,39 +732,68 @@ class SummaryService:
         njt_journeys = [j for j in journeys if j.data_source == "NJT"]
         amtrak_journeys = [j for j in journeys if j.data_source == "AMTRAK"]
 
-        # Calculate stats for each carrier
-        njt_stats = self._calculate_carrier_route_stats(njt_journeys, to_station)
-        amtrak_stats = self._calculate_carrier_route_stats(amtrak_journeys, to_station)
+        # Calculate stats for each carrier using departure delay
+        njt_stats = (
+            self._calculate_departure_stats(njt_journeys, from_station, "NJ Transit")
+            if njt_journeys
+            else None
+        )
+        amtrak_stats = (
+            self._calculate_departure_stats(amtrak_journeys, from_station, "Amtrak")
+            if amtrak_journeys
+            else None
+        )
 
         # Build carrier descriptions
         carrier_descriptions = []
-        if njt_stats:
+        if njt_stats and njt_stats.has_data:
             carrier_descriptions.append(self._format_carrier_description(njt_stats))
-        if amtrak_stats:
+        if amtrak_stats and amtrak_stats.has_data:
             carrier_descriptions.append(self._format_carrier_description(amtrak_stats))
 
         # Build body text
         if len(carrier_descriptions) == 1:
             body = f"Over the past 90 minutes, {carrier_descriptions[0]}."
-        else:
+        elif len(carrier_descriptions) > 1:
             # Join with period and space for multiple carriers
             body = f"Over the past 90 minutes, {carrier_descriptions[0]}.\n\nT{carrier_descriptions[1][1:]}."
+        else:
+            body = "No departure data available for the past 90 minutes."
 
         # Calculate aggregate metrics for the response
-        total_trains = len(journeys)
-        total_on_time = (njt_stats.on_time_count if njt_stats else 0) + (
-            amtrak_stats.on_time_count if amtrak_stats else 0
+        total_trains = (
+            njt_stats.train_count_with_cancellations if njt_stats else 0
+        ) + (amtrak_stats.train_count_with_cancellations if amtrak_stats else 0)
+        total_non_cancelled = (njt_stats.total_count if njt_stats else 0) + (
+            amtrak_stats.total_count if amtrak_stats else 0
         )
         total_cancellations = (njt_stats.cancellation_count if njt_stats else 0) + (
             amtrak_stats.cancellation_count if amtrak_stats else 0
         )
-        total_delay = (njt_stats.total_delay_minutes if njt_stats else 0) + (
-            amtrak_stats.total_delay_minutes if amtrak_stats else 0
-        )
 
-        non_cancelled = total_trains - total_cancellations
-        on_time_pct = (total_on_time / non_cancelled * 100) if non_cancelled > 0 else 0
-        avg_delay = total_delay / non_cancelled if non_cancelled > 0 else 0
+        # Calculate weighted average for on-time and delay
+        if total_non_cancelled > 0:
+            njt_weight = njt_stats.total_count if njt_stats else 0
+            amtrak_weight = amtrak_stats.total_count if amtrak_stats else 0
+            on_time_pct = (
+                (njt_stats.on_time_percentage * njt_weight if njt_stats else 0)
+                + (
+                    amtrak_stats.on_time_percentage * amtrak_weight
+                    if amtrak_stats
+                    else 0
+                )
+            ) / total_non_cancelled
+            avg_delay = (
+                (njt_stats.average_delay_minutes * njt_weight if njt_stats else 0)
+                + (
+                    amtrak_stats.average_delay_minutes * amtrak_weight
+                    if amtrak_stats
+                    else 0
+                )
+            ) / total_non_cancelled
+        else:
+            on_time_pct = 0.0
+            avg_delay = 0.0
 
         # Generate headline matching train scope format
         headline = f"Recent departures: {on_time_pct:.0f}% on time"
@@ -757,26 +813,26 @@ class SummaryService:
             ),
         )
 
-    def _calculate_on_time_stats(
+    def _calculate_historical_departure_stats(
         self,
         journeys: list[TrainJourney],
-        to_station: str | None = None,
     ) -> OnTimeStats:
         """
-        Calculate on-time percentage and average delay for a list of journeys.
-        Cancellations count against on-time percentage.
+        Calculate on-time departure stats for historical journeys.
+
+        Uses each journey's actual origin station (first stop) for departure delay,
+        since historical journeys may have different origins.
 
         Args:
-            journeys: List of journeys to analyze
-            to_station: If provided, calculate delay at this station instead of final stop
+            journeys: List of historical journeys to analyze
 
         Returns:
-            OnTimeStats with percentage, delay, counts
+            OnTimeStats with percentage, delay, and counts
         """
         on_time_count = 0
-        total_delay = 0.0
-        delay_samples = 0
         cancellation_count = 0
+        total_delay = 0.0
+        counted_trains = 0
 
         for journey in journeys:
             if journey.is_cancelled:
@@ -786,31 +842,24 @@ class SummaryService:
             if not journey.stops:
                 continue
 
-            # Find the stop to measure delay at
-            if to_station:
-                target_stop = next(
-                    (s for s in journey.stops if s.station_code == to_station), None
-                )
-            else:
-                target_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
+            # Use the first stop (origin) for departure delay
+            first_stop = min(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-            if (
-                target_stop
-                and target_stop.actual_arrival
-                and target_stop.scheduled_arrival
-            ):
-                delay = (
-                    target_stop.actual_arrival - target_stop.scheduled_arrival
-                ).total_seconds() / 60
-                delay = max(0, delay)
-                total_delay += delay
-                delay_samples += 1
-                if delay <= 5:
+            if first_stop and first_stop.scheduled_departure:
+                counted_trains += 1
+                if first_stop.actual_departure:
+                    delay = (
+                        first_stop.actual_departure - first_stop.scheduled_departure
+                    ).total_seconds() / 60
+                    delay = max(0, delay)
+                    total_delay += delay
+                    if delay <= 5:
+                        on_time_count += 1
+                else:
+                    # Has scheduled but no actual - assume on time
                     on_time_count += 1
 
-        total_count = delay_samples + cancellation_count
-
-        if total_count == 0:
+        if counted_trains == 0 and cancellation_count == 0:
             return OnTimeStats(
                 on_time_percentage=0.0,
                 average_delay_minutes=0.0,
@@ -818,15 +867,15 @@ class SummaryService:
                 cancellation_count=0,
             )
 
-        # On-time percentage: cancellations count as "not on time"
-        on_time_pct = (on_time_count / total_count) * 100
-        # Average delay: only from trains that actually ran
-        avg_delay = total_delay / delay_samples if delay_samples > 0 else 0.0
+        on_time_pct = (
+            (on_time_count / counted_trains * 100) if counted_trains > 0 else 0.0
+        )
+        avg_delay = (total_delay / counted_trains) if counted_trains > 0 else 0.0
 
         return OnTimeStats(
             on_time_percentage=on_time_pct,
             average_delay_minutes=avg_delay,
-            total_count=total_count,
+            total_count=counted_trains,
             cancellation_count=cancellation_count,
         )
 
@@ -850,11 +899,21 @@ class SummaryService:
             to_station: Destination station code
             data_source: Carrier (NJT or AMTRAK)
         """
-        # Calculate stats for similar trains (past 90 minutes)
-        similar_stats = self._calculate_on_time_stats(similar_journeys, to_station)
+        # Calculate stats for similar trains (past 90 minutes) using departure from user's origin
+        if from_station and similar_journeys:
+            similar_stats = self._calculate_departure_stats(
+                similar_journeys, from_station
+            )
+        else:
+            similar_stats = OnTimeStats(
+                on_time_percentage=0.0,
+                average_delay_minutes=0.0,
+                total_count=0,
+                cancellation_count=0,
+            )
 
-        # Calculate stats for this specific train (historical)
-        train_stats = self._calculate_on_time_stats(train_journeys, to_station)
+        # Calculate stats for this specific train (historical) using each journey's origin
+        train_stats = self._calculate_historical_departure_stats(train_journeys)
 
         carrier_name = (
             "NJ Transit" if data_source == "NJT" else "Amtrak" if data_source else None
@@ -915,7 +974,16 @@ class SummaryService:
             body_parts.append(train_text)
 
         if not body_parts:
-            body_parts.append(f"No performance data available for Train {train_id}.")
+            # No data at all - return summary with empty headline so iOS can hide the section
+            return OperationsSummary(
+                headline="",
+                body="",
+                scope="train",
+                time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
+                data_freshness_seconds=0,
+                generated_at=now_et(),
+                metrics=None,
+            )
 
         body = " ".join(body_parts)
 

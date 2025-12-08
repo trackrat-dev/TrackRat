@@ -25,9 +25,12 @@ struct TrainStatsSummaryView: View {
             } else if hasError {
                 // Hide on error
                 EmptyView()
-            } else if let summary = summary {
-                // Success state - collapsible view
+            } else if let summary = summary, !summary.headline.isEmpty {
+                // Success state - collapsible view (only show if headline has content)
                 collapsibleView(summary: summary)
+            } else {
+                // No data available - hide the section
+                EmptyView()
             }
         }
         .task {

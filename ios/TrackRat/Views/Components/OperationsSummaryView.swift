@@ -46,8 +46,9 @@ struct OperationsSummaryView: View {
             } else if hasError {
                 // Hide on error - show nothing
                 EmptyView()
-            } else if let summary = summary {
-                if isExpandable {
+            } else if let summary = summary, !summary.body.isEmpty {
+                // Only show if we have content (empty body means no data)
+                if isExpandable && !summary.headline.isEmpty {
                     // Collapsible view - headline collapsed, body expanded
                     collapsibleView(summary: summary)
                 } else {
@@ -64,6 +65,9 @@ struct OperationsSummaryView: View {
                                 .fill(Color(.systemGray6).opacity(0.9))
                         )
                 }
+            } else {
+                // No data available - hide the section
+                EmptyView()
             }
         }
         .task {
