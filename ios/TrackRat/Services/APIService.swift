@@ -1069,6 +1069,67 @@ final class APIService: ObservableObject {
             throw error
         }
     }
+
+    // MARK: - User Feedback
+
+    /// Submit user feedback about data issues
+    func submitFeedback(
+        message: String,
+        screen: String,
+        trainId: String? = nil,
+        originCode: String? = nil,
+        destinationCode: String? = nil
+    ) async throws {
+        let endpoint = "/v2/feedback"
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            throw APIError.invalidURL
+        }
+
+        struct FeedbackRequest: Encodable {
+            let message: String
+            let screen: String
+            let train_id: String?
+            let origin_code: String?
+            let destination_code: String?
+            let app_version: String?
+            let device_model: String?
+        }
+
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        var deviceModel = "Unknown"
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        deviceModel = withUnsafePointer(to: &systemInfo.machine) {
+            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
+                String(validatingUTF8: $0) ?? "Unknown"
+            }
+        }
+
+        let body = FeedbackRequest(
+            message: message,
+            screen: screen,
+            train_id: trainId,
+            origin_code: originCode,
+            destination_code: destinationCode,
+            app_version: appVersion,
+            device_model: deviceModel
+        )
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (_, response) = try await session.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+                throw APIError.invalidParameters
+            }
+        }
+
+        print("✅ Feedback submitted successfully")
+    }
 }
 
 // MARK: - API Errors
