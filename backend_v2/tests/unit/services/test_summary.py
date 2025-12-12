@@ -301,14 +301,122 @@ class TestSummaryService:
         assert summary.metrics.train_count == 2
 
     def test_generate_route_summary_empty(self, summary_service):
-        """Test route summary with no data returns empty headline."""
+        """Test route summary with no data returns informative message."""
         summary = summary_service._generate_route_summary([], "NY", "NP")
 
         assert summary.scope == "route"
-        # With no data, headline and body should be empty so iOS can hide the section
+        # With no data, show informative message so users know service status
         assert summary.headline == ""
-        assert summary.body == ""
+        assert summary.body == "No trains scheduled on this route in the past 90 minutes."
         assert summary.metrics is None
+
+    def test_generate_route_summary_all_cancelled(self, summary_service):
+        """Test route summary when all scheduled trains are cancelled."""
+        current_time = datetime.now(UTC)
+
+        # Create 3 cancelled journeys
+        journeys = []
+        for i in range(3):
+            journey = Mock(spec=TrainJourney)
+            journey.id = i
+            journey.train_id = f"100{i}"
+            journey.is_cancelled = True
+            journey.data_source = "NJT"
+
+            # Even cancelled trains have stops
+            origin_stop = Mock()
+            origin_stop.station_code = "NY"
+            origin_stop.stop_sequence = 1
+            origin_stop.scheduled_departure = current_time - timedelta(minutes=30 + i * 10)
+            origin_stop.actual_departure = None
+
+            dest_stop = Mock()
+            dest_stop.station_code = "NP"
+            dest_stop.stop_sequence = 5
+
+            journey.stops = [origin_stop, dest_stop]
+            journeys.append(journey)
+
+        summary = summary_service._generate_route_summary(journeys, "NY", "NP")
+
+        assert summary.scope == "route"
+        assert summary.headline == "Service disrupted"
+        assert "cancelled" in summary.body.lower()
+        assert "3" in summary.body  # All 3 trains
+        assert summary.metrics is not None
+        assert summary.metrics.cancellation_count == 3
+        assert summary.metrics.on_time_percentage == 0.0
+
+    def test_calculate_departure_stats_not_yet_departed(self, summary_service):
+        """Test delay calculation for trains that haven't departed yet.
+
+        If a train was scheduled 30 minutes ago but hasn't departed,
+        it should be counted as delayed by 30 minutes, not on-time.
+        """
+        current_time = datetime.now(UTC)
+
+        # Create journey scheduled 30 minutes ago but not yet departed
+        journey = Mock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "1234"
+        journey.is_cancelled = False
+        journey.data_source = "NJT"
+
+        origin_stop = Mock()
+        origin_stop.station_code = "NY"
+        origin_stop.stop_sequence = 1
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=30)
+        origin_stop.actual_departure = None  # Not departed yet!
+
+        dest_stop = Mock()
+        dest_stop.station_code = "NP"
+        dest_stop.stop_sequence = 5
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NY", current_time=current_time
+        )
+
+        # Should NOT be counted as on-time since it's 30 minutes late
+        assert stats.total_count == 1
+        assert stats.on_time_percentage == 0.0
+        assert stats.average_delay_minutes >= 25  # Should be ~30 min
+
+    def test_calculate_departure_stats_just_scheduled(self, summary_service):
+        """Test that recently scheduled trains (within 5 min) are counted as on-time.
+
+        If a train was scheduled 3 minutes ago and hasn't departed,
+        that's normal - it should be counted as on-time.
+        """
+        current_time = datetime.now(UTC)
+
+        # Create journey scheduled 3 minutes ago but not yet departed
+        journey = Mock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "1234"
+        journey.is_cancelled = False
+        journey.data_source = "NJT"
+
+        origin_stop = Mock()
+        origin_stop.station_code = "NY"
+        origin_stop.stop_sequence = 1
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=3)
+        origin_stop.actual_departure = None  # Not departed yet, but that's normal
+
+        dest_stop = Mock()
+        dest_stop.station_code = "NP"
+        dest_stop.stop_sequence = 5
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NY", current_time=current_time
+        )
+
+        # Should be counted as on-time since it's only 3 minutes past scheduled
+        assert stats.total_count == 1
+        assert stats.on_time_percentage == 100.0
 
     def test_generate_train_summary_good_performance(self, summary_service):
         """Test train summary for train with good historical performance."""

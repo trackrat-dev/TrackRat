@@ -619,6 +619,7 @@ class SummaryService:
         journeys: list[TrainJourney],
         from_station: str,
         carrier_name: str | None = None,
+        current_time: datetime | None = None,
     ) -> OnTimeStats:
         """
         Calculate on-time departure statistics for a list of journeys.
@@ -630,10 +631,14 @@ class SummaryService:
             journeys: List of journeys to analyze
             from_station: Origin station code to measure departure delay
             carrier_name: Optional carrier name for route summaries
+            current_time: Current time for calculating delay of not-yet-departed trains
 
         Returns:
             OnTimeStats with percentage, delay, and counts
         """
+        if current_time is None:
+            current_time = now_et()
+
         on_time_count = 0
         cancellation_count = 0
         total_delay = 0.0
@@ -660,8 +665,16 @@ class SummaryService:
                     if delay <= 5:
                         on_time_count += 1
                 else:
-                    # Has scheduled but no actual yet - assume on time (hasn't departed)
-                    on_time_count += 1
+                    # No actual departure yet - calculate how late based on current time
+                    time_since_scheduled = (
+                        current_time - from_stop.scheduled_departure
+                    ).total_seconds() / 60
+                    if time_since_scheduled <= 5:
+                        # Just scheduled, might still depart on time
+                        on_time_count += 1
+                    else:
+                        # Significantly past scheduled time - count as delayed
+                        total_delay += time_since_scheduled
 
         if counted_trains == 0 and cancellation_count == 0:
             return OnTimeStats(
@@ -716,15 +729,17 @@ class SummaryService:
         to_station: str,
     ) -> OperationsSummary:
         """Generate route-specific summary with carrier breakdown."""
+        current_time = now_et()
+
         if not journeys:
-            # No data - return empty so iOS can hide the section
+            # No trains scheduled in the window - inform the user
             return OperationsSummary(
                 headline="",
-                body="",
+                body="No trains scheduled on this route in the past 90 minutes.",
                 scope="route",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
-                generated_at=now_et(),
+                generated_at=current_time,
                 metrics=None,
             )
 
@@ -734,15 +749,48 @@ class SummaryService:
 
         # Calculate stats for each carrier using departure delay
         njt_stats = (
-            self._calculate_departure_stats(njt_journeys, from_station, "NJ Transit")
+            self._calculate_departure_stats(
+                njt_journeys, from_station, "NJ Transit", current_time
+            )
             if njt_journeys
             else None
         )
         amtrak_stats = (
-            self._calculate_departure_stats(amtrak_journeys, from_station, "Amtrak")
+            self._calculate_departure_stats(
+                amtrak_journeys, from_station, "Amtrak", current_time
+            )
             if amtrak_journeys
             else None
         )
+
+        # Calculate aggregate metrics for the response
+        total_trains = (
+            njt_stats.train_count_with_cancellations if njt_stats else 0
+        ) + (amtrak_stats.train_count_with_cancellations if amtrak_stats else 0)
+        total_non_cancelled = (njt_stats.total_count if njt_stats else 0) + (
+            amtrak_stats.total_count if amtrak_stats else 0
+        )
+        total_cancellations = (njt_stats.cancellation_count if njt_stats else 0) + (
+            amtrak_stats.cancellation_count if amtrak_stats else 0
+        )
+
+        # Handle all-cancelled scenario
+        if total_non_cancelled == 0 and total_cancellations > 0:
+            train_word = "train was" if total_cancellations == 1 else "trains were"
+            return OperationsSummary(
+                headline="Service disrupted",
+                body=f"All {total_cancellations} scheduled {train_word} cancelled in the past 90 minutes.",
+                scope="route",
+                time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
+                data_freshness_seconds=0,
+                generated_at=current_time,
+                metrics=SummaryMetrics(
+                    on_time_percentage=0.0,
+                    average_delay_minutes=0.0,
+                    cancellation_count=total_cancellations,
+                    train_count=total_trains,
+                ),
+            )
 
         # Build carrier descriptions
         carrier_descriptions = []
@@ -759,17 +807,6 @@ class SummaryService:
             body = f"Over the past 90 minutes, {carrier_descriptions[0]}.\n\nT{carrier_descriptions[1][1:]}."
         else:
             body = "No departure data available for the past 90 minutes."
-
-        # Calculate aggregate metrics for the response
-        total_trains = (
-            njt_stats.train_count_with_cancellations if njt_stats else 0
-        ) + (amtrak_stats.train_count_with_cancellations if amtrak_stats else 0)
-        total_non_cancelled = (njt_stats.total_count if njt_stats else 0) + (
-            amtrak_stats.total_count if amtrak_stats else 0
-        )
-        total_cancellations = (njt_stats.cancellation_count if njt_stats else 0) + (
-            amtrak_stats.cancellation_count if amtrak_stats else 0
-        )
 
         # Calculate weighted average for on-time and delay
         if total_non_cancelled > 0:
@@ -804,7 +841,7 @@ class SummaryService:
             scope="route",
             time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
             data_freshness_seconds=0,
-            generated_at=now_et(),
+            generated_at=current_time,
             metrics=SummaryMetrics(
                 on_time_percentage=on_time_pct,
                 average_delay_minutes=avg_delay,
@@ -899,10 +936,12 @@ class SummaryService:
             to_station: Destination station code
             data_source: Carrier (NJT or AMTRAK)
         """
+        current_time = now_et()
+
         # Calculate stats for similar trains (past 90 minutes) using departure from user's origin
         if from_station and similar_journeys:
             similar_stats = self._calculate_departure_stats(
-                similar_journeys, from_station
+                similar_journeys, from_station, current_time=current_time
             )
         else:
             similar_stats = OnTimeStats(
@@ -981,7 +1020,7 @@ class SummaryService:
                 scope="train",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
-                generated_at=now_et(),
+                generated_at=current_time,
                 metrics=None,
             )
 
@@ -1011,6 +1050,6 @@ class SummaryService:
             scope="train",
             time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
             data_freshness_seconds=0,
-            generated_at=now_et(),
+            generated_at=current_time,
             metrics=metrics,
         )
