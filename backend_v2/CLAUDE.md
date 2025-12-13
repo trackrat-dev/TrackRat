@@ -331,12 +331,6 @@ APNS_ENVIRONMENT=dev
 # Backup Settings (optional)
 TRACKRAT_GCS_BACKUP_BUCKET=your-backup-bucket
 
-# Sentry Error Tracking (optional)
-SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
-SENTRY_TRACES_SAMPLE_RATE=0.1           # 10% of transactions for APM
-SENTRY_PROFILES_SAMPLE_RATE=0.1         # 10% profiling
-SENTRY_ENABLE_TRACING=true               # Enable performance monitoring
-
 # Cloud Run Configuration (for horizontal scaling)
 K_REVISION=revision-name                 # Automatically set by Cloud Run
 ```
@@ -364,7 +358,7 @@ Comprehensive error handling with:
 - FastAPI HTTPException patterns in `api/utils.py`
 - Retry logic for API calls
 - Graceful degradation
-- Structured error logging with Sentry integration
+- Structured error logging
 
 ### 3. Performance Optimizations
 
@@ -375,11 +369,6 @@ Comprehensive error handling with:
 
 ### 4. Monitoring & Observability
 
-- **Sentry APM**: Full error tracking and performance monitoring
-  - Custom context processors for train data
-  - Correlation ID tracking across requests
-  - Environment-specific sampling rates
-  - Transaction filtering for health checks
 - **Prometheus metrics** at `/metrics`
 - **Structured JSON logging** with correlation IDs
 - **Health checks** with detailed scheduler and database status
@@ -446,7 +435,6 @@ docker run -p 8000:8000 \
   -e TRACKRAT_DATABASE_URL=postgresql+asyncpg://... \
   -e APNS_TEAM_ID=xxx \
   -e APNS_KEY_ID=xxx \
-  -e SENTRY_DSN=https://... \
   -e K_REVISION=local-dev \
   trackrat-backend-v2
 ```
@@ -457,7 +445,6 @@ docker run -p 8000:8000 \
 
 - [ ] Set production DATABASE_URL
 - [ ] Configure secrets in environment (NJT API token, APNS keys)
-- [ ] Set SENTRY_DSN for error tracking
 - [ ] Enable Prometheus scraping on `/metrics`
 - [ ] Set up log aggregation (Cloud Logging, etc.)
 - [ ] Configure health check monitoring (`/health/live`, `/health/ready`)
@@ -615,7 +602,6 @@ The backend is organized into service classes for better maintainability:
 - ✅ Added support for SCHEDULED vs OBSERVED journey types
 - ✅ Fixed stop_sequence nullable issue for schedule-only stops
 - ✅ Added departure_source tracking for analytics
-- ✅ Full Sentry integration with APM and custom context
 - ✅ Journey progress table with cumulative delay tracking
 - ✅ Historical track predictor using pattern analysis
 - ✅ Correlation ID middleware for request tracing

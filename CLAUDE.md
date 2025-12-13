@@ -11,12 +11,6 @@ TrackRat is a multi-platform transit tracking application with:
 - **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/CLAUDE.md`
 - **Infrastructure**: Terraform (Google Cloud Platform) in `infra/`
 
-## Sentry Configuration
-
-- Default organization slug: `andy-fx`
-- Full APM with traces/profiles sampling
-- Correlation ID tracking across requests
-
 ## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
 
 ### 1. Always use the file-analyzer sub-agent when asked to read files.
