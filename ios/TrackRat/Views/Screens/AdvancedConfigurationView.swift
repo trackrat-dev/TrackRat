@@ -312,7 +312,7 @@ struct ServerEnvironmentRow: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         AdvancedConfigurationView()
             .environmentObject(AppState())
             .environmentObject(ThemeManager.shared)

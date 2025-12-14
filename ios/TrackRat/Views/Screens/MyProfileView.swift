@@ -347,7 +347,7 @@ struct MyProfileView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         MyProfileView()
             .environmentObject(AppState())
             .environmentObject(ThemeManager.shared)

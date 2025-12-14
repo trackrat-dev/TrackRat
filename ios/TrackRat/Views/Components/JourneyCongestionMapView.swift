@@ -1007,7 +1007,7 @@ struct SwipeableSegmentTrainDetailsView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             TabView(selection: $currentSegmentIndex) {
                 ForEach(segments.indices, id: \.self) { index in
                     SegmentTrainDetailsContentView(segment: segments[index])
@@ -1015,22 +1015,27 @@ struct SwipeableSegmentTrainDetailsView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .background(Color.black)
             .navigationTitle("Segment Details")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Text("Segment \(currentSegmentIndex + 1) of \(segments.count)")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white.opacity(0.6))
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
+                    .foregroundColor(.white)
                 }
             }
         }
+        .preferredColorScheme(.dark)
         .onAppear {
             // Set initial segment index
             if let initialIndex = segments.firstIndex(where: { $0.id == initialSegment.id }) {

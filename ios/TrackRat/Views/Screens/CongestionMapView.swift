@@ -523,7 +523,7 @@ struct FilterSheet: View {
     let onApply: () -> Void
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Time Window") {
                     Picker("Hours", selection: $timeWindow) {
@@ -534,7 +534,7 @@ struct FilterSheet: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                
+
                 Section("Data Source") {
                     Picker("Source", selection: $selectedDataSource) {
                         Text("All").tag("All")
@@ -544,13 +544,18 @@ struct FilterSheet: View {
                     .pickerStyle(.segmented)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.black)
             .navigationTitle("Filter Options")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .foregroundColor(.white)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Apply") {
@@ -558,9 +563,11 @@ struct FilterSheet: View {
                         dismiss()
                     }
                     .fontWeight(.semibold)
+                    .foregroundColor(.orange)
                 }
             }
         }
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -949,17 +956,17 @@ struct SegmentTrainDetailsView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 20) {
                     // Segment Header
                     segmentHeaderSection
-                    
+
                     // Summary Stats
                     if let summary = viewModel.segmentDetails?.summary {
                         summaryStatsSection(summary: summary)
                     }
-                    
+
                     // Train List
                     if viewModel.isLoading {
                         loadingSection
@@ -973,16 +980,21 @@ struct SegmentTrainDetailsView: View {
                 }
                 .padding()
             }
+            .background(Color.black)
             .navigationTitle("Segment Details")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
+                    .foregroundColor(.white)
                 }
             }
         }
+        .preferredColorScheme(.dark)
         .task {
             await viewModel.loadTrainDetails()
         }

@@ -41,14 +41,18 @@ struct OperationsSummaryView: View {
                     // Simple view - show the summary body only
                     Text(summary.body)
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white.opacity(0.7))
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(2)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
                         .background(
                             RoundedRectangle(cornerRadius: 10)
-                                .fill(Color(.systemGray6).opacity(0.9))
+                                .fill(.ultraThinMaterial)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
                         )
                 }
             } else {
@@ -100,14 +104,14 @@ struct OperationsSummaryView: View {
                 HStack(alignment: .top, spacing: 8) {
                     Text(summary.headline)
                         .font(.subheadline)
-                        .foregroundColor(.primary)
+                        .foregroundColor(.white)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Spacer()
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white.opacity(0.5))
                         .font(.caption)
                         .fontWeight(.medium)
                         .padding(.top, 2)
@@ -122,11 +126,12 @@ struct OperationsSummaryView: View {
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
                     Divider()
+                        .background(Color.white.opacity(0.2))
                         .padding(.horizontal, 14)
 
                     Text(summary.body)
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white.opacity(0.7))
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(2)
                         .padding(.horizontal, 14)
@@ -137,7 +142,11 @@ struct OperationsSummaryView: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(.systemGray6).opacity(0.9))
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
         )
     }
 }
@@ -160,5 +169,5 @@ struct OperationsSummaryView: View {
         )
     }
     .padding()
-    .background(Color(.systemBackground))
+    .background(Color.black)
 }

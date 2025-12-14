@@ -74,9 +74,9 @@ struct PennStationGuideView: View {
     let isAmtrak: Bool
     @State private var currentPage = 0
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Swipeable cards
                 TabView(selection: $currentPage) {
@@ -90,19 +90,23 @@ struct PennStationGuideView: View {
                 }
                 .tabViewStyle(PageTabViewStyle())
                 .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
-                
+
             }
-            .background(Color(UIColor.systemGroupedBackground))
+            .background(Color.black)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+                            .font(.title3)
+                            .foregroundColor(.white.opacity(0.6))
                     }
                 }
             }
         }
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -193,7 +197,8 @@ struct WaitingLocationCard: View {
                     // Title above image - centered
                     Text(locationInfo.title)
                         .font(.headline)
-                        .foregroundColor(.primary)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
 
@@ -221,15 +226,20 @@ struct WaitingLocationCard: View {
                 if !locationInfo.directions.isEmpty {
                     Text(locationInfo.directions)
                         .font(.body)
-                        .foregroundColor(.primary)
+                        .foregroundColor(.white.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding()
-            .background(Color(UIColor.systemBackground))
-            .cornerRadius(16)
-            .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 4)
-            
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
+
             Spacer()
         }
         .padding()

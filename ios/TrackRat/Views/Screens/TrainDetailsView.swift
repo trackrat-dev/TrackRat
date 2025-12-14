@@ -1522,7 +1522,7 @@ struct PredictionExplanationSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Content
                 ScrollView {
@@ -1536,6 +1536,7 @@ struct PredictionExplanationSheet: View {
                                 Text("Arrival Time Forecasts")
                                     .font(.title2)
                                     .fontWeight(.semibold)
+                                    .foregroundColor(.white)
                             }
                             Spacer()
                         }
@@ -1545,16 +1546,16 @@ struct PredictionExplanationSheet: View {
                         VStack(alignment: .leading, spacing: 16) {
                             Text("What is this?")
                                 .font(.headline)
-                                .foregroundColor(.primary)
+                                .foregroundColor(.white)
 
                             Text("TrackRat looks at the progress of trains immediately ahead of you to predict your arrival times at each station on your journey.")
                                 .font(.body)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.white.opacity(0.7))
                                 .fixedSize(horizontal: false, vertical: true)
 
                             Text("This is independent from but used in combination with the delay predictions from NJ Transit and Amtrak and only shown when delays are expected.")
                                 .font(.body)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.white.opacity(0.7))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.horizontal, 20)
@@ -1562,9 +1563,12 @@ struct PredictionExplanationSheet: View {
                     }
                 }
             }
+            .background(Color.black)
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+        .presentationBackground(Color.black)
+        .preferredColorScheme(.dark)
     }
 }
 
