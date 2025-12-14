@@ -1,0 +1,165 @@
+# TrackRat V2 CI/CD Pipeline
+# - GitHub Actions: Tests and validation
+# - Cloud Build: Actual deployments (triggered via GitHub connection)
+
+name: CI/CD V2
+
+on:
+  push:
+    branches: [main, production]
+    paths:
+      - 'backend_v2/**'
+      - 'infra_v2/**'
+      - '.github/workflows/ci-cd-v2.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend_v2/**'
+      - 'infra_v2/**'
+      - '.github/workflows/ci-cd-v2.yml'
+
+jobs:
+  # ============================================
+  # Backend Tests
+  # ============================================
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: trackrat
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: trackrat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.7.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: backend_v2/.venv
+          key: venv-${{ runner.os }}-${{ hashFiles('backend_v2/poetry.lock') }}
+
+      - name: Install dependencies
+        working-directory: backend_v2
+        run: poetry install --no-interaction
+
+      - name: Run tests
+        working-directory: backend_v2
+        env:
+          TRACKRAT_DATABASE_URL: postgresql+asyncpg://trackrat:testpassword@localhost:5432/trackrat_test
+          TRACKRAT_NJT_API_TOKEN: test-token
+          TRACKRAT_ENVIRONMENT: test
+          APNS_TEAM_ID: 0000000000
+          APNS_KEY_ID: 0000000000
+          APNS_BUNDLE_ID: net.trackrat.test
+          APNS_ENVIRONMENT: dev
+        run: |
+          poetry run pytest tests/ \
+            --cov=trackrat \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -v
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: backend_v2/coverage.xml
+          flags: backend
+          fail_ci_if_error: false
+
+  # ============================================
+  # Terraform Validation
+  # ============================================
+  validate-terraform:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.6'
+
+      - name: Terraform Format Check
+        working-directory: infra_v2/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        working-directory: infra_v2/terraform
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        working-directory: infra_v2/terraform
+        run: terraform validate
+
+  # ============================================
+  # Docker Build Test
+  # ============================================
+  build-docker:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: backend_v2
+          file: backend_v2/Dockerfile
+          push: false
+          tags: trackrat-test:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================
+  # Summary
+  # ============================================
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [test-backend, validate-terraform, build-docker]
+    if: always()
+
+    steps:
+      - name: Check results
+        run: |
+          if [[ "${{ needs.test-backend.result }}" == "failure" ]] || \
+             [[ "${{ needs.validate-terraform.result }}" == "failure" ]] || \
+             [[ "${{ needs.build-docker.result }}" == "failure" ]]; then
+            echo "::error::One or more checks failed"
+            exit 1
+          fi
+          echo "All checks passed!"

@@ -1,0 +1,54 @@
+# TrackRat V2 Terraform Apply
+# Triggered by changes to infra_v2/terraform/** files
+# Applies infrastructure changes automatically
+
+substitutions:
+  _ENVIRONMENT: staging  # Override with 'production' for prod trigger
+
+steps:
+  # Initialize Terraform
+  - name: 'hashicorp/terraform:1.6'
+    id: 'init'
+    dir: 'infra_v2/terraform'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        terraform init -input=false
+
+  # Plan changes
+  - name: 'hashicorp/terraform:1.6'
+    id: 'plan'
+    dir: 'infra_v2/terraform'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        terraform plan \
+          -var="environment=${_ENVIRONMENT}" \
+          -var="project_id=${PROJECT_ID}" \
+          -out=tfplan \
+          -input=false
+    waitFor: ['init']
+
+  # Apply changes
+  - name: 'hashicorp/terraform:1.6'
+    id: 'apply'
+    dir: 'infra_v2/terraform'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        terraform apply \
+          -auto-approve \
+          -input=false \
+          tfplan
+    waitFor: ['plan']
+
+tags:
+  - 'trackrat'
+  - '${_ENVIRONMENT}'
+  - 'terraform'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
