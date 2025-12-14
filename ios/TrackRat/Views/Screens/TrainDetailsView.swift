@@ -70,6 +70,14 @@ struct TrainDetailsView: View {
                             journeyStopsCompleted: viewModel.journeyStopsCompleted,
                             journeyTotalStops: viewModel.journeyTotalStops
                         )
+
+                        // Feedback button
+                        FeedbackButton(
+                            screen: "train_details",
+                            trainId: train.trainId,
+                            originCode: appState.departureStationCode,
+                            destinationCode: appState.destinationStationCode
+                        )
                     }
                     .padding()
                     // Force view update by using a composite ID that includes changing data

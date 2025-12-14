@@ -88,6 +88,17 @@ struct TrainListView: View {
                     }
                 }
 
+                // Feedback button at bottom of content
+                if !viewModel.trains.isEmpty {
+                    FeedbackButton(
+                        screen: "train_list",
+                        trainId: nil,
+                        originCode: departureStationCode,
+                        destinationCode: Stations.getStationCode(destination)
+                    )
+                    .padding(.top, 8)
+                }
+
                 // Add spacer at bottom for better scrolling
                 Spacer(minLength: 50)
             }
