@@ -153,17 +153,17 @@ resource "google_compute_instance_template" "trackrat" {
       # ===========================================
       echo "=== Creating .env file ==="
       cat > "$COMPOSE_DIR/.env" <<ENVEOF
-      DATA_DIR=$MOUNT_PATH
-      IMAGE_URL=$CONTAINER_IMAGE
-      DB_PASSWORD=$DB_PASSWORD
-      NJT_API_TOKEN=$NJT_API_TOKEN
-      APNS_TEAM_ID=$APNS_TEAM_ID
-      APNS_KEY_ID=$APNS_KEY_ID
-      APNS_BUNDLE_ID=$APNS_BUNDLE_ID
-      APNS_ENVIRONMENT=prod
-      TRACKRAT_ENVIRONMENT=$ENVIRONMENT
-      TRACKRAT_LOG_LEVEL=INFO
-      ENVEOF
+DATA_DIR=$MOUNT_PATH
+IMAGE_URL=$CONTAINER_IMAGE
+DB_PASSWORD=$DB_PASSWORD
+NJT_API_TOKEN=$NJT_API_TOKEN
+APNS_TEAM_ID=$APNS_TEAM_ID
+APNS_KEY_ID=$APNS_KEY_ID
+APNS_BUNDLE_ID=$APNS_BUNDLE_ID
+APNS_ENVIRONMENT=prod
+TRACKRAT_ENVIRONMENT=$ENVIRONMENT
+TRACKRAT_LOG_LEVEL=INFO
+ENVEOF
       chmod 600 "$COMPOSE_DIR/.env"
 
       # ===========================================
@@ -184,6 +184,28 @@ resource "google_compute_instance_template" "trackrat" {
       echo ""
       echo "=== TrackRat started successfully ==="
       echo "Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    EOF
+
+    # Graceful shutdown script for spot VM preemption
+    # GCE gives 30 seconds warning - we use 25s timeout to leave buffer
+    shutdown-script = <<-EOF
+      #!/bin/bash
+      echo "=== Shutdown initiated at $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" | tee -a /var/log/shutdown.log
+
+      COMPOSE_DIR="/mnt/disks/data/compose"
+      COMPOSE_PATH="/usr/local/bin/docker-compose"
+
+      if [ -f "$COMPOSE_DIR/docker-compose.yml" ] && [ -f "$COMPOSE_PATH" ]; then
+        cd "$COMPOSE_DIR"
+        # Stop containers gracefully (25s timeout leaves 5s buffer)
+        $COMPOSE_PATH stop --timeout 25 2>&1 | tee -a /var/log/shutdown.log
+        echo "Containers stopped" | tee -a /var/log/shutdown.log
+      fi
+
+      # Sync filesystem to flush PostgreSQL WAL
+      sync
+
+      echo "=== Shutdown complete at $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" | tee -a /var/log/shutdown.log
     EOF
 
     google-logging-enabled = "true"

@@ -23,7 +23,7 @@ resource "google_compute_firewall" "allow_health_checks" {
   depends_on = [google_project_service.apis]
 }
 
-# Allow SSH for debugging (optional, can be removed in production)
+# Allow SSH via IAP tunnel only (use: gcloud compute ssh INSTANCE --tunnel-through-iap)
 resource "google_compute_firewall" "allow_ssh" {
   name    = "trackrat-${var.environment}-allow-ssh"
   network = "default"
@@ -34,7 +34,8 @@ resource "google_compute_firewall" "allow_ssh" {
     ports    = ["22"]
   }
 
-  source_ranges = ["0.0.0.0/0"]
+  # IAP tunnel IP range only - no direct SSH from internet
+  source_ranges = ["35.235.240.0/20"]
   target_tags   = ["trackrat-${var.environment}"]
 
   depends_on = [google_project_service.apis]
