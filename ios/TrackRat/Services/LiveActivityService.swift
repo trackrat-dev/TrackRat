@@ -9,6 +9,7 @@ class LiveActivityService: ObservableObject {
 
     @Published var currentActivity: Activity<TrainActivityAttributes>?
     @Published var isActivityActive: Bool = false
+    @Published var journeyStationCodes: [String] = []
 
     private var updateTimer: Timer?
     private var pushTokenTask: Task<Void, Never>?
@@ -56,7 +57,20 @@ class LiveActivityService: ObservableObject {
             throw error
         }
         let scheduledArrivalTime = detailedTrain.getScheduledArrivalTime(toStationName: destination)
-        
+
+        // Extract journey station codes from origin to destination
+        if let stops = detailedTrain.stops {
+            let sortedStops = stops.sorted { $0.sequence < $1.sequence }
+            if let originIndex = sortedStops.firstIndex(where: { $0.stationCode == originCode }),
+               let destIndex = sortedStops.lastIndex(where: { $0.stationCode == destinationCode }),
+               originIndex <= destIndex {
+                let journeyStops = sortedStops[originIndex...destIndex]
+                await MainActor.run {
+                    self.journeyStationCodes = journeyStops.map { $0.stationCode }
+                }
+            }
+        }
+
         // Create activity attributes
         let attributes = TrainActivityAttributes(
             trainNumber: train.trainId,
@@ -176,6 +190,7 @@ class LiveActivityService: ObservableObject {
             self?.currentActivity = nil
             self?.isActivityActive = false
             self?.currentPushToken = nil
+            self?.journeyStationCodes = []
         }
 
         print("🛑 Live Activity ended and cleaned up")

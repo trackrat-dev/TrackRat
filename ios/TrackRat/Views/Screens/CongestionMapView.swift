@@ -1,6 +1,8 @@
 import SwiftUI
 import MapKit
 import UIKit
+import Combine
+import ActivityKit
 
 struct CongestionMapView: View {
     @StateObject private var viewModel = CongestionMapViewModel()
@@ -18,7 +20,6 @@ struct CongestionMapView: View {
                 segments: viewModel.segments,
                 individualSegments: viewModel.individualSegments,
                 stations: viewModel.stations,
-                selectedRoute: nil,  // No route highlighting in standalone map view
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -206,11 +207,57 @@ class CongestionMapViewModel: ObservableObject {
     // Current journey filter
     private var selectedRoute: TripPair?
     private var journeyStations: [String] = []
-    
+
+    // Live Activity observation
+    private var liveActivityCancellables = Set<AnyCancellable>()
+
     init() {
         // Don't start loading data immediately - wait for explicit trigger
         // This prevents blocking the UI during app startup and navigation
         print("🚦 CongestionMapViewModel init - data loading deferred")
+
+        // Observe Live Activity state changes
+        if #available(iOS 16.1, *) {
+            observeLiveActivityState()
+        }
+    }
+
+    @available(iOS 16.1, *)
+    private func observeLiveActivityState() {
+        let liveActivityService = LiveActivityService.shared
+
+        // Observe both isActivityActive and journeyStationCodes
+        Publishers.CombineLatest(
+            liveActivityService.$isActivityActive,
+            liveActivityService.$journeyStationCodes
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] isActive, stationCodes in
+            self?.handleLiveActivityStateChange(isActive: isActive, stationCodes: stationCodes)
+        }
+        .store(in: &liveActivityCancellables)
+    }
+
+    private func handleLiveActivityStateChange(isActive: Bool, stationCodes: [String]) {
+        if isActive && !stationCodes.isEmpty {
+            // Live Activity is active - apply route filter
+            if #available(iOS 16.1, *),
+               let activity = LiveActivityService.shared.currentActivity {
+                let attributes = activity.attributes
+                let route = TripPair(
+                    departureCode: attributes.originStationCode,
+                    departureName: attributes.origin,
+                    destinationCode: attributes.destinationStationCode,
+                    destinationName: attributes.destination
+                )
+                setRouteFilter(route, journeyStations: stationCodes)
+                print("🗺️ Applied route filter for Live Activity: \(attributes.originStationCode) → \(attributes.destinationStationCode)")
+            }
+        } else {
+            // No active Live Activity - clear filter to show all segments
+            clearRouteFilter()
+            print("🗺️ Cleared route filter - showing all segments")
+        }
     }
     
     func fetchCongestionDataIfNeeded(timeWindowHours: Int = 1, dataSource: String? = nil) async {
@@ -370,12 +417,16 @@ class CongestionMapViewModel: ObservableObject {
     func setRouteFilter(_ route: TripPair?, journeyStations: [String] = []) {
         print("🚦 Setting route filter: \(route?.departureCode ?? "none") → \(route?.destinationCode ?? "none")")
         print("🚦 Journey stations: \(journeyStations)")
-        
+
         self.selectedRoute = route
         self.journeyStations = journeyStations
-        
+
         // Re-apply filters with the new route
         applyDisplayModeFilter()
+    }
+
+    func clearRouteFilter() {
+        setRouteFilter(nil, journeyStations: [])
     }
     
     private func filterSegmentsForRoute(_ segments: [CongestionSegment]) -> [CongestionSegment] {
@@ -521,7 +572,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
     let segments: [CongestionSegment]
     let individualSegments: [IndividualJourneySegment]
     let stations: [MapStation]
-    let selectedRoute: TripPair?
     let onSegmentTap: (CongestionSegment) -> Void
     let onIndividualSegmentTap: ((IndividualJourneySegment) -> Void)?
     
@@ -555,13 +605,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
         let desiredAggregatedState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
         let desiredIndividualState = Set(individualSegments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: String($0.congestionFactor)) })
 
-        // Check if route changed
-        let routeChanged = selectedRoute != context.coordinator.currentRouteHighlight
-
         // Early exit if nothing changed
         guard desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
-              desiredIndividualState != context.coordinator.currentIndividualOverlayState ||
-              routeChanged else {
+              desiredIndividualState != context.coordinator.currentIndividualOverlayState else {
             return
         }
 
@@ -659,22 +705,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
-        // Handle route highlight changes
-        if routeChanged {
-            // Remove old route highlights
-            let oldRouteOverlays = mapView.overlays.filter { $0 is RouteHighlightPolyline }
-            if !oldRouteOverlays.isEmpty {
-                mapView.removeOverlays(oldRouteOverlays)
-            }
-
-            // Add new route highlight if needed
-            if let route = selectedRoute {
-                addRouteHighlight(mapView: mapView, route: route)
-            }
-
-            context.coordinator.currentRouteHighlight = selectedRoute
-        }
-
         // Always clear and re-add annotations (they're lightweight)
         mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
 
@@ -687,89 +717,13 @@ struct SystemCongestionMapView: UIViewRepresentable {
         context.coordinator.individualSegments = individualSegments
         context.coordinator.onSegmentTap = onSegmentTap
         context.coordinator.onIndividualSegmentTap = onIndividualSegmentTap ?? { _ in }
-        context.coordinator.selectedRoute = selectedRoute
     }
     
     
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
-    
-    // Process map segments asynchronously to prevent UI blocking
-    private func addSegmentsToMapAsync(mapView: MKMapView, 
-                                     individualSegments: [IndividualJourneySegment], 
-                                     aggregatedSegments: [CongestionSegment],
-                                     selectedRoute: TripPair?) {
-        
-        // Sort aggregated segments by congestion factor (ascending) so severe congestion is drawn last (on top)
-        let sortedAggregatedSegments = aggregatedSegments.sorted { segment1, segment2 in
-            segment1.congestionFactor < segment2.congestionFactor
-        }
-        
-        // Process aggregated segments first (these go under individual segments)
-        for segment in sortedAggregatedSegments {
-            if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
-               let toCoords = Stations.getCoordinates(for: segment.toStation) {
-                let coordinates = [fromCoords, toCoords]
-                
-                let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
-                polyline.segment = segment
-                polyline.isDimmed = !individualSegments.isEmpty // Dim when showing individual segments
-                mapView.addOverlay(polyline)
-            }
-        }
-        
-        var segmentCounts: [String: Int] = [:]
-        
-        // Sort individual segments by congestion factor first, then by recency within each congestion level
-        // This ensures red lines are always on top, regardless of when they departed
-        let sortedIndividualSegments = individualSegments.sorted { segment1, segment2 in
-            // First sort by congestion factor (lower values first, so severe congestion is added last)
-            if segment1.congestionFactor != segment2.congestionFactor {
-                return segment1.congestionFactor < segment2.congestionFactor
-            }
-            // Within same congestion level, sort by recency (older first)
-            return segment1.actualDeparture < segment2.actualDeparture
-        }
-        
-        // Process individual segments in sorted order
-        // Z-order: Green segments (bottom) -> Yellow -> Orange -> Red segments (top)
-        for individualSegment in sortedIndividualSegments {
-            if let fromCoords = Stations.getCoordinates(for: individualSegment.fromStation),
-               let toCoords = Stations.getCoordinates(for: individualSegment.toStation) {
-                
-                let segmentKey = "\(individualSegment.fromStation)-\(individualSegment.toStation)"
-                let offsetIndex = segmentCounts[segmentKey, default: 0]
-                segmentCounts[segmentKey] = offsetIndex + 1
-                
-                // Create slightly offset coordinates to prevent overlap
-                let offsetCoords = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: offsetIndex)
-                
-                let polyline = IndividualJourneyPolyline(coordinates: offsetCoords, count: offsetCoords.count)
-                polyline.individualSegment = individualSegment
-                polyline.offsetIndex = offsetIndex
-                mapView.addOverlay(polyline)
-            }
-        }
-        
-        // Add route highlight on top of everything else
-        if let route = selectedRoute {
-            addRouteHighlight(mapView: mapView, route: route)
-        }
-    }
-    
-    // Add blue route highlight line
-    private func addRouteHighlight(mapView: MKMapView, route: TripPair) {
-        guard let fromCoords = Stations.getCoordinates(for: route.departureCode),
-              let toCoords = Stations.getCoordinates(for: route.destinationCode) else {
-            return
-        }
-        
-        let coordinates = [fromCoords, toCoords]
-        let polyline = RouteHighlightPolyline(coordinates: coordinates, count: coordinates.count)
-        mapView.addOverlay(polyline, level: .aboveLabels)  // Ensure it's rendered on top
-    }
-    
+
     struct OverlayIdentity: Hashable {
         let segmentID: String
         let congestionLevel: String
@@ -780,25 +734,14 @@ struct SystemCongestionMapView: UIViewRepresentable {
         var individualSegments: [IndividualJourneySegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
         var onIndividualSegmentTap: (IndividualJourneySegment) -> Void = { _ in }
-        var selectedRoute: TripPair?
 
         var currentAggregatedOverlayState: Set<OverlayIdentity> = []
         var aggregatedOverlayMap: [String: SystemCongestionPolyline] = [:]
         var currentIndividualOverlayState: Set<OverlayIdentity> = []
         var individualOverlayMap: [String: IndividualJourneyPolyline] = [:]
-        var currentRouteHighlight: TripPair?
-        
+
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            // Handle route highlight polyline (blue line for selected route)
-            if let polyline = overlay as? RouteHighlightPolyline {
-                let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = UIColor.systemBlue
-                renderer.lineWidth = 7.0  // Thicker than segments but not too thick
-                renderer.alpha = 0.9  // High opacity to stand out
-                return renderer
-            }
-            
             // Handle individual journey polylines
             if let polyline = overlay as? IndividualJourneyPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
@@ -867,46 +810,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
         }
         
         // MARK: - Helper Methods
-        private func isSegmentInSelectedRoute(_ segment: CongestionSegment?) -> Bool {
-            guard let segment = segment,
-                  let route = selectedRoute else {
-                return false
-            }
-            
-            // Get all station codes that are part of the route
-            let routeStations = getStationCodesInRoute(from: route.departureCode, to: route.destinationCode)
-            
-            // Check if both segment stations are in the route and adjacent
-            if let fromIndex = routeStations.firstIndex(of: segment.fromStation),
-               let toIndex = routeStations.firstIndex(of: segment.toStation) {
-                // Segment is part of route if stations are adjacent in the correct order
-                return toIndex == fromIndex + 1
-            }
-            
-            return false
-        }
-        
-        private func getStationCodesInRoute(from: String, to: String) -> [String] {
-            // For now, return a simple path between stations
-            // In a real implementation, this would use actual route data
-            // This is a simplified version that assumes direct routes
-            
-            // Define major corridor routes
-            let necCorridor = ["NY", "NP", "TR", "PJ", "MP", "NBK", "MET", "EWR", "SECAUCUS", "HOB"]
-            
-            if let fromIndex = necCorridor.firstIndex(of: from),
-               let toIndex = necCorridor.firstIndex(of: to) {
-                if fromIndex < toIndex {
-                    return Array(necCorridor[fromIndex...toIndex])
-                } else {
-                    return Array(necCorridor[toIndex...fromIndex].reversed())
-                }
-            }
-            
-            // Fallback to just the two stations
-            return [from, to]
-        }
-        
         private func getCongestionLineWidth(_ factor: Double) -> CGFloat {
             if factor < 1.05 {
                 return 5
@@ -1008,10 +911,6 @@ class SystemCongestionPolyline: MKPolyline {
 class IndividualJourneyPolyline: MKPolyline {
     var individualSegment: IndividualJourneySegment?
     var offsetIndex: Int = 0
-}
-
-class RouteHighlightPolyline: MKPolyline {
-    var isRouteHighlight: Bool = true
 }
 
 // MARK: - Custom Annotation Class for System Map

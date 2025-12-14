@@ -129,7 +129,6 @@ struct MapContainerView: View {
                 segments: mapViewModel.segments,
                 individualSegments: mapViewModel.individualSegments,
                 stations: mapViewModel.stations,
-                selectedRoute: appState.activeTrainRoute,  // Only show route for active Live Activity - don't show during route selection
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
