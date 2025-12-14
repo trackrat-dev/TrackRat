@@ -73,7 +73,6 @@ struct YouTubeLinkView: View {
 struct PennStationGuideView: View {
     let isAmtrak: Bool
     @State private var currentPage = 0
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -93,19 +92,14 @@ struct PennStationGuideView: View {
 
             }
             .background(Color.black)
+            .navigationTitle("Where to Wait")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                }
-            }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color.black)
         .preferredColorScheme(.dark)
     }
 }
