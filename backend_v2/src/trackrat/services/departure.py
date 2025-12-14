@@ -491,8 +491,16 @@ class DepartureService:
                         scheduled_departure=stop.scheduled_departure.isoformat(),
                         njt_flag=departed,
                     )
+            elif departed == "YES":
+                stop.has_departed_station = True
+                # Set actual_departure if not already set
+                # Use arrival time (live estimate from TIME field) or scheduled departure
+                if stop.actual_departure is None:
+                    stop.actual_departure = (
+                        stop.scheduled_arrival or stop.scheduled_departure
+                    )
             else:
-                stop.has_departed_station = departed == "YES"
+                stop.has_departed_station = False
 
             # Update stop sequence if not set
             if stop.stop_sequence is None:
