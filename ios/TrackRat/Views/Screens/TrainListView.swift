@@ -307,8 +307,8 @@ struct TrainCard: View {
         .background(
             isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9)
         )
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+        .cornerRadius(TrackRatTheme.CornerRadius.lg)
+        .trackRatShadow()
         .opacity(1.0)
         .onTapGesture {
             onTap()
@@ -334,7 +334,7 @@ struct StatusV2Badge: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(statusColor.opacity(0.2))
-        .cornerRadius(8)
+        .cornerRadius(TrackRatTheme.CornerRadius.sm)
     }
     
     private var statusColor: Color {

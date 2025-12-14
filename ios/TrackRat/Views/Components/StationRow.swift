@@ -45,10 +45,10 @@ struct StationRow: View {
         }
         .padding()
         .background(Material.ultraThin)
-        .cornerRadius(12)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                .stroke(TrackRatTheme.Colors.surfaceCard, lineWidth: 0.5)
         )
     }
 }
@@ -100,10 +100,10 @@ struct SearchStationRow: View {
         }
         .padding()
         .background(Material.ultraThin)
-        .cornerRadius(12)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                .stroke(TrackRatTheme.Colors.surfaceCard, lineWidth: 0.5)
         )
     }
 }
@@ -136,10 +136,10 @@ struct HomeWorkStationRow: View {
         }
         .padding()
         .background(Material.ultraThin)
-        .cornerRadius(12)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                .stroke(TrackRatTheme.Colors.surfaceCard, lineWidth: 0.5)
         )
     }
 }

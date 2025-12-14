@@ -23,8 +23,8 @@ struct StationButton: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
-            .background(.white.opacity(0.2))
-            .cornerRadius(12)
+            .background(TrackRatTheme.Colors.surfaceCard)
+            .cornerRadius(TrackRatTheme.CornerRadius.md)
         }
     }
 }

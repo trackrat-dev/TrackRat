@@ -353,10 +353,8 @@ struct DeparturePickerView: View {
     @ViewBuilder
     private var popularStationsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("POPULAR STATIONS")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.white.opacity(0.7))
+            Text("Popular Stations")
+                .trackRatSectionHeader()
                 .padding(.horizontal)
             
             VStack(spacing: 12) {
@@ -569,8 +567,8 @@ struct DepartureButton: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
-        .background(.white.opacity(0.2))
-        .cornerRadius(12)
+        .background(TrackRatTheme.Colors.surfaceCard)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
     }
 }
 

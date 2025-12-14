@@ -344,7 +344,7 @@ struct CombinedDetailsCard: View {
                         .padding()
                         .frame(maxWidth: .infinity)
                         .background(Color.red.opacity(0.9))
-                        .cornerRadius(12)
+                        .cornerRadius(TrackRatTheme.CornerRadius.md)
                         .padding(.top, 8)
                     }
                     // Main status with boarding indication
@@ -370,7 +370,7 @@ struct CombinedDetailsCard: View {
                         .padding()
                         .frame(maxWidth: .infinity)
                         .background(Color.orange.opacity(0.9))
-                        .cornerRadius(12)
+                        .cornerRadius(TrackRatTheme.CornerRadius.md)
                         .padding(.top, 8)
                     }
                 }
@@ -443,8 +443,8 @@ struct CombinedDetailsCard: View {
             
         }
         .background(Color.white.opacity(0.9))
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+        .cornerRadius(TrackRatTheme.CornerRadius.lg)
+        .trackRatShadow()
     }
 }
 
@@ -483,8 +483,8 @@ struct StopsCard: View {
         }
         .padding()
         .background(Color.white.opacity(0.9))
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+        .cornerRadius(TrackRatTheme.CornerRadius.lg)
+        .trackRatShadow()
     }
 }
 
@@ -701,7 +701,7 @@ struct StopRowV2: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .background(backgroundColor)
-        .cornerRadius(8)
+        .cornerRadius(TrackRatTheme.CornerRadius.sm)
         .sheet(isPresented: $showPredictionExplanation) {
             PredictionExplanationSheet()
         }
@@ -1085,12 +1085,12 @@ struct TrainProgressIndicator: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 // Track
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.xs)
                     .fill(Color.gray.opacity(0.3))
                     .frame(height: 8)
-                
+
                 // Progress track
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.xs)
                     .fill(LinearGradient(
                         colors: [Color.green, Color.blue],
                         startPoint: .leading,
@@ -1228,9 +1228,9 @@ struct SegmentedTrackPredictionView: View {
         }
         .padding()
         .background(Color.orange.opacity(0.05))
-        .cornerRadius(12)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
         .task {
@@ -1277,9 +1277,9 @@ struct SegmentedTrackPredictionView: View {
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.sm))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.sm)
                 .stroke(Color.black, lineWidth: 1)
         )
     }

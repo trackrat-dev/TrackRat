@@ -52,14 +52,14 @@ struct JourneyCongestionMapView: View {
                         }
                     )
                     .frame(height: 200)
-                    .cornerRadius(12)
+                    .cornerRadius(TrackRatTheme.CornerRadius.md)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                            .stroke(TrackRatTheme.Colors.borderSecondary, lineWidth: 1)
                     )
                 } else {
                     // No congestion data
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                         .fill(.ultraThinMaterial)
                         .frame(height: 200)
                         .overlay(
@@ -720,10 +720,10 @@ struct EmbeddedCongestionMapView: View {
                     }
                 )
                 .frame(height: 300)
-                .cornerRadius(12)
+                .cornerRadius(TrackRatTheme.CornerRadius.md)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                        .stroke(TrackRatTheme.Colors.borderSecondary, lineWidth: 1)
                 )
             }
         }
@@ -758,12 +758,12 @@ struct SingleSegmentMapView: View {
                 trainPositions: [], // No train positions for single segment view
                 onSegmentTap: onTap
             )
-            .cornerRadius(12)
+            .cornerRadius(TrackRatTheme.CornerRadius.md)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                    .stroke(TrackRatTheme.Colors.borderSecondary, lineWidth: 1)
             )
-            
+
             // Congestion level overlay
             VStack {
                 HStack {

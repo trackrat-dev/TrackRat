@@ -61,7 +61,7 @@ struct OnboardingView: View {
                         .frame(height: 50)
                         .frame(minWidth: 160)
                         .background(Color.orange)
-                        .cornerRadius(12)
+                        .cornerRadius(TrackRatTheme.CornerRadius.md)
                         .disabled(isCompletingOnboarding)
                     }
                     .padding(.horizontal, 20)
@@ -174,8 +174,8 @@ struct OnboardingView: View {
                             .foregroundColor(.orange)
                             .frame(height: 44)
                             .frame(maxWidth: .infinity)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(8)
+                            .background(TrackRatTheme.Colors.surfaceCard)
+                            .cornerRadius(TrackRatTheme.CornerRadius.sm)
                         }
                     } else {
                         ForEach(otherFavorites, id: \.code) { station in
@@ -192,10 +192,10 @@ struct OnboardingView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(8)
+                            .background(TrackRatTheme.Colors.surfaceCard)
+                            .cornerRadius(TrackRatTheme.CornerRadius.sm)
                         }
-                        
+
                         if otherFavorites.count < 3 {
                             Button {
                                 isPickingOtherStation = true
@@ -209,15 +209,15 @@ struct OnboardingView: View {
                                 .foregroundColor(.orange)
                                 .frame(height: 44)
                                 .frame(maxWidth: .infinity)
-                                .background(Color.white.opacity(0.1))
-                                .cornerRadius(8)
+                                .background(TrackRatTheme.Colors.surfaceCard)
+                                .cornerRadius(TrackRatTheme.CornerRadius.sm)
                             }
                         }
                     }
                 }
                 .padding()
                 .background(Material.ultraThin)
-                .cornerRadius(12)
+                .cornerRadius(TrackRatTheme.CornerRadius.md)
             }
             
             Spacer()
@@ -470,7 +470,7 @@ struct StationSelectionCard: View {
             }
             .padding()
             .background(Material.ultraThin)
-            .cornerRadius(12)
+            .cornerRadius(TrackRatTheme.CornerRadius.md)
         }
     }
 }
@@ -497,7 +497,7 @@ struct FavoriteStationRow: View {
         }
         .padding()
         .background(Material.ultraThin)
-        .cornerRadius(12)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
     }
 }
 
@@ -525,7 +525,7 @@ struct FeatureCard: View {
         }
         .padding()
         .background(Material.ultraThin)
-        .cornerRadius(12)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
     }
 }
 

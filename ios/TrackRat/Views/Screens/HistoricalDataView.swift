@@ -99,7 +99,7 @@ struct HistoricalDataView: View {
                             .padding(.vertical, 12)
                             .background(Color.orange)
                             .foregroundColor(.white)
-                            .cornerRadius(8)
+                            .cornerRadius(TrackRatTheme.CornerRadius.sm)
                             .font(.body.bold())
                         }
                         .frame(maxWidth: .infinity, minHeight: 400)
@@ -186,7 +186,7 @@ struct PerformanceSection: View {
                 }
                 .padding()
                 .background(Color.white.opacity(0.9))
-                .cornerRadius(16)
+                .cornerRadius(TrackRatTheme.CornerRadius.lg)
             }
         }
     }
@@ -252,7 +252,7 @@ struct TrackUsageSection: View {
                 }
                 .padding()
                 .background(Color.white.opacity(0.9))
-                .cornerRadius(16)
+                .cornerRadius(TrackRatTheme.CornerRadius.lg)
             }
         }
     }
@@ -328,10 +328,10 @@ struct DelayPerformanceBar: View {
                     }
                 }
                 .frame(height: 24)
-                .cornerRadius(4)
+                .cornerRadius(TrackRatTheme.CornerRadius.xs)
             }
             .frame(height: 24)
-            
+
             Text("\(stats.total) trips, avg \(stats.avgDelay)min delay")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -366,10 +366,10 @@ struct TrackUsageBar: View {
                     }
                 }
                 .frame(height: 24)
-                .cornerRadius(4)
+                .cornerRadius(TrackRatTheme.CornerRadius.xs)
             }
             .frame(height: 24)
-            
+
             Text("\(stats.total) trips across \(stats.tracks.count) tracks")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -662,7 +662,7 @@ struct CongestionDataView: View {
                             .padding(.vertical, 12)
                             .background(Color.orange)
                             .foregroundColor(.white)
-                            .cornerRadius(8)
+                            .cornerRadius(TrackRatTheme.CornerRadius.sm)
                             .font(.body.bold())
                         }
                         .frame(maxWidth: .infinity, minHeight: 400)
@@ -730,9 +730,9 @@ struct CongestionSegmentCard: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(segment.displayColor.opacity(0.2))
-        .cornerRadius(8)
+        .cornerRadius(TrackRatTheme.CornerRadius.sm)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.sm)
                 .stroke(segment.displayColor.opacity(0.4), lineWidth: 1)
         )
     }

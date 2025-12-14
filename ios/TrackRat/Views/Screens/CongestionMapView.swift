@@ -109,11 +109,9 @@ struct CongestionMapView: View {
                 
                 // Legend
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("CONGESTION LEVELS")
-                        .font(.caption2)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                    
+                    Text("Congestion Levels")
+                        .trackRatSectionHeader()
+
                     HStack(spacing: 16) {
                         LegendItem(color: .green, label: "Normal")
                         LegendItem(color: .yellow, label: "Moderate")
