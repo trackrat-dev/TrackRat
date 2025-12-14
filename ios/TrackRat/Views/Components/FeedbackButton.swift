@@ -14,13 +14,13 @@ struct FeedbackButton: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             showingSheet = true
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.bubble")
                     .font(.footnote)
                 Text("Report an issue")
                     .font(.footnote)
             }
-            .foregroundColor(.secondary)
+            .foregroundColor(.white.opacity(0.6))
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showingSheet) {
@@ -48,7 +48,7 @@ struct FeedbackSheet: View {
     @FocusState private var isTextFieldFocused: Bool
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 20) {
                 if showingConfirmation {
                     confirmationView
@@ -59,16 +59,20 @@ struct FeedbackSheet: View {
             .padding()
             .navigationTitle("Report Issue")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .presentationBackground(Color.black)
+        .preferredColorScheme(.dark)
     }
 
     private var formView: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Help us improve TrackRat by reporting incorrect or missing data.")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundColor(.white.opacity(0.7))
 
             // Context info
             if trainId != nil || originCode != nil {
@@ -79,11 +83,33 @@ struct FeedbackSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("What's wrong?")
                     .font(.headline)
+                    .foregroundColor(.white)
 
-                TextField("Describe the issue...", text: $message, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(3...6)
+                TextEditor(text: $message)
+                    .font(.body)
+                    .foregroundColor(.white)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 100, maxHeight: 150)
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
                     .focused($isTextFieldFocused)
+                    .overlay(alignment: .topLeading) {
+                        if message.isEmpty {
+                            Text("Describe the issue...")
+                                .font(.body)
+                                .foregroundColor(.white.opacity(0.4))
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 20)
+                                .allowsHitTesting(false)
+                        }
+                    }
             }
 
             Spacer()
@@ -94,6 +120,7 @@ struct FeedbackSheet: View {
             } label: {
                 if isSubmitting {
                     ProgressView()
+                        .tint(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
                 } else {
@@ -113,54 +140,71 @@ struct FeedbackSheet: View {
     }
 
     private var contextInfoView: some View {
-        HStack {
-            Image(systemName: "info.circle")
-                .foregroundColor(.secondary)
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle.fill")
+                .font(.body)
+                .foregroundColor(.orange)
 
             VStack(alignment: .leading, spacing: 2) {
                 if let trainId = trainId {
                     Text("Train \(trainId)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
                 }
                 if let origin = originCode, let dest = destinationCode {
                     Text("\(origin) → \(dest)")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white.opacity(0.7))
                 }
             }
 
             Spacer()
         }
-        .padding(8)
-        .background(Color(.systemGray6))
-        .cornerRadius(8)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+        )
     }
 
     private var confirmationView: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
+            Spacer()
+
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.green)
+                .font(.system(size: 72))
+                .foregroundColor(.orange)
+                .shadow(color: .orange.opacity(0.3), radius: 12, x: 0, y: 4)
 
             Text("Thank you!")
-                .font(.title2)
-                .fontWeight(.semibold)
+                .font(.title)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
 
             Text("Your feedback helps us improve TrackRat for everyone.")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundColor(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
 
             Spacer()
 
-            Button("Done") {
+            Button {
                 dismiss()
+            } label: {
+                Text("Done")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
             }
             .buttonStyle(.borderedProminent)
             .tint(.orange)
         }
-        .padding(.top, 40)
     }
 
     private func submitFeedback() {
