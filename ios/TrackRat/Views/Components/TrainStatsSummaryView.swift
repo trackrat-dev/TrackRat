@@ -20,11 +20,11 @@ struct TrainStatsSummaryView: View {
     var body: some View {
         Group {
             if isLoading {
-                // Don't show anything while loading to avoid brief flash
-                EmptyView()
+                // Use Color.clear instead of EmptyView to ensure .task fires
+                Color.clear.frame(height: 0)
             } else if hasError {
                 // Hide on error
-                EmptyView()
+                Color.clear.frame(height: 0)
             } else if let summary = summary, !summary.headline.isEmpty {
                 // Success state - collapsible view (only show if headline has content)
                 collapsibleView(summary: summary)

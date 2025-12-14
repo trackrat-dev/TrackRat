@@ -27,11 +27,11 @@ struct OperationsSummaryView: View {
     var body: some View {
         Group {
             if isLoading {
-                // Don't show anything while loading to avoid brief flash
-                EmptyView()
+                // Use Color.clear instead of EmptyView to ensure .task fires
+                Color.clear.frame(height: 0)
             } else if hasError {
                 // Hide on error - show nothing
-                EmptyView()
+                Color.clear.frame(height: 0)
             } else if let summary = summary, !summary.body.isEmpty {
                 // Only show if we have content (empty body means no data)
                 if isExpandable && !summary.headline.isEmpty {
