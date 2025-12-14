@@ -50,11 +50,15 @@ struct TrainDetailsView: View {
                 } else if let train = viewModel.train {
                     VStack(spacing: 16) {
                         // Train performance summary (similar trains + historical)
-                        TrainStatsSummaryView(
-                            trainId: train.trainId,
-                            fromStation: appState.departureStationCode,
-                            toStation: appState.destinationStationCode
-                        )
+                        // Hide after train departs from user's origin station
+                        if let originCode = appState.departureStationCode,
+                           !train.hasTrainDepartedFromStation(originCode) {
+                            TrainStatsSummaryView(
+                                trainId: train.trainId,
+                                fromStation: appState.departureStationCode,
+                                toStation: appState.destinationStationCode
+                            )
+                        }
 
                         CombinedDetailsCard(
                             train: train,
@@ -295,25 +299,13 @@ struct CombinedDetailsCard: View {
         }
         
         // Don't show predictions if train has departed from user's origin station
-        if hasTrainDepartedFromOrigin() {
+        if let originCode = appState.departureStationCode,
+           train.hasTrainDepartedFromStation(originCode) {
             return false
         }
         
         // Show predictions only for NY Penn Station and when track is not assigned
         return StaticTrackDistributionService.shared.shouldShowPredictions(for: train)
-    }
-    
-    /// Check if train has departed from the user's origin station
-    private func hasTrainDepartedFromOrigin() -> Bool {
-        guard let departureCode = appState.departureStationCode,
-              let stops = train.stops else { return false }
-        
-        // Find origin stop using robust matching
-        let originStop = stops.first { stop in
-            stop.stationCode.uppercased() == departureCode.uppercased()
-        }
-        
-        return originStop?.hasDepartedStation ?? false
     }
     
     /// Check if train is boarding specifically at the user's origin station
@@ -516,24 +508,12 @@ struct StopRowV2: View {
     private var isFinalDestination: Bool {
         return isDestination
     }
-    
-    // Check if train has departed from the user's origin station
-    private var hasTrainDepartedFromOrigin: Bool {
-        guard let departureCode = departureStationCode,
-              let stops = train.stops else { return false }
-        
-        // Find origin stop using robust matching
-        let originStop = stops.first { s in
-            s.stationCode.uppercased() == departureCode.uppercased()
-        }
-        
-        return originStop?.hasDepartedStation ?? false
-    }
-    
+
     // Determine if this is the next important station
     private var isNextImportantStation: Bool {
         // If train hasn't departed from origin yet, highlight the origin
-        if !hasTrainDepartedFromOrigin {
+        let hasDeparted = departureStationCode.map { train.hasTrainDepartedFromStation($0) } ?? false
+        if !hasDeparted {
             return isDeparture
         }
         
