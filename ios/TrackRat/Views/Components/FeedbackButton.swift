@@ -16,9 +16,9 @@ struct FeedbackButton: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "exclamationmark.bubble")
-                    .font(.caption)
-                Text("Report a data issue")
-                    .font(.caption)
+                    .font(.footnote)
+                Text("Report an issue")
+                    .font(.footnote)
             }
             .foregroundColor(.secondary)
         }
@@ -59,13 +59,6 @@ struct FeedbackSheet: View {
             .padding()
             .navigationTitle("Report Issue")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)

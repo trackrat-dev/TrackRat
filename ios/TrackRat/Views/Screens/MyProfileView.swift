@@ -329,6 +329,15 @@ struct MyProfileView: View {
                             )
                         }
                     }
+
+                // Report an issue
+                FeedbackButton(
+                    screen: "my_profile",
+                    trainId: nil,
+                    originCode: nil,
+                    destinationCode: nil
+                )
+                .padding(.top, 8)
             }
             .padding()
             .padding(.bottom, 40)
