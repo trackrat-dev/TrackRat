@@ -30,11 +30,11 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: trackrat
-          POSTGRES_PASSWORD: testpassword
-          POSTGRES_DB: trackrat_test
+          POSTGRES_USER: trackratuser
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: trackratdb_test
         ports:
-          - 5432:5432
+          - 5434:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -70,7 +70,8 @@ jobs:
       - name: Run tests
         working-directory: backend_v2
         env:
-          TRACKRAT_DATABASE_URL: postgresql+asyncpg://trackrat:testpassword@localhost:5432/trackrat_test
+          TRACKRAT_DATABASE_URL: postgresql+asyncpg://trackratuser:password@localhost:5434/trackratdb_test
+          TRACKRAT_TEST_DATABASE_URL: postgresql+asyncpg://trackratuser:password@localhost:5434/trackratdb_test
           TRACKRAT_NJT_API_TOKEN: test-token
           TRACKRAT_ENVIRONMENT: testing
           APNS_TEAM_ID: 0000000000
