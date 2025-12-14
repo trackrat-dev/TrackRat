@@ -27,22 +27,8 @@ struct OperationsSummaryView: View {
     var body: some View {
         Group {
             if isLoading {
-                // Loading state - show minimal placeholder
-                HStack(spacing: 8) {
-                    Image(systemName: "info.circle.fill")
-                        .foregroundColor(.orange.opacity(0.8))
-                        .font(.subheadline)
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(height: 16)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(.systemGray6).opacity(0.9))
-                )
+                // Don't show anything while loading to avoid brief flash
+                EmptyView()
             } else if hasError {
                 // Hide on error - show nothing
                 EmptyView()

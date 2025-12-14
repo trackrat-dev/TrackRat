@@ -20,8 +20,8 @@ struct TrainStatsSummaryView: View {
     var body: some View {
         Group {
             if isLoading {
-                // Loading state
-                loadingView
+                // Don't show anything while loading to avoid brief flash
+                EmptyView()
             } else if hasError {
                 // Hide on error
                 EmptyView()
@@ -43,24 +43,6 @@ struct TrainStatsSummaryView: View {
                 }
             }
         }
-    }
-
-    private var loadingView: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "chart.bar.fill")
-                .foregroundColor(.orange.opacity(0.8))
-                .font(.subheadline)
-            ProgressView()
-                .scaleEffect(0.7)
-                .frame(height: 16)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(.systemGray6).opacity(0.9))
-        )
     }
 
     private func collapsibleView(summary: OperationsSummaryResponse) -> some View {
