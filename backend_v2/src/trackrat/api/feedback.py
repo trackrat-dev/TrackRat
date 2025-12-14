@@ -6,7 +6,6 @@ Feedback is logged with structured data for easy filtering in GCP Logs Explorer.
 """
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -24,11 +23,11 @@ class FeedbackRequest(BaseModel):
 
     message: str
     screen: str  # e.g., "train_list", "train_details"
-    train_id: Optional[str] = None
-    origin_code: Optional[str] = None
-    destination_code: Optional[str] = None
-    app_version: Optional[str] = None
-    device_model: Optional[str] = None
+    train_id: str | None = None
+    origin_code: str | None = None
+    destination_code: str | None = None
+    app_version: str | None = None
+    device_model: str | None = None
 
 
 class FeedbackResponse(BaseModel):

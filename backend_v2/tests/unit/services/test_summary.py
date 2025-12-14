@@ -307,7 +307,9 @@ class TestSummaryService:
         assert summary.scope == "route"
         # With no data, show informative message so users know service status
         assert summary.headline == ""
-        assert summary.body == "No trains scheduled on this route in the past 90 minutes."
+        assert (
+            summary.body == "No trains scheduled on this route in the past 90 minutes."
+        )
         assert summary.metrics is None
 
     def test_generate_route_summary_all_cancelled(self, summary_service):
@@ -327,7 +329,9 @@ class TestSummaryService:
             origin_stop = Mock()
             origin_stop.station_code = "NY"
             origin_stop.stop_sequence = 1
-            origin_stop.scheduled_departure = current_time - timedelta(minutes=30 + i * 10)
+            origin_stop.scheduled_departure = current_time - timedelta(
+                minutes=30 + i * 10
+            )
             origin_stop.actual_departure = None
 
             dest_stop = Mock()
