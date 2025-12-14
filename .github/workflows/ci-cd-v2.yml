@@ -72,7 +72,7 @@ jobs:
         env:
           TRACKRAT_DATABASE_URL: postgresql+asyncpg://trackrat:testpassword@localhost:5432/trackrat_test
           TRACKRAT_NJT_API_TOKEN: test-token
-          TRACKRAT_ENVIRONMENT: test
+          TRACKRAT_ENVIRONMENT: testing
           APNS_TEAM_ID: 0000000000
           APNS_KEY_ID: 0000000000
           APNS_BUNDLE_ID: net.trackrat.test
