@@ -735,7 +735,7 @@ class SummaryService:
             # No trains scheduled in the window - inform the user
             return OperationsSummary(
                 headline="",
-                body="No trains scheduled on this route in the past 90 minutes.",
+                body="No trains travelled this route in the past 90 minutes.",
                 scope="route",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
