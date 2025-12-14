@@ -44,6 +44,7 @@ def test_settings_creation():
     settings = Settings(
         database_url="postgresql://user:pass@localhost/testdb",
         njt_api_token="test_token",
+        environment="development",  # Explicit to avoid env var interference
     )
 
     assert settings.database_url == "postgresql+asyncpg://user:pass@localhost/testdb"
