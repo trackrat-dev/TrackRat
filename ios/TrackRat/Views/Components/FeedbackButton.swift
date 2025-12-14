@@ -74,11 +74,6 @@ struct FeedbackSheet: View {
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.7))
 
-            // Context info
-            if trainId != nil || originCode != nil {
-                contextInfoView
-            }
-
             // Message input
             VStack(alignment: .leading, spacing: 8) {
                 Text("What's wrong?")
@@ -137,39 +132,6 @@ struct FeedbackSheet: View {
         .onAppear {
             isTextFieldFocused = true
         }
-    }
-
-    private var contextInfoView: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "info.circle.fill")
-                .font(.body)
-                .foregroundColor(.orange)
-
-            VStack(alignment: .leading, spacing: 2) {
-                if let trainId = trainId {
-                    Text("Train \(trainId)")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                }
-                if let origin = originCode, let dest = destinationCode {
-                    Text("\(origin) → \(dest)")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.7))
-                }
-            }
-
-            Spacer()
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-        )
     }
 
     private var confirmationView: some View {
