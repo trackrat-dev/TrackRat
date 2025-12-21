@@ -48,7 +48,17 @@ struct TrainListView: View {
                             scope: .route,
                             fromStation: departureStationCode,
                             toStation: destinationCode,
-                            isExpandable: true
+                            isExpandable: true,
+                            onTrainTap: { selectedTrainId in
+                                // Navigate to the selected train's detail view
+                                appState.navigationPath.append(
+                                    NavigationDestination.trainDetailsFlexible(
+                                        trainNumber: selectedTrainId,
+                                        fromStation: departureStationCode,
+                                        journeyDate: nil
+                                    )
+                                )
+                            }
                         )
                         .padding(.bottom, 4)
                     }

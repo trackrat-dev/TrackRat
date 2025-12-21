@@ -56,7 +56,17 @@ struct TrainDetailsView: View {
                             TrainStatsSummaryView(
                                 trainId: train.trainId,
                                 fromStation: appState.departureStationCode,
-                                toStation: appState.destinationStationCode
+                                toStation: appState.destinationStationCode,
+                                onTrainTap: { selectedTrainId in
+                                    // Navigate to the selected train's detail view
+                                    appState.navigationPath.append(
+                                        NavigationDestination.trainDetailsFlexible(
+                                            trainNumber: selectedTrainId,
+                                            fromStation: appState.departureStationCode,
+                                            journeyDate: nil
+                                        )
+                                    )
+                                }
                             )
                         }
 

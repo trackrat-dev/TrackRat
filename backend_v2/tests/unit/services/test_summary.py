@@ -13,10 +13,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.models.database import TrainJourney
 from trackrat.services.summary import (
+    DELAY_CATEGORY_CANCELLED,
+    DELAY_CATEGORY_DELAYED,
+    DELAY_CATEGORY_ON_TIME,
+    DELAY_CATEGORY_SLIGHT_DELAY,
+    ON_TIME_THRESHOLD_MINUTES,
+    SLIGHT_DELAY_THRESHOLD_MINUTES,
     LineStats,
     OperationsSummary,
     SummaryMetrics,
     SummaryService,
+    TrainDelaySummary,
 )
 
 
@@ -661,3 +668,350 @@ class TestOperationsSummary:
         assert summary.scope == "network"
         assert summary.time_window_minutes == 90
         assert summary.metrics.on_time_percentage == 95.0
+
+
+class TestDelayCategorization:
+    """Test cases for delay categorization logic."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_categorize_delay_on_time(self, summary_service):
+        """Test that delays <= 5 minutes are categorized as on_time."""
+        assert summary_service._categorize_delay(0) == DELAY_CATEGORY_ON_TIME
+        assert summary_service._categorize_delay(3) == DELAY_CATEGORY_ON_TIME
+        assert summary_service._categorize_delay(5) == DELAY_CATEGORY_ON_TIME
+
+    def test_categorize_delay_slight(self, summary_service):
+        """Test that delays 5-15 minutes are categorized as slight_delay."""
+        assert summary_service._categorize_delay(5.1) == DELAY_CATEGORY_SLIGHT_DELAY
+        assert summary_service._categorize_delay(10) == DELAY_CATEGORY_SLIGHT_DELAY
+        assert summary_service._categorize_delay(15) == DELAY_CATEGORY_SLIGHT_DELAY
+
+    def test_categorize_delay_delayed(self, summary_service):
+        """Test that delays > 15 minutes are categorized as delayed."""
+        assert summary_service._categorize_delay(15.1) == DELAY_CATEGORY_DELAYED
+        assert summary_service._categorize_delay(20) == DELAY_CATEGORY_DELAYED
+        assert summary_service._categorize_delay(60) == DELAY_CATEGORY_DELAYED
+
+    def test_thresholds_are_correct(self):
+        """Verify threshold constants are set correctly."""
+        assert ON_TIME_THRESHOLD_MINUTES == 5
+        assert SLIGHT_DELAY_THRESHOLD_MINUTES == 15
+
+
+class TestTrainsByCategory:
+    """Test cases for trains_by_category in departure stats."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_departure_stats_returns_trains_by_category(self, summary_service):
+        """Test that _calculate_departure_stats returns trains grouped by category."""
+        current_time = datetime.now(UTC)
+
+        journeys = []
+
+        # On-time train (0 min delay)
+        journey1 = Mock(spec=TrainJourney)
+        journey1.train_id = "1001"
+        journey1.is_cancelled = False
+        stop1 = Mock()
+        stop1.station_code = "NY"
+        stop1.scheduled_departure = current_time - timedelta(minutes=30)
+        stop1.actual_departure = stop1.scheduled_departure  # Exactly on time
+        journey1.stops = [stop1]
+        journeys.append(journey1)
+
+        # Slight delay train (10 min delay)
+        journey2 = Mock(spec=TrainJourney)
+        journey2.train_id = "1002"
+        journey2.is_cancelled = False
+        stop2 = Mock()
+        stop2.station_code = "NY"
+        stop2.scheduled_departure = current_time - timedelta(minutes=60)
+        stop2.actual_departure = stop2.scheduled_departure + timedelta(minutes=10)
+        journey2.stops = [stop2]
+        journeys.append(journey2)
+
+        # Delayed train (20 min delay)
+        journey3 = Mock(spec=TrainJourney)
+        journey3.train_id = "1003"
+        journey3.is_cancelled = False
+        stop3 = Mock()
+        stop3.station_code = "NY"
+        stop3.scheduled_departure = current_time - timedelta(minutes=90)
+        stop3.actual_departure = stop3.scheduled_departure + timedelta(minutes=20)
+        journey3.stops = [stop3]
+        journeys.append(journey3)
+
+        # Cancelled train
+        journey4 = Mock(spec=TrainJourney)
+        journey4.train_id = "1004"
+        journey4.is_cancelled = True
+        stop4 = Mock()
+        stop4.station_code = "NY"
+        stop4.scheduled_departure = current_time - timedelta(minutes=45)
+        journey4.stops = [stop4]
+        journeys.append(journey4)
+
+        stats = summary_service._calculate_departure_stats(
+            journeys, "NY", current_time=current_time
+        )
+
+        # Verify trains_by_category structure
+        assert stats.trains_by_category is not None
+        assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 1
+        assert len(stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 1
+        assert len(stats.trains_by_category[DELAY_CATEGORY_DELAYED]) == 1
+        assert len(stats.trains_by_category[DELAY_CATEGORY_CANCELLED]) == 1
+
+        # Verify train IDs
+        on_time_ids = [t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_ON_TIME]]
+        assert "1001" in on_time_ids
+
+        slight_delay_ids = [t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]]
+        assert "1002" in slight_delay_ids
+
+        delayed_ids = [t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_DELAYED]]
+        assert "1003" in delayed_ids
+
+        cancelled_ids = [t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_CANCELLED]]
+        assert "1004" in cancelled_ids
+
+    def test_trains_by_category_delay_minutes(self, summary_service):
+        """Test that delay_minutes is correctly calculated for each train."""
+        current_time = datetime.now(UTC)
+
+        journey = Mock(spec=TrainJourney)
+        journey.train_id = "1001"
+        journey.is_cancelled = False
+        stop = Mock()
+        stop.station_code = "NY"
+        stop.scheduled_departure = current_time - timedelta(minutes=30)
+        stop.actual_departure = stop.scheduled_departure + timedelta(minutes=7)
+        journey.stops = [stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NY", current_time=current_time
+        )
+
+        # Should be in slight_delay category with 7 minutes delay
+        train_summary = stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY][0]
+        assert train_summary.train_id == "1001"
+        assert abs(train_summary.delay_minutes - 7.0) < 0.1
+        assert train_summary.category == DELAY_CATEGORY_SLIGHT_DELAY
+
+    def test_trains_by_category_empty_journeys(self, summary_service):
+        """Test that empty journeys returns empty category lists."""
+        stats = summary_service._calculate_departure_stats([], "NY")
+
+        assert stats.trains_by_category is not None
+        assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_DELAYED]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_CANCELLED]) == 0
+
+
+class TestMergeTrainsByCategory:
+    """Test cases for merging trains_by_category from multiple OnTimeStats."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_merge_trains_from_multiple_stats(self, summary_service):
+        """Test merging trains from NJT and Amtrak stats."""
+        from trackrat.services.summary import OnTimeStats
+
+        njt_stats = OnTimeStats(
+            on_time_percentage=80.0,
+            average_delay_minutes=3.0,
+            total_count=5,
+            cancellation_count=0,
+            carrier_name="NJ Transit",
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="3847",
+                        delay_minutes=2.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=datetime.now(UTC),
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        amtrak_stats = OnTimeStats(
+            on_time_percentage=90.0,
+            average_delay_minutes=2.0,
+            total_count=3,
+            cancellation_count=0,
+            carrier_name="Amtrak",
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="171",
+                        delay_minutes=1.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=datetime.now(UTC),
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        merged = summary_service._merge_trains_by_category(njt_stats, amtrak_stats)
+
+        # Should have both trains in on_time category
+        assert len(merged[DELAY_CATEGORY_ON_TIME]) == 2
+        train_ids = [t.train_id for t in merged[DELAY_CATEGORY_ON_TIME]]
+        assert "3847" in train_ids
+        assert "171" in train_ids
+
+    def test_merge_with_none_stats(self, summary_service):
+        """Test merging handles None stats gracefully."""
+        from trackrat.services.summary import OnTimeStats
+
+        njt_stats = OnTimeStats(
+            on_time_percentage=80.0,
+            average_delay_minutes=3.0,
+            total_count=5,
+            cancellation_count=0,
+            carrier_name="NJ Transit",
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="3847",
+                        delay_minutes=2.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=datetime.now(UTC),
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        merged = summary_service._merge_trains_by_category(njt_stats, None)
+
+        assert len(merged[DELAY_CATEGORY_ON_TIME]) == 1
+        assert merged[DELAY_CATEGORY_ON_TIME][0].train_id == "3847"
+
+    def test_merge_sorted_by_scheduled_departure(self, summary_service):
+        """Test that merged trains are sorted by scheduled departure time."""
+        from trackrat.services.summary import OnTimeStats
+
+        now = datetime.now(UTC)
+
+        njt_stats = OnTimeStats(
+            on_time_percentage=80.0,
+            average_delay_minutes=3.0,
+            total_count=2,
+            cancellation_count=0,
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="3847",
+                        delay_minutes=2.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=now - timedelta(minutes=30),  # Earlier
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        amtrak_stats = OnTimeStats(
+            on_time_percentage=90.0,
+            average_delay_minutes=2.0,
+            total_count=1,
+            cancellation_count=0,
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="171",
+                        delay_minutes=1.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=now - timedelta(minutes=60),  # Even earlier
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        merged = summary_service._merge_trains_by_category(njt_stats, amtrak_stats)
+
+        # Should be sorted by scheduled departure (earliest first)
+        on_time_trains = merged[DELAY_CATEGORY_ON_TIME]
+        assert len(on_time_trains) == 2
+        assert on_time_trains[0].train_id == "171"  # Earlier departure
+        assert on_time_trains[1].train_id == "3847"  # Later departure
+
+
+class TestRoutesSummaryTrainsByCategory:
+    """Test that route summary includes trains_by_category in metrics."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_route_summary_includes_trains_by_category(self, summary_service):
+        """Test that _generate_route_summary includes trains in metrics."""
+        current_time = datetime.now(UTC)
+
+        journeys = []
+
+        # NJT on-time train
+        journey1 = Mock(spec=TrainJourney)
+        journey1.train_id = "3847"
+        journey1.is_cancelled = False
+        journey1.data_source = "NJT"
+        stop1 = Mock()
+        stop1.station_code = "NY"
+        stop1.stop_sequence = 1
+        stop1.scheduled_departure = current_time - timedelta(minutes=30)
+        stop1.actual_departure = stop1.scheduled_departure + timedelta(minutes=2)
+        journey1.stops = [stop1]
+        journeys.append(journey1)
+
+        # NJT delayed train
+        journey2 = Mock(spec=TrainJourney)
+        journey2.train_id = "3851"
+        journey2.is_cancelled = False
+        journey2.data_source = "NJT"
+        stop2 = Mock()
+        stop2.station_code = "NY"
+        stop2.stop_sequence = 1
+        stop2.scheduled_departure = current_time - timedelta(minutes=60)
+        stop2.actual_departure = stop2.scheduled_departure + timedelta(minutes=12)
+        journey2.stops = [stop2]
+        journeys.append(journey2)
+
+        summary = summary_service._generate_route_summary(journeys, "NY", "NP")
+
+        # Verify trains_by_category is included
+        assert summary.metrics is not None
+        assert summary.metrics.trains_by_category is not None
+
+        # Should have 1 on-time, 1 slight delay
+        assert len(summary.metrics.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 1
+        assert len(summary.metrics.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 1
+        assert summary.metrics.trains_by_category[DELAY_CATEGORY_ON_TIME][0].train_id == "3847"
+        assert summary.metrics.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY][0].train_id == "3851"
