@@ -27,6 +27,8 @@
 		A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5552E25BBC700958ABA /* DeepLink.swift */; };
 		A126E55D2E25BBD800958ABA /* DeepLinkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55B2E25BBD800958ABA /* DeepLinkService.swift */; };
 		A126E55E2E25BBD800958ABA /* ShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55C2E25BBD800958ABA /* ShareService.swift */; };
+		A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AADE72EF8407600407794 /* TrainDistributionChart.swift */; };
+		A12AADE92EF8407600407794 /* TrainDistributionChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AADE72EF8407600407794 /* TrainDistributionChart.swift */; };
 		A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4ABD2E1949A400E13005 /* V2APIModels.swift */; };
 		A16C81EE2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
 		A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
@@ -152,6 +154,7 @@
 		A126E5572E25BBC700958ABA /* V2APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModels.swift; path = Models/V2APIModels.swift; sourceTree = "<group>"; };
 		A126E55B2E25BBD800958ABA /* DeepLinkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeepLinkService.swift; path = Services/DeepLinkService.swift; sourceTree = "<group>"; };
 		A126E55C2E25BBD800958ABA /* ShareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShareService.swift; path = Services/ShareService.swift; sourceTree = "<group>"; };
+		A12AADE72EF8407600407794 /* TrainDistributionChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDistributionChart.swift; path = TrackRat/Views/Components/TrainDistributionChart.swift; sourceTree = "<group>"; };
 		A14A4ABB2E19499800E13005 /* TrainV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2.swift; path = TrackRat/Models/TrainV2.swift; sourceTree = "<group>"; };
 		A14A4ABD2E1949A400E13005 /* V2APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModels.swift; path = TrackRat/Models/V2APIModels.swift; sourceTree = "<group>"; };
 		A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FeedbackButton.swift; path = TrackRat/Views/Components/FeedbackButton.swift; sourceTree = "<group>"; };
@@ -264,6 +267,7 @@
 				A19899522E8067020079E596 /* TrainV2Tests.swift */,
 				A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */,
 				A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */,
+				A12AADE72EF8407600407794 /* TrainDistributionChart.swift */,
 				A17A63E02EE60FD2003BD685 /* TrainStatsSummaryView.swift */,
 				A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */,
 			);
@@ -595,6 +599,7 @@
 				A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */,
 				A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
+				A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */,
 				A10E97FB2DE39F0F002F3214 /* Extensions.swift in Sources */,
 				A10E98062DE39F23002F3214 /* DeparturePickerView.swift in Sources */,
@@ -640,6 +645,7 @@
 				A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */,
 				A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */,
 				A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */,
+				A12AADE92EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */,
 				A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */,
 			);
