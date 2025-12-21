@@ -9,6 +9,7 @@ struct OperationsSummaryView: View {
     let toStation: String?
     let trainId: String?
     let isExpandable: Bool
+    let onTrainTap: ((String) -> Void)?
 
     @State private var summary: OperationsSummaryResponse?
     @State private var isLoading = true
@@ -16,12 +17,20 @@ struct OperationsSummaryView: View {
     @State private var isExpanded = false
     @Environment(\.scenePhase) private var scenePhase
 
-    init(scope: SummaryScope, fromStation: String? = nil, toStation: String? = nil, trainId: String? = nil, isExpandable: Bool = false) {
+    init(
+        scope: SummaryScope,
+        fromStation: String? = nil,
+        toStation: String? = nil,
+        trainId: String? = nil,
+        isExpandable: Bool = false,
+        onTrainTap: ((String) -> Void)? = nil
+    ) {
         self.scope = scope
         self.fromStation = fromStation
         self.toStation = toStation
         self.trainId = trainId
         self.isExpandable = isExpandable
+        self.onTrainTap = onTrainTap
     }
 
     var body: some View {
@@ -135,8 +144,21 @@ struct OperationsSummaryView: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(2)
                         .padding(.horizontal, 14)
-                        .padding(.bottom, 12)
+
+                    // Train distribution chart
+                    if let trainsByCategory = summary.metrics?.trainsByCategory,
+                       !trainsByCategory.values.allSatisfy({ $0.isEmpty }) {
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+                            .padding(.horizontal, 14)
+
+                        TrainDistributionChart(trainsByCategory: trainsByCategory) { trainId in
+                            onTrainTap?(trainId)
+                        }
+                        .padding(.horizontal, 10)
+                    }
                 }
+                .padding(.bottom, 12)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }

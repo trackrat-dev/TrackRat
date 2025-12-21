@@ -27,6 +27,16 @@ logger = get_logger(__name__)
 # Fixed time window for summaries (90 minutes as per requirements)
 SUMMARY_TIME_WINDOW_MINUTES = 90
 
+# Delay thresholds for categorization (in minutes)
+ON_TIME_THRESHOLD_MINUTES = 5
+SLIGHT_DELAY_THRESHOLD_MINUTES = 15
+
+# Delay category names
+DELAY_CATEGORY_ON_TIME = "on_time"
+DELAY_CATEGORY_SLIGHT_DELAY = "slight_delay"
+DELAY_CATEGORY_DELAYED = "delayed"
+DELAY_CATEGORY_CANCELLED = "cancelled"
+
 
 @dataclass
 class LineStats:
@@ -63,6 +73,7 @@ class SummaryMetrics:
     average_delay_minutes: float | None = None
     cancellation_count: int | None = None
     train_count: int | None = None
+    trains_by_category: dict[str, list[TrainDelaySummary]] | None = None
 
 
 @dataclass
@@ -78,6 +89,7 @@ class OnTimeStats:
     total_count: int  # Non-cancelled trains with departure data
     cancellation_count: int
     carrier_name: str | None = None  # Optional, used for route summary
+    trains_by_category: dict[str, list[TrainDelaySummary]] | None = None
 
     @property
     def has_data(self) -> bool:
@@ -90,6 +102,16 @@ class OnTimeStats:
     @property
     def train_count_with_cancellations(self) -> int:
         return self.total_count + self.cancellation_count
+
+
+@dataclass
+class TrainDelaySummary:
+    """Summary of a single train's delay for visualization."""
+
+    train_id: str
+    delay_minutes: float
+    category: str  # on_time, slight_delay, delayed, cancelled
+    scheduled_departure: datetime
 
 
 @dataclass
@@ -492,7 +514,7 @@ class SummaryService:
                             last_stop.actual_arrival - last_stop.scheduled_arrival
                         ).total_seconds() / 60
                         line_data["total_delay_minutes"] += max(0, delay)
-                        if delay <= 5:
+                        if delay <= ON_TIME_THRESHOLD_MINUTES:
                             line_data["on_time_count"] += 1
                     else:
                         # No arrival data, assume on time
@@ -614,6 +636,34 @@ class SummaryService:
         else:
             return "Major disruptions"
 
+    def _categorize_delay(self, delay_minutes: float) -> str:
+        """Categorize a delay into on_time, slight_delay, or delayed."""
+        if delay_minutes <= ON_TIME_THRESHOLD_MINUTES:
+            return DELAY_CATEGORY_ON_TIME
+        elif delay_minutes <= SLIGHT_DELAY_THRESHOLD_MINUTES:
+            return DELAY_CATEGORY_SLIGHT_DELAY
+        else:
+            return DELAY_CATEGORY_DELAYED
+
+    def _merge_trains_by_category(
+        self, *stats_list: OnTimeStats | None
+    ) -> dict[str, list[TrainDelaySummary]]:
+        """Merge trains_by_category from multiple OnTimeStats into one dict."""
+        merged: dict[str, list[TrainDelaySummary]] = {
+            DELAY_CATEGORY_ON_TIME: [],
+            DELAY_CATEGORY_SLIGHT_DELAY: [],
+            DELAY_CATEGORY_DELAYED: [],
+            DELAY_CATEGORY_CANCELLED: [],
+        }
+        for stats in stats_list:
+            if stats and stats.trains_by_category:
+                for category, trains in stats.trains_by_category.items():
+                    merged[category].extend(trains)
+        # Sort each category by scheduled departure
+        for category in merged:
+            merged[category].sort(key=lambda t: t.scheduled_departure)
+        return merged
+
     def _calculate_departure_stats(
         self,
         journeys: list[TrainJourney],
@@ -634,7 +684,7 @@ class SummaryService:
             current_time: Current time for calculating delay of not-yet-departed trains
 
         Returns:
-            OnTimeStats with percentage, delay, and counts
+            OnTimeStats with percentage, delay, counts, and trains by category
         """
         if current_time is None:
             current_time = now_et()
@@ -644,9 +694,34 @@ class SummaryService:
         total_delay = 0.0
         counted_trains = 0
 
+        # Collect trains by category for visualization
+        trains_by_category: dict[str, list[TrainDelaySummary]] = {
+            DELAY_CATEGORY_ON_TIME: [],
+            DELAY_CATEGORY_SLIGHT_DELAY: [],
+            DELAY_CATEGORY_DELAYED: [],
+            DELAY_CATEGORY_CANCELLED: [],
+        }
+
         for journey in journeys:
+            # Skip journeys without train_id (required for TrainDelaySummary)
+            if not journey.train_id:
+                continue
+
             if journey.is_cancelled:
                 cancellation_count += 1
+                # Find scheduled departure for cancelled trains
+                from_stop = next(
+                    (s for s in journey.stops if s.station_code == from_station), None
+                )
+                if from_stop and from_stop.scheduled_departure:
+                    trains_by_category[DELAY_CATEGORY_CANCELLED].append(
+                        TrainDelaySummary(
+                            train_id=journey.train_id,
+                            delay_minutes=0.0,
+                            category=DELAY_CATEGORY_CANCELLED,
+                            scheduled_departure=from_stop.scheduled_departure,
+                        )
+                    )
                 continue
 
             # Find the origin stop for departure delay calculation
@@ -662,19 +737,33 @@ class SummaryService:
                     ).total_seconds() / 60
                     delay = max(0, delay)
                     total_delay += delay
-                    if delay <= 5:
+                    if delay <= ON_TIME_THRESHOLD_MINUTES:
                         on_time_count += 1
+                    category = self._categorize_delay(delay)
                 else:
                     # No actual departure yet - calculate how late based on current time
                     time_since_scheduled = (
                         current_time - from_stop.scheduled_departure
                     ).total_seconds() / 60
-                    if time_since_scheduled <= 5:
+                    if time_since_scheduled <= ON_TIME_THRESHOLD_MINUTES:
                         # Just scheduled, might still depart on time
                         on_time_count += 1
+                        delay = 0.0
+                        category = DELAY_CATEGORY_ON_TIME
                     else:
                         # Significantly past scheduled time - count as delayed
+                        delay = time_since_scheduled
                         total_delay += time_since_scheduled
+                        category = self._categorize_delay(delay)
+
+                trains_by_category[category].append(
+                    TrainDelaySummary(
+                        train_id=journey.train_id,
+                        delay_minutes=delay,
+                        category=category,
+                        scheduled_departure=from_stop.scheduled_departure,
+                    )
+                )
 
         if counted_trains == 0 and cancellation_count == 0:
             return OnTimeStats(
@@ -683,6 +772,7 @@ class SummaryService:
                 total_count=0,
                 cancellation_count=0,
                 carrier_name=carrier_name,
+                trains_by_category=trains_by_category,
             )
 
         # On-time percentage based on non-cancelled trains
@@ -697,6 +787,7 @@ class SummaryService:
             total_count=counted_trains,
             cancellation_count=cancellation_count,
             carrier_name=carrier_name,
+            trains_by_category=trains_by_category,
         )
 
     def _format_carrier_description(self, stats: OnTimeStats) -> str:
@@ -774,6 +865,9 @@ class SummaryService:
             amtrak_stats.cancellation_count if amtrak_stats else 0
         )
 
+        # Merge trains by category from both carriers
+        merged_trains = self._merge_trains_by_category(njt_stats, amtrak_stats)
+
         # Handle all-cancelled scenario
         if total_non_cancelled == 0 and total_cancellations > 0:
             train_word = "train was" if total_cancellations == 1 else "trains were"
@@ -789,6 +883,7 @@ class SummaryService:
                     average_delay_minutes=0.0,
                     cancellation_count=total_cancellations,
                     train_count=total_trains,
+                    trains_by_category=merged_trains,
                 ),
             )
 
@@ -847,6 +942,7 @@ class SummaryService:
                 average_delay_minutes=avg_delay,
                 cancellation_count=total_cancellations,
                 train_count=total_trains,
+                trains_by_category=merged_trains,
             ),
         )
 
@@ -890,7 +986,7 @@ class SummaryService:
                     ).total_seconds() / 60
                     delay = max(0, delay)
                     total_delay += delay
-                    if delay <= 5:
+                    if delay <= ON_TIME_THRESHOLD_MINUTES:
                         on_time_count += 1
                 else:
                     # Has scheduled but no actual - assume on time
@@ -902,6 +998,7 @@ class SummaryService:
                 average_delay_minutes=0.0,
                 total_count=0,
                 cancellation_count=0,
+                trains_by_category=None,
             )
 
         on_time_pct = (
@@ -914,6 +1011,7 @@ class SummaryService:
             average_delay_minutes=avg_delay,
             total_count=counted_trains,
             cancellation_count=cancellation_count,
+            trains_by_category=None,
         )
 
     def _generate_train_summary(
