@@ -151,9 +151,8 @@ resource "google_compute_instance_template" "trackrat" {
       echo "=== Downloading docker-compose.yml ==="
       APP_DIR="$MOUNT_PATH/compose"
       mkdir -p "$APP_DIR"
-      # Download to /tmp first (toolbox has issues with mounted paths)
-      toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.yml" /tmp/docker-compose.yml
-      cp /tmp/docker-compose.yml "$APP_DIR/docker-compose.yml"
+      # Download directly to compose dir - toolbox can access the mounted disk
+      toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.yml" "$APP_DIR/docker-compose.yml"
 
       # ===========================================
       # 6. Create .env file with configuration
