@@ -703,6 +703,10 @@ class SummaryService:
         }
 
         for journey in journeys:
+            # Skip journeys without train_id (required for TrainDelaySummary)
+            if not journey.train_id:
+                continue
+
             if journey.is_cancelled:
                 cancellation_count += 1
                 # Find scheduled departure for cancelled trains
