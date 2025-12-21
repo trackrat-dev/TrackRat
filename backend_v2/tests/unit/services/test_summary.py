@@ -771,16 +771,24 @@ class TestTrainsByCategory:
         assert len(stats.trains_by_category[DELAY_CATEGORY_CANCELLED]) == 1
 
         # Verify train IDs
-        on_time_ids = [t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_ON_TIME]]
+        on_time_ids = [
+            t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_ON_TIME]
+        ]
         assert "1001" in on_time_ids
 
-        slight_delay_ids = [t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]]
+        slight_delay_ids = [
+            t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]
+        ]
         assert "1002" in slight_delay_ids
 
-        delayed_ids = [t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_DELAYED]]
+        delayed_ids = [
+            t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_DELAYED]
+        ]
         assert "1003" in delayed_ids
 
-        cancelled_ids = [t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_CANCELLED]]
+        cancelled_ids = [
+            t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_CANCELLED]
+        ]
         assert "1004" in cancelled_ids
 
     def test_trains_by_category_delay_minutes(self, summary_service):
@@ -1013,5 +1021,11 @@ class TestRoutesSummaryTrainsByCategory:
         # Should have 1 on-time, 1 slight delay
         assert len(summary.metrics.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 1
         assert len(summary.metrics.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 1
-        assert summary.metrics.trains_by_category[DELAY_CATEGORY_ON_TIME][0].train_id == "3847"
-        assert summary.metrics.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY][0].train_id == "3851"
+        assert (
+            summary.metrics.trains_by_category[DELAY_CATEGORY_ON_TIME][0].train_id
+            == "3847"
+        )
+        assert (
+            summary.metrics.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY][0].train_id
+            == "3851"
+        )
