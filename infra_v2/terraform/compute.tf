@@ -104,26 +104,27 @@ resource "google_compute_instance_template" "trackrat" {
       echo "Disk mounted at $MOUNT_PATH"
 
       # ===========================================
-      # 2. Install Docker Compose (to writable location)
+      # 2. Install Docker Compose as CLI plugin
       # ===========================================
-      echo "=== Installing Docker Compose ==="
+      # Using CLI plugin ensures docker compose inherits Docker's auth config
+      # See: https://github.com/GoogleCloudPlatform/docker-credential-gcr/issues/10
+      echo "=== Installing Docker Compose CLI plugin ==="
       COMPOSE_VERSION="2.24.0"
-      COMPOSE_DIR="$MOUNT_PATH/bin"
-      COMPOSE_PATH="$COMPOSE_DIR/docker-compose"
+      CLI_PLUGINS="/var/lib/docker/cli-plugins"
 
-      mkdir -p "$COMPOSE_DIR"
-      if [ ! -f "$COMPOSE_PATH" ]; then
-        curl -L "https://github.com/docker/compose/releases/download/v$COMPOSE_VERSION/docker-compose-linux-x86_64" -o "$COMPOSE_PATH"
-        chmod +x "$COMPOSE_PATH"
+      mkdir -p "$CLI_PLUGINS"
+      if [ ! -f "$CLI_PLUGINS/docker-compose" ]; then
+        curl -SL "https://github.com/docker/compose/releases/download/v$COMPOSE_VERSION/docker-compose-linux-x86_64" -o "$CLI_PLUGINS/docker-compose"
+        chmod +x "$CLI_PLUGINS/docker-compose"
       fi
-      echo "Docker Compose version: $($COMPOSE_PATH --version)"
+      echo "Docker Compose version: $(docker compose version)"
 
       # ===========================================
       # 3. Configure Docker authentication
       # ===========================================
+      # docker-credential-gcr configures the credential helper for Artifact Registry
+      # Using CLI plugin means docker compose inherits this configuration
       echo "=== Configuring Docker auth ==="
-      export DOCKER_CONFIG=/var/lib/docker/.docker
-      mkdir -p "$DOCKER_CONFIG"
       docker-credential-gcr configure-docker --registries=$REGION-docker.pkg.dev
 
       # ===========================================
@@ -146,17 +147,17 @@ resource "google_compute_instance_template" "trackrat" {
       # 5. Download docker-compose.yml from GCS
       # ===========================================
       echo "=== Downloading docker-compose.yml ==="
-      COMPOSE_DIR="$MOUNT_PATH/compose"
-      mkdir -p "$COMPOSE_DIR"
+      APP_DIR="$MOUNT_PATH/compose"
+      mkdir -p "$APP_DIR"
       # Download to /tmp first (toolbox has issues with mounted paths)
       toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.yml" /tmp/docker-compose.yml
-      cp /tmp/docker-compose.yml "$COMPOSE_DIR/docker-compose.yml"
+      cp /tmp/docker-compose.yml "$APP_DIR/docker-compose.yml"
 
       # ===========================================
       # 6. Create .env file with configuration
       # ===========================================
       echo "=== Creating .env file ==="
-      cat > "$COMPOSE_DIR/.env" <<ENVEOF
+      cat > "$APP_DIR/.env" <<ENVEOF
 DATA_DIR=$MOUNT_PATH
 IMAGE_URL=$CONTAINER_IMAGE
 DB_PASSWORD=$DB_PASSWORD
@@ -168,22 +169,22 @@ APNS_ENVIRONMENT=prod
 TRACKRAT_ENVIRONMENT=$ENVIRONMENT
 TRACKRAT_LOG_LEVEL=INFO
 ENVEOF
-      chmod 600 "$COMPOSE_DIR/.env"
+      chmod 600 "$APP_DIR/.env"
 
       # ===========================================
       # 7. Pull latest images and start containers
       # ===========================================
       echo "=== Starting containers ==="
-      cd "$COMPOSE_DIR"
+      cd "$APP_DIR"
 
-      # Stop existing containers
-      $COMPOSE_PATH down 2>/dev/null || true
+      # Stop existing containers (if any)
+      docker compose down 2>/dev/null || true
 
-      # Pull latest images
-      $COMPOSE_PATH pull
+      # Pull latest images (docker compose inherits Docker auth via CLI plugin)
+      docker compose pull
 
       # Start containers
-      $COMPOSE_PATH up -d
+      docker compose up -d
 
       echo ""
       echo "=== TrackRat started successfully ==="
@@ -196,13 +197,12 @@ ENVEOF
       #!/bin/bash
       echo "=== Shutdown initiated at $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" | tee -a /var/log/shutdown.log
 
-      COMPOSE_DIR="/mnt/disks/data/compose"
-      COMPOSE_PATH="/mnt/disks/data/bin/docker-compose"
+      APP_DIR="/mnt/disks/data/compose"
 
-      if [ -f "$COMPOSE_DIR/docker-compose.yml" ] && [ -f "$COMPOSE_PATH" ]; then
-        cd "$COMPOSE_DIR"
+      if [ -f "$APP_DIR/docker-compose.yml" ]; then
+        cd "$APP_DIR"
         # Stop containers gracefully (25s timeout leaves 5s buffer)
-        $COMPOSE_PATH stop --timeout 25 2>&1 | tee -a /var/log/shutdown.log
+        docker compose stop --timeout 25 2>&1 | tee -a /var/log/shutdown.log
         echo "Containers stopped" | tee -a /var/log/shutdown.log
       fi
 
