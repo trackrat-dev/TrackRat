@@ -104,12 +104,14 @@ resource "google_compute_instance_template" "trackrat" {
       echo "Disk mounted at $MOUNT_PATH"
 
       # ===========================================
-      # 2. Install Docker Compose
+      # 2. Install Docker Compose (to writable location)
       # ===========================================
       echo "=== Installing Docker Compose ==="
       COMPOSE_VERSION="2.24.0"
-      COMPOSE_PATH="/usr/local/bin/docker-compose"
+      COMPOSE_DIR="$MOUNT_PATH/bin"
+      COMPOSE_PATH="$COMPOSE_DIR/docker-compose"
 
+      mkdir -p "$COMPOSE_DIR"
       if [ ! -f "$COMPOSE_PATH" ]; then
         curl -L "https://github.com/docker/compose/releases/download/v$COMPOSE_VERSION/docker-compose-linux-x86_64" -o "$COMPOSE_PATH"
         chmod +x "$COMPOSE_PATH"
@@ -193,7 +195,7 @@ ENVEOF
       echo "=== Shutdown initiated at $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" | tee -a /var/log/shutdown.log
 
       COMPOSE_DIR="/mnt/disks/data/compose"
-      COMPOSE_PATH="/usr/local/bin/docker-compose"
+      COMPOSE_PATH="/mnt/disks/data/bin/docker-compose"
 
       if [ -f "$COMPOSE_DIR/docker-compose.yml" ] && [ -f "$COMPOSE_PATH" ]; then
         cd "$COMPOSE_DIR"
