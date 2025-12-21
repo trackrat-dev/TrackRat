@@ -58,35 +58,23 @@ resource "google_compute_instance_template" "trackrat" {
       DISK_DEVICE="/dev/disk/by-id/google-$DISK_NAME"
       MOUNT_PATH="/mnt/disks/data"
       PROJECT_ID="${var.project_id}"
-      ZONE="${var.zone}"
       REGION="${var.region}"
       ENVIRONMENT="${var.environment}"
       DEPLOY_BUCKET="${google_storage_bucket.deploy.name}"
       CONTAINER_IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/trackrat/api:$ENVIRONMENT-latest"
 
-      # Get instance name from metadata
-      INSTANCE_NAME=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/name" -H "Metadata-Flavor: Google")
-      echo "Instance: $INSTANCE_NAME"
-
       # ===========================================
-      # 1. Attach and mount persistent disk
+      # 1. Mount persistent disk (pre-attached by MIG stateful config)
       # ===========================================
-      echo "=== Attaching disk $DISK_NAME ==="
-      if [ ! -e "$DISK_DEVICE" ]; then
-        toolbox --quiet gcloud compute instances attach-disk "$INSTANCE_NAME" \
-          --disk="$DISK_NAME" \
-          --device-name="$DISK_NAME" \
-          --zone="$ZONE" \
-          --project="$PROJECT_ID" 2>/dev/null || true
-      fi
+      echo "=== Mounting disk $DISK_NAME ==="
 
-      # Wait for disk to be attached
-      echo "Waiting for disk..."
-      for i in $(seq 1 60); do
+      # Wait for disk device to appear (GCP attaches it automatically)
+      for i in $(seq 1 30); do
         [ -e "$DISK_DEVICE" ] && break
-        sleep 1
+        echo "Waiting for disk device..."
+        sleep 2
       done
-      [ -e "$DISK_DEVICE" ] || { echo "ERROR: Disk not found after attach"; exit 1; }
+      [ -e "$DISK_DEVICE" ] || { echo "ERROR: Disk device not found"; exit 1; }
 
       # Format disk if new
       if ! blkid "$DISK_DEVICE" > /dev/null 2>&1; then
@@ -95,11 +83,8 @@ resource "google_compute_instance_template" "trackrat" {
       fi
 
       # Mount disk
-      echo "Mounting disk..."
       mkdir -p "$MOUNT_PATH"
       mountpoint -q "$MOUNT_PATH" || mount -o discard,defaults "$DISK_DEVICE" "$MOUNT_PATH"
-
-      # Create data subdirectories
       mkdir -p "$MOUNT_PATH"/{pgdata,logs}
       echo "Disk mounted at $MOUNT_PATH"
 
@@ -258,12 +243,17 @@ resource "google_compute_instance_group_manager" "trackrat" {
     port = 8000
   }
 
+  # Preserve data disk across instance replacements
+  stateful_disk {
+    device_name = "trackrat-${var.environment}-data"
+    delete_rule = "NEVER"
+  }
+
   auto_healing_policies {
     health_check      = google_compute_health_check.trackrat.id
     initial_delay_sec = 300 # 5 minutes for migrations and startup
   }
 
-  # For single-instance with persistent disk: delete old before creating new
   update_policy {
     type                  = "PROACTIVE"
     minimal_action        = "REPLACE"
@@ -272,4 +262,19 @@ resource "google_compute_instance_group_manager" "trackrat" {
   }
 
   depends_on = [google_compute_instance_template.trackrat]
+}
+
+# Per-instance config to attach zonal disk to MIG instance
+resource "google_compute_per_instance_config" "trackrat" {
+  instance_group_manager = google_compute_instance_group_manager.trackrat.name
+  zone                   = var.zone
+  name                   = "trackrat-${var.environment}-config"
+
+  preserved_state {
+    disk {
+      device_name = "trackrat-${var.environment}-data"
+      source      = google_compute_disk.data.id
+      mode        = "READ_WRITE"
+    }
+  }
 }
