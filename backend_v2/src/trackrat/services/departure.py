@@ -102,7 +102,7 @@ class DepartureService:
         # Ensure fresh data for NJT trains BEFORE querying, so the query returns
         # up-to-date departure times. This prevents stale data from causing
         # incorrect delay calculations in the response.
-        await self._ensure_fresh_station_data(db, from_station)
+        await self._ensure_fresh_station_data(db, from_station, target_date)
 
         stmt = (
             select(TrainJourney)
@@ -322,7 +322,7 @@ class DepartureService:
         )
 
     async def _ensure_fresh_station_data(
-        self, db: AsyncSession, station_code: str
+        self, db: AsyncSession, station_code: str, target_date: date
     ) -> None:
         """Ensure station departure data is fresh using getTrainSchedule with embedded stops."""
 
@@ -452,6 +452,10 @@ class DepartureService:
             # getTrainSchedule only returns upcoming trains, so trains past their
             # scheduled departure time won't be refreshed by the bulk update above.
             # For these, we use getTrainStopList which works for any train.
+            #
+            # CRITICAL: Filter by target_date to avoid loading historical data.
+            # Without this, we'd load all stale journeys going back days/weeks,
+            # causing OOM at busy stations like NY Penn.
             remaining_stale_result = await db.execute(
                 select(TrainJourney)
                 .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
@@ -459,10 +463,11 @@ class DepartureService:
                     and_(
                         JourneyStop.station_code == station_code,
                         TrainJourney.data_source == "NJT",
+                        TrainJourney.journey_date == target_date,
                         TrainJourney.last_updated_at < cutoff_time,
                     )
                 )
-                .options(selectinload(TrainJourney.stops))
+                .limit(50)
             )
             remaining_stale = list(remaining_stale_result.scalars().unique().all())
 
