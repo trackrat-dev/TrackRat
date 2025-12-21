@@ -126,7 +126,7 @@ struct MyProfileView: View {
                             )
                         }
                     
-                        // Report Issues & Request Features
+                        // Instagram
                         Button {
                             if let instagramURL = URL(string: "https://www.instagram.com/trackratapp/") {
                                 openURL(instagramURL)
@@ -134,26 +134,21 @@ struct MyProfileView: View {
                             }
                         } label: {
                             HStack(spacing: 16) {
-                                Image(systemName: "play.rectangle.fill")
+                                Image(systemName: "camera.fill")
                                     .font(.title2)
                                     .foregroundColor(.orange)
                                     .frame(width: 24, height: 24)
-                                
+
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Instagram")
                                         .font(.headline)
                                         .fontWeight(.medium)
                                         .foregroundColor(.white)
                                         .multilineTextAlignment(.leading)
-
-                                    Text("Report issues and send new ideas here!")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                        .multilineTextAlignment(.leading)
                                 }
-                                
+
                                 Spacer()
-                                
+
                                 Image(systemName: "arrow.up.right")
                                     .font(.caption)
                                     .foregroundColor(.white.opacity(0.5))
@@ -165,7 +160,60 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
-                        
+
+                    }
+
+                    // Feedback & Ideas section
+                    VStack(spacing: 16) {
+                        // Section header
+                        HStack {
+                            Text("Feedback & Ideas")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+
+                        // Submit Feedback
+                        Button {
+                            if let feedbackURL = URL(string: "https://trackrat.nolt.io/") {
+                                openURL(feedbackURL)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "lightbulb.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Submit Feedback")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+
+                                    Text("Report bugs, share ideas, or request new features")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
                     }
 
                     // Service Alerts section
