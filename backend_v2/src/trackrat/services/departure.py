@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
-from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
+from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
 from trackrat.config.stations import get_station_name
 from trackrat.models.api import (
     DataFreshness,
@@ -446,6 +447,66 @@ class DepartureService:
                 station_code=station_code,
                 updated_trains=updated_count,
             )
+
+            # Second pass: Refresh any remaining stale journeys individually.
+            # getTrainSchedule only returns upcoming trains, so trains past their
+            # scheduled departure time won't be refreshed by the bulk update above.
+            # For these, we use getTrainStopList which works for any train.
+            remaining_stale_result = await db.execute(
+                select(TrainJourney)
+                .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
+                .where(
+                    and_(
+                        JourneyStop.station_code == station_code,
+                        TrainJourney.data_source == "NJT",
+                        TrainJourney.last_updated_at < cutoff_time,
+                    )
+                )
+                .options(selectinload(TrainJourney.stops))
+            )
+            remaining_stale = list(remaining_stale_result.scalars().unique().all())
+
+            if remaining_stale:
+                logger.info(
+                    "refreshing_stale_past_trains",
+                    station_code=station_code,
+                    count=len(remaining_stale),
+                    train_ids=[j.train_id for j in remaining_stale],
+                )
+
+                # Use the journey collector for individual train refresh
+                njt_collector = NJTJourneyCollector(njt_client)
+                individual_updated = 0
+
+                for journey in remaining_stale:
+                    try:
+                        await njt_collector.collect_journey_details(db, journey)
+                        individual_updated += 1
+                        logger.debug(
+                            "stale_train_refreshed",
+                            train_id=journey.train_id,
+                        )
+                    except TrainNotFoundError:
+                        # Train no longer in NJT system - this is expected for
+                        # trains that completed their journey
+                        logger.debug(
+                            "stale_train_not_found",
+                            train_id=journey.train_id,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "stale_train_refresh_failed",
+                            train_id=journey.train_id,
+                            error=str(e),
+                        )
+
+                await db.commit()
+                logger.info(
+                    "stale_past_trains_refresh_complete",
+                    station_code=station_code,
+                    updated=individual_updated,
+                    total=len(remaining_stale),
+                )
 
         except Exception as e:
             logger.error(
