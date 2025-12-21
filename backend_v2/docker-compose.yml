@@ -1,0 +1,58 @@
+# TrackRat V2 Docker Compose Configuration
+# Used for deployment on GCP Managed Instance Group with persistent disk
+#
+# Required environment variables (set in .env or passed from startup script):
+#   DATA_DIR       - Path to persistent disk mount (e.g., /mnt/disks/data)
+#   IMAGE_URL      - Full Artifact Registry URL for trackrat image
+#   DB_PASSWORD    - PostgreSQL password (from Secret Manager)
+#   NJT_API_TOKEN  - NJ Transit API token (from Secret Manager)
+#   APNS_TEAM_ID, APNS_KEY_ID, APNS_BUNDLE_ID, APNS_ENVIRONMENT - APNS config
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: trackrat-postgres
+    volumes:
+      - ${DATA_DIR}/pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: trackrat
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: trackrat
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trackrat -d trackrat"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - trackrat
+
+  api:
+    image: ${IMAGE_URL}
+    container_name: trackrat-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Database
+      TRACKRAT_DATABASE_URL: postgresql+asyncpg://trackrat:${DB_PASSWORD}@db:5432/trackrat
+      TRACKRAT_ENVIRONMENT: ${TRACKRAT_ENVIRONMENT:-production}
+      TRACKRAT_LOG_LEVEL: ${TRACKRAT_LOG_LEVEL:-INFO}
+      # NJ Transit API
+      TRACKRAT_NJT_API_TOKEN: ${NJT_API_TOKEN}
+      # APNS Configuration
+      APNS_TEAM_ID: ${APNS_TEAM_ID}
+      APNS_KEY_ID: ${APNS_KEY_ID}
+      APNS_BUNDLE_ID: ${APNS_BUNDLE_ID}
+      APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-prod}
+      APNS_AUTH_KEY_PATH: certs/AuthKey_4WC3F645FR.p8
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - trackrat
+
+networks:
+  trackrat:
+    driver: bridge

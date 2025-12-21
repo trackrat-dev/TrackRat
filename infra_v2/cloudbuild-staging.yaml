@@ -1,0 +1,198 @@
+# TrackRat V2 Staging Deployment
+# Triggered by push to 'main' branch
+# Clones production disk to staging for testing with real data
+
+substitutions:
+  _REGION: us-east4
+  _ZONE: us-east4-a
+  _ENVIRONMENT: staging
+  _MIG_NAME: trackrat-staging-mig
+  _DEPLOY_BUCKET: trackrat-v2-deploy-staging
+  _PROD_DISK: trackrat-production-data
+  _STAGING_DISK: trackrat-staging-data
+
+steps:
+  # Wait for any running Terraform builds to finish
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'wait-for-terraform'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Checking for running Terraform builds..."
+        for i in $$(seq 1 60); do
+          RUNNING=$$(gcloud builds list \
+            --filter="substitutions._ENVIRONMENT=${_ENVIRONMENT} AND tags=terraform AND status=WORKING AND id!=${BUILD_ID}" \
+            --format='value(id)' \
+            --limit=1 \
+            2>/dev/null)
+          if [ -z "$$RUNNING" ]; then
+            echo "No Terraform builds running, proceeding with deploy"
+            exit 0
+          fi
+          echo "Terraform build $$RUNNING in progress, waiting... ($$i/60)"
+          sleep 10
+        done
+        echo "ERROR: Timeout waiting for Terraform build after 10 minutes"
+        exit 1
+
+  # ============================================
+  # Phase 1: Clone production disk to staging
+  # ============================================
+
+  # Stop staging MIG (scale to 0)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'stop-staging'
+    args:
+      - 'compute'
+      - 'instance-groups'
+      - 'managed'
+      - 'resize'
+      - '${_MIG_NAME}'
+      - '--size=0'
+      - '--zone=${_ZONE}'
+    waitFor: ['wait-for-terraform']
+
+  # Wait for staging disk to be detached
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'wait-disk-detached'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Waiting for staging disk to be detached..."
+        for i in $$(seq 1 120); do
+          ATTACHED=$$(gcloud compute disks describe ${_STAGING_DISK} \
+            --zone=${_ZONE} --format='value(users)' 2>/dev/null)
+          if [ -z "$$ATTACHED" ]; then
+            echo "Disk detached, ready to proceed"
+            exit 0
+          fi
+          echo "Disk still attached, waiting... ($$i/120)"
+          sleep 5
+        done
+        echo "ERROR: Timeout waiting for disk detachment after 10 minutes"
+        exit 1
+    waitFor: ['stop-staging']
+
+  # Create snapshot of production disk
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'snapshot-production'
+    args:
+      - 'compute'
+      - 'snapshots'
+      - 'create'
+      - 'staging-clone-${BUILD_ID}'
+      - '--source-disk=${_PROD_DISK}'
+      - '--source-disk-zone=${_ZONE}'
+      - '--storage-location=${_REGION}'
+    waitFor: ['wait-disk-detached']
+
+  # Delete old staging disk
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'delete-staging-disk'
+    args:
+      - 'compute'
+      - 'disks'
+      - 'delete'
+      - '${_STAGING_DISK}'
+      - '--zone=${_ZONE}'
+      - '--quiet'
+    waitFor: ['snapshot-production']
+
+  # Create new staging disk from production snapshot
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'create-staging-disk'
+    args:
+      - 'compute'
+      - 'disks'
+      - 'create'
+      - '${_STAGING_DISK}'
+      - '--source-snapshot=staging-clone-${BUILD_ID}'
+      - '--zone=${_ZONE}'
+      - '--type=pd-ssd'
+      - '--labels=app=trackrat,environment=staging'
+    waitFor: ['delete-staging-disk']
+
+  # Cleanup temporary snapshot
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'cleanup-snapshot'
+    args:
+      - 'compute'
+      - 'snapshots'
+      - 'delete'
+      - 'staging-clone-${BUILD_ID}'
+      - '--quiet'
+    waitFor: ['create-staging-disk']
+
+  # ============================================
+  # Phase 2: Build and push Docker image
+  # ============================================
+
+  # Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-latest'
+      - '-f'
+      - 'backend_v2/Dockerfile'
+      - 'backend_v2'
+    waitFor: ['create-staging-disk']
+
+  # Push image with SHA tag
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-sha'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-${SHORT_SHA}'
+    waitFor: ['build']
+
+  # Push image with latest tag
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-latest'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-latest'
+    waitFor: ['build']
+
+  # Upload docker-compose.yml to GCS
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'upload-compose'
+    args:
+      - 'cp'
+      - 'backend_v2/docker-compose.yml'
+      - 'gs://${_DEPLOY_BUCKET}/docker-compose.yml'
+    waitFor: ['push-latest']
+
+  # ============================================
+  # Phase 3: Start staging with new image
+  # ============================================
+
+  # Start staging MIG (scale to 1)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'start-staging'
+    args:
+      - 'compute'
+      - 'instance-groups'
+      - 'managed'
+      - 'resize'
+      - '${_MIG_NAME}'
+      - '--size=1'
+      - '--zone=${_ZONE}'
+    waitFor: ['upload-compose', 'cleanup-snapshot']
+
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-latest'
+
+tags:
+  - 'trackrat'
+  - 'staging'
+  - 'deploy'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

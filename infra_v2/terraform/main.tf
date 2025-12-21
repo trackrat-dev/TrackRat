@@ -1,0 +1,28 @@
+# TrackRat V2 Infrastructure
+# Simplified deployment using MIG + PostgreSQL container + persistent disk
+
+terraform {
+  required_version = ">= 1.0"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+  }
+
+  backend "gcs" {
+    bucket = "trackrat-v2-terraform-state"
+    prefix = "terraform/state"
+  }
+}
+
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+# Derive domain from environment
+locals {
+  domain = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
+}
