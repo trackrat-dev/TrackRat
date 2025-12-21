@@ -98,6 +98,11 @@ class DepartureService:
         if hide_departed:
             departure_filters.append(JourneyStop.has_departed_station.is_(False))
 
+        # Ensure fresh data for NJT trains BEFORE querying, so the query returns
+        # up-to-date departure times. This prevents stale data from causing
+        # incorrect delay calculations in the response.
+        await self._ensure_fresh_station_data(db, from_station)
+
         stmt = (
             select(TrainJourney)
             .join(
@@ -134,11 +139,6 @@ class DepartureService:
                 seen_train_ids.add(train_id)
                 unique_journeys.append(journey)
         journeys = unique_journeys
-
-        # Ensure fresh data for NJT trains using station-level refresh
-        njt_journeys = [j for j in journeys if j.data_source == "NJT"]
-        if njt_journeys:
-            await self._ensure_fresh_station_data(db, from_station)
 
         # Build departures list
         departures = []
