@@ -41,7 +41,7 @@ try:
     s.connect(('$DB_HOST', $DB_PORT))
     s.close()
     exit(0)
-except:
+except Exception:
     exit(1)
 " 2>/dev/null; then
             echo "✅ PostgreSQL is accepting connections at $DB_HOST:$DB_PORT"
