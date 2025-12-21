@@ -40,7 +40,7 @@ struct MyProfileView: View {
                                         .foregroundColor(.white)
                                         .multilineTextAlignment(.leading)
 
-                                    Text("Report bugs, share ideas, or request new features")
+                                    Text("Send bugs and ideas for new features")
                                         .font(.caption)
                                         .foregroundColor(.white.opacity(0.7))
                                         .multilineTextAlignment(.leading)
