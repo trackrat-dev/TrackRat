@@ -192,6 +192,9 @@ except Exception as e:
 echo "🚀 Starting TrackRat V2 Backend..."
 echo "📋 Environment: ${TRACKRAT_ENVIRONMENT:-development}"
 
+# Brief delay for Docker DNS to initialize (needed on Container-Optimized OS)
+sleep 5
+
 # Wait for PostgreSQL to be ready
 if ! wait_for_postgres; then
     exit 1
