@@ -565,7 +565,7 @@ class TestDepartureServiceIntegration:
             mock_njt.return_value = mock_client
 
             # Refresh station data
-            await service._ensure_fresh_station_data(db_session, "NY")
+            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
 
         # Verify all journeys were updated
         updated_journeys = await db_session.execute(
@@ -651,7 +651,7 @@ class TestDepartureServiceIntegration:
             mock_njt.return_value = mock_client
 
             # Should not crash
-            await service._ensure_fresh_station_data(db_session, "NY")
+            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
 
         # Verify only existing 5 were updated
         updated = await db_session.execute(
@@ -710,7 +710,7 @@ class TestDepartureServiceIntegration:
             mock_client.close = AsyncMock()
             mock_njt.return_value = mock_client
 
-            await service._ensure_fresh_station_data(db_session, "NY")
+            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
 
         # Verify only NJT trains were updated
         updated = await db_session.execute(
@@ -762,7 +762,7 @@ class TestDepartureServiceIntegration:
             mock_njt.return_value = mock_client
 
             # Should not crash
-            await service._ensure_fresh_station_data(db_session, "NY")
+            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
 
         # Verify journey was not updated
         refreshed = await db_session.get(TrainJourney, journey.id)
