@@ -28,9 +28,9 @@ variable "environment" {
 }
 
 variable "domain" {
-  description = "Domain for the API (e.g., apiv2.trackrat.net)"
+  description = "Domain for the API - defaults based on environment (staging.apiv2.trackrat.net or apiv2.trackrat.net)"
   type        = string
-  default     = "apiv2.trackrat.net"
+  default     = "" # Empty means use local.domain
 }
 
 variable "machine_type" {

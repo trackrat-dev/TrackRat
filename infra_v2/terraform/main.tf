@@ -21,3 +21,8 @@ provider "google" {
   project = var.project_id
   region  = var.region
 }
+
+# Derive domain from environment
+locals {
+  domain = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
+}

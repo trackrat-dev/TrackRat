@@ -14,7 +14,7 @@ resource "google_compute_managed_ssl_certificate" "trackrat" {
   name = "trackrat-${var.environment}-cert"
 
   managed {
-    domains = [var.domain]
+    domains = [var.domain != "" ? var.domain : local.domain]
   }
 
   depends_on = [google_project_service.apis]

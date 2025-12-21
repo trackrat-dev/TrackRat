@@ -7,7 +7,7 @@ output "load_balancer_ip" {
 
 output "api_url" {
   description = "URL for the API"
-  value       = "https://${var.domain}"
+  value       = "https://${var.domain != "" ? var.domain : local.domain}"
 }
 
 output "mig_name" {
