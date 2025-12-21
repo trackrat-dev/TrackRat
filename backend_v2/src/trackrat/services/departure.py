@@ -122,6 +122,19 @@ class DepartureService:
         result = await db.execute(stmt)
         journeys = list(result.scalars().unique().all())
 
+        # Deduplicate by train_id to handle cases where the same train appears
+        # with different journey_dates (e.g., stale records from previous days).
+        # The SQL query already orders by target_date priority, so keeping the
+        # first occurrence of each train_id gives us the most relevant record.
+        seen_train_ids: set[str] = set()
+        unique_journeys = []
+        for journey in journeys:
+            train_id = journey.train_id
+            if train_id and train_id not in seen_train_ids:
+                seen_train_ids.add(train_id)
+                unique_journeys.append(journey)
+        journeys = unique_journeys
+
         # Ensure fresh data for NJT trains using station-level refresh
         njt_journeys = [j for j in journeys if j.data_source == "NJT"]
         if njt_journeys:
