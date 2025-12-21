@@ -37,93 +37,73 @@ steps:
         exit 1
 
   # ============================================
-  # Phase 1: Clone production disk to staging
+  # Phase 1: Clone production disk to staging (if production exists)
   # ============================================
 
-  # Stop staging MIG (scale to 0)
+  # Stop staging MIG and optionally clone production disk
   - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'stop-staging'
-    args:
-      - 'compute'
-      - 'instance-groups'
-      - 'managed'
-      - 'resize'
-      - '${_MIG_NAME}'
-      - '--size=0'
-      - '--zone=${_ZONE}'
-    waitFor: ['wait-for-terraform']
-
-  # Wait for staging disk to be detached
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'wait-disk-detached'
+    id: 'prepare-staging-disk'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        set -e
+
+        echo "=== Phase 1: Prepare staging disk ==="
+
+        # Stop staging MIG (scale to 0)
+        echo "Stopping staging MIG..."
+        gcloud compute instance-groups managed resize ${_MIG_NAME} \
+          --size=0 --zone=${_ZONE} || true
+
+        # Wait for staging disk to be detached
         echo "Waiting for staging disk to be detached..."
         for i in $$(seq 1 120); do
           ATTACHED=$$(gcloud compute disks describe ${_STAGING_DISK} \
-            --zone=${_ZONE} --format='value(users)' 2>/dev/null)
+            --zone=${_ZONE} --format='value(users)' 2>/dev/null || echo "")
           if [ -z "$$ATTACHED" ]; then
             echo "Disk detached, ready to proceed"
-            exit 0
+            break
           fi
           echo "Disk still attached, waiting... ($$i/120)"
           sleep 5
         done
-        echo "ERROR: Timeout waiting for disk detachment after 10 minutes"
-        exit 1
-    waitFor: ['stop-staging']
 
-  # Create snapshot of production disk
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'snapshot-production'
-    args:
-      - 'compute'
-      - 'snapshots'
-      - 'create'
-      - 'staging-clone-${BUILD_ID}'
-      - '--source-disk=${_PROD_DISK}'
-      - '--source-disk-zone=${_ZONE}'
-      - '--storage-location=${_REGION}'
-    waitFor: ['wait-disk-detached']
+        # Check if production disk exists
+        echo "Checking if production disk exists..."
+        if gcloud compute disks describe ${_PROD_DISK} --zone=${_ZONE} >/dev/null 2>&1; then
+          echo "Production disk found - cloning to staging"
 
-  # Delete old staging disk
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'delete-staging-disk'
-    args:
-      - 'compute'
-      - 'disks'
-      - 'delete'
-      - '${_STAGING_DISK}'
-      - '--zone=${_ZONE}'
-      - '--quiet'
-    waitFor: ['snapshot-production']
+          # Create snapshot of production disk
+          echo "Creating snapshot of production disk..."
+          gcloud compute snapshots create staging-clone-${BUILD_ID} \
+            --source-disk=${_PROD_DISK} \
+            --source-disk-zone=${_ZONE} \
+            --storage-location=${_REGION}
 
-  # Create new staging disk from production snapshot
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'create-staging-disk'
-    args:
-      - 'compute'
-      - 'disks'
-      - 'create'
-      - '${_STAGING_DISK}'
-      - '--source-snapshot=staging-clone-${BUILD_ID}'
-      - '--zone=${_ZONE}'
-      - '--type=pd-ssd'
-      - '--labels=app=trackrat,environment=staging'
-    waitFor: ['delete-staging-disk']
+          # Delete old staging disk
+          echo "Deleting old staging disk..."
+          gcloud compute disks delete ${_STAGING_DISK} \
+            --zone=${_ZONE} --quiet || true
 
-  # Cleanup temporary snapshot
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'cleanup-snapshot'
-    args:
-      - 'compute'
-      - 'snapshots'
-      - 'delete'
-      - 'staging-clone-${BUILD_ID}'
-      - '--quiet'
-    waitFor: ['create-staging-disk']
+          # Create new staging disk from production snapshot
+          echo "Creating new staging disk from production snapshot..."
+          gcloud compute disks create ${_STAGING_DISK} \
+            --source-snapshot=staging-clone-${BUILD_ID} \
+            --zone=${_ZONE} \
+            --type=pd-ssd \
+            --labels=app=trackrat,environment=staging
+
+          # Cleanup temporary snapshot
+          echo "Cleaning up temporary snapshot..."
+          gcloud compute snapshots delete staging-clone-${BUILD_ID} --quiet
+
+          echo "✅ Staging disk cloned from production"
+        else
+          echo "⚠️  Production disk not found - using existing staging disk (first deployment)"
+          echo "✅ Proceeding with existing staging disk"
+        fi
+    waitFor: ['wait-for-terraform']
 
   # ============================================
   # Phase 2: Build and push Docker image
@@ -141,7 +121,7 @@ steps:
       - '-f'
       - 'backend_v2/Dockerfile'
       - 'backend_v2'
-    waitFor: ['create-staging-disk']
+    waitFor: ['prepare-staging-disk']
 
   # Push image with SHA tag
   - name: 'gcr.io/cloud-builders/docker'
@@ -183,7 +163,7 @@ steps:
       - '${_MIG_NAME}'
       - '--size=1'
       - '--zone=${_ZONE}'
-    waitFor: ['upload-compose', 'cleanup-snapshot']
+    waitFor: ['upload-compose']
 
 images:
   - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-${SHORT_SHA}'
