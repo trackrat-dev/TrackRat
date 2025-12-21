@@ -2,8 +2,8 @@
 # Triggered by push to 'production' branch
 
 substitutions:
-  _REGION: us-central1
-  _ZONE: us-central1-a
+  _REGION: us-east4
+  _ZONE: us-east4-a
   _ENVIRONMENT: production
   _MIG_NAME: trackrat-production-mig
   _DEPLOY_BUCKET: trackrat-v2-deploy-production

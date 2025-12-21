@@ -3,8 +3,8 @@
 # Clones production disk to staging for testing with real data
 
 substitutions:
-  _REGION: us-central1
-  _ZONE: us-central1-a
+  _REGION: us-east4
+  _ZONE: us-east4-a
   _ENVIRONMENT: staging
   _MIG_NAME: trackrat-staging-mig
   _DEPLOY_BUCKET: trackrat-v2-deploy-staging
