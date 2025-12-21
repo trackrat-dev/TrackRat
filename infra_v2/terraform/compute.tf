@@ -104,27 +104,29 @@ resource "google_compute_instance_template" "trackrat" {
       echo "Disk mounted at $MOUNT_PATH"
 
       # ===========================================
-      # 2. Install Docker Compose as CLI plugin
+      # 2. Install Docker Compose (standalone binary)
       # ===========================================
-      # Using CLI plugin ensures docker compose inherits Docker's auth config
-      # See: https://github.com/GoogleCloudPlatform/docker-credential-gcr/issues/10
-      echo "=== Installing Docker Compose CLI plugin ==="
+      # Note: CLI plugin approach doesn't work on COS because plugin paths are read-only
+      # Using standalone binary with explicit DOCKER_CONFIG instead
+      echo "=== Installing Docker Compose ==="
       COMPOSE_VERSION="2.24.0"
-      CLI_PLUGINS="/var/lib/docker/cli-plugins"
+      COMPOSE_PATH="$MOUNT_PATH/bin/docker-compose"
 
-      mkdir -p "$CLI_PLUGINS"
-      if [ ! -f "$CLI_PLUGINS/docker-compose" ]; then
-        curl -SL "https://github.com/docker/compose/releases/download/v$COMPOSE_VERSION/docker-compose-linux-x86_64" -o "$CLI_PLUGINS/docker-compose"
-        chmod +x "$CLI_PLUGINS/docker-compose"
+      mkdir -p "$MOUNT_PATH/bin"
+      if [ ! -f "$COMPOSE_PATH" ]; then
+        curl -SL "https://github.com/docker/compose/releases/download/v$COMPOSE_VERSION/docker-compose-linux-x86_64" -o "$COMPOSE_PATH"
+        chmod +x "$COMPOSE_PATH"
       fi
-      echo "Docker Compose version: $(docker compose version)"
+      echo "Docker Compose version: $($COMPOSE_PATH version)"
 
       # ===========================================
       # 3. Configure Docker authentication
       # ===========================================
-      # docker-credential-gcr configures the credential helper for Artifact Registry
-      # Using CLI plugin means docker compose inherits this configuration
+      # On COS, /root is read-only so we use a writable path for Docker config
+      # DOCKER_CONFIG must be set for both docker-credential-gcr and docker-compose
       echo "=== Configuring Docker auth ==="
+      export DOCKER_CONFIG="$MOUNT_PATH/.docker"
+      mkdir -p "$DOCKER_CONFIG"
       docker-credential-gcr configure-docker --registries=$REGION-docker.pkg.dev
 
       # ===========================================
@@ -178,13 +180,13 @@ ENVEOF
       cd "$APP_DIR"
 
       # Stop existing containers (if any)
-      docker compose down 2>/dev/null || true
+      $COMPOSE_PATH down 2>/dev/null || true
 
-      # Pull latest images (docker compose inherits Docker auth via CLI plugin)
-      docker compose pull
+      # Pull latest images (DOCKER_CONFIG is exported, so compose uses it)
+      $COMPOSE_PATH pull
 
       # Start containers
-      docker compose up -d
+      $COMPOSE_PATH up -d
 
       echo ""
       echo "=== TrackRat started successfully ==="
@@ -198,11 +200,12 @@ ENVEOF
       echo "=== Shutdown initiated at $(date -u +%Y-%m-%dT%H:%M:%SZ) ===" | tee -a /var/log/shutdown.log
 
       APP_DIR="/mnt/disks/data/compose"
+      COMPOSE_PATH="/mnt/disks/data/bin/docker-compose"
 
-      if [ -f "$APP_DIR/docker-compose.yml" ]; then
+      if [ -f "$APP_DIR/docker-compose.yml" ] && [ -f "$COMPOSE_PATH" ]; then
         cd "$APP_DIR"
         # Stop containers gracefully (25s timeout leaves 5s buffer)
-        docker compose stop --timeout 25 2>&1 | tee -a /var/log/shutdown.log
+        $COMPOSE_PATH stop --timeout 25 2>&1 | tee -a /var/log/shutdown.log
         echo "Containers stopped" | tee -a /var/log/shutdown.log
       fi
 
