@@ -58,21 +58,52 @@ resource "google_compute_instance_template" "trackrat" {
       DISK_DEVICE="/dev/disk/by-id/google-$DISK_NAME"
       MOUNT_PATH="/mnt/disks/data"
       PROJECT_ID="${var.project_id}"
+      ZONE="${var.zone}"
       REGION="${var.region}"
       ENVIRONMENT="${var.environment}"
       DEPLOY_BUCKET="${google_storage_bucket.deploy.name}"
       CONTAINER_IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/trackrat/api:$ENVIRONMENT-latest"
 
-      # ===========================================
-      # 1. Mount persistent disk (pre-attached by MIG stateful config)
-      # ===========================================
-      echo "=== Mounting disk $DISK_NAME ==="
+      # Get instance name from metadata
+      INSTANCE_NAME=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/name" -H "Metadata-Flavor: Google")
+      echo "Instance: $INSTANCE_NAME"
 
-      # Wait for disk device to appear (GCP attaches it automatically)
+      # ===========================================
+      # 1. Attach and mount persistent disk
+      # ===========================================
+      echo "=== Attaching disk $DISK_NAME ==="
+
+      # Retry disk attachment - wait for it to be released by old instance
+      MAX_ATTEMPTS=60
+      for attempt in $(seq 1 $MAX_ATTEMPTS); do
+        if [ -e "$DISK_DEVICE" ]; then
+          echo "Disk already attached"
+          break
+        fi
+
+        echo "Attempt $attempt/$MAX_ATTEMPTS: Attaching disk..."
+        if toolbox --quiet gcloud compute instances attach-disk "$INSTANCE_NAME" \
+             --disk="$DISK_NAME" \
+             --device-name="$DISK_NAME" \
+             --zone="$ZONE" \
+             --project="$PROJECT_ID" 2>&1; then
+          echo "Attach command succeeded"
+          break
+        fi
+
+        if [ $attempt -eq $MAX_ATTEMPTS ]; then
+          echo "ERROR: Failed to attach disk after $MAX_ATTEMPTS attempts"
+          exit 1
+        fi
+
+        echo "Disk likely still attached to old instance, waiting 10s..."
+        sleep 10
+      done
+
+      # Wait for disk device to appear
       for i in $(seq 1 30); do
         [ -e "$DISK_DEVICE" ] && break
-        echo "Waiting for disk device..."
-        sleep 2
+        sleep 1
       done
       [ -e "$DISK_DEVICE" ] || { echo "ERROR: Disk device not found"; exit 1; }
 
@@ -243,12 +274,6 @@ resource "google_compute_instance_group_manager" "trackrat" {
     port = 8000
   }
 
-  # Preserve data disk across instance replacements
-  stateful_disk {
-    device_name = "trackrat-${var.environment}-data"
-    delete_rule = "NEVER"
-  }
-
   auto_healing_policies {
     health_check      = google_compute_health_check.trackrat.id
     initial_delay_sec = 300 # 5 minutes for migrations and startup
@@ -259,22 +284,9 @@ resource "google_compute_instance_group_manager" "trackrat" {
     minimal_action        = "REPLACE"
     max_surge_fixed       = 0
     max_unavailable_fixed = 1
+    replacement_method    = "RECREATE"  # Required for per-instance config
   }
 
   depends_on = [google_compute_instance_template.trackrat]
 }
 
-# Per-instance config to attach zonal disk to MIG instance
-resource "google_compute_per_instance_config" "trackrat" {
-  instance_group_manager = google_compute_instance_group_manager.trackrat.name
-  zone                   = var.zone
-  name                   = "trackrat-${var.environment}-config"
-
-  preserved_state {
-    disk {
-      device_name = "trackrat-${var.environment}-data"
-      source      = google_compute_disk.data.id
-      mode        = "READ_WRITE"
-    }
-  }
-}
