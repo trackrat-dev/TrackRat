@@ -61,7 +61,7 @@ struct OnboardingView: View {
                         .frame(height: 50)
                         .frame(minWidth: 160)
                         .background(Color.orange)
-                        .cornerRadius(12)
+                        .cornerRadius(TrackRatTheme.CornerRadius.md)
                         .disabled(isCompletingOnboarding)
                     }
                     .padding(.horizontal, 20)
@@ -174,8 +174,8 @@ struct OnboardingView: View {
                             .foregroundColor(.orange)
                             .frame(height: 44)
                             .frame(maxWidth: .infinity)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(8)
+                            .background(TrackRatTheme.Colors.surfaceCard)
+                            .cornerRadius(TrackRatTheme.CornerRadius.sm)
                         }
                     } else {
                         ForEach(otherFavorites, id: \.code) { station in
@@ -192,10 +192,10 @@ struct OnboardingView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(8)
+                            .background(TrackRatTheme.Colors.surfaceCard)
+                            .cornerRadius(TrackRatTheme.CornerRadius.sm)
                         }
-                        
+
                         if otherFavorites.count < 3 {
                             Button {
                                 isPickingOtherStation = true
@@ -209,15 +209,15 @@ struct OnboardingView: View {
                                 .foregroundColor(.orange)
                                 .frame(height: 44)
                                 .frame(maxWidth: .infinity)
-                                .background(Color.white.opacity(0.1))
-                                .cornerRadius(8)
+                                .background(TrackRatTheme.Colors.surfaceCard)
+                                .cornerRadius(TrackRatTheme.CornerRadius.sm)
                             }
                         }
                     }
                 }
                 .padding()
                 .background(Material.ultraThin)
-                .cornerRadius(12)
+                .cornerRadius(TrackRatTheme.CornerRadius.md)
             }
             
             Spacer()
@@ -470,7 +470,7 @@ struct StationSelectionCard: View {
             }
             .padding()
             .background(Material.ultraThin)
-            .cornerRadius(12)
+            .cornerRadius(TrackRatTheme.CornerRadius.md)
         }
     }
 }
@@ -497,7 +497,7 @@ struct FavoriteStationRow: View {
         }
         .padding()
         .background(Material.ultraThin)
-        .cornerRadius(12)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
     }
 }
 
@@ -525,7 +525,7 @@ struct FeatureCard: View {
         }
         .padding()
         .background(Material.ultraThin)
-        .cornerRadius(12)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
     }
 }
 
@@ -565,37 +565,43 @@ struct StationPickerSheet: View {
     }
     
     var body: some View {
-        NavigationView {
-            VStack {
+        NavigationStack {
+            VStack(spacing: 0) {
                 // Search bar
-                HStack {
+                HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
-                        .foregroundColor(.gray)
+                        .foregroundColor(.white.opacity(0.5))
                     TextField("Search stations...", text: $searchText)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .foregroundColor(.white)
                         .autocorrectionDisabled(true)
                         .textInputAutocapitalization(.never)
                 }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
                 .padding()
-                
+
                 List(filteredStations) { station in
                     let isDisabled = disabledStation?.code == station.code
-                    
+
                     Button {
                         if !isDisabled {
-                            // Update binding first
                             selectedStation = station
-                            // Then call the callback which handles dismissal
                             onStationSelected(station)
-                            // Don't dismiss here - let the parent handle it
                         }
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(station.name)
                                     .font(.headline)
-                                    .foregroundColor(isDisabled ? .gray : .primary)
-                                
+                                    .foregroundColor(isDisabled ? .white.opacity(0.4) : .white)
+
                                 if isDisabled {
                                     Text("Already selected")
                                         .font(.caption)
@@ -603,7 +609,7 @@ struct StationPickerSheet: View {
                                 }
                             }
                             Spacer()
-                            
+
                             if station.code == selectedStation?.code {
                                 Image(systemName: "checkmark")
                                     .foregroundColor(.orange)
@@ -613,19 +619,27 @@ struct StationPickerSheet: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                     .disabled(isDisabled)
+                    .listRowBackground(Color.clear)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
+            .background(Color.black)
             .navigationTitle("Select Station")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden()
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .foregroundColor(.white)
                 }
             }
         }
+        .preferredColorScheme(.dark)
     }
 }
 

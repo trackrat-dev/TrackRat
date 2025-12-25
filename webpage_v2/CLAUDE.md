@@ -90,7 +90,6 @@ useEffect(() => {
 - Try/catch in API service
 - Graceful degradation (show cached data if available)
 - User-friendly error messages via `ErrorMessage` component
-- No error tracking (Sentry is backend-only)
 
 ### Endpoints Used
 1. `GET /trains/departures?from={code}&to={code}&limit=100`
@@ -216,7 +215,6 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 - **No Maps** - No Leaflet/Mapbox integration
 - **No Charts** - No historical performance visualization
 - **No Backend Auth** - Stateless, no user accounts
-- **No Error Tracking** - No Sentry integration (backend only)
 
 ### Intentional Simplifications
 - **Polling over WebSocket**: Simpler, no connection management

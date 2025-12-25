@@ -7,9 +7,9 @@ Implements the V2 API design documented in backend_v2/CLAUDE.md.
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from sqlalchemy import and_, select
+from sqlalchemy import and_, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
@@ -66,6 +66,10 @@ async def get_departures(
     time_to: datetime | None = Query(
         None, description="End time (defaults to +24 hours)"
     ),
+    hide_departed: bool = Query(
+        False,
+        description="Hide trains that have already departed from the origin station",
+    ),
     limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
 ) -> DeparturesResponse:
@@ -77,11 +81,15 @@ async def get_departures(
         date=date,
         time_from=time_from,
         time_to=time_to,
+        hide_departed=hide_departed,
     )
 
     cache_service = ApiCacheService()
 
-    use_cache = date is None and time_from is None and time_to is None
+    # Only use cache when using default parameters (no hide_departed since it's dynamic)
+    use_cache = (
+        date is None and time_from is None and time_to is None and not hide_departed
+    )
 
     if use_cache:
         cache_params = {
@@ -102,7 +110,7 @@ async def get_departures(
 
     service = DepartureService()
     response = await service.get_departures(
-        db, from_station, to_station, date, time_from, time_to, limit
+        db, from_station, to_station, date, time_from, time_to, limit, hide_departed
     )
 
     if use_cache:
@@ -344,7 +352,31 @@ async def get_train_history(
         # Get the data source from the first journey
         train_data_source = journeys[0].data_source
 
-        # Query all trains with same data source on this route
+        # PERFORMANCE FIX: Use database-level filtering with EXISTS subqueries
+        # to avoid loading all journeys into memory then filtering in Python.
+        from_stop_alias = aliased(JourneyStop, name="from_stop")
+        to_stop_alias = aliased(JourneyStop, name="to_stop")
+
+        # Subquery: journey has from_station with stop_sequence < to_station's sequence
+        route_filter = exists(
+            select(from_stop_alias.id).where(
+                and_(
+                    from_stop_alias.journey_id == TrainJourney.id,
+                    from_stop_alias.station_code == from_station,
+                    exists(
+                        select(to_stop_alias.id).where(
+                            and_(
+                                to_stop_alias.journey_id == TrainJourney.id,
+                                to_stop_alias.station_code == to_station,
+                                to_stop_alias.stop_sequence
+                                > from_stop_alias.stop_sequence,
+                            )
+                        )
+                    ),
+                )
+            )
+        )
+
         route_stmt = (
             select(TrainJourney)
             .where(
@@ -352,32 +384,15 @@ async def get_train_history(
                     TrainJourney.journey_date >= start_date,
                     TrainJourney.journey_date <= end_date,
                     TrainJourney.data_source == train_data_source,
+                    route_filter,
                 )
             )
             .options(selectinload(TrainJourney.stops))
+            .limit(5000)  # Safety limit to prevent memory issues
         )
 
         route_result = await db.execute(route_stmt)
-        all_route_journeys = list(route_result.scalars().all())
-
-        # Filter to only journeys that contain both stations in correct order
-        for journey in all_route_journeys:
-            from_stop = None
-            to_stop = None
-
-            for stop in journey.stops:
-                if stop.station_code == from_station:
-                    from_stop = stop
-                elif stop.station_code == to_station:
-                    to_stop = stop
-
-            # Include if both stations found and in correct order
-            if (
-                from_stop
-                and to_stop
-                and (from_stop.stop_sequence or 0) < (to_stop.stop_sequence or 0)
-            ):
-                route_journeys.append(journey)
+        route_journeys = list(route_result.scalars().all())
 
     # Build historical data
     historical_journeys = []

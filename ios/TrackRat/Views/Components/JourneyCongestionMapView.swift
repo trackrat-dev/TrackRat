@@ -52,14 +52,14 @@ struct JourneyCongestionMapView: View {
                         }
                     )
                     .frame(height: 200)
-                    .cornerRadius(12)
+                    .cornerRadius(TrackRatTheme.CornerRadius.md)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                            .stroke(TrackRatTheme.Colors.borderSecondary, lineWidth: 1)
                     )
                 } else {
                     // No congestion data
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                         .fill(.ultraThinMaterial)
                         .frame(height: 200)
                         .overlay(
@@ -720,10 +720,10 @@ struct EmbeddedCongestionMapView: View {
                     }
                 )
                 .frame(height: 300)
-                .cornerRadius(12)
+                .cornerRadius(TrackRatTheme.CornerRadius.md)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                        .stroke(TrackRatTheme.Colors.borderSecondary, lineWidth: 1)
                 )
             }
         }
@@ -758,12 +758,12 @@ struct SingleSegmentMapView: View {
                 trainPositions: [], // No train positions for single segment view
                 onSegmentTap: onTap
             )
-            .cornerRadius(12)
+            .cornerRadius(TrackRatTheme.CornerRadius.md)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                    .stroke(TrackRatTheme.Colors.borderSecondary, lineWidth: 1)
             )
-            
+
             // Congestion level overlay
             VStack {
                 HStack {
@@ -1007,7 +1007,7 @@ struct SwipeableSegmentTrainDetailsView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             TabView(selection: $currentSegmentIndex) {
                 ForEach(segments.indices, id: \.self) { index in
                     SegmentTrainDetailsContentView(segment: segments[index])
@@ -1015,22 +1015,27 @@ struct SwipeableSegmentTrainDetailsView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .background(Color.black)
             .navigationTitle("Segment Details")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Text("Segment \(currentSegmentIndex + 1) of \(segments.count)")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white.opacity(0.6))
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
+                    .foregroundColor(.white)
                 }
             }
         }
+        .preferredColorScheme(.dark)
         .onAppear {
             // Set initial segment index
             if let initialIndex = segments.firstIndex(where: { $0.id == initialSegment.id }) {

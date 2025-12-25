@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 import ActivityKit
 
 struct TrainDetailsView: View {
@@ -7,6 +6,8 @@ struct TrainDetailsView: View {
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @State private var isClosing = false
+    // PERFORMANCE: Track visibility to prevent polling when view is not visible
+    @State private var isViewVisible = false
 
     let trainId: Int  // Keep for backwards compatibility
 
@@ -48,6 +49,27 @@ struct TrainDetailsView: View {
                     }
                 } else if let train = viewModel.train {
                     VStack(spacing: 16) {
+                        // Train performance summary (similar trains + historical)
+                        // Hide after train departs from user's origin station
+                        if let originCode = appState.departureStationCode,
+                           !train.hasTrainDepartedFromStation(originCode) {
+                            TrainStatsSummaryView(
+                                trainId: train.trainId,
+                                fromStation: appState.departureStationCode,
+                                toStation: appState.destinationStationCode,
+                                onTrainTap: { selectedTrainId in
+                                    // Navigate to the selected train's detail view
+                                    appState.navigationPath.append(
+                                        NavigationDestination.trainDetailsFlexible(
+                                            trainNumber: selectedTrainId,
+                                            fromStation: appState.departureStationCode,
+                                            journeyDate: nil
+                                        )
+                                    )
+                                }
+                            )
+                        }
+
                         CombinedDetailsCard(
                             train: train,
                             selectedDestination: appState.selectedDestination,
@@ -57,6 +79,14 @@ struct TrainDetailsView: View {
                             journeyProgressPercentage: viewModel.journeyProgressPercentage,
                             journeyStopsCompleted: viewModel.journeyStopsCompleted,
                             journeyTotalStops: viewModel.journeyTotalStops
+                        )
+
+                        // Feedback button
+                        FeedbackButton(
+                            screen: "train_details",
+                            trainId: train.trainId,
+                            originCode: appState.departureStationCode,
+                            destinationCode: appState.destinationStationCode
                         )
                     }
                     .padding()
@@ -115,14 +145,30 @@ struct TrainDetailsView: View {
                 selectedDestinationName: appState.selectedDestination
             )
         }
-        .onReceive(viewModel.timer) { _ in
-            // Always refresh when the view is visible
-            Task {
+        .task(id: isViewVisible) {
+            // Auto-refresh task that cancels automatically when view disappears
+            guard isViewVisible else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled, isViewVisible else { break }
+
+                // Skip polling if LiveActivity is already tracking this train
+                if let activity = liveActivityService.currentActivity,
+                   activity.attributes.trainNumber == viewModel.train?.trainId {
+                    continue
+                }
+
                 await viewModel.refreshTrainDetails(
                     fromStationCode: appState.departureStationCode,
                     selectedDestinationName: appState.selectedDestination
                 )
             }
+        }
+        .onAppear {
+            isViewVisible = true
+        }
+        .onDisappear {
+            isViewVisible = false
         }
         .onChange(of: viewModel.triggerBoardingHaptic) { oldValue, newValue in
             if newValue {
@@ -271,25 +317,13 @@ struct CombinedDetailsCard: View {
         }
         
         // Don't show predictions if train has departed from user's origin station
-        if hasTrainDepartedFromOrigin() {
+        if let originCode = appState.departureStationCode,
+           train.hasTrainDepartedFromStation(originCode) {
             return false
         }
         
         // Show predictions only for NY Penn Station and when track is not assigned
         return StaticTrackDistributionService.shared.shouldShowPredictions(for: train)
-    }
-    
-    /// Check if train has departed from the user's origin station
-    private func hasTrainDepartedFromOrigin() -> Bool {
-        guard let departureCode = appState.departureStationCode,
-              let stops = train.stops else { return false }
-        
-        // Find origin stop using robust matching
-        let originStop = stops.first { stop in
-            stop.stationCode.uppercased() == departureCode.uppercased()
-        }
-        
-        return originStop?.hasDepartedStation ?? false
     }
     
     /// Check if train is boarding specifically at the user's origin station
@@ -320,7 +354,7 @@ struct CombinedDetailsCard: View {
                         .padding()
                         .frame(maxWidth: .infinity)
                         .background(Color.red.opacity(0.9))
-                        .cornerRadius(12)
+                        .cornerRadius(TrackRatTheme.CornerRadius.md)
                         .padding(.top, 8)
                     }
                     // Main status with boarding indication
@@ -346,7 +380,7 @@ struct CombinedDetailsCard: View {
                         .padding()
                         .frame(maxWidth: .infinity)
                         .background(Color.orange.opacity(0.9))
-                        .cornerRadius(12)
+                        .cornerRadius(TrackRatTheme.CornerRadius.md)
                         .padding(.top, 8)
                     }
                 }
@@ -419,8 +453,8 @@ struct CombinedDetailsCard: View {
             
         }
         .background(Color.white.opacity(0.9))
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+        .cornerRadius(TrackRatTheme.CornerRadius.lg)
+        .trackRatShadow()
     }
 }
 
@@ -459,8 +493,8 @@ struct StopsCard: View {
         }
         .padding()
         .background(Color.white.opacity(0.9))
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+        .cornerRadius(TrackRatTheme.CornerRadius.lg)
+        .trackRatShadow()
     }
 }
 
@@ -492,24 +526,12 @@ struct StopRowV2: View {
     private var isFinalDestination: Bool {
         return isDestination
     }
-    
-    // Check if train has departed from the user's origin station
-    private var hasTrainDepartedFromOrigin: Bool {
-        guard let departureCode = departureStationCode,
-              let stops = train.stops else { return false }
-        
-        // Find origin stop using robust matching
-        let originStop = stops.first { s in
-            s.stationCode.uppercased() == departureCode.uppercased()
-        }
-        
-        return originStop?.hasDepartedStation ?? false
-    }
-    
+
     // Determine if this is the next important station
     private var isNextImportantStation: Bool {
         // If train hasn't departed from origin yet, highlight the origin
-        if !hasTrainDepartedFromOrigin {
+        let hasDeparted = departureStationCode.map { train.hasTrainDepartedFromStation($0) } ?? false
+        if !hasDeparted {
             return isDeparture
         }
         
@@ -689,7 +711,7 @@ struct StopRowV2: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .background(backgroundColor)
-        .cornerRadius(8)
+        .cornerRadius(TrackRatTheme.CornerRadius.sm)
         .sheet(isPresented: $showPredictionExplanation) {
             PredictionExplanationSheet()
         }
@@ -761,9 +783,6 @@ class TrainDetailsViewModel: ObservableObject {
 
     private let apiService = APIService.shared
     private let cacheService = TrainCacheService.shared
-
-    // Timer for auto-refresh
-    let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     // Legacy initializer for backwards compatibility
     init(trainId: Int) {
@@ -901,8 +920,21 @@ class TrainDetailsViewModel: ObservableObject {
             train = cachedTrain
             updateComputedProperties()
 
-            // Now fetch fresh data in background (silent)
-            await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, selectedDestinationName: selectedDestinationName)
+            // PERFORMANCE FIX: Only fetch fresh data in background if cache is older than 30 seconds
+            // This prevents the double-fetch issue where we always hit the API even with a fresh cache.
+            // The 30-second timer will refresh the data anyway, so no need for immediate background fetch
+            // when cache is fresh.
+            let cacheAge = cacheService.getCacheAge(
+                trainId: databaseId.map(String.init),
+                trainNumber: trainNumber,
+                date: journeyDate,
+                fromStation: fromStationCode ?? preferredStationCode
+            )
+            if cacheAge == nil || cacheAge! > 30 {
+                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, selectedDestinationName: selectedDestinationName)
+            } else {
+                print("📦 Cache is fresh (\(Int(cacheAge!))s old) - skipping background refresh")
+            }
         } else {
             // No cache available - show loading indicator and fetch
             print("🌐 No cache available - fetching from network")
@@ -1063,12 +1095,12 @@ struct TrainProgressIndicator: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 // Track
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.xs)
                     .fill(Color.gray.opacity(0.3))
                     .frame(height: 8)
-                
+
                 // Progress track
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.xs)
                     .fill(LinearGradient(
                         colors: [Color.green, Color.blue],
                         startPoint: .leading,
@@ -1206,9 +1238,9 @@ struct SegmentedTrackPredictionView: View {
         }
         .padding()
         .background(Color.orange.opacity(0.05))
-        .cornerRadius(12)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
         .task {
@@ -1255,9 +1287,9 @@ struct SegmentedTrackPredictionView: View {
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.sm))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.sm)
                 .stroke(Color.black, lineWidth: 1)
         )
     }
@@ -1500,7 +1532,7 @@ struct PredictionExplanationSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Content
                 ScrollView {
@@ -1514,6 +1546,7 @@ struct PredictionExplanationSheet: View {
                                 Text("Arrival Time Forecasts")
                                     .font(.title2)
                                     .fontWeight(.semibold)
+                                    .foregroundColor(.white)
                             }
                             Spacer()
                         }
@@ -1523,16 +1556,16 @@ struct PredictionExplanationSheet: View {
                         VStack(alignment: .leading, spacing: 16) {
                             Text("What is this?")
                                 .font(.headline)
-                                .foregroundColor(.primary)
+                                .foregroundColor(.white)
 
                             Text("TrackRat looks at the progress of trains immediately ahead of you to predict your arrival times at each station on your journey.")
                                 .font(.body)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.white.opacity(0.7))
                                 .fixedSize(horizontal: false, vertical: true)
 
                             Text("This is independent from but used in combination with the delay predictions from NJ Transit and Amtrak and only shown when delays are expected.")
                                 .font(.body)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.white.opacity(0.7))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.horizontal, 20)
@@ -1540,9 +1573,12 @@ struct PredictionExplanationSheet: View {
                     }
                 }
             }
+            .background(Color.black)
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+        .presentationBackground(Color.black)
+        .preferredColorScheme(.dark)
     }
 }
 

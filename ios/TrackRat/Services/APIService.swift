@@ -4,17 +4,76 @@ import Combine
 // MARK: - Clean API Service for V2 Backend
 final class APIService: ObservableObject {
     static let shared = APIService()
-    
+
     private var baseURL: String
-    private let session = URLSession.shared
+    private let session: URLSession
     private let storageService = StorageService()
 
     // Configuration constants
-    private static let DEPARTURE_LIMIT = "1000"
+    // PERFORMANCE: Reduced from 1000 to 50 to minimize payload size and parsing time.
+    // The app filters to 6-hour window anyway, and pagination can be added later if needed.
+    private static let DEPARTURE_LIMIT = "50"
+    // PERFORMANCE: Configure shorter timeout (15s) instead of default 60s
+    private static let REQUEST_TIMEOUT: TimeInterval = 15
+    // PERFORMANCE: Retry configuration for transient failures
+    private static let MAX_RETRIES = 2
+    private static let RETRY_DELAY_BASE: TimeInterval = 1.0
 
     init() {
         let environment = storageService.loadServerEnvironment()
         self.baseURL = environment.baseURL
+
+        // PERFORMANCE: Configure URLSession with shorter timeout
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = APIService.REQUEST_TIMEOUT
+        configuration.timeoutIntervalForResource = APIService.REQUEST_TIMEOUT * 2
+        self.session = URLSession(configuration: configuration)
+    }
+
+    // MARK: - Retry Logic
+
+    /// Execute a request with automatic retry on transient failures
+    private func executeWithRetry<T>(
+        operation: @escaping () async throws -> T,
+        retries: Int = MAX_RETRIES
+    ) async throws -> T {
+        var lastError: Error?
+        var attempt = 0
+
+        while attempt <= retries {
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+
+                // Only retry on network/timeout errors, not on HTTP errors
+                let shouldRetry = isRetryableError(error) && attempt < retries
+                if shouldRetry {
+                    attempt += 1
+                    let delay = APIService.RETRY_DELAY_BASE * pow(2.0, Double(attempt - 1))
+                    print("⚠️ Request failed, retrying in \(delay)s (attempt \(attempt)/\(retries)): \(error.localizedDescription)")
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                } else {
+                    throw error
+                }
+            }
+        }
+
+        throw lastError ?? APIError.noData
+    }
+
+    /// Determine if an error is retryable (transient network issues)
+    private func isRetryableError(_ error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .networkConnectionLost, .notConnectedToInternet,
+                 .cannotConnectToHost, .cannotFindHost:
+                return true
+            default:
+                return false
+            }
+        }
+        return false
     }
     
     func updateServerEnvironment(_ environment: ServerEnvironment) {
@@ -37,12 +96,17 @@ final class APIService: ObservableObject {
     // MARK: - Train Search
     
     func searchTrains(fromStationCode: String, toStationCode: String, date: Date? = nil) async throws -> [TrainV2] {
-        var components = URLComponents(string: "\(baseURL)/v2/trains/departures")!
+        guard var components = URLComponents(string: "\(baseURL)/v2/trains/departures") else {
+            throw APIError.invalidURL
+        }
 
         var queryItems = [
             URLQueryItem(name: "from", value: fromStationCode),
             URLQueryItem(name: "to", value: toStationCode),
-            URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT)
+            URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT),
+            // PERFORMANCE: Filter out already-departed trains server-side
+            // This reduces payload size and eliminates redundant client filtering
+            URLQueryItem(name: "hide_departed", value: "true")
         ]
 
         if let date = date {
@@ -60,23 +124,26 @@ final class APIService: ObservableObject {
 
         print("🔵 DEBUG API: Fetching trains from URL: \(url)")
 
-        let (data, response) = try await session.data(from: url)
+        // PERFORMANCE: Use retry logic for transient network failures
+        return try await executeWithRetry {
+            let (data, _) = try await self.session.data(from: url)
 
-        do {
-            let response = try decoder.decode(V2DeparturesResponse.self, from: data)
-            print("🔵 DEBUG API: Decoded \(response.departures.count) departures from API")
-            print("🔵 DEBUG API: Train IDs in response: \(response.departures.map { $0.trainId })")
+            do {
+                let response = try self.decoder.decode(V2DeparturesResponse.self, from: data)
+                print("🔵 DEBUG API: Decoded \(response.departures.count) departures from API")
+                print("🔵 DEBUG API: Train IDs in response: \(response.departures.map { $0.trainId })")
 
-            let adaptedTrains = response.departures.map { adaptV2DepartureToTrainV2($0) }
-            print("🔵 DEBUG API: Adapted to \(adaptedTrains.count) TrainV2 objects")
+                let adaptedTrains = response.departures.map { self.adaptV2DepartureToTrainV2($0) }
+                print("🔵 DEBUG API: Adapted to \(adaptedTrains.count) TrainV2 objects")
 
-            return adaptedTrains
-        } catch {
-            print("🔴 V2 DECODING ERROR (searchTrains): \(error)")
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+                return adaptedTrains
+            } catch {
+                print("🔴 V2 DECODING ERROR (searchTrains): \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("🔴 RAW DATA: \(jsonString.prefix(500))")
+                }
+                throw error
             }
-            throw error
         }
     }
     
@@ -106,19 +173,22 @@ final class APIService: ObservableObject {
         guard let url = components.url else {
             throw APIError.invalidURL
         }
-        
-        let (data, response) = try await session.data(from: url)
-        
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 {
-            throw APIError.noData
-        }
-        
-        do {
-            let detailsResponse = try decoder.decode(V2TrainDetailsResponse.self, from: data)
-            return adaptV2TrainDetailsToTrainV2(detailsResponse.train, fromStationCode: fromStationCode)
-        } catch {
-            print("🔴 V2 DECODING ERROR (fetchTrainDetails for id: \(id)): \(error)")
-            throw error
+
+        // PERFORMANCE: Use retry logic for transient network failures
+        return try await executeWithRetry {
+            let (data, response) = try await self.session.data(from: url)
+
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 {
+                throw APIError.noData
+            }
+
+            do {
+                let detailsResponse = try self.decoder.decode(V2TrainDetailsResponse.self, from: data)
+                return self.adaptV2TrainDetailsToTrainV2(detailsResponse.train, fromStationCode: fromStationCode)
+            } catch {
+                print("🔴 V2 DECODING ERROR (fetchTrainDetails for id: \(id)): \(error)")
+                throw error
+            }
         }
     }
     
@@ -149,8 +219,8 @@ final class APIService: ObservableObject {
         }
         
         print("📊 Fetching historical data from: \(url)")
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
+
+        let (data, _) = try await session.data(from: url)
         
         // Debug: Print raw response
         if let jsonString = String(data: data, encoding: .utf8) {
@@ -307,8 +377,8 @@ final class APIService: ObservableObject {
         }
         
         print("📊 Fetching route historical data from: \(url)")
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
+
+        let (data, _) = try await session.data(from: url)
         
         // Debug: Print raw response
         if let jsonString = String(data: data, encoding: .utf8) {
@@ -569,10 +639,12 @@ final class APIService: ObservableObject {
         let encoder = JSONEncoder()
         request.httpBody = try encoder.encode(body)
         
+        #if DEBUG
         print("📱 Registering Live Activity token (V2):")
         print("  Token: \(pushToken.prefix(10))...")
         print("  Train: \(trainNumber)")
         print("  Route: \(originCode) → \(destinationCode)")
+        #endif
         
         let (_, response) = try await session.data(for: request)
         
@@ -727,7 +799,76 @@ final class APIService: ObservableObject {
             throw error
         }
     }
-    
+
+    // MARK: - Operations Summary
+
+    /// Fetch operations summary for network, route, or train scope
+    /// - Parameters:
+    ///   - scope: Summary scope (network, route, or train)
+    ///   - fromStation: Origin station code (required for route, optional for train)
+    ///   - toStation: Destination station code (required for route)
+    ///   - trainId: Train ID (required for train scope)
+    ///   - dataSource: Optional filter by NJT or AMTRAK
+    /// - Returns: OperationsSummaryResponse with headline and body
+    func fetchOperationsSummary(
+        scope: SummaryScope,
+        fromStation: String? = nil,
+        toStation: String? = nil,
+        trainId: String? = nil,
+        dataSource: String? = nil
+    ) async throws -> OperationsSummaryResponse {
+        var components = URLComponents(string: "\(baseURL)/v2/routes/summary")!
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "scope", value: scope.rawValue)
+        ]
+
+        if let fromStation = fromStation {
+            queryItems.append(URLQueryItem(name: "from_station", value: fromStation))
+        }
+
+        if let toStation = toStation {
+            queryItems.append(URLQueryItem(name: "to_station", value: toStation))
+        }
+
+        if let trainId = trainId {
+            queryItems.append(URLQueryItem(name: "train_id", value: trainId))
+        }
+
+        if let dataSource = dataSource {
+            queryItems.append(URLQueryItem(name: "data_source", value: dataSource))
+        }
+
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        print("📊 Fetching operations summary from: \(url)")
+
+        let (data, response) = try await session.data(from: url)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            if httpResponse.statusCode == 400 {
+                throw APIError.invalidParameters
+            } else if httpResponse.statusCode != 200 {
+                throw APIError.noData
+            }
+        }
+
+        do {
+            let response = try decoder.decode(OperationsSummaryResponse.self, from: data)
+            print("✅ Operations summary decoded: \(response.headline)")
+            return response
+        } catch {
+            print("🔴 DECODING ERROR (fetchOperationsSummary): \(error)")
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+            }
+            throw error
+        }
+    }
+
     // MARK: - V2 API Adapters
     
     private func adaptV2DepartureToTrainV2(_ departure: V2TrainDeparture) -> TrainV2 {
@@ -927,6 +1068,67 @@ final class APIService: ObservableObject {
             }
             throw error
         }
+    }
+
+    // MARK: - User Feedback
+
+    /// Submit user feedback about data issues
+    func submitFeedback(
+        message: String,
+        screen: String,
+        trainId: String? = nil,
+        originCode: String? = nil,
+        destinationCode: String? = nil
+    ) async throws {
+        let endpoint = "/v2/feedback"
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            throw APIError.invalidURL
+        }
+
+        struct FeedbackRequest: Encodable {
+            let message: String
+            let screen: String
+            let train_id: String?
+            let origin_code: String?
+            let destination_code: String?
+            let app_version: String?
+            let device_model: String?
+        }
+
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        var deviceModel = "Unknown"
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        deviceModel = withUnsafePointer(to: &systemInfo.machine) {
+            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
+                String(validatingUTF8: $0) ?? "Unknown"
+            }
+        }
+
+        let body = FeedbackRequest(
+            message: message,
+            screen: screen,
+            train_id: trainId,
+            origin_code: originCode,
+            destination_code: destinationCode,
+            app_version: appVersion,
+            device_model: deviceModel
+        )
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (_, response) = try await session.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+                throw APIError.invalidParameters
+            }
+        }
+
+        print("✅ Feedback submitted successfully")
     }
 }
 

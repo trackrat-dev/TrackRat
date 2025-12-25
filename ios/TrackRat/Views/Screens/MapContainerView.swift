@@ -53,6 +53,7 @@ struct MapContainerView: View {
     @EnvironmentObject private var appState: AppState
     @State private var selectedDetent: PresentationDetent = .fraction(0.50)
     @State private var isSheetPresented = true  // Always show sheet (persistent)
+    @State private var sheetExpansionTask: Task<Void, Never>?  // Track pending expansion for cancellation
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
@@ -128,7 +129,6 @@ struct MapContainerView: View {
                 segments: mapViewModel.segments,
                 individualSegments: mapViewModel.individualSegments,
                 stations: mapViewModel.stations,
-                selectedRoute: appState.activeTrainRoute ?? appState.selectedRoute,  // Show route for Live Activity or selected route
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -140,15 +140,21 @@ struct MapContainerView: View {
             )
             .ignoresSafeArea()
             
-            // Optional: Show subtle loading indicator when data is loading
-            if mapViewModel.isLoading && mapViewModel.segments.isEmpty {
-                VStack {
-                    Spacer()
+            // Operations summary pill (network scope)
+            VStack {
+                Spacer()
+
+                OperationsSummaryView(scope: .network)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+
+                // Show subtle loading indicator when data is loading
+                if mapViewModel.isLoading && mapViewModel.segments.isEmpty {
                     HStack {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .orange))
                             .scaleEffect(0.8)
-                        
+
                         Text("Loading traffic data...")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -158,9 +164,9 @@ struct MapContainerView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(.ultraThinMaterial)
                     )
-                    .padding(.bottom, 120) // Above bottom sheet
                 }
             }
+            .padding(.bottom, 120) // Above bottom sheet
             
             // Gradient overlay at top for better readability
             VStack {
@@ -200,42 +206,38 @@ struct MapContainerView: View {
         .onChange(of: appState.deepLinkTrainNumber) { _, trainNumber in
             // Handle deep link navigation when train number is set
             guard let trainNumber = trainNumber else { return }
-            
+
             print("🔗 Deep link detected - navigating to train \(trainNumber)")
-            
+
+            // For deep links, we reset the path and use expand-first navigation
+            // Cancel any pending operations first
+            sheetExpansionTask?.cancel()
+
+            // Reset navigation path to root
+            appState.navigationPath = NavigationPath()
+
+            // Use pendingNavigation to expand sheet FIRST, then navigate
+            // This ensures smooth transition even when deep linking
+            appState.pendingNavigation = .trainDetailsFlexible(
+                trainNumber: trainNumber,
+                fromStation: appState.deepLinkFromStation,
+                journeyDate: nil
+            )
+            print("🔗 Pending navigation set for train \(trainNumber)")
+
+            // Clear deep link state after a delay to ensure navigation completes
             Task {
-                // Small delay to ensure NavigationStack is ready
-                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-                
+                try? await Task.sleep(nanoseconds: 800_000_000) // 0.8 seconds (expansion + navigation)
                 await MainActor.run {
-                    // Navigate directly to train details
-                    print("🔗 Setting up navigation path...")
-                    appState.navigationPath = NavigationPath()
-                    appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
-                        trainNumber: trainNumber,
-                        fromStation: appState.deepLinkFromStation,
-                        journeyDate: nil
-                    ))
-                    print("🔗 Navigation path set with \(appState.navigationPath.count) destinations")
-                    
-                    // Expand bottom sheet to full screen immediately
-                    selectedDetent = .large
-                    print("🔗 Bottom sheet expanded")
-                    
+                    appState.clearDeepLinkState()
+                    print("🔗 Deep link state cleared")
+
                     // Animate map to route if available
                     if let route = appState.selectedRoute {
                         animateMapToRoute(route, targetSheetDetent: .large)
                         print("🔗 Map animated to route")
                     }
                 }
-                
-                // Clear deep link state after a short delay to ensure navigation completes
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                await MainActor.run {
-                    appState.clearDeepLinkState()
-                    print("🔗 Deep link state cleared")
-                }
-                
                 print("✅ Deep link navigation completed")
             }
         }
@@ -256,21 +258,12 @@ struct MapContainerView: View {
                 appState.selectedRoute = nil
             }
         }
-        .onChange(of: appState.selectedRoute) { oldRoute, newRoute in
-            // Animate map to show selected route when it changes
-            if let route = newRoute {
-                // Use current bottom sheet position since we're not changing it here
-                animateMapToRoute(route, targetSheetDetent: selectedDetent)
-            }
-        }
-        // Removed automatic map animation when user selects origin station
-        // This was causing the map to change location/zoom after origin selection
-        // .onChange(of: appState.departureStationCode) { _, newDepartureCode in
-        //     // Animate map to show departure station when it changes (origin selection)
-        //     if let departureCode = newDepartureCode, appState.selectedRoute == nil {
-        //         // Only animate to single station if no full route is selected yet
-        //         // Use current bottom sheet position since we're not changing it here
-        //         animateMapToStation(departureCode, targetSheetPosition: bottomSheetPosition)
+        // Disabled automatic map animation when selecting routes
+        // This was causing distracting map redraws during origin/destination selection
+        // The map will stay at the default home/work view until the user views train details
+        // .onChange(of: appState.selectedRoute) { oldRoute, newRoute in
+        //     if let route = newRoute {
+        //         animateMapToRoute(route, targetSheetDetent: selectedDetent)
         //     }
         // }
         .onChange(of: appState.navigationPath) { _, newPath in
@@ -300,23 +293,15 @@ struct MapContainerView: View {
             // Handle deep link expansion request
             if shouldExpand {
                 print("🔗 Deep link expansion requested")
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    selectedDetent = .large
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Use delayed expansion to allow NavigationStack to layout first
+                expandSheetWithDelay()
             }
         }
-        .onChange(of: appState.shouldExpandSheet) { _, shouldExpand in
-            // Handle navigation-based sheet expansion (e.g., My Profile)
-            if shouldExpand {
-                print("📱 Navigation sheet expansion requested")
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    selectedDetent = .large
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                // Reset flag after handling
-                appState.shouldExpandSheet = false
-            }
+        .onChange(of: appState.pendingNavigation) { _, pendingDestination in
+            // Handle "expand first, then navigate" pattern
+            // This ensures sheet is fully expanded before NavigationStack swaps content
+            guard let destination = pendingDestination else { return }
+            handlePendingNavigation(destination)
         }
         .sheet(item: $selectedSegment) { segment in
             SegmentTrainDetailsView(segment: segment)
@@ -327,54 +312,82 @@ struct MapContainerView: View {
     
     private func handleNavigationChange(_ navigationPath: NavigationPath) {
         if navigationPath.isEmpty {
-            // Back to home - reset to default Newark Penn view
-            resetToDefaultMapView()
+            // Back to home - cancel any pending operations
+            sheetExpansionTask?.cancel()
+            appState.pendingNavigation = nil
             selectedDetent = .fraction(0.50)
-        } else {
-            // Check if we're navigating to train details
-            if isNavigatingToTrainDetails(navigationPath) {
-                // DO NOT animate the map when navigating to train details
-                // The map should already be properly positioned from the train list view
-                // Removing animation prevents the map from jumping/refocusing
+            // Note: Map stays static - no resetToDefaultMapView() call
+        }
+        // Note: Map stays static during all navigation - no switchToJourneyFocus() call
+    }
 
-                // Just snap bottom sheet to full screen (100%) when navigating to train details
+    /// Expands the sheet to large with a small delay to allow NavigationStack content to layout first.
+    /// This prevents the visual glitch where the sheet expands before new view content is rendered.
+    /// NOTE: This is legacy - prefer using pendingNavigation for new code.
+    private func expandSheetWithDelay(triggerHaptic: Bool = true) {
+        // Skip if already expanded - no need to animate
+        guard selectedDetent != .large else { return }
+
+        // Cancel any pending expansion to handle rapid navigation
+        sheetExpansionTask?.cancel()
+
+        sheetExpansionTask = Task {
+            // Wait briefly for NavigationStack to mount and start laying out the new view
+            // 150ms provides safety margin for view initialization without feeling sluggish
+            try? await Task.sleep(nanoseconds: 150_000_000)
+
+            // Check if cancelled (e.g., user navigated back quickly)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    selectedDetent = .large
+                }
+                if triggerHaptic {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            }
+        }
+    }
+
+    /// Handles pending navigation by expanding the sheet FIRST, then navigating.
+    /// This eliminates the glitch where sheet expands with empty space before content renders.
+    private func handlePendingNavigation(_ destination: NavigationDestination) {
+        // Cancel any pending expansion from other sources
+        sheetExpansionTask?.cancel()
+
+        // Clear pending navigation immediately to prevent re-triggers
+        let destinationToNavigate = destination
+        appState.pendingNavigation = nil
+
+        // If sheet is already expanded, navigate immediately
+        if selectedDetent == .large {
+            appState.navigationPath.append(destinationToNavigate)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
+
+        // Sheet needs to expand first - start expansion, then navigate after animation completes
+        sheetExpansionTask = Task {
+            // Start sheet expansion animation
+            await MainActor.run {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     selectedDetent = .large
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
-            
-            // Handle train details for map mode switching
-            if isOnTrainDetails(navigationPath) {
-                switchToJourneyFocus()
-            }
 
-            // Handle profile view navigation
-            if isOnProfileView(navigationPath) {
-                // Delay expansion until after navigation completes
-                Task {
-                    // Wait for navigation animation to fully complete (350ms)
-                    try? await Task.sleep(nanoseconds: 350_000_000)
+            // Wait for sheet expansion animation to complete (300ms animation + small buffer)
+            try? await Task.sleep(nanoseconds: 320_000_000)
 
-                    await MainActor.run {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            selectedDetent = .large
-                        }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                }
+            // Check if cancelled (e.g., user tapped back quickly)
+            guard !Task.isCancelled else { return }
+
+            // Now navigate - sheet is already at .large so content appears in stable container
+            await MainActor.run {
+                appState.navigationPath.append(destinationToNavigate)
             }
         }
-    }
-    
-    private func isNavigatingToTrainDetails(_ navigationPath: NavigationPath) -> Bool {
-        // Check if we just navigated to train details by looking at current train context
-        // This will be true when a train is selected and we have navigation context
-        // Also check if we have the required route information for proper train details display
-        return appState.currentTrainId != nil && 
-               !navigationPath.isEmpty && 
-               appState.departureStationCode != nil && 
-               appState.selectedDestination != nil
     }
     
     private func isOnTrainDetails(_ navigationPath: NavigationPath) -> Bool {
@@ -382,16 +395,6 @@ struct MapContainerView: View {
         // We can't directly access NavigationPath contents, so we'll use the selected route
         // and current train info to infer if we're on train details
         return appState.currentTrainId != nil && appState.selectedRoute != nil
-    }
-
-    private func isOnProfileView(_ navigationPath: NavigationPath) -> Bool {
-        // Check if we're currently on the profile view
-        // Since we can't directly inspect NavigationPath, we need to track this differently
-        // For now, we'll check if the path is not empty and we're not on train details
-        // A more robust solution would track the actual destination
-        return !navigationPath.isEmpty &&
-               appState.currentTrainId == nil &&
-               appState.selectedRoute == nil
     }
 
     private func switchToJourneyFocus() {
@@ -707,11 +710,9 @@ struct CongestionMapControlsView: View {
             
             // Legend
             VStack(alignment: .leading, spacing: 8) {
-                Text("CONGESTION LEVELS")
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-                
+                Text("Congestion Levels")
+                    .trackRatSectionHeader()
+
                 HStack(spacing: 16) {
                     LegendItem(color: .green, label: "Normal")
                     LegendItem(color: .yellow, label: "Moderate")

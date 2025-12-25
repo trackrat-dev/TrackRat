@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
@@ -12,6 +11,8 @@ struct TrainListView: View {
     @State private var departureStationCode: String
     @State private var departureName: String
     @State private var isClosing = false
+    // PERFORMANCE: Track visibility to prevent polling when view is not visible
+    @State private var isViewVisible = false
 
 
     init(destination: String) {
@@ -40,6 +41,28 @@ struct TrainListView: View {
                 } else if viewModel.trains.isEmpty {
                     EmptyStateView(message: "No trains found")
                 } else {
+                    // Route summary (if we have both origin and destination)
+                    if !departureStationCode.isEmpty,
+                       let destinationCode = Stations.getStationCode(destination) {
+                        OperationsSummaryView(
+                            scope: .route,
+                            fromStation: departureStationCode,
+                            toStation: destinationCode,
+                            isExpandable: true,
+                            onTrainTap: { selectedTrainId in
+                                // Navigate to the selected train's detail view
+                                appState.navigationPath.append(
+                                    NavigationDestination.trainDetailsFlexible(
+                                        trainNumber: selectedTrainId,
+                                        fromStation: departureStationCode,
+                                        journeyDate: nil
+                                    )
+                                )
+                            }
+                        )
+                        .padding(.bottom, 4)
+                    }
+
                     let expressTrains = viewModel.identifyExpressTrains()
                     ForEach(viewModel.trains) { train in
                         TrainCard(
@@ -62,17 +85,28 @@ struct TrainListView: View {
                                     )
                                 }
 
-                                // Use flexible navigation with train number
-                                // Only pass departure station if it's not empty
-                                appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                                // Use pendingNavigation to expand sheet FIRST, then navigate
+                                // This prevents the glitch where sheet expands with empty space
+                                appState.pendingNavigation = .trainDetailsFlexible(
                                     trainNumber: train.trainId,
                                     fromStation: departureStationCode.isEmpty ? nil : departureStationCode,
                                     journeyDate: train.journeyDate
-                                ))
+                                )
                             },
                             isExpress: expressTrains.contains(train.trainId)
                         )
                     }
+                }
+
+                // Feedback button at bottom of content
+                if !viewModel.trains.isEmpty {
+                    FeedbackButton(
+                        screen: "train_list",
+                        trainId: nil,
+                        originCode: departureStationCode,
+                        destinationCode: Stations.getStationCode(destination)
+                    )
+                    .padding(.top, 8)
                 }
 
                 // Add spacer at bottom for better scrolling
@@ -117,12 +151,17 @@ struct TrainListView: View {
                 fromStationCode: departureStationCode
             )
         }
-        .onReceive(viewModel.timer) { _ in
-            Task {
+        .task(id: isViewVisible) {
+            // Auto-refresh task that cancels automatically when view disappears
+            guard isViewVisible else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled, isViewVisible else { break }
                 await viewModel.refreshTrains()
             }
         }
         .onAppear {
+            isViewVisible = true
             // Initialize state from app state
             if departureStationCode.isEmpty {
                 departureStationCode = appState.departureStationCode ?? "NY"
@@ -149,6 +188,10 @@ struct TrainListView: View {
                     isFavorite: false
                 )
             }
+        }
+        .onDisappear {
+            // PERFORMANCE: Stop polling when view is not visible
+            isViewVisible = false
         }
     }
 }
@@ -274,8 +317,8 @@ struct TrainCard: View {
         .background(
             isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9)
         )
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+        .cornerRadius(TrackRatTheme.CornerRadius.lg)
+        .trackRatShadow()
         .opacity(1.0)
         .onTapGesture {
             onTap()
@@ -301,7 +344,7 @@ struct StatusV2Badge: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(statusColor.opacity(0.2))
-        .cornerRadius(8)
+        .cornerRadius(TrackRatTheme.CornerRadius.sm)
     }
     
     private var statusColor: Color {
@@ -364,10 +407,7 @@ class TrainListViewModel: ObservableObject {
     private var currentDestination: String?
     private var currentFromStationCode: String?
     private let apiService: APIService
-    
-    // Timer for auto-refresh
-    let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    
+
     // MARK: - Express Train Identification
     
     /// Identify express trains using 15% faster travel time threshold

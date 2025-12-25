@@ -19,6 +19,10 @@ class TrainCacheService {
 
     // In-memory cache for fast access during active session
     private var memoryCache: [String: CachedTrain] = [:]
+    // PERFORMANCE: Track access order for LRU eviction
+    private var memoryCacheAccessOrder: [String] = []
+    // PERFORMANCE: Maximum number of entries in memory cache to prevent unbounded growth
+    private let maxMemoryCacheSize = 50
 
     // Maximum age for cached data (5 minutes = 300 seconds)
     // This is separate from API data freshness - it's how long we trust our local cache
@@ -97,10 +101,13 @@ class TrainCacheService {
         if let cached = memoryCache[cacheKey] {
             if !cached.isExpired {
                 print("✅ Cache HIT (memory): \(cacheKey) - age: \(cached.ageSeconds)s")
+                // Update LRU access order
+                updateAccessOrder(for: cacheKey)
                 return cached.train
             } else {
                 print("⏰ Cache EXPIRED (memory): \(cacheKey) - age: \(cached.ageSeconds)s")
                 memoryCache.removeValue(forKey: cacheKey)
+                memoryCacheAccessOrder.removeAll { $0 == cacheKey }
             }
         }
 
@@ -110,8 +117,8 @@ class TrainCacheService {
            let cached = try? JSONDecoder().decode(CachedTrain.self, from: data) {
             if !cached.isExpired {
                 print("✅ Cache HIT (persistent): \(cacheKey) - age: \(cached.ageSeconds)s")
-                // Restore to memory cache
-                memoryCache[cacheKey] = cached
+                // Restore to memory cache with LRU tracking
+                addToMemoryCache(key: cacheKey, value: cached)
                 return cached.train
             } else {
                 print("⏰ Cache EXPIRED (persistent): \(cacheKey) - age: \(cached.ageSeconds)s")
@@ -120,6 +127,37 @@ class TrainCacheService {
         }
 
         print("❌ Cache MISS: \(cacheKey)")
+        return nil
+    }
+
+    /// Returns the age of the cache in seconds, or nil if not cached
+    /// PERFORMANCE: Used to determine if we should skip background refresh on cache hit
+    func getCacheAge(
+        trainId: String? = nil,
+        trainNumber: String? = nil,
+        date: Date? = nil,
+        fromStation: String? = nil
+    ) -> TimeInterval? {
+        let cacheKey = generateCacheKey(
+            trainId: trainId,
+            trainNumber: trainNumber,
+            date: date,
+            fromStation: fromStation
+        )
+
+        // Check in-memory cache first
+        if let cached = memoryCache[cacheKey], !cached.isExpired {
+            return TimeInterval(cached.ageSeconds)
+        }
+
+        // Check persistent cache
+        let persistentKey = cacheKeyPrefix + cacheKey
+        if let data = userDefaults.data(forKey: persistentKey),
+           let cached = try? JSONDecoder().decode(CachedTrain.self, from: data),
+           !cached.isExpired {
+            return TimeInterval(cached.ageSeconds)
+        }
+
         return nil
     }
 
@@ -146,8 +184,8 @@ class TrainCacheService {
             cacheKey: cacheKey
         )
 
-        // Store in memory cache
-        memoryCache[cacheKey] = cached
+        // Store in memory cache with LRU tracking
+        addToMemoryCache(key: cacheKey, value: cached)
 
         // Store in persistent cache
         if let encoded = try? JSONEncoder().encode(cached) {
@@ -163,11 +201,45 @@ class TrainCacheService {
         }
     }
 
+    // MARK: - LRU Cache Management
+
+    /// Update the access order for LRU tracking
+    private func updateAccessOrder(for key: String) {
+        // Remove from current position and add to end (most recently used)
+        memoryCacheAccessOrder.removeAll { $0 == key }
+        memoryCacheAccessOrder.append(key)
+    }
+
+    /// Add item to memory cache with LRU eviction
+    private func addToMemoryCache(key: String, value: CachedTrain) {
+        // If key already exists, update access order
+        if memoryCache[key] != nil {
+            updateAccessOrder(for: key)
+        } else {
+            // New entry - add to access order
+            memoryCacheAccessOrder.append(key)
+        }
+
+        memoryCache[key] = value
+
+        // PERFORMANCE: Evict least recently used entries if over limit
+        while memoryCache.count > maxMemoryCacheSize {
+            if let oldestKey = memoryCacheAccessOrder.first {
+                memoryCache.removeValue(forKey: oldestKey)
+                memoryCacheAccessOrder.removeFirst()
+                print("🧹 LRU evicted: \(oldestKey)")
+            } else {
+                break
+            }
+        }
+    }
+
     // MARK: - Cache Management
 
     /// Clears all cached train data
     func clearAllCache() {
         memoryCache.removeAll()
+        memoryCacheAccessOrder.removeAll()
 
         let metadata = getCacheMetadata()
         for cacheKey in metadata.keys.keys {
@@ -194,6 +266,7 @@ class TrainCacheService {
         )
 
         memoryCache.removeValue(forKey: cacheKey)
+        memoryCacheAccessOrder.removeAll { $0 == cacheKey }
 
         let persistentKey = cacheKeyPrefix + cacheKey
         userDefaults.removeObject(forKey: persistentKey)

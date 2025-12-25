@@ -1,0 +1,111 @@
+# TrackRat V2 Production Deployment
+# Triggered by push to 'production' branch
+
+substitutions:
+  _REGION: us-east4
+  _ZONE: us-east4-a
+  _ENVIRONMENT: production
+  _MIG_NAME: trackrat-production-mig
+  _DEPLOY_BUCKET: trackrat-v2-deploy-production
+
+steps:
+  # Wait for any running Terraform builds to finish
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'wait-for-terraform'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Checking for running Terraform builds..."
+        for i in $$(seq 1 60); do
+          RUNNING=$$(gcloud builds list \
+            --filter="substitutions._ENVIRONMENT=${_ENVIRONMENT} AND tags=terraform AND status=WORKING AND id!=${BUILD_ID}" \
+            --format='value(id)' \
+            --limit=1 \
+            2>/dev/null)
+          if [ -z "$$RUNNING" ]; then
+            echo "No Terraform builds running, proceeding with deploy"
+            exit 0
+          fi
+          echo "Terraform build $$RUNNING in progress, waiting... ($$i/60)"
+          sleep 10
+        done
+        echo "ERROR: Timeout waiting for Terraform build after 10 minutes"
+        exit 1
+
+  # Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build'
+    args:
+      - 'build'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-${SHORT_SHA}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-latest'
+      - '-f'
+      - 'backend_v2/Dockerfile'
+      - 'backend_v2'
+    waitFor: ['wait-for-terraform']
+
+  # Push image with SHA tag
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-sha'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-${SHORT_SHA}'
+    waitFor: ['build']
+
+  # Push image with latest tag
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-latest'
+    args:
+      - 'push'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-latest'
+    waitFor: ['build']
+
+  # Upload docker-compose.yml to GCS
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'upload-compose'
+    args:
+      - 'cp'
+      - 'backend_v2/docker-compose.yml'
+      - 'gs://${_DEPLOY_BUCKET}/docker-compose.yml'
+    waitFor: ['push-latest']
+
+  # Rolling restart of MIG to pull new image
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy'
+    args:
+      - 'compute'
+      - 'instance-groups'
+      - 'managed'
+      - 'rolling-action'
+      - 'restart'
+      - '${_MIG_NAME}'
+      - '--zone=${_ZONE}'
+    waitFor: ['upload-compose']
+
+  # Scale down staging after successful production deploy (cost savings)
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'scale-down-staging'
+    args:
+      - 'compute'
+      - 'instance-groups'
+      - 'managed'
+      - 'resize'
+      - 'trackrat-staging-mig'
+      - '--size=0'
+      - '--zone=${_ZONE}'
+    waitFor: ['deploy']
+
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/trackrat/api:${_ENVIRONMENT}-latest'
+
+tags:
+  - 'trackrat'
+  - 'production'
+  - 'deploy'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

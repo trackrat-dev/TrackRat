@@ -66,6 +66,10 @@ struct TrackRatTheme {
         // Border Colors
         static let border: Color = Color.white.opacity(0.3)
         static let borderSecondary: Color = Color.white.opacity(0.2)
+
+        // Shadow Colors
+        static let shadow: Color = Color.black.opacity(0.1)
+        static let shadowMedium: Color = Color.black.opacity(0.2)
     }
     
     // MARK: - Typography
@@ -189,6 +193,25 @@ extension View {
         self
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+
+    /// Standard section header styling - uppercase caption with secondary color
+    func trackRatSectionHeader() -> some View {
+        self
+            .font(TrackRatTheme.Typography.caption)
+            .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
+            .textCase(.uppercase)
+            .tracking(0.5)
+    }
+
+    /// Standard card shadow
+    func trackRatShadow() -> some View {
+        self.shadow(color: TrackRatTheme.Colors.shadow, radius: 8, x: 0, y: 4)
+    }
+
+    /// Lighter card shadow for subtle elevation
+    func trackRatShadowLight() -> some View {
+        self.shadow(color: TrackRatTheme.Colors.shadow, radius: 4, x: 0, y: 2)
     }
 }
 

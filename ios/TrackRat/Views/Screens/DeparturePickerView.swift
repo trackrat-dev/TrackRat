@@ -353,10 +353,8 @@ struct DeparturePickerView: View {
     @ViewBuilder
     private var popularStationsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("POPULAR STATIONS")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.white.opacity(0.7))
+            Text("Popular Stations")
+                .trackRatSectionHeader()
                 .padding(.horizontal)
             
             VStack(spacing: 12) {
@@ -393,18 +391,15 @@ struct DeparturePickerView: View {
     private func selectRatSenseSuggestion(_ suggestion: RatSenseService.SuggestedJourney) {
         // Record the journey search
         ratSenseService.recordJourneySearch(from: suggestion.fromStation, to: suggestion.toStation)
-        
+
         // Set both departure and destination
         appState.selectedDeparture = suggestion.fromStationName
         appState.departureStationCode = suggestion.fromStation
         appState.selectedDestination = suggestion.toStationName
         appState.destinationStationCode = suggestion.toStation
-        
-        // Navigate directly to train list
-        appState.navigationPath.append(NavigationDestination.trainList(destination: suggestion.toStationName))
-        
-        // Haptic feedback
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        // Use pendingNavigation to expand sheet FIRST, then navigate
+        appState.pendingNavigation = .trainList(destination: suggestion.toStationName)
     }
     
     private func searchForTrain(_ trainNumber: String) {
@@ -445,12 +440,13 @@ struct DeparturePickerView: View {
                 if let train = foundTrain, let trainNumber = successfulTrainNumber {
                     // Success - navigate to train details
                     appState.currentTrainId = train.id
-                    appState.navigationPath.append(NavigationDestination.trainDetailsFlexible(
+                    // Use pendingNavigation to expand sheet FIRST, then navigate
+                    appState.pendingNavigation = .trainDetailsFlexible(
                         trainNumber: trainNumber,
                         fromStation: nil,  // No specific departure station when searching globally
                         journeyDate: train.journeyDate
-                    ))
-                    
+                    )
+
                     // Reset search
                     withAnimation(.easeInOut(duration: 0.3)) {
                         searchText = ""
@@ -461,7 +457,7 @@ struct DeparturePickerView: View {
                     // Handle the final error
                     handleTrainSearchError(error, originalInput: trimmedInput)
                 }
-                
+
                 isSearchingTrain = false
             }
         }
@@ -571,8 +567,8 @@ struct DepartureButton: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
-        .background(.white.opacity(0.2))
-        .cornerRadius(12)
+        .background(TrackRatTheme.Colors.surfaceCard)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
     }
 }
 

@@ -44,7 +44,7 @@ struct LiveActivityControls: View {
                 }
                 .padding()
                 .background(.orange.opacity(0.3))
-                .cornerRadius(12)
+                .cornerRadius(TrackRatTheme.CornerRadius.md)
             } else {
                 // Start Live Activity button
                 Button {
@@ -58,7 +58,7 @@ struct LiveActivityControls: View {
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(.orange.opacity(0.8))
-                    .cornerRadius(12)
+                    .cornerRadius(TrackRatTheme.CornerRadius.md)
                 }
                 .disabled(isStarting)
                 .buttonStyle(.plain)

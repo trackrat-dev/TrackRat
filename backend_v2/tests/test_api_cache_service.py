@@ -2,12 +2,12 @@
 Tests for API cache service.
 """
 
-import pytest
 from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
-from trackrat.services.api_cache import ApiCacheService
+import pytest
 from trackrat.models.database import CachedApiResponse
+from trackrat.services.api_cache import ApiCacheService
 from trackrat.utils.time import now_et
 
 
@@ -217,4 +217,31 @@ async def test_compute_departure_response_params():
             time_from=None,
             time_to=None,
             limit=50,
+            skip_individual_refresh=True,  # Critical: skip during precompute
         )
+
+
+@pytest.mark.asyncio
+async def test_compute_departure_response_skips_individual_refresh():
+    """Test that cache precomputation skips individual train refreshes.
+
+    This test verifies the fix for excessive API calls during cache precomputation.
+    The precompute job should pass skip_individual_refresh=True to avoid making
+    individual getTrainStopList API calls for each stale train.
+    """
+    service = ApiCacheService()
+
+    with patch.object(service.departure_service, "get_departures") as mock_get:
+        mock_response = AsyncMock()
+        mock_response.model_dump.return_value = {"departures": [], "metadata": {}}
+        mock_get.return_value = mock_response
+
+        mock_db = AsyncMock()
+        params = {"from_station": "NY", "to_station": "TR", "limit": 50}
+
+        await service._compute_departure_response(mock_db, params)
+
+        # Verify skip_individual_refresh=True was passed
+        call_kwargs = mock_get.call_args.kwargs
+        assert "skip_individual_refresh" in call_kwargs
+        assert call_kwargs["skip_individual_refresh"] is True

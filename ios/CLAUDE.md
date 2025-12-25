@@ -13,7 +13,6 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **Combine**: Reactive data flow with automatic UI updates
 - **Async/Await**: Clean asynchronous API calls
 - **MapKit**: Map visualization for congestion and train tracking
-- **Sentry**: Error tracking and performance monitoring
 - **MVVM Pattern**: Embedded ViewModels within view files (no separate ViewModel files)
 
 ### State Management
@@ -99,7 +98,6 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - Intro video with automatic progression
 - Home/work station configuration
 - Favorite stations setup
-- Privacy consent (Sentry integration)
 - Video fallback handling for errors
 
 ### 11. **PennStationGuideView**
@@ -197,7 +195,6 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - **Enhanced Track Assignment**: Source attribution for track predictions
 - **Flexible Train Lookup**: Support for both numeric IDs and train numbers
 - **Multi-Environment Support**: Production, Staging, and Local development environments
-- **Sentry Integration**: All API calls tracked with transactions for performance monitoring
 - **Backend Wake-up**: 15-minute cached health checks to warm serverless backends
 
 ## Data Models
@@ -370,7 +367,7 @@ The app provides sophisticated real-time journey visualization through multiple 
 ### Core Services Overview
 All services follow the singleton pattern with `shared` instance for app-wide access. Services are organized in `/TrackRat/Services/`:
 
-1. **APIService** - V2 API integration with Sentry monitoring
+1. **APIService** - V2 API integration
 2. **LiveActivityService** - Live Activities lifecycle management
 3. **StorageService** - UserDefaults wrapper with type safety
 4. **RatSenseService** - AI journey prediction engine
@@ -418,7 +415,6 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 - **Date Handling**: Multiple ISO8601 formats with fractional seconds
 - **Eastern Time Zone**: Automatic conversion for all timestamps
 - **Error Recovery**: Typed errors with user-friendly messages
-- **Sentry Integration**: Performance monitoring for all API calls
 - **Environment Switching**: Dynamic base URL based on ServerEnvironment
 - **Timeout Handling**: Configurable timeouts per endpoint
 
@@ -443,7 +439,6 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 - **URL Scheme Support**: `trackrat://` custom scheme
 - **Train Details**: `trackrat://train/{trainNumber}` for direct train lookup
 - **Journey Search**: `trackrat://journey?from={station}&to={station}` for route planning
-- **Sentry Tracking**: All deep link interactions tracked with transactions
 - **Share Sheet Integration**: Generate deep links for sharing trips
 - **Context Preservation**: Maintains origin station and journey date in links
 
@@ -464,12 +459,9 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 
 ## Security & Privacy
 
-- **Error Tracking**: Sentry integration with user consent (opt-in)
-- **Session Replay**: 100% sampling for debugging (only with consent)
 - **Local Storage**: UserDefaults only for preferences and recent trips
 - **Push Notifications**: Only for active Live Activities
 - **No User Accounts**: No server-side user profiles or authentication
-- **Privacy-First**: User can decline Sentry tracking in onboarding
 - **Permissions Required**:
   - Push Notifications (optional, for Live Activity updates)
   - Live Activities (iOS 16.1+)
@@ -571,7 +563,7 @@ xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
 - **Previews**: Provide meaningful preview data for all views
 
 ### Project Organization
-- **App/**: TrackRatApp.swift with AppState and Sentry setup
+- **App/**: TrackRatApp.swift with AppState
 - **Views/Screens/**: All screen-level SwiftUI views
 - **Views/Components/**: Reusable UI components
 - **Models/**: Data models, API responses, and extensions
@@ -600,14 +592,6 @@ xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
 - **Fallback Handling**: Graceful degradation when videos fail to load
 - **Automatic Progression**: Onboarding advances after video completion
 - **Custom Video Player**: VideoPlayerView component for native playback
-
-### Sentry Integration Details
-- **Environment Tags**: Separate tracking for dev/staging/production
-- **Transaction Tracking**: Performance monitoring for API calls and deep links
-- **Session Replay**: Visual debugging with 100% sampling (opt-in)
-- **Error Breadcrumbs**: Detailed error context for debugging
-- **User Consent**: Opt-in during onboarding with SentryConsentView
-- **Performance Monitoring**: Track API response times and app performance
 
 ### Bottom Sheet System
 - **Three Positions**: Collapsed (map focus), Medium (peek), Large (full content)
@@ -764,7 +748,7 @@ Live Activities now use the enhanced data for better tracking:
 1. **Offline Support**: No caching for offline viewing
 2. **Accessibility**: Limited VoiceOver support in custom components
 3. **Localization**: No support for multiple languages
-4. **User Analytics**: Only Sentry error tracking, no feature usage analytics
+4. **User Analytics**: No feature usage analytics
 5. **Light Theme**: Theme system exists but only dark mode implemented
 
 ### Code Quality Issues
@@ -778,7 +762,6 @@ Live Activities now use the enhanced data for better tracking:
 1. **API Keys**: No certificate pinning for API calls
 2. **Token Storage**: Push tokens stored in memory without encryption
 3. **Deep Links**: Limited validation of deep link parameters
-4. **Sentry DSN**: Embedded in app binary (standard practice but visible)
 
 ## Technical Debt
 

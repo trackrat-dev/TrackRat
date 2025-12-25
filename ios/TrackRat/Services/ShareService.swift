@@ -13,27 +13,29 @@ class ShareService {
         fromStationCode: String?,
         destinationName: String?
     ) -> URL? {
+        let toStationCode: String? = destinationName.flatMap { Stations.getStationCode($0) }
         let deepLink = DeepLink(
             trainId: train.trainId,
             date: Date(), // Current date for context
             fromStationCode: fromStationCode,
-            toStationCode: destinationName != nil ? Stations.getStationCode(destinationName!) : nil
+            toStationCode: toStationCode
         )
-        
+
         return deepLink.generateURL()
     }
-    
+
     /// Generate share text for a train
     func createShareText(
         for train: TrainV2,
         fromStationCode: String?,
         destinationName: String?
     ) -> String {
+        let toStationCode: String? = destinationName.flatMap { Stations.getStationCode($0) }
         let deepLink = DeepLink(
             trainId: train.trainId,
             date: Date(),
             fromStationCode: fromStationCode,
-            toStationCode: destinationName != nil ? Stations.getStationCode(destinationName!) : nil
+            toStationCode: toStationCode
         )
         
         return deepLink.generateShareText(

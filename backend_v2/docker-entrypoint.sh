@@ -1,10 +1,74 @@
 #!/bin/sh
 #
 # Docker entrypoint script for TrackRat V2 Backend
-# Validates APNS configuration before starting the application
+# - Waits for PostgreSQL to be ready
+# - Runs database migrations
+# - Validates APNS configuration
+# - Starts the application
 #
 
 set -e
+
+# Function to wait for PostgreSQL to be ready
+wait_for_postgres() {
+    echo "🔍 Waiting for PostgreSQL..."
+
+    # Extract host and port from DATABASE_URL
+    # Supports both postgresql:// and postgresql+asyncpg:// formats
+    DB_URL="${TRACKRAT_DATABASE_URL:-}"
+    if [ -z "$DB_URL" ]; then
+        echo "❌ TRACKRAT_DATABASE_URL is not set"
+        return 1
+    fi
+
+    # Extract host:port from URL (handles both formats)
+    # URL format: postgresql[+asyncpg]://user:pass@host:port/dbname
+    DB_HOST_PORT=$(echo "$DB_URL" | sed -E 's|.*@([^/]+)/.*|\1|')
+    DB_HOST=$(echo "$DB_HOST_PORT" | cut -d: -f1)
+    DB_PORT=$(echo "$DB_HOST_PORT" | cut -d: -f2)
+    DB_PORT="${DB_PORT:-5432}"
+
+    # Wait for PostgreSQL to accept connections
+    MAX_RETRIES=30
+    RETRY_COUNT=0
+
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        if python -c "
+import socket
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(2)
+    s.connect(('$DB_HOST', $DB_PORT))
+    s.close()
+    exit(0)
+except Exception:
+    exit(1)
+" 2>/dev/null; then
+            echo "✅ PostgreSQL is accepting connections at $DB_HOST:$DB_PORT"
+            return 0
+        fi
+
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        echo "   Waiting for PostgreSQL... ($RETRY_COUNT/$MAX_RETRIES)"
+        sleep 2
+    done
+
+    echo "❌ PostgreSQL not available after $MAX_RETRIES attempts"
+    return 1
+}
+
+# Function to run database migrations
+run_migrations() {
+    echo "🔄 Running database migrations..."
+
+    if alembic upgrade head; then
+        echo "✅ Database migrations completed successfully"
+        return 0
+    else
+        echo "❌ Database migrations failed"
+        return 1
+    fi
+}
 
 # Function to validate APNS configuration
 validate_apns_config() {
@@ -128,6 +192,19 @@ except Exception as e:
 echo "🚀 Starting TrackRat V2 Backend..."
 echo "📋 Environment: ${TRACKRAT_ENVIRONMENT:-development}"
 
+# Brief delay for Docker DNS to initialize (needed on Container-Optimized OS)
+sleep 10
+
+# Wait for PostgreSQL to be ready
+if ! wait_for_postgres; then
+    exit 1
+fi
+
+# Run database migrations
+if ! run_migrations; then
+    exit 1
+fi
+
 # Validate APNS configuration before proceeding
 if ! validate_apns_config; then
     exit 1
@@ -135,5 +212,4 @@ fi
 
 echo ""
 echo "🌟 Starting application server..."
-echo "   Note: Database migrations will run after backup restore (if applicable)"
 exec uvicorn trackrat.main:app --host 0.0.0.0 --port 8000

@@ -27,8 +27,11 @@
 		A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5552E25BBC700958ABA /* DeepLink.swift */; };
 		A126E55D2E25BBD800958ABA /* DeepLinkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55B2E25BBD800958ABA /* DeepLinkService.swift */; };
 		A126E55E2E25BBD800958ABA /* ShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55C2E25BBD800958ABA /* ShareService.swift */; };
-		A12E781D2E880B590068B472 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A1SENTRY012E88C1A00068B472 /* Sentry */; };
+		A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AADE72EF8407600407794 /* TrainDistributionChart.swift */; };
+		A12AADE92EF8407600407794 /* TrainDistributionChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AADE72EF8407600407794 /* TrainDistributionChart.swift */; };
 		A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4ABD2E1949A400E13005 /* V2APIModels.swift */; };
+		A16C81EE2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
+		A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
 		A16D6EEC2E1703C7008C6996 /* rat-train-icon@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */; };
 		A16D6EED2E1703C7008C6996 /* rat-train-icon@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */; };
 		A16D6EEE2E1703C7008C6996 /* Contents.json in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE72E1703C7008C6996 /* Contents.json */; };
@@ -40,6 +43,10 @@
 		A17329652E54A8A2006BF187 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329632E54A8A2006BF187 /* OnboardingView.swift */; };
 		A17329672E54A8B1006BF187 /* StationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329662E54A8B1006BF187 /* StationRow.swift */; };
 		A17329692E54D46E006BF187 /* intro_animation.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = A17329682E54D46E006BF187 /* intro_animation.mp4 */; };
+		A17A63DE2EE60474003BD685 /* OperationsSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */; };
+		A17A63DF2EE60474003BD685 /* OperationsSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */; };
+		A17A63E12EE60FD2003BD685 /* TrainStatsSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17A63E02EE60FD2003BD685 /* TrainStatsSummaryView.swift */; };
+		A17A63E22EE60FD2003BD685 /* TrainStatsSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17A63E02EE60FD2003BD685 /* TrainStatsSummaryView.swift */; };
 		A17B1E6F2E7F05B00026D42E /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		A17B1E712E7F05B00026D42E /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
@@ -147,8 +154,10 @@
 		A126E5572E25BBC700958ABA /* V2APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModels.swift; path = Models/V2APIModels.swift; sourceTree = "<group>"; };
 		A126E55B2E25BBD800958ABA /* DeepLinkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeepLinkService.swift; path = Services/DeepLinkService.swift; sourceTree = "<group>"; };
 		A126E55C2E25BBD800958ABA /* ShareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShareService.swift; path = Services/ShareService.swift; sourceTree = "<group>"; };
+		A12AADE72EF8407600407794 /* TrainDistributionChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDistributionChart.swift; path = TrackRat/Views/Components/TrainDistributionChart.swift; sourceTree = "<group>"; };
 		A14A4ABB2E19499800E13005 /* TrainV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2.swift; path = TrackRat/Models/TrainV2.swift; sourceTree = "<group>"; };
 		A14A4ABD2E1949A400E13005 /* V2APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModels.swift; path = TrackRat/Models/V2APIModels.swift; sourceTree = "<group>"; };
+		A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FeedbackButton.swift; path = TrackRat/Views/Components/FeedbackButton.swift; sourceTree = "<group>"; };
 		A16D6EE72E1703C7008C6996 /* Contents.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Contents.json; sourceTree = "<group>"; };
 		A16D6EE82E1703C7008C6996 /* rat-train-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon.png"; sourceTree = "<group>"; };
 		A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon@2x.png"; sourceTree = "<group>"; };
@@ -156,6 +165,8 @@
 		A17329632E54A8A2006BF187 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingView.swift; path = Views/Screens/OnboardingView.swift; sourceTree = "<group>"; };
 		A17329662E54A8B1006BF187 /* StationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationRow.swift; path = Views/Components/StationRow.swift; sourceTree = "<group>"; };
 		A17329682E54D46E006BF187 /* intro_animation.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = intro_animation.mp4; sourceTree = "<group>"; };
+		A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OperationsSummaryView.swift; path = TrackRat/Views/Components/OperationsSummaryView.swift; sourceTree = "<group>"; };
+		A17A63E02EE60FD2003BD685 /* TrainStatsSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainStatsSummaryView.swift; path = TrackRat/Views/Components/TrainStatsSummaryView.swift; sourceTree = "<group>"; };
 		A17B9F372E17FD0A00B370A6 /* StationButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationButton.swift; path = Views/Components/StationButton.swift; sourceTree = "<group>"; };
 		A183B7E02E6352E80024FADC /* LegacySheetAwareScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LegacySheetAwareScrollView.swift; path = Views/Components/LegacySheetAwareScrollView.swift; sourceTree = "<group>"; };
 		A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyProfileView.swift; path = Views/Screens/MyProfileView.swift; sourceTree = "<group>"; };
@@ -218,7 +229,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				A17B1E712E7F05B00026D42E /* (null) in Frameworks */,
-				A12E781D2E880B590068B472 /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -256,6 +266,10 @@
 				A16D6EE62E16A558008C6996 /* Recovered References */,
 				A19899522E8067020079E596 /* TrainV2Tests.swift */,
 				A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */,
+				A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */,
+				A12AADE72EF8407600407794 /* TrainDistributionChart.swift */,
+				A17A63E02EE60FD2003BD685 /* TrainStatsSummaryView.swift */,
+				A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -427,7 +441,6 @@
 				1A1A1A1A1A1A1A1A1A1A1A0D /* Frameworks */,
 				1A1A1A1A1A1A1A1A1A1A1A0E /* Resources */,
 				A1WIDGET312DFC73650002FB39 /* Embed Foundation Extensions */,
-				4A083A1A55BE40CAA7C5AF17 /* Upload Debug Symbols to Sentry */,
 			);
 			buildRules = (
 			);
@@ -556,24 +569,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		4A083A1A55BE40CAA7C5AF17 /* Upload Debug Symbols to Sentry */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
-			);
-			name = "Upload Debug Symbols to Sentry";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# This script is responsible for uploading debug symbols and source context for Sentry.\nif which sentry-cli >/dev/null; then\n  export SENTRY_ORG=andy-fx\n  export SENTRY_PROJECT=apple-ios\n  # Only upload the app's dSYM, not third-party frameworks\n  ERROR=$(sentry-cli debug-files upload --include-sources \"$DWARF_DSYM_FOLDER_PATH/$DWARF_DSYM_FILE_NAME\" 2>&1 >/dev/null)\n  if [ ! $? -eq 0 ]; then\n    echo \"warning: sentry-cli - $ERROR\"\n  fi\nelse\n  echo \"warning: sentry-cli not installed, download from https://github.com/getsentry/sentry-cli/releases\"\nfi\n";
-		};
-/* End PBXShellScriptBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
 		1A1A1A1A1A1A1A1A1A1A1A0C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -599,14 +594,17 @@
 				A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */,
 				A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */,
 				A10E97F92DE39EF9002F3214 /* APIService.swift in Sources */,
+				A17A63E22EE60FD2003BD685 /* TrainStatsSummaryView.swift in Sources */,
 				A10E97FA2DE39F0F002F3215 /* RatSenseService.swift in Sources */,
 				A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */,
 				A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
+				A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */,
 				A10E97FB2DE39F0F002F3214 /* Extensions.swift in Sources */,
 				A10E98062DE39F23002F3214 /* DeparturePickerView.swift in Sources */,
 				A10E98DBA82DE39F23002F3214 /* TripSelectionView.swift in Sources */,
+				A16C81EE2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A1CB28332E3D634C004A49E6 /* JourneyCongestionMapView.swift in Sources */,
 				A10684812E36B6EC0052C4AE /* ThemeManager.swift in Sources */,
 				A1AA1BB32DEF00BB001FA904 /* TrackRatTheme.swift in Sources */,
@@ -618,6 +616,7 @@
 				A1AC62B02E60A30300D1A16C /* PennStationGuideView.swift in Sources */,
 				A11A2C332E27C1A400B74BB5 /* StaticTrackDistributionService.swift in Sources */,
 				A1AD0D0D2E106D32003DA39F /* LiveActivityModels.swift in Sources */,
+				A17A63DE2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
 				A1875C7F2E400F4F00FCC7FC /* MyProfileView.swift in Sources */,
 				A1CB28302E3D6189004A49E6 /* AdvancedConfigurationView.swift in Sources */,
 				A1CB28312E3D6189004A49E6 /* CongestionMapView.swift in Sources */,
@@ -632,17 +631,21 @@
 				A1BA60ED2DFC73650002FB39 /* StationsTests.swift in Sources */,
 				A1BA60EE2DFC73650002FB39 /* TrainTests.swift in Sources */,
 				A1BA60EF2DFC73650002FB39 /* APIServiceTests.swift in Sources */,
+				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
 				A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */,
 				A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */,
 				A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */,
 				A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */,
+				A17A63DF2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
+				A17A63E12EE60FD2003BD685 /* TrainStatsSummaryView.swift in Sources */,
 				A1BA60F02DFC73650002FB39 /* StorageServiceTests.swift in Sources */,
 				A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */,
 				A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */,
 				A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */,
 				A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */,
 				A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */,
+				A12AADE92EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */,
 				A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */,
 			);
@@ -1006,25 +1009,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		A1SENTRY002E88C1A00068B472 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 8.56.2;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		A1SENTRY012E88C1A00068B472 /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A1SENTRY002E88C1A00068B472 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1A1A1A1A1A1A1A1A1A1A1A08 /* Project object */;
 }

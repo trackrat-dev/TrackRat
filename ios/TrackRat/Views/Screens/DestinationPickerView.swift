@@ -194,22 +194,19 @@ struct DestinationPickerView: View {
     }
     
     private func selectDestination(_ destination: String) {
-        // Immediate UI state updates - these happen instantly for responsive feedback
+        // Immediate UI state updates
         appState.selectedDestination = destination
         appState.destinationStationCode = Stations.getStationCode(destination)
-        
-        // Immediate navigation - this should happen right away
-        appState.navigationPath.append(NavigationDestination.trainList(destination: destination))
-        
-        // Immediate UI feedback - provides instant user response
+
+        // Use pendingNavigation to expand sheet FIRST, then navigate
+        appState.pendingNavigation = .trainList(destination: destination)
+
+        // Reset search state
         withAnimation(.easeInOut(duration: 0.3)) {
             searchText = ""
             isSearching = false
             searchFieldFocused = false
         }
-        
-        // Immediate haptic feedback
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
 

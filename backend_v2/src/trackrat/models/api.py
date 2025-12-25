@@ -617,3 +617,69 @@ class SegmentTrainDetailsResponse(BaseModel):
             }
         ],
     )
+
+
+# Operations Summary API Models
+
+
+class TrainDelaySummaryResponse(BaseModel):
+    """Summary of a single train's delay for visualization."""
+
+    train_id: str = Field(..., description="Train identifier")
+    delay_minutes: float = Field(..., ge=0.0, description="Delay in minutes")
+    category: Literal["on_time", "slight_delay", "delayed", "cancelled"] = Field(
+        ..., description="Delay category"
+    )
+    scheduled_departure: datetime = Field(..., description="Scheduled departure time")
+
+    @field_serializer("scheduled_departure")
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""
+
+
+class SummaryMetricsResponse(BaseModel):
+    """Raw metrics included with summary response."""
+
+    on_time_percentage: float | None = Field(
+        None, ge=0.0, le=100.0, description="Percentage of trains on time"
+    )
+    average_delay_minutes: float | None = Field(
+        None, ge=0.0, description="Average delay in minutes"
+    )
+    cancellation_count: int | None = Field(
+        None, ge=0, description="Number of cancellations"
+    )
+    train_count: int | None = Field(None, ge=0, description="Total number of trains")
+    trains_by_category: dict[str, list[TrainDelaySummaryResponse]] | None = Field(
+        None, description="Trains grouped by delay category for visualization"
+    )
+
+
+class OperationsSummaryResponse(BaseModel):
+    """Response for operations summary endpoint."""
+
+    headline: str = Field(
+        ...,
+        max_length=100,
+        description="Headline for collapsed view (max 100 chars)",
+    )
+    body: str = Field(
+        ..., max_length=500, description="Detailed summary (2-4 sentences)"
+    )
+    scope: Literal["network", "route", "train"] = Field(
+        ..., description="Summary scope"
+    )
+    time_window_minutes: int = Field(
+        ...,
+        ge=0,
+        description="Time window in minutes (90 for recent, 43200 for 30-day)",
+    )
+    data_freshness_seconds: int = Field(..., ge=0, description="Age of data in seconds")
+    generated_at: datetime = Field(..., description="When summary was generated")
+    metrics: SummaryMetricsResponse | None = Field(
+        None, description="Raw metrics for optional UI display"
+    )
+
+    @field_serializer("generated_at")
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""

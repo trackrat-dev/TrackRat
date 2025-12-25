@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, distinct, func, select
+from sqlalchemy import and_, distinct, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
@@ -22,9 +22,12 @@ from trackrat.models.api import (
     DelayBreakdown,
     HighlightedTrain,
     HistoricalRouteInfo,
+    OperationsSummaryResponse,
     RouteHistoryResponse,
     SegmentTrainDetail,
     SegmentTrainDetailsResponse,
+    SummaryMetricsResponse,
+    TrainDelaySummaryResponse,
     TrainLocationData,
 )
 from trackrat.models.api import (
@@ -74,7 +77,31 @@ async def get_route_history(
     end_date = now_et().date()
     start_date = end_date - timedelta(days=days)
 
-    # Query all journeys for this data source and date range
+    # PERFORMANCE FIX: Use database-level filtering with EXISTS subqueries
+    # to avoid loading all journeys into memory then filtering in Python.
+    # This uses aliases to check that the journey has both stations in correct order.
+    from_stop_alias = aliased(JourneyStop, name="from_stop")
+    to_stop_alias = aliased(JourneyStop, name="to_stop")
+
+    # Subquery: journey has from_station with stop_sequence < to_station's sequence
+    route_filter = exists(
+        select(from_stop_alias.id).where(
+            and_(
+                from_stop_alias.journey_id == TrainJourney.id,
+                from_stop_alias.station_code == from_station,
+                exists(
+                    select(to_stop_alias.id).where(
+                        and_(
+                            to_stop_alias.journey_id == TrainJourney.id,
+                            to_stop_alias.station_code == to_station,
+                            to_stop_alias.stop_sequence > from_stop_alias.stop_sequence,
+                        )
+                    )
+                ),
+            )
+        )
+    )
+
     stmt = (
         select(TrainJourney)
         .where(
@@ -82,40 +109,22 @@ async def get_route_history(
                 TrainJourney.data_source == data_source,
                 TrainJourney.journey_date >= start_date,
                 TrainJourney.journey_date <= end_date,
+                route_filter,
             )
         )
         .options(selectinload(TrainJourney.stops))
+        .limit(5000)  # Safety limit to prevent memory issues with large date ranges
     )
 
     result = await db.execute(stmt)
-    all_journeys = list(result.scalars().all())
+    route_journeys = list(result.scalars().all())
 
-    # Filter to only journeys that travel from origin to destination
-    route_journeys = []
+    # Filter highlighted train journeys from the already-filtered route journeys
     highlighted_train_journeys = []
-
-    for journey in all_journeys:
-        from_stop = None
-        to_stop = None
-
-        # Find the origin and destination stops
-        for stop in journey.stops:
-            if stop.station_code == from_station:
-                from_stop = stop
-            elif stop.station_code == to_station:
-                to_stop = stop
-
-        # Include if both stations found and in correct order
-        if (
-            from_stop
-            and to_stop
-            and (from_stop.stop_sequence or 0) < (to_stop.stop_sequence or 0)
-        ):
-            route_journeys.append(journey)
-
-            # Also collect for highlighted train if specified
-            if highlight_train and journey.train_id == highlight_train:
-                highlighted_train_journeys.append(journey)
+    if highlight_train:
+        highlighted_train_journeys = [
+            j for j in route_journeys if j.train_id == highlight_train
+        ]
 
     # Calculate aggregate statistics for all route journeys
     aggregate_stats = _calculate_route_stats(route_journeys, from_station)
@@ -655,3 +664,115 @@ def _calculate_segment_summary(
         "average_congestion_factor": round(avg_congestion_factor, 2),
         "on_time_percentage": round(on_time_percentage, 1),
     }
+
+
+@router.get("/summary", response_model=OperationsSummaryResponse)
+@handle_errors
+async def get_operations_summary(
+    scope: str = Query(
+        ...,
+        description="Summary scope: 'network', 'route', or 'train'",
+        pattern="^(network|route|train)$",
+    ),
+    from_station: str | None = Query(
+        None,
+        min_length=1,
+        max_length=3,
+        description="Origin station code (for route/train)",
+    ),
+    to_station: str | None = Query(
+        None,
+        min_length=1,
+        max_length=3,
+        description="Destination station code (for route)",
+    ),
+    train_id: str | None = Query(None, description="Train ID (for train scope)"),
+    data_source: str | None = Query(None, description="Filter by NJT or AMTRAK"),
+    db: AsyncSession = Depends(get_db),
+) -> OperationsSummaryResponse:
+    """
+    Get a natural language summary of recent train operations.
+
+    Three scopes are available:
+    - network: Overall system status across all lines (past 90 minutes)
+    - route: Performance between origin and destination (past 90 minutes)
+    - train: Historical performance of a specific train (past 30 days)
+
+    The response includes:
+    - headline: Short summary (max 50 chars) for collapsed view
+    - body: Detailed summary (2-4 sentences) for expanded view
+    - metrics: Raw statistics for optional UI display
+    """
+    from trackrat.services.summary import SummaryService
+
+    logger.info(
+        "get_operations_summary_request",
+        scope=scope,
+        from_station=from_station,
+        to_station=to_station,
+        train_id=train_id,
+        data_source=data_source,
+    )
+
+    # Validate parameters based on scope
+    if scope == "route":
+        if not from_station or not to_station:
+            raise HTTPException(
+                status_code=400,
+                detail="from_station and to_station are required for route scope",
+            )
+    elif scope == "train":
+        if not train_id:
+            raise HTTPException(
+                status_code=400,
+                detail="train_id is required for train scope",
+            )
+
+    summary_service = SummaryService()
+
+    if scope == "network":
+        summary = await summary_service.get_network_summary(db, data_source)
+    elif scope == "route":
+        summary = await summary_service.get_route_summary(
+            db, from_station, to_station, data_source  # type: ignore[arg-type]
+        )
+    else:  # train
+        summary = await summary_service.get_train_summary(
+            db, train_id, from_station, to_station  # type: ignore[arg-type]
+        )
+
+    # Convert to response model
+    metrics = None
+    if summary.metrics:
+        # Convert trains_by_category to API response format
+        trains_by_category = None
+        if summary.metrics.trains_by_category:
+            trains_by_category = {
+                category: [
+                    TrainDelaySummaryResponse(
+                        train_id=train.train_id,
+                        delay_minutes=train.delay_minutes,
+                        category=train.category,  # type: ignore[arg-type]
+                        scheduled_departure=train.scheduled_departure,
+                    )
+                    for train in trains
+                ]
+                for category, trains in summary.metrics.trains_by_category.items()
+            }
+        metrics = SummaryMetricsResponse(
+            on_time_percentage=summary.metrics.on_time_percentage,
+            average_delay_minutes=summary.metrics.average_delay_minutes,
+            cancellation_count=summary.metrics.cancellation_count,
+            train_count=summary.metrics.train_count,
+            trains_by_category=trains_by_category,
+        )
+
+    return OperationsSummaryResponse(
+        headline=summary.headline,
+        body=summary.body,
+        scope=summary.scope,
+        time_window_minutes=summary.time_window_minutes,
+        data_freshness_seconds=summary.data_freshness_seconds,
+        generated_at=summary.generated_at,
+        metrics=metrics,
+    )

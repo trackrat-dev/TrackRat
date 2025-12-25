@@ -5,16 +5,16 @@ Tests how the departure service integrates Amtrak and NJT data
 for multi-source departures.
 """
 
+from datetime import timedelta
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from datetime import datetime, timedelta
-from unittest.mock import patch, AsyncMock
-
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
-from trackrat.models.database import TrainJourney, JourneyStop
 from trackrat.utils.time import now_et
+
 from tests.factories.amtrak import create_amtrak_journey, create_amtrak_journey_stop
 
 
@@ -565,7 +565,7 @@ class TestDepartureServiceIntegration:
             mock_njt.return_value = mock_client
 
             # Refresh station data
-            await service._ensure_fresh_station_data(db_session, "NY")
+            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
 
         # Verify all journeys were updated
         updated_journeys = await db_session.execute(
@@ -651,7 +651,7 @@ class TestDepartureServiceIntegration:
             mock_njt.return_value = mock_client
 
             # Should not crash
-            await service._ensure_fresh_station_data(db_session, "NY")
+            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
 
         # Verify only existing 5 were updated
         updated = await db_session.execute(
@@ -710,7 +710,7 @@ class TestDepartureServiceIntegration:
             mock_client.close = AsyncMock()
             mock_njt.return_value = mock_client
 
-            await service._ensure_fresh_station_data(db_session, "NY")
+            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
 
         # Verify only NJT trains were updated
         updated = await db_session.execute(
@@ -762,8 +762,222 @@ class TestDepartureServiceIntegration:
             mock_njt.return_value = mock_client
 
             # Should not crash
-            await service._ensure_fresh_station_data(db_session, "NY")
+            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
 
         # Verify journey was not updated
         refreshed = await db_session.get(TrainJourney, journey.id)
         assert refreshed.update_count == 1
+
+    async def test_skip_individual_refresh_skips_second_pass(
+        self, db_session: AsyncSession
+    ):
+        """Test that skip_individual_refresh=True skips individual train refreshes.
+
+        This test verifies the fix for excessive API calls during cache precomputation.
+        When skip_individual_refresh=True, only the bulk refresh (getTrainSchedule)
+        should run, NOT the individual train refreshes (getTrainStopList).
+        """
+        service = DepartureService()
+
+        # Create a stale NJT journey that would trigger individual refresh
+        # (past departure time, so getTrainSchedule won't return it)
+        stale_journey = TrainJourney(
+            train_id="3840",
+            journey_date=now_et().date(),
+            data_source="NJT",
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            scheduled_departure=now_et() - timedelta(hours=1),  # Past departure
+            first_seen_at=now_et() - timedelta(hours=2),
+            last_updated_at=now_et() - timedelta(minutes=10),  # Stale
+            has_complete_journey=True,
+            update_count=1,
+        )
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn Station",
+            scheduled_departure=now_et() - timedelta(hours=1),
+            stop_sequence=0,
+            has_departed_station=True,
+        )
+        stale_journey.stops = [stop]
+        db_session.add(stale_journey)
+        await db_session.commit()
+
+        original_update_count = stale_journey.update_count
+        original_last_updated = stale_journey.last_updated_at
+
+        # Mock NJT client - bulk refresh returns empty (train is past departure)
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt:
+            mock_client = AsyncMock()
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}  # Empty - train not in schedule
+            )
+            mock_client.close = AsyncMock()
+            mock_njt.return_value = mock_client
+
+            # Also mock the JourneyCollector to track if it's called
+            with patch(
+                "trackrat.services.departure.NJTJourneyCollector"
+            ) as mock_collector_class:
+                mock_collector = AsyncMock()
+                mock_collector.collect_journey_details = AsyncMock()
+                mock_collector_class.return_value = mock_collector
+
+                # Call with skip_individual_refresh=True
+                await service._ensure_fresh_station_data(
+                    db_session, "NY", now_et().date(), skip_individual_refresh=True
+                )
+
+                # Verify JourneyCollector was NOT instantiated (second pass skipped)
+                mock_collector_class.assert_not_called()
+
+        # Verify journey was NOT updated by individual refresh
+        await db_session.refresh(stale_journey)
+        assert stale_journey.update_count == original_update_count
+        assert stale_journey.last_updated_at == original_last_updated
+
+    async def test_skip_individual_refresh_false_runs_second_pass(
+        self, db_session: AsyncSession
+    ):
+        """Test that skip_individual_refresh=False (default) runs individual refreshes.
+
+        This verifies that when the flag is False, stale trains past their
+        departure time still get refreshed via individual API calls.
+        """
+        service = DepartureService()
+
+        # Create a stale NJT journey past its departure time
+        stale_journey = TrainJourney(
+            train_id="3840",
+            journey_date=now_et().date(),
+            data_source="NJT",
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            scheduled_departure=now_et() - timedelta(hours=1),  # Past departure
+            first_seen_at=now_et() - timedelta(hours=2),
+            last_updated_at=now_et() - timedelta(minutes=10),  # Stale
+            has_complete_journey=True,
+            update_count=1,
+        )
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn Station",
+            scheduled_departure=now_et() - timedelta(hours=1),
+            stop_sequence=0,
+            has_departed_station=True,
+        )
+        stale_journey.stops = [stop]
+        db_session.add(stale_journey)
+        await db_session.commit()
+
+        # Mock NJT client - bulk refresh returns empty (train is past departure)
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt:
+            mock_client = AsyncMock()
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_client.close = AsyncMock()
+            mock_njt.return_value = mock_client
+
+            # Mock JourneyCollector to verify it IS called
+            with patch(
+                "trackrat.services.departure.NJTJourneyCollector"
+            ) as mock_collector_class:
+                mock_collector = AsyncMock()
+                mock_collector.collect_journey_details = AsyncMock()
+                mock_collector_class.return_value = mock_collector
+
+                # Call with skip_individual_refresh=False (default)
+                await service._ensure_fresh_station_data(
+                    db_session, "NY", now_et().date(), skip_individual_refresh=False
+                )
+
+                # Verify JourneyCollector WAS instantiated (second pass ran)
+                mock_collector_class.assert_called_once()
+                # Verify collect_journey_details was called for the stale journey
+                mock_collector.collect_journey_details.assert_called()
+
+    async def test_get_departures_passes_skip_individual_refresh(
+        self, db_session: AsyncSession
+    ):
+        """Test that get_departures passes skip_individual_refresh to station refresh."""
+        service = DepartureService()
+
+        # Create a simple journey so the query doesn't fail
+        journey = create_amtrak_journey(
+            train_id="A2150",
+            data_source="AMTRAK",
+            scheduled_departure=now_et() + timedelta(hours=1),
+        )
+        stop = create_amtrak_journey_stop(
+            station_code="NY",
+            scheduled_departure=now_et() + timedelta(hours=1),
+            stop_sequence=0,
+        )
+        journey.stops = [stop]
+        db_session.add(journey)
+        await db_session.commit()
+
+        # Mock the station refresh method to verify parameters
+        with patch.object(
+            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+        ) as mock_refresh:
+            await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+                skip_individual_refresh=True,
+            )
+
+            # Verify _ensure_fresh_station_data was called with skip_individual_refresh=True
+            mock_refresh.assert_called_once()
+            call_args = mock_refresh.call_args
+            assert (
+                call_args[0][3] is True
+            )  # 4th positional arg is skip_individual_refresh
+
+    async def test_get_departures_default_does_not_skip(self, db_session: AsyncSession):
+        """Test that get_departures by default does not skip individual refresh."""
+        service = DepartureService()
+
+        # Create a simple journey
+        journey = create_amtrak_journey(
+            train_id="A2150",
+            data_source="AMTRAK",
+            scheduled_departure=now_et() + timedelta(hours=1),
+        )
+        stop = create_amtrak_journey_stop(
+            station_code="NY",
+            scheduled_departure=now_et() + timedelta(hours=1),
+            stop_sequence=0,
+        )
+        journey.stops = [stop]
+        db_session.add(journey)
+        await db_session.commit()
+
+        # Mock the station refresh method
+        with patch.object(
+            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+        ) as mock_refresh:
+            await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+                # Note: not passing skip_individual_refresh, should default to False
+            )
+
+            # Verify _ensure_fresh_station_data was called with skip_individual_refresh=False
+            mock_refresh.assert_called_once()
+            call_args = mock_refresh.call_args
+            assert (
+                call_args[0][3] is False
+            )  # 4th positional arg is skip_individual_refresh

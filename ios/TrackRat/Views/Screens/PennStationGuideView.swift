@@ -25,7 +25,7 @@ struct YouTubeLinkView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxHeight: maxHeight)
-                    .cornerRadius(12)
+                    .cornerRadius(TrackRatTheme.CornerRadius.md)
                     .clipped()
                     .frame(maxWidth: .infinity)
 
@@ -73,36 +73,27 @@ struct YouTubeLinkView: View {
 struct PennStationGuideView: View {
     let isAmtrak: Bool
     @State private var currentPage = 0
-    @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Swipeable cards
-                TabView(selection: $currentPage) {
-                    ForEach(0..<4) { index in
-                        WaitingLocationCard(
-                            isAmtrak: isAmtrak,
-                            cardIndex: index
-                        )
-                        .tag(index)
-                    }
-                }
-                .tabViewStyle(PageTabViewStyle())
-                .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
-                
-            }
-            .background(Color(UIColor.systemGroupedBackground))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
+        NavigationStack {
+            // Swipeable cards
+            TabView(selection: $currentPage) {
+                ForEach(0..<4) { index in
+                    WaitingLocationCard(
+                        isAmtrak: isAmtrak,
+                        cardIndex: index
+                    )
+                    .tag(index)
                 }
             }
+            .tabViewStyle(PageTabViewStyle())
+            .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
+            .background(Color.black)
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color.black)
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -185,54 +176,61 @@ struct WaitingLocationCard: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Location card
-            VStack(alignment: .leading, spacing: 12) {
-                // Title and image - centered
-                VStack(spacing: 12) {
-                    // Title above image - centered
-                    Text(locationInfo.title)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
+        // Video cards (cardIndex == 0) get full-area treatment
+        if let youtubeURL = youtubeURL {
+            VStack {
+                Spacer()
+                YouTubeLinkView(
+                    thumbnailImageName: locationInfo.imageName,
+                    youtubeURL: youtubeURL,
+                    maxHeight: .infinity
+                )
+                .frame(maxHeight: 350)
+                Spacer()
+            }
+            .padding()
+        } else {
+            // Regular instruction cards with title, image, and directions
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(spacing: 12) {
+                        Text(locationInfo.title)
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
 
-                    // Check if this is a video card
-                    if let youtubeURL = youtubeURL {
-                        // Show YouTube link with play button overlay
-                        YouTubeLinkView(
-                            thumbnailImageName: locationInfo.imageName,
-                            youtubeURL: youtubeURL,
-                            maxHeight: 200
-                        )
-                    } else {
-                        // Regular image
                         Image(locationInfo.imageName)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(maxHeight: 200)
-                            .cornerRadius(12)
+                            .cornerRadius(TrackRatTheme.CornerRadius.md)
                             .clipped()
                             .frame(maxWidth: .infinity)
                     }
-                }
 
-                // Directions - only show if not empty
-                if !locationInfo.directions.isEmpty {
-                    Text(locationInfo.directions)
-                        .font(.body)
-                        .foregroundColor(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if !locationInfo.directions.isEmpty {
+                        Text(locationInfo.directions)
+                            .font(.body)
+                            .foregroundColor(.white.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
+
+                Spacer()
             }
             .padding()
-            .background(Color(UIColor.systemBackground))
-            .cornerRadius(16)
-            .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 4)
-            
-            Spacer()
         }
-        .padding()
     }
 }
 
