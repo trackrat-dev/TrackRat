@@ -160,7 +160,7 @@ android/
 **Base URL Configuration** (`NetworkModule.kt`):
 ```kotlin
 // Production (default)
-val BASE_URL = "https://prod.api.trackrat.net/api/v2/"
+val BASE_URL = "https://apiv2.trackrat.net/api/v2/"
 
 // Local development with emulator
 val BASE_URL = "http://10.0.2.2:8000/api/v2/"

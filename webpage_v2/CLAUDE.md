@@ -71,7 +71,7 @@ className="bg-surface/80 backdrop-blur-xl border border-white/10 rounded-2xl"
 ## API Integration
 
 ### Base Configuration (src/services/api.ts)
-- **Production**: `https://prod.api.trackrat.net/api/v2`
+- **Production**: `https://apiv2.trackrat.net/api/v2`
 - **Staging**: Not used in web (iOS uses staging)
 - **Cache Duration**: 2 minutes for departure lists
 - **Cache Strategy**: In-memory Map with timestamp checks

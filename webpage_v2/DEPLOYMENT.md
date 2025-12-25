@@ -302,7 +302,7 @@ Add to README.md:
 - GITHUB_TOKEN automatically provided ✅
 
 ### CORS
-Ensure your backend at `prod.api.trackrat.net` has CORS headers:
+Ensure your backend at `apiv2.trackrat.net` has CORS headers:
 ```
 Access-Control-Allow-Origin: *
 Access-Control-Allow-Methods: GET, OPTIONS

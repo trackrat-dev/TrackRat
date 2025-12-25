@@ -13,7 +13,7 @@
 
 #### API Integration
 - **Retrofit + Moshi**: Robust networking stack with proper JSON parsing
-- **V2 API Endpoints**: Correctly configured for production backend (https://prod.api.trackrat.net/api/v2/)
+- **V2 API Endpoints**: Correctly configured for production backend (https://apiv2.trackrat.net/api/v2/)
 - **Custom DateTime Adapter**: Proper handling of Eastern Time zone with ZonedDateTime
 - **Error Handling**: ApiResult wrapper for consistent error management
 - **Network Logging**: Debug logging for API calls in development builds

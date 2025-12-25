@@ -26,23 +26,23 @@ Real-time train tracking system with ML-powered track predictions for NJ Transit
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Data Sources  │     │   Cloud Run     │     │ Mobile Frontends│
+│   Data Sources  │     │   Backend V2    │     │    Frontends    │
 ├─────────────────┤     ├─────────────────┤     ├─────────────────┤
-│ • NJ Transit    │────▶│ • API Service   │────▶│ • iOS App       │
-│ • Amtrak APIs   │     │ • Scheduler     │     │ • Android App   │
-│                 │     │ • ML Models     │     │ • Live Activity │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-                                │
+│ • NJ Transit    │────▶│ • FastAPI       │────▶│ • iOS App       │
+│ • Amtrak APIs   │     │ • APScheduler   │     │ • Android App   │
+│                 │     │ • ML Predictions│     │ • Web App       │
+└─────────────────┘     └─────────────────┘     │ • Live Activity │
+                                │               └─────────────────┘
                         ┌───────▼────────┐
                         │   PostgreSQL   │
                         │   Database     │
                         └────────────────┘
                                 │
                         ┌───────▼────────┐
-                        │ Cloud Monitoring│
-                        │ • Dashboards    │
-                        │ • Metrics       │
-                        │ • Alerts       │
+                        │   GCP Infra    │
+                        │ • Cloud Run    │
+                        │ • Managed MIG  │
+                        │ • Monitoring   │
                         └────────────────┘
 ```
 
@@ -117,17 +117,18 @@ Managed with Terraform for staging and production environments:
 
 ### Deployment Process
 ```bash
-cd infra
-./setup-backend.sh  # First time only
+cd infra_v2/terraform
+terraform init
+terraform workspace select staging  # or production
 
 # Deploy to staging
-make test           # ALWAYS run tests first
-make staging-plan
-make staging-apply
+terraform plan -var="environment=staging"
+terraform apply -var="environment=staging"
 
 # Deploy to production
-make prod-plan
-make prod-apply
+terraform workspace select production
+terraform plan -var="environment=production"
+terraform apply -var="environment=production"
 ```
 
 ### Key Features
@@ -141,8 +142,9 @@ make prod-apply
 
 - **Backend V2**: [`backend_v2/CLAUDE.md`](backend_v2/CLAUDE.md) - Simplified V2 API with ~95% fewer API calls
 - **iOS**: [`ios/CLAUDE.md`](ios/CLAUDE.md) - Native app with Live Activities and RatSense AI
-- **Android**: [`android/CLAUDE.md`](android/CLAUDE.md) - Material Design 3 app (in development)
-- **Infrastructure**: [`infra/CLAUDE.md`](infra/CLAUDE.md) - Terraform and GCP setup with monitoring
+- **Android**: [`android/CLAUDE.md`](android/CLAUDE.md) - Material Design 3 app with map-based UI
+- **Web**: [`webpage_v2/CLAUDE.md`](webpage_v2/CLAUDE.md) - Mobile-first React app with Tailwind CSS
+- **Infrastructure**: [`infra_v2/README.md`](infra_v2/README.md) - Terraform and GCP setup with MIG architecture
 - **Project Guide**: [`CLAUDE.md`](CLAUDE.md) - Comprehensive project overview and integration
 
 ## 🛠️ Development Tools
@@ -159,13 +161,12 @@ make clean                           # Clean build artifacts
 make backend-test                    # Run backend tests (pytest)
 make backend-migrate                 # Run database migrations
 
-# Infrastructure Management (CRITICAL: Always test first!)
-cd infra
-make test                            # Run validation tests
-make staging-plan                    # Plan staging changes
-make staging-apply                   # Apply staging changes
-make prod-plan                       # Plan production changes
-make prod-apply                      # Apply production changes
+# Infrastructure Management
+cd infra_v2/terraform
+terraform init                       # Initialize Terraform
+terraform workspace select staging   # Select workspace
+terraform plan -var="environment=staging"  # Plan changes
+terraform apply -var="environment=staging" # Apply changes
 
 # iOS Development
 make ios-build                       # Build iOS app for simulator
