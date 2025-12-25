@@ -39,6 +39,12 @@ resource "google_compute_disk" "data" {
     environment = var.environment
   }
 
+  # Ignore snapshot attribute - disk may have been created from snapshot
+  # but we don't want Terraform to recreate it
+  lifecycle {
+    ignore_changes = [snapshot]
+  }
+
   depends_on = [google_project_service.apis]
 }
 
