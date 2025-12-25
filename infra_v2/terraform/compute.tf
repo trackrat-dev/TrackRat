@@ -29,7 +29,7 @@ resource "google_compute_instance_template" "trackrat" {
     source_image = data.google_compute_image.cos.self_link
     auto_delete  = true
     boot         = true
-    disk_size_gb = 25
+    disk_size_gb = 10
   }
 
   network_interface {

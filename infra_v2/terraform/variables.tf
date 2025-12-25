@@ -48,7 +48,7 @@ variable "use_spot_vm" {
 variable "disk_size_gb" {
   description = "Persistent disk size in GB"
   type        = number
-  default     = 50
+  default     = 10
 }
 
 variable "snapshot_retention_days" {
