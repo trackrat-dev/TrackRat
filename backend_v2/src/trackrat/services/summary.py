@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -250,6 +250,9 @@ class SummaryService:
         if data_source:
             conditions.append(TrainJourney.data_source == data_source)
 
+        # Prioritize journeys with actual departure data over scheduled-only
+        # This ensures when deduplicating by train_id, we keep the most accurate record
+        today = current_time.date()
         stmt = (
             select(TrainJourney)
             .join(
@@ -261,14 +264,31 @@ class SummaryService:
             )
             .where(and_(*conditions))
             .options(selectinload(TrainJourney.stops))
+            .order_by(
+                # Prioritize today's journeys over stale records
+                case((TrainJourney.journey_date == today, 0), else_=1),
+                # Then prioritize journeys with actual departure data
+                case((JourneyStop.actual_departure.isnot(None), 0), else_=1),
+                # Finally by scheduled time
+                JourneyStop.scheduled_departure,
+            )
         )
 
         result = await db.execute(stmt)
-        all_journeys = list(result.scalars().all())
+        # Use .unique() to deduplicate journeys that may appear multiple times
+        # when the JOIN produces multiple matching rows (e.g., duplicate stop records)
+        all_journeys = list(result.scalars().unique().all())
 
         # Filter to journeys that actually travel to the destination
+        # AND deduplicate by train_id (keep first occurrence, which is most relevant
+        # due to the ORDER BY prioritization above)
         route_journeys = []
+        seen_train_ids: set[str] = set()
         for journey in all_journeys:
+            # Skip duplicate train_ids
+            if journey.train_id in seen_train_ids:
+                continue
+
             from_stop = None
             to_stop = None
             for stop in journey.stops:
@@ -283,6 +303,8 @@ class SummaryService:
                 and (from_stop.stop_sequence or 0) < (to_stop.stop_sequence or 0)
             ):
                 route_journeys.append(journey)
+                if journey.train_id:
+                    seen_train_ids.add(journey.train_id)
 
         logger.info(
             "route_summary_query",
@@ -311,6 +333,7 @@ class SummaryService:
         from the origin station in the past 90 minutes.
         """
         current_time = now_et()
+        today = current_time.date()
         cutoff_time = current_time - timedelta(minutes=SUMMARY_TIME_WINDOW_MINUTES)
 
         # Query trains that departed from the origin station within the time window
@@ -344,14 +367,31 @@ class SummaryService:
                 )
             )
             .options(selectinload(TrainJourney.stops))
+            .order_by(
+                # Prioritize today's journeys over stale records
+                case((TrainJourney.journey_date == today, 0), else_=1),
+                # Then prioritize journeys with actual departure data
+                case((JourneyStop.actual_departure.isnot(None), 0), else_=1),
+                # Finally by scheduled time
+                JourneyStop.scheduled_departure,
+            )
         )
 
         result = await db.execute(stmt)
-        all_journeys = list(result.scalars().all())
+        # Use .unique() to deduplicate journeys that may appear multiple times
+        # when the JOIN produces multiple matching rows (e.g., duplicate stop records)
+        all_journeys = list(result.scalars().unique().all())
 
         # Filter to journeys that actually travel to the destination
+        # AND deduplicate by train_id (keep first occurrence, which is most relevant
+        # due to the ORDER BY prioritization above)
         route_journeys = []
+        seen_train_ids: set[str] = set()
         for journey in all_journeys:
+            # Skip duplicate train_ids
+            if journey.train_id in seen_train_ids:
+                continue
+
             from_stop = None
             to_stop = None
             for stop in journey.stops:
@@ -366,6 +406,8 @@ class SummaryService:
                 and (from_stop.stop_sequence or 0) < (to_stop.stop_sequence or 0)
             ):
                 route_journeys.append(journey)
+                if journey.train_id:
+                    seen_train_ids.add(journey.train_id)
 
         return route_journeys
 
