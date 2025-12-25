@@ -140,7 +140,7 @@ TrackRat/
 
 #### API Endpoints
 The app connects to the TrackRat backend API. Configure in `APIService.swift`:
-- **Production**: `https://prod.api.trackrat.net/api`
+- **Production**: `https://apiv2.trackrat.net/api`
 - **Development**: `http://localhost:8000/api`
 
 #### Push Notifications

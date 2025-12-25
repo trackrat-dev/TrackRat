@@ -20,7 +20,7 @@ enum ServerEnvironment: String, CaseIterable, Codable {
     var baseURL: String {
         switch self {
         case .production:
-            return "https://prod.api.trackrat.net/api"
+            return "https://apiv2.trackrat.net/api"
         case .staging:
             return "https://staging.apiv2.trackrat.net/api"
         case .local:

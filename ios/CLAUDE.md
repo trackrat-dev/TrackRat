@@ -170,7 +170,7 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 
 ### Service Layer
 - **APIService**: Singleton with shared instance
-- **Base URL**: `https://prod.api.trackrat.net/api`
+- **Base URL**: `https://apiv2.trackrat.net/api`
 - **JSONDecoder**: Multiple ISO8601 date format support with fractional seconds
 - **URLSession**: Native networking with proper timeout handling
 - **Error handling**: Typed errors with recovery

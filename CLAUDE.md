@@ -212,8 +212,8 @@ make prod-apply        # Deploy to production
 ```
 
 **API Environments:**
-- Production: `https://prod.api.trackrat.net/api/v2`
-- Staging: `https://staging.api.trackrat.net/api/v2`
+- Production: `https://apiv2.trackrat.net/api/v2`
+- Staging: `https://staging.apiv2.trackrat.net/api/v2`
 - Web uses: Production only
 - iOS uses: Both (configurable)
 
