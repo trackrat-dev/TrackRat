@@ -27,6 +27,6 @@ provider "google" {
 # Derive domain from environment
 # Production uses on-demand VMs for stability; staging uses spot for cost savings
 locals {
-  domain       = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
-  use_spot_vm  = var.environment == "staging"
+  domain      = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
+  use_spot_vm = var.environment == "staging"
 }
