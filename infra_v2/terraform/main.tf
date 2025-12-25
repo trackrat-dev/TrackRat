@@ -14,6 +14,8 @@ terraform {
   backend "gcs" {
     bucket = "trackrat-v2-terraform-state"
     prefix = "terraform/state"
+    # Note: Uses Terraform workspaces for environment separation
+    # State stored at: terraform/state/<workspace>/default.tfstate
   }
 }
 

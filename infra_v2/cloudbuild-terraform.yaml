@@ -6,7 +6,7 @@ substitutions:
   _ENVIRONMENT: staging  # Override with 'production' for prod trigger
 
 steps:
-  # Initialize Terraform
+  # Initialize Terraform and select workspace
   - name: 'hashicorp/terraform:1.6'
     id: 'init'
     dir: 'infra_v2/terraform'
@@ -15,6 +15,7 @@ steps:
       - '-c'
       - |
         terraform init -input=false
+        terraform workspace select ${_ENVIRONMENT} || terraform workspace new ${_ENVIRONMENT}
 
   # Plan changes
   - name: 'hashicorp/terraform:1.6'
