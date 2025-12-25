@@ -2,7 +2,7 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** September 27, 2025
+**Last Updated:** December 25, 2025
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Key Features:** Multi-transit support (NJT + Amtrak), ML predictions, API caching, schedule generation
 
@@ -141,7 +141,7 @@ journey_snapshots (
 
 -- API response caching
 cached_api_responses (
-    id, cache_key, response_data, created_at, expires_at
+    id, endpoint, params_hash, params, response, created_at, expires_at
 )
 
 -- Scheduler coordination (for horizontal scaling)
@@ -171,10 +171,25 @@ All endpoints are prefixed with `/api/v2/`:
 # Train Operations
 GET /trains/departures?from=NY&to=TR&limit=50         # Find departures between stations
 GET /trains/{train_id}?date=2024-01-01&refresh=true   # Get specific train journey
+GET /trains/{train_id}/history?date=2024-01-01        # Historical train performance
+GET /trains/stations/{station_code}/tracks/occupied   # Real-time track occupancy
 
 # Route Analytics
 GET /routes/history?from_station=NY&to_station=TR&data_source=NJT&days=30  # Historical route performance
 GET /routes/congestion?time_window_hours=3&data_source=NJT                 # Real-time congestion analysis
+GET /routes/summary                                   # Natural language operations summary
+GET /routes/segments/{from}/{to}/trains?hours=24      # Segment train records
+
+# ML Predictions
+GET /predictions/track?station_code=NY&train_id=1234&journey_date=2024-01-01  # Track prediction
+GET /predictions/supported-stations                   # ML-enabled stations list
+
+# Validation
+GET /validation/status                               # Validation status and recent results
+GET /validation/results/{route}/{source}             # Route-specific validation details
+
+# Feedback
+POST /feedback                                       # Submit user feedback
 
 # Live Activities Management
 POST /live-activities/register    # Register Live Activity
@@ -183,7 +198,7 @@ DELETE /live-activities/{token}   # Unregister Live Activity
 # System Health and Metrics
 GET /health                    # Comprehensive health check
 GET /health/live              # Liveness probe
-GET /health/ready             # Readiness probe  
+GET /health/ready             # Readiness probe
 GET /scheduler/status         # Detailed scheduler status
 GET /metrics                  # Prometheus metrics
 ```
@@ -238,12 +253,16 @@ The system now includes comprehensive transit time analysis:
 **API Endpoints:**
 - `/api/v2/routes/congestion` - Real-time network congestion map with caching
 - `/api/v2/routes/history` - Historical route performance with delay breakdowns
+- `/api/v2/routes/summary` - Natural language operations summary
 - `/api/v2/trains/departures` - Train departures with filtering and JIT updates
 - `/api/v2/trains/{train_id}` - Enhanced details with progress and arrival forecasting
-- `/api/v2/predictions/track-assignment/{station}` - ML-powered track predictions
-- `/api/v2/predictions/track-occupancy/{station}` - Real-time track availability
-- `/api/v2/validation/run` - Manual validation trigger
-- `/api/v2/validation/results` - Validation history and metrics
+- `/api/v2/trains/{train_id}/history` - Historical train performance
+- `/api/v2/trains/stations/{station_code}/tracks/occupied` - Real-time track availability
+- `/api/v2/predictions/track` - ML-powered track predictions
+- `/api/v2/predictions/supported-stations` - ML-enabled stations list
+- `/api/v2/validation/status` - Validation status and recent results
+- `/api/v2/validation/results/{route}/{source}` - Route-specific validation details
+- `/api/v2/feedback` - User feedback submission
 - `/health` - Comprehensive health with scheduler status and accuracy metrics
 - `/scheduler/status` - Detailed scheduler job status
 - `/metrics` - Prometheus metrics endpoint
@@ -330,6 +349,19 @@ APNS_ENVIRONMENT=dev
 
 # Backup Settings (optional)
 TRACKRAT_GCS_BACKUP_BUCKET=your-backup-bucket
+
+# Collection Intervals (optional)
+TRACKRAT_DISCOVERY_INTERVAL_MINUTES=30           # Train discovery frequency
+TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES=15      # Journey collection frequency
+TRACKRAT_DATA_STALENESS_SECONDS=60               # JIT refresh threshold
+
+# Validation Settings (optional)
+TRACKRAT_INTERNAL_API_URL=http://localhost:8000  # Internal API for validation
+TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY=20      # Max missing trains to verify
+
+# Feature Flags (optional)
+TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS=true  # Database-aggregated patterns
+TRACKRAT_ENABLE_SQL_LOGGING=false                    # SQLAlchemy query logging
 
 # Cloud Run Configuration (for horizontal scaling)
 K_REVISION=revision-name                 # Automatically set by Cloud Run
@@ -578,6 +610,7 @@ The backend is organized into service classes for better maintainability:
 - **DepartureService** (`services/departure.py`): Train departures with filtering and JIT updates
 - **TrainValidationService** (`services/validation.py`): Coverage validation and monitoring
 - **ApiCacheService** (`services/api_cache.py`): Intelligent response caching with pre-computation
+- **SummaryService** (`services/summary.py`): Natural language operations summaries
 
 #### Analytics & ML
 - **TransitAnalyzer** (`services/transit_analyzer.py`): Transit time and dwell time analysis
