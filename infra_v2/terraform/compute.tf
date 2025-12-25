@@ -18,11 +18,11 @@ resource "google_compute_instance_template" "trackrat" {
   }
 
   scheduling {
-    preemptible                 = var.use_spot_vm
-    automatic_restart           = !var.use_spot_vm
-    on_host_maintenance         = var.use_spot_vm ? "TERMINATE" : "MIGRATE"
-    provisioning_model          = var.use_spot_vm ? "SPOT" : "STANDARD"
-    instance_termination_action = var.use_spot_vm ? "STOP" : null
+    preemptible                 = local.use_spot_vm
+    automatic_restart           = !local.use_spot_vm
+    on_host_maintenance         = local.use_spot_vm ? "TERMINATE" : "MIGRATE"
+    provisioning_model          = local.use_spot_vm ? "SPOT" : "STANDARD"
+    instance_termination_action = local.use_spot_vm ? "STOP" : null
   }
 
   disk {

@@ -39,12 +39,6 @@ variable "machine_type" {
   default     = "t2d-standard-1"
 }
 
-variable "use_spot_vm" {
-  description = "Use spot/preemptible VMs for cost savings"
-  type        = bool
-  default     = true
-}
-
 variable "disk_size_gb" {
   description = "Persistent disk size in GB"
   type        = number
