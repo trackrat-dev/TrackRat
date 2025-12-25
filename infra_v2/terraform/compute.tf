@@ -22,7 +22,7 @@ resource "google_compute_instance_template" "trackrat" {
     automatic_restart           = !local.use_spot_vm
     on_host_maintenance         = local.use_spot_vm ? "TERMINATE" : "MIGRATE"
     provisioning_model          = local.use_spot_vm ? "SPOT" : "STANDARD"
-    instance_termination_action = local.use_spot_vm ? "STOP" : null
+    instance_termination_action = local.use_spot_vm ? "DELETE" : null
   }
 
   disk {
