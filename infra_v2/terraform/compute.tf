@@ -29,7 +29,7 @@ resource "google_compute_instance_template" "trackrat" {
     source_image = data.google_compute_image.cos.self_link
     auto_delete  = true
     boot         = true
-    disk_size_gb = 10
+    disk_size_gb = 20 # Increased from 10GB for Docker image storage
   }
 
   network_interface {
@@ -167,8 +167,20 @@ resource "google_compute_instance_template" "trackrat" {
       echo "=== Downloading docker-compose.yml ==="
       APP_DIR="$MOUNT_PATH/compose"
       mkdir -p "$APP_DIR"
-      # Download directly to compose dir - toolbox can access the mounted disk
+      # Note: toolbox writes to its internal mount, so we need to copy from there
+      # First download with toolbox (goes to /var/lib/toolbox/.../mnt/disks/data/compose/)
       toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.yml" "$APP_DIR/docker-compose.yml"
+      # Find and copy from toolbox mount to actual host mount
+      TOOLBOX_FILE=$(find /var/lib/toolbox -name "docker-compose.yml" -path "*/mnt/disks/data/compose/*" 2>/dev/null | head -1)
+      if [ -n "$TOOLBOX_FILE" ] && [ ! -f "$APP_DIR/docker-compose.yml" ]; then
+        echo "Copying from toolbox mount: $TOOLBOX_FILE"
+        cp "$TOOLBOX_FILE" "$APP_DIR/docker-compose.yml"
+      fi
+      # Verify download
+      if [ ! -f "$APP_DIR/docker-compose.yml" ]; then
+        echo "ERROR: docker-compose.yml not found after download"
+        exit 1
+      fi
 
       # ===========================================
       # 6. Create .env file with configuration
