@@ -9,8 +9,12 @@ struct TrainListView: View {
 
     @State private var destination: String
     @State private var departureStationCode: String
-    @State private var departureName: String
     @State private var isClosing = false
+
+    // Computed from appState to avoid layout shift on initial render
+    private var departureName: String {
+        appState.selectedDeparture ?? ""
+    }
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
 
@@ -18,7 +22,6 @@ struct TrainListView: View {
     init(destination: String) {
         self._destination = State(initialValue: destination)
         self._departureStationCode = State(initialValue: "")
-        self._departureName = State(initialValue: "")
         self._viewModel = StateObject(wrappedValue: TrainListViewModel())
     }
     
@@ -162,10 +165,9 @@ struct TrainListView: View {
         }
         .onAppear {
             isViewVisible = true
-            // Initialize state from app state
+            // Initialize departure station code from app state
             if departureStationCode.isEmpty {
                 departureStationCode = appState.departureStationCode ?? "NY"
-                departureName = appState.selectedDeparture ?? ""
             }
             
             // Record journey search for Rat Sense
