@@ -40,16 +40,17 @@ struct OperationsSummaryView: View {
         self.ratSenseRoute = ratSenseRoute
     }
 
-    /// Combined display text: network summary + optional route summary
+    /// Combined display text: network summary or route summary
     private var combinedBodyText: String? {
         guard let summary = summary, !summary.body.isEmpty else { return nil }
 
-        // If we have a route summary, combine them
+        // If we have a route summary, show "On your route:" + route body
         if let routeSummary = routeSummary, !routeSummary.body.isEmpty {
-            return "\(summary.headline)\n\n\(routeSummary.body)"
+            return "On your route: \(routeSummary.body)"
         }
 
-        return summary.headline
+        // No route summary - show network headline + body on same line
+        return "\(summary.headline). \(summary.body)"
     }
 
     var body: some View {

@@ -663,12 +663,12 @@ class SummaryService:
         if cancellations > 0:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
-        elif on_time_pct >= 90 and avg_delay < 5:
+        elif on_time_pct >= 95 and avg_delay < 5:
             headline = "Trains running smoothly"
-        elif on_time_pct >= 75:
+        elif on_time_pct >= 85:
             headline = "Mostly on time"
-        elif on_time_pct >= 50:
-            headline = "Network delays"
+        elif on_time_pct >= 75:
+            headline = "Some network delays"
         else:
             headline = "Significant delays"
 
