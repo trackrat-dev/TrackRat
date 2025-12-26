@@ -149,7 +149,7 @@ struct MapContainerView: View {
                     ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
                 )
                     .padding(.horizontal, 16)
-                    .padding(.top, 60) // Below status bar and gradient
+                    .padding(.top, 30)
 
                 Spacer()
 
