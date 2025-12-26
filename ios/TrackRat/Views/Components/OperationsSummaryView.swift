@@ -70,6 +70,7 @@ struct OperationsSummaryView: View {
                     Text(bodyText)
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(2)
                         .padding(.horizontal, 14)
