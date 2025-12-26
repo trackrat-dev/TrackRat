@@ -55,7 +55,7 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
                 }
                 .foregroundColor(.white)
                 .font(.body)
-                .frame(width: 44, height: 44)
+                .frame(height: 44)
             } else {
                 Color.clear.frame(width: 44, height: 44)
             }
