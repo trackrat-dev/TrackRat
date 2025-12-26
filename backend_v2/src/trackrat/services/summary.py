@@ -31,6 +31,12 @@ SUMMARY_TIME_WINDOW_MINUTES = 90
 ON_TIME_THRESHOLD_MINUTES = 5
 SLIGHT_DELAY_THRESHOLD_MINUTES = 15
 
+# Data freshness threshold for delay calculation (in seconds)
+# When journey data is older than this, we don't trust the absence of
+# actual_departure to mean the train is delayed - it may have departed
+# on time but we just don't have the update yet.
+DATA_FRESHNESS_THRESHOLD_SECONDS = 60
+
 # Delay category names
 DELAY_CATEGORY_ON_TIME = "on_time"
 DELAY_CATEGORY_SLIGHT_DELAY = "slight_delay"
@@ -801,10 +807,26 @@ class SummaryService:
                         delay = 0.0
                         category = DELAY_CATEGORY_ON_TIME
                     else:
-                        # Significantly past scheduled time - count as delayed
-                        delay = time_since_scheduled
-                        total_delay += time_since_scheduled
-                        category = self._categorize_delay(delay)
+                        # Past scheduled time with no actual departure data.
+                        # Check if journey data is fresh enough to trust the
+                        # absence of actual_departure as an indication of delay.
+                        data_age_seconds = (
+                            (current_time - journey.last_updated_at).total_seconds()
+                            if journey.last_updated_at
+                            else float("inf")
+                        )
+
+                        if data_age_seconds <= DATA_FRESHNESS_THRESHOLD_SECONDS:
+                            # Fresh data - trust that no departure means delayed
+                            delay = time_since_scheduled
+                            total_delay += time_since_scheduled
+                            category = self._categorize_delay(delay)
+                        else:
+                            # Stale data - don't assume delay; train may have
+                            # departed on time but we don't have the update.
+                            on_time_count += 1
+                            delay = 0.0
+                            category = DELAY_CATEGORY_ON_TIME
 
                 trains_by_category[category].append(
                     TrainDelaySummary(
