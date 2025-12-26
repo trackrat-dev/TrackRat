@@ -5,7 +5,6 @@ struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var liveActivityService = LiveActivityService.shared
-    @State private var isClosing = false
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
 
@@ -32,113 +31,111 @@ struct TrainDetailsView: View {
     
     
     var body: some View {
-        // Native sheet handles scrolling automatically
-        ScrollView {
-            VStack {
-                if viewModel.isLoading && viewModel.train == nil {
-                    TrackRatLoadingView(message: "Loading train details...")
-                        .frame(maxWidth: .infinity, minHeight: 400)
-                } else if let error = viewModel.error {
-                    ErrorView(message: error) {
-                        Task {
-                            await viewModel.loadTrainDetails(
-                                fromStationCode: appState.departureStationCode,
-                                selectedDestinationName: appState.selectedDestination
-                            )
-                        }
-                    }
-                } else if let train = viewModel.train {
-                    VStack(spacing: 16) {
-                        // Train performance summary (similar trains + historical)
-                        // Hide after train departs from user's origin station
-                        if let originCode = appState.departureStationCode,
-                           !train.hasTrainDepartedFromStation(originCode) {
-                            TrainStatsSummaryView(
-                                trainId: train.trainId,
-                                fromStation: appState.departureStationCode,
-                                toStation: appState.destinationStationCode,
-                                onTrainTap: { selectedTrainId in
-                                    // Navigate to the selected train's detail view
-                                    appState.navigationPath.append(
-                                        NavigationDestination.trainDetailsFlexible(
-                                            trainNumber: selectedTrainId,
-                                            fromStation: appState.departureStationCode,
-                                            journeyDate: nil
-                                        )
-                                    )
+        VStack(spacing: 0) {
+            // Fixed header - replaces system navigation bar to avoid layout shift
+            TrackRatNavigationHeader(
+                title: viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...",
+                showCloseButton: false,
+                trailingContent: {
+                    HStack(alignment: .center, spacing: 12) {
+                        if #available(iOS 16.1, *) {
+                            if let train = viewModel.train, train.calculateStatus(fromStationCode: appState.departureStationCode ?? "") != .cancelled {
+                                Button {
+                                    toggleLiveActivity(for: train)
+                                } label: {
+                                    Image(systemName: "eye.circle.fill")
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                        .foregroundColor((liveActivityService.currentActivity?.attributes.trainNumber == train.trainId) ? .orange : .white.opacity(0.7))
                                 }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        if let train = viewModel.train {
+                            ShareButton(
+                                train: train,
+                                fromStationCode: appState.departureStationCode,
+                                destinationName: appState.selectedDestination
                             )
                         }
 
-                        CombinedDetailsCard(
-                            train: train,
-                            selectedDestination: appState.selectedDestination,
-                            displayableTrainStops: viewModel.displayableTrainStops,
-                            hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
-                            hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
-                            journeyProgressPercentage: viewModel.journeyProgressPercentage,
-                            journeyStopsCompleted: viewModel.journeyStopsCompleted,
-                            journeyTotalStops: viewModel.journeyTotalStops
-                        )
-
-                        // Feedback button
-                        FeedbackButton(
-                            screen: "train_details",
-                            trainId: train.trainId,
-                            originCode: appState.departureStationCode,
-                            destinationCode: appState.destinationStationCode
-                        )
-                    }
-                    .padding()
-                    // Force view update by using a composite ID that includes changing data
-                    .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
-                }
-            } // VStack
-        }
-        .navigationTitle(viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...")
-        .navigationBarTitleDisplayMode(.inline)
-        .trackRatNavigationBarStyle()
-        .toolbar(isClosing ? .hidden : .visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(alignment: .center, spacing: 12) {
-                    if #available(iOS 16.1, *) {
-                        if let train = viewModel.train, train.calculateStatus(fromStationCode: appState.departureStationCode ?? "") != .cancelled {
-                            Button {
-                                toggleLiveActivity(for: train)
-                            } label: {
-                                Image(systemName: "eye.circle.fill")
-                                    .font(.body)
-                                    .fontWeight(.medium)
-                                    .foregroundColor((liveActivityService.currentActivity?.attributes.trainNumber == train.trainId) ? .orange : .white.opacity(0.7))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    
-                    if let train = viewModel.train {
-                        // Share button
-                        ShareButton(
-                            train: train,
-                            fromStationCode: appState.departureStationCode,
-                            destinationName: appState.selectedDestination
-                        )
-                    }
-                    
-                    Button("Close") {
-                        isClosing = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        Button("Close") {
                             appState.navigationPath = NavigationPath()
                         }
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .buttonStyle(.plain)
                     }
-                    .font(.body)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .buttonStyle(.plain)
                 }
-                .frame(height: 44)
+            )
+
+            // Scrollable content
+            ScrollView {
+                VStack {
+                    if viewModel.isLoading && viewModel.train == nil {
+                        TrackRatLoadingView(message: "Loading train details...")
+                            .frame(maxWidth: .infinity, minHeight: 400)
+                    } else if let error = viewModel.error {
+                        ErrorView(message: error) {
+                            Task {
+                                await viewModel.loadTrainDetails(
+                                    fromStationCode: appState.departureStationCode,
+                                    selectedDestinationName: appState.selectedDestination
+                                )
+                            }
+                        }
+                    } else if let train = viewModel.train {
+                        VStack(spacing: 16) {
+                            // Train performance summary (similar trains + historical)
+                            // Hide after train departs from user's origin station
+                            if let originCode = appState.departureStationCode,
+                               !train.hasTrainDepartedFromStation(originCode) {
+                                TrainStatsSummaryView(
+                                    trainId: train.trainId,
+                                    fromStation: appState.departureStationCode,
+                                    toStation: appState.destinationStationCode,
+                                    onTrainTap: { selectedTrainId in
+                                        // Navigate to the selected train's detail view
+                                        appState.navigationPath.append(
+                                            NavigationDestination.trainDetailsFlexible(
+                                                trainNumber: selectedTrainId,
+                                                fromStation: appState.departureStationCode,
+                                                journeyDate: nil
+                                            )
+                                        )
+                                    }
+                                )
+                            }
+
+                            CombinedDetailsCard(
+                                train: train,
+                                selectedDestination: appState.selectedDestination,
+                                displayableTrainStops: viewModel.displayableTrainStops,
+                                hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
+                                hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
+                                journeyProgressPercentage: viewModel.journeyProgressPercentage,
+                                journeyStopsCompleted: viewModel.journeyStopsCompleted,
+                                journeyTotalStops: viewModel.journeyTotalStops
+                            )
+
+                            // Feedback button
+                            FeedbackButton(
+                                screen: "train_details",
+                                trainId: train.trainId,
+                                originCode: appState.departureStationCode,
+                                destinationCode: appState.destinationStationCode
+                            )
+                        }
+                        .padding()
+                        // Force view update by using a composite ID that includes changing data
+                        .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
+                    }
+                } // VStack
             }
         }
+        .navigationBarHidden(true)
         .task {
             await viewModel.loadTrainDetails(
                 fromStationCode: appState.departureStationCode,
@@ -1579,18 +1576,6 @@ struct PredictionExplanationSheet: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(Color.black)
         .preferredColorScheme(.dark)
-    }
-}
-
-// MARK: - Stations Helper Extension
-extension Stations {
-    static func displayNameForCode(_ stationCode: String) -> String {
-        // Try to find the station name by code
-        if let stationName = stationCodes.first(where: { $0.value == stationCode })?.key {
-            return displayName(for: stationName) // Use existing method for formatting
-        }
-        // Return the code if we can't find a display name
-        return stationCode
     }
 }
 

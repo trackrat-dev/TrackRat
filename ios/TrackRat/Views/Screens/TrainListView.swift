@@ -67,7 +67,7 @@ struct TrainListView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
+            .background(Color(UIColor.systemBackground))
 
             // Scrollable content
             ScrollView {

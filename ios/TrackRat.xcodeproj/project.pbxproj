@@ -87,6 +87,8 @@
 		A1CB28332E3D634C004A49E6 /* JourneyCongestionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB28322E3D634C004A49E6 /* JourneyCongestionMapView.swift */; };
 		A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
 		A1F0BAAB2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
+		A1F670E92EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
+		A1F670EA2EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
 		A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */; };
 		A1WIDGET012DFC73650002FB39 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET022DFC73650002FB39 /* WidgetKit.framework */; };
 		A1WIDGET032DFC73650002FB39 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET042DFC73650002FB39 /* SwiftUI.framework */; };
@@ -203,6 +205,7 @@
 		A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapView.swift; path = Views/Screens/CongestionMapView.swift; sourceTree = "<group>"; };
 		A1CB28322E3D634C004A49E6 /* JourneyCongestionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyCongestionMapView.swift; path = Views/Components/JourneyCongestionMapView.swift; sourceTree = "<group>"; };
 		A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainCacheService.swift; path = TrackRat/Services/TrainCacheService.swift; sourceTree = "<group>"; };
+		A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatNavigationHeader.swift; path = TrackRat/Views/Components/TrackRatNavigationHeader.swift; sourceTree = "<group>"; };
 		A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendWakeupService.swift; path = TrackRat/Services/BackendWakeupService.swift; sourceTree = "<group>"; };
 		A1WIDGET022DFC73650002FB39 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		A1WIDGET042DFC73650002FB39 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -270,6 +273,7 @@
 				A12AADE72EF8407600407794 /* TrainDistributionChart.swift */,
 				A17A63E02EE60FD2003BD685 /* TrainStatsSummaryView.swift */,
 				A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */,
+				A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -580,6 +584,7 @@
 				A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */,
 				A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */,
 				A10E97F52DE39EDD002F3214 /* Train.swift in Sources */,
+				A1F670EA2EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */,
 				A10E97F02DE39EC1002F3214 /* TrackRatApp.swift in Sources */,
 				A126E55D2E25BBD800958ABA /* DeepLinkService.swift in Sources */,
 				A126E55E2E25BBD800958ABA /* ShareService.swift in Sources */,
@@ -643,6 +648,7 @@
 				A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */,
 				A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */,
 				A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */,
+				A1F670E92EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */,
 				A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */,
 				A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */,
 				A12AADE92EF8407600407794 /* TrainDistributionChart.swift in Sources */,

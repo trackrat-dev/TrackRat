@@ -735,8 +735,40 @@ struct Stations {
         return stationCoordinates[code]
     }
     
-    static func displayName(for stationCode: String) -> String? {
-        return stationCodes.first(where: { $0.value == stationCode })?.key
+    /// Returns the full station name for a given station code.
+    /// Example: stationName(forCode: "NY") returns "New York Penn Station"
+    static func stationName(forCode code: String) -> String? {
+        return stationCodes.first(where: { $0.value == code })?.key
+    }
+
+    /// Smart display name that handles both station codes and station names.
+    /// - For codes (e.g., "NY", "MP"): Returns the full station name
+    /// - For names (e.g., "New York Penn Station"): Returns shortened version
+    static func displayName(for input: String) -> String {
+        // First, check if input is a station code
+        if let fullName = stationName(forCode: input) {
+            return shortenedDisplayName(for: fullName)
+        }
+        // Otherwise, assume it's a station name and apply shortening
+        return shortenedDisplayName(for: input)
+    }
+
+    /// Returns a shortened display name for UI (strips "Station", etc.)
+    private static func shortenedDisplayName(for stationName: String) -> String {
+        // First normalize the name to handle API inconsistencies
+        let normalizedName = StationNameNormalizer.normalizedName(for: stationName)
+
+        // Apply short display names for common stations
+        switch normalizedName {
+        case "New York Penn Station":
+            return "New York Penn"
+        case "Newark Penn Station":
+            return "Newark Penn"
+        case "Washington Union Station":
+            return "Washington Union"
+        default:
+            return normalizedName
+        }
     }
 }
 

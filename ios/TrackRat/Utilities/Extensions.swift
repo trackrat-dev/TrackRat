@@ -208,23 +208,6 @@ struct StationNameNormalizer {
 
 // MARK: - Stations Extension
 extension Stations {
-    static func displayName(for stationName: String) -> String {
-        // First normalize the station name to handle API inconsistencies
-        let normalizedName = StationNameNormalizer.normalizedName(for: stationName)
-        
-        // Then apply short display names for UI
-        switch normalizedName {
-        case "New York Penn Station":
-            return "New York Penn"
-        case "Newark Penn Station":
-            return "Newark Penn"
-        case "Washington Union Station":
-            return "Washington Union"
-        default:
-            return normalizedName
-        }
-    }
-    
     /// Robust station matching that handles API inconsistencies
     /// Uses station code first (most reliable), falls back to normalized name matching
     static func stationMatches(_ stop: Stop, stationCode: String) -> Bool {

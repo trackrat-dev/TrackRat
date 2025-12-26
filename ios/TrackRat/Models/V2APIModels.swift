@@ -851,11 +851,11 @@ extension IndividualJourneySegment {
 
 extension CongestionSegment {
     var fromStationDisplayName: String {
-        fromStationName.isEmpty ? Stations.displayNameForCode(fromStation) : fromStationName
+        fromStationName.isEmpty ? Stations.displayName(for: fromStation) : fromStationName
     }
 
     var toStationDisplayName: String {
-        toStationName.isEmpty ? Stations.displayNameForCode(toStation) : toStationName
+        toStationName.isEmpty ? Stations.displayName(for: toStation) : toStationName
     }
 
     var averageTransitTimeText: String {
