@@ -581,6 +581,11 @@ class SummaryService:
         """Generate network-wide summary from line statistics."""
         if not line_stats:
             # No data - return empty so iOS can hide the section
+            logger.info(
+                "network_summary_empty",
+                reason="no_line_stats",
+                message="Returning empty body - no train data in time window",
+            )
             return OperationsSummary(
                 headline="",
                 body="",
@@ -647,6 +652,17 @@ class SummaryService:
                     )
 
         body = " ".join(body_parts)
+
+        logger.info(
+            "network_summary_generated",
+            total_trains=total_trains,
+            on_time_pct=round(on_time_pct, 1),
+            avg_delay=round(avg_delay, 1),
+            cancellations=total_cancellations,
+            line_count=len(line_stats),
+            headline=headline,
+            body_length=len(body),
+        )
 
         return OperationsSummary(
             headline=headline,
