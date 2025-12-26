@@ -46,10 +46,10 @@ struct OperationsSummaryView: View {
 
         // If we have a route summary, combine them
         if let routeSummary = routeSummary, !routeSummary.body.isEmpty {
-            return "\(summary.body)\n\nOn your route, \(routeSummary.body)"
+            return "\(summary.headline)\n\n\(routeSummary.body)"
         }
 
-        return summary.body
+        return summary.headline
     }
 
     var body: some View {
