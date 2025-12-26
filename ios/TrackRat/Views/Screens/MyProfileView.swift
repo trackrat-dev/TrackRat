@@ -6,8 +6,41 @@ struct MyProfileView: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
+        VStack(spacing: 0) {
+            // Fixed header - replaces system navigation bar to avoid layout shift
+            HStack {
+                // Back button
+                Button {
+                    if !appState.navigationPath.isEmpty {
+                        appState.navigationPath.removeLast()
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                }
+
+                Spacer()
+
+                // Center title
+                Text("My Profile")
+                    .font(.headline)
+                    .foregroundColor(.white)
+
+                Spacer()
+
+                // Spacer for symmetry (same width as back button)
+                Color.clear
+                    .frame(width: 44, height: 44)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+
+            // Scrollable content
+            ScrollView {
+                VStack(spacing: 24) {
                     // Feedback & Ideas section
                     VStack(spacing: 16) {
                         // Section header
@@ -386,11 +419,12 @@ struct MyProfileView: View {
                     destinationCode: nil
                 )
                 .padding(.top, 8)
+                }
+                .padding()
+                .padding(.bottom, 40)
             }
-            .padding()
-            .padding(.bottom, 40)
         }
-        .navigationTitle("My Profile")
+        .navigationBarHidden(true)
     }
 }
 

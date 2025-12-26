@@ -58,6 +58,7 @@ struct MapContainerView: View {
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
     @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @ObservedObject private var ratSenseService = RatSenseService.shared
     
     // MARK: - Unified Map Region Calculation
     
@@ -141,8 +142,12 @@ struct MapContainerView: View {
             .ignoresSafeArea()
             
             // Operations summary pill (network scope) - positioned at top
+            // Shows network summary + route summary when RatSense has a prediction
             VStack {
-                OperationsSummaryView(scope: .network)
+                OperationsSummaryView(
+                    scope: .network,
+                    ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
+                )
                     .padding(.horizontal, 16)
                     .padding(.top, 60) // Below status bar and gradient
 
