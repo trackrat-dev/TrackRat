@@ -333,7 +333,9 @@ class TestSummaryService:
         assert summary.metrics.cancellation_count == 3
         assert summary.metrics.on_time_percentage == 0.0
 
-    def test_calculate_departure_stats_not_yet_departed_fresh_data(self, summary_service):
+    def test_calculate_departure_stats_not_yet_departed_fresh_data(
+        self, summary_service
+    ):
         """Test delay calculation for trains with fresh data that haven't departed.
 
         If a train was scheduled 30 minutes ago but hasn't departed, AND we have
@@ -371,7 +373,9 @@ class TestSummaryService:
         assert stats.on_time_percentage == 0.0
         assert stats.average_delay_minutes >= 25  # Should be ~30 min
 
-    def test_calculate_departure_stats_not_yet_departed_stale_data(self, summary_service):
+    def test_calculate_departure_stats_not_yet_departed_stale_data(
+        self, summary_service
+    ):
         """Test delay calculation for trains with stale data that haven't departed.
 
         If a train was scheduled 30 minutes ago but hasn't departed, AND we have
@@ -1169,7 +1173,9 @@ class TestDuplicateTrainPrevention:
 
         # Verify it's in the correct category (slight_delay for 8 min delay)
         assert len(stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 1
-        assert stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY][0].train_id == "7830"
+        assert (
+            stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY][0].train_id == "7830"
+        )
 
     def test_route_summary_no_duplicate_trains_in_categories(self, summary_service):
         """Integration test: route summary should not have any train in multiple categories."""
@@ -1178,12 +1184,14 @@ class TestDuplicateTrainPrevention:
         journeys = []
 
         # Create several trains with varying delays
-        for i, (train_id, delay_mins) in enumerate([
-            ("7828", 2),   # on_time
-            ("7830", 8),   # slight_delay
-            ("7832", 20),  # delayed
-            ("7834", 4),   # on_time
-        ]):
+        for i, (train_id, delay_mins) in enumerate(
+            [
+                ("7828", 2),  # on_time
+                ("7830", 8),  # slight_delay
+                ("7832", 20),  # delayed
+                ("7834", 4),  # on_time
+            ]
+        ):
             journey = Mock(spec=TrainJourney)
             journey.train_id = train_id
             journey.is_cancelled = False
@@ -1192,7 +1200,9 @@ class TestDuplicateTrainPrevention:
             origin_stop = Mock()
             origin_stop.station_code = "MP"
             origin_stop.stop_sequence = 1
-            origin_stop.scheduled_departure = current_time - timedelta(minutes=30 + i * 10)
+            origin_stop.scheduled_departure = current_time - timedelta(
+                minutes=30 + i * 10
+            )
             origin_stop.actual_departure = origin_stop.scheduled_departure + timedelta(
                 minutes=delay_mins
             )
@@ -1201,8 +1211,12 @@ class TestDuplicateTrainPrevention:
             dest_stop.station_code = "NY"
             dest_stop.stop_sequence = 5
             # Add arrival times for arrival stats calculation
-            dest_stop.scheduled_arrival = origin_stop.scheduled_departure + timedelta(minutes=60)
-            dest_stop.actual_arrival = dest_stop.scheduled_arrival + timedelta(minutes=delay_mins)
+            dest_stop.scheduled_arrival = origin_stop.scheduled_departure + timedelta(
+                minutes=60
+            )
+            dest_stop.actual_arrival = dest_stop.scheduled_arrival + timedelta(
+                minutes=delay_mins
+            )
 
             journey.stops = [origin_stop, dest_stop]
             journeys.append(journey)
@@ -1216,9 +1230,9 @@ class TestDuplicateTrainPrevention:
 
         # Check for duplicates
         unique_train_ids = set(all_train_ids)
-        assert len(all_train_ids) == len(unique_train_ids), (
-            f"Duplicate train_ids found! All: {all_train_ids}, Unique: {unique_train_ids}"
-        )
+        assert len(all_train_ids) == len(
+            unique_train_ids
+        ), f"Duplicate train_ids found! All: {all_train_ids}, Unique: {unique_train_ids}"
 
         # Verify each expected train is present exactly once
         assert sorted(unique_train_ids) == sorted(["7828", "7830", "7832", "7834"])
