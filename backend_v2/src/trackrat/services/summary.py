@@ -922,9 +922,9 @@ class SummaryService:
         total = stats.train_count_with_cancellations
         train_word = "train" if total == 1 else "trains"
 
-        # Base: "there were 9 NJ Transit trains on this route with 100% departing on time"
+        # Base: "there were 9 NJ Transit trains on your route with 100% departing on time"
         desc = (
-            f"there {'was' if total == 1 else 'were'} {total} {stats.carrier_name} {train_word} on this route "
+            f"there {'was' if total == 1 else 'were'} {total} {stats.carrier_name} {train_word} on your route "
             f"with {stats.on_time_percentage:.0f}% departing on time"
         )
 
@@ -952,7 +952,7 @@ class SummaryService:
         if not journeys:
             return OperationsSummary(
                 headline="",
-                body="No trains travelled this route in the past 90 minutes.",
+                body="No trains travelled your route in the past 90 minutes.",
                 scope="route",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
