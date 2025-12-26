@@ -520,21 +520,21 @@ struct CongestionMapKitView: UIViewRepresentable {
         private func getCongestionLineWidth(_ factor: Double) -> CGFloat {
             if factor < 1.05 {
                 return 5
-            } else if factor < 1.2 {
+            } else if factor < 1.25 {
                 return 7
-            } else if factor < 1.5 {
+            } else if factor < 2.0 {
                 return 9
             } else {
                 return 11
             }
         }
-        
+
         private func getUIColor(for congestionFactor: Double) -> UIColor {
             if congestionFactor < 1.05 {
                 return UIColor.systemGreen
-            } else if congestionFactor < 1.2 {
+            } else if congestionFactor < 1.25 {
                 return UIColor.systemYellow
-            } else if congestionFactor < 1.5 {
+            } else if congestionFactor < 2.0 {
                 return UIColor.systemOrange
             } else {
                 return UIColor.systemRed
@@ -1153,14 +1153,14 @@ struct SegmentTrainDetailsContentView: View {
                 SegmentStatCard(
                     title: "Avg Departure Delay",
                     value: summary.averageDepartureDelay > 0 ? "+\(Int(summary.averageDepartureDelay))m" : "On time",
-                    color: summary.averageDepartureDelay <= 0 ? .green : summary.averageDepartureDelay <= 5 ? .yellow : .orange,
+                    color: summary.averageDepartureDelay <= 2 ? .green : summary.averageDepartureDelay <= 6 ? .yellow : .orange,
                     icon: "arrow.up.circle.fill"
                 )
-                
+
                 SegmentStatCard(
                     title: "Avg Arrival Delay",
                     value: summary.averageArrivalDelay > 0 ? "+\(Int(summary.averageArrivalDelay))m" : "On time",
-                    color: summary.averageArrivalDelay <= 0 ? .green : summary.averageArrivalDelay <= 5 ? .yellow : .orange,
+                    color: summary.averageArrivalDelay <= 2 ? .green : summary.averageArrivalDelay <= 6 ? .yellow : .orange,
                     icon: "arrow.down.circle.fill"
                 )
                 
