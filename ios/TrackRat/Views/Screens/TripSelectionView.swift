@@ -277,7 +277,7 @@ struct TripSelectionView: View {
         appState.selectedRoute = trip  // Set selected route for map highlighting
 
         // Use pendingNavigation to expand sheet FIRST, then navigate
-        appState.pendingNavigation = .trainList(destination: trip.destinationName)
+        appState.pendingNavigation = .trainList(destination: trip.destinationName, departureStationCode: trip.departureCode)
 
         // Reset search state
         withAnimation(.easeInOut(duration: 0.3)) {
@@ -300,7 +300,7 @@ struct TripSelectionView: View {
         appState.destinationStationCode = suggestion.toStation
 
         // Use pendingNavigation to expand sheet FIRST, then navigate
-        appState.pendingNavigation = .trainList(destination: suggestion.toStationName)
+        appState.pendingNavigation = .trainList(destination: suggestion.toStationName, departureStationCode: suggestion.fromStation)
     }
     
     private func selectOriginStation(name: String, code: String) {

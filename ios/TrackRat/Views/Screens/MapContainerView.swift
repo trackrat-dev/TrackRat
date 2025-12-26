@@ -628,8 +628,8 @@ struct MapContainerView: View {
             DeparturePickerView()
         case .destinationPicker:
             DestinationPickerView()
-        case .trainList(let stationName):
-            TrainListView(destination: stationName)
+        case .trainList(let stationName, let departureStationCode):
+            TrainListView(destination: stationName, departureStationCode: departureStationCode)
         case .trainDetails(let trainId):
             TrainDetailsView(trainId: trainId)
         case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):

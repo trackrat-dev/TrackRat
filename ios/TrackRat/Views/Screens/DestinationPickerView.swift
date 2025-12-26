@@ -199,7 +199,7 @@ struct DestinationPickerView: View {
         appState.destinationStationCode = Stations.getStationCode(destination)
 
         // Use pendingNavigation to expand sheet FIRST, then navigate
-        appState.pendingNavigation = .trainList(destination: destination)
+        appState.pendingNavigation = .trainList(destination: destination, departureStationCode: appState.departureStationCode ?? "NY")
 
         // Reset search state
         withAnimation(.easeInOut(duration: 0.3)) {

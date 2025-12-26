@@ -7,21 +7,23 @@ struct TrainListView: View {
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 6
 
-    @State private var destination: String
-    @State private var departureStationCode: String
+    // Station info passed via init for guaranteed first-frame availability
+    private let destination: String
+    private let departureStationCode: String
+
     @State private var isClosing = false
 
-    // Computed from appState to avoid layout shift on initial render
+    // Computed from init parameter to avoid layout shift
     private var departureName: String {
-        appState.selectedDeparture ?? ""
+        Stations.displayName(for: departureStationCode)
     }
+
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
 
-
-    init(destination: String) {
-        self._destination = State(initialValue: destination)
-        self._departureStationCode = State(initialValue: "")
+    init(destination: String, departureStationCode: String) {
+        self.destination = destination
+        self.departureStationCode = departureStationCode
         self._viewModel = StateObject(wrappedValue: TrainListViewModel())
     }
     
@@ -127,11 +129,11 @@ struct TrainListView: View {
                     Text(destination)
                         .font(.headline)
                         .foregroundColor(.white)
-                    if !departureName.isEmpty {
-                        Text("from \(Stations.displayName(for: departureName))")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.8))
-                    }
+                    // Always render subtitle with opacity control for stable VStack height
+                    Text("from \(departureName)")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.8))
+                        .opacity(departureName.isEmpty ? 0 : 1)
                 }
                 .contentShape(Rectangle())
                 // Native sheet handles drag gestures automatically
@@ -165,25 +167,17 @@ struct TrainListView: View {
         }
         .onAppear {
             isViewVisible = true
-            // Initialize departure station code from app state
-            if departureStationCode.isEmpty {
-                departureStationCode = appState.departureStationCode ?? "NY"
-            }
-            
+
             // Record journey search for Rat Sense
-            if let fromCode = appState.departureStationCode,
-               let toCode = appState.destinationStationCode {
-                RatSenseService.shared.recordJourneySearch(from: fromCode, to: toCode)
+            if let toCode = Stations.getStationCode(destination) {
+                RatSenseService.shared.recordJourneySearch(from: departureStationCode, to: toCode)
             }
-            
+
             // Set the route for immediate blue line drawing on map
-            // Use appState values directly to ensure we have the correct values
-            if let destinationCode = Stations.getStationCode(destination),
-               let depCode = appState.departureStationCode,
-               let depName = appState.selectedDeparture {
+            if let destinationCode = Stations.getStationCode(destination) {
                 appState.selectedRoute = TripPair(
-                    departureCode: depCode,
-                    departureName: depName,
+                    departureCode: departureStationCode,
+                    departureName: departureName,
                     destinationCode: destinationCode,
                     destinationName: destination,
                     lastUsed: Date(),
@@ -618,7 +612,7 @@ struct EmptyStateView: View {
 
 #Preview {
     NavigationStack {
-        TrainListView(destination: "Newark Penn Station")
+        TrainListView(destination: "Newark Penn Station", departureStationCode: "NY")
             .environmentObject(AppState())
     }
 }
