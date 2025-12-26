@@ -1101,18 +1101,12 @@ class SummaryService:
         - Cancellations lead the headline when present
         - Body shows departure %, then arrival delay if available
         """
-        # Determine headline
+        # Determine headline - always show on-time percentage
         if cancellations > 0:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
-        elif dep_on_time_pct >= 90:
-            headline = "Running well"
-        elif dep_on_time_pct >= 75:
-            headline = "Mostly on time"
-        elif dep_on_time_pct >= 50:
-            headline = "Expect delays"
         else:
-            headline = "Significant delays"
+            headline = f"Recent departures: {dep_on_time_pct:.0f}% on time"
 
         # Build body
         body_parts = []
@@ -1335,19 +1329,14 @@ class SummaryService:
         """
         body_parts = []
 
-        # Determine headline - cancellations take priority
+        # Determine headline - always show on-time percentage
         if cancellations > 0:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
         elif dep_stats.has_data:
-            if dep_stats.on_time_percentage >= 90:
-                headline = "Running well"
-            elif dep_stats.on_time_percentage >= 75:
-                headline = "Mostly on time"
-            else:
-                headline = "Expect delays"
+            headline = f"Recent departures: {dep_stats.on_time_percentage:.0f}% on time"
         elif train_stats.has_data:
-            headline = "View On-Time Stats"
+            headline = f"Recent departures: {train_stats.on_time_percentage:.0f}% on time"
         else:
             return "", ""  # No data
 

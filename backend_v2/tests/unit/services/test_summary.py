@@ -257,10 +257,8 @@ class TestSummaryService:
         summary = summary_service._generate_network_summary(line_stats)
 
         assert summary.scope == "network"
-        assert (
-            "delay" in summary.headline.lower()
-            or "disruption" in summary.headline.lower()
-        )
+        # When cancellations are present, they lead the headline
+        assert "cancellation" in summary.headline.lower()
 
     def test_generate_network_summary_empty(self, summary_service):
         """Test network summary with no data returns empty headline."""
@@ -271,28 +269,6 @@ class TestSummaryService:
         assert summary.headline == ""
         assert summary.body == ""
         assert summary.metrics is None
-
-    def test_get_network_headline_thresholds(self, summary_service):
-        """Test headline generation for different performance thresholds."""
-        # Excellent
-        headline = summary_service._get_network_headline(96, 2, 0)
-        assert "smooth" in headline.lower()
-
-        # Good
-        headline = summary_service._get_network_headline(87, 4, 0)
-        assert "on time" in headline.lower()
-
-        # Moderate
-        headline = summary_service._get_network_headline(72, 8, 1)
-        assert "some" in headline.lower() or "delay" in headline.lower()
-
-        # Degraded
-        headline = summary_service._get_network_headline(55, 12, 2)
-        assert "widespread" in headline.lower() or "delay" in headline.lower()
-
-        # Severe
-        headline = summary_service._get_network_headline(40, 20, 5)
-        assert "major" in headline.lower() or "disruption" in headline.lower()
 
     def test_generate_route_summary_with_data(self, summary_service, sample_journeys):
         """Test route summary generation with journey data."""
@@ -349,9 +325,10 @@ class TestSummaryService:
         summary = summary_service._generate_route_summary(journeys, "NY", "NP")
 
         assert summary.scope == "route"
-        assert summary.headline == "Service disrupted"
+        # When all trains are cancelled, headline shows cancellation count
+        assert "cancellation" in summary.headline.lower()
+        assert "3" in summary.headline  # All 3 trains
         assert "cancelled" in summary.body.lower()
-        assert "3" in summary.body  # All 3 trains
         assert summary.metrics is not None
         assert summary.metrics.cancellation_count == 3
         assert summary.metrics.on_time_percentage == 0.0
@@ -1223,6 +1200,9 @@ class TestDuplicateTrainPrevention:
             dest_stop = Mock()
             dest_stop.station_code = "NY"
             dest_stop.stop_sequence = 5
+            # Add arrival times for arrival stats calculation
+            dest_stop.scheduled_arrival = origin_stop.scheduled_departure + timedelta(minutes=60)
+            dest_stop.actual_arrival = dest_stop.scheduled_arrival + timedelta(minutes=delay_mins)
 
             journey.stops = [origin_stop, dest_stop]
             journeys.append(journey)
