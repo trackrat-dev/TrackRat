@@ -140,13 +140,13 @@ struct MapContainerView: View {
             )
             .ignoresSafeArea()
             
-            // Operations summary pill (network scope)
+            // Operations summary pill (network scope) - positioned at top
             VStack {
-                Spacer()
-
                 OperationsSummaryView(scope: .network)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.top, 60) // Below status bar and gradient
+
+                Spacer()
 
                 // Show subtle loading indicator when data is loading
                 if mapViewModel.isLoading && mapViewModel.segments.isEmpty {

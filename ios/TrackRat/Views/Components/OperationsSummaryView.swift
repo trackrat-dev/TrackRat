@@ -86,16 +86,26 @@ struct OperationsSummaryView: View {
         isLoading = true
         hasError = false
 
+        print("📊 OperationsSummary: Fetching scope=\(scope), from=\(fromStation ?? "nil"), to=\(toStation ?? "nil"), train=\(trainId ?? "nil")")
+
         do {
-            summary = try await APIService.shared.fetchOperationsSummary(
+            let result = try await APIService.shared.fetchOperationsSummary(
                 scope: scope,
                 fromStation: fromStation,
                 toStation: toStation,
                 trainId: trainId
             )
+            summary = result
             isLoading = false
+
+            // Log what we received
+            if result.body.isEmpty {
+                print("📊 OperationsSummary: Received EMPTY body - view will be hidden (headline='\(result.headline)')")
+            } else {
+                print("📊 OperationsSummary: Received body='\(result.body.prefix(80))...' headline='\(result.headline)'")
+            }
         } catch {
-            print("❌ Failed to fetch operations summary: \(error)")
+            print("❌ OperationsSummary: Failed to fetch - \(error) - view will be hidden")
             hasError = true
             isLoading = false
         }

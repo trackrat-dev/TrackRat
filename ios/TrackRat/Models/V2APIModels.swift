@@ -916,8 +916,13 @@ struct TrainDelaySummary: Codable, Identifiable {
 
 /// Raw metrics included with summary response
 struct SummaryMetrics: Codable {
+    // Departure stats
     let onTimePercentage: Double?
     let averageDelayMinutes: Double?
+    // Arrival stats (nil if no arrival data available)
+    let arrivalOnTimePercentage: Double?
+    let arrivalAverageDelayMinutes: Double?
+    // Counts
     let cancellationCount: Int?
     let trainCount: Int?
     let trainsByCategory: [String: [TrainDelaySummary]]?
@@ -925,6 +930,8 @@ struct SummaryMetrics: Codable {
     enum CodingKeys: String, CodingKey {
         case onTimePercentage = "on_time_percentage"
         case averageDelayMinutes = "average_delay_minutes"
+        case arrivalOnTimePercentage = "arrival_on_time_percentage"
+        case arrivalAverageDelayMinutes = "arrival_average_delay_minutes"
         case cancellationCount = "cancellation_count"
         case trainCount = "train_count"
         case trainsByCategory = "trains_by_category"
