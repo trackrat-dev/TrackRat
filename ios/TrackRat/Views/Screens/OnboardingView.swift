@@ -51,6 +51,15 @@ struct OnboardingView: View {
             } else {
                 // Show station selection after video
                 VStack(spacing: 0) {
+                    // Custom header when editing favorites (pushed onto NavigationStack)
+                    if isRepeating {
+                        TrackRatNavigationHeader(
+                            title: "Edit Favorites",
+                            showBackButton: true,
+                            showCloseButton: true
+                        )
+                    }
+
                     // Station selection content
                     welcomeAndSetupView()
 
@@ -74,6 +83,7 @@ struct OnboardingView: View {
                 }
             }
         }
+        .navigationBarHidden(true)
         .onAppear {
             // Only clear data on first onboarding, not when editing favorites
             if !isRepeating {
