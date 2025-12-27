@@ -37,20 +37,15 @@ struct TrainDetailsView: View {
                 showCloseButton: false,
                 trailingContent: {
                     HStack(alignment: .center, spacing: 12) {
-                        if let train = viewModel.train {
-                            // Track this train toolbar button
-                            let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
-                            if contextStatus != .cancelled,
-                               let originCode = appState.departureStationCode,
-                               !originCode.isEmpty,
-                               !train.hasTrainDepartedFromStation(originCode) {
-                                TrainFollowToolbarButton(
-                                    train: train,
-                                    destinationName: appState.selectedDestination,
-                                    originCode: originCode,
-                                    destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
-                                )
-                            }
+                        if let train = viewModel.train,
+                           let originCode = appState.departureStationCode,
+                           !originCode.isEmpty {
+                            TrainFollowToolbarButton(
+                                train: train,
+                                destinationName: appState.selectedDestination,
+                                originCode: originCode,
+                                destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                            )
 
                             ShareButton(
                                 train: train,
@@ -409,12 +404,8 @@ struct CombinedDetailsCard: View {
 
                     // Action buttons row
                     HStack(spacing: 20) {
-                        // Track this train button (when not departed/cancelled)
-                        let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
-                        if contextStatus != .cancelled,
-                           let originCode = appState.departureStationCode,
-                           !originCode.isEmpty,
-                           !train.hasTrainDepartedFromStation(originCode) {
+                        if let originCode = appState.departureStationCode,
+                           !originCode.isEmpty {
                             TrackTrainInlineButton(
                                 train: train,
                                 originCode: originCode,
