@@ -54,7 +54,6 @@ struct MapContainerView: View {
     @State private var selectedDetent: PresentationDetent = .fraction(0.50)
     @State private var isSheetPresented = true  // Always show sheet (persistent)
     @State private var sheetExpansionTask: Task<Void, Never>?  // Track pending expansion for cancellation
-    @State private var navigationAwaitingExpansion: NavigationDestination?  // Destination waiting for sheet to expand
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
@@ -315,14 +314,6 @@ struct MapContainerView: View {
                 .presentationDetents([.height(600), .large])
                 .presentationDragIndicator(.visible)
         }
-        .onChange(of: selectedDetent) { _, newDetent in
-            // Complete pending navigation when sheet finishes expanding to .large
-            // This is more reliable than hardcoded timing across iOS versions
-            if let destination = navigationAwaitingExpansion, newDetent == .large {
-                navigationAwaitingExpansion = nil
-                appState.navigationPath.append(destination)
-            }
-        }
     }
     
     private func handleNavigationChange(_ navigationPath: NavigationPath) {
@@ -330,7 +321,6 @@ struct MapContainerView: View {
             // Back to home - cancel any pending operations
             sheetExpansionTask?.cancel()
             appState.pendingNavigation = nil
-            navigationAwaitingExpansion = nil
             selectedDetent = .fraction(0.50)
             // Note: Map stays static - no resetToDefaultMapView() call
         }
@@ -367,8 +357,7 @@ struct MapContainerView: View {
     }
 
     /// Handles pending navigation by expanding the sheet FIRST, then navigating.
-    /// Uses state-driven detection via onChange(of: selectedDetent) for reliable timing
-    /// across different iOS versions (18.5 vs 26.x have different animation timing).
+    /// Uses animation completion callback for reliable timing across iOS versions.
     private func handlePendingNavigation(_ destination: NavigationDestination) {
         // Cancel any pending expansion from other sources
         sheetExpansionTask?.cancel()
@@ -383,15 +372,18 @@ struct MapContainerView: View {
             return
         }
 
-        // Store destination - navigation will happen in onChange(of: selectedDetent)
-        // when the sheet actually reaches .large (state-driven, not timing-based)
-        navigationAwaitingExpansion = destination
+        // Haptic feedback when starting expansion
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
-        // Start sheet expansion animation
+        // Expand sheet, then navigate when animation completes
         withAnimation(.easeInOut(duration: 0.3)) {
             selectedDetent = .large
+        } completion: {
+            // Only navigate if sheet is still expanded (user didn't drag it down)
+            if selectedDetent == .large {
+                appState.navigationPath.append(destination)
+            }
         }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
     private func isOnTrainDetails(_ navigationPath: NavigationPath) -> Bool {
