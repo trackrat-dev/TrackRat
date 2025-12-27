@@ -4,7 +4,6 @@ import ActivityKit
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
-    @ObservedObject private var liveActivityService = LiveActivityService.shared
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
 
@@ -38,20 +37,6 @@ struct TrainDetailsView: View {
                 showCloseButton: false,
                 trailingContent: {
                     HStack(alignment: .center, spacing: 12) {
-                        if #available(iOS 16.1, *) {
-                            if let train = viewModel.train, train.calculateStatus(fromStationCode: appState.departureStationCode ?? "") != .cancelled {
-                                Button {
-                                    toggleLiveActivity(for: train)
-                                } label: {
-                                    Image(systemName: "eye.circle.fill")
-                                        .font(.body)
-                                        .fontWeight(.medium)
-                                        .foregroundColor((liveActivityService.currentActivity?.attributes.trainNumber == train.trainId) ? .orange : .white.opacity(0.7))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-
                         if let train = viewModel.train {
                             ShareButton(
                                 train: train,
@@ -150,7 +135,7 @@ struct TrainDetailsView: View {
                 guard !Task.isCancelled, isViewVisible else { break }
 
                 // Skip polling if LiveActivity is already tracking this train
-                if let activity = liveActivityService.currentActivity,
+                if let activity = LiveActivityService.shared.currentActivity,
                    activity.attributes.trainNumber == viewModel.train?.trainId {
                     continue
                 }
@@ -182,30 +167,6 @@ struct TrainDetailsView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 DispatchQueue.main.async {
                     viewModel.triggerTrackAssignedHaptic = false
-                }
-            }
-        }
-    }
-    
-    private func toggleLiveActivity(for train: TrainV2) {
-        Task {
-            if liveActivityService.currentActivity?.attributes.trainNumber == train.trainId {
-                // Stop the Live Activity
-                await liveActivityService.endCurrentActivity()
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-            } else {
-                // Start the Live Activity
-                do {
-                    try await liveActivityService.startTrackingTrain(
-                        train,
-                        from: appState.departureStationCode ?? "",
-                        to: Stations.getStationCode(appState.selectedDestination ?? "") ?? "",
-                        origin: appState.selectedDeparture ?? "",
-                        destination: appState.selectedDestination ?? ""
-                    )
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                } catch {
-                    print("Failed to start Live Activity: \(error)")
                 }
             }
         }
@@ -392,8 +353,24 @@ struct CombinedDetailsCard: View {
                 }
             }
             .padding([.horizontal, .top])
-            
-            
+
+            // Train follow prompt - between status/predictions and stops
+            if #available(iOS 16.1, *) {
+                let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
+                if contextStatus != .cancelled,
+                   let originCode = appState.departureStationCode,
+                   !originCode.isEmpty {
+                    TrainFollowPrompt(
+                        train: train,
+                        destinationName: selectedDestination,
+                        originCode: originCode,
+                        destinationCode: Stations.getStationCode(selectedDestination ?? "") ?? ""
+                    )
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+                }
+            }
+
             // Stops section
             VStack(alignment: .leading, spacing: 12) {
                 if !displayableTrainStops.isEmpty {
@@ -1079,6 +1056,149 @@ class TrainDetailsViewModel: ObservableObject {
             print("❌ TrainDetailsView refresh failed for train \(trainId): \(error)")
             print("❌ Full error details: \(String(describing: error))")
         }
+    }
+}
+
+// MARK: - Train Follow Prompt
+@available(iOS 16.1, *)
+struct TrainFollowPrompt: View {
+    let train: TrainV2
+    let destinationName: String?
+    let originCode: String
+    let destinationCode: String
+
+    @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @State private var isStarting = false
+
+    private var isTrackingThisTrain: Bool {
+        liveActivityService.currentActivity?.attributes.trainNumber == train.trainId
+    }
+
+    var body: some View {
+        Button {
+            handleTap()
+        } label: {
+            HStack(spacing: 12) {
+                if isTrackingThisTrain {
+                    // Active state
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color.orange)
+                            .frame(width: 8, height: 8)
+                            .modifier(PulsingModifier())
+
+                        Text("Live")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                    }
+
+                    if let destination = destinationName {
+                        Text("Tracking to \(Stations.displayName(for: destination))")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                    } else {
+                        Text("Tracking this train")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                    }
+
+                    Spacer()
+
+                    Text("Stop")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.orange)
+                } else {
+                    // Inactive state
+                    Image(systemName: "location.north.line.fill")
+                        .font(.body)
+                        .foregroundColor(.orange)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Track this train")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+
+                        Text("Get live updates on your Lock Screen")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                    .fill(isTrackingThisTrain ? Color.orange.opacity(0.12) : Color.orange.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                    .stroke(Color.orange.opacity(isTrackingThisTrain ? 0.4 : 0.2), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isStarting)
+        .opacity(isStarting ? 0.7 : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isTrackingThisTrain)
+    }
+
+    private func handleTap() {
+        if isTrackingThisTrain {
+            // Stop tracking
+            Task {
+                await liveActivityService.endCurrentActivity()
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        } else {
+            // Start tracking
+            isStarting = true
+            Task {
+                do {
+                    try await liveActivityService.startTrackingTrain(
+                        train,
+                        from: originCode,
+                        to: destinationCode,
+                        origin: Stations.getStationName(originCode) ?? originCode,
+                        destination: destinationName ?? ""
+                    )
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                } catch {
+                    print("Failed to start Live Activity: \(error)")
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+                isStarting = false
+            }
+        }
+    }
+}
+
+// Pulsing animation modifier for the live indicator
+struct PulsingModifier: ViewModifier {
+    @State private var isPulsing = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isPulsing ? 1.2 : 1.0)
+            .opacity(isPulsing ? 0.7 : 1.0)
+            .animation(
+                .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+                value: isPulsing
+            )
+            .onAppear {
+                isPulsing = true
+            }
     }
 }
 
