@@ -649,17 +649,11 @@ struct StopRowV2: View {
             Circle()
                 .fill(stopColor)
                 .frame(width: 12, height: 12)
-                .overlay(
-                    Circle()
-                        .stroke(stopColor, lineWidth: (isDestination || isDeparture) ? 3 : 0)
-                        .frame(width: 16, height: 16)
-                )
             
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(Stations.displayName(for: stop.stationName))
-                        .font((isDestination || isDeparture) ? .headline : .subheadline)
-                        .fontWeight((isDestination || isDeparture) ? .semibold : .regular)
+                        .font(.subheadline)
                         .foregroundColor(textColor)
                     
                     if isCancelled {
