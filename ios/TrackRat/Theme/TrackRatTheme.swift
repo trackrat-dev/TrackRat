@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct TrackRatTheme {
     // MARK: - Colors
@@ -217,37 +216,8 @@ extension View {
 
     /// Makes navigation destination backgrounds transparent to allow sheet's
     /// presentationBackground material to show through.
-    /// Uses native API on iOS 18+, falls back to UIKit introspection on iOS 17.
     func transparentNavigationBackground() -> some View {
-        if #available(iOS 18.0, *) {
-            return AnyView(self.containerBackground(.clear, for: .navigation))
-        } else {
-            return AnyView(self.background(TransparentNavigationBackgroundView()))
-        }
+        self.containerBackground(.clear, for: .navigation)
     }
-}
-
-// MARK: - iOS 17 Transparent Navigation Background
-/// UIKit introspection to clear the navigation container's background on iOS 17.
-/// This allows the sheet's presentationBackground material to show through pushed views.
-private struct TransparentNavigationBackgroundView: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .clear
-        DispatchQueue.main.async {
-            // Walk up the responder chain to find and clear the hosting controller's background
-            var responder: UIResponder? = view
-            while let next = responder?.next {
-                if let viewController = next as? UIViewController {
-                    viewController.view.backgroundColor = .clear
-                    break
-                }
-                responder = next
-            }
-        }
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 

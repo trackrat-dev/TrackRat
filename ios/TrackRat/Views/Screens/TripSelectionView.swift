@@ -222,9 +222,7 @@ struct TripSelectionView: View {
                     
                     // Active trips (Live Activity) - show when not searching
                     if !isSearching {
-                        if #available(iOS 16.1, *) {
-                            ActiveTripsSection()
-                        }
+                        ActiveTripsSection()
                     }
                     
                     // Favorite stations - show when not searching

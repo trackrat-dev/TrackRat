@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// Minimal inline button for tracking a train via Live Activity
-@available(iOS 16.1, *)
 struct TrackTrainInlineButton: View {
     let train: TrainV2
     let originCode: String

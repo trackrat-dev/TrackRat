@@ -39,19 +39,17 @@ struct TrainDetailsView: View {
                     HStack(alignment: .center, spacing: 12) {
                         if let train = viewModel.train {
                             // Track this train toolbar button
-                            if #available(iOS 16.1, *) {
-                                let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
-                                if contextStatus != .cancelled,
-                                   let originCode = appState.departureStationCode,
-                                   !originCode.isEmpty,
-                                   !train.hasTrainDepartedFromStation(originCode) {
-                                    TrainFollowToolbarButton(
-                                        train: train,
-                                        destinationName: appState.selectedDestination,
-                                        originCode: originCode,
-                                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
-                                    )
-                                }
+                            let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
+                            if contextStatus != .cancelled,
+                               let originCode = appState.departureStationCode,
+                               !originCode.isEmpty,
+                               !train.hasTrainDepartedFromStation(originCode) {
+                                TrainFollowToolbarButton(
+                                    train: train,
+                                    destinationName: appState.selectedDestination,
+                                    originCode: originCode,
+                                    destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                                )
                             }
 
                             ShareButton(
@@ -414,21 +412,19 @@ struct CombinedDetailsCard: View {
 
                     // Action buttons row
                     HStack(spacing: 20) {
-                        // Track this train button (iOS 16.1+ only, when not departed/cancelled)
-                        if #available(iOS 16.1, *) {
-                            let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
-                            if contextStatus != .cancelled,
-                               let originCode = appState.departureStationCode,
-                               !originCode.isEmpty,
-                               !train.hasTrainDepartedFromStation(originCode) {
-                                TrackTrainInlineButton(
-                                    train: train,
-                                    originCode: originCode,
-                                    destinationCode: selectedDestinationCode ?? "",
-                                    destinationName: selectedDestination,
-                                    textColor: .black.opacity(0.6)
-                                )
-                            }
+                        // Track this train button (when not departed/cancelled)
+                        let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
+                        if contextStatus != .cancelled,
+                           let originCode = appState.departureStationCode,
+                           !originCode.isEmpty,
+                           !train.hasTrainDepartedFromStation(originCode) {
+                            TrackTrainInlineButton(
+                                train: train,
+                                originCode: originCode,
+                                destinationCode: selectedDestinationCode ?? "",
+                                destinationName: selectedDestination,
+                                textColor: .black.opacity(0.6)
+                            )
                         }
 
                         FeedbackButton(
@@ -1040,23 +1036,21 @@ class TrainDetailsViewModel: ObservableObject {
             )
 
             // Check if Live Activity should auto-end (Primary Fix)
-            if #available(iOS 16.1, *) {
-                let liveService = LiveActivityService.shared
-                if liveService.isActivityActive,
-                   let currentActivity = liveService.currentActivity,
-                   currentActivity.attributes.trainNumber == newTrain.trainId {
+            let liveService = LiveActivityService.shared
+            if liveService.isActivityActive,
+               let currentActivity = liveService.currentActivity,
+               currentActivity.attributes.trainNumber == newTrain.trainId {
 
-                    print("🔍 Checking Live Activity auto-end for train \(newTrain.trainId)")
+                print("🔍 Checking Live Activity auto-end for train \(newTrain.trainId)")
 
-                    if liveService.shouldEndActivity(train: newTrain, activity: currentActivity) {
-                        print("🏁 Auto-ending Live Activity from TrainDetailsView refresh")
+                if liveService.shouldEndActivity(train: newTrain, activity: currentActivity) {
+                    print("🏁 Auto-ending Live Activity from TrainDetailsView refresh")
 
-                        Task {
-                            await liveService.endCurrentActivity()
-                        }
-                    } else {
-                        print("✅ Live Activity continues - journey not complete")
+                    Task {
+                        await liveService.endCurrentActivity()
                     }
+                } else {
+                    print("✅ Live Activity continues - journey not complete")
                 }
             }
 
@@ -1082,7 +1076,6 @@ class TrainDetailsViewModel: ObservableObject {
 }
 
 // MARK: - Train Follow Toolbar Button
-@available(iOS 16.1, *)
 struct TrainFollowToolbarButton: View {
     let train: TrainV2
     let destinationName: String?

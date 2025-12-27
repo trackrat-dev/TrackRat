@@ -1,7 +1,6 @@
 import SwiftUI
 import ActivityKit
 
-@available(iOS 16.1, *)
 struct LiveActivityControls: View {
     let train: TrainV2
     let origin: String

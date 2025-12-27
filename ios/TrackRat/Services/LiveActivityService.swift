@@ -3,7 +3,6 @@ import ActivityKit
 import UserNotifications
 import UIKit
 
-@available(iOS 16.1, *)
 class LiveActivityService: ObservableObject {
     static let shared = LiveActivityService()
 

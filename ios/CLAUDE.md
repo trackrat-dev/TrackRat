@@ -2,12 +2,12 @@
 
 ## Overview
 
-TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from multiple origin stations in the NJ Transit and Amtrak network. The app features Live Activities for real-time train tracking on the Lock Screen and Dynamic Island, intelligent track predictions via the Owl system, and historical analytics. Built with iOS 17.0+ and leveraging the latest iOS features including ActivityKit, push notifications, and consolidated train data APIs.
+TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from multiple origin stations in the NJ Transit and Amtrak network. The app features Live Activities for real-time train tracking on the Lock Screen and Dynamic Island, intelligent track predictions via the Owl system, and historical analytics. Built with iOS 18.0+ and leveraging the latest iOS features including ActivityKit, push notifications, and consolidated train data APIs.
 
 ## Architecture
 
 ### Core Stack
-- **SwiftUI**: Modern declarative UI framework (iOS 17.0+)
+- **SwiftUI**: Modern declarative UI framework (iOS 18.0+)
 - **ActivityKit**: Live Activities and Dynamic Island support (iOS 16.1+)
 - **UserNotifications**: Push notifications for Live Activity updates
 - **Combine**: Reactive data flow with automatic UI updates
@@ -505,7 +505,7 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 
 ### Requirements
 - Xcode 15.0+
-- iOS 17.0+ deployment target
+- iOS 18.0+ deployment target
 - Swift 5.9+
 - macOS 14.0+ for development
 

@@ -1,7 +1,6 @@
 import SwiftUI
 import ActivityKit
 
-@available(iOS 16.1, *)
 struct LiveActivityDebugView: View {
     @StateObject private var liveActivityService = LiveActivityService.shared
     
