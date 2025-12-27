@@ -74,6 +74,23 @@ struct TrainDetailsView: View {
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 16) {
+                            // Train follow prompt - Live Activity CTA
+                            // Hide after train departs from user's origin station
+                            if #available(iOS 16.1, *) {
+                                let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
+                                if contextStatus != .cancelled,
+                                   let originCode = appState.departureStationCode,
+                                   !originCode.isEmpty,
+                                   !train.hasTrainDepartedFromStation(originCode) {
+                                    TrainFollowPrompt(
+                                        train: train,
+                                        destinationName: appState.selectedDestination,
+                                        originCode: originCode,
+                                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                                    )
+                                }
+                            }
+
                             // Train performance summary (similar trains + historical)
                             // Hide after train departs from user's origin station
                             if let originCode = appState.departureStationCode,
@@ -358,23 +375,6 @@ struct CombinedDetailsCard: View {
                 }
             }
             .padding([.horizontal, .top])
-
-            // Train follow prompt - between status/predictions and stops
-            if #available(iOS 16.1, *) {
-                let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
-                if contextStatus != .cancelled,
-                   let originCode = appState.departureStationCode,
-                   !originCode.isEmpty {
-                    TrainFollowPrompt(
-                        train: train,
-                        destinationName: selectedDestination,
-                        originCode: originCode,
-                        destinationCode: Stations.getStationCode(selectedDestination ?? "") ?? ""
-                    )
-                    .padding(.horizontal)
-                    .padding(.top, 12)
-                }
-            }
 
             // Stops section
             VStack(alignment: .leading, spacing: 12) {
@@ -1104,13 +1104,13 @@ struct TrainFollowPrompt: View {
                         Text("Tracking to \(Stations.displayName(for: destination))")
                             .font(.subheadline)
                             .fontWeight(.medium)
-                            .foregroundColor(.primary)
+                            .foregroundColor(.white)
                             .lineLimit(1)
                     } else {
                         Text("Tracking this train")
                             .font(.subheadline)
                             .fontWeight(.medium)
-                            .foregroundColor(.primary)
+                            .foregroundColor(.white)
                     }
 
                     Spacer()
@@ -1121,7 +1121,7 @@ struct TrainFollowPrompt: View {
                         .foregroundColor(.orange)
                 } else {
                     // Inactive state
-                    Image(systemName: "location.north.line.fill")
+                    Image(systemName: "antenna.radiowaves.left.and.right")
                         .font(.body)
                         .foregroundColor(.orange)
 
@@ -1129,30 +1129,25 @@ struct TrainFollowPrompt: View {
                         Text("Track this train")
                             .font(.subheadline)
                             .fontWeight(.medium)
-                            .foregroundColor(.primary)
+                            .foregroundColor(.white)
 
                         Text("Get live updates on your Lock Screen")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.white.opacity(0.7))
                     }
 
                     Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                    .fill(Color(white: 0.2))
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(.ultraThinMaterial)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                    .stroke(isTrackingThisTrain ? Color.orange.opacity(0.5) : TrackRatTheme.Colors.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isTrackingThisTrain ? Color.orange.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -1162,16 +1157,22 @@ struct TrainFollowPrompt: View {
     }
 
     private func handleTap() {
+        // Immediate haptic feedback for responsive feel
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
         if isTrackingThisTrain {
             // Stop tracking
             Task {
                 await liveActivityService.endCurrentActivity()
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
             }
         } else {
             // Start tracking
             isStarting = true
+
+            // Slight delay lets the UI animate before heavy work begins
             Task {
+                try? await Task.sleep(for: .milliseconds(50))
+
                 do {
                     try await liveActivityService.startTrackingTrain(
                         train,
@@ -1180,12 +1181,15 @@ struct TrainFollowPrompt: View {
                         origin: Stations.stationName(forCode: originCode) ?? originCode,
                         destination: destinationName ?? ""
                     )
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                 } catch {
                     print("Failed to start Live Activity: \(error)")
-                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    await MainActor.run {
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    }
                 }
-                isStarting = false
+                await MainActor.run {
+                    isStarting = false
+                }
             }
         }
     }
