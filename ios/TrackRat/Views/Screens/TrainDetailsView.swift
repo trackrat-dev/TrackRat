@@ -367,10 +367,10 @@ struct CombinedDetailsCard: View {
                         HStack {
                             Image(systemName: "ellipsis")
                                 .font(.caption)
-                                .foregroundColor(.gray)
+                                .foregroundColor(Color(white: 0.55))
                             Text("Train has previous stops")
                                 .font(.caption)
-                                .foregroundColor(.gray)
+                                .foregroundColor(Color(white: 0.55))
                                 .italic()
                         }
                         .padding(.bottom, 4)
@@ -397,10 +397,10 @@ struct CombinedDetailsCard: View {
                         HStack {
                             Image(systemName: "ellipsis")
                                 .font(.caption)
-                                .foregroundColor(.gray)
+                                .foregroundColor(Color(white: 0.55))
                             Text("Train has later stops")
                                 .font(.caption)
-                                .foregroundColor(.gray)
+                                .foregroundColor(Color(white: 0.55))
                                 .italic()
                         }
                         .padding(.top, 4)
@@ -706,9 +706,9 @@ struct StopRowV2: View {
     }
     
     private var stopColor: Color {
-        if isCancelled { return .gray }
-        if isNextImportantStation { return .orange }
-        if stop.hasDepartedStation { return .gray }
+        if isCancelled { return Color(white: 0.55) }
+        if isNextImportantStation { return Color(red: 1.0, green: 0.584, blue: 0.0) }
+        if stop.hasDepartedStation { return Color(white: 0.55) }
         return .black.opacity(0.6)
     }
     
@@ -745,7 +745,7 @@ struct StopRowV2: View {
     
     private var backgroundColor: Color {
         if isCancelled { return .clear }
-        if isNextImportantStation { return .orange.opacity(0.1) }
+        if isNextImportantStation { return Color(red: 1.0, green: 0.584, blue: 0.0).opacity(0.1) }
         return .clear
     }
 }
