@@ -32,9 +32,14 @@ struct OnboardingView: View {
     
     var body: some View {
         ZStack {
-            // Background
-            Color.black
-                .ignoresSafeArea()
+            // Background - clear when editing favorites to let sheet material show through
+            if isRepeating {
+                Color.clear
+                    .ignoresSafeArea()
+            } else {
+                Color.black
+                    .ignoresSafeArea()
+            }
 
             if showVideo && !isRepeating {
                 // Show intro video first (only on first onboarding, not when repeating)
