@@ -190,6 +190,7 @@ struct MapContainerView: View {
         .sheet(isPresented: $isSheetPresented) {
             NavigationStack(path: $appState.navigationPath) {
                 TripSelectionView()
+                    .transparentNavigationBackground()
                     .navigationDestination(for: NavigationDestination.self) { destination in
                         bottomSheetNavigationContent(for: destination)
                     }
@@ -198,7 +199,7 @@ struct MapContainerView: View {
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(true)
             .presentationBackgroundInteraction(.enabled)
-            .presentationBackground(.ultraThinMaterial)
+            .legacyPresentationBackground(.ultraThinMaterial)
             .presentationContentInteraction(.resizes)
         }
         .task {

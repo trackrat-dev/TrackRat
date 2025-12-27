@@ -216,8 +216,24 @@ extension View {
 
     /// Makes navigation destination backgrounds transparent to allow sheet's
     /// presentationBackground material to show through.
+    /// Requires both modifiers for iOS 26.1+ Liquid Glass compatibility:
+    /// - .scrollContentBackground(.hidden) removes ScrollView/List/Form opaque layer
+    /// - .containerBackground(.clear, for: .navigation) clears navigation container
     func transparentNavigationBackground() -> some View {
-        self.containerBackground(.clear, for: .navigation)
+        self
+            .scrollContentBackground(.hidden)
+            .containerBackground(.clear, for: .navigation)
+    }
+
+    /// Applies presentation background only on iOS 18 and earlier.
+    /// On iOS 26+, Liquid Glass automatically provides the glassy sheet appearance,
+    /// and manually specifying presentationBackground conflicts with it.
+    func legacyPresentationBackground(_ material: Material) -> some View {
+        if #available(iOS 26, *) {
+            return AnyView(self)
+        } else {
+            return AnyView(self.presentationBackground(material))
+        }
     }
 }
 
