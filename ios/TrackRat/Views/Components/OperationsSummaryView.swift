@@ -2,6 +2,7 @@ import SwiftUI
 
 /// A simple info box that displays a brief summary of recent train operations.
 /// Supports three scopes: network (overall), route (origin to destination), and train (specific train).
+/// When ratSenseRoute is provided with network scope, shows both network and route summaries.
 /// Hides automatically on loading errors.
 struct OperationsSummaryView: View {
     let scope: SummaryScope
@@ -11,7 +12,11 @@ struct OperationsSummaryView: View {
     let isExpandable: Bool
     let onTrainTap: ((String) -> Void)?
 
+    /// Optional RatSense route to show alongside network summary
+    let ratSenseRoute: (from: String, to: String)?
+
     @State private var summary: OperationsSummaryResponse?
+    @State private var routeSummary: OperationsSummaryResponse?
     @State private var isLoading = true
     @State private var hasError = false
     @State private var isExpanded = false
@@ -23,7 +28,8 @@ struct OperationsSummaryView: View {
         toStation: String? = nil,
         trainId: String? = nil,
         isExpandable: Bool = false,
-        onTrainTap: ((String) -> Void)? = nil
+        onTrainTap: ((String) -> Void)? = nil,
+        ratSenseRoute: (from: String, to: String)? = nil
     ) {
         self.scope = scope
         self.fromStation = fromStation
@@ -31,6 +37,20 @@ struct OperationsSummaryView: View {
         self.trainId = trainId
         self.isExpandable = isExpandable
         self.onTrainTap = onTrainTap
+        self.ratSenseRoute = ratSenseRoute
+    }
+
+    /// Combined display text: network summary or route summary
+    private var combinedBodyText: String? {
+        guard let summary = summary, !summary.body.isEmpty else { return nil }
+
+        // If we have a route summary, show "On your route:" + route body
+        if let routeSummary = routeSummary, !routeSummary.body.isEmpty {
+            return "On your route: \(routeSummary.body)"
+        }
+
+        // No route summary - show network headline + body on same line
+        return "\(summary.headline). \(summary.body)"
     }
 
     var body: some View {
@@ -41,16 +61,17 @@ struct OperationsSummaryView: View {
             } else if hasError {
                 // Hide on error - show nothing
                 Color.clear.frame(height: 0)
-            } else if let summary = summary, !summary.body.isEmpty {
-                // Only show if we have content (empty body means no data)
-                if isExpandable && !summary.headline.isEmpty {
+            } else if let bodyText = combinedBodyText {
+                // Only show if we have content
+                if isExpandable, let summary = summary, !summary.headline.isEmpty {
                     // Collapsible view - headline collapsed, body expanded
                     collapsibleView(summary: summary)
                 } else {
-                    // Simple view - show the summary body only
-                    Text(summary.body)
+                    // Simple view - show the combined summary body
+                    Text(bodyText)
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(2)
                         .padding(.horizontal, 14)
@@ -70,32 +91,62 @@ struct OperationsSummaryView: View {
             }
         }
         .task {
-            await fetchSummary()
+            await fetchSummaries()
         }
         .onChange(of: scenePhase) { _, newPhase in
             // Auto-refresh when returning to foreground
             if newPhase == .active {
                 Task {
-                    await fetchSummary()
+                    await fetchSummaries()
                 }
             }
         }
     }
 
-    private func fetchSummary() async {
+    private func fetchSummaries() async {
         isLoading = true
         hasError = false
 
+        print("📊 OperationsSummary: Fetching scope=\(scope), from=\(fromStation ?? "nil"), to=\(toStation ?? "nil"), train=\(trainId ?? "nil"), ratSenseRoute=\(ratSenseRoute.map { "\($0.from)→\($0.to)" } ?? "nil")")
+
         do {
-            summary = try await APIService.shared.fetchOperationsSummary(
+            // Fetch main summary
+            let result = try await APIService.shared.fetchOperationsSummary(
                 scope: scope,
                 fromStation: fromStation,
                 toStation: toStation,
                 trainId: trainId
             )
+            summary = result
+
+            // If we have a RatSense route and this is a network scope, also fetch route summary
+            if scope == .network, let route = ratSenseRoute {
+                do {
+                    let routeResult = try await APIService.shared.fetchOperationsSummary(
+                        scope: .route,
+                        fromStation: route.from,
+                        toStation: route.to,
+                        trainId: nil
+                    )
+                    routeSummary = routeResult
+                    print("📊 OperationsSummary: Route summary body='\(routeResult.body.prefix(60))...'")
+                } catch {
+                    // Route summary is optional - don't fail if it errors
+                    print("⚠️ OperationsSummary: Route summary failed - \(error) - showing network only")
+                    routeSummary = nil
+                }
+            }
+
             isLoading = false
+
+            // Log what we received
+            if result.body.isEmpty {
+                print("📊 OperationsSummary: Received EMPTY body - view will be hidden (headline='\(result.headline)')")
+            } else {
+                print("📊 OperationsSummary: Received body='\(result.body.prefix(80))...' headline='\(result.headline)'")
+            }
         } catch {
-            print("❌ Failed to fetch operations summary: \(error)")
+            print("❌ OperationsSummary: Failed to fetch - \(error) - view will be hidden")
             hasError = true
             isLoading = false
         }

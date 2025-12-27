@@ -23,8 +23,8 @@ final class RatSenseService: ObservableObject {
         init(from: String, to: String) {
             self.fromStation = from
             self.toStation = to
-            self.fromStationName = Stations.displayName(for: from) ?? from
-            self.toStationName = Stations.displayName(for: to) ?? to
+            self.fromStationName = Stations.displayName(for: from)
+            self.toStationName = Stations.displayName(for: to)
         }
     }
     

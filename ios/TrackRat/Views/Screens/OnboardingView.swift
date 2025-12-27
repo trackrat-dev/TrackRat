@@ -294,8 +294,8 @@ struct OnboardingView: View {
         print("🔄 OnboardingView: Loading existing stations for editing")
 
         // Load home station if set
-        if let homeCode = ratSense.getHomeStation(),
-           let homeName = Stations.displayName(for: homeCode) {
+        if let homeCode = ratSense.getHomeStation() {
+            let homeName = Stations.displayName(for: homeCode)
             print("🏠 OnboardingView: Loading home station: \(homeCode)")
             DispatchQueue.main.async {
                 self.homeStation = Station(code: homeCode, name: homeName)
@@ -303,8 +303,8 @@ struct OnboardingView: View {
         }
 
         // Load work station if set
-        if let workCode = ratSense.getWorkStation(),
-           let workName = Stations.displayName(for: workCode) {
+        if let workCode = ratSense.getWorkStation() {
+            let workName = Stations.displayName(for: workCode)
             print("🏢 OnboardingView: Loading work station: \(workCode)")
             DispatchQueue.main.async {
                 self.workStation = Station(code: workCode, name: workName)

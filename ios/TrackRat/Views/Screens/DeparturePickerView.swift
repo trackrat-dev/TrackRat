@@ -399,9 +399,9 @@ struct DeparturePickerView: View {
         appState.destinationStationCode = suggestion.toStation
 
         // Use pendingNavigation to expand sheet FIRST, then navigate
-        appState.pendingNavigation = .trainList(destination: suggestion.toStationName)
+        appState.pendingNavigation = .trainList(destination: suggestion.toStationName, departureStationCode: suggestion.fromStation)
     }
-    
+
     private func searchForTrain(_ trainNumber: String) {
         guard !isSearchingTrain else { return }
         

@@ -1068,14 +1068,14 @@ struct SegmentTrainDetailsView: View {
                 SegmentStatCard(
                     title: "Avg Departure Delay",
                     value: summary.averageDepartureDelay > 0 ? "+\(Int(summary.averageDepartureDelay))m" : "On time",
-                    color: summary.averageDepartureDelay <= 0 ? .green : summary.averageDepartureDelay <= 5 ? .yellow : .orange,
+                    color: summary.averageDepartureDelay <= 2 ? .green : summary.averageDepartureDelay <= 6 ? .yellow : .orange,
                     icon: "arrow.up.circle.fill"
                 )
-                
+
                 SegmentStatCard(
                     title: "Avg Arrival Delay",
                     value: summary.averageArrivalDelay > 0 ? "+\(Int(summary.averageArrivalDelay))m" : "On time",
-                    color: summary.averageArrivalDelay <= 0 ? .green : summary.averageArrivalDelay <= 5 ? .yellow : .orange,
+                    color: summary.averageArrivalDelay <= 2 ? .green : summary.averageArrivalDelay <= 6 ? .yellow : .orange,
                     icon: "arrow.down.circle.fill"
                 )
                 

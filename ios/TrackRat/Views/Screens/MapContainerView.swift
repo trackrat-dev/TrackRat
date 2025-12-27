@@ -58,6 +58,7 @@ struct MapContainerView: View {
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
     @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @ObservedObject private var ratSenseService = RatSenseService.shared
     
     // MARK: - Unified Map Region Calculation
     
@@ -140,13 +141,17 @@ struct MapContainerView: View {
             )
             .ignoresSafeArea()
             
-            // Operations summary pill (network scope)
+            // Operations summary pill (network scope) - positioned at top
+            // Shows network summary + route summary when RatSense has a prediction
             VStack {
-                Spacer()
-
-                OperationsSummaryView(scope: .network)
+                OperationsSummaryView(
+                    scope: .network,
+                    ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
+                )
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.top, 30)
+
+                Spacer()
 
                 // Show subtle loading indicator when data is loading
                 if mapViewModel.isLoading && mapViewModel.segments.isEmpty {
@@ -628,8 +633,8 @@ struct MapContainerView: View {
             DeparturePickerView()
         case .destinationPicker:
             DestinationPickerView()
-        case .trainList(let stationName):
-            TrainListView(destination: stationName)
+        case .trainList(let stationName, let departureStationCode):
+            TrainListView(destination: stationName, departureStationCode: departureStationCode)
         case .trainDetails(let trainId):
             TrainDetailsView(trainId: trainId)
         case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
