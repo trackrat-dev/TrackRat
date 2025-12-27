@@ -12,26 +12,8 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
     var trailingContent: (() -> TrailingContent)?
 
     var body: some View {
-        HStack {
-            // Back button
-            if showBackButton {
-                Button {
-                    if !appState.navigationPath.isEmpty {
-                        appState.navigationPath.removeLast()
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                }
-            } else {
-                Color.clear.frame(width: 44, height: 44)
-            }
-
-            Spacer()
-
-            // Center title
+        ZStack {
+            // Center title - truly centered regardless of leading/trailing content
             VStack(spacing: 0) {
                 Text(title)
                     .font(.headline)
@@ -43,21 +25,36 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
                 }
             }
 
-            Spacer()
-
-            // Trailing content or close button
-            if let trailingContent = trailingContent {
-                trailingContent()
-                    .frame(height: 44)
-            } else if showCloseButton {
-                Button("Close") {
-                    appState.navigationPath = NavigationPath()
+            // Leading and trailing content
+            HStack {
+                // Back button
+                if showBackButton {
+                    Button {
+                        if !appState.navigationPath.isEmpty {
+                            appState.navigationPath.removeLast()
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                    }
                 }
-                .foregroundColor(.white)
-                .font(.body)
-                .frame(height: 44)
-            } else {
-                Color.clear.frame(width: 44, height: 44)
+
+                Spacer()
+
+                // Trailing content or close button
+                if let trailingContent = trailingContent {
+                    trailingContent()
+                        .frame(height: 44)
+                } else if showCloseButton {
+                    Button("Close") {
+                        appState.navigationPath = NavigationPath()
+                    }
+                    .foregroundColor(.white)
+                    .font(.body)
+                    .frame(height: 44)
+                }
             }
         }
         .padding(.horizontal, 16)
