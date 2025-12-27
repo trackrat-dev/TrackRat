@@ -43,23 +43,13 @@ class LiveActivityService: ObservableObject {
             throw error
         }
 
-        // Get scheduled times for the user's journey
+        // Get scheduled times for the user's journey using existing train data
+        // (We'll refresh with detailed data after the activity starts for snappier UX)
         let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: originCode)
+        let scheduledArrivalTime = train.getScheduledArrivalTime(toStationName: destination)
 
-        // Fetch full train details to get correct destination timing
-        let detailedTrain: TrainV2
-        do {
-            detailedTrain = try await APIService.shared.fetchTrainDetails(
-                id: train.trainId,
-                fromStationCode: originCode
-            )
-        } catch {
-            throw error
-        }
-        let scheduledArrivalTime = detailedTrain.getScheduledArrivalTime(toStationName: destination)
-
-        // Extract journey station codes from origin to destination
-        if let stops = detailedTrain.stops {
+        // Extract journey station codes from origin to destination using existing stops
+        if let stops = train.stops {
             let sortedStops = stops.sorted { $0.sequence < $1.sequence }
             if let originIndex = sortedStops.firstIndex(where: { $0.stationCode == originCode }),
                let destIndex = sortedStops.lastIndex(where: { $0.stationCode == destinationCode }),
@@ -145,6 +135,12 @@ class LiveActivityService: ObservableObject {
 
             print("✅ Live Activity started successfully")
             print("  - Activity ID: \(activity.id)")
+
+            // Immediately fetch fresh data in background to update with detailed info
+            // This runs async so it doesn't block the button from updating
+            Task { [weak self] in
+                await self?.fetchAndUpdateTrain()
+            }
 
         } catch {
             print("❌ Failed to start Live Activity: \(error)")
