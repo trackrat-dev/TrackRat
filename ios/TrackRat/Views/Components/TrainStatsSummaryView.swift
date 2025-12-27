@@ -156,5 +156,5 @@ struct TrainStatsSummaryView: View {
         )
     }
     .padding()
-    .background(Color.black)
+    .background(.ultraThinMaterial)
 }

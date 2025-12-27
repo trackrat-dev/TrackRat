@@ -54,6 +54,7 @@ struct MapContainerView: View {
     @State private var selectedDetent: PresentationDetent = .fraction(0.50)
     @State private var isSheetPresented = true  // Always show sheet (persistent)
     @State private var sheetExpansionTask: Task<Void, Never>?  // Track pending expansion for cancellation
+    @State private var navigationAwaitingExpansion: NavigationDestination?  // Destination waiting for sheet to expand
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
@@ -190,6 +191,7 @@ struct MapContainerView: View {
         .sheet(isPresented: $isSheetPresented) {
             NavigationStack(path: $appState.navigationPath) {
                 TripSelectionView()
+                    .transparentNavigationBackground()
                     .navigationDestination(for: NavigationDestination.self) { destination in
                         bottomSheetNavigationContent(for: destination)
                     }
@@ -198,7 +200,7 @@ struct MapContainerView: View {
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(true)
             .presentationBackgroundInteraction(.enabled)
-            .presentationBackground(.ultraThinMaterial)
+            .legacyPresentationBackground(.ultraThinMaterial)
             .presentationContentInteraction(.resizes)
         }
         .task {
@@ -313,6 +315,14 @@ struct MapContainerView: View {
                 .presentationDetents([.height(600), .large])
                 .presentationDragIndicator(.visible)
         }
+        .onChange(of: selectedDetent) { _, newDetent in
+            // Complete pending navigation when sheet finishes expanding to .large
+            // This is more reliable than hardcoded timing across iOS versions
+            if let destination = navigationAwaitingExpansion, newDetent == .large {
+                navigationAwaitingExpansion = nil
+                appState.navigationPath.append(destination)
+            }
+        }
     }
     
     private func handleNavigationChange(_ navigationPath: NavigationPath) {
@@ -320,6 +330,7 @@ struct MapContainerView: View {
             // Back to home - cancel any pending operations
             sheetExpansionTask?.cancel()
             appState.pendingNavigation = nil
+            navigationAwaitingExpansion = nil
             selectedDetent = .fraction(0.50)
             // Note: Map stays static - no resetToDefaultMapView() call
         }
@@ -356,43 +367,31 @@ struct MapContainerView: View {
     }
 
     /// Handles pending navigation by expanding the sheet FIRST, then navigating.
-    /// This eliminates the glitch where sheet expands with empty space before content renders.
+    /// Uses state-driven detection via onChange(of: selectedDetent) for reliable timing
+    /// across different iOS versions (18.5 vs 26.x have different animation timing).
     private func handlePendingNavigation(_ destination: NavigationDestination) {
         // Cancel any pending expansion from other sources
         sheetExpansionTask?.cancel()
 
         // Clear pending navigation immediately to prevent re-triggers
-        let destinationToNavigate = destination
         appState.pendingNavigation = nil
 
         // If sheet is already expanded, navigate immediately
         if selectedDetent == .large {
-            appState.navigationPath.append(destinationToNavigate)
+            appState.navigationPath.append(destination)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }
 
-        // Sheet needs to expand first - start expansion, then navigate after animation completes
-        sheetExpansionTask = Task {
-            // Start sheet expansion animation
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    selectedDetent = .large
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }
+        // Store destination - navigation will happen in onChange(of: selectedDetent)
+        // when the sheet actually reaches .large (state-driven, not timing-based)
+        navigationAwaitingExpansion = destination
 
-            // Wait for sheet expansion animation to complete (300ms animation + small buffer)
-            try? await Task.sleep(nanoseconds: 320_000_000)
-
-            // Check if cancelled (e.g., user tapped back quickly)
-            guard !Task.isCancelled else { return }
-
-            // Now navigate - sheet is already at .large so content appears in stable container
-            await MainActor.run {
-                appState.navigationPath.append(destinationToNavigate)
-            }
+        // Start sheet expansion animation
+        withAnimation(.easeInOut(duration: 0.3)) {
+            selectedDetent = .large
         }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
     private func isOnTrainDetails(_ navigationPath: NavigationPath) -> Bool {
@@ -628,34 +627,37 @@ struct MapContainerView: View {
     
     @ViewBuilder
     private func bottomSheetNavigationContent(for destination: NavigationDestination) -> some View {
-        switch destination {
-        case .departureSelector:
-            DeparturePickerView()
-        case .destinationPicker:
-            DestinationPickerView()
-        case .trainList(let stationName, let departureStationCode):
-            TrainListView(destination: stationName, departureStationCode: departureStationCode)
-        case .trainDetails(let trainId):
-            TrainDetailsView(trainId: trainId)
-        case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
-            TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate)
-        case .advancedConfiguration:
-            AdvancedConfigurationView()
-        case .myProfile:
-            MyProfileView()
-        case .favoriteStations:
-            OnboardingView(isRepeating: true)
-        case .congestionMap:
-            // Since map is always visible, show map controls and expand bottom sheet
-            CongestionMapControlsView(
-                mapViewModel: mapViewModel,
-                onDismiss: {
-                    // Reset to default map view and collapse bottom sheet
-                    resetToDefaultMapView()
-                    selectedDetent = .fraction(0.50)
-                }
-            )
+        Group {
+            switch destination {
+            case .departureSelector:
+                DeparturePickerView()
+            case .destinationPicker:
+                DestinationPickerView()
+            case .trainList(let stationName, let departureStationCode):
+                TrainListView(destination: stationName, departureStationCode: departureStationCode)
+            case .trainDetails(let trainId):
+                TrainDetailsView(trainId: trainId)
+            case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
+                TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate)
+            case .advancedConfiguration:
+                AdvancedConfigurationView()
+            case .myProfile:
+                MyProfileView()
+            case .favoriteStations:
+                OnboardingView(isRepeating: true)
+            case .congestionMap:
+                // Since map is always visible, show map controls and expand bottom sheet
+                CongestionMapControlsView(
+                    mapViewModel: mapViewModel,
+                    onDismiss: {
+                        // Reset to default map view and collapse bottom sheet
+                        resetToDefaultMapView()
+                        selectedDetent = .fraction(0.50)
+                    }
+                )
+            }
         }
+        .transparentNavigationBackground()
     }
 }
 

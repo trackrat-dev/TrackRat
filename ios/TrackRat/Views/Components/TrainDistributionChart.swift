@@ -131,7 +131,7 @@ struct TrainDistributionChart: View {
         }
     }
     .padding()
-    .background(Color.black)
+    .background(.ultraThinMaterial)
 }
 
 #Preview("Empty Categories") {
@@ -150,7 +150,7 @@ struct TrainDistributionChart: View {
         }
     }
     .padding()
-    .background(Color.black)
+    .background(.ultraThinMaterial)
 }
 
 #Preview("Many Trains") {
@@ -169,5 +169,5 @@ struct TrainDistributionChart: View {
         }
     }
     .padding()
-    .background(Color.black)
+    .background(.ultraThinMaterial)
 }

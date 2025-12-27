@@ -186,22 +186,22 @@ struct DeparturePickerView: View {
         // Native sheet handles scrolling automatically
         ScrollView {
             VStack(spacing: 16) {
-                    titleSection
-                    
-                    Spacer()
-                        .frame(height: shouldShowTitle ? 0 : topPadding)
-                    
-                    VStack(spacing: 20) {
-                        searchFieldSection
-                        contentSection
-                    }
-                    
-                    Spacer()
-                    Spacer()
+                titleSection
+
+                Spacer()
+                    .frame(height: shouldShowTitle ? 0 : topPadding)
+
+                VStack(spacing: 20) {
+                    searchFieldSection
+                    contentSection
                 }
+
+                Spacer()
+                Spacer()
             }
+        }
     }
-    
+
     @ViewBuilder
     private var titleSection: some View {
         if shouldShowTitle {
@@ -376,14 +376,16 @@ struct DeparturePickerView: View {
         appState.selectedDeparture = name
         appState.departureStationCode = code
         appState.navigationPath.append(NavigationDestination.destinationPicker)
-        
-        // Reset search with animation
-        withAnimation(.easeInOut(duration: 0.3)) {
+
+        // Reset search WITHOUT animation to prevent ghosting during navigation
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
             searchText = ""
             isSearching = false
             searchFieldFocused = false
         }
-        
+
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
@@ -447,8 +449,10 @@ struct DeparturePickerView: View {
                         journeyDate: train.journeyDate
                     )
 
-                    // Reset search
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    // Reset search WITHOUT animation to prevent ghosting during navigation
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
                         searchText = ""
                         isSearching = false
                         searchFieldFocused = false

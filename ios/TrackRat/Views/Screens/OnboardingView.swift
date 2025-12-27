@@ -32,9 +32,14 @@ struct OnboardingView: View {
     
     var body: some View {
         ZStack {
-            // Background
-            Color.black
-                .ignoresSafeArea()
+            // Background - clear when editing favorites to let sheet material show through
+            if isRepeating {
+                Color.clear
+                    .ignoresSafeArea()
+            } else {
+                Color.black
+                    .ignoresSafeArea()
+            }
 
             if showVideo && !isRepeating {
                 // Show intro video first (only on first onboarding, not when repeating)
@@ -46,6 +51,15 @@ struct OnboardingView: View {
             } else {
                 // Show station selection after video
                 VStack(spacing: 0) {
+                    // Custom header when editing favorites (pushed onto NavigationStack)
+                    if isRepeating {
+                        TrackRatNavigationHeader(
+                            title: "Edit Favorites",
+                            showBackButton: true,
+                            showCloseButton: true
+                        )
+                    }
+
                     // Station selection content
                     welcomeAndSetupView()
 
@@ -69,6 +83,7 @@ struct OnboardingView: View {
                 }
             }
         }
+        .navigationBarHidden(true)
         .onAppear {
             // Only clear data on first onboarding, not when editing favorites
             if !isRepeating {
@@ -624,7 +639,7 @@ struct StationPickerSheet: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
-            .background(Color.black)
+            .background(.ultraThinMaterial)
             .navigationTitle("Select Station")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden()

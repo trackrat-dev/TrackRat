@@ -215,12 +215,9 @@ class CongestionMapViewModel: ObservableObject {
         print("🚦 CongestionMapViewModel init - data loading deferred")
 
         // Observe Live Activity state changes
-        if #available(iOS 16.1, *) {
-            observeLiveActivityState()
-        }
+        observeLiveActivityState()
     }
 
-    @available(iOS 16.1, *)
     private func observeLiveActivityState() {
         let liveActivityService = LiveActivityService.shared
 
@@ -239,8 +236,7 @@ class CongestionMapViewModel: ObservableObject {
     private func handleLiveActivityStateChange(isActive: Bool, stationCodes: [String]) {
         if isActive && !stationCodes.isEmpty {
             // Live Activity is active - apply route filter
-            if #available(iOS 16.1, *),
-               let activity = LiveActivityService.shared.currentActivity {
+            if let activity = LiveActivityService.shared.currentActivity {
                 let attributes = activity.attributes
                 let route = TripPair(
                     departureCode: attributes.originStationCode,
@@ -543,7 +539,7 @@ struct FilterSheet: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color.black)
+            .background(.ultraThinMaterial)
             .navigationTitle("Filter Options")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -978,7 +974,7 @@ struct SegmentTrainDetailsView: View {
                 }
                 .padding()
             }
-            .background(Color.black)
+            .background(.ultraThinMaterial)
             .navigationTitle("Segment Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)

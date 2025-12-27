@@ -185,7 +185,7 @@ extension View {
     
     func trackRatGlassmorphicBackground() -> some View {
         self
-            .background(TrackRatTheme.Colors.primaryBackground)
+            .background(.ultraThinMaterial)
             .ignoresSafeArea()
     }
     
@@ -212,6 +212,36 @@ extension View {
     /// Lighter card shadow for subtle elevation
     func trackRatShadowLight() -> some View {
         self.shadow(color: TrackRatTheme.Colors.shadow, radius: 4, x: 0, y: 2)
+    }
+
+    /// Makes navigation destination backgrounds transparent to allow sheet's
+    /// presentationBackground material to show through.
+    /// On iOS 26+: Uses Liquid Glass compatible transparent backgrounds
+    /// On iOS 18.x: Keeps default navigation backgrounds to prevent ghosting during transitions
+    @ViewBuilder
+    func transparentNavigationBackground() -> some View {
+        if #available(iOS 26, *) {
+            self
+                .scrollContentBackground(.hidden)
+                .containerBackground(.clear, for: .navigation)
+        } else {
+            // On iOS 18.x, don't clear the navigation container background
+            // as it causes both old and new views to be visible during transitions
+            self
+                .scrollContentBackground(.hidden)
+        }
+    }
+
+    /// Applies presentation background only on iOS 18 and earlier.
+    /// On iOS 26+, Liquid Glass automatically provides the glassy sheet appearance,
+    /// and manually specifying presentationBackground conflicts with it.
+    @ViewBuilder
+    func legacyPresentationBackground(_ material: Material) -> some View {
+        if #available(iOS 26, *) {
+            self
+        } else {
+            self.presentationBackground(material)
+        }
     }
 }
 

@@ -118,12 +118,24 @@ struct TrainV2: Identifiable, Codable {
         return false
     }
     
-    // Simple track-based boarding detection - works for both NJ Transit and Amtrak
+    // Track-based boarding detection with time window - works for both NJ Transit and Amtrak
     func isBoardingAtStation(_ stationCode: String) -> Bool {
         guard let stop = stops?.first(where: { $0.stationCode == stationCode }) else {
             return false
         }
-        return stop.track != nil && !stop.hasDepartedStation
+
+        // Must have track assigned and not yet departed
+        guard stop.track != nil && !stop.hasDepartedStation else {
+            return false
+        }
+
+        // Only show boarding within 15 minutes of departure (some stations assign tracks far in advance)
+        guard let departureTime = stop.updatedDeparture ?? stop.scheduledDeparture else {
+            return false
+        }
+
+        let minutesUntilDeparture = departureTime.timeIntervalSinceNow / 60
+        return minutesUntilDeparture <= 15
     }
     
     // MARK: - Helper Methods
@@ -205,6 +217,7 @@ struct TrainV2: Identifiable, Codable {
     }
 
     // Get scheduled arrival time at specific destination station by NAME (legacy, less reliable)
+    @available(*, deprecated, message: "Use getScheduledArrivalTime(toStationCode:) instead for reliable matching")
     func getScheduledArrivalTime(toStationName: String) -> Date? {
         // Look up the specific station in stops array
         if let stops = stops,
@@ -415,22 +428,6 @@ struct RawStopStatus: Codable {
 // MARK: - Live Activity Support Extension
 
 extension TrainV2 {
-    // Convert to Live Activity attributes
-    func toActivityAttributes(toStationName: String) -> TrainActivityAttributes {
-        return TrainActivityAttributes(
-            trainNumber: trainId,
-            trainId: trainId,
-            routeDescription: "\(departure.name) → \(destination)",
-            origin: departure.name,
-            destination: destination,
-            originStationCode: departure.code,
-            destinationStationCode: destinationStationCode ?? "",
-            departureTime: departureTime,
-            scheduledArrivalTime: getScheduledArrivalTime(toStationName: toStationName),
-            theme: "black"
-        )
-    }
-    
     // Convert to Live Activity content state with origin and destination
     func toLiveActivityContentState(from originCode: String, toCode destinationCode: String, toName destinationName: String) -> TrainActivityAttributes.ContentState {
         // Calculate context-aware progress for user's journey segment
