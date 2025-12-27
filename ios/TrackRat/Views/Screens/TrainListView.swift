@@ -63,9 +63,9 @@ struct TrainListView: View {
                 }
                 .foregroundColor(.white)
                 .font(.body)
-                .frame(width: 44, height: 44)
+                .frame(height: 44)
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(Color(UIColor.systemBackground))
 
