@@ -214,11 +214,6 @@ struct CombinedDetailsCard: View {
         return formatter.string(from: train.departureTime)
     }
         
-    private func checkIfDepartureStop(_ stationName: String) -> Bool { // This could also be moved or simplified
-        guard let selectedDeparture = appState.selectedDeparture else { return false }
-        return stationName.lowercased() == selectedDeparture.lowercased()
-    }
-    
     // Check if predictions should be shown for the entire journey
     private var shouldShowJourneyPredictions: Bool {
         // Find the user's destination stop by CODE (reliable matching)
@@ -383,13 +378,15 @@ struct CombinedDetailsCard: View {
                     }
                     
                     ForEach(displayableTrainStops) { stop in
+                        let isDepartureStop = appState.departureStationCode != nil &&
+                            stop.stationCode.uppercased() == appState.departureStationCode!.uppercased()
                         StopRowV2(
                             stop: stop,
                             isDestination: selectedDestinationCode != nil &&
                                          stop.stationCode.uppercased() == selectedDestinationCode!.uppercased(),
-                            isDeparture: checkIfDepartureStop(stop.stationName),
-                            isBoarding: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName),
-                            boardingTrack: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName) ? stop.track : nil,
+                            isDeparture: isDepartureStop,
+                            isBoarding: train.isBoardingAtStation(stop.stationCode) && isDepartureStop,
+                            boardingTrack: train.isBoardingAtStation(stop.stationCode) && isDepartureStop ? stop.track : nil,
                             train: train,
                             departureStationCode: appState.departureStationCode,
                             shouldShowJourneyPredictions: shouldShowJourneyPredictions

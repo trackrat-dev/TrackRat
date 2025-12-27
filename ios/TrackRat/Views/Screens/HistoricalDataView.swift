@@ -888,26 +888,26 @@ class CongestionDataViewModel: ObservableObject {
         guard let userOrigin = userOrigin, let userDestination = userDestination else {
             return nil
         }
-        
+
         // Find origin stop by station code
         guard let originIndex = allStops.firstIndex(where: { stop in
             stop.stationCode.uppercased() == userOrigin.uppercased()
         }) else {
             return nil
         }
-        
-        // Find destination stop by station name
+
+        // Find destination stop by station code (reliable matching)
         guard let destinationIndex = allStops.firstIndex(where: { stop in
-            stop.stationName.lowercased() == userDestination.lowercased()
+            stop.stationCode.uppercased() == userDestination.uppercased()
         }) else {
             return nil
         }
-        
+
         // Ensure origin comes before destination
         guard originIndex <= destinationIndex else {
             return nil
         }
-        
+
         // Return the journey segment (inclusive of both origin and destination)
         return Array(allStops[originIndex...destinationIndex])
     }

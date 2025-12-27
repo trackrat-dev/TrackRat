@@ -45,7 +45,7 @@ class LiveActivityService: ObservableObject {
         // Get scheduled times for the user's journey using existing train data
         // (We'll refresh with detailed data after the activity starts for snappier UX)
         let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: originCode)
-        let scheduledArrivalTime = train.getScheduledArrivalTime(toStationName: destination)
+        let scheduledArrivalTime = train.getScheduledArrivalTime(toStationCode: destinationCode)
 
         // Extract journey station codes from origin to destination using existing stops
         if let stops = train.stops {
@@ -239,7 +239,7 @@ class LiveActivityService: ObservableObject {
             
             // Get scheduled times and departure status
             let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: activity.attributes.originStationCode)
-            let scheduledArrivalTime = train.getScheduledArrivalTime(toStationName: activity.attributes.destination)
+            let scheduledArrivalTime = train.getScheduledArrivalTime(toStationCode: activity.attributes.destinationStationCode)
             let hasTrainDeparted = self.hasTrainDeparted(train, fromStation: activity.attributes.originStationCode)
             
             // Get current and next stop names using new fields
@@ -435,7 +435,7 @@ class LiveActivityService: ObservableObject {
         }
         
         // Fallback: If no arrival time available, use failsafe timeout
-        if let scheduledArrival = train.getScheduledArrivalTime(toStationName: activity.attributes.destination) {
+        if let scheduledArrival = train.getScheduledArrivalTime(toStationCode: activity.attributes.destinationStationCode) {
             let bufferTime: TimeInterval = 30 * 60 // 30 minutes
             let now = Date()
             

@@ -217,6 +217,7 @@ struct TrainV2: Identifiable, Codable {
     }
 
     // Get scheduled arrival time at specific destination station by NAME (legacy, less reliable)
+    @available(*, deprecated, message: "Use getScheduledArrivalTime(toStationCode:) instead for reliable matching")
     func getScheduledArrivalTime(toStationName: String) -> Date? {
         // Look up the specific station in stops array
         if let stops = stops,
@@ -427,22 +428,6 @@ struct RawStopStatus: Codable {
 // MARK: - Live Activity Support Extension
 
 extension TrainV2 {
-    // Convert to Live Activity attributes
-    func toActivityAttributes(toStationName: String) -> TrainActivityAttributes {
-        return TrainActivityAttributes(
-            trainNumber: trainId,
-            trainId: trainId,
-            routeDescription: "\(departure.name) → \(destination)",
-            origin: departure.name,
-            destination: destination,
-            originStationCode: departure.code,
-            destinationStationCode: destinationStationCode ?? "",
-            departureTime: departureTime,
-            scheduledArrivalTime: getScheduledArrivalTime(toStationName: toStationName),
-            theme: "black"
-        )
-    }
-    
     // Convert to Live Activity content state with origin and destination
     func toLiveActivityContentState(from originCode: String, toCode destinationCode: String, toName destinationName: String) -> TrainActivityAttributes.ContentState {
         // Calculate context-aware progress for user's journey segment
