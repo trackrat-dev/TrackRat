@@ -1159,7 +1159,7 @@ class SummaryService:
             # Have arrival data, minimal delays
             body_parts.append(
                 f"{dep_on_time_pct:.0f}% departing on time, "
-                f"arriving within schedule."
+                f"arriving roughly on schedule."
             )
         else:
             # No arrival data yet
