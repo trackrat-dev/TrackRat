@@ -186,22 +186,22 @@ struct DeparturePickerView: View {
         // Native sheet handles scrolling automatically
         ScrollView {
             VStack(spacing: 16) {
-                    titleSection
-                    
-                    Spacer()
-                        .frame(height: shouldShowTitle ? 0 : topPadding)
-                    
-                    VStack(spacing: 20) {
-                        searchFieldSection
-                        contentSection
-                    }
-                    
-                    Spacer()
-                    Spacer()
+                titleSection
+
+                Spacer()
+                    .frame(height: shouldShowTitle ? 0 : topPadding)
+
+                VStack(spacing: 20) {
+                    searchFieldSection
+                    contentSection
                 }
+
+                Spacer()
+                Spacer()
             }
+        }
     }
-    
+
     @ViewBuilder
     private var titleSection: some View {
         if shouldShowTitle {

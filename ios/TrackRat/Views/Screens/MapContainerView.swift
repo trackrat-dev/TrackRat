@@ -628,34 +628,37 @@ struct MapContainerView: View {
     
     @ViewBuilder
     private func bottomSheetNavigationContent(for destination: NavigationDestination) -> some View {
-        switch destination {
-        case .departureSelector:
-            DeparturePickerView()
-        case .destinationPicker:
-            DestinationPickerView()
-        case .trainList(let stationName, let departureStationCode):
-            TrainListView(destination: stationName, departureStationCode: departureStationCode)
-        case .trainDetails(let trainId):
-            TrainDetailsView(trainId: trainId)
-        case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
-            TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate)
-        case .advancedConfiguration:
-            AdvancedConfigurationView()
-        case .myProfile:
-            MyProfileView()
-        case .favoriteStations:
-            OnboardingView(isRepeating: true)
-        case .congestionMap:
-            // Since map is always visible, show map controls and expand bottom sheet
-            CongestionMapControlsView(
-                mapViewModel: mapViewModel,
-                onDismiss: {
-                    // Reset to default map view and collapse bottom sheet
-                    resetToDefaultMapView()
-                    selectedDetent = .fraction(0.50)
-                }
-            )
+        Group {
+            switch destination {
+            case .departureSelector:
+                DeparturePickerView()
+            case .destinationPicker:
+                DestinationPickerView()
+            case .trainList(let stationName, let departureStationCode):
+                TrainListView(destination: stationName, departureStationCode: departureStationCode)
+            case .trainDetails(let trainId):
+                TrainDetailsView(trainId: trainId)
+            case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
+                TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate)
+            case .advancedConfiguration:
+                AdvancedConfigurationView()
+            case .myProfile:
+                MyProfileView()
+            case .favoriteStations:
+                OnboardingView(isRepeating: true)
+            case .congestionMap:
+                // Since map is always visible, show map controls and expand bottom sheet
+                CongestionMapControlsView(
+                    mapViewModel: mapViewModel,
+                    onDismiss: {
+                        // Reset to default map view and collapse bottom sheet
+                        resetToDefaultMapView()
+                        selectedDetent = .fraction(0.50)
+                    }
+                )
+            }
         }
+        .transparentNavigationBackground()
     }
 }
 

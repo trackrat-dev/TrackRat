@@ -36,7 +36,6 @@ struct MyProfileView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
 
             // Scrollable content
             ScrollView {

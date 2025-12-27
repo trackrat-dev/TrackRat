@@ -1225,7 +1225,7 @@ struct SegmentedTrackPredictionView: View {
             print("❌ [TrackPredictionView] No trackProbabilities in prediction data")
             return []
         }
-
+	
         print("✅ [TrackPredictionView] Have \(trackProbabilities.count) track probabilities")
 
         let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
