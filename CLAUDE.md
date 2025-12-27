@@ -169,7 +169,7 @@ npm run preview      # Preview production build locally
 
 **Deployment:** Automatic via GitHub Actions on push to `main`
 - Workflow: `.github/workflows/deploy-webpage.yml`
-- Output: Deployed to GitHub Pages at `https://andytubeee.github.io/TrackRat/`
+- Output: Deployed to GitHub Pages at `https://bokonon1.github.io/TrackRat/`
 
 ### Infrastructure Management
 ```bash

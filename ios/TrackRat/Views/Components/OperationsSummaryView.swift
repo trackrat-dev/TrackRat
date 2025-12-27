@@ -49,8 +49,9 @@ struct OperationsSummaryView: View {
             return "On your route: \(routeSummary.body)"
         }
 
-        // No route summary - show network headline + body on same line
-        return "\(summary.headline). \(summary.body)"
+        // No route summary - show body only (it's already a complete summary)
+        // Headline is designed for expandable views, not inline display
+        return summary.body
     }
 
     var body: some View {

@@ -4,7 +4,6 @@ import ActivityKit
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
-    @ObservedObject private var liveActivityService = LiveActivityService.shared
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
 
@@ -38,21 +37,23 @@ struct TrainDetailsView: View {
                 showCloseButton: false,
                 trailingContent: {
                     HStack(alignment: .center, spacing: 12) {
-                        if #available(iOS 16.1, *) {
-                            if let train = viewModel.train, train.calculateStatus(fromStationCode: appState.departureStationCode ?? "") != .cancelled {
-                                Button {
-                                    toggleLiveActivity(for: train)
-                                } label: {
-                                    Image(systemName: "eye.circle.fill")
-                                        .font(.body)
-                                        .fontWeight(.medium)
-                                        .foregroundColor((liveActivityService.currentActivity?.attributes.trainNumber == train.trainId) ? .orange : .white.opacity(0.7))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-
                         if let train = viewModel.train {
+                            // Track this train toolbar button
+                            if #available(iOS 16.1, *) {
+                                let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
+                                if contextStatus != .cancelled,
+                                   let originCode = appState.departureStationCode,
+                                   !originCode.isEmpty,
+                                   !train.hasTrainDepartedFromStation(originCode) {
+                                    TrainFollowToolbarButton(
+                                        train: train,
+                                        destinationName: appState.selectedDestination,
+                                        originCode: originCode,
+                                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                                    )
+                                }
+                            }
+
                             ShareButton(
                                 train: train,
                                 fromStationCode: appState.departureStationCode,
@@ -82,6 +83,7 @@ struct TrainDetailsView: View {
                             Task {
                                 await viewModel.loadTrainDetails(
                                     fromStationCode: appState.departureStationCode,
+                                    toStationCode: appState.destinationStationCode,
                                     selectedDestinationName: appState.selectedDestination
                                 )
                             }
@@ -112,6 +114,7 @@ struct TrainDetailsView: View {
                             CombinedDetailsCard(
                                 train: train,
                                 selectedDestination: appState.selectedDestination,
+                                selectedDestinationCode: appState.destinationStationCode,
                                 displayableTrainStops: viewModel.displayableTrainStops,
                                 hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
                                 hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
@@ -120,13 +123,21 @@ struct TrainDetailsView: View {
                                 journeyTotalStops: viewModel.journeyTotalStops
                             )
 
-                            // Feedback button
-                            FeedbackButton(
-                                screen: "train_details",
-                                trainId: train.trainId,
-                                originCode: appState.departureStationCode,
-                                destinationCode: appState.destinationStationCode
-                            )
+                            // Track this train button - moved to bottom
+                            if #available(iOS 16.1, *) {
+                                let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
+                                if contextStatus != .cancelled,
+                                   let originCode = appState.departureStationCode,
+                                   !originCode.isEmpty,
+                                   !train.hasTrainDepartedFromStation(originCode) {
+                                    TrainFollowPrompt(
+                                        train: train,
+                                        destinationName: appState.selectedDestination,
+                                        originCode: originCode,
+                                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                                    )
+                                }
+                            }
                         }
                         .padding()
                         // Force view update by using a composite ID that includes changing data
@@ -139,6 +150,7 @@ struct TrainDetailsView: View {
         .task {
             await viewModel.loadTrainDetails(
                 fromStationCode: appState.departureStationCode,
+                toStationCode: appState.destinationStationCode,
                 selectedDestinationName: appState.selectedDestination
             )
         }
@@ -150,13 +162,14 @@ struct TrainDetailsView: View {
                 guard !Task.isCancelled, isViewVisible else { break }
 
                 // Skip polling if LiveActivity is already tracking this train
-                if let activity = liveActivityService.currentActivity,
+                if let activity = LiveActivityService.shared.currentActivity,
                    activity.attributes.trainNumber == viewModel.train?.trainId {
                     continue
                 }
 
                 await viewModel.refreshTrainDetails(
                     fromStationCode: appState.departureStationCode,
+                    toStationCode: appState.destinationStationCode,
                     selectedDestinationName: appState.selectedDestination
                 )
             }
@@ -186,38 +199,15 @@ struct TrainDetailsView: View {
             }
         }
     }
-    
-    private func toggleLiveActivity(for train: TrainV2) {
-        Task {
-            if liveActivityService.currentActivity?.attributes.trainNumber == train.trainId {
-                // Stop the Live Activity
-                await liveActivityService.endCurrentActivity()
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-            } else {
-                // Start the Live Activity
-                do {
-                    try await liveActivityService.startTrackingTrain(
-                        train,
-                        from: appState.departureStationCode ?? "",
-                        to: Stations.getStationCode(appState.selectedDestination ?? "") ?? "",
-                        origin: appState.selectedDeparture ?? "",
-                        destination: appState.selectedDestination ?? ""
-                    )
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                } catch {
-                    print("Failed to start Live Activity: \(error)")
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Combined Details Card
 struct CombinedDetailsCard: View {
     let train: TrainV2
     let selectedDestination: String?
+    let selectedDestinationCode: String?
     @EnvironmentObject private var appState: AppState
-    
+
     // ViewModel provided properties
     let displayableTrainStops: [StopV2]
     let hasPreviousDisplayStops: Bool
@@ -249,10 +239,10 @@ struct CombinedDetailsCard: View {
     
     // Check if predictions should be shown for the entire journey
     private var shouldShowJourneyPredictions: Bool {
-        // Find the user's destination stop
-        guard let selectedDestination = selectedDestination,
+        // Find the user's destination stop by CODE (reliable matching)
+        guard let destinationCode = selectedDestinationCode,
               let destinationStop = displayableTrainStops.first(where: { stop in
-                  stop.stationName.lowercased() == selectedDestination.lowercased()
+                  stop.stationCode.uppercased() == destinationCode.uppercased()
               }) else {
             return false
         }
@@ -392,8 +382,7 @@ struct CombinedDetailsCard: View {
                 }
             }
             .padding([.horizontal, .top])
-            
-            
+
             // Stops section
             VStack(alignment: .leading, spacing: 12) {
                 if !displayableTrainStops.isEmpty {
@@ -414,8 +403,8 @@ struct CombinedDetailsCard: View {
                     ForEach(displayableTrainStops) { stop in
                         StopRowV2(
                             stop: stop,
-                            isDestination: selectedDestination != nil && 
-                                         stop.stationName.lowercased() == selectedDestination!.lowercased(),
+                            isDestination: selectedDestinationCode != nil &&
+                                         stop.stationCode.uppercased() == selectedDestinationCode!.uppercased(),
                             isDeparture: checkIfDepartureStop(stop.stationName),
                             isBoarding: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName),
                             boardingTrack: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName) ? stop.track : nil,
@@ -438,6 +427,20 @@ struct CombinedDetailsCard: View {
                         .padding(.top, 4)
                         .padding(.horizontal, 20)
                     }
+
+                    // Report an issue button
+                    HStack {
+                        Spacer()
+                        FeedbackButton(
+                            screen: "train_details",
+                            trainId: train.trainId,
+                            originCode: appState.departureStationCode,
+                            destinationCode: selectedDestinationCode,
+                            textColor: .black.opacity(0.6)
+                        )
+                        Spacer()
+                    }
+                    .padding(.top, 8)
                 } else {
                     Text("No stops information available for this journey segment.")
                         .foregroundColor(.black.opacity(0.6))
@@ -457,24 +460,25 @@ struct CombinedDetailsCard: View {
 
 // Note: StatusV2 functionality is now integrated directly into TrainV2 model
 
-// MARK: - Stops Card
+// MARK: - Stops Card (unused - kept for potential future use)
 struct StopsCard: View {
     let train: TrainV2
     let selectedDestination: String?
+    let selectedDestinationCode: String?
     @EnvironmentObject private var appState: AppState
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let stops = train.stops, !stops.isEmpty {
                 ForEach(stops) { stop in
                     StopRowV2(
                         stop: stop,
-                        isDestination: selectedDestination != nil && 
-                                     stop.stationName.lowercased() == selectedDestination!.lowercased(),
-                        isDeparture: appState.selectedDeparture != nil && 
-                                   stop.stationName.lowercased() == appState.selectedDeparture!.lowercased(),
-                        isBoarding: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
-                        boardingTrack: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? stop.track : nil,
+                        isDestination: selectedDestinationCode != nil &&
+                                     stop.stationCode.uppercased() == selectedDestinationCode!.uppercased(),
+                        isDeparture: appState.departureStationCode != nil &&
+                                   stop.stationCode.uppercased() == appState.departureStationCode!.uppercased(),
+                        isBoarding: train.isBoardingAtStation(stop.stationCode) && (appState.departureStationCode != nil && stop.stationCode.uppercased() == appState.departureStationCode!.uppercased()),
+                        boardingTrack: train.isBoardingAtStation(stop.stationCode) && (appState.departureStationCode != nil && stop.stationCode.uppercased() == appState.departureStationCode!.uppercased()) ? stop.track : nil,
                         train: train,
                         departureStationCode: appState.departureStationCode,
                         shouldShowJourneyPredictions: false
@@ -776,7 +780,8 @@ class TrainDetailsViewModel: ObservableObject {
 
     // Store current origin and destination for stop filtering
     private var currentOriginStationCode: String?
-    private var currentDestinationName: String?
+    private var currentDestinationStationCode: String?
+    private var currentDestinationName: String?  // Keep for display purposes
 
     private let apiService = APIService.shared
     private let cacheService = TrainCacheService.shared
@@ -808,21 +813,20 @@ class TrainDetailsViewModel: ObservableObject {
     private func updateDisplayableTrainStops() {
         guard let stops = train?.stops,
               let originStationCode = currentOriginStationCode,
-              let destinationName = currentDestinationName else {
+              let destinationStationCode = currentDestinationStationCode else {
             displayableTrainStops = train?.stops ?? []
             return
         }
-        
-        // Find indices of origin and destination stops
+
+        // Find indices of origin and destination stops by station CODE (reliable)
         let originIndex = stops.firstIndex { stop in
-            // Match by station code
-            return stop.stationCode.uppercased() == originStationCode.uppercased()
+            stop.stationCode.uppercased() == originStationCode.uppercased()
         }
-        
+
         let destinationIndex = stops.firstIndex { stop in
-            stop.stationName.lowercased() == destinationName.lowercased()
+            stop.stationCode.uppercased() == destinationStationCode.uppercased()
         }
-        
+
         // If we found both indices, return the slice
         if let startIdx = originIndex, let endIdx = destinationIndex, startIdx <= endIdx {
             // Include both origin and destination (endIdx inclusive)
@@ -854,26 +858,25 @@ class TrainDetailsViewModel: ObservableObject {
     private func updateDisplayStopFlags() {
         guard let stops = train?.stops,
               let originStationCode = currentOriginStationCode,
-              currentDestinationName != nil else {
+              let destinationStationCode = currentDestinationStationCode else {
             hasPreviousDisplayStops = false
             hasMoreDisplayStops = false
             return
         }
-        
-        // Find the origin index
+
+        // Find the origin index by station CODE
         let originIndex = stops.firstIndex { stop in
-            // Match by station code
-            return stop.stationCode.uppercased() == originStationCode.uppercased()
+            stop.stationCode.uppercased() == originStationCode.uppercased()
         }
-        
+
         // Update hasPreviousDisplayStops
         hasPreviousDisplayStops = originIndex != nil && originIndex! > 0
-        
-        // Find destination index
-        let destinationIndex = currentDestinationName != nil ? stops.firstIndex { stop in
-            stop.stationName.lowercased() == currentDestinationName!.lowercased()
-        } : nil
-        
+
+        // Find destination index by station CODE
+        let destinationIndex = stops.firstIndex { stop in
+            stop.stationCode.uppercased() == destinationStationCode.uppercased()
+        }
+
         // Update hasMoreDisplayStops
         if let endIdx = destinationIndex, let startIdx = originIndex, startIdx <= endIdx {
             hasMoreDisplayStops = endIdx < stops.count - 1
@@ -898,11 +901,12 @@ class TrainDetailsViewModel: ObservableObject {
         journeyProgressPercentage = totalStops > 0 ? (completedStops * 100) / totalStops : 0
     }
     
-    func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+    func loadTrainDetails(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         error = nil
 
         // Store current origin and destination for filtering
         self.currentOriginStationCode = fromStationCode
+        self.currentDestinationStationCode = toStationCode
         self.currentDestinationName = selectedDestinationName
 
         // CACHE-FIRST STRATEGY: Check cache before showing loading indicator
@@ -928,7 +932,7 @@ class TrainDetailsViewModel: ObservableObject {
                 fromStation: fromStationCode ?? preferredStationCode
             )
             if cacheAge == nil || cacheAge! > 30 {
-                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, selectedDestinationName: selectedDestinationName)
+                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
             } else {
                 print("📦 Cache is fresh (\(Int(cacheAge!))s old) - skipping background refresh")
             }
@@ -979,7 +983,7 @@ class TrainDetailsViewModel: ObservableObject {
     }
 
     /// Fetches fresh data in background without showing loading indicator
-    private func refreshTrainDetailsInBackground(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+    private func refreshTrainDetailsInBackground(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         do {
             let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
             print("🔄 Background refresh for train \(identifier)")
@@ -1012,9 +1016,10 @@ class TrainDetailsViewModel: ObservableObject {
         }
     }
     
-    func refreshTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+    func refreshTrainDetails(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         // Store current origin and destination for filtering
         self.currentOriginStationCode = fromStationCode
+        self.currentDestinationStationCode = toStationCode
         self.currentDestinationName = selectedDestinationName
 
         // Silent refresh
@@ -1079,6 +1084,214 @@ class TrainDetailsViewModel: ObservableObject {
             print("❌ TrainDetailsView refresh failed for train \(trainId): \(error)")
             print("❌ Full error details: \(String(describing: error))")
         }
+    }
+}
+
+// MARK: - Train Follow Prompt
+@available(iOS 16.1, *)
+struct TrainFollowPrompt: View {
+    let train: TrainV2
+    let destinationName: String?
+    let originCode: String
+    let destinationCode: String
+
+    @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @State private var isStarting = false
+
+    private var isTrackingThisTrain: Bool {
+        liveActivityService.currentActivity?.attributes.trainNumber == train.trainId
+    }
+
+    var body: some View {
+        Button {
+            handleTap()
+        } label: {
+            HStack(spacing: 12) {
+                if isTrackingThisTrain {
+                    // Active state
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color.orange)
+                            .frame(width: 8, height: 8)
+                            .modifier(PulsingModifier())
+
+                        Text("Live")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                    }
+
+                    if let destination = destinationName {
+                        Text("Tracking to \(Stations.displayName(for: destination))")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                    } else {
+                        Text("Tracking this train")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                    }
+
+                    Spacer()
+
+                    Text("Stop")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.orange)
+                } else {
+                    // Inactive state
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .font(.body)
+                        .foregroundColor(.orange)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Track this train")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+
+                        Text("Get live updates on your Lock Screen")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+
+                    Spacer()
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isTrackingThisTrain ? Color.orange.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isStarting)
+        .opacity(isStarting ? 0.7 : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isTrackingThisTrain)
+    }
+
+    private func handleTap() {
+        // Immediate haptic feedback for responsive feel
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        if isTrackingThisTrain {
+            // Stop tracking
+            Task {
+                await liveActivityService.endCurrentActivity()
+            }
+        } else {
+            // Start tracking
+            isStarting = true
+
+            // Slight delay lets the UI animate before heavy work begins
+            Task {
+                try? await Task.sleep(for: .milliseconds(50))
+
+                do {
+                    try await liveActivityService.startTrackingTrain(
+                        train,
+                        from: originCode,
+                        to: destinationCode,
+                        origin: Stations.stationName(forCode: originCode) ?? originCode,
+                        destination: destinationName ?? ""
+                    )
+                } catch {
+                    print("Failed to start Live Activity: \(error)")
+                    await MainActor.run {
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    }
+                }
+                await MainActor.run {
+                    isStarting = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Train Follow Toolbar Button
+@available(iOS 16.1, *)
+struct TrainFollowToolbarButton: View {
+    let train: TrainV2
+    let destinationName: String?
+    let originCode: String
+    let destinationCode: String
+
+    @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @State private var isStarting = false
+
+    private var isTrackingThisTrain: Bool {
+        liveActivityService.currentActivity?.attributes.trainNumber == train.trainId
+    }
+
+    var body: some View {
+        Button {
+            handleTap()
+        } label: {
+            Image(systemName: isTrackingThisTrain ? "antenna.radiowaves.left.and.right.circle.fill" : "antenna.radiowaves.left.and.right")
+                .font(.body)
+                .foregroundColor(isTrackingThisTrain ? .orange : .white)
+        }
+        .buttonStyle(.plain)
+        .disabled(isStarting)
+        .opacity(isStarting ? 0.5 : 1.0)
+    }
+
+    private func handleTap() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        if isTrackingThisTrain {
+            Task {
+                await liveActivityService.endCurrentActivity()
+            }
+        } else {
+            isStarting = true
+            Task {
+                try? await Task.sleep(for: .milliseconds(50))
+                do {
+                    try await liveActivityService.startTrackingTrain(
+                        train,
+                        from: originCode,
+                        to: destinationCode,
+                        origin: Stations.stationName(forCode: originCode) ?? originCode,
+                        destination: destinationName ?? ""
+                    )
+                } catch {
+                    print("Failed to start Live Activity: \(error)")
+                    await MainActor.run {
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    }
+                }
+                await MainActor.run {
+                    isStarting = false
+                }
+            }
+        }
+    }
+}
+
+// Pulsing animation modifier for the live indicator
+struct PulsingModifier: ViewModifier {
+    @State private var isPulsing = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isPulsing ? 1.2 : 1.0)
+            .opacity(isPulsing ? 0.7 : 1.0)
+            .animation(
+                .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+                value: isPulsing
+            )
+            .onAppear {
+                isPulsing = true
+            }
     }
 }
 

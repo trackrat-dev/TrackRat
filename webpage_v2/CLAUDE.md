@@ -162,7 +162,7 @@ npm run preview    # Preview production build locally
 - **Automatic**: Push to `main` branch triggers GitHub Actions
 - **Workflow**: `.github/workflows/deploy-webpage.yml`
 - **Output**: `dist/` → `gh-pages` branch
-- **URL**: `https://andytubeee.github.io/TrackRat/`
+- **URL**: `https://bokonon1.github.io/TrackRat/`
 
 ## Common Patterns
 
