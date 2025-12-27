@@ -721,7 +721,7 @@ struct StopRowV2: View {
         if isCancelled { return .gray }
         if isNextImportantStation { return .orange }
         if stop.hasDepartedStation { return .gray }
-        return .black
+        return .black.opacity(0.6)
     }
     
     private var textColor: Color {
