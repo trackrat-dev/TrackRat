@@ -118,12 +118,24 @@ struct TrainV2: Identifiable, Codable {
         return false
     }
     
-    // Simple track-based boarding detection - works for both NJ Transit and Amtrak
+    // Track-based boarding detection with time window - works for both NJ Transit and Amtrak
     func isBoardingAtStation(_ stationCode: String) -> Bool {
         guard let stop = stops?.first(where: { $0.stationCode == stationCode }) else {
             return false
         }
-        return stop.track != nil && !stop.hasDepartedStation
+
+        // Must have track assigned and not yet departed
+        guard stop.track != nil && !stop.hasDepartedStation else {
+            return false
+        }
+
+        // Only show boarding within 15 minutes of departure (some stations assign tracks far in advance)
+        guard let departureTime = stop.updatedDeparture ?? stop.scheduledDeparture else {
+            return false
+        }
+
+        let minutesUntilDeparture = departureTime.timeIntervalSinceNow / 60
+        return minutesUntilDeparture <= 15
     }
     
     // MARK: - Helper Methods
