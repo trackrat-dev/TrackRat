@@ -1170,7 +1170,7 @@ struct TrainFollowPrompt: View {
                         train,
                         from: originCode,
                         to: destinationCode,
-                        origin: Stations.getStationName(originCode) ?? originCode,
+                        origin: Stations.stationName(forCode: originCode) ?? originCode,
                         destination: destinationName ?? ""
                     )
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
