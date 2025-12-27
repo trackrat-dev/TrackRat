@@ -6,6 +6,7 @@ struct FeedbackButton: View {
     let trainId: String?
     let originCode: String?
     let destinationCode: String?
+    var textColor: Color = .white.opacity(0.6)
 
     @State private var showingSheet = false
 
@@ -20,7 +21,7 @@ struct FeedbackButton: View {
                 Text("Report an issue")
                     .font(.footnote)
             }
-            .foregroundColor(.white.opacity(0.6))
+            .foregroundColor(textColor)
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showingSheet) {

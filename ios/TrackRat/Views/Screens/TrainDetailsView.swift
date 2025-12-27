@@ -38,6 +38,22 @@ struct TrainDetailsView: View {
                 trailingContent: {
                     HStack(alignment: .center, spacing: 12) {
                         if let train = viewModel.train {
+                            // Track this train toolbar button
+                            if #available(iOS 16.1, *) {
+                                let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
+                                if contextStatus != .cancelled,
+                                   let originCode = appState.departureStationCode,
+                                   !originCode.isEmpty,
+                                   !train.hasTrainDepartedFromStation(originCode) {
+                                    TrainFollowToolbarButton(
+                                        train: train,
+                                        destinationName: appState.selectedDestination,
+                                        originCode: originCode,
+                                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                                    )
+                                }
+                            }
+
                             ShareButton(
                                 train: train,
                                 fromStationCode: appState.departureStationCode,
@@ -74,23 +90,6 @@ struct TrainDetailsView: View {
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 16) {
-                            // Train follow prompt - Live Activity CTA
-                            // Hide after train departs from user's origin station
-                            if #available(iOS 16.1, *) {
-                                let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
-                                if contextStatus != .cancelled,
-                                   let originCode = appState.departureStationCode,
-                                   !originCode.isEmpty,
-                                   !train.hasTrainDepartedFromStation(originCode) {
-                                    TrainFollowPrompt(
-                                        train: train,
-                                        destinationName: appState.selectedDestination,
-                                        originCode: originCode,
-                                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
-                                    )
-                                }
-                            }
-
                             // Train performance summary (similar trains + historical)
                             // Hide after train departs from user's origin station
                             if let originCode = appState.departureStationCode,
@@ -124,13 +123,21 @@ struct TrainDetailsView: View {
                                 journeyTotalStops: viewModel.journeyTotalStops
                             )
 
-                            // Feedback button
-                            FeedbackButton(
-                                screen: "train_details",
-                                trainId: train.trainId,
-                                originCode: appState.departureStationCode,
-                                destinationCode: appState.destinationStationCode
-                            )
+                            // Track this train button - moved to bottom
+                            if #available(iOS 16.1, *) {
+                                let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
+                                if contextStatus != .cancelled,
+                                   let originCode = appState.departureStationCode,
+                                   !originCode.isEmpty,
+                                   !train.hasTrainDepartedFromStation(originCode) {
+                                    TrainFollowPrompt(
+                                        train: train,
+                                        destinationName: appState.selectedDestination,
+                                        originCode: originCode,
+                                        destinationCode: Stations.getStationCode(appState.selectedDestination ?? "") ?? ""
+                                    )
+                                }
+                            }
                         }
                         .padding()
                         // Force view update by using a composite ID that includes changing data
@@ -420,6 +427,20 @@ struct CombinedDetailsCard: View {
                         .padding(.top, 4)
                         .padding(.horizontal, 20)
                     }
+
+                    // Report an issue button
+                    HStack {
+                        Spacer()
+                        FeedbackButton(
+                            screen: "train_details",
+                            trainId: train.trainId,
+                            originCode: appState.departureStationCode,
+                            destinationCode: selectedDestinationCode,
+                            textColor: .black.opacity(0.6)
+                        )
+                        Spacer()
+                    }
+                    .padding(.top, 8)
                 } else {
                     Text("No stops information available for this journey segment.")
                         .foregroundColor(.black.opacity(0.6))
@@ -1173,6 +1194,67 @@ struct TrainFollowPrompt: View {
             Task {
                 try? await Task.sleep(for: .milliseconds(50))
 
+                do {
+                    try await liveActivityService.startTrackingTrain(
+                        train,
+                        from: originCode,
+                        to: destinationCode,
+                        origin: Stations.stationName(forCode: originCode) ?? originCode,
+                        destination: destinationName ?? ""
+                    )
+                } catch {
+                    print("Failed to start Live Activity: \(error)")
+                    await MainActor.run {
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    }
+                }
+                await MainActor.run {
+                    isStarting = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Train Follow Toolbar Button
+@available(iOS 16.1, *)
+struct TrainFollowToolbarButton: View {
+    let train: TrainV2
+    let destinationName: String?
+    let originCode: String
+    let destinationCode: String
+
+    @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @State private var isStarting = false
+
+    private var isTrackingThisTrain: Bool {
+        liveActivityService.currentActivity?.attributes.trainNumber == train.trainId
+    }
+
+    var body: some View {
+        Button {
+            handleTap()
+        } label: {
+            Image(systemName: isTrackingThisTrain ? "antenna.radiowaves.left.and.right.circle.fill" : "antenna.radiowaves.left.and.right")
+                .font(.body)
+                .foregroundColor(isTrackingThisTrain ? .orange : .white)
+        }
+        .buttonStyle(.plain)
+        .disabled(isStarting)
+        .opacity(isStarting ? 0.5 : 1.0)
+    }
+
+    private func handleTap() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        if isTrackingThisTrain {
+            Task {
+                await liveActivityService.endCurrentActivity()
+            }
+        } else {
+            isStarting = true
+            Task {
+                try? await Task.sleep(for: .milliseconds(50))
                 do {
                     try await liveActivityService.startTrackingTrain(
                         train,
