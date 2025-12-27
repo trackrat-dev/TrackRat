@@ -24,9 +24,10 @@ struct TrackRatLoadingView: View {
 
 #Preview("TrackRat Loading") {
     ZStack {
-        TrackRatTheme.Colors.primaryBackground
+        Color.clear
+            .background(.ultraThinMaterial)
             .ignoresSafeArea()
-        
+
         TrackRatLoadingView(message: "Finding your trains...")
     }
 }

@@ -182,5 +182,5 @@ struct HomeWorkStationRow: View {
         )
     }
     .padding()
-    .background(Color.black)
+    .background(.ultraThinMaterial)
 }

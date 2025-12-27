@@ -1015,7 +1015,7 @@ struct SwipeableSegmentTrainDetailsView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .background(Color.black)
+            .background(.ultraThinMaterial)
             .navigationTitle("Segment Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -1406,5 +1406,5 @@ private struct SegmentTimeDetailRow: View {
         userDestination: "New York Penn Station"
     )
     .padding()
-    .background(TrackRatTheme.Colors.surface)
+    .background(.ultraThinMaterial)
 }

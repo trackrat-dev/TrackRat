@@ -88,11 +88,11 @@ struct PennStationGuideView: View {
             }
             .tabViewStyle(PageTabViewStyle())
             .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
-            .background(Color.black)
+            .background(.ultraThinMaterial)
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .presentationBackground(Color.black)
+        .presentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
     }
 }

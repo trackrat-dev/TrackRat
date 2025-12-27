@@ -15,10 +15,11 @@ struct HistoricalDataView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Black gradient background
-                TrackRatTheme.Colors.primaryBackground
+                // Translucent material background
+                Color.clear
+                    .background(.ultraThinMaterial)
                     .ignoresSafeArea()
-                
+
                 ScrollView {
                     if viewModel.isLoading {
                         TrackRatLoadingView(message: "Loading historical data...")
@@ -582,10 +583,11 @@ struct CongestionDataView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Black gradient background
-                TrackRatTheme.Colors.primaryBackground
+                // Translucent material background
+                Color.clear
+                    .background(.ultraThinMaterial)
                     .ignoresSafeArea()
-                
+
                 ScrollView {
                     if viewModel.isLoading {
                         TrackRatLoadingView(message: "Loading congestion data...")

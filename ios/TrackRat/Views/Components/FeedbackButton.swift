@@ -65,7 +65,7 @@ struct FeedbackSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .presentationBackground(Color.black)
+        .presentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
     }
 

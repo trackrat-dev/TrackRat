@@ -543,7 +543,7 @@ struct FilterSheet: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color.black)
+            .background(.ultraThinMaterial)
             .navigationTitle("Filter Options")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -978,7 +978,7 @@ struct SegmentTrainDetailsView: View {
                 }
                 .padding()
             }
-            .background(Color.black)
+            .background(.ultraThinMaterial)
             .navigationTitle("Segment Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)

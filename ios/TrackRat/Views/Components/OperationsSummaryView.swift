@@ -243,5 +243,5 @@ struct OperationsSummaryView: View {
         )
     }
     .padding()
-    .background(Color.black)
+    .background(.ultraThinMaterial)
 }
