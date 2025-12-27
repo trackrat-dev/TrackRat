@@ -376,14 +376,16 @@ struct DeparturePickerView: View {
         appState.selectedDeparture = name
         appState.departureStationCode = code
         appState.navigationPath.append(NavigationDestination.destinationPicker)
-        
-        // Reset search with animation
-        withAnimation(.easeInOut(duration: 0.3)) {
+
+        // Reset search WITHOUT animation to prevent ghosting during navigation
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
             searchText = ""
             isSearching = false
             searchFieldFocused = false
         }
-        
+
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
@@ -447,8 +449,10 @@ struct DeparturePickerView: View {
                         journeyDate: train.journeyDate
                     )
 
-                    // Reset search
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    // Reset search WITHOUT animation to prevent ghosting during navigation
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
                         searchText = ""
                         isSearching = false
                         searchFieldFocused = false
