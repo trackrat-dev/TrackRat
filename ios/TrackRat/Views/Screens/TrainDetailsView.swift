@@ -1783,11 +1783,11 @@ struct PredictionExplanationSheet: View {
                     }
                 }
             }
-            .background(Color.black)
+            .background(.ultraThinMaterial)
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
-        .presentationBackground(Color.black)
+        .presentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
     }
 }

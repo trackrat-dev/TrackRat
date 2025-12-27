@@ -624,7 +624,7 @@ struct StationPickerSheet: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
-            .background(Color.black)
+            .background(.ultraThinMaterial)
             .navigationTitle("Select Station")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden()

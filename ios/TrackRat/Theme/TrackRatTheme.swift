@@ -185,7 +185,7 @@ extension View {
     
     func trackRatGlassmorphicBackground() -> some View {
         self
-            .background(TrackRatTheme.Colors.primaryBackground)
+            .background(.ultraThinMaterial)
             .ignoresSafeArea()
     }
     
