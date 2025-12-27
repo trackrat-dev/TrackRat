@@ -178,14 +178,23 @@ struct WaitingLocationCard: View {
     var body: some View {
         // Video cards (cardIndex == 0) get full-area treatment
         if let youtubeURL = youtubeURL {
-            VStack {
+            VStack(spacing: 0) {
+                Text(locationInfo.title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+
                 Spacer()
+
                 YouTubeLinkView(
                     thumbnailImageName: locationInfo.imageName,
                     youtubeURL: youtubeURL,
                     maxHeight: .infinity
                 )
                 .frame(maxHeight: 350)
+
                 Spacer()
             }
             .padding()
