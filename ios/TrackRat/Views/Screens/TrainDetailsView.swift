@@ -439,6 +439,7 @@ struct CombinedDetailsCard: View {
                             textColor: .black.opacity(0.6)
                         )
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 8)
                 } else {
                     Text("No stops information available for this journey segment.")
