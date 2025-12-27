@@ -92,10 +92,10 @@ class LiveActivityService: ObservableObject {
         let nextStopArrivalTime = self.getNextStopArrivalTime(train)
         
         // Calculate proper initial stops using context-aware methods
-        let context = JourneyContext(from: originCode, to: destination)
+        let context = JourneyContext(from: originCode, toCode: destinationCode, toName: destination)
         let contextStatus = train.calculateStatus(for: context)
         let initialCurrentStop = train.stops?.last(where: { $0.hasDepartedStation })?.stationName ?? origin
-        let initialNextStop = getNextStopName(train, originCode: originCode, destinationName: destination, hasTrainDeparted: hasTrainDeparted)
+        let initialNextStop = getNextStopName(train, originCode: originCode, destinationCode: destinationCode, hasTrainDeparted: hasTrainDeparted)
         
         // Create simple initial content state
         let initialState = TrainActivityAttributes.ContentState(
@@ -236,7 +236,7 @@ class LiveActivityService: ObservableObject {
             }
 
             // Calculate context-aware progress for user's journey
-            let context = JourneyContext(from: activity.attributes.originStationCode, to: activity.attributes.destination)
+            let context = JourneyContext(from: activity.attributes.originStationCode, toCode: activity.attributes.destinationStationCode, toName: activity.attributes.destination)
             let progress = train.calculateJourneyProgress(for: context)
             
             print("🔄 Live Activity Update Source: Client calculation (30s timer)")
@@ -249,7 +249,7 @@ class LiveActivityService: ObservableObject {
             
             // Get current and next stop names using new fields
             let currentStop = train.stops?.last(where: { $0.hasDepartedStation })?.stationName ?? activity.attributes.origin
-            let nextStop = getNextStopName(train, originCode: activity.attributes.originStationCode, destinationName: activity.attributes.destination, hasTrainDeparted: hasTrainDeparted)
+            let nextStop = getNextStopName(train, originCode: activity.attributes.originStationCode, destinationCode: activity.attributes.destinationStationCode, hasTrainDeparted: hasTrainDeparted)
             let nextStopArrivalTime = self.getNextStopArrivalTime(train)
             
             // Calculate context-aware status
@@ -424,7 +424,7 @@ class LiveActivityService: ObservableObject {
         print("  - Destination: \(activity.attributes.destination)")
         
         // Get the content state that the widget uses
-        let contentState = train.toLiveActivityContentState(from: activity.attributes.originStationCode, to: activity.attributes.destination)
+        let contentState = train.toLiveActivityContentState(from: activity.attributes.originStationCode, toCode: activity.attributes.destinationStationCode, toName: activity.attributes.destination)
         
         // Use the exact same logic as the widget: if minutesUntilArrival <= 0, journey is complete
         if let minutesUntilArrival = contentState.minutesUntilArrival {
@@ -476,12 +476,12 @@ class LiveActivityService: ObservableObject {
     }
     
     /// Get the next stop name for user's journey segment
-    private func getNextStopName(_ train: TrainV2, originCode: String, destinationName: String, hasTrainDeparted: Bool) -> String? {
+    private func getNextStopName(_ train: TrainV2, originCode: String, destinationCode: String, hasTrainDeparted: Bool) -> String? {
         guard let stops = train.stops else { return nil }
-        
-        // Find origin and destination stops
-        let originIndex = stops.firstIndex { $0.stationCode == originCode }
-        let destinationIndex = stops.lastIndex { $0.stationName.lowercased().contains(destinationName.lowercased()) }
+
+        // Find origin and destination stops by station CODE (reliable)
+        let originIndex = stops.firstIndex { $0.stationCode.uppercased() == originCode.uppercased() }
+        let destinationIndex = stops.firstIndex { $0.stationCode.uppercased() == destinationCode.uppercased() }
         
         guard let fromIndex = originIndex, let toIndex = destinationIndex, fromIndex < toIndex else {
             return nil

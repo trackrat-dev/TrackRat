@@ -4,10 +4,12 @@ import Foundation
 // Represents the user's journey segment for context-aware calculations
 struct JourneyContext {
     let originStationCode: String
-    let destinationName: String?
-    
-    init(from originCode: String, to destinationName: String? = nil) {
+    let destinationStationCode: String?
+    let destinationName: String?  // Keep for display purposes
+
+    init(from originCode: String, toCode destinationCode: String? = nil, toName destinationName: String? = nil) {
         self.originStationCode = originCode
+        self.destinationStationCode = destinationCode
         self.destinationName = destinationName
     }
 }
@@ -190,16 +192,28 @@ struct TrainV2: Identifiable, Codable {
         return arrival?.scheduledTime
     }
     
-    // Get scheduled arrival time at specific destination station
-    func getScheduledArrivalTime(toStationName: String) -> Date? {
-        // Look up the specific station in stops array
+    // Get scheduled arrival time at specific destination station by CODE (reliable)
+    func getScheduledArrivalTime(toStationCode: String) -> Date? {
         if let stops = stops,
-           let destinationStop = stops.first(where: { 
-               $0.stationName.lowercased().contains(toStationName.lowercased()) 
+           let destinationStop = stops.first(where: {
+               $0.stationCode.uppercased() == toStationCode.uppercased()
            }) {
             return destinationStop.scheduledArrival
         }
-        
+        // Fallback to train's final destination if station not found
+        return arrival?.scheduledTime
+    }
+
+    // Get scheduled arrival time at specific destination station by NAME (legacy, less reliable)
+    func getScheduledArrivalTime(toStationName: String) -> Date? {
+        // Look up the specific station in stops array
+        if let stops = stops,
+           let destinationStop = stops.first(where: {
+               $0.stationName.lowercased().contains(toStationName.lowercased())
+           }) {
+            return destinationStop.scheduledArrival
+        }
+
         // Fallback to train's final destination if station not found
         return arrival?.scheduledTime
     }
@@ -418,9 +432,9 @@ extension TrainV2 {
     }
     
     // Convert to Live Activity content state with origin and destination
-    func toLiveActivityContentState(from originCode: String, to destinationName: String) -> TrainActivityAttributes.ContentState {
+    func toLiveActivityContentState(from originCode: String, toCode destinationCode: String, toName destinationName: String) -> TrainActivityAttributes.ContentState {
         // Calculate context-aware progress for user's journey segment
-        let progress = calculateJourneyProgress(from: originCode, to: destinationName)
+        let progress = calculateJourneyProgress(from: originCode, toCode: destinationCode)
         
         // Get current and next stop names based on train position
         let currentStop = trainPosition?.atStationCode ?? 
@@ -447,7 +461,7 @@ extension TrainV2 {
             journeyProgress: progress,
             dataTimestamp: Date().timeIntervalSince1970,
             scheduledDepartureTime: getScheduledDepartureTime(fromStationCode: originCode)?.toISO8601String(),
-            scheduledArrivalTime: getScheduledArrivalTime(toStationName: destinationName)?.toISO8601String(),
+            scheduledArrivalTime: getScheduledArrivalTime(toStationCode: destinationCode)?.toISO8601String(),
             nextStopArrivalTime: nextStopArrivalTime?.toISO8601String(),
             hasTrainDeparted: hasTrainDeparted,
             originStationCode: originCode,
@@ -487,12 +501,12 @@ extension TrainV2 {
     // MARK: - Helper Methods for Live Activities
     
     // Calculate journey progress for a specific origin-destination segment
-    func calculateJourneyProgress(from originCode: String, to destinationName: String) -> Double {
+    func calculateJourneyProgress(from originCode: String, toCode destinationCode: String) -> Double {
         guard let stops = stops else { return 0.0 }
-        
-        // Find origin and destination stops
-        let originIndex = stops.firstIndex { $0.stationCode == originCode }
-        let destinationIndex = stops.lastIndex { $0.stationName.lowercased().contains(destinationName.lowercased()) }
+
+        // Find origin and destination stops by station CODE (reliable)
+        let originIndex = stops.firstIndex { $0.stationCode.uppercased() == originCode.uppercased() }
+        let destinationIndex = stops.firstIndex { $0.stationCode.uppercased() == destinationCode.uppercased() }
         
         guard let fromIndex = originIndex, let toIndex = destinationIndex, fromIndex < toIndex else {
             return 0.0
@@ -526,8 +540,8 @@ extension TrainV2 {
     
     // Convenience method using JourneyContext
     func calculateJourneyProgress(for context: JourneyContext) -> Double {
-        guard let destinationName = context.destinationName else { return calculateOverallProgress() }
-        return calculateJourneyProgress(from: context.originStationCode, to: destinationName)
+        guard let destinationCode = context.destinationStationCode else { return calculateOverallProgress() }
+        return calculateJourneyProgress(from: context.originStationCode, toCode: destinationCode)
     }
     
     // Calculate overall train progress (all stops)

@@ -67,6 +67,7 @@ struct TrainDetailsView: View {
                             Task {
                                 await viewModel.loadTrainDetails(
                                     fromStationCode: appState.departureStationCode,
+                                    toStationCode: appState.destinationStationCode,
                                     selectedDestinationName: appState.selectedDestination
                                 )
                             }
@@ -97,6 +98,7 @@ struct TrainDetailsView: View {
                             CombinedDetailsCard(
                                 train: train,
                                 selectedDestination: appState.selectedDestination,
+                                selectedDestinationCode: appState.destinationStationCode,
                                 displayableTrainStops: viewModel.displayableTrainStops,
                                 hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
                                 hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
@@ -124,6 +126,7 @@ struct TrainDetailsView: View {
         .task {
             await viewModel.loadTrainDetails(
                 fromStationCode: appState.departureStationCode,
+                toStationCode: appState.destinationStationCode,
                 selectedDestinationName: appState.selectedDestination
             )
         }
@@ -142,6 +145,7 @@ struct TrainDetailsView: View {
 
                 await viewModel.refreshTrainDetails(
                     fromStationCode: appState.departureStationCode,
+                    toStationCode: appState.destinationStationCode,
                     selectedDestinationName: appState.selectedDestination
                 )
             }
@@ -177,8 +181,9 @@ struct TrainDetailsView: View {
 struct CombinedDetailsCard: View {
     let train: TrainV2
     let selectedDestination: String?
+    let selectedDestinationCode: String?
     @EnvironmentObject private var appState: AppState
-    
+
     // ViewModel provided properties
     let displayableTrainStops: [StopV2]
     let hasPreviousDisplayStops: Bool
@@ -210,10 +215,10 @@ struct CombinedDetailsCard: View {
     
     // Check if predictions should be shown for the entire journey
     private var shouldShowJourneyPredictions: Bool {
-        // Find the user's destination stop
-        guard let selectedDestination = selectedDestination,
+        // Find the user's destination stop by CODE (reliable matching)
+        guard let destinationCode = selectedDestinationCode,
               let destinationStop = displayableTrainStops.first(where: { stop in
-                  stop.stationName.lowercased() == selectedDestination.lowercased()
+                  stop.stationCode.uppercased() == destinationCode.uppercased()
               }) else {
             return false
         }
@@ -391,8 +396,8 @@ struct CombinedDetailsCard: View {
                     ForEach(displayableTrainStops) { stop in
                         StopRowV2(
                             stop: stop,
-                            isDestination: selectedDestination != nil && 
-                                         stop.stationName.lowercased() == selectedDestination!.lowercased(),
+                            isDestination: selectedDestinationCode != nil &&
+                                         stop.stationCode.uppercased() == selectedDestinationCode!.uppercased(),
                             isDeparture: checkIfDepartureStop(stop.stationName),
                             isBoarding: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName),
                             boardingTrack: train.isBoardingAtStation(stop.stationCode) && checkIfDepartureStop(stop.stationName) ? stop.track : nil,
@@ -434,24 +439,25 @@ struct CombinedDetailsCard: View {
 
 // Note: StatusV2 functionality is now integrated directly into TrainV2 model
 
-// MARK: - Stops Card
+// MARK: - Stops Card (unused - kept for potential future use)
 struct StopsCard: View {
     let train: TrainV2
     let selectedDestination: String?
+    let selectedDestinationCode: String?
     @EnvironmentObject private var appState: AppState
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let stops = train.stops, !stops.isEmpty {
                 ForEach(stops) { stop in
                     StopRowV2(
                         stop: stop,
-                        isDestination: selectedDestination != nil && 
-                                     stop.stationName.lowercased() == selectedDestination!.lowercased(),
-                        isDeparture: appState.selectedDeparture != nil && 
-                                   stop.stationName.lowercased() == appState.selectedDeparture!.lowercased(),
-                        isBoarding: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()),
-                        boardingTrack: train.isBoardingAtStation(stop.stationCode) && (appState.selectedDeparture != nil && stop.stationName.lowercased() == appState.selectedDeparture!.lowercased()) ? stop.track : nil,
+                        isDestination: selectedDestinationCode != nil &&
+                                     stop.stationCode.uppercased() == selectedDestinationCode!.uppercased(),
+                        isDeparture: appState.departureStationCode != nil &&
+                                   stop.stationCode.uppercased() == appState.departureStationCode!.uppercased(),
+                        isBoarding: train.isBoardingAtStation(stop.stationCode) && (appState.departureStationCode != nil && stop.stationCode.uppercased() == appState.departureStationCode!.uppercased()),
+                        boardingTrack: train.isBoardingAtStation(stop.stationCode) && (appState.departureStationCode != nil && stop.stationCode.uppercased() == appState.departureStationCode!.uppercased()) ? stop.track : nil,
                         train: train,
                         departureStationCode: appState.departureStationCode,
                         shouldShowJourneyPredictions: false
@@ -753,7 +759,8 @@ class TrainDetailsViewModel: ObservableObject {
 
     // Store current origin and destination for stop filtering
     private var currentOriginStationCode: String?
-    private var currentDestinationName: String?
+    private var currentDestinationStationCode: String?
+    private var currentDestinationName: String?  // Keep for display purposes
 
     private let apiService = APIService.shared
     private let cacheService = TrainCacheService.shared
@@ -785,21 +792,20 @@ class TrainDetailsViewModel: ObservableObject {
     private func updateDisplayableTrainStops() {
         guard let stops = train?.stops,
               let originStationCode = currentOriginStationCode,
-              let destinationName = currentDestinationName else {
+              let destinationStationCode = currentDestinationStationCode else {
             displayableTrainStops = train?.stops ?? []
             return
         }
-        
-        // Find indices of origin and destination stops
+
+        // Find indices of origin and destination stops by station CODE (reliable)
         let originIndex = stops.firstIndex { stop in
-            // Match by station code
-            return stop.stationCode.uppercased() == originStationCode.uppercased()
+            stop.stationCode.uppercased() == originStationCode.uppercased()
         }
-        
+
         let destinationIndex = stops.firstIndex { stop in
-            stop.stationName.lowercased() == destinationName.lowercased()
+            stop.stationCode.uppercased() == destinationStationCode.uppercased()
         }
-        
+
         // If we found both indices, return the slice
         if let startIdx = originIndex, let endIdx = destinationIndex, startIdx <= endIdx {
             // Include both origin and destination (endIdx inclusive)
@@ -831,26 +837,25 @@ class TrainDetailsViewModel: ObservableObject {
     private func updateDisplayStopFlags() {
         guard let stops = train?.stops,
               let originStationCode = currentOriginStationCode,
-              currentDestinationName != nil else {
+              let destinationStationCode = currentDestinationStationCode else {
             hasPreviousDisplayStops = false
             hasMoreDisplayStops = false
             return
         }
-        
-        // Find the origin index
+
+        // Find the origin index by station CODE
         let originIndex = stops.firstIndex { stop in
-            // Match by station code
-            return stop.stationCode.uppercased() == originStationCode.uppercased()
+            stop.stationCode.uppercased() == originStationCode.uppercased()
         }
-        
+
         // Update hasPreviousDisplayStops
         hasPreviousDisplayStops = originIndex != nil && originIndex! > 0
-        
-        // Find destination index
-        let destinationIndex = currentDestinationName != nil ? stops.firstIndex { stop in
-            stop.stationName.lowercased() == currentDestinationName!.lowercased()
-        } : nil
-        
+
+        // Find destination index by station CODE
+        let destinationIndex = stops.firstIndex { stop in
+            stop.stationCode.uppercased() == destinationStationCode.uppercased()
+        }
+
         // Update hasMoreDisplayStops
         if let endIdx = destinationIndex, let startIdx = originIndex, startIdx <= endIdx {
             hasMoreDisplayStops = endIdx < stops.count - 1
@@ -875,11 +880,12 @@ class TrainDetailsViewModel: ObservableObject {
         journeyProgressPercentage = totalStops > 0 ? (completedStops * 100) / totalStops : 0
     }
     
-    func loadTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+    func loadTrainDetails(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         error = nil
 
         // Store current origin and destination for filtering
         self.currentOriginStationCode = fromStationCode
+        self.currentDestinationStationCode = toStationCode
         self.currentDestinationName = selectedDestinationName
 
         // CACHE-FIRST STRATEGY: Check cache before showing loading indicator
@@ -905,7 +911,7 @@ class TrainDetailsViewModel: ObservableObject {
                 fromStation: fromStationCode ?? preferredStationCode
             )
             if cacheAge == nil || cacheAge! > 30 {
-                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, selectedDestinationName: selectedDestinationName)
+                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
             } else {
                 print("📦 Cache is fresh (\(Int(cacheAge!))s old) - skipping background refresh")
             }
@@ -956,7 +962,7 @@ class TrainDetailsViewModel: ObservableObject {
     }
 
     /// Fetches fresh data in background without showing loading indicator
-    private func refreshTrainDetailsInBackground(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+    private func refreshTrainDetailsInBackground(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         do {
             let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
             print("🔄 Background refresh for train \(identifier)")
@@ -989,9 +995,10 @@ class TrainDetailsViewModel: ObservableObject {
         }
     }
     
-    func refreshTrainDetails(fromStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+    func refreshTrainDetails(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         // Store current origin and destination for filtering
         self.currentOriginStationCode = fromStationCode
+        self.currentDestinationStationCode = toStationCode
         self.currentDestinationName = selectedDestinationName
 
         // Silent refresh
@@ -1141,11 +1148,11 @@ struct TrainFollowPrompt: View {
             .padding(.vertical, 14)
             .background(
                 RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                    .fill(isTrackingThisTrain ? Color.orange.opacity(0.12) : Color.orange.opacity(0.08))
+                    .fill(Color(white: 0.2))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                    .stroke(Color.orange.opacity(isTrackingThisTrain ? 0.4 : 0.2), lineWidth: 1)
+                    .stroke(isTrackingThisTrain ? Color.orange.opacity(0.5) : TrackRatTheme.Colors.border, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
