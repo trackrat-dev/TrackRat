@@ -269,7 +269,7 @@ struct CombinedDetailsCard: View {
         case "low":
             return .red
         default:
-            return .gray
+            return Color(white: 0.55)
         }
     }
     
@@ -713,8 +713,8 @@ struct StopRowV2: View {
     }
     
     private var textColor: Color {
-        if isCancelled { return .gray }
-        if stop.hasDepartedStation { return .gray }
+        if isCancelled { return Color(white: 0.55) }
+        if stop.hasDepartedStation { return Color(white: 0.55) }
         return .black
     }
     
@@ -738,8 +738,8 @@ struct StopRowV2: View {
     }
     
     private var timeColor: Color {
-        if isCancelled { return .gray }
-        if stop.hasDepartedStation { return .gray }
+        if isCancelled { return Color(white: 0.55) }
+        if stop.hasDepartedStation { return Color(white: 0.55) }
         return .black.opacity(0.6)
     }
     
@@ -1252,7 +1252,7 @@ struct SegmentedTrackPredictionView: View {
                 Text("No clear favorite")
                     .font(.subheadline)
                     .fontWeight(.medium)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color(white: 0.6))
                     .frame(height: 64)
                     .frame(maxWidth: .infinity)
             } else if !predictionSegments.isEmpty {
@@ -1273,7 +1273,7 @@ struct SegmentedTrackPredictionView: View {
             } else {
                 Text("No prediction data available")
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Color(white: 0.55))
                     .italic()
             }
             
@@ -1504,11 +1504,11 @@ struct TrackPredictionSegment: Identifiable, Equatable {
     
     var color: Color {
         if isOthersGroup {
-            return .gray.opacity(0.6)
+            return Color(white: 0.55).opacity(0.6)
         }
-        
+
         // All segments now use same opacity
-        return .orange.opacity(0.3)
+        return Color(red: 1.0, green: 0.584, blue: 0.0).opacity(0.3)
     }
     
     var labelPosition: TrackLabelPosition {
