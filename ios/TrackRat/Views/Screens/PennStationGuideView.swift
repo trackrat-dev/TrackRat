@@ -176,40 +176,23 @@ struct WaitingLocationCard: View {
     }
     
     var body: some View {
-        // Video cards (cardIndex == 0) get full-area treatment
-        if let youtubeURL = youtubeURL {
-            VStack(spacing: 0) {
-                Text(locationInfo.title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(spacing: 12) {
+                    Text(locationInfo.title)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
 
-                Spacer()
-
-                YouTubeLinkView(
-                    thumbnailImageName: locationInfo.imageName,
-                    youtubeURL: youtubeURL,
-                    maxHeight: .infinity
-                )
-                .frame(maxHeight: 350)
-
-                Spacer()
-            }
-            .padding()
-        } else {
-            // Regular instruction cards with title, image, and directions
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(spacing: 12) {
-                        Text(locationInfo.title)
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-
+                    if let youtubeURL = youtubeURL {
+                        YouTubeLinkView(
+                            thumbnailImageName: locationInfo.imageName,
+                            youtubeURL: youtubeURL,
+                            maxHeight: 200
+                        )
+                    } else {
                         Image(locationInfo.imageName)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
@@ -218,28 +201,28 @@ struct WaitingLocationCard: View {
                             .clipped()
                             .frame(maxWidth: .infinity)
                     }
-
-                    if !locationInfo.directions.isEmpty {
-                        Text(locationInfo.directions)
-                            .font(.body)
-                            .foregroundColor(.white.opacity(0.85))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(.ultraThinMaterial)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                )
 
-                Spacer()
+                if !locationInfo.directions.isEmpty {
+                    Text(locationInfo.directions)
+                        .font(.body)
+                        .foregroundColor(.white.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.ultraThinMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
+
+            Spacer()
         }
+        .padding()
     }
 }
 
