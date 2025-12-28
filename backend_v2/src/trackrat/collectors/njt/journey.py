@@ -935,6 +935,31 @@ class JourneyCollector(BaseJourneyCollector):
                     filtered_stops.append(stop_data)
             stops_data = filtered_stops
 
+        # Sort stops by time to ensure geographic order for sequential inference.
+        # The NJT API may return stops in non-geographic order when times are corrupted
+        # (e.g., scheduled_departure < scheduled_arrival). This sort ensures that
+        # enumerate() indices match the actual journey order, which is critical for
+        # the Tier 2 sequential inference logic below.
+        # Uses same min(arrival, departure) logic as _resequence_stops().
+        def get_stop_sort_time(stop_data: NJTransitStopData) -> datetime:
+            """Get sort time for a stop, using min(arrival, departure) for robustness."""
+            arr_time = parse_njt_time(stop_data.TIME) if stop_data.TIME else None
+            dep_time = (
+                parse_njt_time(stop_data.DEP_TIME) if stop_data.DEP_TIME else None
+            )
+
+            if arr_time and dep_time:
+                return min(arr_time, dep_time)
+            elif arr_time:
+                return arr_time
+            elif dep_time:
+                return dep_time
+            else:
+                # No times available - place at end (won't affect departure inference)
+                return datetime.max
+
+        stops_data = sorted(stops_data, key=get_stop_sort_time)
+
         # First pass: Find the furthest departed stop for sequential inference
         max_departed_sequence = -1
         for sequence, stop_data in enumerate(stops_data):

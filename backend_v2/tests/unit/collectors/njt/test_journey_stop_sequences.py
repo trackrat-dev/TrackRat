@@ -772,3 +772,236 @@ class TestCorruptedTimeDataHandling:
             "TR",
             "NY",
         ], f"Expected TR before NY, but got {station_codes}"
+
+    @pytest.mark.asyncio
+    async def test_sequential_inference_with_skipped_departed_flag(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Test that sequential inference marks skipped stops as departed.
+
+        This replicates the train 7840 / Princeton Junction bug:
+        - NJT API returns DEPARTED=NO for PJ, but DEPARTED=YES for NB (later stop)
+        - The sequential inference should mark PJ as departed because a later stop departed
+        - The fix sorts stops by time BEFORE inference to ensure correct index order
+        """
+        # Create journey
+        journey = TrainJourney(
+            train_id="7840",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            scheduled_departure=now_et(),
+            has_complete_journey=False,
+            is_completed=False,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Create API response simulating the real bug:
+        # - Stops have corrupted times (dep_time < arr_time for intermediate stops)
+        # - PJ has DEPARTED=NO, but NB has DEPARTED=YES
+        # - The API might return stops in wrong order due to corrupted times
+        builder = StopBuilder()
+
+        # Note: We intentionally create stops with corrupted times AND out of order
+        # to test that the sort-before-inference fix works correctly.
+        # In the real bug, PJ was not marked departed because:
+        # 1. Its DEPARTED flag was NO
+        # 2. Sequential inference failed because stops weren't in geographic order
+        api_response = create_stop_list_response(
+            train_id="7840",
+            line_code="NE",
+            destination="New York",
+            stops=[
+                # TR: normal origin (departed)
+                builder.build_stop(
+                    "TR",
+                    "Trenton",
+                    "01:58:00 PM",
+                    arr_time="02:08:00 PM",
+                    departed=True,
+                ),
+                # HL: normal stop (departed)
+                builder.build_stop(
+                    "HL",
+                    "Hamilton",
+                    "02:04:00 PM",
+                    arr_time="02:03:00 PM",
+                    departed=True,
+                ),
+                # PJ: THE BUG - DEPARTED=NO but should be inferred from NB
+                # Also has corrupted times (dep < arr)
+                builder.build_stop(
+                    "PJ",
+                    "Princeton Jct",
+                    "02:11:00 PM",  # DEP_TIME
+                    arr_time="02:24:00 PM",  # TIME - corrupted, later than dep!
+                    departed=False,  # BUG: NJT didn't set this
+                ),
+                # NB: departed (proves PJ must have been passed)
+                builder.build_stop(
+                    "NB",
+                    "New Brunswick",
+                    "02:27:00 PM",
+                    arr_time="02:39:00 PM",
+                    departed=True,
+                ),
+                # NY: not yet departed (terminal)
+                builder.build_stop(
+                    "NY",
+                    "New York",
+                    "03:00:00 PM",
+                    arr_time="03:00:00 PM",
+                    departed=False,
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        # Process the API response - this should:
+        # 1. Sort stops by min(TIME, DEP_TIME) to get geographic order
+        # 2. Calculate max_departed_sequence from NB (or later departed stop)
+        # 3. Apply sequential inference to mark PJ as departed
+        await journey_collector.update_journey_stops(
+            db_session, journey, api_response.ITEMS
+        )
+        await db_session.flush()
+
+        # Query stops and check has_departed_station
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        stops = (await db_session.scalars(stmt)).all()
+
+        # Create a dict for easy lookup
+        stops_by_code = {s.station_code: s for s in stops}
+
+        # Verify PJ was marked as departed via sequential inference
+        pj_stop = stops_by_code.get("PJ")
+        assert pj_stop is not None, "PJ stop should exist"
+        assert pj_stop.has_departed_station is True, (
+            f"PJ should be marked as departed via sequential inference, "
+            f"but has_departed_station={pj_stop.has_departed_station}, "
+            f"departure_source={pj_stop.departure_source}"
+        )
+        assert pj_stop.departure_source == "sequential_inference", (
+            f"PJ departure_source should be 'sequential_inference', "
+            f"but got '{pj_stop.departure_source}'"
+        )
+
+        # Verify other stops have correct departure status
+        assert stops_by_code["TR"].has_departed_station is True
+        assert stops_by_code["HL"].has_departed_station is True
+        assert stops_by_code["NB"].has_departed_station is True
+        # NY might or might not be departed depending on time - just check it exists
+        assert "NY" in stops_by_code
+
+    @pytest.mark.asyncio
+    async def test_sequential_inference_with_reversed_api_order(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Test sequential inference when API returns stops in completely wrong order.
+
+        This tests the extreme case where NJT API returns stops sorted by
+        arrival time (which can be corrupted), resulting in wrong geographic order.
+        The sort-before-inference fix should handle this.
+        """
+        # Create journey
+        journey = TrainJourney(
+            train_id="9999",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            scheduled_departure=now_et(),
+            has_complete_journey=False,
+            is_completed=False,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Create API response with stops in WRONG order (by arrival time)
+        # Geographic order should be: TR -> HL -> PJ -> NB
+        # But we'll provide them sorted by corrupted arrival times
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="9999",
+            line_code="NE",
+            destination="New York",
+            stops=[
+                # API returns in wrong order due to sorting by arrival time
+                # HL arrives at 02:03 (earliest arrival)
+                builder.build_stop(
+                    "HL",
+                    "Hamilton",
+                    "02:04:00 PM",
+                    arr_time="02:03:00 PM",
+                    departed=True,
+                ),
+                # TR arrives at 02:08 (but departs at 01:58 - it's the origin!)
+                builder.build_stop(
+                    "TR",
+                    "Trenton",
+                    "01:58:00 PM",
+                    arr_time="02:08:00 PM",
+                    departed=True,
+                ),
+                # PJ arrives at 02:24 - DEPARTED=NO (the bug)
+                builder.build_stop(
+                    "PJ",
+                    "Princeton Jct",
+                    "02:11:00 PM",
+                    arr_time="02:24:00 PM",
+                    departed=False,
+                ),
+                # NB arrives at 02:39 - DEPARTED=YES
+                builder.build_stop(
+                    "NB",
+                    "New Brunswick",
+                    "02:27:00 PM",
+                    arr_time="02:39:00 PM",
+                    departed=True,
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        # Process - the sort should reorder to: TR, HL, PJ, NB (by min time)
+        await journey_collector.update_journey_stops(
+            db_session, journey, api_response.ITEMS
+        )
+        await db_session.flush()
+
+        # Query and verify
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        stops = (await db_session.scalars(stmt)).all()
+        stops_by_code = {s.station_code: s for s in stops}
+
+        # PJ should be marked departed via sequential inference
+        pj_stop = stops_by_code.get("PJ")
+        assert pj_stop is not None
+        assert (
+            pj_stop.has_departed_station is True
+        ), "PJ should be departed via sequential inference even with wrong API order"
+
+        # Verify correct sequence order (sorted by departure time)
+        station_codes = [s.station_code for s in stops]
+        assert station_codes == [
+            "TR",
+            "HL",
+            "PJ",
+            "NB",
+        ], f"Expected TR, HL, PJ, NB order after sorting, got {station_codes}"
