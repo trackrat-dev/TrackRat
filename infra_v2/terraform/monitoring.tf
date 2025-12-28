@@ -22,6 +22,8 @@ resource "google_monitoring_uptime_check_config" "api_health" {
   timeout      = "10s"
   period       = "60s"
 
+  selected_regions = ["USA_OREGON", "USA_IOWA", "USA_VIRGINIA"]
+
   http_check {
     path         = "/health/ready"
     port         = 443
