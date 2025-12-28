@@ -1135,8 +1135,10 @@ class JourneyCollector(BaseJourneyCollector):
     ) -> None:
         """Resequence all stops for a journey based on scheduled times.
 
-        Uses scheduled_arrival for most stops, but falls back to scheduled_departure
-        for origin stations that may only have departure times.
+        Uses min(scheduled_arrival, scheduled_departure) when both are available,
+        which handles corrupted NJT data where departure < arrival (physically
+        impossible). Falls back to whichever time is available for origin stations
+        (departure only) or terminal stations (arrival only).
         """
         logger.debug("resequencing_stops", journey_id=journey.id)
 
@@ -1146,7 +1148,9 @@ class JourneyCollector(BaseJourneyCollector):
         stops = list(result.scalars().all())
 
         # Track stops with missing times for logging
-        stops_without_times = []
+        stops_without_times: list[str] = []
+        # Track stops with corrupted times (departure before arrival - physically impossible)
+        stops_with_corrupted_times: list[dict[str, str]] = []
 
         # Sort stops by scheduled times, but preserve sequence for stops without times
         # This prevents stops with null times from being incorrectly placed at position 0
@@ -1157,14 +1161,33 @@ class JourneyCollector(BaseJourneyCollector):
         ):
             # If stop has a valid time, sort by that time
             if stop.scheduled_arrival or stop.scheduled_departure:
-                time = stop.scheduled_arrival or stop.scheduled_departure
-                assert (
-                    time is not None
-                )  # This should never be None due to the if condition
+                # Use the EARLIEST available time for sorting.
+                # This handles corrupted NJT data where scheduled_departure < scheduled_arrival
+                # (physically impossible - train can't depart before arriving).
+                # Using min() ensures we pick the correct time for route ordering.
+                if stop.scheduled_arrival and stop.scheduled_departure:
+                    if stop.scheduled_departure < stop.scheduled_arrival:
+                        # Track this anomaly for logging
+                        stops_with_corrupted_times.append(
+                            {
+                                "station": stop.station_code or "unknown",
+                                "scheduled_arrival": stop.scheduled_arrival.isoformat(),
+                                "scheduled_departure": stop.scheduled_departure.isoformat(),
+                            }
+                        )
+                    time = min(stop.scheduled_arrival, stop.scheduled_departure)
+                elif stop.scheduled_arrival is not None:
+                    time = stop.scheduled_arrival
+                else:
+                    # Only scheduled_departure available (origin station case)
+                    assert (
+                        stop.scheduled_departure is not None
+                    )  # Guaranteed by outer if
+                    time = stop.scheduled_departure
                 return (0, time)
 
             # Stop has no times - track it for logging
-            stops_without_times.append(stop.station_code)
+            stops_without_times.append(stop.station_code or "unknown")
 
             # Use datetime.max to place after all timed stops,
             # but preserve relative order using existing sequence
@@ -1189,6 +1212,17 @@ class JourneyCollector(BaseJourneyCollector):
                 train_id=journey.train_id,
                 stations_without_times=stops_without_times,
                 count=len(stops_without_times),
+            )
+
+        # Log if we found stops with corrupted times (departure before arrival)
+        if stops_with_corrupted_times:
+            logger.warning(
+                "stops_with_corrupted_times",
+                journey_id=journey.id,
+                train_id=journey.train_id,
+                corrupted_stops=stops_with_corrupted_times,
+                count=len(stops_with_corrupted_times),
+                message="NJT API returned stops where scheduled_departure < scheduled_arrival",
             )
 
         # Update the stop_sequence for each stop
