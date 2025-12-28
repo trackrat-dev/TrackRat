@@ -10,6 +10,20 @@ import structlog
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
+# Disable Sentry completely before any imports
+os.environ["SENTRY_DSN"] = ""
+
+# Set required environment variables before importing trackrat modules
+# This is needed because main.py calls get_settings() at module import time
+os.environ.setdefault(
+    "TRACKRAT_DATABASE_URL",
+    os.getenv(
+        "TRACKRAT_TEST_DATABASE_URL",
+        "postgresql+asyncpg://trackratuser:password@localhost:5434/trackratdb_test",
+    ),
+)
+os.environ.setdefault("TRACKRAT_NJT_API_TOKEN", "test_token")
+
 from starlette.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
@@ -125,15 +139,21 @@ def client(test_settings) -> TestClient:
     mock_db.scalar = AsyncMock(return_value=None)
     mock_db.commit = AsyncMock()
 
+    # Configure scalar_one_or_none for cache lookups (should return None = cache miss)
+    mock_result.scalar_one_or_none.return_value = None
+
     # Override database dependency with async mock
     async def get_test_db():
         yield mock_db
 
     app.dependency_overrides[get_db] = get_test_db
 
-    # Disable scheduler for tests
+    # Disable scheduler and database initialization for tests
     with (
         patch("trackrat.main.get_scheduler") as mock_scheduler,
+        patch("trackrat.main.init_database", new_callable=AsyncMock) as mock_init_db,
+        patch("trackrat.main.shutdown_database", new_callable=AsyncMock) as mock_shutdown_db,
+        patch("trackrat.main.close_engine", new_callable=AsyncMock) as mock_close_engine,
         patch("trackrat.api.health.get_scheduler") as mock_health_scheduler,
         patch("trackrat.api.trains.NJTransitClient") as mock_njt_client,
     ):
@@ -223,6 +243,7 @@ def e2e_client(test_settings, sync_engine):
         patch("trackrat.main.get_scheduler") as mock_scheduler,
         patch("trackrat.api.health.get_scheduler") as mock_health_scheduler,
         patch("trackrat.api.trains.NJTransitClient") as mock_njt_client,
+        patch("trackrat.services.departure.NJTransitClient") as mock_departure_njt_client,
         patch("trackrat.main.init_database") as mock_init_db,
     ):
         mock_init_db.return_value = AsyncMock()
@@ -239,12 +260,18 @@ def e2e_client(test_settings, sync_engine):
         mock_scheduler.return_value = scheduler
         mock_health_scheduler.return_value = scheduler
 
-        # Mock NJTransit client
+        # Mock NJTransit client for API layer
         mock_client = AsyncMock(spec=NJTransitClient)
         mock_client.close = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_njt_client.return_value = mock_client
+
+        # Mock NJTransit client for DepartureService (JIT refresh)
+        mock_departure_client = AsyncMock(spec=NJTransitClient)
+        mock_departure_client.get_train_schedule_with_stops = AsyncMock(return_value={"ITEMS": []})
+        mock_departure_client.close = AsyncMock()
+        mock_departure_njt_client.return_value = mock_departure_client
 
         with TestClient(app) as client:
             yield client

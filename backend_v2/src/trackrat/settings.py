@@ -44,8 +44,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = Field(
-        default="postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb",
-        description="PostgreSQL database connection URL",
+        description="PostgreSQL database connection URL (required, set via TRACKRAT_DATABASE_URL env var)",
     )
 
     # NJ Transit API
@@ -81,6 +80,16 @@ class Settings(BaseSettings):
     use_optimized_amtrak_pattern_analysis: bool = Field(
         default=True,
         description="Use database-aggregated pattern analysis for Amtrak schedules (reduces memory usage by ~99%)",
+    )
+
+    # CORS Settings
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "https://andytubeee.github.io",
+            "http://localhost:3000",
+            "http://localhost:5173",
+        ],
+        description="Allowed CORS origins. Use ['*'] only for development without credentials.",
     )
 
     # Monitoring

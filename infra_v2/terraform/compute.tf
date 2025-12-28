@@ -299,6 +299,13 @@ resource "google_compute_instance_group_manager" "trackrat" {
     replacement_method    = "RECREATE" # Required for per-instance config
   }
 
+  # target_size is managed by Cloud Build deploy script, not Terraform.
+  # Deploy temporarily sets size=0 during disk replacement operations.
+  # Without this, Terraform and Deploy fight over the size, causing failures.
+  lifecycle {
+    ignore_changes = [target_size]
+  }
+
   depends_on = [google_compute_instance_template.trackrat]
 }
 

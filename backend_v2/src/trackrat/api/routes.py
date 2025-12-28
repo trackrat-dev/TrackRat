@@ -301,8 +301,31 @@ async def get_route_congestion(
         )
 
         if cached_response:
-            # Return cached response directly - it's already in the correct format
-            return CongestionMapResponse(**cached_response)
+            try:
+                # Return cached response directly - it's already in the correct format
+                return CongestionMapResponse(**cached_response)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "cache_deserialization_failed",
+                    endpoint="/api/v2/routes/congestion",
+                    params={
+                        "time_window_hours": time_window_hours,
+                        "max_per_segment": max_per_segment,
+                        "data_source": data_source,
+                    },
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                # Invalidate corrupted cache entry
+                await cache_service.invalidate_cache_entry(
+                    db,
+                    "/api/v2/routes/congestion",
+                    {
+                        "time_window_hours": time_window_hours,
+                        "max_per_segment": max_per_segment,
+                        "data_source": data_source,
+                    },
+                )
 
     # Cache miss or force refresh - compute the response
     analyzer = CongestionAnalyzer()

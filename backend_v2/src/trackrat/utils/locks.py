@@ -6,8 +6,8 @@ Provides application-level locking to prevent concurrent processing of the same 
 
 import asyncio
 from collections.abc import Callable, Coroutine
+from datetime import date, datetime
 from typing import Any
-from weakref import WeakSet
 
 from structlog import get_logger
 
@@ -21,7 +21,6 @@ class LockManager:
         """Initialize the lock manager."""
         self._locks: dict[str, asyncio.Lock] = {}
         self._lock_creation_lock = asyncio.Lock()
-        self._active_locks: WeakSet[asyncio.Lock] = WeakSet()
 
     async def get_lock(self, train_id: str, journey_date: str) -> asyncio.Lock:
         """Get or create a lock for a specific train journey.
@@ -41,23 +40,52 @@ class LockManager:
                 if lock_key not in self._locks:
                     new_lock = asyncio.Lock()
                     self._locks[lock_key] = new_lock
-                    self._active_locks.add(new_lock)
                     logger.debug("created_train_lock", lock_key=lock_key)
 
         return self._locks[lock_key]
 
-    async def cleanup_unused_locks(self) -> None:
-        """Clean up locks that are no longer in use."""
+    async def cleanup_old_locks(self, keep_date: date | None = None) -> int:
+        """Clean up locks for dates older than the specified date.
+
+        Since lock keys are formatted as '{train_id}_{journey_date}', we can
+        identify and remove locks for old journey dates that are no longer needed.
+
+        Args:
+            keep_date: Keep locks for this date and newer. Defaults to today.
+
+        Returns:
+            Number of locks removed
+        """
+        if keep_date is None:
+            keep_date = date.today()
+
         async with self._lock_creation_lock:
-            # Remove locks that are no longer referenced
             to_remove = []
             for lock_key, lock in self._locks.items():
-                if lock not in self._active_locks:
-                    to_remove.append(lock_key)
+                # Extract date from key (format: trainid_YYYY-MM-DD)
+                try:
+                    date_str = lock_key.rsplit("_", 1)[-1]
+                    lock_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                    if lock_date < keep_date:
+                        # Only remove if lock is not currently held
+                        if not lock.locked():
+                            to_remove.append(lock_key)
+                except (ValueError, IndexError):
+                    # Invalid date format - skip this key
+                    continue
 
             for lock_key in to_remove:
                 del self._locks[lock_key]
-                logger.debug("cleaned_up_lock", lock_key=lock_key)
+                logger.debug("cleaned_up_old_lock", lock_key=lock_key)
+
+            if to_remove:
+                logger.info(
+                    "lock_cleanup_completed",
+                    removed_count=len(to_remove),
+                    remaining_count=len(self._locks),
+                )
+
+            return len(to_remove)
 
     def get_status(self) -> dict[str, Any]:
         """Get current lock manager status."""
