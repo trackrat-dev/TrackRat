@@ -119,3 +119,16 @@ resource "google_storage_bucket_iam_member" "trackrat_deploy_reader" {
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.trackrat.email}"
 }
+
+# =============================================================================
+# Cloud Build Service Account Permissions
+# =============================================================================
+
+# Cloud Build triggers use trackrat-staging SA for all Terraform operations
+# (both staging and production workspaces). This SA needs monitoring.admin
+# to manage uptime checks and alert policies in the production workspace.
+resource "google_project_iam_member" "cloudbuild_monitoring" {
+  project = var.project_id
+  role    = "roles/monitoring.admin"
+  member  = "serviceAccount:trackrat-staging@trackrat-v2.iam.gserviceaccount.com"
+}
