@@ -98,6 +98,7 @@ class TestSchedulerService:
                 ("train_validation", IntervalTrigger, {"hours": 1}),
                 ("njt_schedule_collection", CronTrigger, {"hour": 0, "minute": 30}),
                 ("amtrak_schedule_generation", CronTrigger, {"hour": 0, "minute": 45}),
+                ("lock_manager_cleanup", CronTrigger, {"hour": 1, "minute": 0}),
             ]
 
             assert mock_add_job.call_count == len(expected_jobs)

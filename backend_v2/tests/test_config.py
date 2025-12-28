@@ -55,7 +55,7 @@ def test_settings_missing_required_fields():
         errors = exc_info.value.errors()
         error_fields = [e["loc"][0] for e in errors]
 
-        # Only njt_api_token is required (no default), database_url has a default
+        # njt_api_token is required (no default)
         assert "njt_api_token" in error_fields
 
     finally:

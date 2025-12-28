@@ -72,6 +72,30 @@ class ApiCacheService:
 
         return None
 
+    async def invalidate_cache_entry(
+        self, db: AsyncSession, endpoint: str, params: dict[str, Any]
+    ) -> bool:
+        """Invalidate a specific cache entry. Returns True if entry was deleted."""
+        params_hash = self._hash_params(params)
+
+        delete_stmt = delete(CachedApiResponse).where(
+            and_(
+                CachedApiResponse.endpoint == endpoint,
+                CachedApiResponse.params_hash == params_hash,
+            )
+        )
+        result = cast(CursorResult[tuple[()]], await db.execute(delete_stmt))
+        await db.commit()
+
+        deleted = (result.rowcount or 0) > 0
+        if deleted:
+            logger.info(
+                "cache_entry_invalidated",
+                endpoint=endpoint,
+                params=params,
+            )
+        return deleted
+
     async def store_cached_response(
         self,
         db: AsyncSession,

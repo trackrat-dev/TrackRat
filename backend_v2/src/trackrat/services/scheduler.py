@@ -183,6 +183,16 @@ class SchedulerService:
             misfire_grace_time=900,  # 15 minute grace period
         )
 
+        # Schedule lock manager cleanup (daily at 1:00 AM)
+        self.scheduler.add_job(
+            self.cleanup_old_locks,
+            trigger=CronTrigger(hour=1, minute=0, timezone="America/New_York"),
+            id="lock_manager_cleanup",
+            name="Lock Manager Cleanup",
+            replace_existing=True,
+            max_instances=1,
+        )
+
         # Start the scheduler
         self.scheduler.start()
 
@@ -1112,6 +1122,7 @@ class SchedulerService:
         Returns:
             Dict with journey info if successful, None if failed
         """
+        sync_engine = None
         try:
             # Use synchronous database operations entirely to avoid greenlet issues
             from sqlalchemy import and_, create_engine, delete, select
@@ -1432,6 +1443,10 @@ class SchedulerService:
                     error_type=type(e).__name__,
                 )
                 return None
+        finally:
+            # Always dispose the sync engine to prevent connection leaks
+            if sync_engine is not None:
+                sync_engine.dispose()
 
     async def collect_njt_journeys_batch(self, train_ids: list[str]) -> None:
         """Collect journey data for multiple NJ Transit trains in batch.
@@ -1942,6 +1957,29 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("live_activity_token_cleanup_skipped_still_fresh")
+
+    async def cleanup_old_locks(self) -> None:
+        """Clean up old train locks to prevent memory leaks.
+
+        This runs daily to remove locks for past journey dates that are no longer needed.
+        """
+        try:
+            from trackrat.utils.locks import get_lock_manager
+
+            lock_manager = get_lock_manager()
+            removed_count = await lock_manager.cleanup_old_locks()
+
+            logger.info(
+                "lock_manager_cleanup_completed",
+                removed_count=removed_count,
+                status=lock_manager.get_status(),
+            )
+        except Exception as e:
+            logger.error(
+                "lock_manager_cleanup_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def precompute_congestion_cache(self) -> None:
         """Pre-compute congestion API responses for common parameter combinations."""
