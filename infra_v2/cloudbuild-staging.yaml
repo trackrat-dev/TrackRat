@@ -56,18 +56,37 @@ steps:
         gcloud compute instance-groups managed resize ${_MIG_NAME} \
           --size=0 --zone=${_ZONE} || true
 
-        # Wait for staging disk to be detached
-        echo "Waiting for staging disk to be detached..."
+        # Wait for all MIG instances to be fully terminated
+        echo "Waiting for MIG instances to terminate..."
+        TERMINATED=false
         for i in $$(seq 1 120); do
-          ATTACHED=$$(gcloud compute disks describe ${_STAGING_DISK} \
-            --zone=${_ZONE} --format='value(users)' 2>/dev/null || echo "")
-          if [ -z "$$ATTACHED" ]; then
-            echo "Disk detached, ready to proceed"
+          INSTANCE_COUNT=$$(gcloud compute instance-groups managed list-instances ${_MIG_NAME} \
+            --zone=${_ZONE} --format='value(instance)' 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$$INSTANCE_COUNT" -eq 0 ]; then
+            echo "All instances terminated"
+            TERMINATED=true
             break
           fi
-          echo "Disk still attached, waiting... ($$i/120)"
+          echo "Still $$INSTANCE_COUNT instance(s) running, waiting... ($$i/120)"
           sleep 5
         done
+
+        # Fail explicitly if instances didn't terminate
+        if [ "$$TERMINATED" != "true" ]; then
+          echo "ERROR: MIG instances did not terminate after 10 minutes"
+          echo "Manual fix: gcloud compute instance-groups managed resize ${_MIG_NAME} --size=0 --zone=${_ZONE}"
+          echo "Then delete stuck instances manually if needed"
+          exit 1
+        fi
+
+        # Double-check disk is detached (belt and suspenders)
+        ATTACHED=$$(gcloud compute disks describe ${_STAGING_DISK} \
+          --zone=${_ZONE} --format='value(users)' 2>/dev/null || echo "")
+        if [ -n "$$ATTACHED" ]; then
+          echo "ERROR: Disk still attached after instances terminated: $$ATTACHED"
+          exit 1
+        fi
+        echo "Disk confirmed detached"
 
         # Check if production disk exists
         echo "Checking if production disk exists..."
@@ -81,22 +100,31 @@ steps:
             --source-disk-zone=${_ZONE} \
             --storage-location=${_REGION}
 
-          # Delete old staging disk
+          # Delete old staging disk (if it exists)
           echo "Deleting old staging disk..."
-          gcloud compute disks delete ${_STAGING_DISK} \
-            --zone=${_ZONE} --quiet || true
+          if gcloud compute disks describe ${_STAGING_DISK} --zone=${_ZONE} >/dev/null 2>&1; then
+            gcloud compute disks delete ${_STAGING_DISK} \
+              --zone=${_ZONE} --quiet
+            echo "Old staging disk deleted"
+          else
+            echo "No existing staging disk to delete"
+          fi
 
           # Create new staging disk from production snapshot
           echo "Creating new staging disk from production snapshot..."
-          gcloud compute disks create ${_STAGING_DISK} \
+          if ! gcloud compute disks create ${_STAGING_DISK} \
             --source-snapshot=staging-clone-${BUILD_ID} \
             --zone=${_ZONE} \
             --type=pd-ssd \
-            --labels=app=trackrat,environment=staging
+            --labels=app=trackrat,environment=staging; then
+            echo "ERROR: Failed to create staging disk. Cleaning up snapshot..."
+            gcloud compute snapshots delete staging-clone-${BUILD_ID} --quiet || true
+            exit 1
+          fi
 
           # Cleanup temporary snapshot
           echo "Cleaning up temporary snapshot..."
-          gcloud compute snapshots delete staging-clone-${BUILD_ID} --quiet
+          gcloud compute snapshots delete staging-clone-${BUILD_ID} --quiet || true
 
           echo "✅ Staging disk cloned from production"
         else
