@@ -84,6 +84,86 @@ class TestDepartureFlagValidation:
         assert stop.has_departed_station == True
         assert stop.raw_njt_departed_flag == "YES"
         assert stop.scheduled_departure == self.past_time
+        # actual_departure should also be set when has_departed_station=True
+        assert stop.actual_departure == self.past_time
+
+    def test_actual_departure_set_when_departed(self):
+        """Test that actual_departure is set when has_departed_station=True.
+
+        This ensures data consistency: whenever a train is marked as departed,
+        actual_departure must also be populated for accurate delay calculations.
+        """
+        service = DepartureService()
+
+        journey = MagicMock(spec=TrainJourney)
+        journey.train_id = "7845"
+        journey.stops = []
+
+        # Train with DEPARTED=YES and no existing actual_departure
+        stops_data = [
+            {
+                "STATION_2CHAR": "NY",
+                "STATIONNAME": "New York Penn Station",
+                "TIME": self.past_time.strftime("%m/%d/%Y %I:%M:%S %p"),
+                "DEP_TIME": self.past_time.strftime("%m/%d/%Y %I:%M:%S %p"),
+                "DEPARTED": "YES",
+                "TRACK": "5",
+            }
+        ]
+
+        with patch("trackrat.services.departure.parse_njt_time") as mock_parse:
+            mock_parse.return_value = self.past_time
+
+            import asyncio
+
+            asyncio.run(service._update_stops_from_embedded_data(journey, stops_data))
+
+        stop = journey.stops[0]
+
+        # Both fields must be set together for data consistency
+        assert stop.has_departed_station == True
+        assert stop.actual_departure is not None
+        assert stop.actual_departure == self.past_time
+
+    def test_actual_departure_not_overwritten_if_already_set(self):
+        """Test that existing actual_departure is preserved.
+
+        If a previous collection already set actual_departure, we shouldn't
+        overwrite it with a potentially less accurate value.
+        """
+        service = DepartureService()
+
+        journey = MagicMock(spec=TrainJourney)
+        journey.train_id = "7845"
+
+        # Create an existing stop with actual_departure already set
+        existing_actual = self.past_time - timedelta(minutes=5)
+        existing_stop = MagicMock(spec=JourneyStop)
+        existing_stop.station_code = "NY"
+        existing_stop.actual_departure = existing_actual
+        existing_stop.stop_sequence = None
+        journey.stops = [existing_stop]
+
+        stops_data = [
+            {
+                "STATION_2CHAR": "NY",
+                "STATIONNAME": "New York Penn Station",
+                "TIME": self.past_time.strftime("%m/%d/%Y %I:%M:%S %p"),
+                "DEP_TIME": self.past_time.strftime("%m/%d/%Y %I:%M:%S %p"),
+                "DEPARTED": "YES",
+                "TRACK": "5",
+            }
+        ]
+
+        with patch("trackrat.services.departure.parse_njt_time") as mock_parse:
+            mock_parse.return_value = self.past_time
+
+            import asyncio
+
+            asyncio.run(service._update_stops_from_embedded_data(journey, stops_data))
+
+        # actual_departure should NOT be overwritten
+        assert existing_stop.actual_departure == existing_actual
 
     def test_njt_journey_collector_tier1_validation(self):
         """Test NJT journey collector Tier 1 departure inference with validation."""

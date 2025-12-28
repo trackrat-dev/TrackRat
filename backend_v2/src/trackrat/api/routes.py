@@ -27,6 +27,7 @@ from trackrat.models.api import (
     SegmentTrainDetail,
     SegmentTrainDetailsResponse,
     SummaryMetricsResponse,
+    TrainDelaySummaryResponse,
     TrainLocationData,
 )
 from trackrat.models.api import (
@@ -766,11 +767,27 @@ async def get_operations_summary(
     # Convert to response model
     metrics = None
     if summary.metrics:
+        # Convert trains_by_category to API response format
+        trains_by_category = None
+        if summary.metrics.trains_by_category:
+            trains_by_category = {
+                category: [
+                    TrainDelaySummaryResponse(
+                        train_id=train.train_id,
+                        delay_minutes=train.delay_minutes,
+                        category=train.category,  # type: ignore[arg-type]
+                        scheduled_departure=train.scheduled_departure,
+                    )
+                    for train in trains
+                ]
+                for category, trains in summary.metrics.trains_by_category.items()
+            }
         metrics = SummaryMetricsResponse(
             on_time_percentage=summary.metrics.on_time_percentage,
             average_delay_minutes=summary.metrics.average_delay_minutes,
             cancellation_count=summary.metrics.cancellation_count,
             train_count=summary.metrics.train_count,
+            trains_by_category=trains_by_category,
         )
 
     return OperationsSummaryResponse(

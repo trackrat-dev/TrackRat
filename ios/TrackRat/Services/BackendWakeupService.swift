@@ -57,7 +57,7 @@ final class BackendWakeupService {
                 print("💾 Backend Wake-up: No cache entry for \(environment.displayName)")
             }
             
-            let healthURL = environment.baseURL.replacingOccurrences(of: "/api", with: "/health")
+            let healthURL = environment.baseURL.replacingOccurrences(of: "/api$", with: "/health", options: .regularExpression)
             
             print("🔄 Backend Wake-up: Starting request to \(environment.displayName) environment")
             print("🔄 Backend Wake-up: Health URL: \(healthURL)")
@@ -158,7 +158,7 @@ final class BackendWakeupService {
     func performHealthCheck(environment: ServerEnvironment? = nil) async -> HealthCheckResult {
         let startTime = Date()
         let env = environment ?? storageService.loadServerEnvironment()
-        let healthURL = env.baseURL.replacingOccurrences(of: "/api", with: "/health")
+        let healthURL = env.baseURL.replacingOccurrences(of: "/api$", with: "/health", options: .regularExpression)
         
         print("🏥 Health Check: Starting for \(env.displayName) environment")
         print("🏥 Health Check: URL: \(healthURL)")

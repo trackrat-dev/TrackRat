@@ -851,11 +851,11 @@ extension IndividualJourneySegment {
 
 extension CongestionSegment {
     var fromStationDisplayName: String {
-        fromStationName.isEmpty ? Stations.displayNameForCode(fromStation) : fromStationName
+        fromStationName.isEmpty ? Stations.displayName(for: fromStation) : fromStationName
     }
 
     var toStationDisplayName: String {
-        toStationName.isEmpty ? Stations.displayNameForCode(toStation) : toStationName
+        toStationName.isEmpty ? Stations.displayName(for: toStation) : toStationName
     }
 
     var averageTransitTimeText: String {
@@ -889,18 +889,52 @@ enum SummaryScope: String, Codable {
     case train
 }
 
+/// Delay category for train visualization
+enum DelayCategory: String, Codable {
+    case onTime = "on_time"
+    case slightDelay = "slight_delay"
+    case delayed = "delayed"
+    case cancelled = "cancelled"
+}
+
+/// Summary of a single train's delay for visualization
+struct TrainDelaySummary: Codable, Identifiable {
+    let trainId: String
+    let delayMinutes: Double
+    let category: DelayCategory
+    let scheduledDeparture: Date
+
+    var id: String { trainId }
+
+    enum CodingKeys: String, CodingKey {
+        case trainId = "train_id"
+        case delayMinutes = "delay_minutes"
+        case category
+        case scheduledDeparture = "scheduled_departure"
+    }
+}
+
 /// Raw metrics included with summary response
 struct SummaryMetrics: Codable {
+    // Departure stats
     let onTimePercentage: Double?
     let averageDelayMinutes: Double?
+    // Arrival stats (nil if no arrival data available)
+    let arrivalOnTimePercentage: Double?
+    let arrivalAverageDelayMinutes: Double?
+    // Counts
     let cancellationCount: Int?
     let trainCount: Int?
+    let trainsByCategory: [String: [TrainDelaySummary]]?
 
     enum CodingKeys: String, CodingKey {
         case onTimePercentage = "on_time_percentage"
         case averageDelayMinutes = "average_delay_minutes"
+        case arrivalOnTimePercentage = "arrival_on_time_percentage"
+        case arrivalAverageDelayMinutes = "arrival_average_delay_minutes"
         case cancellationCount = "cancellation_count"
         case trainCount = "train_count"
+        case trainsByCategory = "trains_by_category"
     }
 }
 

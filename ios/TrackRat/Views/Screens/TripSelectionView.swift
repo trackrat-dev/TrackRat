@@ -222,9 +222,7 @@ struct TripSelectionView: View {
                     
                     // Active trips (Live Activity) - show when not searching
                     if !isSearching {
-                        if #available(iOS 16.1, *) {
-                            ActiveTripsSection()
-                        }
+                        ActiveTripsSection()
                     }
                     
                     // Favorite stations - show when not searching
@@ -277,10 +275,12 @@ struct TripSelectionView: View {
         appState.selectedRoute = trip  // Set selected route for map highlighting
 
         // Use pendingNavigation to expand sheet FIRST, then navigate
-        appState.pendingNavigation = .trainList(destination: trip.destinationName)
+        appState.pendingNavigation = .trainList(destination: trip.destinationName, departureStationCode: trip.departureCode)
 
-        // Reset search state
-        withAnimation(.easeInOut(duration: 0.3)) {
+        // Reset search state WITHOUT animation to prevent ghosting during navigation
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
             searchText = ""
             isSearching = false
             searchFieldFocused = false
@@ -300,7 +300,7 @@ struct TripSelectionView: View {
         appState.destinationStationCode = suggestion.toStation
 
         // Use pendingNavigation to expand sheet FIRST, then navigate
-        appState.pendingNavigation = .trainList(destination: suggestion.toStationName)
+        appState.pendingNavigation = .trainList(destination: suggestion.toStationName, departureStationCode: suggestion.fromStation)
     }
     
     private func selectOriginStation(name: String, code: String) {
@@ -312,14 +312,16 @@ struct TripSelectionView: View {
         // Snap bottom sheet to medium (50%) position for better map visibility
         // Native sheet will handle positioning automatically
         appState.navigationPath.append(NavigationDestination.destinationPicker)
-        
-        // Reset search with animation
-        withAnimation(.easeInOut(duration: 0.3)) {
+
+        // Reset search WITHOUT animation to prevent ghosting during navigation
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
             searchText = ""
             isSearching = false
             searchFieldFocused = false
         }
-        
+
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
@@ -507,8 +509,10 @@ struct TripSelectionView: View {
                         journeyDate: foundTrain.journeyDate
                     )
 
-                    // Reset search
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    // Reset search WITHOUT animation to prevent ghosting during navigation
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
                         searchText = ""
                         isSearching = false
                         searchFieldFocused = false

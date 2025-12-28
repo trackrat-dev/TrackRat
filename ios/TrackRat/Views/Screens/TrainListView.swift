@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
@@ -8,158 +7,188 @@ struct TrainListView: View {
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 6
 
-    @State private var destination: String
-    @State private var departureStationCode: String
-    @State private var departureName: String
-    @State private var isClosing = false
+    // Station info passed via init for guaranteed first-frame availability
+    private let destination: String
+    private let departureStationCode: String
+
+    // Computed from init parameter to avoid layout shift
+    private var departureName: String {
+        Stations.displayName(for: departureStationCode)
+    }
+
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
 
-
-    init(destination: String) {
-        self._destination = State(initialValue: destination)
-        self._departureStationCode = State(initialValue: "")
-        self._departureName = State(initialValue: "")
+    init(destination: String, departureStationCode: String) {
+        self.destination = destination
+        self.departureStationCode = departureStationCode
         self._viewModel = StateObject(wrappedValue: TrainListViewModel())
     }
     
     var body: some View {
-        // Native sheet handles scrolling automatically
-        ScrollView {
-            VStack(spacing: 16) {
-                if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
-                    TrackRatLoadingView(message: "Finding your trains...")
-                        .frame(maxWidth: .infinity, minHeight: 200)
-                } else if let error = viewModel.error {
-                    ErrorView(message: error) {
-                        Task {
-                            await viewModel.loadTrains(
-                                destination: destination,
-                                fromStationCode: departureStationCode
-                            )
-                        }
+        VStack(spacing: 0) {
+            // Fixed header - replaces system navigation bar to avoid layout shift
+            HStack {
+                // Back button
+                Button {
+                    if !appState.navigationPath.isEmpty {
+                        appState.navigationPath.removeLast()
                     }
-                } else if viewModel.trains.isEmpty {
-                    EmptyStateView(message: "No trains found")
-                } else {
-                    // Route summary (if we have both origin and destination)
-                    if !departureStationCode.isEmpty,
-                       let destinationCode = Stations.getStationCode(destination) {
-                        OperationsSummaryView(
-                            scope: .route,
-                            fromStation: departureStationCode,
-                            toStation: destinationCode
-                        )
-                        .padding(.bottom, 4)
-                    }
-
-                    let expressTrains = viewModel.identifyExpressTrains()
-                    ForEach(viewModel.trains) { train in
-                        TrainCard(
-                            train: train,
-                            destination: destination,
-                            departureStationCode: departureStationCode,
-                            onTap: {
-                                appState.currentTrainId = train.id
-                                appState.currentTrain = train  // Store the full train object
-
-                                // Set the route context for bottom sheet expansion
-                                if let destinationCode = Stations.getStationCode(destination) {
-                                    appState.selectedRoute = TripPair(
-                                        departureCode: departureStationCode,
-                                        departureName: departureName,
-                                        destinationCode: destinationCode,
-                                        destinationName: destination,
-                                        lastUsed: Date(),
-                                        isFavorite: false
-                                    )
-                                }
-
-                                // Use pendingNavigation to expand sheet FIRST, then navigate
-                                // This prevents the glitch where sheet expands with empty space
-                                appState.pendingNavigation = .trainDetailsFlexible(
-                                    trainNumber: train.trainId,
-                                    fromStation: departureStationCode.isEmpty ? nil : departureStationCode,
-                                    journeyDate: train.journeyDate
-                                )
-                            },
-                            isExpress: expressTrains.contains(train.trainId)
-                        )
-                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
                 }
 
-                // Add spacer at bottom for better scrolling
-                Spacer(minLength: 50)
-            }
-            .padding()
-        }
-        .navigationTitle(destination)
-        .navigationBarTitleDisplayMode(.inline)
-        .glassmorphicNavigationBar()
-        .toolbar(isClosing ? .hidden : .visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
+                Spacer()
+
+                // Center title
                 VStack(spacing: 0) {
                     Text(destination)
                         .font(.headline)
                         .foregroundColor(.white)
                     if !departureName.isEmpty {
-                        Text("from \(Stations.displayName(for: departureName))")
+                        Text("from \(departureName)")
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.8))
                     }
                 }
-                .contentShape(Rectangle())
-                // Native sheet handles drag gestures automatically
-            }
-            
-            ToolbarItem(placement: .navigationBarTrailing) {
+
+                Spacer()
+
+                // Close button
                 Button("Close") {
-                    isClosing = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        appState.navigationPath = NavigationPath()
-                    }
+                    appState.navigationPath = NavigationPath()
                 }
                 .foregroundColor(.white)
                 .font(.body)
+                .frame(height: 44)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            // Scrollable content
+            ScrollView {
+                VStack(spacing: 16) {
+                    if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
+                        TrackRatLoadingView(message: "Finding your trains...")
+                            .frame(maxWidth: .infinity, minHeight: 200)
+                    } else if let error = viewModel.error {
+                        ErrorView(message: error) {
+                            Task {
+                                await viewModel.loadTrains(
+                                    destination: destination,
+                                    fromStationCode: departureStationCode
+                                )
+                            }
+                        }
+                    } else if viewModel.trains.isEmpty {
+                        EmptyStateView(message: "No trains found")
+                    } else {
+                        // Route summary (if we have both origin and destination)
+                        if !departureStationCode.isEmpty,
+                           let destinationCode = Stations.getStationCode(destination) {
+                            OperationsSummaryView(
+                                scope: .route,
+                                fromStation: departureStationCode,
+                                toStation: destinationCode,
+                                isExpandable: true,
+                                onTrainTap: { selectedTrainId in
+                                    // Navigate to the selected train's detail view
+                                    appState.navigationPath.append(
+                                        NavigationDestination.trainDetailsFlexible(
+                                            trainNumber: selectedTrainId,
+                                            fromStation: departureStationCode,
+                                            journeyDate: nil
+                                        )
+                                    )
+                                }
+                            )
+                            .padding(.bottom, 4)
+                        }
+
+                        let expressTrains = viewModel.identifyExpressTrains()
+                        ForEach(viewModel.trains) { train in
+                            TrainCard(
+                                train: train,
+                                destination: destination,
+                                departureStationCode: departureStationCode,
+                                onTap: {
+                                    appState.currentTrainId = train.id
+                                    appState.currentTrain = train  // Store the full train object
+
+                                    // Set the route context for bottom sheet expansion
+                                    if let destinationCode = Stations.getStationCode(destination) {
+                                        appState.selectedRoute = TripPair(
+                                            departureCode: departureStationCode,
+                                            departureName: departureName,
+                                            destinationCode: destinationCode,
+                                            destinationName: destination,
+                                            lastUsed: Date(),
+                                            isFavorite: false
+                                        )
+                                    }
+
+                                    // Use pendingNavigation to expand sheet FIRST, then navigate
+                                    // This prevents the glitch where sheet expands with empty space
+                                    appState.pendingNavigation = .trainDetailsFlexible(
+                                        trainNumber: train.trainId,
+                                        fromStation: departureStationCode.isEmpty ? nil : departureStationCode,
+                                        journeyDate: train.journeyDate
+                                    )
+                                },
+                                isExpress: expressTrains.contains(train.trainId)
+                            )
+                        }
+                    }
+
+                    // Feedback button at bottom of content
+                    if !viewModel.trains.isEmpty {
+                        FeedbackButton(
+                            screen: "train_list",
+                            trainId: nil,
+                            originCode: departureStationCode,
+                            destinationCode: Stations.getStationCode(destination)
+                        )
+                        .padding(.top, 8)
+                    }
+
+                    // Add spacer at bottom for better scrolling
+                    Spacer(minLength: 50)
+                }
+                .padding()
             }
         }
+        .navigationBarHidden(true)
         .task {
             await viewModel.loadTrains(
                 destination: destination,
                 fromStationCode: departureStationCode
             )
         }
-        .onReceive(viewModel.timer) { _ in
-            // PERFORMANCE: Only refresh when view is visible to prevent API stampede
-            // when multiple views have timers running
+        .task(id: isViewVisible) {
+            // Auto-refresh task that cancels automatically when view disappears
             guard isViewVisible else { return }
-            Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled, isViewVisible else { break }
                 await viewModel.refreshTrains()
             }
         }
         .onAppear {
             isViewVisible = true
-            // Initialize state from app state
-            if departureStationCode.isEmpty {
-                departureStationCode = appState.departureStationCode ?? "NY"
-                departureName = appState.selectedDeparture ?? ""
-            }
-            
+
             // Record journey search for Rat Sense
-            if let fromCode = appState.departureStationCode,
-               let toCode = appState.destinationStationCode {
-                RatSenseService.shared.recordJourneySearch(from: fromCode, to: toCode)
+            if let toCode = Stations.getStationCode(destination) {
+                RatSenseService.shared.recordJourneySearch(from: departureStationCode, to: toCode)
             }
-            
+
             // Set the route for immediate blue line drawing on map
-            // Use appState values directly to ensure we have the correct values
-            if let destinationCode = Stations.getStationCode(destination),
-               let depCode = appState.departureStationCode,
-               let depName = appState.selectedDeparture {
+            if let destinationCode = Stations.getStationCode(destination) {
                 appState.selectedRoute = TripPair(
-                    departureCode: depCode,
-                    departureName: depName,
+                    departureCode: departureStationCode,
+                    departureName: departureName,
                     destinationCode: destinationCode,
                     destinationName: destination,
                     lastUsed: Date(),
@@ -295,8 +324,8 @@ struct TrainCard: View {
         .background(
             isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9)
         )
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+        .cornerRadius(TrackRatTheme.CornerRadius.lg)
+        .trackRatShadow()
         .opacity(1.0)
         .onTapGesture {
             onTap()
@@ -322,7 +351,7 @@ struct StatusV2Badge: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(statusColor.opacity(0.2))
-        .cornerRadius(8)
+        .cornerRadius(TrackRatTheme.CornerRadius.sm)
     }
     
     private var statusColor: Color {
@@ -385,10 +414,7 @@ class TrainListViewModel: ObservableObject {
     private var currentDestination: String?
     private var currentFromStationCode: String?
     private let apiService: APIService
-    
-    // Timer for auto-refresh
-    let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    
+
     // MARK: - Express Train Identification
     
     /// Identify express trains using 15% faster travel time threshold
@@ -597,7 +623,7 @@ struct EmptyStateView: View {
 
 #Preview {
     NavigationStack {
-        TrainListView(destination: "Newark Penn Station")
+        TrainListView(destination: "Newark Penn Station", departureStationCode: "NY")
             .environmentObject(AppState())
     }
 }

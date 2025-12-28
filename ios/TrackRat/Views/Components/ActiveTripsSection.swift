@@ -1,7 +1,6 @@
 import SwiftUI
 import ActivityKit
 
-@available(iOS 16.1, *)
 struct ActiveTripsSection: View {
     @StateObject private var liveActivityService = LiveActivityService.shared
     @EnvironmentObject private var appState: AppState
@@ -106,5 +105,5 @@ struct ActiveTripsSection: View {
     ActiveTripsSection()
         .environmentObject(AppState())
         .preferredColorScheme(.dark)
-        .background(TrackRatTheme.Colors.surface)
+        .background(.ultraThinMaterial)
 }

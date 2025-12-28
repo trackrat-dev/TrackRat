@@ -16,6 +16,7 @@ from prometheus_client import make_asgi_app
 from structlog import get_logger
 
 from trackrat.api import (
+    feedback,
     health,
     live_activities,
     predictions,
@@ -180,11 +181,12 @@ async def suppress_health_check_logs(
 
 
 # Include routers
-app.include_router(trains.router)
+app.include_router(feedback.router)
 app.include_router(health.router)
 app.include_router(live_activities.router)
 app.include_router(predictions.router)
 app.include_router(routes.router)
+app.include_router(trains.router)
 app.include_router(validation.router)
 
 # Mount Prometheus metrics endpoint if enabled

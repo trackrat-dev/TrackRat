@@ -2,7 +2,7 @@
 
 A simplified, efficient train tracking system for NJ Transit and Amtrak built with FastAPI, PostgreSQL, and modern Python.
 
-**Version:** 2.0.0 (September 2025)
+**Version:** 2.0.0 (December 2025)
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Python:** 3.11+ with strict type checking
 
@@ -60,8 +60,8 @@ GRANT ALL PRIVILEGES ON DATABASE trackratdb TO trackratuser;
 cp .env.example .env
 # Edit .env with your configuration:
 # - TRACKRAT_NJT_API_TOKEN: Your NJ Transit API token
-# - TRACKRAT_AMTRAK_API_TOKEN: Your Amtrak API token
 # - TRACKRAT_DATABASE_URL: postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb
+# Note: Amtrak uses public API (api-v3.amtraker.com) - no token required
 
 # Run database migrations
 poetry run alembic upgrade head
@@ -88,8 +88,8 @@ All configuration is done via environment variables. See `.env.example` for avai
 
 ### Required Settings
 - `TRACKRAT_NJT_API_TOKEN`: Your NJ Transit API token
-- `TRACKRAT_AMTRAK_API_TOKEN`: Your Amtrak API token (optional but recommended)
 - `TRACKRAT_DATABASE_URL`: PostgreSQL connection string
+- Note: Amtrak uses the public Amtraker API (no authentication required)
 - **APNS Configuration** (required for Live Activities):
   - `APNS_TEAM_ID`: Apple Developer Team ID (10 characters)
   - `APNS_KEY_ID`: APNS Auth Key ID (10 characters)
@@ -99,12 +99,16 @@ All configuration is done via environment variables. See `.env.example` for avai
 
 ### Optional Settings
 - `TRACKRAT_DISCOVERY_INTERVAL_MINUTES`: How often to discover new trains (default: 30)
-- `TRACKRAT_COLLECTION_INTERVAL_MINUTES`: How often to collect journey data (default: 15)
+- `TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES`: How often to collect journey data (default: 15)
 - `TRACKRAT_DATA_STALENESS_SECONDS`: When to refresh data on-demand (default: 60)
 - `TRACKRAT_ENABLE_METRICS`: Enable Prometheus metrics endpoint (default: true)
 - `TRACKRAT_LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
 - `TRACKRAT_ENVIRONMENT`: Environment name (development, staging, production)
 - `TRACKRAT_GCS_BACKUP_BUCKET`: GCS bucket for database backups (optional)
+- `TRACKRAT_INTERNAL_API_URL`: Internal API URL for validation service (default: http://localhost:8000)
+- `TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY`: Max missing trains to verify in detail (default: 20)
+- `TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS`: Use database-aggregated pattern analysis (default: true)
+- `TRACKRAT_ENABLE_SQL_LOGGING`: Enable SQLAlchemy query logging (default: false)
 
 ### APNS Certificate Setup
 
@@ -151,6 +155,12 @@ Complete journey with all stops:
 - Includes progress tracking and arrival predictions
 - Returns enhanced status_v2 field
 
+#### Train History
+```
+GET /api/v2/trains/{train_id}/history?date=2025-09-15
+```
+Historical train performance with delay breakdowns
+
 ### Route Analytics
 
 #### Route History
@@ -171,17 +181,35 @@ Real-time congestion analysis:
 - Segment-by-segment delays
 - Cached for performance
 
+#### Operations Summary
+```
+GET /api/v2/routes/summary
+```
+Natural language summary of network operations status
+
+#### Segment Trains
+```
+GET /api/v2/routes/segments/{from_station}/{to_station}/trains?hours=24
+```
+Detailed train records for a specific segment
+
 ### ML Predictions
 
 #### Track Assignment Prediction
 ```
-GET /api/v2/predictions/track-assignment/{station}?train_id=1234&date=2025-09-15
+GET /api/v2/predictions/track?station_code=NY&train_id=1234&journey_date=2025-09-15
 ```
 ML-powered track predictions with confidence scoring
 
+#### Supported Stations
+```
+GET /api/v2/predictions/supported-stations
+```
+List of stations with ML-enabled track predictions
+
 #### Track Occupancy
 ```
-GET /api/v2/predictions/track-occupancy/{station}
+GET /api/v2/trains/stations/{station_code}/tracks/occupied
 ```
 Real-time track availability analysis
 
@@ -215,6 +243,24 @@ Prometheus-compatible metrics:
 - Train counts
 - Validation coverage
 - Cache hit rates
+
+#### Validation Status
+```
+GET /api/v2/validation/status
+```
+Current validation status and recent results
+
+#### Validation Results
+```
+GET /api/v2/validation/results/{route}/{source}
+```
+Route-specific validation details (e.g., `/api/v2/validation/results/NY-TR/NJT`)
+
+### Feedback
+```
+POST /api/v2/feedback
+```
+Submit user feedback for train data accuracy
 
 ### Live Activities
 
@@ -344,10 +390,10 @@ The scheduler supports multiple replicas:
 - **CongestionAnalyzer**: Network congestion monitoring
 - **DirectArrivalForecaster**: Real-time arrival predictions
 - **ApiCacheService**: Response caching with pre-computation
+- **SummaryService**: Natural language operations summaries
 
 #### ML & Predictions
-- **TrackPredictionFeatures**: ML feature extraction
-- **TrackPredictionService**: Track assignment predictions
+- **HistoricalTrackPredictor**: Track assignment predictions using historical patterns
 - **TrackOccupancyService**: Track availability analysis
 
 #### Infrastructure

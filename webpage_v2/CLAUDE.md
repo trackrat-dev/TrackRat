@@ -71,7 +71,7 @@ className="bg-surface/80 backdrop-blur-xl border border-white/10 rounded-2xl"
 ## API Integration
 
 ### Base Configuration (src/services/api.ts)
-- **Production**: `https://prod.api.trackrat.net/api/v2`
+- **Production**: `https://apiv2.trackrat.net/api/v2`
 - **Staging**: Not used in web (iOS uses staging)
 - **Cache Duration**: 2 minutes for departure lists
 - **Cache Strategy**: In-memory Map with timestamp checks
@@ -90,7 +90,6 @@ useEffect(() => {
 - Try/catch in API service
 - Graceful degradation (show cached data if available)
 - User-friendly error messages via `ErrorMessage` component
-- No error tracking (Sentry is backend-only)
 
 ### Endpoints Used
 1. `GET /trains/departures?from={code}&to={code}&limit=100`
@@ -163,7 +162,7 @@ npm run preview    # Preview production build locally
 - **Automatic**: Push to `main` branch triggers GitHub Actions
 - **Workflow**: `.github/workflows/deploy-webpage.yml`
 - **Output**: `dist/` → `gh-pages` branch
-- **URL**: `https://andytubeee.github.io/TrackRat/`
+- **URL**: `https://bokonon1.github.io/TrackRat/`
 
 ## Common Patterns
 
@@ -216,7 +215,6 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 - **No Maps** - No Leaflet/Mapbox integration
 - **No Charts** - No historical performance visualization
 - **No Backend Auth** - Stateless, no user accounts
-- **No Error Tracking** - No Sentry integration (backend only)
 
 ### Intentional Simplifications
 - **Polling over WebSocket**: Simpler, no connection management

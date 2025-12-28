@@ -2,92 +2,226 @@ import SwiftUI
 
 /// A simple info box that displays a brief summary of recent train operations.
 /// Supports three scopes: network (overall), route (origin to destination), and train (specific train).
+/// When ratSenseRoute is provided with network scope, shows both network and route summaries.
 /// Hides automatically on loading errors.
 struct OperationsSummaryView: View {
     let scope: SummaryScope
     let fromStation: String?
     let toStation: String?
     let trainId: String?
+    let isExpandable: Bool
+    let onTrainTap: ((String) -> Void)?
+
+    /// Optional RatSense route to show alongside network summary
+    let ratSenseRoute: (from: String, to: String)?
 
     @State private var summary: OperationsSummaryResponse?
+    @State private var routeSummary: OperationsSummaryResponse?
     @State private var isLoading = true
     @State private var hasError = false
+    @State private var isExpanded = false
     @Environment(\.scenePhase) private var scenePhase
 
-    init(scope: SummaryScope, fromStation: String? = nil, toStation: String? = nil, trainId: String? = nil) {
+    init(
+        scope: SummaryScope,
+        fromStation: String? = nil,
+        toStation: String? = nil,
+        trainId: String? = nil,
+        isExpandable: Bool = false,
+        onTrainTap: ((String) -> Void)? = nil,
+        ratSenseRoute: (from: String, to: String)? = nil
+    ) {
         self.scope = scope
         self.fromStation = fromStation
         self.toStation = toStation
         self.trainId = trainId
+        self.isExpandable = isExpandable
+        self.onTrainTap = onTrainTap
+        self.ratSenseRoute = ratSenseRoute
+    }
+
+    /// Combined display text: network summary or route summary
+    private var combinedBodyText: String? {
+        guard let summary = summary, !summary.body.isEmpty else { return nil }
+
+        // If we have a route summary, show "On your route:" + route body
+        if let routeSummary = routeSummary, !routeSummary.body.isEmpty {
+            return "On your route: \(routeSummary.body)"
+        }
+
+        // No route summary - show body only (it's already a complete summary)
+        // Headline is designed for expandable views, not inline display
+        return summary.body
     }
 
     var body: some View {
         Group {
             if isLoading {
-                // Loading state - show minimal placeholder
-                HStack(spacing: 8) {
-                    Image(systemName: "info.circle.fill")
-                        .foregroundColor(.orange.opacity(0.8))
-                        .font(.subheadline)
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(height: 16)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(.systemGray6).opacity(0.9))
-                )
+                // Use Color.clear instead of EmptyView to ensure .task fires
+                Color.clear.frame(height: 0)
             } else if hasError {
                 // Hide on error - show nothing
+                Color.clear.frame(height: 0)
+            } else if let bodyText = combinedBodyText {
+                // Only show if we have content
+                if isExpandable, let summary = summary, !summary.headline.isEmpty {
+                    // Collapsible view - headline collapsed, body expanded
+                    collapsibleView(summary: summary)
+                } else {
+                    // Simple view - show the combined summary body
+                    Text(bodyText)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(.ultraThinMaterial)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                        )
+                }
+            } else {
+                // No data available - hide the section
                 EmptyView()
-            } else if let summary = summary {
-                // Success state - show the summary body
-                Text(summary.body)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(2)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(.systemGray6).opacity(0.9))
-                    )
             }
         }
         .task {
-            await fetchSummary()
+            await fetchSummaries()
         }
         .onChange(of: scenePhase) { _, newPhase in
             // Auto-refresh when returning to foreground
             if newPhase == .active {
                 Task {
-                    await fetchSummary()
+                    await fetchSummaries()
                 }
             }
         }
     }
 
-    private func fetchSummary() async {
+    private func fetchSummaries() async {
         isLoading = true
         hasError = false
 
+        print("📊 OperationsSummary: Fetching scope=\(scope), from=\(fromStation ?? "nil"), to=\(toStation ?? "nil"), train=\(trainId ?? "nil"), ratSenseRoute=\(ratSenseRoute.map { "\($0.from)→\($0.to)" } ?? "nil")")
+
         do {
-            summary = try await APIService.shared.fetchOperationsSummary(
+            // Fetch main summary
+            let result = try await APIService.shared.fetchOperationsSummary(
                 scope: scope,
                 fromStation: fromStation,
                 toStation: toStation,
                 trainId: trainId
             )
+            summary = result
+
+            // If we have a RatSense route and this is a network scope, also fetch route summary
+            if scope == .network, let route = ratSenseRoute {
+                do {
+                    let routeResult = try await APIService.shared.fetchOperationsSummary(
+                        scope: .route,
+                        fromStation: route.from,
+                        toStation: route.to,
+                        trainId: nil
+                    )
+                    routeSummary = routeResult
+                    print("📊 OperationsSummary: Route summary body='\(routeResult.body.prefix(60))...'")
+                } catch {
+                    // Route summary is optional - don't fail if it errors
+                    print("⚠️ OperationsSummary: Route summary failed - \(error) - showing network only")
+                    routeSummary = nil
+                }
+            }
+
             isLoading = false
+
+            // Log what we received
+            if result.body.isEmpty {
+                print("📊 OperationsSummary: Received EMPTY body - view will be hidden (headline='\(result.headline)')")
+            } else {
+                print("📊 OperationsSummary: Received body='\(result.body.prefix(80))...' headline='\(result.headline)'")
+            }
         } catch {
-            print("❌ Failed to fetch operations summary: \(error)")
+            print("❌ OperationsSummary: Failed to fetch - \(error) - view will be hidden")
             hasError = true
             isLoading = false
         }
+    }
+
+    private func collapsibleView(summary: OperationsSummaryResponse) -> some View {
+        VStack(spacing: 0) {
+            // Collapsed header (always visible, tappable)
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    isExpanded.toggle()
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(summary.headline)
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer()
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundColor(.white.opacity(0.5))
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.top, 2)
+                }
+                .contentShape(Rectangle())
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+
+            // Expanded content
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                        .background(Color.white.opacity(0.2))
+                        .padding(.horizontal, 14)
+
+                    Text(summary.body)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                        .padding(.horizontal, 14)
+
+                    // Train distribution chart
+                    if let trainsByCategory = summary.metrics?.trainsByCategory,
+                       !trainsByCategory.values.allSatisfy({ $0.isEmpty }) {
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+                            .padding(.horizontal, 14)
+
+                        TrainDistributionChart(trainsByCategory: trainsByCategory) { trainId in
+                            onTrainTap?(trainId)
+                        }
+                        .padding(.horizontal, 10)
+                    }
+                }
+                .padding(.bottom, 12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+        )
     }
 }
 
@@ -109,5 +243,5 @@ struct OperationsSummaryView: View {
         )
     }
     .padding()
-    .background(Color(.systemBackground))
+    .background(.ultraThinMaterial)
 }

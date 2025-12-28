@@ -108,7 +108,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: BACKGROUND_REFRESH_TASK_ID, using: nil) { task in
-            self.handleAppRefresh(task: task as! BGAppRefreshTask)
+            guard let bgTask = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self.handleAppRefresh(task: bgTask)
         }
     }
 
@@ -127,20 +131,22 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let tokenString = deviceToken.map { String(format: "%02x", $0) }.joined()
+
+        #if DEBUG
         print("📱 Device token received: \(tokenString)")
-        
-        // DEBUG: Print actual bundle ID being used
         if let bundleId = Bundle.main.bundleIdentifier {
             print("📱 iOS App Bundle ID: \(bundleId)")
         }
-        
+        #endif
+
         // Store device token for Live Activity registration
         Task { @MainActor in
             AppDelegate.deviceToken = tokenString
         }
-        
-        // Device token received - Live Activities will handle their own registration
-        print("📱 Device token received: \(tokenString) - Live Activities ready")
+
+        #if DEBUG
+        print("📱 Device token stored - Live Activities ready")
+        #endif
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
@@ -449,7 +455,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             }
 
             // Wait for first to complete and cancel the other
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                group.cancelAll()
+                throw CancellationError()
+            }
             group.cancelAll()
             return result
         }

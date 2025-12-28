@@ -186,22 +186,22 @@ struct DeparturePickerView: View {
         // Native sheet handles scrolling automatically
         ScrollView {
             VStack(spacing: 16) {
-                    titleSection
-                    
-                    Spacer()
-                        .frame(height: shouldShowTitle ? 0 : topPadding)
-                    
-                    VStack(spacing: 20) {
-                        searchFieldSection
-                        contentSection
-                    }
-                    
-                    Spacer()
-                    Spacer()
+                titleSection
+
+                Spacer()
+                    .frame(height: shouldShowTitle ? 0 : topPadding)
+
+                VStack(spacing: 20) {
+                    searchFieldSection
+                    contentSection
                 }
+
+                Spacer()
+                Spacer()
             }
+        }
     }
-    
+
     @ViewBuilder
     private var titleSection: some View {
         if shouldShowTitle {
@@ -353,10 +353,8 @@ struct DeparturePickerView: View {
     @ViewBuilder
     private var popularStationsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("POPULAR STATIONS")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.white.opacity(0.7))
+            Text("Popular Stations")
+                .trackRatSectionHeader()
                 .padding(.horizontal)
             
             VStack(spacing: 12) {
@@ -378,14 +376,16 @@ struct DeparturePickerView: View {
         appState.selectedDeparture = name
         appState.departureStationCode = code
         appState.navigationPath.append(NavigationDestination.destinationPicker)
-        
-        // Reset search with animation
-        withAnimation(.easeInOut(duration: 0.3)) {
+
+        // Reset search WITHOUT animation to prevent ghosting during navigation
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
             searchText = ""
             isSearching = false
             searchFieldFocused = false
         }
-        
+
         // Haptic feedback
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
@@ -401,9 +401,9 @@ struct DeparturePickerView: View {
         appState.destinationStationCode = suggestion.toStation
 
         // Use pendingNavigation to expand sheet FIRST, then navigate
-        appState.pendingNavigation = .trainList(destination: suggestion.toStationName)
+        appState.pendingNavigation = .trainList(destination: suggestion.toStationName, departureStationCode: suggestion.fromStation)
     }
-    
+
     private func searchForTrain(_ trainNumber: String) {
         guard !isSearchingTrain else { return }
         
@@ -449,8 +449,10 @@ struct DeparturePickerView: View {
                         journeyDate: train.journeyDate
                     )
 
-                    // Reset search
-                    withAnimation(.easeInOut(duration: 0.3)) {
+                    // Reset search WITHOUT animation to prevent ghosting during navigation
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
                         searchText = ""
                         isSearching = false
                         searchFieldFocused = false
@@ -569,8 +571,8 @@ struct DepartureButton: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
-        .background(.white.opacity(0.2))
-        .cornerRadius(12)
+        .background(TrackRatTheme.Colors.surfaceCard)
+        .cornerRadius(TrackRatTheme.CornerRadius.md)
     }
 }
 

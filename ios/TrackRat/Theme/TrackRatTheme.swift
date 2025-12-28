@@ -66,6 +66,10 @@ struct TrackRatTheme {
         // Border Colors
         static let border: Color = Color.white.opacity(0.3)
         static let borderSecondary: Color = Color.white.opacity(0.2)
+
+        // Shadow Colors
+        static let shadow: Color = Color.black.opacity(0.1)
+        static let shadowMedium: Color = Color.black.opacity(0.2)
     }
     
     // MARK: - Typography
@@ -181,7 +185,7 @@ extension View {
     
     func trackRatGlassmorphicBackground() -> some View {
         self
-            .background(TrackRatTheme.Colors.primaryBackground)
+            .background(.ultraThinMaterial)
             .ignoresSafeArea()
     }
     
@@ -189,6 +193,55 @@ extension View {
         self
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+    }
+
+    /// Standard section header styling - uppercase caption with secondary color
+    func trackRatSectionHeader() -> some View {
+        self
+            .font(TrackRatTheme.Typography.caption)
+            .foregroundColor(TrackRatTheme.Colors.onSurfaceSecondary)
+            .textCase(.uppercase)
+            .tracking(0.5)
+    }
+
+    /// Standard card shadow
+    func trackRatShadow() -> some View {
+        self.shadow(color: TrackRatTheme.Colors.shadow, radius: 8, x: 0, y: 4)
+    }
+
+    /// Lighter card shadow for subtle elevation
+    func trackRatShadowLight() -> some View {
+        self.shadow(color: TrackRatTheme.Colors.shadow, radius: 4, x: 0, y: 2)
+    }
+
+    /// Makes navigation destination backgrounds transparent to allow sheet's
+    /// presentationBackground material to show through.
+    /// On iOS 26+: Uses Liquid Glass compatible transparent backgrounds
+    /// On iOS 18.x: Keeps default navigation backgrounds to prevent ghosting during transitions
+    @ViewBuilder
+    func transparentNavigationBackground() -> some View {
+        if #available(iOS 26, *) {
+            self
+                .scrollContentBackground(.hidden)
+                .containerBackground(.clear, for: .navigation)
+        } else {
+            // On iOS 18.x, don't clear the navigation container background
+            // as it causes both old and new views to be visible during transitions
+            self
+                .scrollContentBackground(.hidden)
+        }
+    }
+
+    /// Applies presentation background only on iOS 18 and earlier.
+    /// On iOS 26+, Liquid Glass automatically provides the glassy sheet appearance,
+    /// and manually specifying presentationBackground conflicts with it.
+    @ViewBuilder
+    func legacyPresentationBackground(_ material: Material) -> some View {
+        if #available(iOS 26, *) {
+            self
+        } else {
+            self.presentationBackground(material)
+        }
     }
 }
 

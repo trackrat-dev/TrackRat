@@ -622,6 +622,21 @@ class SegmentTrainDetailsResponse(BaseModel):
 # Operations Summary API Models
 
 
+class TrainDelaySummaryResponse(BaseModel):
+    """Summary of a single train's delay for visualization."""
+
+    train_id: str = Field(..., description="Train identifier")
+    delay_minutes: float = Field(..., ge=0.0, description="Delay in minutes")
+    category: Literal["on_time", "slight_delay", "delayed", "cancelled"] = Field(
+        ..., description="Delay category"
+    )
+    scheduled_departure: datetime = Field(..., description="Scheduled departure time")
+
+    @field_serializer("scheduled_departure")
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""
+
+
 class SummaryMetricsResponse(BaseModel):
     """Raw metrics included with summary response."""
 
@@ -635,6 +650,9 @@ class SummaryMetricsResponse(BaseModel):
         None, ge=0, description="Number of cancellations"
     )
     train_count: int | None = Field(None, ge=0, description="Total number of trains")
+    trains_by_category: dict[str, list[TrainDelaySummaryResponse]] | None = Field(
+        None, description="Trains grouped by delay category for visualization"
+    )
 
 
 class OperationsSummaryResponse(BaseModel):

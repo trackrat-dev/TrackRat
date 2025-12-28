@@ -64,21 +64,23 @@ TrackRat/
 ├── Models/                      # Data layer
 │   ├── TrainV2.swift           # Pure data model with context-aware calculations
 │   ├── V2APIModels.swift       # Backend V2 API models
-│   ├── LiveActivityModels.swift # Shared widget models
 │   ├── DeepLink.swift          # URL scheme handling
 │   └── Train.swift             # Legacy compatibility model
 │
-├── Services/                    # Business logic
+├── Services/                    # Business logic (10 services)
 │   ├── APIService.swift        # Network communication
 │   ├── LiveActivityService.swift # Live Activity management
 │   ├── RatSenseService.swift   # AI journey predictions
 │   ├── BackendWakeupService.swift # Backend health management
 │   ├── StorageService.swift    # Local persistence
 │   ├── DeepLinkService.swift   # URL routing
-│   └── ShareService.swift      # Social sharing
+│   ├── ShareService.swift      # Social sharing
+│   ├── TrainCacheService.swift # Two-tier train caching with LRU
+│   ├── ThemeManager.swift      # Theme configuration
+│   └── StaticTrackDistributionService.swift # Track analytics
 │
 ├── Views/                       # UI layer
-│   ├── Screens/                # Full-screen views
+│   ├── Screens/                # Full-screen views (12 screens)
 │   │   ├── TripSelectionView.swift      # Home screen with search
 │   │   ├── DeparturePickerView.swift    # Origin station selection
 │   │   ├── DestinationPickerView.swift  # Destination selection
@@ -87,13 +89,22 @@ TrackRat/
 │   │   ├── PennStationGuideView.swift   # Navigation assistance
 │   │   ├── CongestionMapView.swift      # Network congestion
 │   │   ├── HistoricalDataView.swift     # Performance analytics
-│   │   └── MyProfileView.swift          # User settings
+│   │   ├── MyProfileView.swift          # User settings
+│   │   ├── MapContainerView.swift       # Primary map interface
+│   │   ├── OnboardingView.swift         # User onboarding
+│   │   └── AdvancedConfigurationView.swift # Developer settings
 │   │
-│   └── Components/              # Reusable UI components
+│   └── Components/              # Reusable UI components (16 files)
 │       ├── ActiveTripsSection.swift     # Live Activity cards
-│       ├── BottomSheetView.swift        # Draggable sheets
+│       ├── LegacyBottomSheetView.swift  # Draggable sheets
+│       ├── LegacySheetAwareScrollView.swift # Coordinated scrolling
 │       ├── LiveActivityControls.swift   # Start/stop buttons
-│       └── TrackRatMascot.swift         # Animated character
+│       ├── LiveActivityDebugView.swift  # Debug tools
+│       ├── TrackRatMascot.swift         # Animated character
+│       ├── FeedbackButton.swift         # Issue reporting
+│       ├── OperationsSummaryView.swift  # Operations summary
+│       ├── TrainStatsSummaryView.swift  # Train performance
+│       └── TrainDistributionChart.swift # Delay visualization
 │
 ├── Shared/                      # Cross-target code
 │   ├── Stations.swift          # Station database
@@ -102,8 +113,21 @@ TrackRat/
 ├── Theme/                       # Visual design
 │   └── TrackRatTheme.swift     # Colors and styles
 │
-└── Utilities/                   # Helper code
-    └── Extensions.swift         # Swift extensions
+├── Utilities/                   # Helper code
+│   ├── Extensions.swift         # Swift extensions
+│   └── Logger.swift            # Debug logging framework
+│
+└── TrainLiveActivityExtension/  # Widget extension
+    ├── TrainLiveActivityBundle.swift
+    └── LiveActivityWidget.swift
+
+TrackRatTests/                   # Test suite
+├── BuildTests.swift            # Build verification
+├── Models/                     # Model tests
+├── Services/                   # Service tests
+├── ViewModels/                 # ViewModel tests
+├── TestUtilities/              # Test helpers
+└── TestFixtures/               # JSON fixtures
 ```
 
 ## 🚀 Getting Started
@@ -140,7 +164,7 @@ TrackRat/
 
 #### API Endpoints
 The app connects to the TrackRat backend API. Configure in `APIService.swift`:
-- **Production**: `https://prod.api.trackrat.net/api`
+- **Production**: `https://apiv2.trackrat.net/api`
 - **Development**: `http://localhost:8000/api`
 
 #### Push Notifications

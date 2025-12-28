@@ -23,8 +23,8 @@ final class RatSenseService: ObservableObject {
         init(from: String, to: String) {
             self.fromStation = from
             self.toStation = to
-            self.fromStationName = Stations.displayName(for: from) ?? from
-            self.toStationName = Stations.displayName(for: to) ?? to
+            self.fromStationName = Stations.displayName(for: from)
+            self.toStationName = Stations.displayName(for: to)
         }
     }
     
@@ -270,8 +270,9 @@ final class RatSenseService: ObservableObject {
         
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE HH:mm"
-        formatter.timeZone = TimeZone(identifier: "America/New_York")
-        let etHour = calendar.dateComponents(in: TimeZone(identifier: "America/New_York")!, from: now).hour ?? hour
+        let easternTimeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
+        formatter.timeZone = easternTimeZone
+        let etHour = calendar.dateComponents(in: easternTimeZone, from: now).hour ?? hour
         print("🐀 RatSense: Current time: \(formatter.string(from: now)) ET (hour in ET: \(etHour), weekday: \(isWeekday))")
         
         // Morning commute (5am-9am ET) - weekdays and weekends

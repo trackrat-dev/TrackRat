@@ -20,9 +20,9 @@ enum ServerEnvironment: String, CaseIterable, Codable {
     var baseURL: String {
         switch self {
         case .production:
-            return "https://prod.api.trackrat.net/api"
+            return "https://apiv2.trackrat.net/api"
         case .staging:
-            return "https://staging.api.trackrat.net/api"
+            return "https://staging.apiv2.trackrat.net/api"
         case .local:
             return "http://localhost:8000/api"
         }
@@ -269,17 +269,15 @@ final class StorageService {
         // Always include home station if set
         if let homeCode = RatSenseService.shared.getHomeStation(),
            !stations.contains(where: { $0.id == homeCode }) {
-            if let homeName = Stations.displayName(for: homeCode) {
-                stations.append(FavoriteStation(code: homeCode, name: homeName))
-            }
+            let homeName = Stations.displayName(for: homeCode)
+            stations.append(FavoriteStation(code: homeCode, name: homeName))
         }
-        
+
         // Always include work station if set
         if let workCode = RatSenseService.shared.getWorkStation(),
            !stations.contains(where: { $0.id == workCode }) {
-            if let workName = Stations.displayName(for: workCode) {
-                stations.append(FavoriteStation(code: workCode, name: workName))
-            }
+            let workName = Stations.displayName(for: workCode)
+            stations.append(FavoriteStation(code: workCode, name: workName))
         }
         
         // If no stations at all (no stored favorites and no home/work), return NYC as default

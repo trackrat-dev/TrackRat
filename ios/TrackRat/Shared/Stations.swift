@@ -6,7 +6,7 @@ struct Stations {
     static let all: [String] = [
         // Major Hub Stations
         "New York Penn Station", "Newark Penn Station", "Hoboken",
-        "Secaucus Upper Lvl", "Secaucus Lower Lvl", "Secaucus Concourse",
+        "Secaucus Upper Lvl", "Secaucus Lower Lvl",
         "Trenton", "Philadelphia",
         
         // Northeast Corridor Line
@@ -106,7 +106,6 @@ struct Stations {
         "Newark Penn Station": "NP",
         "Secaucus Upper Lvl": "SE",
         "Secaucus Lower Lvl": "TS",
-        "Secaucus Concourse": "SC",
         "Woodbridge": "WB",
         "Metropark": "MP",
         "New Brunswick": "NB",
@@ -450,7 +449,6 @@ struct Stations {
         "SQ": CLLocationCoordinate2D(latitude: 40.1057, longitude: -74.0500),   // Manasquan
         "PP": CLLocationCoordinate2D(latitude: 40.0928885, longitude: -74.048128),   // Point Pleasant Beach 40.092888539579086, -74.04812800404557
         "BH": CLLocationCoordinate2D(latitude: 40.0771313, longitude: -74.046189485),   // Bay Head 40.077131308867386, -74.04618948520402
-        "SC": CLLocationCoordinate2D(latitude: 40.7612, longitude: -74.0758),   // Secaucus Concourse (same as SE/TS)
         "TS": CLLocationCoordinate2D(latitude: 40.7612, longitude: -74.0758),   // Secaucus Lower Lvl (same location)
         "BW": CLLocationCoordinate2D(latitude: 40.561009, longitude: -74.55175689),   // Bridgewater 40.56100944598027, -74.55175688984208
         "SM": CLLocationCoordinate2D(latitude: 40.56608, longitude: -74.6138659),   // Somerville 40.56608372758163, -74.61386593713499
@@ -737,8 +735,40 @@ struct Stations {
         return stationCoordinates[code]
     }
     
-    static func displayName(for stationCode: String) -> String? {
-        return stationCodes.first(where: { $0.value == stationCode })?.key
+    /// Returns the full station name for a given station code.
+    /// Example: stationName(forCode: "NY") returns "New York Penn Station"
+    static func stationName(forCode code: String) -> String? {
+        return stationCodes.first(where: { $0.value == code })?.key
+    }
+
+    /// Smart display name that handles both station codes and station names.
+    /// - For codes (e.g., "NY", "MP"): Returns the full station name
+    /// - For names (e.g., "New York Penn Station"): Returns shortened version
+    static func displayName(for input: String) -> String {
+        // First, check if input is a station code
+        if let fullName = stationName(forCode: input) {
+            return shortenedDisplayName(for: fullName)
+        }
+        // Otherwise, assume it's a station name and apply shortening
+        return shortenedDisplayName(for: input)
+    }
+
+    /// Returns a shortened display name for UI (strips "Station", etc.)
+    private static func shortenedDisplayName(for stationName: String) -> String {
+        // First normalize the name to handle API inconsistencies
+        let normalizedName = StationNameNormalizer.normalizedName(for: stationName)
+
+        // Apply short display names for common stations
+        switch normalizedName {
+        case "New York Penn Station":
+            return "New York Penn"
+        case "Newark Penn Station":
+            return "Newark Penn"
+        case "Washington Union Station":
+            return "Washington Union"
+        default:
+            return normalizedName
+        }
     }
 }
 

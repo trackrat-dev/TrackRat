@@ -15,10 +15,11 @@ struct HistoricalDataView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Black gradient background
-                TrackRatTheme.Colors.primaryBackground
+                // Translucent material background
+                Color.clear
+                    .background(.ultraThinMaterial)
                     .ignoresSafeArea()
-                
+
                 ScrollView {
                     if viewModel.isLoading {
                         TrackRatLoadingView(message: "Loading historical data...")
@@ -99,7 +100,7 @@ struct HistoricalDataView: View {
                             .padding(.vertical, 12)
                             .background(Color.orange)
                             .foregroundColor(.white)
-                            .cornerRadius(8)
+                            .cornerRadius(TrackRatTheme.CornerRadius.sm)
                             .font(.body.bold())
                         }
                         .frame(maxWidth: .infinity, minHeight: 400)
@@ -186,7 +187,7 @@ struct PerformanceSection: View {
                 }
                 .padding()
                 .background(Color.white.opacity(0.9))
-                .cornerRadius(16)
+                .cornerRadius(TrackRatTheme.CornerRadius.lg)
             }
         }
     }
@@ -252,7 +253,7 @@ struct TrackUsageSection: View {
                 }
                 .padding()
                 .background(Color.white.opacity(0.9))
-                .cornerRadius(16)
+                .cornerRadius(TrackRatTheme.CornerRadius.lg)
             }
         }
     }
@@ -328,10 +329,10 @@ struct DelayPerformanceBar: View {
                     }
                 }
                 .frame(height: 24)
-                .cornerRadius(4)
+                .cornerRadius(TrackRatTheme.CornerRadius.xs)
             }
             .frame(height: 24)
-            
+
             Text("\(stats.total) trips, avg \(stats.avgDelay)min delay")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -366,10 +367,10 @@ struct TrackUsageBar: View {
                     }
                 }
                 .frame(height: 24)
-                .cornerRadius(4)
+                .cornerRadius(TrackRatTheme.CornerRadius.xs)
             }
             .frame(height: 24)
-            
+
             Text("\(stats.total) trips across \(stats.tracks.count) tracks")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -582,10 +583,11 @@ struct CongestionDataView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Black gradient background
-                TrackRatTheme.Colors.primaryBackground
+                // Translucent material background
+                Color.clear
+                    .background(.ultraThinMaterial)
                     .ignoresSafeArea()
-                
+
                 ScrollView {
                     if viewModel.isLoading {
                         TrackRatLoadingView(message: "Loading congestion data...")
@@ -662,7 +664,7 @@ struct CongestionDataView: View {
                             .padding(.vertical, 12)
                             .background(Color.orange)
                             .foregroundColor(.white)
-                            .cornerRadius(8)
+                            .cornerRadius(TrackRatTheme.CornerRadius.sm)
                             .font(.body.bold())
                         }
                         .frame(maxWidth: .infinity, minHeight: 400)
@@ -730,9 +732,9 @@ struct CongestionSegmentCard: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(segment.displayColor.opacity(0.2))
-        .cornerRadius(8)
+        .cornerRadius(TrackRatTheme.CornerRadius.sm)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.sm)
                 .stroke(segment.displayColor.opacity(0.4), lineWidth: 1)
         )
     }
@@ -886,26 +888,26 @@ class CongestionDataViewModel: ObservableObject {
         guard let userOrigin = userOrigin, let userDestination = userDestination else {
             return nil
         }
-        
+
         // Find origin stop by station code
         guard let originIndex = allStops.firstIndex(where: { stop in
             stop.stationCode.uppercased() == userOrigin.uppercased()
         }) else {
             return nil
         }
-        
-        // Find destination stop by station name
+
+        // Find destination stop by station code (reliable matching)
         guard let destinationIndex = allStops.firstIndex(where: { stop in
-            stop.stationName.lowercased() == userDestination.lowercased()
+            stop.stationCode.uppercased() == userDestination.uppercased()
         }) else {
             return nil
         }
-        
+
         // Ensure origin comes before destination
         guard originIndex <= destinationIndex else {
             return nil
         }
-        
+
         // Return the journey segment (inclusive of both origin and destination)
         return Array(allStops[originIndex...destinationIndex])
     }

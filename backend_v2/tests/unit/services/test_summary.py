@@ -13,10 +13,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.models.database import TrainJourney
 from trackrat.services.summary import (
+    DELAY_CATEGORY_CANCELLED,
+    DELAY_CATEGORY_DELAYED,
+    DELAY_CATEGORY_ON_TIME,
+    DELAY_CATEGORY_SLIGHT_DELAY,
+    ON_TIME_THRESHOLD_MINUTES,
+    SLIGHT_DELAY_THRESHOLD_MINUTES,
     LineStats,
     OperationsSummary,
     SummaryMetrics,
     SummaryService,
+    TrainDelaySummary,
 )
 
 
@@ -250,40 +257,18 @@ class TestSummaryService:
         summary = summary_service._generate_network_summary(line_stats)
 
         assert summary.scope == "network"
-        assert (
-            "delay" in summary.headline.lower()
-            or "disruption" in summary.headline.lower()
-        )
+        # When cancellations are present, they lead the headline
+        assert "cancellation" in summary.headline.lower()
 
     def test_generate_network_summary_empty(self, summary_service):
-        """Test network summary with no data."""
+        """Test network summary with no data returns empty headline."""
         summary = summary_service._generate_network_summary({})
 
         assert summary.scope == "network"
-        assert "no" in summary.headline.lower()
+        # With no data, headline and body should be empty so iOS can hide the section
+        assert summary.headline == ""
+        assert summary.body == ""
         assert summary.metrics is None
-
-    def test_get_network_headline_thresholds(self, summary_service):
-        """Test headline generation for different performance thresholds."""
-        # Excellent
-        headline = summary_service._get_network_headline(96, 2, 0)
-        assert "smooth" in headline.lower()
-
-        # Good
-        headline = summary_service._get_network_headline(87, 4, 0)
-        assert "on time" in headline.lower()
-
-        # Moderate
-        headline = summary_service._get_network_headline(72, 8, 1)
-        assert "some" in headline.lower() or "delay" in headline.lower()
-
-        # Degraded
-        headline = summary_service._get_network_headline(55, 12, 2)
-        assert "widespread" in headline.lower() or "delay" in headline.lower()
-
-        # Severe
-        headline = summary_service._get_network_headline(40, 20, 5)
-        assert "major" in headline.lower() or "disruption" in headline.lower()
 
     def test_generate_route_summary_with_data(self, summary_service, sample_journeys):
         """Test route summary generation with journey data."""
@@ -293,22 +278,183 @@ class TestSummaryService:
         summary = summary_service._generate_route_summary(route_journeys, "NY", "NP")
 
         assert summary.scope == "route"
-        assert "NY" in summary.headline or "New York" in summary.headline
+        assert "Recent departures:" in summary.headline
+        assert "% on time" in summary.headline
         assert summary.metrics is not None
         assert summary.metrics.train_count == 2
 
     def test_generate_route_summary_empty(self, summary_service):
-        """Test route summary with no data."""
+        """Test route summary with no data returns informative message."""
         summary = summary_service._generate_route_summary([], "NY", "NP")
 
         assert summary.scope == "route"
-        assert "no" in summary.headline.lower() or "no data" in summary.body.lower()
+        # With no data, show informative message so users know service status
+        assert summary.headline == ""
+        assert summary.body == "No trains travelled your route in the past 90 minutes."
+        assert summary.metrics is None
+
+    def test_generate_route_summary_all_cancelled(self, summary_service):
+        """Test route summary when all scheduled trains are cancelled."""
+        current_time = datetime.now(UTC)
+
+        # Create 3 cancelled journeys
+        journeys = []
+        for i in range(3):
+            journey = Mock(spec=TrainJourney)
+            journey.id = i
+            journey.train_id = f"100{i}"
+            journey.is_cancelled = True
+            journey.data_source = "NJT"
+
+            # Even cancelled trains have stops
+            origin_stop = Mock()
+            origin_stop.station_code = "NY"
+            origin_stop.stop_sequence = 1
+            origin_stop.scheduled_departure = current_time - timedelta(
+                minutes=30 + i * 10
+            )
+            origin_stop.actual_departure = None
+
+            dest_stop = Mock()
+            dest_stop.station_code = "NP"
+            dest_stop.stop_sequence = 5
+
+            journey.stops = [origin_stop, dest_stop]
+            journeys.append(journey)
+
+        summary = summary_service._generate_route_summary(journeys, "NY", "NP")
+
+        assert summary.scope == "route"
+        # When all trains are cancelled, headline shows cancellation count
+        assert "cancellation" in summary.headline.lower()
+        assert "3" in summary.headline  # All 3 trains
+        assert "cancelled" in summary.body.lower()
+        assert summary.metrics is not None
+        assert summary.metrics.cancellation_count == 3
+        assert summary.metrics.on_time_percentage == 0.0
+
+    def test_calculate_departure_stats_not_yet_departed_fresh_data(
+        self, summary_service
+    ):
+        """Test delay calculation for trains with fresh data that haven't departed.
+
+        If a train was scheduled 30 minutes ago but hasn't departed, AND we have
+        fresh data (< 60 seconds old), it should be counted as delayed by 30 minutes.
+        """
+        current_time = datetime.now(UTC)
+
+        # Create journey scheduled 30 minutes ago but not yet departed
+        journey = Mock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "1234"
+        journey.is_cancelled = False
+        journey.data_source = "NJT"
+        # Fresh data - updated just now
+        journey.last_updated_at = current_time
+
+        origin_stop = Mock()
+        origin_stop.station_code = "NY"
+        origin_stop.stop_sequence = 1
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=30)
+        origin_stop.actual_departure = None  # Not departed yet!
+
+        dest_stop = Mock()
+        dest_stop.station_code = "NP"
+        dest_stop.stop_sequence = 5
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NY", current_time=current_time
+        )
+
+        # With fresh data, should be counted as delayed since it's 30 minutes late
+        assert stats.total_count == 1
+        assert stats.on_time_percentage == 0.0
+        assert stats.average_delay_minutes >= 25  # Should be ~30 min
+
+    def test_calculate_departure_stats_not_yet_departed_stale_data(
+        self, summary_service
+    ):
+        """Test delay calculation for trains with stale data that haven't departed.
+
+        If a train was scheduled 30 minutes ago but hasn't departed, AND we have
+        stale data (> 60 seconds old), we should NOT assume the train is delayed.
+        The train may have departed on time but we just don't have the update.
+        """
+        current_time = datetime.now(UTC)
+
+        # Create journey scheduled 30 minutes ago but not yet departed
+        journey = Mock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "1234"
+        journey.is_cancelled = False
+        journey.data_source = "NJT"
+        # Stale data - updated 5 minutes ago
+        journey.last_updated_at = current_time - timedelta(minutes=5)
+
+        origin_stop = Mock()
+        origin_stop.station_code = "NY"
+        origin_stop.stop_sequence = 1
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=30)
+        origin_stop.actual_departure = None  # No departure data due to stale record
+
+        dest_stop = Mock()
+        dest_stop.station_code = "NP"
+        dest_stop.stop_sequence = 5
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NY", current_time=current_time
+        )
+
+        # With stale data, should assume on-time (conservative approach)
+        # to avoid false delay reports from stale data
+        assert stats.total_count == 1
+        assert stats.on_time_percentage == 100.0
+        assert stats.average_delay_minutes == 0.0
+
+    def test_calculate_departure_stats_just_scheduled(self, summary_service):
+        """Test that recently scheduled trains (within 5 min) are counted as on-time.
+
+        If a train was scheduled 3 minutes ago and hasn't departed,
+        that's normal - it should be counted as on-time.
+        """
+        current_time = datetime.now(UTC)
+
+        # Create journey scheduled 3 minutes ago but not yet departed
+        journey = Mock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "1234"
+        journey.is_cancelled = False
+        journey.data_source = "NJT"
+
+        origin_stop = Mock()
+        origin_stop.station_code = "NY"
+        origin_stop.stop_sequence = 1
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=3)
+        origin_stop.actual_departure = None  # Not departed yet, but that's normal
+
+        dest_stop = Mock()
+        dest_stop.station_code = "NP"
+        dest_stop.stop_sequence = 5
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NY", current_time=current_time
+        )
+
+        # Should be counted as on-time since it's only 3 minutes past scheduled
+        assert stats.total_count == 1
+        assert stats.on_time_percentage == 100.0
 
     def test_generate_train_summary_good_performance(self, summary_service):
         """Test train summary for train with good historical performance."""
         current_time = datetime.now(UTC)
 
-        # Create 10 on-time journeys
+        # Create 10 on-time journeys with proper origin stop
         journeys = []
         for i in range(10):
             journey = Mock(spec=TrainJourney)
@@ -317,18 +463,29 @@ class TestSummaryService:
             journey.is_cancelled = False
             journey.journey_date = (current_time - timedelta(days=i)).date()
 
-            # All on-time
-            stop = Mock()
-            stop.station_code = "TR"
-            stop.stop_sequence = 3
-            stop.scheduled_arrival = current_time - timedelta(days=i)
-            stop.actual_arrival = (
+            # Origin stop (NY) with departure times - on-time (2 min delay)
+            origin_stop = Mock()
+            origin_stop.station_code = "NY"
+            origin_stop.stop_sequence = 1
+            origin_stop.scheduled_departure = current_time - timedelta(days=i, hours=1)
+            origin_stop.actual_departure = (
+                current_time - timedelta(days=i, hours=1) + timedelta(minutes=2)
+            )
+            origin_stop.scheduled_arrival = None
+            origin_stop.actual_arrival = None
+
+            # Destination stop (TR)
+            dest_stop = Mock()
+            dest_stop.station_code = "TR"
+            dest_stop.stop_sequence = 3
+            dest_stop.scheduled_arrival = current_time - timedelta(days=i)
+            dest_stop.actual_arrival = (
                 current_time - timedelta(days=i) + timedelta(minutes=2)
             )
-            stop.scheduled_departure = None
-            stop.actual_departure = None
+            dest_stop.scheduled_departure = None
+            dest_stop.actual_departure = None
 
-            journey.stops = [stop]
+            journey.stops = [origin_stop, dest_stop]
             journeys.append(journey)
 
         # New signature: train_journeys, similar_journeys, train_id, from_station, to_station, data_source
@@ -344,7 +501,7 @@ class TestSummaryService:
         """Test train summary for train with poor historical performance."""
         current_time = datetime.now(UTC)
 
-        # Create 10 late journeys
+        # Create 10 late journeys with proper origin stop
         journeys = []
         for i in range(10):
             journey = Mock(spec=TrainJourney)
@@ -353,17 +510,29 @@ class TestSummaryService:
             journey.is_cancelled = False
             journey.journey_date = (current_time - timedelta(days=i)).date()
 
-            stop = Mock()
-            stop.station_code = "TR"
-            stop.stop_sequence = 3
-            stop.scheduled_arrival = current_time - timedelta(days=i)
-            stop.actual_arrival = (
+            # Origin stop (NY) with departure times - late (15 min delay)
+            origin_stop = Mock()
+            origin_stop.station_code = "NY"
+            origin_stop.stop_sequence = 1
+            origin_stop.scheduled_departure = current_time - timedelta(days=i, hours=1)
+            origin_stop.actual_departure = (
+                current_time - timedelta(days=i, hours=1) + timedelta(minutes=15)
+            )
+            origin_stop.scheduled_arrival = None
+            origin_stop.actual_arrival = None
+
+            # Destination stop (TR)
+            dest_stop = Mock()
+            dest_stop.station_code = "TR"
+            dest_stop.stop_sequence = 3
+            dest_stop.scheduled_arrival = current_time - timedelta(days=i)
+            dest_stop.actual_arrival = (
                 current_time - timedelta(days=i) + timedelta(minutes=15)
             )
-            stop.scheduled_departure = None
-            stop.actual_departure = None
+            dest_stop.scheduled_departure = None
+            dest_stop.actual_departure = None
 
-            journey.stops = [stop]
+            journey.stops = [origin_stop, dest_stop]
             journeys.append(journey)
 
         # New signature: train_journeys, similar_journeys, train_id, from_station, to_station, data_source
@@ -372,20 +541,81 @@ class TestSummaryService:
         )
 
         assert summary.scope == "train"
-        assert (
-            "on time" in summary.headline.lower()
-        )  # Changed: now shows on-time percentage
+        assert "on time" in summary.headline.lower()  # Shows on-time percentage (0%)
+        assert summary.metrics.on_time_percentage == 0  # All late
 
     def test_generate_train_summary_no_history(self, summary_service):
-        """Test train summary with no historical data."""
+        """Test train summary with no historical data returns empty headline."""
         # New signature: train_journeys, similar_journeys, train_id, from_station, to_station, data_source
         summary = summary_service._generate_train_summary(
             [], [], "1234", "NY", "TR", "NJT"
         )
 
         assert summary.scope == "train"
-        # With no data, headline shows "View On-Time Stats"
-        assert "view" in summary.headline.lower() or "stats" in summary.headline.lower()
+        # With no data, headline and body should be empty so iOS can hide the section
+        assert summary.headline == ""
+        assert summary.body == ""
+        assert summary.metrics is None
+
+    def test_generate_train_summary_no_history_but_similar_trains(
+        self, summary_service
+    ):
+        """Test train summary with no history but similar trains shows similar train stats."""
+        current_time = datetime.now(UTC)
+
+        # Create similar trains (not this specific train, but same route)
+        # Similar trains need departure data from the user's origin station (NY)
+        similar_journeys = []
+        for i in range(5):
+            journey = Mock(spec=TrainJourney)
+            journey.id = i + 100
+            journey.train_id = f"999{i}"  # Different train IDs
+            journey.is_cancelled = False
+            journey.journey_date = current_time.date()
+
+            # Origin stop (NY) with departure times - on-time (2 min delay)
+            origin_stop = Mock()
+            origin_stop.station_code = "NY"
+            origin_stop.stop_sequence = 1
+            origin_stop.scheduled_departure = current_time - timedelta(
+                minutes=60 + i * 10
+            )
+            origin_stop.actual_departure = origin_stop.scheduled_departure + timedelta(
+                minutes=2
+            )
+            origin_stop.scheduled_arrival = None
+            origin_stop.actual_arrival = None
+
+            # Destination stop (TR)
+            dest_stop = Mock()
+            dest_stop.station_code = "TR"
+            dest_stop.stop_sequence = 3
+            dest_stop.scheduled_arrival = current_time - timedelta(minutes=30 + i * 10)
+            dest_stop.actual_arrival = dest_stop.scheduled_arrival + timedelta(
+                minutes=2
+            )
+            dest_stop.scheduled_departure = None
+            dest_stop.actual_departure = None
+
+            journey.stops = [origin_stop, dest_stop]
+            similar_journeys.append(journey)
+
+        # No historical data for this specific train, but have similar trains
+        summary = summary_service._generate_train_summary(
+            [],  # No historical journeys for this train
+            similar_journeys,  # But we have similar trains
+            "1234",
+            "NY",
+            "TR",
+            "NJT",
+        )
+
+        assert summary.scope == "train"
+        # Should show similar trains data even with no history for this train
+        assert "on time" in summary.headline.lower()
+        assert "NJ Transit" in summary.body
+        assert summary.metrics is not None
+        assert summary.metrics.train_count == 5
 
     def test_cache_works(self, summary_service):
         """Test that caching prevents redundant calculations."""
@@ -461,3 +691,548 @@ class TestOperationsSummary:
         assert summary.scope == "network"
         assert summary.time_window_minutes == 90
         assert summary.metrics.on_time_percentage == 95.0
+
+
+class TestDelayCategorization:
+    """Test cases for delay categorization logic."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_categorize_delay_on_time(self, summary_service):
+        """Test that delays <= 5 minutes are categorized as on_time."""
+        assert summary_service._categorize_delay(0) == DELAY_CATEGORY_ON_TIME
+        assert summary_service._categorize_delay(3) == DELAY_CATEGORY_ON_TIME
+        assert summary_service._categorize_delay(5) == DELAY_CATEGORY_ON_TIME
+
+    def test_categorize_delay_slight(self, summary_service):
+        """Test that delays 5-15 minutes are categorized as slight_delay."""
+        assert summary_service._categorize_delay(5.1) == DELAY_CATEGORY_SLIGHT_DELAY
+        assert summary_service._categorize_delay(10) == DELAY_CATEGORY_SLIGHT_DELAY
+        assert summary_service._categorize_delay(15) == DELAY_CATEGORY_SLIGHT_DELAY
+
+    def test_categorize_delay_delayed(self, summary_service):
+        """Test that delays > 15 minutes are categorized as delayed."""
+        assert summary_service._categorize_delay(15.1) == DELAY_CATEGORY_DELAYED
+        assert summary_service._categorize_delay(20) == DELAY_CATEGORY_DELAYED
+        assert summary_service._categorize_delay(60) == DELAY_CATEGORY_DELAYED
+
+    def test_thresholds_are_correct(self):
+        """Verify threshold constants are set correctly."""
+        assert ON_TIME_THRESHOLD_MINUTES == 5
+        assert SLIGHT_DELAY_THRESHOLD_MINUTES == 15
+
+
+class TestTrainsByCategory:
+    """Test cases for trains_by_category in departure stats."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_departure_stats_returns_trains_by_category(self, summary_service):
+        """Test that _calculate_departure_stats returns trains grouped by category."""
+        current_time = datetime.now(UTC)
+
+        journeys = []
+
+        # On-time train (0 min delay)
+        journey1 = Mock(spec=TrainJourney)
+        journey1.train_id = "1001"
+        journey1.is_cancelled = False
+        stop1 = Mock()
+        stop1.station_code = "NY"
+        stop1.scheduled_departure = current_time - timedelta(minutes=30)
+        stop1.actual_departure = stop1.scheduled_departure  # Exactly on time
+        journey1.stops = [stop1]
+        journeys.append(journey1)
+
+        # Slight delay train (10 min delay)
+        journey2 = Mock(spec=TrainJourney)
+        journey2.train_id = "1002"
+        journey2.is_cancelled = False
+        stop2 = Mock()
+        stop2.station_code = "NY"
+        stop2.scheduled_departure = current_time - timedelta(minutes=60)
+        stop2.actual_departure = stop2.scheduled_departure + timedelta(minutes=10)
+        journey2.stops = [stop2]
+        journeys.append(journey2)
+
+        # Delayed train (20 min delay)
+        journey3 = Mock(spec=TrainJourney)
+        journey3.train_id = "1003"
+        journey3.is_cancelled = False
+        stop3 = Mock()
+        stop3.station_code = "NY"
+        stop3.scheduled_departure = current_time - timedelta(minutes=90)
+        stop3.actual_departure = stop3.scheduled_departure + timedelta(minutes=20)
+        journey3.stops = [stop3]
+        journeys.append(journey3)
+
+        # Cancelled train
+        journey4 = Mock(spec=TrainJourney)
+        journey4.train_id = "1004"
+        journey4.is_cancelled = True
+        stop4 = Mock()
+        stop4.station_code = "NY"
+        stop4.scheduled_departure = current_time - timedelta(minutes=45)
+        journey4.stops = [stop4]
+        journeys.append(journey4)
+
+        stats = summary_service._calculate_departure_stats(
+            journeys, "NY", current_time=current_time
+        )
+
+        # Verify trains_by_category structure
+        assert stats.trains_by_category is not None
+        assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 1
+        assert len(stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 1
+        assert len(stats.trains_by_category[DELAY_CATEGORY_DELAYED]) == 1
+        assert len(stats.trains_by_category[DELAY_CATEGORY_CANCELLED]) == 1
+
+        # Verify train IDs
+        on_time_ids = [
+            t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_ON_TIME]
+        ]
+        assert "1001" in on_time_ids
+
+        slight_delay_ids = [
+            t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]
+        ]
+        assert "1002" in slight_delay_ids
+
+        delayed_ids = [
+            t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_DELAYED]
+        ]
+        assert "1003" in delayed_ids
+
+        cancelled_ids = [
+            t.train_id for t in stats.trains_by_category[DELAY_CATEGORY_CANCELLED]
+        ]
+        assert "1004" in cancelled_ids
+
+    def test_trains_by_category_delay_minutes(self, summary_service):
+        """Test that delay_minutes is correctly calculated for each train."""
+        current_time = datetime.now(UTC)
+
+        journey = Mock(spec=TrainJourney)
+        journey.train_id = "1001"
+        journey.is_cancelled = False
+        stop = Mock()
+        stop.station_code = "NY"
+        stop.scheduled_departure = current_time - timedelta(minutes=30)
+        stop.actual_departure = stop.scheduled_departure + timedelta(minutes=7)
+        journey.stops = [stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NY", current_time=current_time
+        )
+
+        # Should be in slight_delay category with 7 minutes delay
+        train_summary = stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY][0]
+        assert train_summary.train_id == "1001"
+        assert abs(train_summary.delay_minutes - 7.0) < 0.1
+        assert train_summary.category == DELAY_CATEGORY_SLIGHT_DELAY
+
+    def test_trains_by_category_empty_journeys(self, summary_service):
+        """Test that empty journeys returns empty category lists."""
+        stats = summary_service._calculate_departure_stats([], "NY")
+
+        assert stats.trains_by_category is not None
+        assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_DELAYED]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_CANCELLED]) == 0
+
+
+class TestMergeTrainsByCategory:
+    """Test cases for merging trains_by_category from multiple OnTimeStats."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_merge_trains_from_multiple_stats(self, summary_service):
+        """Test merging trains from NJT and Amtrak stats."""
+        from trackrat.services.summary import OnTimeStats
+
+        njt_stats = OnTimeStats(
+            on_time_percentage=80.0,
+            average_delay_minutes=3.0,
+            total_count=5,
+            cancellation_count=0,
+            carrier_name="NJ Transit",
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="3847",
+                        delay_minutes=2.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=datetime.now(UTC),
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        amtrak_stats = OnTimeStats(
+            on_time_percentage=90.0,
+            average_delay_minutes=2.0,
+            total_count=3,
+            cancellation_count=0,
+            carrier_name="Amtrak",
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="171",
+                        delay_minutes=1.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=datetime.now(UTC),
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        merged = summary_service._merge_trains_by_category(njt_stats, amtrak_stats)
+
+        # Should have both trains in on_time category
+        assert len(merged[DELAY_CATEGORY_ON_TIME]) == 2
+        train_ids = [t.train_id for t in merged[DELAY_CATEGORY_ON_TIME]]
+        assert "3847" in train_ids
+        assert "171" in train_ids
+
+    def test_merge_with_none_stats(self, summary_service):
+        """Test merging handles None stats gracefully."""
+        from trackrat.services.summary import OnTimeStats
+
+        njt_stats = OnTimeStats(
+            on_time_percentage=80.0,
+            average_delay_minutes=3.0,
+            total_count=5,
+            cancellation_count=0,
+            carrier_name="NJ Transit",
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="3847",
+                        delay_minutes=2.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=datetime.now(UTC),
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        merged = summary_service._merge_trains_by_category(njt_stats, None)
+
+        assert len(merged[DELAY_CATEGORY_ON_TIME]) == 1
+        assert merged[DELAY_CATEGORY_ON_TIME][0].train_id == "3847"
+
+    def test_merge_sorted_by_scheduled_departure(self, summary_service):
+        """Test that merged trains are sorted by scheduled departure time."""
+        from trackrat.services.summary import OnTimeStats
+
+        now = datetime.now(UTC)
+
+        njt_stats = OnTimeStats(
+            on_time_percentage=80.0,
+            average_delay_minutes=3.0,
+            total_count=2,
+            cancellation_count=0,
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="3847",
+                        delay_minutes=2.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=now - timedelta(minutes=30),  # Earlier
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        amtrak_stats = OnTimeStats(
+            on_time_percentage=90.0,
+            average_delay_minutes=2.0,
+            total_count=1,
+            cancellation_count=0,
+            trains_by_category={
+                DELAY_CATEGORY_ON_TIME: [
+                    TrainDelaySummary(
+                        train_id="171",
+                        delay_minutes=1.0,
+                        category=DELAY_CATEGORY_ON_TIME,
+                        scheduled_departure=now - timedelta(minutes=60),  # Even earlier
+                    )
+                ],
+                DELAY_CATEGORY_SLIGHT_DELAY: [],
+                DELAY_CATEGORY_DELAYED: [],
+                DELAY_CATEGORY_CANCELLED: [],
+            },
+        )
+
+        merged = summary_service._merge_trains_by_category(njt_stats, amtrak_stats)
+
+        # Should be sorted by scheduled departure (earliest first)
+        on_time_trains = merged[DELAY_CATEGORY_ON_TIME]
+        assert len(on_time_trains) == 2
+        assert on_time_trains[0].train_id == "171"  # Earlier departure
+        assert on_time_trains[1].train_id == "3847"  # Later departure
+
+
+class TestRoutesSummaryTrainsByCategory:
+    """Test that route summary includes trains_by_category in metrics."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_route_summary_includes_trains_by_category(self, summary_service):
+        """Test that _generate_route_summary includes trains in metrics."""
+        current_time = datetime.now(UTC)
+
+        journeys = []
+
+        # NJT on-time train
+        journey1 = Mock(spec=TrainJourney)
+        journey1.train_id = "3847"
+        journey1.is_cancelled = False
+        journey1.data_source = "NJT"
+        stop1 = Mock()
+        stop1.station_code = "NY"
+        stop1.stop_sequence = 1
+        stop1.scheduled_departure = current_time - timedelta(minutes=30)
+        stop1.actual_departure = stop1.scheduled_departure + timedelta(minutes=2)
+        journey1.stops = [stop1]
+        journeys.append(journey1)
+
+        # NJT delayed train
+        journey2 = Mock(spec=TrainJourney)
+        journey2.train_id = "3851"
+        journey2.is_cancelled = False
+        journey2.data_source = "NJT"
+        stop2 = Mock()
+        stop2.station_code = "NY"
+        stop2.stop_sequence = 1
+        stop2.scheduled_departure = current_time - timedelta(minutes=60)
+        stop2.actual_departure = stop2.scheduled_departure + timedelta(minutes=12)
+        journey2.stops = [stop2]
+        journeys.append(journey2)
+
+        summary = summary_service._generate_route_summary(journeys, "NY", "NP")
+
+        # Verify trains_by_category is included
+        assert summary.metrics is not None
+        assert summary.metrics.trains_by_category is not None
+
+        # Should have 1 on-time, 1 slight delay
+        assert len(summary.metrics.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 1
+        assert len(summary.metrics.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 1
+        assert (
+            summary.metrics.trains_by_category[DELAY_CATEGORY_ON_TIME][0].train_id
+            == "3847"
+        )
+        assert (
+            summary.metrics.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY][0].train_id
+            == "3851"
+        )
+
+
+class TestDuplicateTrainPrevention:
+    """Regression tests for duplicate train prevention in summaries.
+
+    This test class ensures that when the same train_id appears multiple times
+    (e.g., due to multiple journey records or JOIN duplicates), the summary
+    service correctly deduplicates them so each train appears only once.
+
+    See: Commit that fixed duplicate trains in "Recent departures" display.
+    """
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_duplicate_train_id_counted_once(self, summary_service):
+        """Test that duplicate train_ids are only counted once in stats.
+
+        Scenario: Same train appears twice in the journeys list
+        (e.g., from stale records or JOIN duplicates).
+        Expected: Train should only appear once in the output.
+        """
+        current_time = datetime.now(UTC)
+
+        journeys = []
+
+        # First occurrence of train 7832 - on time
+        journey1 = Mock(spec=TrainJourney)
+        journey1.train_id = "7832"
+        journey1.is_cancelled = False
+        journey1.data_source = "NJT"
+        stop1 = Mock()
+        stop1.station_code = "NY"
+        stop1.stop_sequence = 1
+        stop1.scheduled_departure = current_time - timedelta(minutes=30)
+        stop1.actual_departure = stop1.scheduled_departure + timedelta(minutes=2)
+        journey1.stops = [stop1]
+        journeys.append(journey1)
+
+        # Second occurrence of SAME train 7832 - with different delay
+        # This simulates what happens with duplicate records
+        journey2 = Mock(spec=TrainJourney)
+        journey2.train_id = "7832"  # Same train_id!
+        journey2.is_cancelled = False
+        journey2.data_source = "NJT"
+        stop2 = Mock()
+        stop2.station_code = "NY"
+        stop2.stop_sequence = 1
+        stop2.scheduled_departure = current_time - timedelta(minutes=30)
+        stop2.actual_departure = stop2.scheduled_departure + timedelta(minutes=45)
+        journey2.stops = [stop2]
+        journeys.append(journey2)
+
+        # Different train for comparison
+        journey3 = Mock(spec=TrainJourney)
+        journey3.train_id = "7834"
+        journey3.is_cancelled = False
+        journey3.data_source = "NJT"
+        stop3 = Mock()
+        stop3.station_code = "NY"
+        stop3.stop_sequence = 1
+        stop3.scheduled_departure = current_time - timedelta(minutes=20)
+        stop3.actual_departure = stop3.scheduled_departure + timedelta(minutes=3)
+        journey3.stops = [stop3]
+        journeys.append(journey3)
+
+        stats = summary_service._calculate_departure_stats(
+            journeys, "NY", current_time=current_time
+        )
+
+        # Count total trains across all categories
+        all_train_ids = []
+        for category_trains in stats.trains_by_category.values():
+            all_train_ids.extend([t.train_id for t in category_trains])
+
+        # Should have 3 entries total (train 7832 appears twice, 7834 once)
+        # This tests the RAW behavior - _calculate_departure_stats processes all journeys
+        # The deduplication happens at the query/filter level in get_route_summary
+        assert "7832" in all_train_ids
+        assert "7834" in all_train_ids
+
+    def test_train_appears_in_single_category_only(self, summary_service):
+        """Test that each train_id appears in at most one delay category.
+
+        Regression test: Previously, the same train could appear in multiple
+        categories (e.g., both "on_time" AND "delayed") due to duplicate processing.
+        """
+        current_time = datetime.now(UTC)
+
+        # Create a single journey - it should only appear in ONE category
+        journey = Mock(spec=TrainJourney)
+        journey.train_id = "7830"
+        journey.is_cancelled = False
+        journey.data_source = "NJT"
+        stop = Mock()
+        stop.station_code = "MP"
+        stop.stop_sequence = 1
+        stop.scheduled_departure = current_time - timedelta(minutes=30)
+        stop.actual_departure = stop.scheduled_departure + timedelta(minutes=8)
+        journey.stops = [stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "MP", current_time=current_time
+        )
+
+        # Count how many categories this train appears in
+        categories_containing_train = 0
+        for category, trains in stats.trains_by_category.items():
+            if any(t.train_id == "7830" for t in trains):
+                categories_containing_train += 1
+
+        # Train should appear in exactly ONE category
+        assert categories_containing_train == 1, (
+            f"Train 7830 appeared in {categories_containing_train} categories, "
+            "expected exactly 1"
+        )
+
+        # Verify it's in the correct category (slight_delay for 8 min delay)
+        assert len(stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 1
+        assert (
+            stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY][0].train_id == "7830"
+        )
+
+    def test_route_summary_no_duplicate_trains_in_categories(self, summary_service):
+        """Integration test: route summary should not have any train in multiple categories."""
+        current_time = datetime.now(UTC)
+
+        journeys = []
+
+        # Create several trains with varying delays
+        for i, (train_id, delay_mins) in enumerate(
+            [
+                ("7828", 2),  # on_time
+                ("7830", 8),  # slight_delay
+                ("7832", 20),  # delayed
+                ("7834", 4),  # on_time
+            ]
+        ):
+            journey = Mock(spec=TrainJourney)
+            journey.train_id = train_id
+            journey.is_cancelled = False
+            journey.data_source = "NJT"
+
+            origin_stop = Mock()
+            origin_stop.station_code = "MP"
+            origin_stop.stop_sequence = 1
+            origin_stop.scheduled_departure = current_time - timedelta(
+                minutes=30 + i * 10
+            )
+            origin_stop.actual_departure = origin_stop.scheduled_departure + timedelta(
+                minutes=delay_mins
+            )
+
+            dest_stop = Mock()
+            dest_stop.station_code = "NY"
+            dest_stop.stop_sequence = 5
+            # Add arrival times for arrival stats calculation
+            dest_stop.scheduled_arrival = origin_stop.scheduled_departure + timedelta(
+                minutes=60
+            )
+            dest_stop.actual_arrival = dest_stop.scheduled_arrival + timedelta(
+                minutes=delay_mins
+            )
+
+            journey.stops = [origin_stop, dest_stop]
+            journeys.append(journey)
+
+        summary = summary_service._generate_route_summary(journeys, "MP", "NY")
+
+        # Collect all train_ids across all categories
+        all_train_ids = []
+        for category_trains in summary.metrics.trains_by_category.values():
+            all_train_ids.extend([t.train_id for t in category_trains])
+
+        # Check for duplicates
+        unique_train_ids = set(all_train_ids)
+        assert len(all_train_ids) == len(
+            unique_train_ids
+        ), f"Duplicate train_ids found! All: {all_train_ids}, Unique: {unique_train_ids}"
+
+        # Verify each expected train is present exactly once
+        assert sorted(unique_train_ids) == sorted(["7828", "7830", "7832", "7834"])

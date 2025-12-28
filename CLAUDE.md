@@ -9,13 +9,7 @@ TrackRat is a multi-platform transit tracking application with:
 - **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
 - **Android**: Kotlin (Jetpack Compose) in `android/`
 - **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/CLAUDE.md`
-- **Infrastructure**: Terraform (Google Cloud Platform) in `infra/`
-
-## Sentry Configuration
-
-- Default organization slug: `andy-fx`
-- Full APM with traces/profiles sampling
-- Correlation ID tracking across requests
+- **Infrastructure**: Terraform (Google Cloud Platform) in `infra_v2/`
 
 ## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
 
@@ -175,19 +169,25 @@ npm run preview      # Preview production build locally
 
 **Deployment:** Automatic via GitHub Actions on push to `main`
 - Workflow: `.github/workflows/deploy-webpage.yml`
-- Output: Deployed to GitHub Pages at `https://andytubeee.github.io/TrackRat/`
+- Output: Deployed to GitHub Pages at `https://bokonon1.github.io/TrackRat/`
 
 ### Infrastructure Management
 ```bash
-cd infra
-make test              # ALWAYS run first
-make staging-plan      # Review changes
-make staging-apply     # Deploy to staging
-make prod-plan         # Review prod changes
-make prod-apply        # Deploy to production
+cd infra_v2/terraform
+terraform init
+terraform workspace select staging  # or: production
+
+# Deploy to staging
+terraform plan -var="environment=staging"
+terraform apply -var="environment=staging"
+
+# Deploy to production
+terraform workspace select production
+terraform plan -var="environment=production"
+terraform apply -var="environment=production"
 ```
 
-**CRITICAL**: Always run `make test` before applying infrastructure changes.
+**Deployment Triggers**: Push to `main` → staging, push to `production` → production.
 
 ## Key File Locations
 
@@ -205,6 +205,8 @@ make prod-apply        # Deploy to production
 - Web services: `webpage_v2/src/services/`
 - Web store: `webpage_v2/src/store/appStore.ts`
 - Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)
+- Infrastructure Terraform: `infra_v2/terraform/`
+- Infrastructure Cloud Build: `infra_v2/cloudbuild*.yaml`
 
 ## Common API Endpoints
 
@@ -218,8 +220,8 @@ make prod-apply        # Deploy to production
 ```
 
 **API Environments:**
-- Production: `https://prod.api.trackrat.net/api/v2`
-- Staging: `https://staging.api.trackrat.net/api/v2`
+- Production: `https://apiv2.trackrat.net/api/v2`
+- Staging: `https://staging.apiv2.trackrat.net/api/v2`
 - Web uses: Production only
 - iOS uses: Both (configurable)
 

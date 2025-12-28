@@ -366,7 +366,7 @@ struct AnimatedTrackRatIcon: View {
 
 #Preview("All Mascot Styles") {
     ZStack {
-        TrackRatTheme.Colors.surface.ignoresSafeArea()
+        Color.black.ignoresSafeArea()
         
         VStack(spacing: 40) {
             VStack(spacing: 10) {

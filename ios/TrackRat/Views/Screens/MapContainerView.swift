@@ -58,6 +58,7 @@ struct MapContainerView: View {
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
     @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @ObservedObject private var ratSenseService = RatSenseService.shared
     
     // MARK: - Unified Map Region Calculation
     
@@ -129,7 +130,6 @@ struct MapContainerView: View {
                 segments: mapViewModel.segments,
                 individualSegments: mapViewModel.individualSegments,
                 stations: mapViewModel.stations,
-                selectedRoute: appState.activeTrainRoute,  // Only show route for active Live Activity - don't show during route selection
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -141,13 +141,17 @@ struct MapContainerView: View {
             )
             .ignoresSafeArea()
             
-            // Operations summary pill (network scope)
+            // Operations summary pill (network scope) - positioned at top
+            // Shows network summary + route summary when RatSense has a prediction
             VStack {
-                Spacer()
-
-                OperationsSummaryView(scope: .network)
+                OperationsSummaryView(
+                    scope: .network,
+                    ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
+                )
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.top, 30)
+
+                Spacer()
 
                 // Show subtle loading indicator when data is loading
                 if mapViewModel.isLoading && mapViewModel.segments.isEmpty {
@@ -186,6 +190,7 @@ struct MapContainerView: View {
         .sheet(isPresented: $isSheetPresented) {
             NavigationStack(path: $appState.navigationPath) {
                 TripSelectionView()
+                    .transparentNavigationBackground()
                     .navigationDestination(for: NavigationDestination.self) { destination in
                         bottomSheetNavigationContent(for: destination)
                     }
@@ -194,7 +199,7 @@ struct MapContainerView: View {
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(true)
             .presentationBackgroundInteraction(.enabled)
-            .presentationBackground(.ultraThinMaterial)
+            .legacyPresentationBackground(.ultraThinMaterial)
             .presentationContentInteraction(.resizes)
         }
         .task {
@@ -352,41 +357,31 @@ struct MapContainerView: View {
     }
 
     /// Handles pending navigation by expanding the sheet FIRST, then navigating.
-    /// This eliminates the glitch where sheet expands with empty space before content renders.
+    /// Uses animation completion callback for reliable timing across iOS versions.
     private func handlePendingNavigation(_ destination: NavigationDestination) {
         // Cancel any pending expansion from other sources
         sheetExpansionTask?.cancel()
 
         // Clear pending navigation immediately to prevent re-triggers
-        let destinationToNavigate = destination
         appState.pendingNavigation = nil
 
         // If sheet is already expanded, navigate immediately
         if selectedDetent == .large {
-            appState.navigationPath.append(destinationToNavigate)
+            appState.navigationPath.append(destination)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             return
         }
 
-        // Sheet needs to expand first - start expansion, then navigate after animation completes
-        sheetExpansionTask = Task {
-            // Start sheet expansion animation
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    selectedDetent = .large
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }
+        // Haptic feedback when starting expansion
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
-            // Wait for sheet expansion animation to complete (300ms animation + small buffer)
-            try? await Task.sleep(nanoseconds: 320_000_000)
-
-            // Check if cancelled (e.g., user tapped back quickly)
-            guard !Task.isCancelled else { return }
-
-            // Now navigate - sheet is already at .large so content appears in stable container
-            await MainActor.run {
-                appState.navigationPath.append(destinationToNavigate)
+        // Expand sheet, then navigate when animation completes
+        withAnimation(.easeInOut(duration: 0.3)) {
+            selectedDetent = .large
+        } completion: {
+            // Only navigate if sheet is still expanded (user didn't drag it down)
+            if selectedDetent == .large {
+                appState.navigationPath.append(destination)
             }
         }
     }
@@ -624,34 +619,37 @@ struct MapContainerView: View {
     
     @ViewBuilder
     private func bottomSheetNavigationContent(for destination: NavigationDestination) -> some View {
-        switch destination {
-        case .departureSelector:
-            DeparturePickerView()
-        case .destinationPicker:
-            DestinationPickerView()
-        case .trainList(let stationName):
-            TrainListView(destination: stationName)
-        case .trainDetails(let trainId):
-            TrainDetailsView(trainId: trainId)
-        case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
-            TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate)
-        case .advancedConfiguration:
-            AdvancedConfigurationView()
-        case .myProfile:
-            MyProfileView()
-        case .favoriteStations:
-            OnboardingView(isRepeating: true)
-        case .congestionMap:
-            // Since map is always visible, show map controls and expand bottom sheet
-            CongestionMapControlsView(
-                mapViewModel: mapViewModel,
-                onDismiss: {
-                    // Reset to default map view and collapse bottom sheet
-                    resetToDefaultMapView()
-                    selectedDetent = .fraction(0.50)
-                }
-            )
+        Group {
+            switch destination {
+            case .departureSelector:
+                DeparturePickerView()
+            case .destinationPicker:
+                DestinationPickerView()
+            case .trainList(let stationName, let departureStationCode):
+                TrainListView(destination: stationName, departureStationCode: departureStationCode)
+            case .trainDetails(let trainId):
+                TrainDetailsView(trainId: trainId)
+            case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
+                TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate)
+            case .advancedConfiguration:
+                AdvancedConfigurationView()
+            case .myProfile:
+                MyProfileView()
+            case .favoriteStations:
+                OnboardingView(isRepeating: true)
+            case .congestionMap:
+                // Since map is always visible, show map controls and expand bottom sheet
+                CongestionMapControlsView(
+                    mapViewModel: mapViewModel,
+                    onDismiss: {
+                        // Reset to default map view and collapse bottom sheet
+                        resetToDefaultMapView()
+                        selectedDetent = .fraction(0.50)
+                    }
+                )
+            }
         }
+        .transparentNavigationBackground()
     }
 }
 
@@ -711,11 +709,9 @@ struct CongestionMapControlsView: View {
             
             // Legend
             VStack(alignment: .leading, spacing: 8) {
-                Text("CONGESTION LEVELS")
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-                
+                Text("Congestion Levels")
+                    .trackRatSectionHeader()
+
                 HStack(spacing: 16) {
                     LegendItem(color: .green, label: "Normal")
                     LegendItem(color: .yellow, label: "Moderate")

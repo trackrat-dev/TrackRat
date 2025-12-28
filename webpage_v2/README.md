@@ -60,7 +60,7 @@ src/
 
 ## API
 
-The app connects to the TrackRat backend API at `https://prod.api.trackrat.net/api/v2`.
+The app connects to the TrackRat backend API at `https://apiv2.trackrat.net/api/v2`.
 
 ### Key Endpoints
 

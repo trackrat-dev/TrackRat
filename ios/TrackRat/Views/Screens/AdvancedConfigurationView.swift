@@ -19,16 +19,23 @@ struct AdvancedConfigurationView: View {
         let serverEnvironmentSection = createServerEnvironmentSection()
         let healthCheckSection = createHealthCheckSection()
 
-        return ScrollView {
+        return VStack(spacing: 0) {
+            TrackRatNavigationHeader(
+                title: "Advanced Configuration",
+                showBackButton: true,
+                showCloseButton: true
+            )
+
+            ScrollView {
                 VStack(spacing: 24) {
                     serverEnvironmentSection
                     healthCheckSection
                 }
                 .padding()
                 .padding(.bottom, 40)
+            }
         }
-        .navigationTitle("Advanced Configuration")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .onAppear {
             selectedEnvironment = storageService.loadServerEnvironment()
             hasChanges = false
@@ -312,7 +319,7 @@ struct ServerEnvironmentRow: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         AdvancedConfigurationView()
             .environmentObject(AppState())
             .environmentObject(ThemeManager.shared)

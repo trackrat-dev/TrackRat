@@ -96,7 +96,9 @@ final class APIService: ObservableObject {
     // MARK: - Train Search
     
     func searchTrains(fromStationCode: String, toStationCode: String, date: Date? = nil) async throws -> [TrainV2] {
-        var components = URLComponents(string: "\(baseURL)/v2/trains/departures")!
+        guard var components = URLComponents(string: "\(baseURL)/v2/trains/departures") else {
+            throw APIError.invalidURL
+        }
 
         var queryItems = [
             URLQueryItem(name: "from", value: fromStationCode),
@@ -217,8 +219,8 @@ final class APIService: ObservableObject {
         }
         
         print("📊 Fetching historical data from: \(url)")
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
+
+        let (data, _) = try await session.data(from: url)
         
         // Debug: Print raw response
         if let jsonString = String(data: data, encoding: .utf8) {
@@ -375,8 +377,8 @@ final class APIService: ObservableObject {
         }
         
         print("📊 Fetching route historical data from: \(url)")
-        
-        let (data, _) = try await URLSession.shared.data(from: url)
+
+        let (data, _) = try await session.data(from: url)
         
         // Debug: Print raw response
         if let jsonString = String(data: data, encoding: .utf8) {
@@ -637,10 +639,12 @@ final class APIService: ObservableObject {
         let encoder = JSONEncoder()
         request.httpBody = try encoder.encode(body)
         
+        #if DEBUG
         print("📱 Registering Live Activity token (V2):")
         print("  Token: \(pushToken.prefix(10))...")
         print("  Train: \(trainNumber)")
         print("  Route: \(originCode) → \(destinationCode)")
+        #endif
         
         let (_, response) = try await session.data(for: request)
         
@@ -1064,6 +1068,67 @@ final class APIService: ObservableObject {
             }
             throw error
         }
+    }
+
+    // MARK: - User Feedback
+
+    /// Submit user feedback about data issues
+    func submitFeedback(
+        message: String,
+        screen: String,
+        trainId: String? = nil,
+        originCode: String? = nil,
+        destinationCode: String? = nil
+    ) async throws {
+        let endpoint = "/v2/feedback"
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            throw APIError.invalidURL
+        }
+
+        struct FeedbackRequest: Encodable {
+            let message: String
+            let screen: String
+            let train_id: String?
+            let origin_code: String?
+            let destination_code: String?
+            let app_version: String?
+            let device_model: String?
+        }
+
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        var deviceModel = "Unknown"
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        deviceModel = withUnsafePointer(to: &systemInfo.machine) {
+            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
+                String(validatingUTF8: $0) ?? "Unknown"
+            }
+        }
+
+        let body = FeedbackRequest(
+            message: message,
+            screen: screen,
+            train_id: trainId,
+            origin_code: originCode,
+            destination_code: destinationCode,
+            app_version: appVersion,
+            device_model: deviceModel
+        )
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (_, response) = try await session.data(for: request)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+                throw APIError.invalidParameters
+            }
+        }
+
+        print("✅ Feedback submitted successfully")
     }
 }
 

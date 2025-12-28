@@ -367,6 +367,7 @@ class ApiCacheService:
             time_from=None,
             time_to=None,
             limit=limit,
+            skip_individual_refresh=True,  # Skip individual train refreshes during precompute
         )
 
         return response.model_dump(mode="json")

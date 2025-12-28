@@ -24,19 +24,6 @@ os.environ.setdefault(
 )
 os.environ.setdefault("TRACKRAT_NJT_API_TOKEN", "test_token")
 
-# Mock sentry_sdk to prevent initialization
-import sys
-from unittest.mock import MagicMock
-
-sys.modules["sentry_sdk"] = MagicMock()
-sys.modules["sentry_sdk.integrations.asyncio"] = MagicMock()
-sys.modules["sentry_sdk.integrations.fastapi"] = MagicMock()
-sys.modules["sentry_sdk.integrations.httpx"] = MagicMock()
-sys.modules["sentry_sdk.integrations.logging"] = MagicMock()
-sys.modules["sentry_sdk.integrations.sqlalchemy"] = MagicMock()
-sys.modules["sentry_sdk.crons"] = MagicMock()
-sys.modules["sentry_sdk._types"] = MagicMock()
-
 from starlette.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 

@@ -52,14 +52,14 @@ struct JourneyCongestionMapView: View {
                         }
                     )
                     .frame(height: 200)
-                    .cornerRadius(12)
+                    .cornerRadius(TrackRatTheme.CornerRadius.md)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                            .stroke(TrackRatTheme.Colors.borderSecondary, lineWidth: 1)
                     )
                 } else {
                     // No congestion data
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                         .fill(.ultraThinMaterial)
                         .frame(height: 200)
                         .overlay(
@@ -520,21 +520,21 @@ struct CongestionMapKitView: UIViewRepresentable {
         private func getCongestionLineWidth(_ factor: Double) -> CGFloat {
             if factor < 1.05 {
                 return 5
-            } else if factor < 1.2 {
+            } else if factor < 1.25 {
                 return 7
-            } else if factor < 1.5 {
+            } else if factor < 2.0 {
                 return 9
             } else {
                 return 11
             }
         }
-        
+
         private func getUIColor(for congestionFactor: Double) -> UIColor {
             if congestionFactor < 1.05 {
                 return UIColor.systemGreen
-            } else if congestionFactor < 1.2 {
+            } else if congestionFactor < 1.25 {
                 return UIColor.systemYellow
-            } else if congestionFactor < 1.5 {
+            } else if congestionFactor < 2.0 {
                 return UIColor.systemOrange
             } else {
                 return UIColor.systemRed
@@ -720,10 +720,10 @@ struct EmbeddedCongestionMapView: View {
                     }
                 )
                 .frame(height: 300)
-                .cornerRadius(12)
+                .cornerRadius(TrackRatTheme.CornerRadius.md)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                        .stroke(TrackRatTheme.Colors.borderSecondary, lineWidth: 1)
                 )
             }
         }
@@ -758,12 +758,12 @@ struct SingleSegmentMapView: View {
                 trainPositions: [], // No train positions for single segment view
                 onSegmentTap: onTap
             )
-            .cornerRadius(12)
+            .cornerRadius(TrackRatTheme.CornerRadius.md)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                    .stroke(TrackRatTheme.Colors.borderSecondary, lineWidth: 1)
             )
-            
+
             // Congestion level overlay
             VStack {
                 HStack {
@@ -1007,7 +1007,7 @@ struct SwipeableSegmentTrainDetailsView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             TabView(selection: $currentSegmentIndex) {
                 ForEach(segments.indices, id: \.self) { index in
                     SegmentTrainDetailsContentView(segment: segments[index])
@@ -1015,22 +1015,27 @@ struct SwipeableSegmentTrainDetailsView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .background(.ultraThinMaterial)
             .navigationTitle("Segment Details")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Text("Segment \(currentSegmentIndex + 1) of \(segments.count)")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.white.opacity(0.6))
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
+                    .foregroundColor(.white)
                 }
             }
         }
+        .preferredColorScheme(.dark)
         .onAppear {
             // Set initial segment index
             if let initialIndex = segments.firstIndex(where: { $0.id == initialSegment.id }) {
@@ -1148,14 +1153,14 @@ struct SegmentTrainDetailsContentView: View {
                 SegmentStatCard(
                     title: "Avg Departure Delay",
                     value: summary.averageDepartureDelay > 0 ? "+\(Int(summary.averageDepartureDelay))m" : "On time",
-                    color: summary.averageDepartureDelay <= 0 ? .green : summary.averageDepartureDelay <= 5 ? .yellow : .orange,
+                    color: summary.averageDepartureDelay <= 2 ? .green : summary.averageDepartureDelay <= 6 ? .yellow : .orange,
                     icon: "arrow.up.circle.fill"
                 )
-                
+
                 SegmentStatCard(
                     title: "Avg Arrival Delay",
                     value: summary.averageArrivalDelay > 0 ? "+\(Int(summary.averageArrivalDelay))m" : "On time",
-                    color: summary.averageArrivalDelay <= 0 ? .green : summary.averageArrivalDelay <= 5 ? .yellow : .orange,
+                    color: summary.averageArrivalDelay <= 2 ? .green : summary.averageArrivalDelay <= 6 ? .yellow : .orange,
                     icon: "arrow.down.circle.fill"
                 )
                 
@@ -1401,5 +1406,5 @@ private struct SegmentTimeDetailRow: View {
         userDestination: "New York Penn Station"
     )
     .padding()
-    .background(TrackRatTheme.Colors.surface)
+    .background(.ultraThinMaterial)
 }
