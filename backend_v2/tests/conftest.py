@@ -243,6 +243,7 @@ def e2e_client(test_settings, sync_engine):
         patch("trackrat.main.get_scheduler") as mock_scheduler,
         patch("trackrat.api.health.get_scheduler") as mock_health_scheduler,
         patch("trackrat.api.trains.NJTransitClient") as mock_njt_client,
+        patch("trackrat.services.departure.NJTransitClient") as mock_departure_njt_client,
         patch("trackrat.main.init_database") as mock_init_db,
     ):
         mock_init_db.return_value = AsyncMock()
@@ -259,12 +260,18 @@ def e2e_client(test_settings, sync_engine):
         mock_scheduler.return_value = scheduler
         mock_health_scheduler.return_value = scheduler
 
-        # Mock NJTransit client
+        # Mock NJTransit client for API layer
         mock_client = AsyncMock(spec=NJTransitClient)
         mock_client.close = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_njt_client.return_value = mock_client
+
+        # Mock NJTransit client for DepartureService (JIT refresh)
+        mock_departure_client = AsyncMock(spec=NJTransitClient)
+        mock_departure_client.get_train_schedule_with_stops = AsyncMock(return_value={"ITEMS": []})
+        mock_departure_client.close = AsyncMock()
+        mock_departure_njt_client.return_value = mock_departure_client
 
         with TestClient(app) as client:
             yield client
