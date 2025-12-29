@@ -1183,8 +1183,6 @@ struct TrainProgressIndicator: View {
 struct SegmentedTrackPredictionView: View {
     let train: TrainV2
     let isDepartingFromNYPenn: Bool
-    @State private var selectedSegment: TrackPredictionSegment?
-    @State private var showingOthersPopup = false
     @State private var adjustedPredictions: PredictionData?
     @State private var isLoadingPredictions = true
     @State private var showWaitingLink = false
@@ -1334,13 +1332,12 @@ struct SegmentedTrackPredictionView: View {
     
     private func segmentView(segment: TrackPredictionSegment, totalWidth: CGFloat) -> some View {
         let segmentWidth = totalWidth * segment.probability
-        let isSelected = selectedSegment?.id == segment.id
-        
+
         return Rectangle()
             .fill(segment.color)
             .frame(width: segmentWidth)
             .overlay(
-                segment.labelPosition == .inside ? 
+                segment.labelPosition == .inside ?
                 Text(segment.displayText)
                     .font(segment.labelFont)
                     .fontWeight(.medium)
@@ -1356,17 +1353,6 @@ struct SegmentedTrackPredictionView: View {
                 Rectangle()
                     .stroke(Color.black, lineWidth: 1)
             )
-            .scaleEffect(isSelected ? 1.05 : 1.0)
-            .overlay(
-                isSelected ? 
-                RoundedRectangle(cornerRadius: 2)
-                    .stroke(Color.white, lineWidth: 2)
-                : nil
-            )
-            .onTapGesture {
-                handleSegmentTap(segment)
-            }
-            .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
     
     private var hasSegmentsWithTopLabels: Bool {
@@ -1437,26 +1423,6 @@ struct SegmentedTrackPredictionView: View {
         }
         
         return segments
-    }
-    
-    private func createOthersDetailText(from segments: [TrackPredictionSegment]) -> String {
-        let sortedSegments = segments.sorted { $0.probability > $1.probability }
-        return sortedSegments.map { 
-            "Tracks \($0.platformName): \(Int($0.probability * 100))%" 
-        }.joined(separator: "\n")
-    }
-    
-    private func handleSegmentTap(_ segment: TrackPredictionSegment) {
-        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-        impactFeedback.impactOccurred()
-        
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selectedSegment = segment
-        }
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            selectedSegment = nil
-        }
     }
 }
 
