@@ -46,7 +46,7 @@ resource "google_storage_bucket" "universal_links" {
   uniform_bucket_level_access = true
   
   website {
-    main_page_suffix = "train-fallback.html"
+    main_page_suffix = "index.html"
     not_found_page   = "train-fallback.html"
   }
 
