@@ -1601,7 +1601,7 @@ struct PredictionExplanationSheet: View {
                                 .foregroundColor(.white.opacity(0.7))
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            Text("This is independent from but used in combination with the delay predictions from NJ Transit and Amtrak and only shown when delays are expected.")
+                            Text("This is independent from, but used in combination with, the Predicted Delays of the NJ Transit and Amtrak and only shown when delays are expected.")
                                 .font(.body)
                                 .foregroundColor(.white.opacity(0.7))
                                 .fixedSize(horizontal: false, vertical: true)
