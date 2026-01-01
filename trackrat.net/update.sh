@@ -10,9 +10,8 @@ gsutil cp ./index.html "$BUCKET/index.html"
 gsutil cp ./icon.png "$BUCKET/icon.png"
 gsutil cp ./privacy.txt "$BUCKET/privacy.txt"
 
-# Screenshots (if they exist)
-[ -f ./screenshot-home.png ] && gsutil cp ./screenshot-home.png "$BUCKET/screenshot-home.png"
-[ -f ./screenshot-details.png ] && gsutil cp ./screenshot-details.png "$BUCKET/screenshot-details.png"
+# Landing page images
+gsutil cp ./images/*.png "$BUCKET/images/"
 
 # Deep link fallback
 gsutil cp ./train-fallback.html "$BUCKET/train-fallback.html"
