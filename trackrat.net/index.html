@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrackRat - Real-time NJ Transit & Amtrak Tracking</title>
+    <meta name="description" content="Track NJ Transit and Amtrak trains in real-time with Live Activities, AI-powered track predictions, and smart journey suggestions.">
+    <meta name="theme-color" content="#0a0a0a">
+    <link rel="icon" type="image/png" href="icon.png">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="TrackRat - Real-time Train Tracking">
+    <meta property="og:description" content="Track NJ Transit and Amtrak trains with Live Activities, track predictions, and smart journey suggestions.">
+    <meta property="og:image" content="icon.png">
+    <meta property="og:type" content="website">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #0a0a0a;
+            color: #f5f5f5;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        a {
+            color: #ffa500;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 60px 0 40px;
+        }
+
+        .app-icon {
+            width: 120px;
+            height: 120px;
+            border-radius: 24px;
+            box-shadow: 0 8px 32px rgba(255, 165, 0, 0.2);
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #ffa500, #ff6b35);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .tagline {
+            font-size: 1.25rem;
+            color: #999;
+            margin-bottom: 32px;
+        }
+
+        .cta-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+
+        .cta-buttons a img {
+            height: 54px;
+            transition: transform 0.2s;
+        }
+
+        .cta-buttons a:hover img {
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #f5f5f5;
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: #252525;
+            border-color: #ffa500;
+            text-decoration: none;
+        }
+
+        /* Screenshots Section */
+        .screenshots {
+            padding: 40px 0;
+        }
+
+        .screenshots-grid {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .screenshot {
+            width: 280px;
+            border-radius: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid #222;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 60px 0;
+        }
+
+        .features h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 40px;
+            color: #f5f5f5;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: #1a1a1a;
+            border: 1px solid #252525;
+            border-radius: 16px;
+            padding: 24px;
+            transition: border-color 0.2s;
+        }
+
+        .feature-card:hover {
+            border-color: #ffa500;
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+
+        .feature-card h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #ffa500;
+        }
+
+        .feature-card p {
+            font-size: 0.95rem;
+            color: #999;
+        }
+
+        /* How It Works */
+        .how-it-works {
+            padding: 60px 0;
+            background: #111;
+            margin: 0 -24px;
+            padding-left: 24px;
+            padding-right: 24px;
+        }
+
+        .how-it-works h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 40px;
+            color: #f5f5f5;
+        }
+
+        .steps {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 32px;
+            justify-content: center;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .step {
+            flex: 1;
+            min-width: 200px;
+            max-width: 280px;
+            text-align: center;
+        }
+
+        .step-number {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #ffa500, #ff6b35);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #0a0a0a;
+            margin: 0 auto 16px;
+        }
+
+        .step h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #f5f5f5;
+        }
+
+        .step p {
+            font-size: 0.9rem;
+            color: #999;
+        }
+
+        /* Links Section */
+        .links {
+            padding: 60px 0;
+        }
+
+        .links h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 40px;
+            color: #f5f5f5;
+        }
+
+        .links-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .link-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #1a1a1a;
+            border: 1px solid #252525;
+            border-radius: 12px;
+            padding: 16px 24px;
+            color: #f5f5f5;
+            transition: all 0.2s;
+        }
+
+        .link-card:hover {
+            border-color: #ffa500;
+            text-decoration: none;
+            transform: translateY(-2px);
+        }
+
+        .link-card .link-icon {
+            font-size: 1.5rem;
+        }
+
+        .link-card span {
+            font-weight: 500;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid #222;
+            padding: 40px 0;
+            text-align: center;
+        }
+
+        .footer-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+
+        .footer-links a {
+            color: #999;
+            font-size: 0.9rem;
+        }
+
+        .footer-links a:hover {
+            color: #ffa500;
+        }
+
+        .copyright {
+            color: #666;
+            font-size: 0.85rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 2.25rem;
+            }
+
+            .tagline {
+                font-size: 1.1rem;
+            }
+
+            .screenshot {
+                width: 240px;
+            }
+
+            .features h2,
+            .how-it-works h2,
+            .links h2 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Hero Section -->
+        <section class="hero">
+            <img src="icon.png" alt="TrackRat" class="app-icon">
+            <h1>TrackRat</h1>
+            <p class="tagline">Real-time NJ Transit & Amtrak tracking</p>
+
+            <div class="cta-buttons">
+                <a href="https://apps.apple.com/us/app/trackrat/id6746423610">
+                    <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store">
+                </a>
+                <a href="https://bokonon1.github.io/TrackRat/" class="btn-secondary">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                    </svg>
+                    Open Web App
+                </a>
+            </div>
+        </section>
+
+        <!-- Screenshots Section -->
+        <section class="screenshots">
+            <div class="screenshots-grid">
+                <img src="screenshot-home.png" alt="TrackRat home screen with map and station selection" class="screenshot">
+                <img src="screenshot-details.png" alt="TrackRat train details with track predictions" class="screenshot">
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section class="features">
+            <h2>Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📍</div>
+                    <h3>Live Activities</h3>
+                    <p>Track your train on your Lock Screen and Dynamic Island with real-time updates every 30 seconds.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔮</div>
+                    <h3>Track Predictions</h3>
+                    <p>AI-powered predictions tell you which platform your train will arrive at before it's announced.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🧠</div>
+                    <h3>RatSense</h3>
+                    <p>Learns your commute patterns and suggests your likely next trip when you open the app.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🗺️</div>
+                    <h3>144+ Stations</h3>
+                    <p>Full coverage of NJ Transit and Amtrak's Southeast Corridor from New York to Florida.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>On-Time Stats</h3>
+                    <p>See historical performance data for routes and specific trains to plan your commute.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🚉</div>
+                    <h3>Penn Station Guide</h3>
+                    <p>Video guides help you navigate NY Penn Station efficiently based on your predicted track.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- How It Works -->
+        <section class="how-it-works">
+            <h2>How It Works</h2>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <h3>Select Your Trip</h3>
+                    <p>Choose your departure and destination stations from 144+ supported locations.</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <h3>View Train Status</h3>
+                    <p>See real-time departures, delays, and AI-powered track predictions.</p>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <h3>Track Your Train</h3>
+                    <p>Start a Live Activity to follow your train's progress on your Lock Screen.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Links Section -->
+        <section class="links">
+            <h2>Community & Support</h2>
+            <div class="links-grid">
+                <a href="https://trackrat.nolt.io/" class="link-card">
+                    <span class="link-icon">💡</span>
+                    <span>Feedback & Ideas</span>
+                </a>
+                <a href="https://www.youtube.com/@TrackRat-App/shorts" class="link-card">
+                    <span class="link-icon">▶️</span>
+                    <span>YouTube</span>
+                </a>
+                <a href="https://www.instagram.com/trackratapp/" class="link-card">
+                    <span class="link-icon">📷</span>
+                    <span>Instagram</span>
+                </a>
+            </div>
+        </section>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="privacy.txt">Privacy Policy</a>
+                <a href="mailto:trackrat@andymartin.cc">Contact</a>
+                <a href="https://trackrat.nolt.io/">Report an Issue</a>
+            </div>
+            <p class="copyright">Made for commuters by commuters</p>
+        </div>
+    </footer>
+</body>
+</html>
