@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TrackRat - Real-time NJ Transit & Amtrak Tracking</title>
+    <title>TrackRat - Real-time NJ Transit & Amtrak Tracking!</title>
     <meta name="description" content="Track NJ Transit and Amtrak trains in real-time with Live Activities, AI-powered track predictions, and smart journey suggestions.">
-    <meta name="theme-color" content="#0a0a0a">
+    <meta name="theme-color" content="#f8f7f4">
     <link rel="icon" type="image/png" href="icon.png">
 
     <!-- Open Graph -->
-    <meta property="og:title" content="TrackRat - Real-time Train Tracking">
+    <meta property="og:title" content="TrackRat - Real-time Train Tracking!">
     <meta property="og:description" content="Track NJ Transit and Amtrak trains with Live Activities, track predictions, and smart journey suggestions.">
     <meta property="og:image" content="icon.png">
     <meta property="og:type" content="website">
@@ -23,14 +23,14 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #0a0a0a;
-            color: #f5f5f5;
+            background: #f8f7f4;
+            color: #1e293b;
             line-height: 1.6;
             min-height: 100vh;
         }
 
         a {
-            color: #ffa500;
+            color: #3b82f6;
             text-decoration: none;
         }
 
@@ -54,7 +54,7 @@
             width: 120px;
             height: 120px;
             border-radius: 24px;
-            box-shadow: 0 8px 32px rgba(255, 165, 0, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             margin-bottom: 24px;
         }
 
@@ -62,15 +62,12 @@
             font-size: 3rem;
             font-weight: 700;
             margin-bottom: 12px;
-            background: linear-gradient(135deg, #ffa500, #ff6b35);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: #1e293b;
         }
 
         .tagline {
             font-size: 1.25rem;
-            color: #999;
+            color: #1e293b;
             margin-bottom: 32px;
         }
 
@@ -91,13 +88,31 @@
             transform: translateY(-2px);
         }
 
+        .social-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 54px;
+            height: 54px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+
+        .social-btn:hover {
+            background: #f1f5f9;
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+        }
+
         .btn-secondary {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #f5f5f5;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            color: #1e293b;
             padding: 14px 28px;
             border-radius: 12px;
             font-size: 1rem;
@@ -106,183 +121,62 @@
         }
 
         .btn-secondary:hover {
-            background: #252525;
-            border-color: #ffa500;
+            background: #f1f5f9;
+            border-color: #3b82f6;
             text-decoration: none;
-        }
-
-        /* Screenshots Section */
-        .screenshots {
-            padding: 40px 0;
-        }
-
-        .screenshots-grid {
-            display: flex;
-            gap: 24px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-
-        .screenshot {
-            width: 280px;
-            border-radius: 24px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-            border: 1px solid #222;
         }
 
         /* Features Section */
         .features {
-            padding: 60px 0;
+            padding: 40px 0 60px;
         }
 
-        .features h2 {
-            text-align: center;
-            font-size: 2rem;
-            margin-bottom: 40px;
-            color: #f5f5f5;
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
-        }
-
-        .feature-card {
-            background: #1a1a1a;
-            border: 1px solid #252525;
-            border-radius: 16px;
-            padding: 24px;
-            transition: border-color 0.2s;
-        }
-
-        .feature-card:hover {
-            border-color: #ffa500;
-        }
-
-        .feature-icon {
-            font-size: 2rem;
-            margin-bottom: 12px;
-        }
-
-        .feature-card h3 {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #ffa500;
-        }
-
-        .feature-card p {
-            font-size: 0.95rem;
-            color: #999;
-        }
-
-        /* How It Works */
-        .how-it-works {
-            padding: 60px 0;
-            background: #111;
-            margin: 0 -24px;
-            padding-left: 24px;
-            padding-right: 24px;
-        }
-
-        .how-it-works h2 {
-            text-align: center;
-            font-size: 2rem;
-            margin-bottom: 40px;
-            color: #f5f5f5;
-        }
-
-        .steps {
+        .feature-row {
             display: flex;
-            flex-wrap: wrap;
-            gap: 32px;
-            justify-content: center;
-            max-width: 900px;
-            margin: 0 auto;
+            align-items: center;
+            gap: 48px;
+            margin-bottom: 48px;
         }
 
-        .step {
+        .feature-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .feature-row.reverse {
+            flex-direction: row-reverse;
+        }
+
+        .feature-image {
+            flex: 0 0 280px;
+        }
+
+        .feature-image img {
+            width: 280px;
+            border-radius: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+        }
+
+        .feature-text {
             flex: 1;
-            min-width: 200px;
-            max-width: 280px;
-            text-align: center;
         }
 
-        .step-number {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, #ffa500, #ff6b35);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #0a0a0a;
-            margin: 0 auto 16px;
-        }
-
-        .step h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #f5f5f5;
-        }
-
-        .step p {
-            font-size: 0.9rem;
-            color: #999;
-        }
-
-        /* Links Section */
-        .links {
-            padding: 60px 0;
-        }
-
-        .links h2 {
-            text-align: center;
-            font-size: 2rem;
-            margin-bottom: 40px;
-            color: #f5f5f5;
-        }
-
-        .links-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px;
-            justify-content: center;
-        }
-
-        .link-card {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: #1a1a1a;
-            border: 1px solid #252525;
-            border-radius: 12px;
-            padding: 16px 24px;
-            color: #f5f5f5;
-            transition: all 0.2s;
-        }
-
-        .link-card:hover {
-            border-color: #ffa500;
-            text-decoration: none;
-            transform: translateY(-2px);
-        }
-
-        .link-card .link-icon {
+        .feature-text h3 {
             font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #1e293b;
         }
 
-        .link-card span {
-            font-weight: 500;
+        .feature-text p {
+            font-size: 1.1rem;
+            color: #64748b;
+            line-height: 1.7;
         }
 
         /* Footer */
         footer {
-            border-top: 1px solid #222;
+            border-top: 1px solid #e2e8f0;
             padding: 40px 0;
             text-align: center;
         }
@@ -296,17 +190,12 @@
         }
 
         .footer-links a {
-            color: #999;
+            color: #64748b;
             font-size: 0.9rem;
         }
 
         .footer-links a:hover {
-            color: #ffa500;
-        }
-
-        .copyright {
-            color: #666;
-            font-size: 0.85rem;
+            color: #3b82f6;
         }
 
         /* Responsive */
@@ -319,14 +208,22 @@
                 font-size: 1.1rem;
             }
 
-            .screenshot {
-                width: 240px;
+            .feature-row {
+                flex-direction: column;
+                text-align: center;
+                gap: 24px;
             }
 
-            .features h2,
-            .how-it-works h2,
-            .links h2 {
-                font-size: 1.5rem;
+            .feature-row.reverse {
+                flex-direction: column;
+            }
+
+            .feature-image {
+                flex: none;
+            }
+
+            .feature-image img {
+                width: 240px;
             }
         }
     </style>
@@ -337,105 +234,74 @@
         <section class="hero">
             <img src="icon.png" alt="TrackRat" class="app-icon">
             <h1>TrackRat</h1>
-            <p class="tagline">Real-time NJ Transit & Amtrak tracking</p>
+            <p class="tagline">Real-time NJ Transit & Amtrak tracking!</p>
 
             <div class="cta-buttons">
-                <a href="https://apps.apple.com/us/app/trackrat/id6746423610">
+                <a href="https://www.youtube.com/@TrackRat-App/shorts" class="social-btn" target="_blank" rel="noopener noreferrer" aria-label="YouTube">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="#FF0000">
+                        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                    </svg>
+                </a>
+                <a href="https://apps.apple.com/us/app/trackrat/id6746423610" target="_blank" rel="noopener noreferrer">
                     <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store">
                 </a>
-                <a href="https://bokonon1.github.io/TrackRat/" class="btn-secondary">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                <a href="https://www.instagram.com/trackratapp/" class="social-btn" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="url(#instagram-gradient)">
+                        <defs>
+                            <radialGradient id="instagram-gradient" cx="30%" cy="107%" r="150%">
+                                <stop offset="0%" stop-color="#fdf497"/>
+                                <stop offset="5%" stop-color="#fdf497"/>
+                                <stop offset="45%" stop-color="#fd5949"/>
+                                <stop offset="60%" stop-color="#d6249f"/>
+                                <stop offset="90%" stop-color="#285AEB"/>
+                            </radialGradient>
+                        </defs>
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/>
                     </svg>
-                    Open Web App
                 </a>
-            </div>
-        </section>
-
-        <!-- Screenshots Section -->
-        <section class="screenshots">
-            <div class="screenshots-grid">
-                <img src="screenshot-home.png" alt="TrackRat home screen with map and station selection" class="screenshot">
-                <img src="screenshot-details.png" alt="TrackRat train details with track predictions" class="screenshot">
             </div>
         </section>
 
         <!-- Features Section -->
         <section class="features">
-            <h2>Features</h2>
-            <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon">📍</div>
-                    <h3>Live Activities</h3>
-                    <p>Track your train on your Lock Screen and Dynamic Island with real-time updates every 30 seconds.</p>
+            <div class="feature-row">
+                <div class="feature-image">
+                    <img src="images/1.png" alt="Network delay map showing on-time performance">
                 </div>
-                <div class="feature-card">
-                    <div class="feature-icon">🔮</div>
-                    <h3>Track Predictions</h3>
-                    <p>AI-powered predictions tell you which platform your train will arrive at before it's announced.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">🧠</div>
-                    <h3>RatSense</h3>
-                    <p>Learns your commute patterns and suggests your likely next trip when you open the app.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">🗺️</div>
-                    <h3>144+ Stations</h3>
-                    <p>Full coverage of NJ Transit and Amtrak's Southeast Corridor from New York to Florida.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">📊</div>
-                    <h3>On-Time Stats</h3>
-                    <p>See historical performance data for routes and specific trains to plan your commute.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="feature-icon">🚉</div>
-                    <h3>Penn Station Guide</h3>
-                    <p>Video guides help you navigate NY Penn Station efficiently based on your predicted track.</p>
+                <div class="feature-text">
+                    <h3>See delays at a glance</h3>
+                    <p>Color-coded maps show where trains are running late—both at departure and arrival. Spot trouble before you leave home!</p>
                 </div>
             </div>
-        </section>
 
-        <!-- How It Works -->
-        <section class="how-it-works">
-            <h2>How It Works</h2>
-            <div class="steps">
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <h3>Select Your Trip</h3>
-                    <p>Choose your departure and destination stations from 144+ supported locations.</p>
+            <div class="feature-row reverse">
+                <div class="feature-image">
+                    <img src="images/2.png" alt="Unified train list showing NJ Transit and Amtrak">
                 </div>
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <h3>View Train Status</h3>
-                    <p>See real-time departures, delays, and AI-powered track predictions.</p>
-                </div>
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <h3>Track Your Train</h3>
-                    <p>Start a Live Activity to follow your train's progress on your Lock Screen.</p>
+                <div class="feature-text">
+                    <h3>NJ Transit and Amtrak, together</h3>
+                    <p>One unified view of every train on your route. No switching apps, no juggling schedules. Pick your origin and destination, and see all your options.</p>
                 </div>
             </div>
-        </section>
 
-        <!-- Links Section -->
-        <section class="links">
-            <h2>Community & Support</h2>
-            <div class="links-grid">
-                <a href="https://trackrat.nolt.io/" class="link-card">
-                    <span class="link-icon">💡</span>
-                    <span>Feedback & Ideas</span>
-                </a>
-                <a href="https://www.youtube.com/@TrackRat-App/shorts" class="link-card">
-                    <span class="link-icon">▶️</span>
-                    <span>YouTube</span>
-                </a>
-                <a href="https://www.instagram.com/trackratapp/" class="link-card">
-                    <span class="link-icon">📷</span>
-                    <span>Instagram</span>
-                </a>
+            <div class="feature-row">
+                <div class="feature-image">
+                    <img src="images/3.png" alt="Track prediction for Penn Station">
+                </div>
+                <div class="feature-text">
+                    <h3>Know your track early</h3>
+                    <p>Get platform predictions at top stations like New York Penn Station before they hit the departure board. Hang out near the most likely entrances and beat the crowd.</p>
+                </div>
+            </div>
+
+            <div class="feature-row reverse">
+                <div class="feature-image">
+                    <img src="images/4.png" alt="Lock screen Live Activity showing train status">
+                </div>
+                <div class="feature-text">
+                    <h3>Your commute, on your Lock Screen</h3>
+                    <p>Live Activities put real-time departure info, delays, and track predictions right on your Lock Screen and Dynamic Island. Check your train without unlocking your phone.</p>
+                </div>
             </div>
         </section>
     </div>
@@ -444,11 +310,9 @@
     <footer>
         <div class="container">
             <div class="footer-links">
-                <a href="privacy.txt">Privacy Policy</a>
-                <a href="mailto:trackrat@andymartin.cc">Contact</a>
-                <a href="https://trackrat.nolt.io/">Report an Issue</a>
+                <a href="https://trackrat.net/privacy.txt" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                <a href="https://trackrat.nolt.io/" target="_blank" rel="noopener noreferrer">Submit Feedback & Ideas!</a>
             </div>
-            <p class="copyright">Made for commuters by commuters</p>
         </div>
     </footer>
 </body>
