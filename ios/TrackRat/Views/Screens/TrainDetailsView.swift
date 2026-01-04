@@ -1687,7 +1687,8 @@ struct DelayForecastView: View {
     }
 
     private func loadDelayForecast() async {
-        guard let stationCode = originStationCode else {
+        guard let stationCode = originStationCode,
+              let journeyDate = train.journeyDate else {
             loadError = "No origin station"
             isLoading = false
             return
@@ -1700,7 +1701,7 @@ struct DelayForecastView: View {
             let forecast = try await APIService.shared.getDelayForecast(
                 trainId: train.trainId,
                 stationCode: stationCode,
-                journeyDate: train.journeyDate
+                journeyDate: journeyDate
             )
             self.delayForecast = forecast
         } catch {
