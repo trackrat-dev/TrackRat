@@ -153,6 +153,14 @@ class NJTransitClient:
             "TrainData/getTrainSchedule", {"station": station_code}
         )
 
+        # Handle None/empty response (some low-traffic stations have no trains at times)
+        if response is None:
+            logger.debug(
+                "train_schedule_empty_response",
+                station_code=station_code,
+            )
+            return {"ITEMS": []}
+
         # Log response structure for debugging
         logger.debug(
             "train_schedule_with_stops_response",
