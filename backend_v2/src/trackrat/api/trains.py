@@ -86,10 +86,9 @@ async def get_departures(
 
     cache_service = ApiCacheService()
 
-    # Only use cache when using default parameters (no hide_departed since it's dynamic)
-    use_cache = (
-        date is None and time_from is None and time_to is None and not hide_departed
-    )
+    # Use cache when using default time parameters (date, time_from, time_to are None)
+    # Cache supports both hide_departed=true and hide_departed=false
+    use_cache = date is None and time_from is None and time_to is None
 
     if use_cache:
         cache_params = {
@@ -97,6 +96,7 @@ async def get_departures(
             "to_station": to_station,
             "date": None,
             "limit": limit,
+            "hide_departed": hide_departed,
         }
 
         cached_response = await cache_service.get_cached_response(
@@ -117,6 +117,15 @@ async def get_departures(
                 await cache_service.invalidate_cache_entry(
                     db, "/api/v2/trains/departures", cache_params
                 )
+        else:
+            # Cache miss - log for observability
+            logger.info(
+                "cache_miss",
+                endpoint="/api/v2/trains/departures",
+                from_station=from_station,
+                to_station=to_station,
+                hide_departed=hide_departed,
+            )
 
     service = DepartureService()
     response = await service.get_departures(

@@ -124,7 +124,16 @@ extension DateFormatter {
         formatter.timeZone = TimeZone(identifier: "America/New_York")
         return formatter
     }()
-    
+
+    /// Cached formatter for "h:mm a" in Eastern Time - used for departure/arrival times
+    /// PERFORMANCE: DateFormatter instantiation is expensive, reuse this static instance
+    static let easternTimeShort: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        formatter.dateFormat = "h:mm a"
+        return formatter
+    }()
+
     static func easternTime(date dateStyle: DateFormatter.Style? = nil, time timeStyle: DateFormatter.Style? = nil) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.timeZone = TimeZone(identifier: "America/New_York")

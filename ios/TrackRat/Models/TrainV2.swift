@@ -236,11 +236,8 @@ struct TrainV2: Identifiable, Codable {
         guard let time = getDepartureTime(fromStationCode: fromStationCode) else {
             return "--:--"
         }
-        
-        let formatter = DateFormatter()
-        formatter.timeZone = TimeZone(identifier: "America/New_York")
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: time)
+        // PERFORMANCE: Use cached static formatter instead of creating new one each call
+        return DateFormatter.easternTimeShort.string(from: time)
     }
     
     // Check if train is departing soon (within specified minutes)

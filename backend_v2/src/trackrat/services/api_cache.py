@@ -308,18 +308,35 @@ class ApiCacheService:
         return response.model_dump(mode="json")
 
     async def precompute_departure_responses(self, db: AsyncSession) -> None:
-        """Pre-compute departure responses for popular station pairs."""
+        """Pre-compute departure responses for popular station pairs.
 
-        popular_routes: list[dict[str, Any]] = [
-            {"from_station": "NY", "to_station": "TR", "date": None, "limit": 50},
-            {"from_station": "NY", "to_station": "NP", "date": None, "limit": 50},
-            {"from_station": "TR", "to_station": "NY", "date": None, "limit": 50},
-            {"from_station": "NP", "to_station": "NY", "date": None, "limit": 50},
-            {"from_station": "NY", "to_station": "PJ", "date": None, "limit": 50},
-            {"from_station": "PJ", "to_station": "NY", "date": None, "limit": 50},
-            {"from_station": "NY", "to_station": "LB", "date": None, "limit": 50},
-            {"from_station": "LB", "to_station": "NY", "date": None, "limit": 50},
+        Generates cache entries for both hide_departed=true (iOS) and
+        hide_departed=false (web/default) variants.
+        """
+
+        # Base popular routes
+        base_routes = [
+            {"from_station": "NY", "to_station": "TR"},
+            {"from_station": "NY", "to_station": "NP"},
+            {"from_station": "TR", "to_station": "NY"},
+            {"from_station": "NP", "to_station": "NY"},
+            {"from_station": "NY", "to_station": "PJ"},
+            {"from_station": "PJ", "to_station": "NY"},
+            {"from_station": "NY", "to_station": "LB"},
+            {"from_station": "LB", "to_station": "NY"},
         ]
+
+        # Generate both hide_departed variants for each route
+        popular_routes: list[dict[str, Any]] = []
+        for route in base_routes:
+            # hide_departed=false (web/default)
+            popular_routes.append(
+                {**route, "date": None, "limit": 50, "hide_departed": False}
+            )
+            # hide_departed=true (iOS)
+            popular_routes.append(
+                {**route, "date": None, "limit": 50, "hide_departed": True}
+            )
 
         logger.info("precomputing_departure_responses", route_count=len(popular_routes))
 
@@ -358,6 +375,7 @@ class ApiCacheService:
         assert from_station is not None, "from_station is required"
         to_station = params.get("to_station")
         limit = params.get("limit", 50)
+        hide_departed = params.get("hide_departed", False)
 
         response = await self.departure_service.get_departures(
             db=db,
@@ -367,6 +385,7 @@ class ApiCacheService:
             time_from=None,
             time_to=None,
             limit=limit,
+            hide_departed=hide_departed,
             skip_individual_refresh=True,  # Skip individual train refreshes during precompute
         )
 
