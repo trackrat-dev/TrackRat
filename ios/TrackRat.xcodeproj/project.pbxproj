@@ -87,6 +87,12 @@
 		A1CB28302E3D6189004A49E6 /* AdvancedConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB282E2E3D6189004A49E6 /* AdvancedConfigurationView.swift */; };
 		A1CB28312E3D6189004A49E6 /* CongestionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */; };
 		A1CB28332E3D634C004A49E6 /* JourneyCongestionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB28322E3D634C004A49E6 /* JourneyCongestionMapView.swift */; };
+		A1D92A6E2F0AEFE50098897F /* TripRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A6D2F0AEFE50098897F /* TripRecordingService.swift */; };
+		A1D92A6F2F0AEFE50098897F /* TripRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A6D2F0AEFE50098897F /* TripRecordingService.swift */; };
+		A1D92A712F0AEFFC0098897F /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */; };
+		A1D92A722F0AEFFC0098897F /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */; };
+		A1D92A742F0AF01E0098897F /* CompletedTrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A732F0AF01E0098897F /* CompletedTrip.swift */; };
+		A1D92A752F0AF01E0098897F /* CompletedTrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A732F0AF01E0098897F /* CompletedTrip.swift */; };
 		A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
 		A1F0BAAB2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
 		A1F670E92EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
@@ -207,6 +213,9 @@
 		A1CB282E2E3D6189004A49E6 /* AdvancedConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AdvancedConfigurationView.swift; path = Views/Screens/AdvancedConfigurationView.swift; sourceTree = "<group>"; };
 		A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapView.swift; path = Views/Screens/CongestionMapView.swift; sourceTree = "<group>"; };
 		A1CB28322E3D634C004A49E6 /* JourneyCongestionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyCongestionMapView.swift; path = Views/Components/JourneyCongestionMapView.swift; sourceTree = "<group>"; };
+		A1D92A6D2F0AEFE50098897F /* TripRecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripRecordingService.swift; path = TrackRat/Services/TripRecordingService.swift; sourceTree = "<group>"; };
+		A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripHistoryView.swift; path = TrackRat/Views/Screens/TripHistoryView.swift; sourceTree = "<group>"; };
+		A1D92A732F0AF01E0098897F /* CompletedTrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompletedTrip.swift; path = TrackRat/Models/CompletedTrip.swift; sourceTree = "<group>"; };
 		A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainCacheService.swift; path = TrackRat/Services/TrainCacheService.swift; sourceTree = "<group>"; };
 		A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatNavigationHeader.swift; path = TrackRat/Views/Components/TrackRatNavigationHeader.swift; sourceTree = "<group>"; };
 		A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendWakeupService.swift; path = TrackRat/Services/BackendWakeupService.swift; sourceTree = "<group>"; };
@@ -278,6 +287,9 @@
 				A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */,
 				A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */,
 				A1B2375C2F002DCF0011A16E /* TrackTrainInlineButton.swift */,
+				A1D92A6D2F0AEFE50098897F /* TripRecordingService.swift */,
+				A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */,
+				A1D92A732F0AF01E0098897F /* CompletedTrip.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -620,15 +632,18 @@
 				A17329652E54A8A2006BF187 /* OnboardingView.swift in Sources */,
 				A1AA1BB52DEF00CC001FA904 /* TrackRatLoadingView.swift in Sources */,
 				A1B2375D2F002DCF0011A16E /* TrackTrainInlineButton.swift in Sources */,
+				A1D92A712F0AEFFC0098897F /* TripHistoryView.swift in Sources */,
 				A1AA1BB92DEF00EE001FA904 /* TrackRatMascot.swift in Sources */,
 				A19E912B2E3F8E2E0011F777 /* MapContainerView.swift in Sources */,
 				A17329672E54A8B1006BF187 /* StationRow.swift in Sources */,
 				A1AC62B02E60A30300D1A16C /* PennStationGuideView.swift in Sources */,
+				A1D92A6F2F0AEFE50098897F /* TripRecordingService.swift in Sources */,
 				A11A2C332E27C1A400B74BB5 /* StaticTrackDistributionService.swift in Sources */,
 				A1AD0D0D2E106D32003DA39F /* LiveActivityModels.swift in Sources */,
 				A17A63DE2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
 				A1875C7F2E400F4F00FCC7FC /* MyProfileView.swift in Sources */,
 				A1CB28302E3D6189004A49E6 /* AdvancedConfigurationView.swift in Sources */,
+				A1D92A752F0AF01E0098897F /* CompletedTrip.swift in Sources */,
 				A1CB28312E3D6189004A49E6 /* CongestionMapView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -647,14 +662,17 @@
 				A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */,
 				A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */,
 				A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */,
+				A1D92A6E2F0AEFE50098897F /* TripRecordingService.swift in Sources */,
 				A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */,
 				A17A63DF2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
+				A1D92A722F0AEFFC0098897F /* TripHistoryView.swift in Sources */,
 				A17A63E12EE60FD2003BD685 /* TrainStatsSummaryView.swift in Sources */,
 				A1BA60F02DFC73650002FB39 /* StorageServiceTests.swift in Sources */,
 				A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */,
 				A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */,
 				A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */,
 				A1F670E92EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */,
+				A1D92A742F0AF01E0098897F /* CompletedTrip.swift in Sources */,
 				A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */,
 				A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */,
 				A12AADE92EF8407600407794 /* TrainDistributionChart.swift in Sources */,
