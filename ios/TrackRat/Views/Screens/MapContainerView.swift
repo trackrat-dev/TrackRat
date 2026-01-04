@@ -7,11 +7,11 @@ extension PresentationDetent {
     var mapOffset: Double {
         switch self {
         case .fraction(0.50):  // Collapsed - 50% height
-            return -0.08    // Small adjustment (~5 miles)
+            return -0.10    // Small adjustment (~6 miles)
         case .large:           // Expanded - 100% height
-            return -0.08    // map is totally hidden, seems better to not make adjustments that will require the map to move
+            return -0.10    // map is totally hidden, seems better to not make adjustments that will require the map to move
         default:
-            return -0.08    // Default to collapsed offset
+            return -0.10    // Default to collapsed offset
         }
     }
 }
