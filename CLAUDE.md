@@ -215,6 +215,7 @@ terraform apply -var="environment=production"
 /api/v2/trains/{train_id}          # Train details with all stops
 /api/v2/routes/congestion          # Network congestion data (iOS only)
 /api/v2/predictions/track          # ML platform predictions (Web, iOS)
+/api/v2/predictions/delay          # Delay/cancellation forecasts (iOS)
 /api/v2/live-activities/register   # iOS Live Activity registration
 /health                            # Health check
 ```

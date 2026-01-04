@@ -2,7 +2,7 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** December 25, 2025
+**Last Updated:** January 4, 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Key Features:** Multi-transit support (NJT + Amtrak), ML predictions, API caching, schedule generation
 
@@ -182,6 +182,7 @@ GET /routes/segments/{from}/{to}/trains?hours=24      # Segment train records
 
 # ML Predictions
 GET /predictions/track?station_code=NY&train_id=1234&journey_date=2024-01-01  # Track prediction
+GET /predictions/delay?train_id=1234&station_code=NY&journey_date=2024-01-01  # Delay/cancellation forecast
 GET /predictions/supported-stations                   # ML-enabled stations list
 
 # Validation
@@ -618,6 +619,7 @@ The backend is organized into service classes for better maintainability:
 - **DirectArrivalForecaster** (`services/direct_forecaster.py`): Direct arrival predictions from recent data
 - **HistoricalTrackPredictor** (`services/historical_track_predictor.py`): Historical pattern-based track predictions
 - **TrackOccupancyService** (`services/track_occupancy.py`): Real-time track availability
+- **DelayForecaster** (`services/delay_forecaster.py`): ML-powered delay and cancellation forecasting using hierarchical historical data
 
 #### Infrastructure
 - **SimpleAPNSService** (`services/apns.py`): Apple Push Notifications for Live Activities
@@ -625,7 +627,17 @@ The backend is organized into service classes for better maintainability:
 
 ## Recent Improvements & Known Issues
 
-### Recent Improvements (Aug-Sep 2025)
+### Recent Improvements (January 2026)
+- ✅ Added delay and cancellation forecasting with ML-powered predictions
+- ✅ Expanded track predictions to support multiple stations beyond NY Penn
+- ✅ Added hot train updates for reduced event latency
+- ✅ Implemented `hide_departed` parameter for departures endpoint
+- ✅ Improved NJT API resilience for null/empty ITEMS in low-traffic stations
+- ✅ Track prediction now returns 404 instead of uniform distribution when insufficient data
+- ✅ Optimized departure service with data freshness indicators
+- ✅ Fixed delay forecaster floor calculations for accuracy
+
+### Previous Improvements (Aug-Sep 2025)
 - ✅ Added NJT schedule collection for future train visibility
 - ✅ Implemented Amtrak pattern-based schedule generation
 - ✅ Added horizontal scaling support with database coordination

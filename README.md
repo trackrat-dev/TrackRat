@@ -17,9 +17,12 @@ Real-time train tracking system with ML-powered track predictions for NJ Transit
 - **Transit Analytics**: Real-time congestion monitoring and historical route performance
 - **Journey Tracking**: Segment-by-segment transit time analysis and delay attribution
 - **Arrival Forecasting**: ML-powered arrival time predictions using recent journey data
+- **Delay Forecasting**: ML-powered delay and cancellation probability predictions
+- **Trip Statistics**: Flighty-style trip history with on-time percentage and time saved metrics (iOS)
 - **Live Activities**: Real-time iOS Lock Screen and Dynamic Island updates
 - **RatSense AI**: Intelligent journey suggestions based on user patterns (iOS)
 - **Penn Station Guide**: Interactive navigation assistance with video guides (iOS)
+- **Journey Feedback**: Proactive feedback collection at 2/3 journey progress (iOS)
 - **Validation System**: Hourly coverage checks ensure data completeness
 
 ## 🏗️ Architecture
@@ -233,14 +236,16 @@ make setup                           # Setup development environment
 
 ### ✅ Production Ready
 - Backend V2 API with horizontal scaling
-- iOS app with Live Activities
+- iOS app with Live Activities, delay forecasting, and trip statistics
 - Infrastructure with monitoring
 - NJ Transit and Amtrak integration
+- ML-powered track and delay predictions
 
 ### 🚧 In Development
 - Android app (core features complete, missing train tracking)
 - Enhanced ML models for track prediction
 - Advanced analytics dashboards
+- Journey feedback analysis
 
 ### 📝 Planned
 - Additional transit systems
@@ -260,7 +265,7 @@ See individual CLAUDE.md files for component-specific guidelines.
 
 ## 📄 License
 
-Copyright © 2025 TrackRat Team. All rights reserved.
+Copyright © 2025-2026 TrackRat Team. All rights reserved.
 
 ## 🙏 Acknowledgments
 

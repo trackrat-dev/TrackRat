@@ -117,10 +117,17 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - Backend health check testing
 
 ### 13. **MyProfileView**
+- **Trip Statistics**: Total trips, on-time percentage, minutes saved vs scheduled
+- **Trip History Access**: Link to full TripHistoryView
 - User preferences and settings
-- Account management placeholder
 - Quick access to advanced configuration
 - Inline favorite stations management
+
+### 14. **TripHistoryView**
+- Complete history of recorded trips from Live Activities
+- Trip details: origin, destination, train, duration, delay
+- Filtering by date range or data source
+- Visual delay indicators (green/yellow/red)
 
 ## Live Activities
 
@@ -181,6 +188,7 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - `GET /v2/routes/congestion?time_window_hours=1&max_per_segment=100&data_source=X` - Network congestion data
 - `GET /v2/routes/segments/{from}/{to}/trains?max_trains=X&data_source=Y` - Segment-specific train details
 - `GET /v2/predictions/track?station_code=X&train_id=Y` - Owl track predictions
+- `GET /v2/predictions/delay?train_id=X&station_code=Y&journey_date=Z` - Delay and cancellation forecasts
 - `GET /v2/operations/summary?scope=X&from_station=Y&to_station=Z&train_id=W` - Operations summary (network/route/train)
 - `POST /v2/feedback` - Submit user feedback for data issues
 - `POST /v2/live-activities/register` - Register Live Activity for updates
@@ -393,6 +401,8 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 8. **ThemeManager** - Theme configuration (currently hardcoded to dark)
 9. **StaticTrackDistributionService** - Track usage analytics
 10. **TrainCacheService** - Two-tier train data caching with LRU eviction
+11. **TripRecordingService** - Records completed trips from Live Activities for statistics
+12. **JourneyFeedbackService** - Triggers feedback prompts during active journeys
 
 ### LiveActivityService
 - **Singleton Pattern**: Shared instance for app-wide access
@@ -660,7 +670,32 @@ xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
 
 ## Recent Enhancements
 
-### New Features Not Previously Documented
+### New Features (January 2026)
+
+#### Delay and Cancellation Forecasting
+ML-powered delay predictions shown in train details:
+- **DelayForecastView**: Shows cancellation probability, delay breakdown, and expected delay minutes
+- **TrainStatsSummaryView Integration**: Delay forecast is displayed in expandable train summary section
+- **API Integration**: Fetches from `/api/v2/predictions/delay` endpoint
+- **Confidence Indicators**: Shows prediction confidence based on sample count
+- **Factors Display**: Lists contributing factors (time of day, line performance, historical patterns)
+
+#### Trip Statistics & History (Flighty-style)
+Comprehensive trip tracking with statistics:
+- **TripRecordingService**: Records completed trips from Live Activities with start/end times, delays, train info
+- **CompletedTrip Model**: Stores journey data including origin/destination, duration, delay minutes, data source
+- **MyProfileView**: Shows trip statistics (total trips, on-time %, minutes saved vs scheduled)
+- **TripHistoryView**: Full trip history with filtering and detailed journey information
+- **StorageService**: Enhanced to persist trip data across sessions
+
+#### Journey Feedback Prompts
+Proactive feedback collection during journeys:
+- **JourneyFeedbackService**: Triggers feedback prompts at 2/3 journey progress
+- **JourneyFeedbackPromptView**: Non-intrusive prompt asking "How's your journey going?"
+- **ImprovementFeedbackSheet**: Detailed feedback form for data quality issues
+- **LiveActivityService Integration**: Automatically triggers prompts during active Live Activities
+
+### Previously Documented Features
 
 #### Penn Station Navigation Guide (PennStationGuideView)
 Interactive guide helping users navigate Penn Station efficiently:
