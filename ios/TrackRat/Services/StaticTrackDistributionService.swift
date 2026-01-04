@@ -24,7 +24,7 @@ class StaticTrackDistributionService {
         // Show predictions if:
         // 1. Train originates from a supported station
         // 2. No track assigned yet
-        guard let stationCode = train.originStationCode else { return false }
+        let stationCode = train.originStationCode
         return Self.supportedStations.contains(stationCode) && train.track == nil
     }
 
@@ -35,12 +35,12 @@ class StaticTrackDistributionService {
     /// - Returns: PredictionData if available, nil otherwise
     func getAdjustedPredictionData(for train: TrainV2, excludingOccupiedTracks: Bool = true) async -> PredictionData? {
         print("🔍 [StaticTrackDistribution] Getting predictions for train \(train.trainId)")
-        print("   - Origin: \(train.originStationCode ?? "nil")")
+        print("   - Origin: \(train.originStationCode)")
         print("   - Track: \(train.track ?? "nil")")
 
         // Only support configured stations
-        guard let stationCode = train.originStationCode,
-              Self.supportedStations.contains(stationCode) else {
+        let stationCode = train.originStationCode
+        guard Self.supportedStations.contains(stationCode) else {
             print("❌ [StaticTrackDistribution] Station not supported - no predictions")
             return nil
         }
@@ -59,7 +59,7 @@ class StaticTrackDistributionService {
             }
 
             print("📡 [StaticTrackDistribution] Calling API for predictions...")
-            print("   - Station: \(train.originStationCode ?? "NY")")
+            print("   - Station: \(train.originStationCode)")
             print("   - Train ID: \(train.trainId)")
             print("   - Journey Date: \(scheduledDeparture)")
 
