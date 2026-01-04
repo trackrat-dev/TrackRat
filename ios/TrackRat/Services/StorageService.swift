@@ -145,13 +145,19 @@ struct TripPair: Codable, Identifiable, Equatable {
 
 // MARK: - Storage Service
 final class StorageService {
+    static let shared = StorageService()
+
     private let recentTripsKey = "trackrat.recentTrips"
     private let favoriteStationsKey = "trackrat.favoriteStations"
     private let serverEnvironmentKey = "trackrat.serverEnvironment"
+    private let completedTripsKey = "trackrat.completedTrips"
     private let maxRecentTrips = 10
     private let maxFavoriteStations = 10
-    
+    private let maxCompletedTrips = 500  // ~2 years of daily commuting
+
     private let userDefaults = UserDefaults.standard
+
+    init() {}
     
     
     // MARK: - Trip Pairs
@@ -339,7 +345,7 @@ final class StorageService {
     func migrateRecentDestinations() {
         // Get existing destinations from UserDefaults directly (since we removed the method)
         let existingDestinations = userDefaults.stringArray(forKey: "trackrat.recentDestinations") ?? []
-        
+
         if !existingDestinations.isEmpty && loadRecentTrips().isEmpty {
             // Create trip pairs with NY Penn as default departure
             for destination in existingDestinations {
@@ -352,10 +358,122 @@ final class StorageService {
                     )
                 }
             }
-            
+
             // Clean up old keys after migration
             userDefaults.removeObject(forKey: "trackrat.recentDestinations")
             userDefaults.removeObject(forKey: "trackrat.recentDepartures")
         }
+    }
+
+    // MARK: - Completed Trips (Trip History)
+
+    func saveCompletedTrip(_ trip: CompletedTrip) {
+        var trips = loadCompletedTrips()
+        trips.insert(trip, at: 0)
+
+        // Trim old trips if over limit
+        if trips.count > maxCompletedTrips {
+            trips = Array(trips.prefix(maxCompletedTrips))
+        }
+
+        persistCompletedTrips(trips)
+    }
+
+    func updateCompletedTrip(id: UUID, update: (inout CompletedTrip) -> Void) {
+        var trips = loadCompletedTrips()
+        if let index = trips.firstIndex(where: { $0.id == id }) {
+            update(&trips[index])
+            persistCompletedTrips(trips)
+        }
+    }
+
+    func deleteCompletedTrip(id: UUID) {
+        var trips = loadCompletedTrips()
+        trips.removeAll { $0.id == id }
+        persistCompletedTrips(trips)
+    }
+
+    func loadCompletedTrips() -> [CompletedTrip] {
+        guard let data = userDefaults.data(forKey: completedTripsKey),
+              let trips = try? JSONDecoder().decode([CompletedTrip].self, from: data) else {
+            return []
+        }
+        return trips
+    }
+
+    func clearCompletedTrips() {
+        userDefaults.removeObject(forKey: completedTripsKey)
+    }
+
+    private func persistCompletedTrips(_ trips: [CompletedTrip]) {
+        if let data = try? JSONEncoder().encode(trips) {
+            userDefaults.set(data, forKey: completedTripsKey)
+        }
+    }
+
+    // MARK: - Trip Statistics
+
+    func computeTripStats() -> TripStats {
+        let trips = loadCompletedTrips()
+
+        guard !trips.isEmpty else {
+            return .empty
+        }
+
+        // Basic counts
+        let totalDelay = trips.reduce(0) { $0 + $1.arrivalDelayMinutes }
+        let onTimeCount = trips.filter { $0.isOnTime }.count
+        let avgDelay = Double(totalDelay) / Double(trips.count)
+
+        // Most frequent route
+        var routeCounts: [String: (originName: String, destinationName: String, count: Int)] = [:]
+        for trip in trips {
+            let key = "\(trip.originCode)-\(trip.destinationCode)"
+            if let existing = routeCounts[key] {
+                routeCounts[key] = (existing.originName, existing.destinationName, existing.count + 1)
+            } else {
+                routeCounts[key] = (trip.originName, trip.destinationName, 1)
+            }
+        }
+        let topRoute = routeCounts.values.max(by: { $0.count < $1.count })
+
+        // First trip date
+        let firstDate = trips.last?.tripDate
+
+        // Current streak calculation
+        let streak = calculateCurrentStreak(trips: trips)
+
+        return TripStats(
+            totalTrips: trips.count,
+            totalDelayMinutes: totalDelay,
+            totalOnTimeTrips: onTimeCount,
+            averageDelayMinutes: avgDelay,
+            mostFrequentRoute: topRoute,
+            firstTripDate: firstDate,
+            currentStreakDays: streak
+        )
+    }
+
+    /// Calculate consecutive days with at least one trip, counting back from today
+    private func calculateCurrentStreak(trips: [CompletedTrip]) -> Int {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        // Get unique trip dates
+        let tripDates = Set(trips.map { calendar.startOfDay(for: $0.tripDate) })
+
+        var streak = 0
+        var checkDate = today
+
+        // Count backwards from today
+        while tripDates.contains(checkDate) {
+            streak += 1
+            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: checkDate) else {
+                break
+            }
+            checkDate = previousDay
+        }
+
+        return streak
     }
 }
