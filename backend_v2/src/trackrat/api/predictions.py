@@ -19,8 +19,8 @@ from trackrat.config.station_configs import (
     station_has_ml_predictions,
 )
 from trackrat.db.engine import get_db
-from trackrat.models.database import TrainJourney
 from trackrat.models.api import DelayBreakdownProbabilities, DelayForecastResponse
+from trackrat.models.database import TrainJourney
 from trackrat.services.delay_forecaster import delay_forecaster
 from trackrat.services.historical_track_predictor import historical_track_predictor
 
@@ -343,7 +343,6 @@ async def predict_delay(
     # Generate forecast
     prediction_start = time.time()
 
-    from datetime import datetime
 
     from trackrat.utils.time import now_et
 

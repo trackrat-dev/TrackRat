@@ -691,10 +691,10 @@ class OperationsSummaryResponse(BaseModel):
 class DelayBreakdownProbabilities(BaseModel):
     """Delay probability breakdown."""
 
-    on_time: float = Field(..., ge=0.0, le=1.0, description="Probability <= 5 min delay")
-    slight: float = Field(
-        ..., ge=0.0, le=1.0, description="Probability 6-15 min delay"
+    on_time: float = Field(
+        ..., ge=0.0, le=1.0, description="Probability <= 5 min delay"
     )
+    slight: float = Field(..., ge=0.0, le=1.0, description="Probability 6-15 min delay")
     significant: float = Field(
         ..., ge=0.0, le=1.0, description="Probability 16-30 min delay"
     )

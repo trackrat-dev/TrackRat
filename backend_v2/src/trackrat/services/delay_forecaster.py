@@ -288,7 +288,9 @@ class DelayForecaster:
                             0,
                             (
                                 func.extract("epoch", TrainJourney.actual_departure)
-                                - func.extract("epoch", TrainJourney.scheduled_departure)
+                                - func.extract(
+                                    "epoch", TrainJourney.scheduled_departure
+                                )
                             )
                             / 60,
                         ),
@@ -403,7 +405,9 @@ class DelayForecaster:
                             0,
                             (
                                 func.extract("epoch", TrainJourney.actual_departure)
-                                - func.extract("epoch", TrainJourney.scheduled_departure)
+                                - func.extract(
+                                    "epoch", TrainJourney.scheduled_departure
+                                )
                             )
                             / 60,
                         ),
@@ -517,7 +521,9 @@ class DelayForecaster:
                             0,
                             (
                                 func.extract("epoch", TrainJourney.actual_departure)
-                                - func.extract("epoch", TrainJourney.scheduled_departure)
+                                - func.extract(
+                                    "epoch", TrainJourney.scheduled_departure
+                                )
                             )
                             / 60,
                         ),
@@ -564,7 +570,9 @@ class DelayForecaster:
         Compares delay rate at this hour/day vs overall average.
         Returns multiplier > 1.0 if delays are more common at this time.
         """
-        cutoff_date = now_et().date() - timedelta(days=90)  # Use 90 days for time patterns
+        cutoff_date = now_et().date() - timedelta(
+            days=90
+        )  # Use 90 days for time patterns
 
         # Get overall delay rate
         overall_query = select(
@@ -632,7 +640,9 @@ class DelayForecaster:
 
         # Calculate adjustment (cap at 2.0 to prevent extreme values)
         if overall_delay_rate > 0:
-            adjustment = min(2.0, max(0.5, hourday_delay_rate / overall_delay_rate))
+            adjustment: float = min(
+                2.0, max(0.5, hourday_delay_rate / overall_delay_rate)
+            )
         else:
             adjustment = 1.0
 
@@ -659,8 +669,10 @@ class DelayForecaster:
         Uses the congestion analyzer to check current network conditions.
         """
         try:
-            congestion_data = await self.congestion_analyzer.get_network_congestion_optimized(
-                db, time_window_hours=2, data_source=data_source
+            congestion_data = (
+                await self.congestion_analyzer.get_network_congestion_optimized(
+                    db, time_window_hours=2, data_source=data_source
+                )
             )
 
             # Find segments departing from this station
@@ -754,7 +766,7 @@ class DelayForecaster:
         # Shift probability from on_time to delays proportionally
         shift_amount = forecast.on_time_probability * (multiplier - 1) * 0.5
 
-        new_on_time = max(0.1, forecast.on_time_probability - shift_amount)
+        new_on_time = forecast.on_time_probability - shift_amount
         new_slight = forecast.slight_delay_probability + shift_amount * 0.5
         new_significant = forecast.significant_delay_probability + shift_amount * 0.3
         new_major = forecast.major_delay_probability + shift_amount * 0.2
@@ -765,6 +777,16 @@ class DelayForecaster:
         new_slight /= total
         new_significant /= total
         new_major /= total
+
+        # Apply minimum floor AFTER normalization, redistributing deficit to delay categories
+        if new_on_time < 0.1:
+            deficit = 0.1 - new_on_time
+            new_on_time = 0.1
+            delay_total = new_slight + new_significant + new_major
+            if delay_total > 0:
+                new_slight -= deficit * (new_slight / delay_total)
+                new_significant -= deficit * (new_significant / delay_total)
+                new_major -= deficit * (new_major / delay_total)
 
         # Adjust expected delay
         new_expected = int(forecast.expected_delay_minutes * multiplier)

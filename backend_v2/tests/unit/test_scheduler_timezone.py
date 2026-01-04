@@ -28,6 +28,8 @@ class TestSchedulerTimezoneHandling:
         settings = Mock(spec=Settings)
         settings.discovery_interval_minutes = 60
         settings.journey_update_interval_minutes = 15
+        settings.hot_train_window_minutes = 15
+        settings.hot_train_update_interval_seconds = 120
         return settings
 
     @pytest.fixture

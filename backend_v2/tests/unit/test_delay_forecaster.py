@@ -125,7 +125,9 @@ class TestDelayForecaster:
         assert adjusted.on_time_probability < base_forecast.on_time_probability
 
         # Delay probabilities should increase
-        assert adjusted.slight_delay_probability >= base_forecast.slight_delay_probability
+        assert (
+            adjusted.slight_delay_probability >= base_forecast.slight_delay_probability
+        )
 
         # Expected delay should increase
         assert adjusted.expected_delay_minutes > base_forecast.expected_delay_minutes
@@ -195,27 +197,29 @@ class TestDelayForecaster:
     ):
         """Test that forecast uses train_id stats when sufficient samples exist."""
         # Mock the stats methods
-        with patch.object(
-            forecaster,
-            "_get_train_id_stats",
-            return_value=DelayStats(
-                sample_count=50,  # Above MIN_TRAIN_ID_SAMPLES (10)
-                cancellation_count=2,
-                on_time_count=40,
-                slight_delay_count=5,
-                significant_delay_count=2,
-                major_delay_count=1,
-                total_delay_minutes=100,
-                level="train_id",
-            ),
-        ) as mock_train, patch.object(
-            forecaster, "_get_line_code_stats", return_value=None
-        ) as mock_line, patch.object(
-            forecaster, "_get_data_source_stats", return_value=None
-        ) as mock_ds, patch.object(
-            forecaster, "_get_hour_day_adjustment", return_value=1.0
-        ), patch.object(
-            forecaster, "_get_congestion_multiplier", return_value=1.0
+        with (
+            patch.object(
+                forecaster,
+                "_get_train_id_stats",
+                return_value=DelayStats(
+                    sample_count=50,  # Above MIN_TRAIN_ID_SAMPLES (10)
+                    cancellation_count=2,
+                    on_time_count=40,
+                    slight_delay_count=5,
+                    significant_delay_count=2,
+                    major_delay_count=1,
+                    total_delay_minutes=100,
+                    level="train_id",
+                ),
+            ) as mock_train,
+            patch.object(
+                forecaster, "_get_line_code_stats", return_value=None
+            ) as mock_line,
+            patch.object(
+                forecaster, "_get_data_source_stats", return_value=None
+            ) as mock_ds,
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.0),
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
         ):
             forecast = await forecaster.forecast(
                 train_id="TEST123",
@@ -234,38 +238,38 @@ class TestDelayForecaster:
     @pytest.mark.asyncio
     async def test_forecast_falls_back_to_line_code(self, forecaster, mock_db):
         """Test fallback to line_code when train_id has insufficient samples."""
-        with patch.object(
-            forecaster,
-            "_get_train_id_stats",
-            return_value=DelayStats(
-                sample_count=5,  # Below MIN_TRAIN_ID_SAMPLES
-                cancellation_count=0,
-                on_time_count=4,
-                slight_delay_count=1,
-                significant_delay_count=0,
-                major_delay_count=0,
-                total_delay_minutes=10,
-                level="train_id",
+        with (
+            patch.object(
+                forecaster,
+                "_get_train_id_stats",
+                return_value=DelayStats(
+                    sample_count=5,  # Below MIN_TRAIN_ID_SAMPLES
+                    cancellation_count=0,
+                    on_time_count=4,
+                    slight_delay_count=1,
+                    significant_delay_count=0,
+                    major_delay_count=0,
+                    total_delay_minutes=10,
+                    level="train_id",
+                ),
             ),
-        ), patch.object(
-            forecaster,
-            "_get_line_code_stats",
-            return_value=DelayStats(
-                sample_count=100,  # Above MIN_LINE_CODE_SAMPLES (25)
-                cancellation_count=5,
-                on_time_count=70,
-                slight_delay_count=15,
-                significant_delay_count=7,
-                major_delay_count=3,
-                total_delay_minutes=500,
-                level="line_code",
+            patch.object(
+                forecaster,
+                "_get_line_code_stats",
+                return_value=DelayStats(
+                    sample_count=100,  # Above MIN_LINE_CODE_SAMPLES (25)
+                    cancellation_count=5,
+                    on_time_count=70,
+                    slight_delay_count=15,
+                    significant_delay_count=7,
+                    major_delay_count=3,
+                    total_delay_minutes=500,
+                    level="line_code",
+                ),
             ),
-        ), patch.object(
-            forecaster, "_get_data_source_stats", return_value=None
-        ), patch.object(
-            forecaster, "_get_hour_day_adjustment", return_value=1.0
-        ), patch.object(
-            forecaster, "_get_congestion_multiplier", return_value=1.0
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.0),
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
         ):
             forecast = await forecaster.forecast(
                 train_id="TEST123",
@@ -284,26 +288,30 @@ class TestDelayForecaster:
     @pytest.mark.asyncio
     async def test_forecast_falls_back_to_static(self, forecaster, mock_db):
         """Test fallback to static when all historical data is insufficient."""
-        with patch.object(
-            forecaster,
-            "_get_train_id_stats",
-            return_value=None,
-        ), patch.object(
-            forecaster,
-            "_get_line_code_stats",
-            return_value=None,
-        ), patch.object(
-            forecaster,
-            "_get_data_source_stats",
-            return_value=DelayStats(
-                sample_count=100,  # Below MIN_DATA_SOURCE_SAMPLES (250)
-                cancellation_count=5,
-                on_time_count=70,
-                slight_delay_count=15,
-                significant_delay_count=7,
-                major_delay_count=3,
-                total_delay_minutes=500,
-                level="data_source",
+        with (
+            patch.object(
+                forecaster,
+                "_get_train_id_stats",
+                return_value=None,
+            ),
+            patch.object(
+                forecaster,
+                "_get_line_code_stats",
+                return_value=None,
+            ),
+            patch.object(
+                forecaster,
+                "_get_data_source_stats",
+                return_value=DelayStats(
+                    sample_count=100,  # Below MIN_DATA_SOURCE_SAMPLES (250)
+                    cancellation_count=5,
+                    on_time_count=70,
+                    slight_delay_count=15,
+                    significant_delay_count=7,
+                    major_delay_count=3,
+                    total_delay_minutes=500,
+                    level="data_source",
+                ),
             ),
         ):
             forecast = await forecaster.forecast(
@@ -322,27 +330,25 @@ class TestDelayForecaster:
     @pytest.mark.asyncio
     async def test_forecast_applies_congestion_multiplier(self, forecaster, mock_db):
         """Test that live congestion affects forecast."""
-        with patch.object(
-            forecaster,
-            "_get_train_id_stats",
-            return_value=DelayStats(
-                sample_count=50,
-                cancellation_count=2,
-                on_time_count=40,
-                slight_delay_count=5,
-                significant_delay_count=2,
-                major_delay_count=1,
-                total_delay_minutes=100,
-                level="train_id",
+        with (
+            patch.object(
+                forecaster,
+                "_get_train_id_stats",
+                return_value=DelayStats(
+                    sample_count=50,
+                    cancellation_count=2,
+                    on_time_count=40,
+                    slight_delay_count=5,
+                    significant_delay_count=2,
+                    major_delay_count=1,
+                    total_delay_minutes=100,
+                    level="train_id",
+                ),
             ),
-        ), patch.object(
-            forecaster, "_get_line_code_stats", return_value=None
-        ), patch.object(
-            forecaster, "_get_data_source_stats", return_value=None
-        ), patch.object(
-            forecaster, "_get_hour_day_adjustment", return_value=1.0
-        ), patch.object(
-            forecaster, "_get_congestion_multiplier", return_value=1.5
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.0),
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.5),
         ):
             forecast = await forecaster.forecast(
                 train_id="TEST123",
@@ -359,27 +365,25 @@ class TestDelayForecaster:
     @pytest.mark.asyncio
     async def test_forecast_applies_time_pattern(self, forecaster, mock_db):
         """Test that hour/day pattern affects forecast."""
-        with patch.object(
-            forecaster,
-            "_get_train_id_stats",
-            return_value=DelayStats(
-                sample_count=50,
-                cancellation_count=2,
-                on_time_count=40,
-                slight_delay_count=5,
-                significant_delay_count=2,
-                major_delay_count=1,
-                total_delay_minutes=100,
-                level="train_id",
+        with (
+            patch.object(
+                forecaster,
+                "_get_train_id_stats",
+                return_value=DelayStats(
+                    sample_count=50,
+                    cancellation_count=2,
+                    on_time_count=40,
+                    slight_delay_count=5,
+                    significant_delay_count=2,
+                    major_delay_count=1,
+                    total_delay_minutes=100,
+                    level="train_id",
+                ),
             ),
-        ), patch.object(
-            forecaster, "_get_line_code_stats", return_value=None
-        ), patch.object(
-            forecaster, "_get_data_source_stats", return_value=None
-        ), patch.object(
-            forecaster, "_get_hour_day_adjustment", return_value=1.3
-        ), patch.object(
-            forecaster, "_get_congestion_multiplier", return_value=1.0
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.3),
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
         ):
             forecast = await forecaster.forecast(
                 train_id="TEST123",
@@ -432,9 +436,7 @@ class TestDelayStatsQueries:
         mock_result.one_or_none.return_value = mock_row
         mock_db.execute.return_value = mock_result
 
-        stats = await forecaster._get_train_id_stats(
-            mock_db, "TEST123", "NY", "NJT"
-        )
+        stats = await forecaster._get_train_id_stats(mock_db, "TEST123", "NY", "NJT")
 
         assert stats is not None
         assert stats.sample_count == 50
