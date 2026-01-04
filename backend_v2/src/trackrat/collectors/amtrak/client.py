@@ -36,7 +36,7 @@ class AmtrakClient(BaseClient):
         # Simple in-memory cache
         self._cache: dict[str, Any] = {}
         self._cache_time: datetime | None = None
-        self._cache_ttl = 60  # 1 minute cache TTL
+        self._cache_ttl = 30  # 30 second cache TTL
 
     @property
     def session(self) -> httpx.AsyncClient:

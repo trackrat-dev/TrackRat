@@ -380,38 +380,72 @@ class SchedulerService:
                 logger.debug("journey_update_check_skipped_still_fresh")
 
     async def schedule_departure_collections(self, session: AsyncSession) -> None:
-        """Schedule collection for trains at their departure time."""
-        # Look for trains departing in the next 10 minutes that haven't been collected
-        window_start = now_et()
-        window_end = window_start + timedelta(minutes=10)
+        """Schedule collection for trains at their departure time and hot train updates.
 
-        # PERFORMANCE FIX: Add time window filtering at database level to avoid
-        # loading all incomplete journeys into memory as the database scales.
-        # Also limit results to prevent memory issues.
-        stmt = (
+        This function handles two types of updates:
+        1. Departure-time collection: For trains without complete journey data,
+           schedule collection at their departure time.
+        2. Hot train updates: For trains departing within the hot window (default 15 min)
+           that have stale data (default >120s old), schedule immediate updates.
+           This ensures track assignments, delays, and status changes are captured
+           more frequently near departure time.
+        """
+        window_start = now_et()
+        hot_window_end = window_start + timedelta(
+            minutes=self.settings.hot_train_window_minutes
+        )
+        hot_staleness_cutoff = window_start - timedelta(
+            seconds=self.settings.hot_train_update_interval_seconds
+        )
+
+        # Query 1: Trains without complete journey data (schedule at departure time)
+        # Use 10-minute window for departure-time collection (original behavior)
+        departure_window_end = window_start + timedelta(minutes=10)
+        stmt_incomplete = (
             select(TrainJourney)
             .where(
                 and_(
                     TrainJourney.data_source == "NJT",
                     TrainJourney.has_complete_journey.is_not(True),
                     TrainJourney.is_cancelled.is_not(True),
-                    # Filter at database level - trains departing within window
                     TrainJourney.scheduled_departure >= window_start,
-                    TrainJourney.scheduled_departure <= window_end,
+                    TrainJourney.scheduled_departure <= departure_window_end,
                 )
             )
-            .limit(100)  # Safety limit to prevent memory issues
+            .limit(100)
         )
 
-        result = await session.execute(stmt)
-        trains = list(result.scalars().all())
+        result_incomplete = await session.execute(stmt_incomplete)
+        incomplete_trains = list(result_incomplete.scalars().all())
 
-        scheduled_count = 0
-        for train in trains:
-            # Schedule collection at departure time
+        # Query 2: Hot trains with complete journey but stale data (schedule immediately)
+        stmt_hot = (
+            select(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.has_complete_journey.is_(True),
+                    TrainJourney.is_cancelled.is_not(True),
+                    TrainJourney.is_completed.is_not(True),
+                    TrainJourney.is_expired.is_not(True),
+                    TrainJourney.scheduled_departure >= window_start,
+                    TrainJourney.scheduled_departure <= hot_window_end,
+                    TrainJourney.last_updated_at < hot_staleness_cutoff,
+                )
+            )
+            .limit(100)
+        )
+
+        result_hot = await session.execute(stmt_hot)
+        hot_trains = list(result_hot.scalars().all())
+
+        departure_scheduled_count = 0
+        hot_update_count = 0
+
+        # Schedule departure-time collection for incomplete trains
+        for train in incomplete_trains:
             job_id = f"departure_collection_{train.train_id}_{train.journey_date}"
 
-            # Check if job already exists
             if not self.scheduler.get_job(job_id) and train.scheduled_departure:
                 self.scheduler.add_job(
                     self.collect_journey,
@@ -423,14 +457,38 @@ class SchedulerService:
                     name=f"Departure collection for {train.train_id}",
                     replace_existing=True,
                 )
-                scheduled_count += 1
+                departure_scheduled_count += 1
 
-        # Log batch summary instead of individual trains
-        if scheduled_count > 0:
+        # Schedule immediate updates for hot trains with stale data
+        for train in hot_trains:
+            job_id = f"hot_update_{train.train_id}_{train.journey_date}"
+
+            if not self.scheduler.get_job(job_id):
+                self.scheduler.add_job(
+                    self.collect_journey,
+                    trigger=DateTrigger(run_date=now_et()),
+                    args=[train.train_id, train.journey_date],
+                    id=job_id,
+                    name=f"Hot update for {train.train_id}",
+                    replace_existing=True,
+                    max_instances=1,
+                )
+                hot_update_count += 1
+
+        # Log batch summaries
+        if departure_scheduled_count > 0:
             logger.info(
                 "scheduler.departure.scheduled",
-                count=scheduled_count,
+                count=departure_scheduled_count,
                 window_minutes=10,
+            )
+
+        if hot_update_count > 0:
+            logger.info(
+                "scheduler.hot_train.scheduled",
+                count=hot_update_count,
+                window_minutes=self.settings.hot_train_window_minutes,
+                staleness_seconds=self.settings.hot_train_update_interval_seconds,
             )
 
     async def schedule_periodic_updates(self, session: AsyncSession) -> None:
