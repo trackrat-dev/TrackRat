@@ -1070,6 +1070,58 @@ final class APIService: ObservableObject {
         }
     }
 
+    // MARK: - Delay Forecasts
+
+    /// Get delay and cancellation forecast for a train
+    func getDelayForecast(
+        trainId: String,
+        stationCode: String,
+        journeyDate: Date
+    ) async throws -> DelayForecastResponse {
+        var components = URLComponents(string: "\(baseURL)/v2/predictions/delay")!
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
+        let dateString = dateFormatter.string(from: journeyDate)
+
+        components.queryItems = [
+            URLQueryItem(name: "train_id", value: trainId),
+            URLQueryItem(name: "station_code", value: stationCode),
+            URLQueryItem(name: "journey_date", value: dateString)
+        ]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        print("🌐 [APIService] Fetching delay forecast from: \(url.absoluteString)")
+
+        let (data, response) = try await session.data(from: url)
+
+        if let httpResponse = response as? HTTPURLResponse {
+            print("📡 [APIService] Response status: \(httpResponse.statusCode)")
+            if httpResponse.statusCode != 200 {
+                print("⚠️ [APIService] Non-200 status code")
+                if let responseStr = String(data: data, encoding: .utf8) {
+                    print("   Response body: \(responseStr)")
+                }
+            }
+        }
+
+        do {
+            let forecast = try decoder.decode(DelayForecastResponse.self, from: data)
+            print("✅ [APIService] Successfully decoded delay forecast")
+            return forecast
+        } catch {
+            print("❌ [APIService] Decoding error: \(error)")
+            if let responseStr = String(data: data, encoding: .utf8) {
+                print("   Raw response: \(responseStr.prefix(500))...")
+            }
+            throw error
+        }
+    }
+
     // MARK: - User Feedback
 
     /// Submit user feedback about data issues

@@ -984,3 +984,106 @@ struct OperationsSummaryResponse: Codable {
         }
     }
 }
+
+// MARK: - Delay Forecast Models
+
+/// Delay probability breakdown
+struct DelayBreakdownProbabilities: Codable {
+    let onTime: Double
+    let slight: Double
+    let significant: Double
+    let major: Double
+
+    enum CodingKeys: String, CodingKey {
+        case onTime = "on_time"
+        case slight
+        case significant
+        case major
+    }
+}
+
+/// Response for delay/cancellation forecast endpoint
+struct DelayForecastResponse: Codable {
+    let trainId: String
+    let stationCode: String
+    let journeyDate: String
+
+    /// Probability of cancellation (0.0-1.0)
+    let cancellationProbability: Double
+
+    /// Delay probabilities (sum to 1.0 for non-cancelled scenario)
+    let delayProbabilities: DelayBreakdownProbabilities
+
+    /// Expected delay in minutes
+    let expectedDelayMinutes: Int
+
+    /// Confidence level: "high", "medium", or "low"
+    let confidence: String
+
+    /// Historical samples used
+    let sampleCount: Int
+
+    /// Factors used in forecast
+    let factors: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case trainId = "train_id"
+        case stationCode = "station_code"
+        case journeyDate = "journey_date"
+        case cancellationProbability = "cancellation_probability"
+        case delayProbabilities = "delay_probabilities"
+        case expectedDelayMinutes = "expected_delay_minutes"
+        case confidence
+        case sampleCount = "sample_count"
+        case factors
+    }
+
+    // MARK: - Display Helpers
+
+    /// Formatted on-time probability as percentage
+    var onTimePercentage: Int {
+        Int(delayProbabilities.onTime * 100)
+    }
+
+    /// Formatted cancellation probability as percentage
+    var cancellationPercentage: Int {
+        Int(cancellationProbability * 100)
+    }
+
+    /// Whether to show cancellation warning (> 5%)
+    var showCancellationWarning: Bool {
+        cancellationProbability > 0.05
+    }
+
+    /// Color for on-time probability
+    var onTimeColor: Color {
+        if delayProbabilities.onTime >= 0.80 {
+            return .green
+        } else if delayProbabilities.onTime >= 0.60 {
+            return .yellow
+        } else {
+            return .orange
+        }
+    }
+
+    /// Display text for delay breakdown
+    var delayBreakdownText: String {
+        let onTime = onTimePercentage
+        let slight = Int(delayProbabilities.slight * 100)
+
+        if slight > 5 {
+            return "\(onTime)% on-time · \(slight)% slight delay"
+        } else {
+            return "\(onTime)% on-time"
+        }
+    }
+
+    /// Confidence display text
+    var confidenceText: String {
+        switch confidence {
+        case "high": return "High confidence"
+        case "medium": return "Medium confidence"
+        default: return "Low confidence"
+        }
+    }
+}
