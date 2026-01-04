@@ -2,6 +2,7 @@
 Departure service for handling train departure queries.
 """
 
+import time
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -100,13 +101,19 @@ class DepartureService:
         if hide_departed:
             departure_filters.append(JourneyStop.has_departed_station.is_(False))
 
+        # PERFORMANCE: Track timing for observability
+        perf_start = time.perf_counter()
+
         # Ensure fresh data for NJT trains BEFORE querying, so the query returns
         # up-to-date departure times. This prevents stale data from causing
         # incorrect delay calculations in the response.
+        jit_start = time.perf_counter()
         await self._ensure_fresh_station_data(
             db, from_station, target_date, skip_individual_refresh
         )
+        jit_duration_ms = (time.perf_counter() - jit_start) * 1000
 
+        query_start = time.perf_counter()
         stmt = (
             select(TrainJourney)
             .join(
@@ -130,6 +137,8 @@ class DepartureService:
 
         result = await db.execute(stmt)
         journeys = list(result.scalars().unique().all())
+        query_duration_ms = (time.perf_counter() - query_start) * 1000
+        journeys_loaded = len(journeys)
 
         # Deduplicate by train_id to handle cases where the same train appears
         # with different journey_dates (e.g., stale records from previous days).
@@ -221,6 +230,21 @@ class DepartureService:
 
             if len(departures) >= limit:
                 break
+
+        # PERFORMANCE: Log timing and result set metrics for observability
+        total_duration_ms = (time.perf_counter() - perf_start) * 1000
+        logger.info(
+            "departures_query_complete",
+            from_station=from_station,
+            to_station=to_station,
+            hide_departed=hide_departed,
+            jit_refresh_ms=round(jit_duration_ms, 1),
+            query_ms=round(query_duration_ms, 1),
+            total_ms=round(total_duration_ms, 1),
+            journeys_loaded=journeys_loaded,
+            journeys_returned=len(departures),
+            skip_individual_refresh=skip_individual_refresh,
+        )
 
         return DeparturesResponse(
             departures=departures,

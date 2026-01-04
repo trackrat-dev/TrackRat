@@ -70,7 +70,7 @@ struct TrainListView: View {
 
             // Scrollable content
             ScrollView {
-                VStack(spacing: 16) {
+                LazyVStack(spacing: 16) {
                     if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
                         TrackRatLoadingView(message: "Finding your trains...")
                             .frame(maxWidth: .infinity, minHeight: 200)
@@ -108,7 +108,6 @@ struct TrainListView: View {
                             .padding(.bottom, 4)
                         }
 
-                        let expressTrains = viewModel.identifyExpressTrains()
                         ForEach(viewModel.trains) { train in
                             TrainCard(
                                 train: train,
@@ -138,7 +137,7 @@ struct TrainListView: View {
                                         journeyDate: train.journeyDate
                                     )
                                 },
-                                isExpress: expressTrains.contains(train.trainId)
+                                isExpress: viewModel.expressTrainIds.contains(train.trainId)
                             )
                         }
                     }
@@ -241,9 +240,9 @@ struct TrainCard: View {
     
     private var arrivalTime: String {
         // For V2, we show arrival time if available
+        // PERFORMANCE: Use cached static formatter instead of creating new one each call
         if let arrivalTime = train.arrival?.scheduledTime {
-            let formatter = DateFormatter.easternTime(time: .short)
-            return formatter.string(from: arrivalTime)
+            return DateFormatter.easternTimeShort.string(from: arrivalTime)
         }
         return "--:--"
     }
@@ -410,7 +409,8 @@ class TrainListViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var hasStartedLoading = false
     @Published var error: String?
-    
+    @Published private(set) var expressTrainIds: Set<String> = []
+
     private var currentDestination: String?
     private var currentFromStationCode: String?
     private let apiService: APIService
@@ -520,6 +520,9 @@ class TrainListViewModel: ObservableObject {
             // Sort trains by origin station departure time
             trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
 
+            // PERFORMANCE: Calculate express trains once, not on every render
+            expressTrainIds = identifyExpressTrains()
+
             print("🔍 DEBUG: Final sorted trains count: \(trains.count)")
         } catch {
             self.error = error.localizedDescription
@@ -571,7 +574,10 @@ class TrainListViewModel: ObservableObject {
             
             // Update trains list with new data
             trains = newTrains
-            
+
+            // PERFORMANCE: Recalculate express trains when data changes
+            expressTrainIds = identifyExpressTrains()
+
         } catch {
             // Silent failure for background refresh
             print("TrainListViewModel: Silent refresh failed: \(error.localizedDescription)")
