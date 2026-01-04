@@ -1063,10 +1063,8 @@ class JourneyCollector(BaseJourneyCollector):
             # Three-tier actual DEPARTURE inference
             # We infer departure because NJT API doesn't provide live departure estimates
             # Tier 1: Explicit DEPARTED flag from API (most reliable)
-            # But validate against scheduled time to prevent stale data issues
-            if stop_data.DEPARTED == "YES" and (
-                not stop.scheduled_departure or stop.scheduled_departure <= now_et()
-            ):
+            # Trust the DEPARTED=YES flag from NJT API - it's the authoritative signal
+            if stop_data.DEPARTED == "YES":
                 # Use actual arrival as departure (train has left)
                 # For most stops, actual departure ≈ actual arrival
                 stop.actual_departure = api_arrival_time or stop.scheduled_departure

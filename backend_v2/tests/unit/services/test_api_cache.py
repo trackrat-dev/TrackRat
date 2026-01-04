@@ -556,58 +556,125 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_departure_responses(mock_db)
 
-                assert mock_compute.call_count == 8
+                # 8 routes × 2 hide_departed variants = 16 calls
+                assert mock_compute.call_count == 16
 
-                assert mock_store.call_count == 8
+                assert mock_store.call_count == 16
 
+                # Expected routes now include hide_departed variants
                 expected_routes = [
+                    # hide_departed=False variants (first)
                     {
                         "from_station": "NY",
                         "to_station": "TR",
                         "date": None,
                         "limit": 50,
+                        "hide_departed": False,
+                    },
+                    {
+                        "from_station": "NY",
+                        "to_station": "TR",
+                        "date": None,
+                        "limit": 50,
+                        "hide_departed": True,
                     },
                     {
                         "from_station": "NY",
                         "to_station": "NP",
                         "date": None,
                         "limit": 50,
+                        "hide_departed": False,
+                    },
+                    {
+                        "from_station": "NY",
+                        "to_station": "NP",
+                        "date": None,
+                        "limit": 50,
+                        "hide_departed": True,
                     },
                     {
                         "from_station": "TR",
                         "to_station": "NY",
                         "date": None,
                         "limit": 50,
+                        "hide_departed": False,
+                    },
+                    {
+                        "from_station": "TR",
+                        "to_station": "NY",
+                        "date": None,
+                        "limit": 50,
+                        "hide_departed": True,
                     },
                     {
                         "from_station": "NP",
                         "to_station": "NY",
                         "date": None,
                         "limit": 50,
+                        "hide_departed": False,
+                    },
+                    {
+                        "from_station": "NP",
+                        "to_station": "NY",
+                        "date": None,
+                        "limit": 50,
+                        "hide_departed": True,
                     },
                     {
                         "from_station": "NY",
                         "to_station": "PJ",
                         "date": None,
                         "limit": 50,
+                        "hide_departed": False,
+                    },
+                    {
+                        "from_station": "NY",
+                        "to_station": "PJ",
+                        "date": None,
+                        "limit": 50,
+                        "hide_departed": True,
                     },
                     {
                         "from_station": "PJ",
                         "to_station": "NY",
                         "date": None,
                         "limit": 50,
+                        "hide_departed": False,
+                    },
+                    {
+                        "from_station": "PJ",
+                        "to_station": "NY",
+                        "date": None,
+                        "limit": 50,
+                        "hide_departed": True,
                     },
                     {
                         "from_station": "NY",
                         "to_station": "LB",
                         "date": None,
                         "limit": 50,
+                        "hide_departed": False,
+                    },
+                    {
+                        "from_station": "NY",
+                        "to_station": "LB",
+                        "date": None,
+                        "limit": 50,
+                        "hide_departed": True,
                     },
                     {
                         "from_station": "LB",
                         "to_station": "NY",
                         "date": None,
                         "limit": 50,
+                        "hide_departed": False,
+                    },
+                    {
+                        "from_station": "LB",
+                        "to_station": "NY",
+                        "date": None,
+                        "limit": 50,
+                        "hide_departed": True,
                     },
                 ]
 
@@ -624,8 +691,17 @@ class TestApiCacheService:
     async def test_precompute_departure_handles_errors(self, cache_service, mock_db):
         """Test that departure pre-computation continues even if some computations fail."""
         with patch.object(cache_service, "_compute_departure_response") as mock_compute:
+            # 16 calls: first fails, rest succeed
             mock_compute.side_effect = [
                 Exception("Computation failed"),
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
+                {"departures": []},
                 {"departures": []},
                 {"departures": []},
                 {"departures": []},
@@ -638,9 +714,11 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_departure_responses(mock_db)
 
-                assert mock_compute.call_count == 8
+                # 8 routes × 2 hide_departed variants = 16 calls
+                assert mock_compute.call_count == 16
 
-                assert mock_store.call_count == 7
+                # Only 15 successful (first one failed)
+                assert mock_store.call_count == 15
 
     @pytest.mark.asyncio
     async def test_compute_departure_response(self, cache_service, mock_db):

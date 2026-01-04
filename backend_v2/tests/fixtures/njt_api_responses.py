@@ -66,6 +66,8 @@ class StopBuilder:
         stop.DEPARTED = "YES" if departed else "NO"
         stop.TRACK = track
         stop.CANCELLED = "YES" if cancelled else "NO"
+        # STOP_STATUS is used for cancellation detection and delay parsing
+        stop.STOP_STATUS = "Cancelled" if cancelled else "OK"
 
         # Additional fields from real API
         stop.LINE = "LINE_1"
