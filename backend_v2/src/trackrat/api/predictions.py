@@ -20,6 +20,8 @@ from trackrat.config.station_configs import (
 )
 from trackrat.db.engine import get_db
 from trackrat.models.database import TrainJourney
+from trackrat.models.api import DelayBreakdownProbabilities, DelayForecastResponse
+from trackrat.services.delay_forecaster import delay_forecaster
 from trackrat.services.historical_track_predictor import historical_track_predictor
 
 logger = get_logger()
@@ -258,4 +260,114 @@ async def get_supported_stations() -> SupportedStationsResponse:
 
     return SupportedStationsResponse(
         stations=stations, total_ml_enabled=ml_enabled_count
+    )
+
+
+@router.get("/delay", response_model=DelayForecastResponse)
+@handle_errors
+async def predict_delay(
+    train_id: str = Query(..., description="Train ID (e.g., '3123' or 'A2301')"),
+    station_code: str = Query(..., description="Origin station code (e.g., 'NY')"),
+    journey_date: date = Query(..., description="Date of journey (YYYY-MM-DD)"),
+    db: AsyncSession = Depends(get_db),
+) -> DelayForecastResponse:
+    """
+    Get delay and cancellation forecast for a train.
+
+    Uses hierarchical historical data:
+    1. Exact train ID (if >= 10 records)
+    2. Line code (if >= 25 records)
+    3. Service provider fallback
+
+    Adjusts for time-of-day patterns and live congestion.
+
+    Args:
+        train_id: Train identifier
+        station_code: Origin station code
+        journey_date: Date of the journey
+
+    Returns:
+        Delay forecast with probabilities and confidence
+    """
+    import time
+
+    logger.info(
+        "delay_forecast_request_start",
+        train_id=train_id,
+        station_code=station_code,
+        journey_date=journey_date,
+    )
+
+    # Look up the train to get line code and data source
+    from sqlalchemy import and_, select
+
+    query = (
+        select(TrainJourney)
+        .where(
+            and_(
+                TrainJourney.train_id == train_id,
+                TrainJourney.journey_date == journey_date,
+            )
+        )
+        .limit(1)
+    )
+
+    result = await db.execute(query)
+    train_journey = result.scalar_one_or_none()
+
+    if not train_journey:
+        # Try to find any journey for this train ID to get metadata
+        query = select(TrainJourney).where(TrainJourney.train_id == train_id).limit(1)
+        result = await db.execute(query)
+        train_journey = result.scalar_one_or_none()
+
+        if not train_journey:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Train {train_id} not found",
+            )
+
+    # Generate forecast
+    prediction_start = time.time()
+
+    from datetime import datetime
+
+    from trackrat.utils.time import now_et
+
+    scheduled_departure = train_journey.scheduled_departure or now_et()
+    data_source = train_journey.data_source or "NJT"
+
+    forecast = await delay_forecaster.forecast(
+        train_id=train_id,
+        station_code=station_code,
+        line_code=train_journey.line_code,
+        data_source=data_source,
+        journey_date=journey_date,
+        scheduled_departure=scheduled_departure,
+        db=db,
+    )
+
+    prediction_duration = time.time() - prediction_start
+
+    logger.info(
+        "delay_forecast_timing",
+        train_id=train_id,
+        prediction_duration_ms=round(prediction_duration * 1000, 2),
+    )
+
+    return DelayForecastResponse(
+        train_id=train_id,
+        station_code=station_code,
+        journey_date=journey_date,
+        cancellation_probability=forecast.cancellation_probability,
+        delay_probabilities=DelayBreakdownProbabilities(
+            on_time=forecast.on_time_probability,
+            slight=forecast.slight_delay_probability,
+            significant=forecast.significant_delay_probability,
+            major=forecast.major_delay_probability,
+        ),
+        expected_delay_minutes=forecast.expected_delay_minutes,
+        confidence=forecast.confidence,
+        sample_count=forecast.sample_count,
+        factors=forecast.factors,
     )

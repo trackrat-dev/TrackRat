@@ -683,3 +683,55 @@ class OperationsSummaryResponse(BaseModel):
     @field_serializer("generated_at")
     def serialize_dt(self, dt: datetime) -> str:
         return serialize_eastern_datetime(dt) or ""
+
+
+# Delay Forecast API Models
+
+
+class DelayBreakdownProbabilities(BaseModel):
+    """Delay probability breakdown."""
+
+    on_time: float = Field(..., ge=0.0, le=1.0, description="Probability <= 5 min delay")
+    slight: float = Field(
+        ..., ge=0.0, le=1.0, description="Probability 6-15 min delay"
+    )
+    significant: float = Field(
+        ..., ge=0.0, le=1.0, description="Probability 16-30 min delay"
+    )
+    major: float = Field(..., ge=0.0, le=1.0, description="Probability > 30 min delay")
+
+
+class DelayForecastResponse(BaseModel):
+    """Response for delay/cancellation forecast endpoint."""
+
+    train_id: str
+    station_code: str
+    journey_date: date
+
+    # Cancellation probability
+    cancellation_probability: float = Field(
+        ..., ge=0.0, le=1.0, description="Probability of cancellation"
+    )
+
+    # Delay probabilities (sum to 1.0 for non-cancelled scenario)
+    delay_probabilities: DelayBreakdownProbabilities
+
+    # Point estimate
+    expected_delay_minutes: int = Field(
+        ..., ge=0, description="Expected delay in minutes"
+    )
+
+    # Metadata
+    confidence: Literal["high", "medium", "low"] = Field(
+        ..., description="Confidence level based on sample size"
+    )
+    sample_count: int = Field(..., ge=0, description="Historical samples used")
+    factors: list[str] = Field(
+        default_factory=list,
+        description="Factors used in forecast",
+        examples=[["train_history", "line_pattern", "congestion"]],
+    )
+
+    @field_serializer("journey_date")
+    def serialize_journey_date(self, journey_date: date) -> str:
+        return journey_date.isoformat()
