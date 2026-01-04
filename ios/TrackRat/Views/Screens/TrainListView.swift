@@ -44,7 +44,7 @@ struct TrainListView: View {
                 Spacer()
 
                 // Center title
-                VStack(spacing: 0) {
+                VStack(spacing: 2) {
                     Text(destination)
                         .font(.headline)
                         .foregroundColor(.white)
@@ -52,6 +52,13 @@ struct TrainListView: View {
                         Text("from \(departureName)")
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.8))
+                    }
+                    // Data freshness indicator
+                    if let freshness = viewModel.trains.first?.dataFreshness,
+                       freshness.ageSeconds >= 30 {
+                        Text(freshness.formattedAge)
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.5))
                     }
                 }
 
@@ -210,9 +217,9 @@ struct TrainCard: View {
     let departureStationCode: String
     let onTap: () -> Void
     let isExpress: Bool
-    
+
     // Configuration constants
-    private static let DELAY_THRESHOLD_MINUTES = 6
+    private static let DELAY_THRESHOLD_MINUTES = 3
     
     /// Check if train is scheduled only (not observed)
     private var isScheduledOnly: Bool {
@@ -237,7 +244,7 @@ struct TrainCard: View {
     private var departureTime: String {
         return train.getFormattedDepartureTime(fromStationCode: departureStationCode)
     }
-    
+
     private var arrivalTime: String {
         // For V2, we show arrival time if available
         // PERFORMANCE: Use cached static formatter instead of creating new one each call
@@ -245,6 +252,20 @@ struct TrainCard: View {
             return DateFormatter.easternTimeShort.string(from: arrivalTime)
         }
         return "--:--"
+    }
+
+    /// Departure delay text (e.g., "+8m") if delay >= threshold
+    private var departureDelayText: String? {
+        let delay = train.delayMinutes
+        guard delay >= TrainCard.DELAY_THRESHOLD_MINUTES else { return nil }
+        return "+\(delay)m"
+    }
+
+    /// Arrival delay text (e.g., "+12m") if delay >= threshold
+    private var arrivalDelayText: String? {
+        guard let arrivalDelay = train.arrival?.delayMinutes,
+              arrivalDelay >= TrainCard.DELAY_THRESHOLD_MINUTES else { return nil }
+        return "+\(arrivalDelay)m"
     }
     
     var body: some View {
@@ -277,6 +298,11 @@ struct TrainCard: View {
                         .font(.subheadline)
                         .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
 
+                    if let depDelay = departureDelayText, !isCancelled {
+                        Text(depDelay)
+                            .font(.caption)
+                            .foregroundColor(isBoardingAtOrigin ? .white : .orange)
+                    }
 
                     Text(" → ")
                         .font(.subheadline)
@@ -286,28 +312,24 @@ struct TrainCard: View {
                         .font(.subheadline)
                         .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
 
+                    if let arrDelay = arrivalDelayText, !isCancelled {
+                        Text(arrDelay)
+                            .font(.caption)
+                            .foregroundColor(isBoardingAtOrigin ? .white : .orange)
+                    }
                 }
             }
 
-            // Show cancellation location
+            // Show cancellation or scheduled-only status
             if isCancelled {
                 Text("Cancelled")
                     .font(.caption)
                     .foregroundColor(.red.opacity(0.8))
                     .fontWeight(.medium)
-            }
-
-            // Show delay status
-            if !isCancelled {
-                let hasDepDelay = train.delayMinutes >= TrainCard.DELAY_THRESHOLD_MINUTES
-                let hasArrDelay = train.arrival?.delayMinutes ?? 0 >= TrainCard.DELAY_THRESHOLD_MINUTES
-
-                if hasDepDelay || hasArrDelay {
-                    Text("Operating with Delays")
-                        .font(.caption)
-                        .foregroundColor(.red.opacity(0.8))
-                        .fontWeight(.medium)
-                }
+            } else if isScheduledOnly {
+                Text("Scheduled")
+                    .font(.caption)
+                    .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.7) : .gray)
             }
 
             // Track and status - only show for boarding trains at origin
