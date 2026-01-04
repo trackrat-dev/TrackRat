@@ -168,14 +168,14 @@ class NJTransitClient:
             response_type=type(response).__name__,
             response_keys=list(response.keys()) if isinstance(response, dict) else None,
             items_count=(
-                len(response.get("ITEMS", [])) if isinstance(response, dict) else None
+                len(response.get("ITEMS") or []) if isinstance(response, dict) else None
             ),
         )
 
         # Log sample stop data if available
         if (
             isinstance(response, dict)
-            and "ITEMS" in response
+            and response.get("ITEMS")
             and len(response["ITEMS"]) > 0
             and "STOPS" in response["ITEMS"][0]
         ):

@@ -1613,7 +1613,7 @@ class JourneyCollector(BaseJourneyCollector):
             schedule_response = await self.njt_client.get_train_schedule_with_stops(
                 journey.origin_station_code or ""
             )
-            departure_board = schedule_response.get("ITEMS", [])
+            departure_board = schedule_response.get("ITEMS") or []
 
             # Find our train in the departure board
             for train_entry in departure_board:

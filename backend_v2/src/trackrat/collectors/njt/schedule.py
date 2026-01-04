@@ -56,7 +56,7 @@ class NJTScheduleCollector:
                 "schedule_data_retrieved",
                 station_count=len(schedule_data),
                 total_items=sum(
-                    len(station.get("ITEMS", [])) for station in schedule_data
+                    len(station.get("ITEMS") or []) for station in schedule_data
                 ),
             )
 
@@ -111,7 +111,7 @@ class NJTScheduleCollector:
         for station_data in schedule_data:
             station_code = station_data.get("STATION_2CHAR")
             station_name = station_data.get("STATIONNAME")
-            items = station_data.get("ITEMS", [])
+            items = station_data.get("ITEMS") or []
 
             if not station_code:
                 logger.warning("station_missing_code", station_data=station_data)
