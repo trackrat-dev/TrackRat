@@ -1,41 +1,47 @@
 import Foundation
 
-/// Dynamic service providing ML-based track probability predictions for NY Penn Station
+/// Dynamic service providing ML-based track probability predictions for supported stations
 /// Uses platform predictions from the backend and converts them to track probabilities
 class StaticTrackDistributionService {
     static let shared = StaticTrackDistributionService()
-    
+
+    /// Stations that support track predictions (backend has ml_enabled: true for these)
+    /// The backend controls the actual list - this is for early filtering to avoid unnecessary API calls
+    static let supportedStations: Set<String> = ["NY", "NP", "ND", "HB", "MP", "ST", "TR", "PH", "DV", "DN", "PL", "LB", "JA"]
+
     private init() {}
-    
-    /// Generate ML-based prediction data for a train, only for NY Penn Station departures
-    /// Returns nil for all other stations
+
+    /// Generate ML-based prediction data for a train
+    /// Returns nil for unsupported stations
     func getPredictionData(for train: TrainV2) -> PredictionData? {
         // Note: This is now a synchronous method but the actual prediction is async
         // For synchronous access, return nil - UI should use async methods
         return nil
     }
-    
+
     /// Check if predictions should be shown for a given train
     func shouldShowPredictions(for train: TrainV2) -> Bool {
         // Show predictions if:
-        // 1. Train originates from NY Penn
+        // 1. Train originates from a supported station
         // 2. No track assigned yet
-        return train.originStationCode == "NY" && train.track == nil
+        guard let stationCode = train.originStationCode else { return false }
+        return Self.supportedStations.contains(stationCode) && train.track == nil
     }
-    
+
     /// Get ML-based track prediction for a train
     /// - Parameters:
     ///   - train: The train to get predictions for
-    ///   - excludingOccupiedTracks: Ignored - ML model already considers track usage
+    ///   - excludingOccupiedTracks: Ignored - backend already considers track usage
     /// - Returns: PredictionData if available, nil otherwise
     func getAdjustedPredictionData(for train: TrainV2, excludingOccupiedTracks: Bool = true) async -> PredictionData? {
         print("🔍 [StaticTrackDistribution] Getting predictions for train \(train.trainId)")
         print("   - Origin: \(train.originStationCode ?? "nil")")
         print("   - Track: \(train.track ?? "nil")")
 
-        // Only support NY Penn Station
-        guard train.originStationCode == "NY" else {
-            print("❌ [StaticTrackDistribution] Not NY Penn - no predictions")
+        // Only support configured stations
+        guard let stationCode = train.originStationCode,
+              Self.supportedStations.contains(stationCode) else {
+            print("❌ [StaticTrackDistribution] Station not supported - no predictions")
             return nil
         }
 

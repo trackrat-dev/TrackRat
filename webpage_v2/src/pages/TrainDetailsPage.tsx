@@ -92,13 +92,16 @@ export function TrainDetailsPage() {
     return <ErrorMessage message={error || 'Train not found'} onRetry={fetchTrainDetails} />;
   }
 
+  // Stations that support track predictions (backend has ml_enabled: true for these)
+  const supportedStations = new Set(['NY', 'NP', 'ND', 'HB', 'MP', 'ST', 'TR', 'PH', 'DV', 'DN', 'PL', 'LB', 'JA']);
+
   // Check if we should show track predictions
-  // Show for NY Penn departures without track assignment
+  // Show for supported station departures without track assignment
   const originStop = train.stops.find(s => s.station.code === train.route.origin_code);
   const shouldShowPredictions =
-    train.route.origin_code === 'NY' &&  // Only NY Penn
-    !originStop?.track &&                 // No track assigned
-    !train.is_cancelled;                  // Not cancelled
+    supportedStations.has(train.route.origin_code) &&  // Supported station
+    !originStop?.track &&                               // No track assigned
+    !train.is_cancelled;                                // Not cancelled
 
   return (
     <div className="max-w-4xl mx-auto">

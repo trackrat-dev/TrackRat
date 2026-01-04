@@ -12,6 +12,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
+from trackrat.config.station_configs import get_tracks_for_station
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.track_occupancy import TrackOccupancyService
 
@@ -456,12 +457,10 @@ class HistoricalTrackPredictor:
     def _create_uniform_distribution(self, station_code: str) -> dict[str, Any]:
         """Create uniform distribution when no data available."""
 
-        # Default tracks for NY Penn (most complex station)
-        # In production, this would come from station configuration
-        if station_code == "NY":
-            tracks = [str(i) for i in range(1, 16)]  # Tracks 1-15
-        else:
-            # Generic fallback
+        # Get tracks from station configuration
+        tracks = get_tracks_for_station(station_code)
+        if not tracks:
+            # Generic fallback if station has no track config
             tracks = [str(i) for i in range(1, 11)]  # Tracks 1-10
 
         uniform_prob = 1.0 / len(tracks)

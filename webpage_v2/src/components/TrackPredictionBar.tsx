@@ -99,7 +99,7 @@ export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: 
                 >
                   {showLabel && (
                     <span className="text-xs font-semibold text-white text-center leading-tight px-1">
-                      Tracks<br />{segment.platformName}
+                      {segment.platformName.includes('&') ? 'Tracks' : 'Track'}<br />{segment.platformName}
                     </span>
                   )}
                 </div>

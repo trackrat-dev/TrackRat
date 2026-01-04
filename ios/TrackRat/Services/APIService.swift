@@ -1182,9 +1182,17 @@ struct PlatformPrediction: Codable {
 
 extension PlatformPrediction {
     /// Convert platform probabilities to individual track probabilities
+    /// For NY Penn: platforms like "1 & 2" are split into individual tracks
+    /// For other stations: track = platform, so return as-is
     func convertToTrackProbabilities() -> [String: Double] {
+        // Only NY Penn has platform groupings (multiple tracks per platform)
+        // For all other stations, platform = track, so return as-is
+        guard stationCode == "NY" else {
+            return platformProbabilities
+        }
+
         var trackProbabilities: [String: Double] = [:]
-        
+
         // Platform to tracks mapping for NY Penn Station
         let platformToTracks: [String: [String]] = [
             "1 & 2": ["1", "2"],
@@ -1199,19 +1207,19 @@ extension PlatformPrediction {
             "18 & 19": ["18", "19"],
             "20 & 21": ["20", "21"]
         ]
-        
+
         // Convert platform probabilities to track probabilities
         for (platform, probability) in platformProbabilities {
             if let tracks = platformToTracks[platform] {
                 // Split probability evenly among tracks in the platform
                 let probabilityPerTrack = probability / Double(tracks.count)
-                
+
                 for track in tracks {
                     trackProbabilities[track] = probabilityPerTrack
                 }
             }
         }
-        
+
         return trackProbabilities
     }
 }
