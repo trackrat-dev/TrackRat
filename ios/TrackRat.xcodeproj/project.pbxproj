@@ -32,6 +32,9 @@
 		A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4ABD2E1949A400E13005 /* V2APIModels.swift */; };
 		A16C81EE2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
 		A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
+		A1JF00012F00000100000001 /* JourneyFeedbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00012F00000000000001 /* JourneyFeedbackService.swift */; };
+		A1JF00022F00000100000002 /* JourneyFeedbackPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */; };
+		A1JF00032F00000100000003 /* ImprovementFeedbackSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */; };
 		A16D6EEC2E1703C7008C6996 /* rat-train-icon@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */; };
 		A16D6EED2E1703C7008C6996 /* rat-train-icon@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */; };
 		A16D6EEE2E1703C7008C6996 /* Contents.json in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE72E1703C7008C6996 /* Contents.json */; };
@@ -168,6 +171,9 @@
 		A14A4ABB2E19499800E13005 /* TrainV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2.swift; path = TrackRat/Models/TrainV2.swift; sourceTree = "<group>"; };
 		A14A4ABD2E1949A400E13005 /* V2APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModels.swift; path = TrackRat/Models/V2APIModels.swift; sourceTree = "<group>"; };
 		A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FeedbackButton.swift; path = TrackRat/Views/Components/FeedbackButton.swift; sourceTree = "<group>"; };
+		A1JF00012F00000000000001 /* JourneyFeedbackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackService.swift; path = TrackRat/Services/JourneyFeedbackService.swift; sourceTree = "<group>"; };
+		A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackPromptView.swift; path = TrackRat/Views/Components/JourneyFeedbackPromptView.swift; sourceTree = "<group>"; };
+		A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImprovementFeedbackSheet.swift; path = TrackRat/Views/Components/ImprovementFeedbackSheet.swift; sourceTree = "<group>"; };
 		A16D6EE72E1703C7008C6996 /* Contents.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Contents.json; sourceTree = "<group>"; };
 		A16D6EE82E1703C7008C6996 /* rat-train-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon.png"; sourceTree = "<group>"; };
 		A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon@2x.png"; sourceTree = "<group>"; };
@@ -290,6 +296,9 @@
 				A1D92A6D2F0AEFE50098897F /* TripRecordingService.swift */,
 				A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */,
 				A1D92A732F0AF01E0098897F /* CompletedTrip.swift */,
+				A1JF00012F00000000000001 /* JourneyFeedbackService.swift */,
+				A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */,
+				A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -626,6 +635,9 @@
 				A10E98062DE39F23002F3214 /* DeparturePickerView.swift in Sources */,
 				A10E98DBA82DE39F23002F3214 /* TripSelectionView.swift in Sources */,
 				A16C81EE2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
+				A1JF00012F00000100000001 /* JourneyFeedbackService.swift in Sources */,
+				A1JF00022F00000100000002 /* JourneyFeedbackPromptView.swift in Sources */,
+				A1JF00032F00000100000003 /* ImprovementFeedbackSheet.swift in Sources */,
 				A1CB28332E3D634C004A49E6 /* JourneyCongestionMapView.swift in Sources */,
 				A10684812E36B6EC0052C4AE /* ThemeManager.swift in Sources */,
 				A1AA1BB32DEF00BB001FA904 /* TrackRatTheme.swift in Sources */,
