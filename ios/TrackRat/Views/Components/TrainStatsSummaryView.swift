@@ -11,18 +11,21 @@ struct TrainStatsSummaryView: View {
     let trainId: String
     let fromStation: String?
     let toStation: String?
+    let journeyDate: Date?
     let onTrainTap: ((String) -> Void)?
 
     @State private var summary: OperationsSummaryResponse?
+    @State private var delayForecast: DelayForecastResponse?
     @State private var isExpanded = false
     @State private var isLoading = true
     @State private var hasError = false
     @Environment(\.scenePhase) private var scenePhase
 
-    init(trainId: String, fromStation: String?, toStation: String?, onTrainTap: ((String) -> Void)? = nil) {
+    init(trainId: String, fromStation: String?, toStation: String?, journeyDate: Date? = nil, onTrainTap: ((String) -> Void)? = nil) {
         self.trainId = trainId
         self.fromStation = fromStation
         self.toStation = toStation
+        self.journeyDate = journeyDate
         self.onTrainTap = onTrainTap
     }
 
@@ -110,6 +113,20 @@ struct TrainStatsSummaryView: View {
                         }
                         .padding(.horizontal, 10)
                     }
+
+                    // Delay forecast section
+                    if let text = forecastText {
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+                            .padding(.horizontal, 14)
+
+                        Text(text)
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.7))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .lineSpacing(2)
+                            .padding(.horizontal, 14)
+                    }
                 }
                 .padding(.bottom, 12)
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -130,18 +147,64 @@ struct TrainStatsSummaryView: View {
         hasError = false
 
         do {
-            summary = try await APIService.shared.fetchOperationsSummary(
+            // Load operations summary and delay forecast in parallel
+            async let summaryTask = APIService.shared.fetchOperationsSummary(
                 scope: .train,
                 fromStation: fromStation,
                 toStation: toStation,
                 trainId: trainId
             )
+
+            // Only fetch forecast if we have the required parameters
+            async let forecastTask: DelayForecastResponse? = {
+                guard let stationCode = fromStation,
+                      let date = journeyDate else {
+                    return nil
+                }
+                return try? await APIService.shared.getDelayForecast(
+                    trainId: trainId,
+                    stationCode: stationCode,
+                    journeyDate: date
+                )
+            }()
+
+            summary = try await summaryTask
+            delayForecast = await forecastTask
             isLoading = false
         } catch {
             print("❌ Failed to fetch train stats summary: \(error)")
             hasError = true
             isLoading = false
         }
+    }
+
+    // MARK: - Forecast Display Text
+
+    /// Generates the forecast text based on sample count and probabilities
+    private var forecastText: String? {
+        guard let forecast = delayForecast else { return nil }
+
+        let sampleWord = forecast.sampleCount == 1 ? "journey" : "journeys"
+        let onTimePercent = forecast.onTimePercentage
+
+        // Calculate 15+ minute delay probability (significant + major)
+        let significantDelayPercent = Int((forecast.delayProbabilities.significant + forecast.delayProbabilities.major) * 100)
+        let showDelayWarning = significantDelayPercent >= 10
+        let showCancellationWarning = forecast.cancellationPercentage >= 10
+
+        var text = "Based on \(forecast.sampleCount) similar \(sampleWord), our guess is it's \(onTimePercent)% likely you'll depart on time"
+
+        // Add warnings if applicable
+        if showDelayWarning && showCancellationWarning {
+            text += ", with a \(significantDelayPercent)% chance of a 15+ minute delay and a \(forecast.cancellationPercentage)% chance of cancellation"
+        } else if showDelayWarning {
+            text += ", with a \(significantDelayPercent)% chance of a 15+ minute delay"
+        } else if showCancellationWarning {
+            text += ", with a \(forecast.cancellationPercentage)% chance of cancellation"
+        }
+
+        text += "."
+        return text
     }
 }
 

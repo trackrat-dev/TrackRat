@@ -91,6 +91,7 @@ struct TrainDetailsView: View {
                                     trainId: train.trainId,
                                     fromStation: appState.departureStationCode,
                                     toStation: appState.destinationStationCode,
+                                    journeyDate: train.journeyDate,
                                     onTrainTap: { selectedTrainId in
                                         // Navigate to the selected train's detail view
                                         appState.navigationPath.append(
@@ -351,16 +352,6 @@ struct CombinedDetailsCard: View {
                         isDepartingFromNYPenn: appState.departureStationCode == "NY"
                     )
                     .allowsHitTesting(true)  // Ensure predictions card is interactive
-                }
-
-                // Delay forecast section
-                // Show when train hasn't departed from user's origin
-                if let originCode = appState.departureStationCode,
-                   !train.hasTrainDepartedFromStation(originCode) {
-                    DelayForecastView(
-                        train: train,
-                        originStationCode: originCode
-                    )
                 }
             }
             .padding([.horizontal, .top])
@@ -1593,165 +1584,6 @@ struct PredictionExplanationSheet: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
-    }
-}
-
-// MARK: - Delay Forecast View
-struct DelayForecastView: View {
-    let train: TrainV2
-    let originStationCode: String?
-
-    @State private var delayForecast: DelayForecastResponse?
-    @State private var isLoading = true
-    @State private var loadError: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                Image(systemName: "clock.badge.questionmark")
-                    .foregroundColor(.black)
-                    .font(.title2)
-
-                Text("Delay Forecast")
-                    .font(.headline)
-                    .foregroundColor(.black)
-
-                Spacer()
-
-                if let forecast = delayForecast {
-                    Text(forecast.confidenceText)
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-            }
-
-            if isLoading {
-                ProgressView()
-                    .frame(height: 50)
-                    .frame(maxWidth: .infinity)
-            } else if let forecast = delayForecast {
-                VStack(alignment: .leading, spacing: 8) {
-                    // Main delay probability bar
-                    DelayProbabilityBar(forecast: forecast)
-                        .frame(height: 32)
-
-                    // Summary text
-                    HStack {
-                        Text(forecast.delayBreakdownText)
-                            .font(.subheadline)
-                            .foregroundColor(forecast.onTimeColor)
-
-                        Spacer()
-
-                        if forecast.showCancellationWarning {
-                            HStack(spacing: 4) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.caption)
-                                Text("\(forecast.cancellationPercentage)% cancel risk")
-                                    .font(.caption)
-                            }
-                            .foregroundColor(.red)
-                        }
-                    }
-
-                    // Sample count info
-                    if forecast.sampleCount > 0 {
-                        Text("Based on \(forecast.sampleCount) historical journeys")
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-                    }
-                }
-            } else if let error = loadError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                    .italic()
-            } else {
-                Text("No forecast available")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                    .italic()
-            }
-        }
-        .padding()
-        .background(Color.blue.opacity(0.05))
-        .cornerRadius(TrackRatTheme.CornerRadius.md)
-        .overlay(
-            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-        )
-        .task {
-            await loadDelayForecast()
-        }
-    }
-
-    private func loadDelayForecast() async {
-        guard let stationCode = originStationCode,
-              let journeyDate = train.journeyDate else {
-            loadError = "No origin station"
-            isLoading = false
-            return
-        }
-
-        isLoading = true
-        loadError = nil
-
-        do {
-            let forecast = try await APIService.shared.getDelayForecast(
-                trainId: train.trainId,
-                stationCode: stationCode,
-                journeyDate: journeyDate
-            )
-            self.delayForecast = forecast
-        } catch {
-            print("❌ [DelayForecastView] Error loading forecast: \(error)")
-            loadError = "Could not load forecast"
-        }
-
-        isLoading = false
-    }
-}
-
-// MARK: - Delay Probability Bar
-struct DelayProbabilityBar: View {
-    let forecast: DelayForecastResponse
-
-    var body: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 0) {
-                // On-time segment (green)
-                Rectangle()
-                    .fill(Color.green)
-                    .frame(width: geometry.size.width * forecast.delayProbabilities.onTime)
-
-                // Slight delay segment (yellow)
-                if forecast.delayProbabilities.slight > 0.02 {
-                    Rectangle()
-                        .fill(Color.yellow)
-                        .frame(width: geometry.size.width * forecast.delayProbabilities.slight)
-                }
-
-                // Significant delay segment (orange)
-                if forecast.delayProbabilities.significant > 0.02 {
-                    Rectangle()
-                        .fill(Color.orange)
-                        .frame(width: geometry.size.width * forecast.delayProbabilities.significant)
-                }
-
-                // Major delay segment (red)
-                if forecast.delayProbabilities.major > 0.02 {
-                    Rectangle()
-                        .fill(Color.red)
-                        .frame(width: geometry.size.width * forecast.delayProbabilities.major)
-                }
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.sm))
-        .overlay(
-            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.sm)
-                .stroke(Color.black.opacity(0.2), lineWidth: 1)
-        )
     }
 }
 
