@@ -22,6 +22,7 @@ from trackrat.models.api import (
     TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time, safe_datetime_subtract
 
 logger = get_logger(__name__)
@@ -342,8 +343,8 @@ class DepartureService:
                 excessive API calls.
         """
 
-        # Check if station data needs refresh (90 second staleness)
-        cutoff_time = now_et() - timedelta(seconds=90)
+        # Check if station data needs refresh (60 second staleness)
+        cutoff_time = now_et() - timedelta(seconds=60)
 
         needs_refresh = await db.scalar(
             select(TrainJourney.id)
@@ -612,3 +613,20 @@ class DepartureService:
             # Update stop sequence if not set
             if stop.stop_sequence is None:
                 stop.stop_sequence = i
+
+            # Update track if available in embedded data
+            track = stop_data.get("TRACK")
+            if track:
+                sanitized_track = sanitize_track(track)
+                if sanitized_track and sanitized_track != stop.track:
+                    old_track = stop.track
+                    stop.track = sanitized_track
+                    if not stop.track_assigned_at:
+                        stop.track_assigned_at = now_et()
+                    logger.debug(
+                        "station_refresh_track_update",
+                        train_id=journey.train_id,
+                        station_code=station_code,
+                        old_track=old_track,
+                        new_track=sanitized_track,
+                    )
