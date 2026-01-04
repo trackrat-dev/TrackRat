@@ -43,10 +43,8 @@ struct MyProfileView: View {
             // Scrollable content
             ScrollView {
                 VStack(spacing: 24) {
-                    // Flight Stats Section (only shown if user has trips)
-                    if tripStats.totalTrips > 0 {
-                        TripStatsSection(stats: tripStats, recentTrips: recentTrips, appState: appState)
-                    }
+                    // Trip Stats Section
+                    TripStatsSection(stats: tripStats, recentTrips: recentTrips, appState: appState)
 
                     // Feedback & Ideas section
                     VStack(spacing: 16) {
@@ -473,10 +471,10 @@ struct TripStatsSection: View {
                         .background(Color.white.opacity(0.2))
 
                     StatBox(
-                        value: stats.formattedTotalDelay,
-                        label: "Lost to Delays",
-                        icon: "clock.badge.exclamationmark",
-                        valueColor: stats.totalDelayMinutes > 0 ? .red : .green
+                        value: "\(stats.weeklyStreak)",
+                        label: "Week Streak",
+                        icon: "flame.fill",
+                        valueColor: stats.weeklyStreak > 0 ? .orange : .white
                     )
                 }
 
@@ -496,34 +494,12 @@ struct TripStatsSection: View {
                         .frame(height: 50)
                         .background(Color.white.opacity(0.2))
 
-                    if stats.currentStreakDays > 0 {
-                        StatBox(
-                            value: "\(stats.currentStreakDays)",
-                            label: "Day Streak",
-                            icon: "flame.fill",
-                            valueColor: .orange
-                        )
-                    } else if let route = stats.mostFrequentRoute {
-                        VStack(spacing: 4) {
-                            Text("\(route.count)")
-                                .font(.title2.bold())
-                                .foregroundColor(.white)
-                            Text("trips on")
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.6))
-                            Text("\(route.originName.components(separatedBy: " ").first ?? route.originName)")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        StatBox(
-                            value: "-",
-                            label: "Day Streak",
-                            icon: "flame.fill"
-                        )
-                    }
+                    StatBox(
+                        value: stats.formattedTotalDelay,
+                        label: "Lost to Delays",
+                        icon: "clock.badge.exclamationmark",
+                        valueColor: stats.totalDelayMinutes > 0 ? .red : .green
+                    )
                 }
             }
             .padding()
@@ -533,27 +509,50 @@ struct TripStatsSection: View {
             )
 
             // Recent trips
-            if !recentTrips.isEmpty {
-                VStack(spacing: 12) {
-                    HStack {
-                        Text("Recent Trips")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white.opacity(0.8))
-                        Spacer()
+            VStack(spacing: 12) {
+                HStack {
+                    Text("Recent Trips")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white.opacity(0.8))
+                    Spacer()
 
-                        if recentTrips.count > 3 {
-                            Button {
-                                appState.navigationPath.append(NavigationDestination.tripHistory)
-                            } label: {
-                                Text("View All")
-                                    .font(.caption)
-                                    .foregroundColor(.orange)
-                            }
+                    if recentTrips.count > 3 {
+                        Button {
+                            appState.navigationPath.append(NavigationDestination.tripHistory)
+                        } label: {
+                            Text("View All")
+                                .font(.caption)
+                                .foregroundColor(.orange)
                         }
                     }
-                    .padding(.horizontal, 4)
+                }
+                .padding(.horizontal, 4)
 
+                if recentTrips.isEmpty {
+                    // Empty state placeholder
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 8) {
+                            Image(systemName: "tram.fill")
+                                .font(.title2)
+                                .foregroundColor(.white.opacity(0.3))
+                            Text("No trips yet")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.5))
+                            Text("Start a Live Activity to track your first trip")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.3))
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.vertical, 24)
+                        Spacer()
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                    )
+                } else {
                     VStack(spacing: 0) {
                         ForEach(Array(recentTrips.prefix(3).enumerated()), id: \.element.id) { index, trip in
                             TripRowView(trip: trip)

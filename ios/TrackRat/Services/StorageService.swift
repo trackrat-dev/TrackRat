@@ -440,8 +440,8 @@ final class StorageService {
         // First trip date
         let firstDate = trips.last?.tripDate
 
-        // Current streak calculation
-        let streak = calculateCurrentStreak(trips: trips)
+        // Weekly streak calculation
+        let weeklyStreak = calculateWeeklyStreak(trips: trips)
 
         return TripStats(
             totalTrips: trips.count,
@@ -450,28 +450,37 @@ final class StorageService {
             averageDelayMinutes: avgDelay,
             mostFrequentRoute: topRoute,
             firstTripDate: firstDate,
-            currentStreakDays: streak
+            weeklyStreak: weeklyStreak
         )
     }
 
-    /// Calculate consecutive days with at least one trip, counting back from today
-    private func calculateCurrentStreak(trips: [CompletedTrip]) -> Int {
+    /// Calculate consecutive weeks with at least one trip, counting back from current week
+    private func calculateWeeklyStreak(trips: [CompletedTrip]) -> Int {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
 
-        // Get unique trip dates
-        let tripDates = Set(trips.map { calendar.startOfDay(for: $0.tripDate) })
+        // Get the start of the current week (Sunday)
+        guard let currentWeekStart = calendar.dateInterval(of: .weekOfYear, for: Date())?.start else {
+            return 0
+        }
+
+        // Get unique weeks that have trips (as week start dates)
+        var weeksWithTrips = Set<Date>()
+        for trip in trips {
+            if let weekStart = calendar.dateInterval(of: .weekOfYear, for: trip.tripDate)?.start {
+                weeksWithTrips.insert(weekStart)
+            }
+        }
 
         var streak = 0
-        var checkDate = today
+        var checkWeek = currentWeekStart
 
-        // Count backwards from today
-        while tripDates.contains(checkDate) {
+        // Count backwards from current week
+        while weeksWithTrips.contains(checkWeek) {
             streak += 1
-            guard let previousDay = calendar.date(byAdding: .day, value: -1, to: checkDate) else {
+            guard let previousWeek = calendar.date(byAdding: .weekOfYear, value: -1, to: checkWeek) else {
                 break
             }
-            checkDate = previousDay
+            checkWeek = previousWeek
         }
 
         return streak

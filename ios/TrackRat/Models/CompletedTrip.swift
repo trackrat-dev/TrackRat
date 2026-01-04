@@ -69,7 +69,7 @@ struct TripStats {
     let averageDelayMinutes: Double
     let mostFrequentRoute: (originName: String, destinationName: String, count: Int)?
     let firstTripDate: Date?
-    let currentStreakDays: Int
+    let weeklyStreak: Int  // Consecutive weeks with at least one trip
 
     // MARK: - Computed Properties
 
@@ -95,6 +95,6 @@ struct TripStats {
         averageDelayMinutes: 0,
         mostFrequentRoute: nil,
         firstTripDate: nil,
-        currentStreakDays: 0
+        weeklyStreak: 0
     )
 }
