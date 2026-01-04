@@ -486,8 +486,7 @@ struct TripStatsSection: View {
                     StatBox(
                         value: "\(stats.onTimePercentage)%",
                         label: "On Time",
-                        icon: "checkmark.circle.fill",
-                        valueColor: stats.onTimePercentage >= 80 ? .green : (stats.onTimePercentage >= 50 ? .yellow : .red)
+                        icon: "checkmark.circle.fill"
                     )
 
                     Divider()
@@ -497,8 +496,7 @@ struct TripStatsSection: View {
                     StatBox(
                         value: stats.formattedTotalDelay,
                         label: "Lost to Delays",
-                        icon: "clock.badge.exclamationmark",
-                        valueColor: stats.totalDelayMinutes > 0 ? .red : .green
+                        icon: "clock.badge.exclamationmark"
                     )
                 }
             }
