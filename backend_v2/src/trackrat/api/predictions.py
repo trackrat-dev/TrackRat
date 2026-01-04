@@ -161,6 +161,19 @@ async def predict_track(
         prediction_duration_ms=round(prediction_duration * 1000, 2),
     )
 
+    # If no prediction available (insufficient historical data), return 404
+    if prediction is None:
+        logger.info(
+            "track_prediction_unavailable",
+            station_code=station_code,
+            train_id=train_id,
+            reason="insufficient_data",
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"Insufficient historical data to predict track for train {train_id} at station {station_code}",
+        )
+
     # Log successful prediction details
     logger.info(
         "track_prediction_success",

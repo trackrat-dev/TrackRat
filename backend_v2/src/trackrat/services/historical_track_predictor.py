@@ -12,7 +12,6 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.config.station_configs import get_tracks_for_station
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.track_occupancy import TrackOccupancyService
 
@@ -66,7 +65,7 @@ class HistoricalTrackPredictor:
         data_source: str,
         scheduled_departure: datetime,
         db: AsyncSession,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """
         Predict track assignment using historical data.
 
@@ -79,7 +78,8 @@ class HistoricalTrackPredictor:
             db: Database session
 
         Returns:
-            Dictionary with track probabilities and metadata
+            Dictionary with track probabilities and metadata, or None if
+            insufficient data to make a prediction.
         """
 
         logger.info(
@@ -341,15 +341,18 @@ class HistoricalTrackPredictor:
 
     def _create_static_distribution(
         self, station_code: str, data_source: str
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """
         Create static distribution based on configured values.
 
         This is the final fallback when we don't have enough historical data
         even at the service provider level (< 250 records).
+
+        Returns None if no static distribution is configured for this station,
+        indicating that predictions should not be shown.
         """
 
-        # Static distributions based on historical data
+        # Static distributions based on historical data (NY Penn only)
         # Raw counts: NJT = [536,602,629,546,12,77,211,157,236,262,210,226,289,64,37,5,0,0,0,0,0]
         #           Amtrak = [0,0,2,0,213,187,146,217,142,170,165,214,165,419,179,22,0,0,0,0,2]
 
@@ -414,19 +417,30 @@ class HistoricalTrackPredictor:
 
         static_distributions = {
             "NY": {"NJT": njt_probs, "AMTRAK": amtrak_probs}
-            # Other stations can be added here
+            # Other stations can be added here as historical data accumulates
         }
 
         # Get static distribution for this station and service
-        if station_code in static_distributions:
-            if data_source in static_distributions[station_code]:
-                probabilities = static_distributions[station_code][data_source]
-            else:
-                # Fallback to uniform if service not configured
-                return self._create_uniform_distribution(station_code)
-        else:
-            # Fallback to uniform if station not configured
-            return self._create_uniform_distribution(station_code)
+        if station_code not in static_distributions:
+            # No static distribution for this station - don't show predictions
+            logger.info(
+                "no_static_distribution",
+                station_code=station_code,
+                reason="station_not_configured",
+            )
+            return None
+
+        if data_source not in static_distributions[station_code]:
+            # No static distribution for this service at this station
+            logger.info(
+                "no_static_distribution",
+                station_code=station_code,
+                data_source=data_source,
+                reason="service_not_configured",
+            )
+            return None
+
+        probabilities = static_distributions[station_code][data_source]
 
         # Convert tracks to platforms for NY Penn
         platform_probs = self._convert_tracks_to_platforms(probabilities, station_code)
@@ -451,43 +465,6 @@ class HistoricalTrackPredictor:
                 "historical_records": 0,
                 "station_code": station_code,
                 "data_source": data_source,
-            },
-        }
-
-    def _create_uniform_distribution(self, station_code: str) -> dict[str, Any]:
-        """Create uniform distribution when no data available."""
-
-        # Get tracks from station configuration
-        tracks = get_tracks_for_station(station_code)
-        if not tracks:
-            # Generic fallback if station has no track config
-            tracks = [str(i) for i in range(1, 11)]  # Tracks 1-10
-
-        uniform_prob = 1.0 / len(tracks)
-        track_probabilities = {track: uniform_prob for track in tracks}
-
-        # Convert tracks to platforms
-        platform_probs = self._convert_tracks_to_platforms(
-            track_probabilities, station_code
-        )
-
-        # Get top platforms
-        sorted_platforms = sorted(
-            platform_probs.items(), key=lambda x: x[1], reverse=True
-        )
-        primary_platform = sorted_platforms[0][0] if sorted_platforms else "Unknown"
-        top_3_platforms = [platform for platform, _ in sorted_platforms[:3]]
-
-        return {
-            "platform_probabilities": platform_probs,  # Platforms, not tracks
-            "primary_prediction": primary_platform,
-            "confidence": uniform_prob,
-            "top_3": top_3_platforms,
-            "model_version": "historical_v1_uniform",
-            "features_used": {
-                "prediction_level": "uniform_fallback",
-                "historical_records": 0,
-                "station_code": station_code,
             },
         }
 
