@@ -19,6 +19,7 @@ enum NavigationDestination: Hashable {
     case myProfile
     case congestionMap
     case favoriteStations
+    case tripHistory
 }
 
 #Preview {

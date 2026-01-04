@@ -5,6 +5,9 @@ struct MyProfileView: View {
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.openURL) private var openURL
 
+    @State private var tripStats: TripStats = .empty
+    @State private var recentTrips: [CompletedTrip] = []
+
     var body: some View {
         VStack(spacing: 0) {
             // Fixed header - replaces system navigation bar to avoid layout shift
@@ -40,6 +43,11 @@ struct MyProfileView: View {
             // Scrollable content
             ScrollView {
                 VStack(spacing: 24) {
+                    // Flight Stats Section (only shown if user has trips)
+                    if tripStats.totalTrips > 0 {
+                        TripStatsSection(stats: tripStats, recentTrips: recentTrips, appState: appState)
+                    }
+
                     // Feedback & Ideas section
                     VStack(spacing: 16) {
                         // Section header
@@ -424,6 +432,225 @@ struct MyProfileView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            tripStats = StorageService.shared.computeTripStats()
+            recentTrips = StorageService.shared.loadCompletedTrips()
+        }
+    }
+}
+
+// MARK: - Trip Stats Section
+
+struct TripStatsSection: View {
+    let stats: TripStats
+    let recentTrips: [CompletedTrip]
+    let appState: AppState
+
+    var body: some View {
+        VStack(spacing: 16) {
+            // Section header
+            HStack {
+                Text("Your TrackRat Stats")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                Spacer()
+            }
+            .padding(.horizontal)
+
+            // Stats card
+            VStack(spacing: 20) {
+                // Main stats row
+                HStack(spacing: 0) {
+                    StatBox(
+                        value: "\(stats.totalTrips)",
+                        label: "Trips Tracked",
+                        icon: "tram.fill"
+                    )
+
+                    Divider()
+                        .frame(height: 50)
+                        .background(Color.white.opacity(0.2))
+
+                    StatBox(
+                        value: stats.formattedTotalDelay,
+                        label: "Lost to Delays",
+                        icon: "clock.badge.exclamationmark",
+                        valueColor: stats.totalDelayMinutes > 0 ? .red : .green
+                    )
+                }
+
+                Divider()
+                    .background(Color.white.opacity(0.2))
+
+                // Secondary stats row
+                HStack(spacing: 0) {
+                    StatBox(
+                        value: "\(stats.onTimePercentage)%",
+                        label: "On Time",
+                        icon: "checkmark.circle.fill",
+                        valueColor: stats.onTimePercentage >= 80 ? .green : (stats.onTimePercentage >= 50 ? .yellow : .red)
+                    )
+
+                    Divider()
+                        .frame(height: 50)
+                        .background(Color.white.opacity(0.2))
+
+                    if stats.currentStreakDays > 0 {
+                        StatBox(
+                            value: "\(stats.currentStreakDays)",
+                            label: "Day Streak",
+                            icon: "flame.fill",
+                            valueColor: .orange
+                        )
+                    } else if let route = stats.mostFrequentRoute {
+                        VStack(spacing: 4) {
+                            Text("\(route.count)")
+                                .font(.title2.bold())
+                                .foregroundColor(.white)
+                            Text("trips on")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.6))
+                            Text("\(route.originName.components(separatedBy: " ").first ?? route.originName)")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity)
+                    } else {
+                        StatBox(
+                            value: "-",
+                            label: "Day Streak",
+                            icon: "flame.fill"
+                        )
+                    }
+                }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+
+            // Recent trips
+            if !recentTrips.isEmpty {
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("Recent Trips")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white.opacity(0.8))
+                        Spacer()
+
+                        if recentTrips.count > 3 {
+                            Button {
+                                appState.navigationPath.append(NavigationDestination.tripHistory)
+                            } label: {
+                                Text("View All")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 4)
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(recentTrips.prefix(3).enumerated()), id: \.element.id) { index, trip in
+                            TripRowView(trip: trip)
+
+                            if index < min(2, recentTrips.count - 1) {
+                                Divider()
+                                    .background(Color.white.opacity(0.1))
+                            }
+                        }
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Stat Box Component
+
+struct StatBox: View {
+    let value: String
+    let label: String
+    var icon: String? = nil
+    var valueColor: Color = .white
+
+    var body: some View {
+        VStack(spacing: 6) {
+            if let icon = icon {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundColor(valueColor.opacity(0.8))
+            }
+            Text(value)
+                .font(.title2.bold())
+                .foregroundColor(valueColor)
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.6))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Trip Row Component
+
+struct TripRowView: View {
+    let trip: CompletedTrip
+
+    private var formattedDate: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: trip.tripDate)
+    }
+
+    private var formattedTime: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter.string(from: trip.scheduledDeparture)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Date column
+            VStack(spacing: 2) {
+                Text(formattedDate)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(.white.opacity(0.8))
+                Text(formattedTime)
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .frame(width: 50)
+
+            // Route info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(trip.routeDescription)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+
+                Text(trip.lineName)
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+
+            Spacer()
+
+            // Delay indicator
+            Text(trip.formattedDelay)
+                .font(.subheadline.weight(.medium))
+                .foregroundColor(trip.isOnTime ? .green : .red)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 }
 

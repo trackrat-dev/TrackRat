@@ -32,6 +32,9 @@ class LiveActivityService: ObservableObject {
         // End any existing activity first
         await endCurrentActivity()
 
+        // Reset trip recording state for new journey
+        TripRecordingService.shared.reset()
+
         // Record Live Activity start for Rat Sense
         RatSenseService.shared.recordLiveActivityStart(from: originCode, to: destinationCode)
 
@@ -157,6 +160,31 @@ class LiveActivityService: ObservableObject {
         // Stop periodic updates first
         stopPeriodicUpdates()
 
+        // Finalize trip recording with latest train data if available
+        do {
+            let train = try await APIService.shared.fetchTrainDetails(
+                id: activity.attributes.trainId,
+                fromStationCode: activity.attributes.originStationCode
+            )
+            TripRecordingService.shared.finalizeTrip(
+                train: train,
+                originCode: activity.attributes.originStationCode,
+                destinationCode: activity.attributes.destinationStationCode,
+                originName: activity.attributes.origin,
+                destinationName: activity.attributes.destination
+            )
+        } catch {
+            // Finalize without train data if fetch fails
+            print("⚠️ Could not fetch final train data: \(error)")
+            TripRecordingService.shared.finalizeTrip(
+                train: nil,
+                originCode: activity.attributes.originStationCode,
+                destinationCode: activity.attributes.destinationStationCode,
+                originName: activity.attributes.origin,
+                destinationName: activity.attributes.destination
+            )
+        }
+
         // Cancel push token subscription and wait for completion
         if let task = pushTokenTask {
             task.cancel()
@@ -229,6 +257,15 @@ class LiveActivityService: ObservableObject {
                     fromStation: activity.attributes.originStationCode
                 )
             }
+
+            // Record trip progress at milestones (halfway, second-to-last, etc.)
+            TripRecordingService.shared.processTrainUpdate(
+                train: train,
+                originCode: activity.attributes.originStationCode,
+                destinationCode: activity.attributes.destinationStationCode,
+                originName: activity.attributes.origin,
+                destinationName: activity.attributes.destination
+            )
 
             // Calculate context-aware progress for user's journey
             let context = JourneyContext(from: activity.attributes.originStationCode, toCode: activity.attributes.destinationStationCode, toName: activity.attributes.destination)

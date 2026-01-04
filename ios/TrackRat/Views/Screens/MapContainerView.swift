@@ -647,6 +647,8 @@ struct MapContainerView: View {
                         selectedDetent = .fraction(0.50)
                     }
                 )
+            case .tripHistory:
+                TripHistoryView()
             }
         }
         .transparentNavigationBackground()
