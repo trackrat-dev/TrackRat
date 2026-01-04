@@ -132,6 +132,9 @@ class LiveActivityService: ObservableObject {
             // Start periodic updates every 30 seconds
             startPeriodicUpdates()
 
+            // Reset journey feedback state for new activity
+            await JourneyFeedbackService.shared.onActivityStarted()
+
             print("✅ Live Activity started successfully")
             print("  - Activity ID: \(activity.id)")
 
@@ -187,6 +190,9 @@ class LiveActivityService: ObservableObject {
             self?.currentPushToken = nil
             self?.journeyStationCodes = []
         }
+
+        // Clear journey feedback state
+        await JourneyFeedbackService.shared.onActivityEnded()
 
         print("🛑 Live Activity ended and cleaned up")
     }
@@ -283,6 +289,14 @@ class LiveActivityService: ObservableObject {
             )
 
             print("✅ Live Activity updated successfully")
+
+            // Check if we should prompt for journey feedback at 2/3 progress
+            await JourneyFeedbackService.shared.checkProgressMilestone(
+                progress: progress,
+                trainId: activity.attributes.trainId,
+                originCode: activity.attributes.originStationCode,
+                destinationCode: activity.attributes.destinationStationCode
+            )
 
             // Auto-end if journey is complete using comprehensive check
             if shouldEndActivity(train: train, activity: activity) {
