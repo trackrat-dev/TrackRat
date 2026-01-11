@@ -37,7 +37,8 @@ final class TripRecordingService {
 
         // Halfway milestone: triggered when we've departed >= half the stops before destination
         // For N stops, there are N-1 segments. Halfway = (N-1)/2 segments completed
-        let halfwayThreshold = (totalStops - 1) / 2
+        // Use max(1, ...) to ensure at least one stop must be departed (fixes 2-stop trips recording too early)
+        let halfwayThreshold = max(1, (totalStops - 1) / 2)
         if departedStopCount >= halfwayThreshold && !triggeredMilestones.contains(.halfway) {
             print("TripRecording: Reached halfway milestone (departed \(departedStopCount) of \(totalStops) stops)")
             recordMilestone(
@@ -130,11 +131,17 @@ final class TripRecordingService {
             return nil
         }
 
+        // Debug: Print all station codes to diagnose matching issues
+        let allStationCodes = stops.map { $0.stationCode }
+        print("TripRecording: Looking for origin '\(originCode)' and dest '\(destinationCode)' in stops: \(allStationCodes)")
+
         // Find origin and destination indices
         guard let originIdx = stops.firstIndex(where: { $0.stationCode.uppercased() == originCode.uppercased() }),
               let destIdx = stops.firstIndex(where: { $0.stationCode.uppercased() == destinationCode.uppercased() }),
               originIdx < destIdx else {
             print("TripRecording: Could not find origin/destination in stops")
+            print("  - Origin '\(originCode)' found: \(stops.contains { $0.stationCode.uppercased() == originCode.uppercased() })")
+            print("  - Dest '\(destinationCode)' found: \(stops.contains { $0.stationCode.uppercased() == destinationCode.uppercased() })")
             return nil
         }
 
@@ -144,6 +151,13 @@ final class TripRecordingService {
 
         // Count how many stops have been departed (origin counts when departed)
         let departedCount = journeyStops.filter { $0.hasDepartedStation }.count
+
+        // Debug: Print departure status for each stop in journey
+        print("TripRecording: Journey segment (\(totalStops) stops):")
+        for (idx, stop) in journeyStops.enumerated() {
+            print("  [\(idx)] \(stop.stationCode): hasDepartedStation=\(stop.hasDepartedStation)")
+        }
+        print("TripRecording: departedCount=\(departedCount), halfwayThreshold=\((totalStops - 1) / 2)")
 
         return (departedCount, totalStops)
     }
