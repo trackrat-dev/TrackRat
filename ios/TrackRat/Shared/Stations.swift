@@ -85,7 +85,7 @@ struct Stations {
         "Hartford", "Meriden", "Wallingford", "Windsor Locks", "Springfield",
         "Claremont", "Dover NH", "Durham-UNH", "Exeter",
         "New Carrollton", "Aberdeen", "Alexandria", "Charlottesville",
-        "Lorton", "Norfolk", "Richmond Main Street", "Richmond Staples Mill Road", "Roanoke",
+        "Lorton", "Manassas", "Norfolk", "Richmond Main Street", "Richmond Staples Mill Road", "Roanoke",
         "Harrisburg", "Lancaster",
         
         // Southeast Amtrak Stations (Silver Star/Meteor and Carolinian/Piedmont routes)
@@ -300,6 +300,7 @@ struct Stations {
         "Alexandria": "ALX",
         "Charlottesville": "CVS",
         "Lorton": "LOR",
+        "Manassas": "MSS",
         "Norfolk": "NFK",
         "Richmond Main Street": "RVM",
         "Richmond Staples Mill Road": "RVR",
@@ -400,6 +401,7 @@ struct Stations {
         "ALX": CLLocationCoordinate2D(latitude: 38.8062, longitude: -77.0626),  // Alexandria, VA
         "CVS": CLLocationCoordinate2D(latitude: 38.0320, longitude: -78.4921),  // Charlottesville, VA
         "LOR": CLLocationCoordinate2D(latitude: 38.7060, longitude: -77.2214),  // Lorton, VA
+        "MSS": CLLocationCoordinate2D(latitude: 38.7511, longitude: -77.4752),  // Manassas, VA
         "NFK": CLLocationCoordinate2D(latitude: 36.8583, longitude: -76.2876),  // Norfolk, VA
         "RVR": CLLocationCoordinate2D(latitude: 37.61741, longitude: -77.49755),  // Richmond Staples Mill Road, VA
         "RVM": CLLocationCoordinate2D(latitude: 37.6143, longitude: -77.4966),  // Richmond Main Street, VA
@@ -634,6 +636,8 @@ struct Stations {
         ("Baltimore Station", "BL"),
         ("Washington Union Station", "WS"),
         ("Richmond Staples Mill Road", "RVR"),
+        // New England
+        ("Springfield", "SPG"),
         // Southeast hubs
         ("Charlotte", "CLT"),
         ("Raleigh", "RGH"),

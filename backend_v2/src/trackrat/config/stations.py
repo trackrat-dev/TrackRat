@@ -207,6 +207,7 @@ STATION_NAMES: dict[str, str] = {
     "ALX": "Alexandria",
     "CVS": "Charlottesville",
     "LOR": "Lorton",
+    "MSS": "Manassas",
     "NFK": "Norfolk",
     "RVR": "Richmond Staples Mill Road",
     "RVM": "Richmond Main Street",
@@ -312,6 +313,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "ALX": "ALX",  # Alexandria, VA
     "CVS": "CVS",  # Charlottesville, VA
     "LOR": "LOR",  # Lorton, VA
+    "MSS": "MSS",  # Manassas, VA
     "NFK": "NFK",  # Norfolk, VA
     "RVR": "RVR",  # Richmond Staples Mill Road, VA
     "RVM": "RVM",  # Richmond Main Street, VA
@@ -403,6 +405,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "ALX": "ALX",  # Alexandria, VA
     "CVS": "CVS",  # Charlottesville, VA
     "LOR": "LOR",  # Lorton, VA
+    "MSS": "MSS",  # Manassas, VA
     "NFK": "NFK",  # Norfolk, VA
     "RVR": "RVR",  # Richmond Staples Mill Road, VA
     "RVM": "RVM",  # Richmond Main Street, VA
@@ -689,6 +692,7 @@ STATION_COORDINATES = {
     "ALX": {"lat": 38.8062, "lon": -77.0626},  # Alexandria, VA
     "CVS": {"lat": 38.0320, "lon": -78.4921},  # Charlottesville, VA
     "LOR": {"lat": 38.7060, "lon": -77.2214},  # Lorton, VA
+    "MSS": {"lat": 38.7511, "lon": -77.4752},  # Manassas, VA
     "NFK": {"lat": 36.8583, "lon": -76.2876},  # Norfolk, VA
     "RVR": {"lat": 37.61741, "lon": -77.49755},  # Richmond Staples Mill Road, VA
     "RVM": {"lat": 37.6143, "lon": -77.4966},  # Richmond Main Street, VA
