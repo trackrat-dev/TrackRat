@@ -19,6 +19,24 @@ from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger(__name__)
 
+# Congestion level thresholds (factor = current_avg / baseline)
+CONGESTION_THRESHOLD_NORMAL = 1.1  # <= 10% slower than baseline
+CONGESTION_THRESHOLD_MODERATE = 1.25  # <= 25% slower than baseline
+CONGESTION_THRESHOLD_HEAVY = 1.5  # <= 50% slower than baseline
+# Above 1.5 = severe
+
+
+def get_congestion_level(congestion_factor: float) -> str:
+    """Determine congestion level from a congestion factor."""
+    if congestion_factor <= CONGESTION_THRESHOLD_NORMAL:
+        return "normal"
+    elif congestion_factor <= CONGESTION_THRESHOLD_MODERATE:
+        return "moderate"
+    elif congestion_factor <= CONGESTION_THRESHOLD_HEAVY:
+        return "heavy"
+    else:
+        return "severe"
+
 
 class SegmentCongestion:
     """Congestion data for a route segment."""
@@ -498,15 +516,7 @@ class CongestionAnalyzer:
             current_avg = float(row.current_avg_minutes or row.avg_actual or baseline)
             congestion_factor = current_avg / baseline if baseline > 0 else 1.0
 
-            # Determine congestion level based on factor
-            if congestion_factor <= 1.1:
-                level = "normal"
-            elif congestion_factor <= 1.25:
-                level = "moderate"
-            elif congestion_factor <= 1.5:
-                level = "heavy"
-            else:
-                level = "severe"
+            level = get_congestion_level(congestion_factor)
 
             # Calculate average delay
             average_delay = current_avg - baseline
@@ -775,14 +785,7 @@ class CongestionAnalyzer:
         for row in rows:
             # Determine congestion level from factor (convert Decimal to float)
             congestion_factor = float(row.congestion_factor)
-            if congestion_factor <= 1.1:
-                level = "normal"
-            elif congestion_factor <= 1.25:
-                level = "moderate"
-            elif congestion_factor <= 1.5:
-                level = "heavy"
-            else:
-                level = "severe"
+            level = get_congestion_level(congestion_factor)
 
             # Convert database types to Python types
             actual_minutes = float(row.actual_minutes)
@@ -1012,15 +1015,7 @@ class CongestionAnalyzer:
             # Calculate average delay
             average_delay_minutes = current_avg - baseline_minutes
 
-            # Determine congestion level (same thresholds as before)
-            if congestion_factor <= 1.1:
-                level = "normal"
-            elif congestion_factor <= 1.25:
-                level = "moderate"
-            elif congestion_factor <= 1.5:
-                level = "heavy"
-            else:
-                level = "severe"
+            level = get_congestion_level(congestion_factor)
 
             congestion_data.append(
                 SegmentCongestion(
@@ -1071,15 +1066,7 @@ class CongestionAnalyzer:
                     congestion_factor = 1.0
                     delay_minutes = 0.0
 
-                # Determine congestion level
-                if congestion_factor <= 1.1:
-                    level = "normal"
-                elif congestion_factor <= 1.25:
-                    level = "moderate"
-                elif congestion_factor <= 1.5:
-                    level = "heavy"
-                else:
-                    level = "severe"
+                level = get_congestion_level(congestion_factor)
 
                 individual_segment = IndividualJourneySegment(
                     journey_id=str(segment_data["journey_id"]),

@@ -29,6 +29,7 @@ from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.scheduler_utils import (
     calculate_safe_interval,
+    commit_with_retry,
     run_with_freshness_check,
 )
 from trackrat.utils.time import (
@@ -1242,28 +1243,7 @@ class SchedulerService:
                                 error_count=journey.api_error_count,
                             )
 
-                    # Commit with retry logic
-                    max_retries = 3
-                    for retry in range(max_retries):
-                        try:
-                            session.commit()
-                            break
-                        except Exception as e:
-                            if (
-                                "database is locked" in str(e)
-                                and retry < max_retries - 1
-                            ):
-                                logger.warning(
-                                    "database_locked_retrying_on_error",
-                                    train_id=train_id,
-                                    retry=retry + 1,
-                                    error=str(e),
-                                )
-                                import time
-
-                                time.sleep(0.5 * (retry + 1))
-                            else:
-                                raise
+                    commit_with_retry(session, log_context={"train_id": train_id})
 
                     return {
                         "train_id": train_id,
@@ -1407,70 +1387,15 @@ class SchedulerService:
                         "is_completed": is_completed,
                     }
 
-                    # Commit synchronously with retry logic for database locks
-                    max_retries = 3
-                    for retry in range(max_retries):
-                        try:
-                            session.commit()
-                            break
-                        except Exception as e:
-                            if (
-                                "database is locked" in str(e)
-                                and retry < max_retries - 1
-                            ):
-                                logger.warning(
-                                    "database_locked_retrying",
-                                    train_id=train_id,
-                                    retry=retry + 1,
-                                    error=str(e),
-                                )
-                                import time
-
-                                time.sleep(0.5 * (retry + 1))  # Exponential backoff
-                            else:
-                                raise
+                    commit_with_retry(session, log_context={"train_id": train_id})
 
                     logger.info(
-                        "journey_collected_sync",
+                        "journey_collection_completed_sync",
                         train_id=train_id,
+                        journey_id=journey.id,
                         stops_count=len(train_data.STOPS),
                         is_completed=is_completed,
                     )
-
-                    # Transit time analysis is now done on-the-fly in API endpoints
-
-                    # Commit the journey updates with retry logic
-                    for retry in range(max_retries):
-                        try:
-                            session.commit()
-                            logger.info(
-                                "journey_collection_completed_sync",
-                                train_id=train_id,
-                                journey_id=journey.id,
-                            )
-                            break
-                        except Exception as e:
-                            if (
-                                "database is locked" in str(e)
-                                and retry < max_retries - 1
-                            ):
-                                logger.warning(
-                                    "database_locked_retrying_analysis",
-                                    train_id=train_id,
-                                    retry=retry + 1,
-                                    error=str(e),
-                                )
-                                import time
-
-                                time.sleep(0.5 * (retry + 1))
-                            else:
-                                logger.error(
-                                    "journey_commit_failed",
-                                    train_id=train_id,
-                                    error=str(e),
-                                )
-                                # Don't raise, just log the error
-                                break
 
                     return result_data
                 else:

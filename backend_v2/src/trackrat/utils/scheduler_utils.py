@@ -12,11 +12,54 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from structlog import get_logger
 
 from trackrat.models.database import SchedulerTaskRun
 
 logger = get_logger(__name__)
+
+
+def commit_with_retry(
+    session: Session,
+    max_retries: int = 3,
+    log_context: dict[str, Any] | None = None,
+) -> None:
+    """
+    Commit a synchronous database session with retry logic for SQLite locks.
+
+    SQLite can raise "database is locked" errors when multiple processes
+    access the database simultaneously. This function retries with exponential
+    backoff to handle transient lock contention.
+
+    Args:
+        session: Synchronous SQLAlchemy session to commit
+        max_retries: Maximum number of retry attempts (default: 3)
+        log_context: Optional dict with context for log messages (e.g., train_id)
+
+    Raises:
+        Exception: Re-raises the last exception if all retries fail
+    """
+    context = log_context or {}
+
+    for retry in range(max_retries):
+        try:
+            session.commit()
+            return
+        except Exception as e:
+            is_lock_error = "database is locked" in str(e) or "database is busy" in str(
+                e
+            )
+            if is_lock_error and retry < max_retries - 1:
+                logger.warning(
+                    "database_locked_retrying",
+                    retry=retry + 1,
+                    error=str(e),
+                    **context,
+                )
+                time.sleep(0.5 * (retry + 1))
+            else:
+                raise
 
 
 async def run_with_freshness_check(

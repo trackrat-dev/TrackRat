@@ -445,45 +445,6 @@ struct CombinedDetailsCard: View {
 
 // Note: StatusV2 functionality is now integrated directly into TrainV2 model
 
-// MARK: - Stops Card (unused - kept for potential future use)
-struct StopsCard: View {
-    let train: TrainV2
-    let selectedDestination: String?
-    let selectedDestinationCode: String?
-    @EnvironmentObject private var appState: AppState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let stops = train.stops, !stops.isEmpty {
-                ForEach(stops) { stop in
-                    StopRowV2(
-                        stop: stop,
-                        isDestination: selectedDestinationCode != nil &&
-                                     stop.stationCode.uppercased() == selectedDestinationCode!.uppercased(),
-                        isDeparture: appState.departureStationCode != nil &&
-                                   stop.stationCode.uppercased() == appState.departureStationCode!.uppercased(),
-                        isBoarding: train.isBoardingAtStation(stop.stationCode) && (appState.departureStationCode != nil && stop.stationCode.uppercased() == appState.departureStationCode!.uppercased()),
-                        boardingTrack: train.isBoardingAtStation(stop.stationCode) && (appState.departureStationCode != nil && stop.stationCode.uppercased() == appState.departureStationCode!.uppercased()) ? stop.track : nil,
-                        train: train,
-                        departureStationCode: appState.departureStationCode,
-                        shouldShowJourneyPredictions: false
-                    )
-                }
-            } else {
-                Text("No stops information available")
-                    .foregroundColor(.black.opacity(0.6))
-                    .italic()
-                    .frame(maxWidth: .infinity)
-                    .padding()
-            }
-        }
-        .padding()
-        .background(Color.white.opacity(0.9))
-        .cornerRadius(TrackRatTheme.CornerRadius.lg)
-        .trackRatShadow()
-    }
-}
-
 // MARK: - Stop Row V2
 struct StopRowV2: View {
     let stop: StopV2
@@ -544,8 +505,8 @@ struct StopRowV2: View {
             return (nil, nil, [])
         }
         
-        let formatter = DateFormatter.easternTime(time: .short)
-        
+        let formatter = DateFormatter.easternTimeShort
+
         // For departed stops: Show only "Departed X:XX PM" with delay indicator
         if stop.hasDepartedStation {
             if let correctedDepartureTime = stop.actualDeparture {
@@ -677,7 +638,7 @@ struct StopRowV2: View {
                 HStack(spacing: 4) {
                     Text("🐀✨")
                         .font(.system(size: 16))
-                    Text(DateFormatter.easternTime(time: .short).string(from: predictedArrival))
+                    Text(DateFormatter.easternTimeShort.string(from: predictedArrival))
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundColor(predictionDelayColor(predicted: predictedArrival, scheduled: stop.scheduledArrival))

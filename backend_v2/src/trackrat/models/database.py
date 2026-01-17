@@ -105,6 +105,14 @@ class TrainJourney(Base):
         Index("idx_last_updated", "last_updated_at"),
         Index("idx_data_source", "data_source"),
         Index("idx_active_journeys", "is_completed", "is_expired", "is_cancelled"),
+        # Composite index for delay forecaster 365-day lookback queries
+        Index(
+            "idx_delay_forecaster",
+            "train_id",
+            "origin_station_code",
+            "data_source",
+            "journey_date",
+        ),
     )
 
 
