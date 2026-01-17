@@ -8,31 +8,32 @@ services:
     environment:
       # Database
       TRACKRAT_DATABASE_URL: "sqlite+aiosqlite:///trackrat.db"
-      
+
       # NJ Transit API (required)
       TRACKRAT_NJT_API_TOKEN: "${NJT_API_TOKEN}"
-      
-      # APNS Configuration (required for Live Activities)
-      APNS_TEAM_ID: "${APNS_TEAM_ID}"           # Your Apple Developer Team ID (10 chars)
-      APNS_KEY_ID: "${APNS_KEY_ID}"             # Your APNS Key ID (10 chars) 
-      APNS_BUNDLE_ID: "net.trackrat.TrackRat"   # iOS app bundle identifier
-      APNS_ENVIRONMENT: "dev"                   # Use "dev" for sandbox, "prod" for production
-      
+
+      # APNS Configuration (optional - for iOS push notifications)
+      APNS_TEAM_ID: "${APNS_TEAM_ID:-}"
+      APNS_KEY_ID: "${APNS_KEY_ID:-}"
+      APNS_BUNDLE_ID: "${APNS_BUNDLE_ID:-net.trackrat.TrackRat}"
+      APNS_AUTH_KEY_PATH: "${APNS_AUTH_KEY_PATH:-}"
+      APNS_ENVIRONMENT: "dev"
+
       # Application Settings
       TRACKRAT_ENVIRONMENT: "production"
       TRACKRAT_LOG_LEVEL: "INFO"
       TRACKRAT_DISCOVERY_INTERVAL_MINUTES: 5
       TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES: 10
-      
+
     volumes:
-      # Mount directory containing APNS P8 certificate
+      # Mount directory containing APNS P8 certificate (if using push notifications)
       - ./certs:/app/certs:ro
-      
-      # Mount directory for SQLite database persistence  
+
+      # Mount directory for SQLite database persistence
       - ./data:/app/data
-      
+
     restart: unless-stopped
-    
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -44,8 +45,12 @@ services:
 # 1. Copy this file to docker-compose.yml
 # 2. Create a .env file with your credentials:
 #    NJT_API_TOKEN=your_nj_transit_token
+#
+# 3. (Optional) For iOS push notifications, add to .env:
 #    APNS_TEAM_ID=your_team_id
 #    APNS_KEY_ID=your_key_id
-# 3. Place your AuthKey_4WC3F645FR.p8 file in ./certs/
+#    APNS_AUTH_KEY_PATH=certs/apns_auth_key.p8
+#    Then place your .p8 file in ./certs/apns_auth_key.p8
+#
 # 4. Create ./data directory for database persistence
 # 5. Run: docker-compose up -d

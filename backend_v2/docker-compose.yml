@@ -6,7 +6,10 @@
 #   IMAGE_URL      - Full Artifact Registry URL for trackrat image
 #   DB_PASSWORD    - PostgreSQL password (from Secret Manager)
 #   NJT_API_TOKEN  - NJ Transit API token (from Secret Manager)
+#
+# Optional (for iOS push notifications):
 #   APNS_TEAM_ID, APNS_KEY_ID, APNS_BUNDLE_ID, APNS_ENVIRONMENT - APNS config
+#   APNS_AUTH_KEY_PATH - Path to .p8 key file (inside container: /data/apns_auth_key.p8)
 
 services:
   db:
@@ -34,6 +37,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Mount data directory for APNS key file (if configured)
+      - ${DATA_DIR}:/data:ro
     environment:
       # Database
       TRACKRAT_DATABASE_URL: postgresql+asyncpg://trackrat:${DB_PASSWORD}@db:5432/trackrat
@@ -41,12 +47,12 @@ services:
       TRACKRAT_LOG_LEVEL: ${TRACKRAT_LOG_LEVEL:-INFO}
       # NJ Transit API
       TRACKRAT_NJT_API_TOKEN: ${NJT_API_TOKEN}
-      # APNS Configuration
-      APNS_TEAM_ID: ${APNS_TEAM_ID}
-      APNS_KEY_ID: ${APNS_KEY_ID}
-      APNS_BUNDLE_ID: ${APNS_BUNDLE_ID}
+      # APNS Configuration (optional - push notifications disabled if not set)
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-}
       APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-prod}
-      APNS_AUTH_KEY_PATH: certs/AuthKey_4WC3F645FR.p8
+      APNS_AUTH_KEY_PATH: ${APNS_AUTH_KEY_PATH:-}
     ports:
       - "8000:8000"
     restart: unless-stopped

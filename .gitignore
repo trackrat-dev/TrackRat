@@ -17,6 +17,9 @@ ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/
 ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/**
 ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/andy.xcuserdatad/UserInterfaceState.xcuserstate
 
+# iOS export options (contains Team ID - contributors create their own)
+ios/ExportOptions.plist
+
 # Deployment configuration (contains environment-specific settings)
 #.deploy/*.env
 .deploy/local.config

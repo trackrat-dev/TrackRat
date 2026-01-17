@@ -37,14 +37,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y --auto-remove gcc g++ libpq-dev python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy application code, certs, and entrypoint script
+# Copy application code and entrypoint script
 COPY src/ ./src/
 COPY alembic.ini ./
-COPY certs/ ./certs/
 COPY docker-entrypoint.sh ./
 
-# Make entrypoint script executable and set ownership
-RUN chmod +x docker-entrypoint.sh && \
+# Create certs directory for runtime mounting and set ownership
+RUN mkdir -p certs && \
+    chmod +x docker-entrypoint.sh && \
     chown -R trackrat:trackrat /app
 
 USER trackrat

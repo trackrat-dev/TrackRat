@@ -3,7 +3,7 @@
 variable "project_id" {
   description = "GCP project ID"
   type        = string
-  default     = "trackrat-v2"
+  # No default - must be provided via terraform.tfvars or -var flag
 }
 
 variable "region" {

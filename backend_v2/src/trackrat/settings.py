@@ -95,11 +95,10 @@ class Settings(BaseSettings):
     # CORS Settings
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [
-            "https://andytubeee.github.io",
             "http://localhost:3000",
             "http://localhost:5173",
         ],
-        description="Allowed CORS origins. Use ['*'] only for development without credentials.",
+        description="Allowed CORS origins. Add production URLs via TRACKRAT_CORS_ALLOWED_ORIGINS env var.",
     )
 
     # Monitoring
@@ -135,10 +134,8 @@ class Settings(BaseSettings):
         description="APNS Auth Key (P8 content) - legacy environment variable approach",
     )
     apns_auth_key_path: str = Field(
-        default_factory=lambda: os.getenv(
-            "APNS_AUTH_KEY_PATH", "certs/AuthKey_4WC3F645FR.p8"
-        ),
-        description="Path to APNS Auth Key (P8 file) - preferred file-based approach",
+        default_factory=lambda: os.getenv("APNS_AUTH_KEY_PATH", ""),
+        description="Path to APNS Auth Key (.p8 file). Optional - push notifications disabled if not set.",
     )
     apns_bundle_id: str = Field(
         default_factory=lambda: os.getenv("APNS_BUNDLE_ID", "net.trackrat.TrackRat"),

@@ -52,7 +52,12 @@ coverage.xml
 *.sqlite3
 
 # Environment files
+.env
+.env.*
 !.env.example
+
+# APNS certificates (contributors provide their own)
+certs/*.p8
 
 # Alembic
 alembic/versions/*.py

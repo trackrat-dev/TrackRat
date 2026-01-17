@@ -154,12 +154,25 @@ resource "google_compute_instance_template" "trackrat" {
       NJT_API_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
         --secret=trackrat-njt-api-token --project="$PROJECT_ID" 2>/dev/null)
       APNS_TEAM_ID=$(toolbox --quiet gcloud secrets versions access latest \
-        --secret=trackrat-apns-team-id --project="$PROJECT_ID" 2>/dev/null)
+        --secret=trackrat-apns-team-id --project="$PROJECT_ID" 2>/dev/null || echo "")
       APNS_KEY_ID=$(toolbox --quiet gcloud secrets versions access latest \
-        --secret=trackrat-apns-key-id --project="$PROJECT_ID" 2>/dev/null)
+        --secret=trackrat-apns-key-id --project="$PROJECT_ID" 2>/dev/null || echo "")
       APNS_BUNDLE_ID=$(toolbox --quiet gcloud secrets versions access latest \
-        --secret=trackrat-apns-bundle-id --project="$PROJECT_ID" 2>/dev/null)
+        --secret=trackrat-apns-bundle-id --project="$PROJECT_ID" 2>/dev/null || echo "")
+      APNS_AUTH_KEY=$(toolbox --quiet gcloud secrets versions access latest \
+        --secret=trackrat-apns-auth-key --project="$PROJECT_ID" 2>/dev/null || echo "")
       echo "Secrets fetched successfully"
+
+      # Write APNS auth key to file if present
+      APNS_KEY_PATH=""
+      if [ -n "$APNS_AUTH_KEY" ]; then
+        APNS_KEY_PATH="$MOUNT_PATH/apns_auth_key.p8"
+        echo "$APNS_AUTH_KEY" > "$APNS_KEY_PATH"
+        chmod 600 "$APNS_KEY_PATH"
+        echo "APNS auth key written to $APNS_KEY_PATH"
+      else
+        echo "APNS auth key not configured (push notifications disabled)"
+      fi
 
       # ===========================================
       # 5. Download docker-compose.yml from GCS
@@ -186,6 +199,11 @@ resource "google_compute_instance_template" "trackrat" {
       # 6. Create .env file with configuration
       # ===========================================
       echo "=== Creating .env file ==="
+      # Set container path for APNS key (mounted at /data inside container)
+      CONTAINER_APNS_PATH=""
+      if [ -n "$APNS_KEY_PATH" ]; then
+        CONTAINER_APNS_PATH="/data/apns_auth_key.p8"
+      fi
       cat > "$APP_DIR/.env" <<ENVEOF
 DATA_DIR=$MOUNT_PATH
 IMAGE_URL=$CONTAINER_IMAGE
@@ -194,6 +212,7 @@ NJT_API_TOKEN=$NJT_API_TOKEN
 APNS_TEAM_ID=$APNS_TEAM_ID
 APNS_KEY_ID=$APNS_KEY_ID
 APNS_BUNDLE_ID=$APNS_BUNDLE_ID
+APNS_AUTH_KEY_PATH=$CONTAINER_APNS_PATH
 APNS_ENVIRONMENT=prod
 TRACKRAT_ENVIRONMENT=$ENVIRONMENT
 TRACKRAT_LOG_LEVEL=INFO
