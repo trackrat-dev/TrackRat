@@ -25,6 +25,7 @@ from trackrat.models.api import (
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time, safe_datetime_subtract
+from trackrat.utils.train import get_effective_observation_type
 
 logger = get_logger(__name__)
 
@@ -224,7 +225,7 @@ class DepartureService:
                     update_count=journey.update_count,
                 ),
                 data_source=journey.data_source,
-                observation_type=journey.observation_type,
+                observation_type=get_effective_observation_type(journey),
                 is_cancelled=journey.is_cancelled,
             )
             departures.append(departure)
