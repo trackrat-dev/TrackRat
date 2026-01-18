@@ -416,8 +416,7 @@ struct TrainCard: View {
         }
         .padding()
         .background(
-            isBoardingAtOrigin ? Color.orange.opacity(0.9) :
-            hasDeparted ? Color.white.opacity(0.6) : Color.white.opacity(0.9)
+            isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9)
         )
         .cornerRadius(TrackRatTheme.CornerRadius.lg)
         .trackRatShadow()
