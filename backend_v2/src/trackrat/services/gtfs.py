@@ -940,9 +940,12 @@ class GTFSService:
             if not stop_rows:
                 continue
 
-            # Build stops list
+            # Build stops list (skip stops without mapped station codes)
             stops: list[StopDetails] = []
             for station_code, stop_sequence, arrival_time, departure_time in stop_rows:
+                if not station_code:
+                    continue
+
                 arrival_dt = self._parse_gtfs_time(arrival_time, target_date)
                 departure_dt = self._parse_gtfs_time(departure_time, target_date)
 
