@@ -1,8 +1,8 @@
 import Foundation
 
 // MARK: - Completed Trip Model
-/// Represents a trip that was tracked via Live Activity
-/// Records are created at journey milestones to ensure data capture even if user exits early
+/// Represents a trip that was tracked via Live Activity.
+/// Records are created when the train departs from the user's origin station.
 struct CompletedTrip: Codable, Identifiable, Equatable {
     let id: UUID
     let trainId: String
@@ -28,14 +28,7 @@ struct CompletedTrip: Codable, Identifiable, Equatable {
     var track: String?
 
     // Recording metadata
-    var recordingMilestone: RecordingMilestone
     var lastUpdated: Date
-
-    enum RecordingMilestone: String, Codable {
-        case halfway       // Created when train reaches ~50% of journey
-        case secondToLast  // Updated when train reaches penultimate stop
-        case completed     // Final update when Live Activity ends
-    }
 
     // MARK: - Computed Properties
 

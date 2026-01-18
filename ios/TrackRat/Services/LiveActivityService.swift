@@ -15,6 +15,9 @@ class LiveActivityService: ObservableObject {
     private var currentPushToken: Data?
     private let cacheService = TrainCacheService.shared
 
+    /// Tracks whether train has departed from user's origin (fires events once on transition)
+    private var hasDepartedOrigin: Bool = false
+
     private init() {
         checkCurrentActivity()
     }
@@ -34,6 +37,9 @@ class LiveActivityService: ObservableObject {
 
         // Reset trip recording state for new journey
         TripRecordingService.shared.reset()
+
+        // Reset departure tracking for new journey
+        hasDepartedOrigin = false
 
         // Record Live Activity start for Rat Sense
         RatSenseService.shared.recordLiveActivityStart(from: originCode, to: destinationCode)
@@ -165,30 +171,8 @@ class LiveActivityService: ObservableObject {
         // Stop periodic updates first
         stopPeriodicUpdates()
 
-        // Finalize trip recording with latest train data if available
-        do {
-            let train = try await APIService.shared.fetchTrainDetails(
-                id: activity.attributes.trainId,
-                fromStationCode: activity.attributes.originStationCode
-            )
-            TripRecordingService.shared.finalizeTrip(
-                train: train,
-                originCode: activity.attributes.originStationCode,
-                destinationCode: activity.attributes.destinationStationCode,
-                originName: activity.attributes.origin,
-                destinationName: activity.attributes.destination
-            )
-        } catch {
-            // Finalize without train data if fetch fails
-            print("⚠️ Could not fetch final train data: \(error)")
-            TripRecordingService.shared.finalizeTrip(
-                train: nil,
-                originCode: activity.attributes.originStationCode,
-                destinationCode: activity.attributes.destinationStationCode,
-                originName: activity.attributes.origin,
-                destinationName: activity.attributes.destination
-            )
-        }
+        // Finalize trip recording (only matters if train departed)
+        TripRecordingService.shared.finalizeTrip()
 
         // Cancel push token subscription and wait for completion
         if let task = pushTokenTask {
@@ -219,6 +203,7 @@ class LiveActivityService: ObservableObject {
             self?.isActivityActive = false
             self?.currentPushToken = nil
             self?.journeyStationCodes = []
+            self?.hasDepartedOrigin = false
         }
 
         // Clear journey feedback state
@@ -266,14 +251,35 @@ class LiveActivityService: ObservableObject {
                 )
             }
 
-            // Record trip progress at milestones (halfway, second-to-last, etc.)
-            TripRecordingService.shared.processTrainUpdate(
-                train: train,
-                originCode: activity.attributes.originStationCode,
-                destinationCode: activity.attributes.destinationStationCode,
-                originName: activity.attributes.origin,
-                destinationName: activity.attributes.destination
-            )
+            // Check for departure event (fires exactly once when train departs origin)
+            let justDeparted = !hasDepartedOrigin &&
+                train.hasTrainDepartedFromStation(activity.attributes.originStationCode)
+
+            if justDeparted {
+                hasDepartedOrigin = true
+                print("🚀 Train departed from origin - triggering journey events")
+
+                // Record trip immediately on departure
+                TripRecordingService.shared.recordDeparture(
+                    train: train,
+                    originCode: activity.attributes.originStationCode,
+                    destinationCode: activity.attributes.destinationStationCode,
+                    originName: activity.attributes.origin,
+                    destinationName: activity.attributes.destination
+                )
+
+                // Trigger feedback eligibility on departure
+                await JourneyFeedbackService.shared.onDeparture(
+                    trainId: activity.attributes.trainId,
+                    originCode: activity.attributes.originStationCode,
+                    destinationCode: activity.attributes.destinationStationCode
+                )
+            }
+
+            // Update trip data on every poll after departure (for arrival times, delays)
+            if hasDepartedOrigin {
+                TripRecordingService.shared.updateTripProgress(train: train)
+            }
 
             // Calculate context-aware progress for user's journey
             let context = JourneyContext(from: activity.attributes.originStationCode, toCode: activity.attributes.destinationStationCode, toName: activity.attributes.destination)
@@ -328,14 +334,6 @@ class LiveActivityService: ObservableObject {
             )
 
             print("✅ Live Activity updated successfully")
-
-            // Check if we should prompt for journey feedback at 2/3 progress
-            await JourneyFeedbackService.shared.checkProgressMilestone(
-                progress: progress,
-                trainId: activity.attributes.trainId,
-                originCode: activity.attributes.originStationCode,
-                destinationCode: activity.attributes.destinationStationCode
-            )
 
             // Auto-end if journey is complete using comprehensive check
             if shouldEndActivity(train: train, activity: activity) {

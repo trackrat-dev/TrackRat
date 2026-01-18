@@ -3,7 +3,8 @@ import StoreKit
 import UIKit
 
 /// Service that manages prompting users for feedback during their train journey.
-/// Shows a feedback prompt at 25% journey completion. Cooldown: 8 days if dismissed, 16 days if negative.
+/// Shows a feedback prompt when the train departs from the user's origin station.
+/// Cooldown: 8 days if dismissed, 16 days if negative feedback.
 @MainActor
 class JourneyFeedbackService: ObservableObject {
     static let shared = JourneyFeedbackService()
@@ -31,7 +32,6 @@ class JourneyFeedbackService: ObservableObject {
 
     // MARK: - Configuration
 
-    private let feedbackThreshold: Double = 0.25
     private let dismissCooldownDays: Int = 8
     private let negativeFeedbackCooldownDays: Int = 16
 
@@ -66,23 +66,10 @@ class JourneyFeedbackService: ObservableObject {
         currentJourneyContext = nil
     }
 
-    /// Called on each progress update to check if we should prompt for feedback.
-    /// - Parameters:
-    ///   - progress: The current journey progress (0.0 to 1.0)
-    ///   - trainId: The train ID
-    ///   - originCode: Origin station code
-    ///   - destinationCode: Destination station code
-    func checkProgressMilestone(
-        progress: Double,
-        trainId: String,
-        originCode: String,
-        destinationCode: String
-    ) {
+    /// Called once when train departs from user's origin station
+    func onDeparture(trainId: String, originCode: String, destinationCode: String) {
         // Skip if we've already prompted during this activity
         guard !hasPromptedDuringCurrentActivity else { return }
-
-        // Skip if we haven't reached the threshold yet
-        guard progress >= feedbackThreshold else { return }
 
         // Skip if we're in cooldown period
         guard !isInCooldownPeriod() else {
@@ -102,10 +89,10 @@ class JourneyFeedbackService: ObservableObject {
 
         // Check if app is in foreground
         if UIApplication.shared.applicationState == .active {
-            print("📊 Journey feedback: Showing prompt (app active, progress: \(progress))")
+            print("📊 Journey feedback: Showing prompt on departure (app active)")
             shouldShowFeedbackPrompt = true
         } else {
-            print("📊 Journey feedback: Queuing prompt for foreground (progress: \(progress))")
+            print("📊 Journey feedback: Queuing prompt for foreground (departure detected)")
             promptQueuedForForeground = true
         }
     }
