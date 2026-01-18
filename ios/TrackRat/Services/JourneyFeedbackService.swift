@@ -3,7 +3,7 @@ import StoreKit
 import UIKit
 
 /// Service that manages prompting users for feedback during their train journey.
-/// Shows a feedback prompt at 2/3 journey completion, with a 30-day cooldown if dismissed.
+/// Shows a feedback prompt at 25% journey completion. Cooldown: 8 days if dismissed, 16 days if negative.
 @MainActor
 class JourneyFeedbackService: ObservableObject {
     static let shared = JourneyFeedbackService()
@@ -27,12 +27,13 @@ class JourneyFeedbackService: ObservableObject {
     // MARK: - UserDefaults Keys
 
     private let lastPromptDismissedDateKey = "journeyFeedback_lastPromptDismissedDate"
-    private let cooldownDays: Int = 30
+    private let cooldownDaysKey = "journeyFeedback_cooldownDays"
 
-    // MARK: - Progress Threshold
+    // MARK: - Configuration
 
-    /// The journey progress threshold at which we prompt for feedback (2/3)
-    private let feedbackThreshold: Double = 0.666
+    private let feedbackThreshold: Double = 0.25
+    private let dismissCooldownDays: Int = 8
+    private let negativeFeedbackCooldownDays: Int = 16
 
     private init() {
         // Observe app becoming active to show queued prompts
@@ -128,6 +129,9 @@ class JourneyFeedbackService: ObservableObject {
         shouldShowFeedbackPrompt = false
         promptQueuedForForeground = false
 
+        // Record with longer cooldown for negative feedback
+        recordCooldown(days: negativeFeedbackCooldownDays)
+
         print("📊 Journey feedback: User responded negatively, showing feedback form")
 
         // Return true to signal that caller should show the improvement feedback form
@@ -139,10 +143,9 @@ class JourneyFeedbackService: ObservableObject {
         shouldShowFeedbackPrompt = false
         promptQueuedForForeground = false
 
-        // Record the dismissal to start cooldown
-        recordDismissal()
+        recordCooldown(days: dismissCooldownDays)
 
-        print("📊 Journey feedback: User dismissed prompt, starting 30-day cooldown")
+        print("📊 Journey feedback: User dismissed prompt, starting \(dismissCooldownDays)-day cooldown")
     }
 
     // MARK: - Private Methods
@@ -158,9 +161,11 @@ class JourneyFeedbackService: ObservableObject {
 
     private func isInCooldownPeriod() -> Bool {
         guard let lastDismissedDate = UserDefaults.standard.object(forKey: lastPromptDismissedDateKey) as? Date else {
-            // Never dismissed before, not in cooldown
             return false
         }
+
+        let cooldownDays = UserDefaults.standard.integer(forKey: cooldownDaysKey)
+        guard cooldownDays > 0 else { return false }
 
         let calendar = Calendar.current
         guard let cooldownEndDate = calendar.date(byAdding: .day, value: cooldownDays, to: lastDismissedDate) else {
@@ -170,8 +175,9 @@ class JourneyFeedbackService: ObservableObject {
         return Date() < cooldownEndDate
     }
 
-    private func recordDismissal() {
+    private func recordCooldown(days: Int) {
         UserDefaults.standard.set(Date(), forKey: lastPromptDismissedDateKey)
+        UserDefaults.standard.set(days, forKey: cooldownDaysKey)
     }
 }
 
