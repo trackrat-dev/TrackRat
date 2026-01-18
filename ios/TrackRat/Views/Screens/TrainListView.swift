@@ -53,13 +53,6 @@ struct TrainListView: View {
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.8))
                     }
-                    // Data freshness indicator
-                    if let freshness = viewModel.trains.first?.dataFreshness,
-                       freshness.ageSeconds >= 30 {
-                        Text(freshness.formattedAge)
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.5))
-                    }
                 }
 
                 Spacer()
