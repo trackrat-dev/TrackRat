@@ -59,6 +59,7 @@ struct MapContainerView: View {
     @State private var selectedSegment: CongestionSegment?
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @ObservedObject private var ratSenseService = RatSenseService.shared
+    @ObservedObject private var feedbackService = JourneyFeedbackService.shared
     
     // MARK: - Unified Map Region Calculation
     
@@ -201,6 +202,9 @@ struct MapContainerView: View {
             .presentationBackgroundInteraction(.enabled)
             .legacyPresentationBackground(.ultraThinMaterial)
             .presentationContentInteraction(.resizes)
+            .sheet(isPresented: $feedbackService.shouldShowFeedbackPrompt) {
+                JourneyFeedbackPromptView()
+            }
         }
         .task {
             // Load congestion data when map container appears, but don't block UI

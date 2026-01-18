@@ -2,13 +2,9 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
-    @ObservedObject private var feedbackService = JourneyFeedbackService.shared
 
     var body: some View {
         MapContainerView()
-            .sheet(isPresented: $feedbackService.shouldShowFeedbackPrompt) {
-                JourneyFeedbackPromptView()
-            }
     }
 }
 
