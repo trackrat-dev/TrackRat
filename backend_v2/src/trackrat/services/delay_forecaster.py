@@ -819,6 +819,19 @@ class DelayForecaster:
                 sample_count=0,
                 factors=["static_fallback"],
             )
+        elif data_source == "PATH":
+            # PATH is generally very reliable with frequent service
+            return DelayForecast(
+                cancellation_probability=0.01,
+                on_time_probability=0.85,
+                slight_delay_probability=0.10,
+                significant_delay_probability=0.03,
+                major_delay_probability=0.01,
+                expected_delay_minutes=2,
+                confidence="low",
+                sample_count=0,
+                factors=["static_fallback"],
+            )
         else:
             # NJT defaults
             return DelayForecast(

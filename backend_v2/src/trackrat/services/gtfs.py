@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.config.stations import (
+    get_path_route_info,
     get_station_name,
     map_gtfs_stop_to_station_code,
 )
@@ -49,6 +50,7 @@ logger = get_logger(__name__)
 GTFS_FEED_URLS = {
     "NJT": "https://content.njtransit.com/public/developers-resources/rail_data.zip",
     "AMTRAK": "https://content.amtrak.com/content/gtfs/GTFS.zip",
+    "PATH": "http://data.trilliumtransit.com/gtfs/path-nj-us/path-nj-us.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -58,6 +60,7 @@ GTFS_DOWNLOAD_INTERVAL_HOURS = 24
 DEFAULT_LINE_COLORS = {
     "NJT": "#003DA5",  # NJ Transit blue
     "AMTRAK": "#004B87",  # Amtrak blue
+    "PATH": "#0039A6",  # PATH blue
 }
 
 
@@ -630,6 +633,155 @@ class GTFSService:
 
         return active_services
 
+    async def get_path_route_stop_times(
+        self,
+        db: AsyncSession,
+        route_id: str,
+        terminus_station: str,
+        observed_terminus_time: datetime,
+    ) -> list[tuple[str, datetime | None, datetime | None]] | None:
+        """Get stop times for a PATH route, adjusted to observed terminus time.
+
+        Finds any GTFS trip on the specified route, extracts its stop times,
+        and adjusts all times based on the difference between the scheduled
+        and observed terminus arrival.
+
+        Args:
+            db: Database session
+            route_id: Transiter/GTFS route ID (e.g., "859" for HOB-33)
+            terminus_station: Internal station code of the terminus (e.g., "P33")
+            observed_terminus_time: When the train will arrive at terminus
+
+        Returns:
+            List of (station_code, arrival_time, departure_time) tuples,
+            ordered from origin to terminus. Times may be None for origin/terminus.
+            Returns None if no GTFS data available.
+        """
+        target_date = observed_terminus_time.date()
+
+        # Get active service IDs for PATH on this date
+        service_ids = await self.get_active_service_ids(db, "PATH", target_date)
+        if not service_ids:
+            logger.warning(
+                "path_no_active_services",
+                route_id=route_id,
+                target_date=str(target_date),
+            )
+            return None
+
+        # Find the GTFSRoute by route_id
+        route_result = await db.execute(
+            select(GTFSRoute.id).where(
+                and_(
+                    GTFSRoute.data_source == "PATH",
+                    GTFSRoute.route_id == route_id,
+                )
+            )
+        )
+        route_row = route_result.first()
+        if not route_row:
+            logger.warning(
+                "path_route_not_found",
+                route_id=route_id,
+            )
+            return None
+
+        gtfs_route_db_id = route_row[0]
+
+        # Find any trip on this route with active service
+        trip_result = await db.execute(
+            select(GTFSTrip.id).where(
+                and_(
+                    GTFSTrip.route_id == gtfs_route_db_id,
+                    GTFSTrip.service_id.in_(service_ids),
+                )
+            ).limit(1)
+        )
+        trip_row = trip_result.first()
+        if not trip_row:
+            logger.warning(
+                "path_no_active_trips",
+                route_id=route_id,
+                service_ids=list(service_ids)[:5],
+            )
+            return None
+
+        gtfs_trip_id = trip_row[0]
+
+        # Get all stop times for this trip, ordered by sequence
+        stops_result = await db.execute(
+            select(
+                GTFSStopTime.station_code,
+                GTFSStopTime.stop_sequence,
+                GTFSStopTime.arrival_time,
+                GTFSStopTime.departure_time,
+            )
+            .where(GTFSStopTime.trip_id == gtfs_trip_id)
+            .order_by(GTFSStopTime.stop_sequence)
+        )
+        stop_rows = stops_result.all()
+
+        if not stop_rows:
+            logger.warning(
+                "path_no_stop_times",
+                route_id=route_id,
+                trip_id=gtfs_trip_id,
+            )
+            return None
+
+        # Parse stop times and find terminus
+        parsed_stops: list[tuple[str, datetime | None, datetime | None]] = []
+        terminus_scheduled_time: datetime | None = None
+
+        for station_code, sequence, arrival_str, departure_str in stop_rows:
+            if not station_code:
+                continue
+
+            arrival_dt = self._parse_gtfs_time(arrival_str, target_date)
+            departure_dt = self._parse_gtfs_time(departure_str, target_date)
+
+            parsed_stops.append((station_code, arrival_dt, departure_dt))
+
+            # Check if this is the terminus station
+            if station_code == terminus_station and arrival_dt:
+                terminus_scheduled_time = arrival_dt
+
+        if not parsed_stops:
+            return None
+
+        # If we couldn't find the terminus, use the last stop's arrival
+        if terminus_scheduled_time is None:
+            last_stop = parsed_stops[-1]
+            terminus_scheduled_time = last_stop[1]  # arrival time
+
+        if terminus_scheduled_time is None:
+            logger.warning(
+                "path_no_terminus_time",
+                route_id=route_id,
+                terminus_station=terminus_station,
+            )
+            return None
+
+        # Calculate time delta: how much to adjust all times
+        time_delta = observed_terminus_time - terminus_scheduled_time
+
+        # Apply delta to all stop times
+        adjusted_stops: list[tuple[str, datetime | None, datetime | None]] = []
+        for station_code, arrival_dt, departure_dt in parsed_stops:
+            adjusted_arrival = arrival_dt + time_delta if arrival_dt else None
+            adjusted_departure = departure_dt + time_delta if departure_dt else None
+            adjusted_stops.append((station_code, adjusted_arrival, adjusted_departure))
+
+        logger.debug(
+            "path_stop_times_from_gtfs",
+            route_id=route_id,
+            terminus_station=terminus_station,
+            stop_count=len(adjusted_stops),
+            time_delta_minutes=time_delta.total_seconds() / 60,
+        )
+
+        return adjusted_stops
+
     async def get_scheduled_departures(
         self,
         db: AsyncSession,
@@ -652,13 +804,15 @@ class GTFSService:
         """
         departures: list[TrainDeparture] = []
 
-        # Get active service IDs for both sources
+        # Get active service IDs for all sources
         njt_services = await self.get_active_service_ids(db, "NJT", target_date)
         amtrak_services = await self.get_active_service_ids(db, "AMTRAK", target_date)
+        path_services = await self.get_active_service_ids(db, "PATH", target_date)
 
         all_services = {
             "NJT": njt_services,
             "AMTRAK": amtrak_services,
+            "PATH": path_services,
         }
 
         for data_source, service_ids in all_services.items():
@@ -717,6 +871,7 @@ class GTFSService:
                 GTFSTrip.train_id,
                 GTFSTrip.trip_headsign,
                 GTFSTrip.service_id,
+                GTFSRoute.route_id,  # GTFS route_id string (e.g., "859")
                 GTFSRoute.route_short_name,
                 GTFSRoute.route_long_name,
                 GTFSRoute.route_color,
@@ -762,6 +917,7 @@ class GTFSService:
                 train_id,
                 headsign,
                 service_id,
+                gtfs_route_id,  # GTFS route_id string (e.g., "859")
                 route_short,
                 route_long,
                 route_color,
@@ -790,11 +946,27 @@ class GTFSService:
                 continue
 
             # Build the departure response
-            line_code = route_short or data_source[:2]
-            line_name = route_long or route_short or data_source
-            line_color = f"#{route_color}" if route_color else DEFAULT_LINE_COLORS.get(
-                data_source, "#666666"
-            )
+            # PATH routes need special handling - use get_path_route_info for proper line codes
+            if data_source == "PATH":
+                path_route_info = get_path_route_info(gtfs_route_id)
+                if path_route_info:
+                    line_code, line_name, line_color = path_route_info
+                    # Ensure color has # prefix
+                    if not line_color.startswith("#"):
+                        line_color = f"#{line_color}"
+                else:
+                    # Fallback for unknown PATH routes
+                    line_code = route_short or "PATH"
+                    line_name = route_long or route_short or "PATH"
+                    line_color = f"#{route_color}" if route_color else DEFAULT_LINE_COLORS.get(
+                        data_source, "#666666"
+                    )
+            else:
+                line_code = route_short or data_source[:2]
+                line_name = route_long or route_short or data_source
+                line_color = f"#{route_color}" if route_color else DEFAULT_LINE_COLORS.get(
+                    data_source, "#666666"
+                )
 
             # Use train_id from database (populated from block_id during parsing)
             # For light rail (no numeric block_id), fall back to headsign
@@ -804,7 +976,7 @@ class GTFSService:
                 train_id=effective_train_id,
                 journey_date=target_date,
                 line=LineInfo(
-                    code=line_code[:3],
+                    code=line_code[:10],
                     name=line_name,
                     color=line_color,
                 ),
@@ -879,8 +1051,8 @@ class GTFSService:
             target_date=str(target_date),
         )
 
-        # Try both data sources
-        for data_source in ["NJT", "AMTRAK"]:
+        # Try all data sources
+        for data_source in ["NJT", "AMTRAK", "PATH"]:
             service_ids = await self.get_active_service_ids(db, data_source, target_date)
             if not service_ids:
                 continue
@@ -891,6 +1063,7 @@ class GTFSService:
                     GTFSTrip.id,
                     GTFSTrip.train_id,
                     GTFSTrip.trip_headsign,
+                    GTFSRoute.route_id,  # GTFS route_id string
                     GTFSRoute.route_short_name,
                     GTFSRoute.route_long_name,
                     GTFSRoute.route_color,
@@ -913,6 +1086,7 @@ class GTFSService:
                         GTFSTrip.id,
                         GTFSTrip.train_id,
                         GTFSTrip.trip_headsign,
+                        GTFSRoute.route_id,  # GTFS route_id string
                         GTFSRoute.route_short_name,
                         GTFSRoute.route_long_name,
                         GTFSRoute.route_color,
@@ -935,6 +1109,7 @@ class GTFSService:
                 db_trip_id,
                 stored_train_id,
                 headsign,
+                gtfs_route_id,  # GTFS route_id string
                 route_short,
                 route_long,
                 route_color,
@@ -998,9 +1173,23 @@ class GTFSService:
             effective_train_id = stored_train_id or headsign or "Unknown"
 
             # Build line info
-            line_code = route_short or data_source[:2]
-            line_name = route_long or route_short or data_source
-            line_color = f"#{route_color}" if route_color else "#666666"
+            # PATH routes need special handling - use get_path_route_info for proper line codes
+            if data_source == "PATH":
+                path_route_info = get_path_route_info(gtfs_route_id)
+                if path_route_info:
+                    line_code, line_name, line_color = path_route_info
+                    # Ensure color has # prefix
+                    if not line_color.startswith("#"):
+                        line_color = f"#{line_color}"
+                else:
+                    # Fallback for unknown PATH routes
+                    line_code = route_short or "PATH"
+                    line_name = route_long or route_short or "PATH"
+                    line_color = f"#{route_color}" if route_color else "#666666"
+            else:
+                line_code = route_short or data_source[:2]
+                line_name = route_long or route_short or data_source
+                line_color = f"#{route_color}" if route_color else "#666666"
 
             # Get origin and destination from stops
             origin_stop = stops[0]
@@ -1021,7 +1210,7 @@ class GTFSService:
                 train_id=effective_train_id,
                 journey_date=target_date,
                 line=LineInfo(
-                    code=line_code[:3],
+                    code=line_code[:10],
                     name=line_name,
                     color=line_color,
                 ),

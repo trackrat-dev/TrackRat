@@ -27,13 +27,19 @@ struct TrainDetailsView: View {
         )
         self._viewModel = StateObject(wrappedValue: VModel)
     }
-    
-    
+
+    // PATH trains display destination instead of synthetic train ID
+    private var trainNavigationTitle: String {
+        guard let train = viewModel.train else { return "Loading..." }
+        return train.dataSource == "PATH" ? train.destination : "Train \(train.trainId)"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Fixed header - replaces system navigation bar to avoid layout shift
             TrackRatNavigationHeader(
-                title: viewModel.train != nil ? "Train \(viewModel.train!.trainId)" : "Loading...",
+                // PATH trains display destination instead of synthetic train ID
+                title: trainNavigationTitle,
                 showCloseButton: false,
                 trailingContent: {
                     HStack(alignment: .center, spacing: 12) {

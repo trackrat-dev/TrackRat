@@ -36,6 +36,7 @@ struct TrainV2: Identifiable, Codable {
     let observationType: String?
     let isCancelled: Bool
     let isCompleted: Bool
+    let dataSource: String
 
     // Optional detailed stops (populated from detail endpoint)
     var stops: [StopV2]? = nil
@@ -52,6 +53,7 @@ struct TrainV2: Identifiable, Codable {
         case observationType = "observation_type"
         case isCancelled = "is_cancelled"
         case isCompleted = "is_completed"
+        case dataSource = "data_source"
         case stops
     }
     
@@ -594,12 +596,14 @@ extension TrainV2 {
         return 0
     }
     
-    /// Get the train class for express comparison (NJ Transit vs Amtrak)
+    /// Get the train class for express comparison (NJ Transit vs Amtrak vs PATH)
     var trainClass: String {
-        // Check if this is an Amtrak train based on line code or name
-        if line.code.hasPrefix("AMT") || line.name.lowercased().contains("amtrak") {
+        switch dataSource {
+        case "AMTRAK":
             return "Amtrak"
-        } else {
+        case "PATH":
+            return "PATH"
+        default:
             return "NJ Transit"
         }
     }

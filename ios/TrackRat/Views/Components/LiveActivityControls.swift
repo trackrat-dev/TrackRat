@@ -117,7 +117,8 @@ struct LiveActivityControls: View {
             dataFreshness: nil,
             observationType: nil,
             isCancelled: false,
-            isCompleted: false
+            isCompleted: false,
+            dataSource: "NJT"
         ),
         origin: "Newark Penn Station",
         destination: "New York Penn Station",

@@ -913,10 +913,11 @@ final class APIService: ObservableObject {
             observationType: departure.observationType,
             isCancelled: departure.isCancelled,
             isCompleted: false, // Departures are never completed at search time
+            dataSource: departure.dataSource,
             stops: nil
         )
     }
-    
+
     private func adaptV2TrainDetailsToTrainV2(_ details: V2TrainDetails, fromStationCode: String?) -> TrainV2 {
         // Find departure and arrival stations from stops
         let departureStop = details.stops.first
@@ -1014,10 +1015,11 @@ final class APIService: ObservableObject {
             observationType: details.observationType,
             isCancelled: details.isCancelled,
             isCompleted: details.isCompleted,
+            dataSource: details.dataSource,
             stops: stops
         )
     }
-    
+
     // MARK: - Platform Predictions
     
     func getPlatformPrediction(

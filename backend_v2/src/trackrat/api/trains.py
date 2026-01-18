@@ -848,6 +848,8 @@ def calculate_train_position(journey: TrainJourney) -> TrainPosition:
                 # For NJT, having a track assignment suggests at station
                 if stop.track and not stop.has_departed_station:
                     at_station_code = stop.station_code
+            # PATH: Transiter API doesn't provide at-station status,
+            # so we rely on has_departed_station only
 
             break
 

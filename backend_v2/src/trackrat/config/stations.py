@@ -257,6 +257,20 @@ STATION_NAMES: dict[str, str] = {
     "GAI": "Gainesville",
     "TOC": "Toccoa",
     "CSN": "Clemson",
+    # PATH stations (3-char codes to match API constraints)
+    "PNK": "Newark PATH",
+    "PHR": "Harrison PATH",
+    "PJS": "Journal Square",
+    "PGR": "Grove Street",
+    "PEX": "Exchange Place",
+    "PNP": "Newport",
+    "PHO": "Hoboken PATH",
+    "PCH": "Christopher Street",
+    "P9S": "9th Street",
+    "P14": "14th Street",
+    "P23": "23rd Street",
+    "P33": "33rd Street",
+    "PWC": "World Trade Center",
 }
 
 
@@ -456,6 +470,160 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "TOC": "TOC",  # Toccoa, GA
     "CSN": "CSN",  # Clemson, SC
 }
+
+
+# PATH Transiter stop ID to internal station code mapping
+# IDs verified against live Transiter API 2026-01-18
+PATH_TRANSITER_TO_INTERNAL_MAP: dict[str, str] = {
+    "26722": "P14",  # 14th Street
+    "26723": "P23",  # 23rd Street
+    "26724": "P33",  # 33rd Street
+    "26725": "P9S",  # 9th Street
+    "26726": "PCH",  # Christopher Street
+    "26727": "PEX",  # Exchange Place
+    "26728": "PGR",  # Grove Street
+    "26729": "PHR",  # Harrison
+    "26730": "PHO",  # Hoboken
+    "26731": "PJS",  # Journal Square
+    "26732": "PNP",  # Newport
+    "26733": "PNK",  # Newark
+    "26734": "PWC",  # World Trade Center
+}
+
+# Reverse mapping for PATH
+INTERNAL_TO_PATH_TRANSITER_MAP: dict[str, str] = {
+    v: k for k, v in PATH_TRANSITER_TO_INTERNAL_MAP.items()
+}
+
+# PATH route mappings (Transiter route ID -> line code, name, color)
+# Verified against live Transiter API 2026-01-18
+PATH_ROUTES: dict[str, tuple[str, str, str]] = {
+    "859": ("HOB-33", "Hoboken - 33rd Street", "#4d92fb"),
+    "860": ("HOB-WTC", "Hoboken - World Trade Center", "#65c100"),
+    "861": ("JSQ-33", "Journal Square - 33rd Street", "#ff9900"),
+    "862": ("NWK-WTC", "Newark - World Trade Center", "#d93a30"),
+    "1024": ("JSQ-33H", "Journal Square - 33rd Street (via Hoboken)", "#ff9900"),
+    "77285": ("WTC-33", "World Trade Center - 33rd Street", "#65c100"),
+    "74320": ("NWK-HAR", "Newark - Harrison Shuttle", "#8c3c96"),
+}
+
+# PATH route stop sequences (station codes in order from one terminus to the other)
+# Used to populate all stops when a train is discovered at a terminus
+PATH_ROUTE_STOPS: dict[str, list[str]] = {
+    # HOB-33: Hoboken <-> 33rd Street (via 6th Ave)
+    "859": ["PHO", "PCH", "P9S", "P14", "P23", "P33"],
+    # HOB-WTC: Hoboken <-> World Trade Center
+    "860": ["PHO", "PNP", "PEX", "PWC"],
+    # JSQ-33: Journal Square <-> 33rd Street (via 6th Ave)
+    "861": ["PJS", "PGR", "PNP", "PCH", "P9S", "P14", "P23", "P33"],
+    # NWK-WTC: Newark <-> World Trade Center
+    "862": ["PNK", "PHR", "PJS", "PGR", "PEX", "PWC"],
+    # JSQ-33H: Journal Square <-> 33rd Street via Hoboken
+    "1024": ["PJS", "PGR", "PNP", "PHO", "PCH", "P9S", "P14", "P23", "P33"],
+    # WTC-33: World Trade Center <-> 33rd Street (same as part of JSQ-33)
+    "77285": ["PWC", "PEX", "PNP", "PCH", "P9S", "P14", "P23", "P33"],
+    # NWK-HAR: Newark <-> Harrison Shuttle
+    "74320": ["PNK", "PHR"],
+}
+
+# PATH discovery stations - ONLY terminus stations
+# Transiter API only shows trains where the queried station is their destination.
+# Mid-route stations won't return useful results.
+# Using internal codes (Transiter IDs are in PATH_TRANSITER_TO_INTERNAL_MAP)
+PATH_DISCOVERY_STATIONS = [
+    "PHO",  # Hoboken terminus (26730) - HOB-33, HOB-WTC, JSQ-33-HOB
+    "PWC",  # World Trade Center terminus (26734) - HOB-WTC, NWK-WTC, WTC-33
+    "P33",  # 33rd Street terminus (26724) - HOB-33, JSQ-33, JSQ-33-HOB, WTC-33
+    "PNK",  # Newark terminus (26733) - NWK-WTC, NWK-HAR origin
+]
+
+# PATH GTFS stop name to internal station code mapping
+# Used for parsing PATH GTFS schedule data
+PATH_GTFS_NAME_TO_INTERNAL_MAP: dict[str, str] = {
+    "14th street": "P14",
+    "14 st": "P14",
+    "23rd street": "P23",
+    "23 st": "P23",
+    "33rd street": "P33",
+    "33 st": "P33",
+    "9th street": "P9S",
+    "9 st": "P9S",
+    "christopher street": "PCH",
+    "christopher st": "PCH",
+    "exchange place": "PEX",
+    "grove street": "PGR",
+    "grove st": "PGR",
+    "harrison": "PHR",
+    "hoboken": "PHO",
+    "journal square": "PJS",
+    "newport": "PNP",
+    "newark": "PNK",
+    "newark penn station": "PNK",
+    "world trade center": "PWC",
+    "wtc": "PWC",
+}
+
+
+def get_path_route_stops(route_id: str, terminus_station: str) -> list[str]:
+    """Get the ordered list of stops for a PATH route heading to a terminus.
+
+    Args:
+        route_id: Transiter route ID (e.g., '859')
+        terminus_station: The terminus station code where the train was discovered
+
+    Returns:
+        List of station codes in order from origin to destination (terminus)
+    """
+    stops = PATH_ROUTE_STOPS.get(route_id)
+    if not stops:
+        return [terminus_station]  # Fallback to just the terminus
+
+    # If terminus is at the end, return as-is
+    if stops[-1] == terminus_station:
+        return stops.copy()
+
+    # If terminus is at the start, reverse the list
+    if stops[0] == terminus_station:
+        return list(reversed(stops))
+
+    # Terminus not found at either end - just return terminus
+    return [terminus_station]
+
+
+def map_path_station_code(transiter_stop_id: str) -> str | None:
+    """Map PATH Transiter stop ID to our internal code.
+
+    Args:
+        transiter_stop_id: Transiter's stop ID (e.g., '26735')
+
+    Returns:
+        Our internal station code (e.g., 'PATH_HOB') or None if not mapped
+    """
+    return PATH_TRANSITER_TO_INTERNAL_MAP.get(transiter_stop_id)
+
+
+def map_internal_to_path_station(internal_code: str) -> str | None:
+    """Map our internal station code to PATH Transiter stop ID.
+
+    Args:
+        internal_code: Our internal station code (e.g., 'PATH_HOB')
+
+    Returns:
+        Transiter's stop ID (e.g., '26735') or None if not mapped
+    """
+    return INTERNAL_TO_PATH_TRANSITER_MAP.get(internal_code)
+
+
+def get_path_route_info(transiter_route_id: str) -> tuple[str, str, str] | None:
+    """Get PATH route info from Transiter route ID.
+
+    Args:
+        transiter_route_id: Transiter's route ID (e.g., '859')
+
+    Returns:
+        Tuple of (line_code, route_name, color) or None if not mapped
+    """
+    return PATH_ROUTES.get(transiter_route_id)
 
 
 def map_amtrak_station_code(amtrak_code: str) -> str | None:
@@ -697,6 +865,20 @@ STATION_COORDINATES = {
     "RVR": {"lat": 37.61741, "lon": -77.49755},  # Richmond Staples Mill Road, VA
     "RVM": {"lat": 37.6143, "lon": -77.4966},  # Richmond Main Street, VA
     "RNK": {"lat": 37.3077, "lon": -79.9803},  # Roanoke, VA
+    # PATH stations (3-char codes)
+    "PNK": {"lat": 40.7358, "lon": -74.1647},  # Newark PATH
+    "PHR": {"lat": 40.7390, "lon": -74.1557},  # Harrison PATH
+    "PJS": {"lat": 40.7326, "lon": -74.0628},  # Journal Square
+    "PGR": {"lat": 40.7193, "lon": -74.0432},  # Grove Street
+    "PEX": {"lat": 40.7162, "lon": -74.0327},  # Exchange Place
+    "PNP": {"lat": 40.7268, "lon": -74.0338},  # Newport
+    "PHO": {"lat": 40.7355, "lon": -74.0295},  # Hoboken PATH
+    "PCH": {"lat": 40.7328, "lon": -74.0070},  # Christopher Street
+    "P9S": {"lat": 40.7342, "lon": -74.0026},  # 9th Street
+    "P14": {"lat": 40.7374, "lon": -73.9968},  # 14th Street
+    "P23": {"lat": 40.7428, "lon": -73.9927},  # 23rd Street
+    "P33": {"lat": 40.7491, "lon": -73.9882},  # 33rd Street
+    "PWC": {"lat": 40.7116, "lon": -74.0112},  # World Trade Center
 }
 
 
@@ -782,7 +964,7 @@ def map_gtfs_stop_to_station_code(
     Args:
         gtfs_stop_id: The GTFS stop_id (numeric for NJT, code for Amtrak)
         gtfs_stop_name: The GTFS stop_name for fallback matching
-        data_source: "NJT" or "AMTRAK"
+        data_source: "NJT", "AMTRAK", or "PATH"
 
     Returns:
         Our internal station code or None if no match found
@@ -790,6 +972,20 @@ def map_gtfs_stop_to_station_code(
     if data_source == "AMTRAK":
         # Amtrak uses their standard codes as stop_id
         return map_amtrak_station_code(gtfs_stop_id)
+
+    if data_source == "PATH":
+        # PATH - first try by stop_id (GTFS uses same IDs as Transiter: 26722-26734)
+        if gtfs_stop_id in PATH_TRANSITER_TO_INTERNAL_MAP:
+            return PATH_TRANSITER_TO_INTERNAL_MAP[gtfs_stop_id]
+        # Fallback: match by normalized stop name
+        normalized = gtfs_stop_name.lower().strip()
+        if normalized in PATH_GTFS_NAME_TO_INTERNAL_MAP:
+            return PATH_GTFS_NAME_TO_INTERNAL_MAP[normalized]
+        # Try partial match (e.g., "14th Street" matches "14th street")
+        for name_pattern, code in PATH_GTFS_NAME_TO_INTERNAL_MAP.items():
+            if name_pattern in normalized or normalized in name_pattern:
+                return code
+        return None
 
     # For NJ Transit, try to match by name
     name_map = _build_name_to_code_map()

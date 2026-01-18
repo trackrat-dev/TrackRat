@@ -294,6 +294,7 @@ struct MockDataFactory {
 
         return TrainV2(
             trainId: trainId,
+            journeyDate: departureTime,
             line: line,
             destination: destination,
             departure: departure,
@@ -303,6 +304,7 @@ struct MockDataFactory {
             observationType: nil,
             isCancelled: isCancelled,
             isCompleted: isCompleted,
+            dataSource: "NJT",
             stops: stops
         )
     }

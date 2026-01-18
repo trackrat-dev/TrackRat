@@ -120,8 +120,8 @@ class DepartureService:
             JourneyStop.scheduled_departure >= time_from,
             JourneyStop.scheduled_departure <= time_to,
             journey_date_filter,
-            # Include both data sources
-            TrainJourney.data_source.in_(["NJT", "AMTRAK"]),
+            # Include all supported data sources
+            TrainJourney.data_source.in_(["NJT", "AMTRAK", "PATH"]),
         ]
 
         # PERFORMANCE: Filter out trains that have already departed from origin station
@@ -309,8 +309,11 @@ class DepartureService:
                     error=str(e),
                 )
 
+        # Apply limit to departures
+        limited_departures = departures[:limit]
+
         return DeparturesResponse(
-            departures=departures[:limit],
+            departures=limited_departures,
             metadata={
                 "from_station": {
                     "code": from_station,
@@ -321,7 +324,7 @@ class DepartureService:
                     if to_station
                     else None
                 ),
-                "count": len(departures),
+                "count": len(limited_departures),
                 "generated_at": now_et().isoformat(),
             },
         )
@@ -391,6 +394,8 @@ class DepartureService:
                     # For NJT, having a track assignment suggests at station
                     if stop.track and not stop.has_departed_station:
                         at_station_code = stop.station_code
+                # PATH: Transiter API doesn't provide at-station status,
+                # so we rely on has_departed_station only
 
                 break
 
@@ -733,9 +738,11 @@ class DepartureService:
                 train_id = train_id.lstrip("A")
             primary_key = f"{train_id}:{dep.journey_date}:{dep.data_source}"
 
-        # Fallback: line + scheduled time (second precision)
+        # Fallback: line + scheduled time (minute precision for robust matching)
+        # PATH trains don't have stable train_ids across Transiter/GTFS, so fallback
+        # matching is critical. Minute precision handles minor time variations.
         scheduled = dep.departure.scheduled_time
-        time_str = scheduled.strftime("%H:%M:%S") if scheduled else "unknown"
+        time_str = scheduled.strftime("%H:%M") if scheduled else "unknown"
         fallback_key = f"{dep.line.code}:{dep.data_source}:{time_str}"
 
         return primary_key, fallback_key

@@ -70,7 +70,14 @@ struct Stations {
         
         // Additional NJ Transit Stations
         "Avenel", "Jersey Avenue",
-        
+
+        // PATH Stations
+        "Newark PATH", "Harrison PATH", "Journal Square",
+        "Grove Street", "Exchange Place", "Newport",
+        "Hoboken PATH", "Christopher Street", "9th Street",
+        "14th Street", "23rd Street", "33rd Street",
+        "World Trade Center",
+
         // Pennsylvania Stations (Keystone Service)
         "Middletown PA", "Elizabethtown", "Mount Joy", "Parkesburg",
         "Coatesville", "Downingtown", "Exton", "Paoli",
@@ -261,7 +268,22 @@ struct Stations {
         "South Orange": "SO",
         "Morris Plains": "MX",
         "Great Notch": "GA",
-        
+
+        // PATH stations (3-char codes to match API constraints)
+        "Newark PATH": "PNK",
+        "Harrison PATH": "PHR",
+        "Journal Square": "PJS",
+        "Grove Street": "PGR",
+        "Exchange Place": "PEX",
+        "Newport": "PNP",
+        "Hoboken PATH": "PHO",
+        "Christopher Street": "PCH",
+        "9th Street": "P9S",
+        "14th Street": "P14",
+        "23rd Street": "P23",
+        "33rd Street": "P33",
+        "World Trade Center": "PWC",
+
         // Missing Keystone Service stations (PA)
         "Middletown PA": "MIDPA",  // Renamed to avoid conflict with Middletown NJ
         "Elizabethtown": "ELT",
@@ -583,7 +605,22 @@ struct Stations {
 	"ON": CLLocationCoordinate2D(latitude: 40.63685173471974, longitude: -74.83598194792847),  // Lebanon
 	"AN": CLLocationCoordinate2D(latitude: 40.645122790094504, longitude: -74.87893201752432),  // Annandale
 	"HG": CLLocationCoordinate2D(latitude: 40.666798999008535, longitude: -74.89591082917332),  // High Bridge
-        
+
+        // PATH stations - synced with backend_v2/src/trackrat/config/stations.py
+        "PNK": CLLocationCoordinate2D(latitude: 40.7365, longitude: -74.1640),   // Newark PATH
+        "PHR": CLLocationCoordinate2D(latitude: 40.7393, longitude: -74.1560),   // Harrison PATH
+        "PJS": CLLocationCoordinate2D(latitude: 40.7328, longitude: -74.0630),   // Journal Square
+        "PGR": CLLocationCoordinate2D(latitude: 40.7197, longitude: -74.0434),   // Grove Street
+        "PEX": CLLocationCoordinate2D(latitude: 40.7167, longitude: -74.0333),   // Exchange Place
+        "PNP": CLLocationCoordinate2D(latitude: 40.7265, longitude: -74.0337),   // Newport
+        "PHO": CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.0280),   // Hoboken PATH
+        "PCH": CLLocationCoordinate2D(latitude: 40.7329, longitude: -74.0067),   // Christopher Street
+        "P9S": CLLocationCoordinate2D(latitude: 40.7340, longitude: -73.9997),   // 9th Street
+        "P14": CLLocationCoordinate2D(latitude: 40.7376, longitude: -73.9967),   // 14th Street
+        "P23": CLLocationCoordinate2D(latitude: 40.7428, longitude: -73.9930),   // 23rd Street
+        "P33": CLLocationCoordinate2D(latitude: 40.7487, longitude: -73.9880),   // 33rd Street
+        "PWC": CLLocationCoordinate2D(latitude: 40.7118, longitude: -74.0101),   // World Trade Center
+
         // Additional Amtrak stations (Southeast/South)
         "ATL": CLLocationCoordinate2D(latitude: 33.7995643615723, longitude: -84.3917846679688),   // Atlanta, GA
         "CHS": CLLocationCoordinate2D(latitude: 32.8755340576172, longitude: -79.9989013671875),   // Charleston, SC
@@ -622,6 +659,12 @@ struct Stations {
         // Northeast Corridor
         ("New York Penn Station", "NY"),
         ("Hoboken", "HB"),
+        // PATH
+        ("Hoboken PATH", "PHO"),
+        ("World Trade Center", "PWC"),
+        ("33rd Street", "P33"),
+        ("Journal Square", "PJS"),
+        ("Newark PATH", "PNK"),
         ("Metropark", "MP"),
         ("Princeton Junction", "PJ"),
         ("Hamilton", "HL"),

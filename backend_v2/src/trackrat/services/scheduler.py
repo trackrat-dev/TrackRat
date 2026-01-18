@@ -21,6 +21,7 @@ from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
+from trackrat.collectors.path.discovery import PathDiscoveryCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
@@ -94,6 +95,17 @@ class SchedulerService:
             trigger=IntervalTrigger(minutes=self.settings.discovery_interval_minutes),
             id="amtrak_train_discovery",
             name="Amtrak Train Discovery",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=300,
+        )
+
+        # Schedule PATH discovery job - using same interval
+        self.scheduler.add_job(
+            self.run_path_discovery,
+            trigger=IntervalTrigger(minutes=self.settings.discovery_interval_minutes),
+            id="path_train_discovery",
+            name="PATH Train Discovery",
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=300,
@@ -212,6 +224,7 @@ class SchedulerService:
         # Run discovery immediately on startup
         asyncio.create_task(self.run_njt_discovery())
         asyncio.create_task(self.run_amtrak_discovery())
+        asyncio.create_task(self.run_path_discovery())
 
         # Check and initialize GTFS feeds on startup (downloads if missing)
         asyncio.create_task(self.check_and_initialize_gtfs_feeds())
@@ -353,6 +366,51 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("amtrak_discovery_skipped_still_fresh")
+
+    async def run_path_discovery(self) -> None:
+        """Run PATH train discovery for trains via Transiter API."""
+        task_id = f"path_discovery_{now_et().isoformat()}"
+
+        async def do_path_discovery_work() -> None:
+            """The actual PATH discovery work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_path_discovery_task")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Run PATH discovery
+                collector = PathDiscoveryCollector()
+                result = await collector.run()
+
+                logger.info(
+                    "path_discovery_completed",
+                    total_arrivals=result.get("total_arrivals", 0),
+                    new_journeys=result.get("total_new", 0),
+                )
+
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        async with get_session() as db:
+            # Calculate safe interval based on configured discovery interval
+            safe_interval = calculate_safe_interval(
+                self.settings.discovery_interval_minutes
+            )
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="path_discovery",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_path_discovery_work,
+            )
+
+            if not executed:
+                logger.debug("path_discovery_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
@@ -1980,7 +2038,7 @@ class SchedulerService:
             )
 
     async def refresh_gtfs_feeds(self) -> None:
-        """Refresh GTFS static schedule data for both NJT and Amtrak.
+        """Refresh GTFS static schedule data for NJT, Amtrak, and PATH.
 
         This downloads and parses GTFS feeds to enable future date schedule queries.
         The GTFSService handles rate limiting (max once per 24 hours per source).
@@ -2009,10 +2067,15 @@ class SchedulerService:
                     amtrak_result = await gtfs_service.refresh_feed(db, "AMTRAK")
                     logger.info("gtfs_amtrak_refresh_complete", refreshed=amtrak_result)
 
+                    # Refresh PATH feed
+                    path_result = await gtfs_service.refresh_feed(db, "PATH")
+                    logger.info("gtfs_path_refresh_complete", refreshed=path_result)
+
                 logger.info(
                     "gtfs_feed_refresh_complete",
                     njt_refreshed=njt_result,
                     amtrak_refreshed=amtrak_result,
+                    path_refreshed=path_result,
                 )
 
             except Exception as e:
@@ -2051,15 +2114,17 @@ class SchedulerService:
             gtfs_service = GTFSService()
 
             async with get_session() as db:
-                # Check if either NJT or Amtrak GTFS data is available
+                # Check if NJT, Amtrak, and PATH GTFS data is available
                 njt_available = await gtfs_service.is_feed_available(db, "NJT")
                 amtrak_available = await gtfs_service.is_feed_available(db, "AMTRAK")
+                path_available = await gtfs_service.is_feed_available(db, "PATH")
 
-                if njt_available and amtrak_available:
+                if njt_available and amtrak_available and path_available:
                     logger.info(
                         "gtfs_data_already_available",
                         njt=njt_available,
                         amtrak=amtrak_available,
+                        path=path_available,
                     )
                     return
 
@@ -2068,6 +2133,7 @@ class SchedulerService:
                     "gtfs_data_missing_triggering_initial_download",
                     njt_available=njt_available,
                     amtrak_available=amtrak_available,
+                    path_available=path_available,
                 )
 
                 if not njt_available:
@@ -2080,6 +2146,12 @@ class SchedulerService:
                     )
                     logger.info(
                         "gtfs_amtrak_initial_download_complete", success=amtrak_result
+                    )
+
+                if not path_available:
+                    path_result = await gtfs_service.refresh_feed(db, "PATH", force=True)
+                    logger.info(
+                        "gtfs_path_initial_download_complete", success=path_result
                     )
 
         except Exception as e:

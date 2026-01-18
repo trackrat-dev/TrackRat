@@ -1203,13 +1203,17 @@ private struct SegmentTrainDetailCard: View {
             // Header with train ID and line
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Train \(train.trainId)")
+                    // PATH trains display line (route) instead of synthetic train ID
+                    Text(train.dataSource == "PATH" ? train.line : "Train \(train.trainId)")
                         .font(.headline)
                         .fontWeight(.semibold)
-                    
-                    Text(train.line)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+
+                    // Only show line as subtitle for non-PATH trains
+                    if train.dataSource != "PATH" {
+                        Text(train.line)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 
                 Spacer()

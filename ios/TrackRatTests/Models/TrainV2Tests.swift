@@ -42,6 +42,7 @@ class TrainV2Tests: XCTestCase {
 
         return TrainV2(
             trainId: trainId,
+            journeyDate: departureTime,
             line: line,
             destination: destinationName,
             departure: departure,
@@ -51,6 +52,7 @@ class TrainV2Tests: XCTestCase {
             observationType: nil,
             isCancelled: isCancelled,
             isCompleted: isCompleted,
+            dataSource: "NJT",
             stops: stops
         )
     }
@@ -412,6 +414,7 @@ class TrainV2Tests: XCTestCase {
 
         let amtrakTrain = TrainV2(
             trainId: "AMT123",
+            journeyDate: Date(),
             line: amtrakLine,
             destination: "Philadelphia",
             departure: departure,
@@ -420,7 +423,8 @@ class TrainV2Tests: XCTestCase {
             dataFreshness: nil,
             observationType: nil,
             isCancelled: false,
-            isCompleted: false
+            isCompleted: false,
+            dataSource: "AMTRAK"
         )
 
         print("  - Train: \(amtrakTrain.trainId)")

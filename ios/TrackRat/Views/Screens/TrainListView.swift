@@ -346,7 +346,9 @@ struct TrainCard: View {
                 }
 
                 HStack(spacing: 4) {
-                    Text("Train \(train.trainId)")
+                    // PATH trains display destination instead of train ID
+                    // (PATH has no meaningful train numbers - they're synthetic IDs)
+                    Text(train.dataSource == "PATH" ? train.destination : "Train \(train.trainId)")
                         .font(.headline)
                         .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white : .black))
                         .strikethrough(isCancelled)

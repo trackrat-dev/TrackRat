@@ -141,7 +141,15 @@ struct PerformanceSection: View {
     var hasData: Bool {
         trainStats != nil || lineStats != nil || destinationStats != nil || routeStats != nil
     }
-    
+
+    private static func serviceDisplayName(for source: String) -> String {
+        switch source {
+        case "AMTRAK": return "All Amtrak trains"
+        case "PATH": return "All PATH trains"
+        default: return "All NJ Transit trains"
+        }
+    }
+
     var body: some View {
         if hasData {
             VStack(alignment: .leading, spacing: 16) {
@@ -154,8 +162,10 @@ struct PerformanceSection: View {
                     if let stats = trainStats {
                         let fromCode = fromStationCode ?? "?"
                         let toCode = toStationCode ?? "?"
+                        // PATH trains display destination instead of synthetic train ID
+                        let trainLabel = train.dataSource == "PATH" ? train.destination : "Train \(train.trainId)"
                         DelayPerformanceBar(
-                            label: "Train \(train.trainId) (\(fromCode)→\(toCode))",
+                            label: "\(trainLabel) (\(fromCode)→\(toCode))",
                             stats: stats
                         )
                     }
@@ -164,7 +174,7 @@ struct PerformanceSection: View {
                     if let stats = routeStats, let source = dataSource {
                         let fromCode = fromStationCode ?? "?"
                         let toCode = toStationCode ?? "?"
-                        let serviceLabel = source == "AMTRAK" ? "All Amtrak trains" : "All NJ Transit trains"
+                        let serviceLabel = Self.serviceDisplayName(for: source)
                         DelayPerformanceBar(
                             label: "\(serviceLabel) (\(fromCode)→\(toCode))",
                             stats: stats
@@ -207,7 +217,15 @@ struct TrackUsageSection: View {
     var hasData: Bool {
         trainStats != nil || lineStats != nil || destinationStats != nil || routeStats != nil
     }
-    
+
+    private static func serviceDisplayName(for source: String) -> String {
+        switch source {
+        case "AMTRAK": return "All Amtrak trains"
+        case "PATH": return "All PATH trains"
+        default: return "All NJ Transit trains"
+        }
+    }
+
     var body: some View {
         if hasData {
             VStack(alignment: .leading, spacing: 16) {
@@ -220,8 +238,10 @@ struct TrackUsageSection: View {
                     if let stats = trainStats {
                         let fromCode = fromStationCode ?? "?"
                         let toCode = toStationCode ?? "?"
+                        // PATH trains display destination instead of synthetic train ID
+                        let trainLabel = train.dataSource == "PATH" ? train.destination : "Train \(train.trainId)"
                         TrackUsageBar(
-                            label: "Train \(train.trainId) (\(fromCode)→\(toCode))",
+                            label: "\(trainLabel) (\(fromCode)→\(toCode))",
                             stats: stats
                         )
                     }
@@ -230,7 +250,7 @@ struct TrackUsageSection: View {
                     if let stats = routeStats, let source = dataSource {
                         let fromCode = fromStationCode ?? "?"
                         let toCode = toStationCode ?? "?"
-                        let serviceLabel = source == "AMTRAK" ? "All Amtrak trains" : "All NJ Transit trains"
+                        let serviceLabel = Self.serviceDisplayName(for: source)
                         TrackUsageBar(
                             label: "\(serviceLabel) (\(fromCode)→\(toCode))",
                             stats: stats
@@ -558,6 +578,7 @@ class HistoricalDataViewModel: ObservableObject {
         observationType: nil,
         isCancelled: false,
         isCompleted: false,
+        dataSource: "NJT",
         stops: nil
     ))
 }

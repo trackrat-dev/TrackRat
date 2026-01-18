@@ -1280,9 +1280,11 @@ class SummaryService:
         # Calculate stats for this specific train (historical)
         train_stats = self._calculate_historical_departure_stats(train_journeys)
 
-        carrier_name = (
-            "NJ Transit" if data_source == "NJT" else "Amtrak" if data_source else None
-        )
+        carrier_name = {
+            "NJT": "NJ Transit",
+            "AMTRAK": "Amtrak",
+            "PATH": "PATH",
+        }.get(data_source)
 
         # Total cancellations from similar trains
         total_cancellations = similar_dep_stats.cancellation_count

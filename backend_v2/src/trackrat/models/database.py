@@ -30,9 +30,9 @@ class TrainJourney(Base):
     __tablename__ = "train_journeys"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    train_id = Column(String(10), nullable=False)
+    train_id = Column(String(30), nullable=False)  # PATH train IDs are ~21 chars
     journey_date = Column(Date, nullable=False)
-    line_code = Column(String(2), nullable=False)
+    line_code = Column(String(10), nullable=False)  # PATH line codes are ~6 chars
     line_name = Column(String(100))
     line_color = Column(String(7))
     destination = Column(String(100), nullable=False)
@@ -244,7 +244,7 @@ class LiveActivityToken(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     push_token = Column(String, unique=True, nullable=False)  # APNS token
     activity_id = Column(String, nullable=False)  # iOS Activity ID
-    train_number = Column(String(10), nullable=False)  # e.g., "A2205"
+    train_number = Column(String(30), nullable=False)  # PATH IDs are ~21 chars
     origin_code = Column(String(3), nullable=False)  # e.g., "NY"
     destination_code = Column(String(3), nullable=False)  # e.g., "WAS"
     created_at = Column(DateTime(timezone=True), server_default=func.now())

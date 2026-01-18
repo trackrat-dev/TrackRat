@@ -48,7 +48,7 @@ class TrainStatus(str, Enum):
 class LineInfo(BaseModel):
     """Train line information."""
 
-    code: str = Field(..., min_length=1, max_length=3)
+    code: str = Field(..., min_length=1, max_length=10)  # PATH line codes are ~6-7 chars
     name: str
     color: str = Field(..., pattern="^#[0-9A-Fa-f]{6}$")
 
@@ -426,7 +426,7 @@ class HistoricalRouteInfo(BaseModel):
     from_station: str = Field(..., min_length=1, max_length=3)
     to_station: str = Field(..., min_length=1, max_length=3)
     total_trains: int = Field(..., ge=0)
-    data_source: Literal["NJT", "AMTRAK"]
+    data_source: Literal["NJT", "AMTRAK", "PATH"]
 
 
 class DelayBreakdown(BaseModel):
@@ -478,7 +478,7 @@ class TrainLocationData(BaseModel):
 
     train_id: str
     line: str
-    data_source: Literal["NJT", "AMTRAK"]
+    data_source: Literal["NJT", "AMTRAK", "PATH"]
 
     # GPS coordinates (Amtrak only)
     lat: float | None = None
