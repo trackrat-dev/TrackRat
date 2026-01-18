@@ -45,8 +45,34 @@ class DepartureService:
         hide_departed: bool = False,
         skip_individual_refresh: bool = False,
     ) -> DeparturesResponse:
-        """Get train departures between stations."""
+        """Get train departures between stations.
 
+        For future dates (> today), queries GTFS static schedule data.
+        For today or past dates, uses real-time TrainJourney data.
+        """
+        today = now_et().date()
+        target_date = date or today
+
+        # For future dates, use GTFS static schedule data
+        if target_date > today:
+            from trackrat.services.gtfs import GTFSService
+
+            gtfs_service = GTFSService()
+            logger.info(
+                "Using GTFS for future date",
+                target_date=str(target_date),
+                from_station=from_station,
+                to_station=to_station,
+            )
+            return await gtfs_service.get_scheduled_departures(
+                db=db,
+                from_station=from_station,
+                to_station=to_station,
+                target_date=target_date,
+                limit=limit,
+            )
+
+        # For today or past dates, use real-time data
         # Set default time range
         if time_from is None:
             query_date = date or now_et().date()

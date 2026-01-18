@@ -19,6 +19,15 @@ struct TrainListView: View {
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
 
+    // Date selection for future schedules
+    @State private var selectedDate: Date = Date()
+    @State private var showDatePicker: Bool = false
+
+    /// Check if viewing a future date (not today)
+    private var isFutureDate: Bool {
+        !Calendar.current.isDateInToday(selectedDate)
+    }
+
     init(destination: String, departureStationCode: String) {
         self.destination = destination
         self.departureStationCode = departureStationCode
@@ -57,6 +66,25 @@ struct TrainListView: View {
 
                 Spacer()
 
+                // Date picker button
+                Button {
+                    showDatePicker = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 14))
+                        Text(isFutureDate ? selectedDate.formatted(.dateTime.weekday(.abbreviated)) : "Today")
+                            .font(.subheadline)
+                    }
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.15))
+                    .cornerRadius(8)
+                }
+
+                Spacer().frame(width: 8)
+
                 // Close button
                 Button("Close") {
                     appState.navigationPath = NavigationPath()
@@ -79,15 +107,22 @@ struct TrainListView: View {
                             Task {
                                 await viewModel.loadTrains(
                                     destination: destination,
-                                    fromStationCode: departureStationCode
+                                    fromStationCode: departureStationCode,
+                                    date: selectedDate
                                 )
                             }
                         }
                     } else if viewModel.trains.isEmpty {
-                        EmptyStateView(message: "No trains found")
+                        EmptyStateView(message: isFutureDate ? "No scheduled trains for this day" : "No trains found")
                     } else {
-                        // Route summary (if we have both origin and destination)
-                        if !departureStationCode.isEmpty,
+                        // Schedule info banner for future dates
+                        if isFutureDate {
+                            ScheduleInfoBanner(date: selectedDate)
+                        }
+
+                        // Route summary (if we have both origin and destination) - only for today
+                        if !isFutureDate,
+                           !departureStationCode.isEmpty,
                            let destinationCode = Stations.getStationCode(destination) {
                             OperationsSummaryView(
                                 scope: .route,
@@ -113,6 +148,7 @@ struct TrainListView: View {
                                 train: train,
                                 destination: destination,
                                 departureStationCode: departureStationCode,
+                                isFutureDate: isFutureDate,
                                 onTap: {
                                     appState.currentTrainId = train.id
                                     appState.currentTrain = train  // Store the full train object
@@ -160,20 +196,26 @@ struct TrainListView: View {
             }
         }
         .navigationBarHidden(true)
-        .task {
+        .task(id: selectedDate) {
+            // Load trains when date changes
             await viewModel.loadTrains(
                 destination: destination,
-                fromStationCode: departureStationCode
+                fromStationCode: departureStationCode,
+                date: selectedDate
             )
         }
         .task(id: isViewVisible) {
             // Auto-refresh task that cancels automatically when view disappears
-            guard isViewVisible else { return }
+            // Only auto-refresh for today (real-time data)
+            guard isViewVisible, !isFutureDate else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
-                guard !Task.isCancelled, isViewVisible else { break }
-                await viewModel.refreshTrains()
+                guard !Task.isCancelled, isViewVisible, !isFutureDate else { break }
+                await viewModel.refreshTrains(date: selectedDate)
             }
+        }
+        .sheet(isPresented: $showDatePicker) {
+            DateSelectorSheet(selectedDate: $selectedDate)
         }
         .onAppear {
             isViewVisible = true
@@ -202,19 +244,46 @@ struct TrainListView: View {
     }
 }
 
+// MARK: - Schedule Info Banner
+/// Banner shown when viewing future day schedules
+struct ScheduleInfoBanner: View {
+    let date: Date
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "calendar")
+                .foregroundColor(.white.opacity(0.6))
+            Text("Scheduled times for \(date.formatted(.dateTime.weekday(.wide)))")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(8)
+    }
+}
+
 // MARK: - Train Card
 struct TrainCard: View {
     @EnvironmentObject private var appState: AppState
     let train: TrainV2
     let destination: String
     let departureStationCode: String
+    var isFutureDate: Bool = false
     let onTap: () -> Void
     let isExpress: Bool
 
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 3
-    
+
     /// Check if train is scheduled only (not observed)
+    /// For future dates, don't show "Scheduled" label since all trains are scheduled
+    private var shouldShowScheduledLabel: Bool {
+        return train.observationType == "SCHEDULED" && !isFutureDate
+    }
+
     private var isScheduledOnly: Bool {
         return train.observationType == "SCHEDULED"
     }
@@ -328,7 +397,7 @@ struct TrainCard: View {
                 Text("Departed")
                     .font(.caption)
                     .foregroundColor(.gray)
-            } else if isScheduledOnly {
+            } else if shouldShowScheduledLabel {
                 Text("Scheduled")
                     .font(.caption)
                     .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.7) : .gray)
@@ -490,13 +559,12 @@ class TrainListViewModel: ObservableObject {
         self.apiService = apiService
     }
 
-    private func getCurrentDateInET() -> Date {
-        return Date()
-    }
+    private var currentDate: Date?
 
-    func loadTrains(destination: String, fromStationCode: String) async {
+    func loadTrains(destination: String, fromStationCode: String, date: Date = Date()) async {
         self.currentDestination = destination
         self.currentFromStationCode = fromStationCode
+        self.currentDate = date
 
         isLoading = true
         hasStartedLoading = true
@@ -509,13 +577,13 @@ class TrainListViewModel: ObservableObject {
                 return
             }
 
-            print("🔍 DEBUG: Loading trains from \(fromStationCode) to \(toStationCode)")
+            print("🔍 DEBUG: Loading trains from \(fromStationCode) to \(toStationCode) for date \(date)")
 
             // Use injected apiService
             let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode,
-                date: getCurrentDateInET()
+                date: date
             )
 
             print("🔍 DEBUG: API returned \(fetchedTrains.count) trains")
@@ -554,19 +622,19 @@ class TrainListViewModel: ObservableObject {
         isLoading = false
     }
     
-    func refreshTrains() async {
+    func refreshTrains(date: Date = Date()) async {
         guard let destination = currentDestination,
               let fromStationCode = currentFromStationCode,
               let toStationCode = Stations.getStationCode(destination) else {
             return // Or set an error if appropriate for silent refresh
         }
-        
+
         do {
             // Use injected apiService
             let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode,
-                date: getCurrentDateInET()
+                date: date
             )
 
             let now = Date()

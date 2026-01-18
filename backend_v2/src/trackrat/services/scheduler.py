@@ -194,12 +194,27 @@ class SchedulerService:
             max_instances=1,
         )
 
+        # Schedule GTFS static schedule refresh (daily at 3:00 AM)
+        # This downloads and parses GTFS feeds for future date schedules
+        self.scheduler.add_job(
+            self.refresh_gtfs_feeds,
+            trigger=CronTrigger(hour=3, minute=0, timezone="America/New_York"),
+            id="gtfs_feed_refresh",
+            name="GTFS Static Schedule Refresh",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=3600,  # 1 hour grace period
+        )
+
         # Start the scheduler
         self.scheduler.start()
 
         # Run discovery immediately on startup
         asyncio.create_task(self.run_njt_discovery())
         asyncio.create_task(self.run_amtrak_discovery())
+
+        # Check and initialize GTFS feeds on startup (downloads if missing)
+        asyncio.create_task(self.check_and_initialize_gtfs_feeds())
 
         logger.info(
             "scheduler_started", jobs=[job.id for job in self.scheduler.get_jobs()]
@@ -1963,6 +1978,117 @@ class SchedulerService:
                 error=str(e),
                 error_type=type(e).__name__,
             )
+
+    async def refresh_gtfs_feeds(self) -> None:
+        """Refresh GTFS static schedule data for both NJT and Amtrak.
+
+        This downloads and parses GTFS feeds to enable future date schedule queries.
+        The GTFSService handles rate limiting (max once per 24 hours per source).
+        """
+        task_id = f"gtfs_refresh_{now_et().isoformat()}"
+
+        async def do_gtfs_work() -> None:
+            try:
+                logger.info("starting_gtfs_feed_refresh")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                from trackrat.services.gtfs import GTFSService
+
+                gtfs_service = GTFSService()
+
+                async with get_session() as db:
+                    # Refresh NJT feed
+                    njt_result = await gtfs_service.refresh_feed(db, "NJT")
+                    logger.info("gtfs_njt_refresh_complete", refreshed=njt_result)
+
+                    # Refresh Amtrak feed
+                    amtrak_result = await gtfs_service.refresh_feed(db, "AMTRAK")
+                    logger.info("gtfs_amtrak_refresh_complete", refreshed=amtrak_result)
+
+                logger.info(
+                    "gtfs_feed_refresh_complete",
+                    njt_refreshed=njt_result,
+                    amtrak_refreshed=amtrak_result,
+                )
+
+            except Exception as e:
+                logger.error(
+                    "gtfs_feed_refresh_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        # GTFS refresh has built-in 24hr rate limiting, but add additional protection
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(12 * 60)  # 12 hours in minutes
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="gtfs_feed_refresh",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_gtfs_work,
+            )
+
+            if not executed:
+                logger.debug("gtfs_feed_refresh_skipped_still_fresh")
+
+    async def check_and_initialize_gtfs_feeds(self) -> None:
+        """Check if GTFS data exists and trigger initial download if needed.
+
+        Called on startup to ensure GTFS data is available for future date queries.
+        Only triggers download if no data exists (empty database or first run).
+        """
+        try:
+            from trackrat.services.gtfs import GTFSService
+
+            gtfs_service = GTFSService()
+
+            async with get_session() as db:
+                # Check if either NJT or Amtrak GTFS data is available
+                njt_available = await gtfs_service.is_feed_available(db, "NJT")
+                amtrak_available = await gtfs_service.is_feed_available(db, "AMTRAK")
+
+                if njt_available and amtrak_available:
+                    logger.info(
+                        "gtfs_data_already_available",
+                        njt=njt_available,
+                        amtrak=amtrak_available,
+                    )
+                    return
+
+                # Data is missing - trigger initial download
+                logger.info(
+                    "gtfs_data_missing_triggering_initial_download",
+                    njt_available=njt_available,
+                    amtrak_available=amtrak_available,
+                )
+
+                if not njt_available:
+                    njt_result = await gtfs_service.refresh_feed(db, "NJT", force=True)
+                    logger.info("gtfs_njt_initial_download_complete", success=njt_result)
+
+                if not amtrak_available:
+                    amtrak_result = await gtfs_service.refresh_feed(
+                        db, "AMTRAK", force=True
+                    )
+                    logger.info(
+                        "gtfs_amtrak_initial_download_complete", success=amtrak_result
+                    )
+
+        except Exception as e:
+            logger.error(
+                "gtfs_initialization_check_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            # Don't raise - this is a startup optimization, not a critical failure
 
     async def precompute_congestion_cache(self) -> None:
         """Pre-compute congestion API responses for common parameter combinations."""
