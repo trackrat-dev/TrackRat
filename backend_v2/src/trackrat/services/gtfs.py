@@ -642,7 +642,8 @@ class GTFSService:
 
         # Sort by departure time
         # Use timezone-aware datetime for comparison (scheduled_time is ET-localized)
-        max_dt = ET.localize(datetime.max.replace(year=9999, month=12, day=31, hour=23, minute=59))
+        # Note: year 9999 causes OverflowError in pytz, use 2099 as safe max
+        max_dt = ET.localize(datetime(2099, 12, 31, 23, 59, 59))
         departures.sort(key=lambda d: d.departure.scheduled_time or max_dt)
 
         # Apply limit
