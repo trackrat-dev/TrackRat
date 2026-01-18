@@ -226,9 +226,15 @@ async def test_get_train_not_found(client):
         mock_service.get_fresh_train = AsyncMock(return_value=None)
         mock_jit.return_value.__aenter__.return_value = mock_service
 
-        response = client.get("/api/v2/trains/9999")
-        assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        # Also mock GTFS fallback returning None (train not found in GTFS either)
+        with patch("trackrat.api.trains.GTFSService") as mock_gtfs:
+            mock_gtfs_service = AsyncMock()
+            mock_gtfs_service.get_train_details = AsyncMock(return_value=None)
+            mock_gtfs.return_value = mock_gtfs_service
+
+            response = client.get("/api/v2/trains/9999")
+            assert response.status_code == 404
+            assert "not found" in response.json()["detail"]
 
 
 @pytest.mark.skip(

@@ -198,6 +198,12 @@ async def get_train_details(
             await njt_client.close()
 
     if not journey:
+        # For today's trains: try GTFS fallback for scheduled-only trains
+        # (trains that appear in departure listing but haven't been discovered yet)
+        gtfs_service = GTFSService()
+        gtfs_details = await gtfs_service.get_train_details(db, train_id, date)
+        if gtfs_details:
+            return TrainDetailsResponse(train=gtfs_details)
         raise HTTPException(
             status_code=404, detail=f"Train {train_id} not found for date {date}"
         )
