@@ -32,9 +32,6 @@
 		A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4ABD2E1949A400E13005 /* V2APIModels.swift */; };
 		A16C81EE2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
 		A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
-		A1JF00012F00000100000001 /* JourneyFeedbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00012F00000000000001 /* JourneyFeedbackService.swift */; };
-		A1JF00022F00000100000002 /* JourneyFeedbackPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */; };
-		A1JF00032F00000100000003 /* ImprovementFeedbackSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */; };
 		A16D6EEC2E1703C7008C6996 /* rat-train-icon@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */; };
 		A16D6EED2E1703C7008C6996 /* rat-train-icon@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EEA2E1703C7008C6996 /* rat-train-icon@3x.png */; };
 		A16D6EEE2E1703C7008C6996 /* Contents.json in Resources */ = {isa = PBXBuildFile; fileRef = A16D6EE72E1703C7008C6996 /* Contents.json */; };
@@ -55,6 +52,8 @@
 		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
 		A183B7E12E6352E80024FADC /* LegacySheetAwareScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A183B7E02E6352E80024FADC /* LegacySheetAwareScrollView.swift */; };
 		A1875C7F2E400F4F00FCC7FC /* MyProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */; };
+		A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */; };
+		A18D98D82F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */; };
 		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
 		A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */; };
@@ -101,6 +100,9 @@
 		A1F670E92EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
 		A1F670EA2EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
 		A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */; };
+		A1JF00012F00000100000001 /* JourneyFeedbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00012F00000000000001 /* JourneyFeedbackService.swift */; };
+		A1JF00022F00000100000002 /* JourneyFeedbackPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */; };
+		A1JF00032F00000100000003 /* ImprovementFeedbackSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */; };
 		A1WIDGET012DFC73650002FB39 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET022DFC73650002FB39 /* WidgetKit.framework */; };
 		A1WIDGET032DFC73650002FB39 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET042DFC73650002FB39 /* SwiftUI.framework */; };
 		A1WIDGET052DFC73650002FB39 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET062DFC73650002FB39 /* ActivityKit.framework */; };
@@ -171,9 +173,6 @@
 		A14A4ABB2E19499800E13005 /* TrainV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2.swift; path = TrackRat/Models/TrainV2.swift; sourceTree = "<group>"; };
 		A14A4ABD2E1949A400E13005 /* V2APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModels.swift; path = TrackRat/Models/V2APIModels.swift; sourceTree = "<group>"; };
 		A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FeedbackButton.swift; path = TrackRat/Views/Components/FeedbackButton.swift; sourceTree = "<group>"; };
-		A1JF00012F00000000000001 /* JourneyFeedbackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackService.swift; path = TrackRat/Services/JourneyFeedbackService.swift; sourceTree = "<group>"; };
-		A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackPromptView.swift; path = TrackRat/Views/Components/JourneyFeedbackPromptView.swift; sourceTree = "<group>"; };
-		A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImprovementFeedbackSheet.swift; path = TrackRat/Views/Components/ImprovementFeedbackSheet.swift; sourceTree = "<group>"; };
 		A16D6EE72E1703C7008C6996 /* Contents.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Contents.json; sourceTree = "<group>"; };
 		A16D6EE82E1703C7008C6996 /* rat-train-icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon.png"; sourceTree = "<group>"; };
 		A16D6EE92E1703C7008C6996 /* rat-train-icon@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "rat-train-icon@2x.png"; sourceTree = "<group>"; };
@@ -186,6 +185,7 @@
 		A17B9F372E17FD0A00B370A6 /* StationButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationButton.swift; path = Views/Components/StationButton.swift; sourceTree = "<group>"; };
 		A183B7E02E6352E80024FADC /* LegacySheetAwareScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LegacySheetAwareScrollView.swift; path = Views/Components/LegacySheetAwareScrollView.swift; sourceTree = "<group>"; };
 		A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyProfileView.swift; path = Views/Screens/MyProfileView.swift; sourceTree = "<group>"; };
+		A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DateSelectorSheet.swift; path = TrackRat/Views/Components/DateSelectorSheet.swift; sourceTree = "<group>"; };
 		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
 		A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityDebugView.swift; path = Views/Components/LiveActivityDebugView.swift; sourceTree = "<group>"; };
@@ -225,6 +225,9 @@
 		A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainCacheService.swift; path = TrackRat/Services/TrainCacheService.swift; sourceTree = "<group>"; };
 		A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatNavigationHeader.swift; path = TrackRat/Views/Components/TrackRatNavigationHeader.swift; sourceTree = "<group>"; };
 		A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendWakeupService.swift; path = TrackRat/Services/BackendWakeupService.swift; sourceTree = "<group>"; };
+		A1JF00012F00000000000001 /* JourneyFeedbackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackService.swift; path = TrackRat/Services/JourneyFeedbackService.swift; sourceTree = "<group>"; };
+		A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackPromptView.swift; path = TrackRat/Views/Components/JourneyFeedbackPromptView.swift; sourceTree = "<group>"; };
+		A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImprovementFeedbackSheet.swift; path = TrackRat/Views/Components/ImprovementFeedbackSheet.swift; sourceTree = "<group>"; };
 		A1WIDGET022DFC73650002FB39 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		A1WIDGET042DFC73650002FB39 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		A1WIDGET062DFC73650002FB39 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
@@ -299,6 +302,7 @@
 				A1JF00012F00000000000001 /* JourneyFeedbackService.swift */,
 				A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */,
 				A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */,
+				A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -628,6 +632,7 @@
 				A10E97FA2DE39F0F002F3215 /* RatSenseService.swift in Sources */,
 				A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */,
 				A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */,
+				A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
 				A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */,
@@ -669,6 +674,7 @@
 				A1B2375E2F002DCF0011A16E /* TrackTrainInlineButton.swift in Sources */,
 				A1BA60EE2DFC73650002FB39 /* TrainTests.swift in Sources */,
 				A1BA60EF2DFC73650002FB39 /* APIServiceTests.swift in Sources */,
+				A18D98D82F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
 				A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */,
