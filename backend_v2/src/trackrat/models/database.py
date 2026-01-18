@@ -455,3 +455,155 @@ class ValidationResult(Base):
         Index("idx_validation_time", "run_at", "route", "source"),
         Index("idx_validation_coverage", "route", "source", "coverage_percent"),
     )
+
+
+# =============================================================================
+# GTFS Static Schedule Tables
+# =============================================================================
+
+
+class GTFSFeedInfo(Base):
+    """Track GTFS feed download status for rate limiting (max once per 24hrs)."""
+
+    __tablename__ = "gtfs_feed_info"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    data_source = Column(String(10), nullable=False, unique=True)  # "NJT" or "AMTRAK"
+    feed_url = Column(String(500), nullable=False)
+    last_downloaded_at = Column(DateTime(timezone=True))
+    last_successful_parse_at = Column(DateTime(timezone=True))
+    feed_start_date = Column(Date)  # From feed_info.txt if available
+    feed_end_date = Column(Date)
+    route_count = Column(Integer)
+    trip_count = Column(Integer)
+    stop_time_count = Column(Integer)
+    error_message = Column(Text)  # Last error if download/parse failed
+
+    __table_args__ = (Index("idx_gtfs_feed_source", "data_source"),)
+
+
+class GTFSRoute(Base):
+    """Route definitions from GTFS routes.txt."""
+
+    __tablename__ = "gtfs_routes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    data_source = Column(String(10), nullable=False)
+    route_id = Column(String(50), nullable=False)  # GTFS route_id
+    route_short_name = Column(String(20))  # Line code (e.g., "NEC", "MOBO")
+    route_long_name = Column(String(200))  # Full name
+    route_color = Column(String(6))  # Hex color without #
+
+    # Relationships
+    trips: Mapped[list["GTFSTrip"]] = relationship(
+        "GTFSTrip", back_populates="route", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("data_source", "route_id", name="uq_gtfs_route"),
+        Index("idx_gtfs_route_lookup", "data_source", "route_id"),
+    )
+
+
+class GTFSTrip(Base):
+    """Trip definitions from GTFS trips.txt."""
+
+    __tablename__ = "gtfs_trips"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    data_source = Column(String(10), nullable=False)
+    trip_id = Column(String(100), nullable=False)  # GTFS trip_id
+    route_id = Column(Integer, ForeignKey("gtfs_routes.id"), nullable=False)
+    service_id = Column(String(50), nullable=False)  # Links to calendar
+    trip_headsign = Column(String(100))  # Destination name
+    train_id = Column(String(20))  # Extracted train number if available
+    direction_id = Column(Integer)  # 0=outbound, 1=inbound
+
+    # Relationships
+    route: Mapped["GTFSRoute"] = relationship("GTFSRoute", back_populates="trips")
+    stop_times: Mapped[list["GTFSStopTime"]] = relationship(
+        "GTFSStopTime", back_populates="trip", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("data_source", "trip_id", name="uq_gtfs_trip"),
+        Index("idx_gtfs_trip_service", "data_source", "service_id"),
+        Index("idx_gtfs_trip_lookup", "data_source", "trip_id"),
+    )
+
+
+class GTFSStopTime(Base):
+    """Stop times from GTFS stop_times.txt."""
+
+    __tablename__ = "gtfs_stop_times"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trip_id = Column(Integer, ForeignKey("gtfs_trips.id"), nullable=False)
+    stop_sequence = Column(Integer, nullable=False)
+
+    # GTFS stop_id and our mapped station code
+    gtfs_stop_id = Column(String(50), nullable=False)
+    station_code = Column(String(3))  # Our internal code (null if unmapped)
+
+    # Times stored as strings to handle >24:00 (e.g., "25:30:00" for 1:30 AM next day)
+    arrival_time = Column(String(8))  # HH:MM:SS format
+    departure_time = Column(String(8))  # HH:MM:SS format
+
+    # Pickup/dropoff type (0=regular, 1=none, 2=phone agency, 3=coordinate with driver)
+    pickup_type = Column(Integer, default=0)
+    drop_off_type = Column(Integer, default=0)
+
+    # Relationships
+    trip: Mapped["GTFSTrip"] = relationship("GTFSTrip", back_populates="stop_times")
+
+    __table_args__ = (
+        Index("idx_gtfs_stop_time_trip", "trip_id", "stop_sequence"),
+        Index("idx_gtfs_stop_time_station", "station_code", "departure_time"),
+    )
+
+
+class GTFSCalendar(Base):
+    """Service calendar from GTFS calendar.txt - weekly patterns."""
+
+    __tablename__ = "gtfs_calendar"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    data_source = Column(String(10), nullable=False)
+    service_id = Column(String(50), nullable=False)
+
+    # Day of week flags
+    monday = Column(Boolean, nullable=False, default=False)
+    tuesday = Column(Boolean, nullable=False, default=False)
+    wednesday = Column(Boolean, nullable=False, default=False)
+    thursday = Column(Boolean, nullable=False, default=False)
+    friday = Column(Boolean, nullable=False, default=False)
+    saturday = Column(Boolean, nullable=False, default=False)
+    sunday = Column(Boolean, nullable=False, default=False)
+
+    # Validity period
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("data_source", "service_id", name="uq_gtfs_calendar"),
+        Index("idx_gtfs_calendar_dates", "data_source", "start_date", "end_date"),
+    )
+
+
+class GTFSCalendarDate(Base):
+    """Service exceptions from GTFS calendar_dates.txt."""
+
+    __tablename__ = "gtfs_calendar_dates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    data_source = Column(String(10), nullable=False)
+    service_id = Column(String(50), nullable=False)
+    date = Column(Date, nullable=False)
+    exception_type = Column(Integer, nullable=False)  # 1=service added, 2=service removed
+
+    __table_args__ = (
+        UniqueConstraint(
+            "data_source", "service_id", "date", name="uq_gtfs_calendar_date"
+        ),
+        Index("idx_gtfs_calendar_date_lookup", "data_source", "date"),
+    )

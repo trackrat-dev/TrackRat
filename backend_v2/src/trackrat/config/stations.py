@@ -728,3 +728,106 @@ DISCOVERY_STATIONS = [
     "ST",  # Summit - major Morris & Essex terminal for inbound trains
     "SV",  # Spring Valley - Pascack Valley Line terminus
 ]
+
+
+# =============================================================================
+# GTFS Station Mapping
+# =============================================================================
+
+# Reverse mapping from station name (normalized) to code for GTFS matching
+# Built from STATION_NAMES for efficient lookup
+_NORMALIZED_NAME_TO_CODE: dict[str, str] = {}
+
+
+def _normalize_station_name(name: str) -> str:
+    """Normalize station name for fuzzy matching.
+
+    Handles variations like:
+    - "NEW YORK PENN STATION" -> "new york penn station"
+    - "Newark Penn Station" -> "newark penn station"
+    - "Trenton Transit Center" -> "trenton transit center"
+    """
+    return name.lower().strip()
+
+
+def _build_name_to_code_map() -> dict[str, str]:
+    """Build reverse mapping from normalized names to codes."""
+    if _NORMALIZED_NAME_TO_CODE:
+        return _NORMALIZED_NAME_TO_CODE
+
+    for code, name in STATION_NAMES.items():
+        normalized = _normalize_station_name(name)
+        _NORMALIZED_NAME_TO_CODE[normalized] = code
+
+        # Also add common variations
+        # Remove common suffixes for matching
+        for suffix in [" station", " terminal", " transit center"]:
+            if normalized.endswith(suffix):
+                base = normalized[: -len(suffix)].strip()
+                if base not in _NORMALIZED_NAME_TO_CODE:
+                    _NORMALIZED_NAME_TO_CODE[base] = code
+
+    return _NORMALIZED_NAME_TO_CODE
+
+
+def map_gtfs_stop_to_station_code(
+    gtfs_stop_id: str, gtfs_stop_name: str, data_source: str
+) -> str | None:
+    """Map a GTFS stop to our internal station code.
+
+    Args:
+        gtfs_stop_id: The GTFS stop_id (numeric for NJT, code for Amtrak)
+        gtfs_stop_name: The GTFS stop_name for fallback matching
+        data_source: "NJT" or "AMTRAK"
+
+    Returns:
+        Our internal station code or None if no match found
+    """
+    if data_source == "AMTRAK":
+        # Amtrak uses their standard codes as stop_id
+        return map_amtrak_station_code(gtfs_stop_id)
+
+    # For NJ Transit, try to match by name
+    name_map = _build_name_to_code_map()
+    normalized_name = _normalize_station_name(gtfs_stop_name)
+
+    # Direct match
+    if normalized_name in name_map:
+        return name_map[normalized_name]
+
+    # Try matching just the first part of the name (before any dash or parenthesis)
+    for separator in [" - ", " (", "-"]:
+        if separator in normalized_name:
+            base_name = normalized_name.split(separator)[0].strip()
+            if base_name in name_map:
+                return name_map[base_name]
+
+    # Try partial matching for common patterns
+    # "Penn Station New York" -> match "New York Penn Station"
+    for stored_name, code in name_map.items():
+        # Check if all words from one are in the other
+        stored_words = set(stored_name.split())
+        name_words = set(normalized_name.split())
+        if len(stored_words & name_words) >= 2:  # At least 2 words match
+            # Prefer matches with more overlap
+            overlap = len(stored_words & name_words) / max(
+                len(stored_words), len(name_words)
+            )
+            if overlap >= 0.5:
+                return code
+
+    return None
+
+
+def get_station_code_by_name(name: str) -> str | None:
+    """Get station code by looking up a station name.
+
+    Args:
+        name: Station name to look up
+
+    Returns:
+        Station code or None if not found
+    """
+    name_map = _build_name_to_code_map()
+    normalized = _normalize_station_name(name)
+    return name_map.get(normalized)
