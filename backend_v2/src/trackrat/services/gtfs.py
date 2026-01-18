@@ -684,6 +684,7 @@ class GTFSService:
         result = await db.execute(
             select(
                 GTFSTrip.id,
+                GTFSTrip.trip_id,  # GTFS trip_id string for fallback
                 GTFSTrip.train_id,
                 GTFSTrip.trip_headsign,
                 GTFSTrip.service_id,
@@ -728,7 +729,8 @@ class GTFSService:
 
         for row in trips_data:
             (
-                trip_id,
+                db_trip_id,
+                gtfs_trip_id,
                 train_id,
                 headsign,
                 service_id,
@@ -742,7 +744,7 @@ class GTFSService:
             # If to_station specified, verify this trip also stops there after from_station
             arrival_time_str = None
             if to_station:
-                dest_info = to_station_data.get(trip_id)
+                dest_info = to_station_data.get(db_trip_id)
                 if not dest_info or dest_info[1] <= dep_sequence:
                     # Trip doesn't stop at destination, or stops before origin
                     continue
@@ -766,8 +768,16 @@ class GTFSService:
                 data_source, "#666666"
             )
 
+            # Determine train_id: try extracted train_id, then extract from gtfs_trip_id,
+            # then use gtfs_trip_id itself (never use headsign as train_id)
+            effective_train_id = train_id
+            if not effective_train_id:
+                effective_train_id = self._extract_train_id(gtfs_trip_id)
+            if not effective_train_id:
+                effective_train_id = gtfs_trip_id or "Unknown"
+
             departure = TrainDeparture(
-                train_id=train_id or headsign or "Unknown",
+                train_id=effective_train_id,
                 journey_date=target_date,
                 line=LineInfo(
                     code=line_code[:3],
