@@ -1516,7 +1516,7 @@ struct PredictionExplanationSheet: View {
                             }
                             Spacer()
                         }
-                        .padding(.top, 8)
+                        .padding(.top, 24)
 
                         // Explanation
                         VStack(alignment: .leading, spacing: 16) {
