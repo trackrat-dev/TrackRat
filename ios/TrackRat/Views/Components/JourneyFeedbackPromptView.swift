@@ -79,7 +79,7 @@ struct JourneyFeedbackPromptView: View {
                 }
             }
         }
-        .presentationDetents([.height(320)])
+        .presentationDetents([.height(380)])
         .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
