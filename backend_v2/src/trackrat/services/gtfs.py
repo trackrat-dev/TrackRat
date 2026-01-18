@@ -24,8 +24,13 @@ from trackrat.models.api import (
     DataFreshness,
     DeparturesResponse,
     LineInfo,
+    RawStopStatus,
+    RouteInfo,
+    SimpleStationInfo,
     StationInfo,
+    StopDetails,
     TrainDeparture,
+    TrainDetails,
     TrainPosition,
 )
 from trackrat.models.database import (
@@ -841,3 +846,196 @@ class GTFSService:
             select(GTFSFeedInfo).where(GTFSFeedInfo.data_source == data_source)
         )
         return result.scalar_one_or_none()
+
+    async def get_train_details(
+        self, db: AsyncSession, train_id: str, target_date: date
+    ) -> TrainDetails | None:
+        """Get train details from GTFS data for future dates.
+
+        Returns TrainDetails if the train is found in GTFS, None otherwise.
+        """
+        logger.info(
+            "gtfs_get_train_details",
+            train_id=train_id,
+            target_date=str(target_date),
+        )
+
+        # Try both data sources
+        for data_source in ["NJT", "AMTRAK"]:
+            service_ids = await self.get_active_service_ids(db, data_source, target_date)
+            if not service_ids:
+                continue
+
+            # Find the trip with matching train_id
+            result = await db.execute(
+                select(
+                    GTFSTrip.id,
+                    GTFSTrip.trip_id,
+                    GTFSTrip.train_id,
+                    GTFSTrip.trip_headsign,
+                    GTFSRoute.route_short_name,
+                    GTFSRoute.route_long_name,
+                    GTFSRoute.route_color,
+                )
+                .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
+                .where(
+                    and_(
+                        GTFSTrip.data_source == data_source,
+                        GTFSTrip.service_id.in_(service_ids),
+                        GTFSTrip.train_id == train_id,
+                    )
+                )
+            )
+            trip_row = result.first()
+
+            if not trip_row:
+                # Try matching by gtfs_trip_id if train_id didn't match
+                result = await db.execute(
+                    select(
+                        GTFSTrip.id,
+                        GTFSTrip.trip_id,
+                        GTFSTrip.train_id,
+                        GTFSTrip.trip_headsign,
+                        GTFSRoute.route_short_name,
+                        GTFSRoute.route_long_name,
+                        GTFSRoute.route_color,
+                    )
+                    .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
+                    .where(
+                        and_(
+                            GTFSTrip.data_source == data_source,
+                            GTFSTrip.service_id.in_(service_ids),
+                            GTFSTrip.trip_id == train_id,
+                        )
+                    )
+                )
+                trip_row = result.first()
+
+            if not trip_row:
+                continue
+
+            (
+                db_trip_id,
+                gtfs_trip_id,
+                stored_train_id,
+                headsign,
+                route_short,
+                route_long,
+                route_color,
+            ) = trip_row
+
+            # Get all stops for this trip
+            stops_result = await db.execute(
+                select(
+                    GTFSStopTime.station_code,
+                    GTFSStopTime.stop_sequence,
+                    GTFSStopTime.arrival_time,
+                    GTFSStopTime.departure_time,
+                )
+                .where(GTFSStopTime.trip_id == db_trip_id)
+                .order_by(GTFSStopTime.stop_sequence)
+            )
+            stop_rows = stops_result.all()
+
+            if not stop_rows:
+                continue
+
+            # Build stops list
+            stops: list[StopDetails] = []
+            for station_code, stop_sequence, arrival_time, departure_time in stop_rows:
+                arrival_dt = self._parse_gtfs_time(arrival_time, target_date)
+                departure_dt = self._parse_gtfs_time(departure_time, target_date)
+
+                stops.append(
+                    StopDetails(
+                        station=SimpleStationInfo(
+                            code=station_code,
+                            name=get_station_name(station_code),
+                        ),
+                        stop_sequence=stop_sequence or 0,
+                        scheduled_arrival=arrival_dt,
+                        scheduled_departure=departure_dt,
+                        updated_arrival=None,
+                        updated_departure=None,
+                        actual_arrival=None,
+                        actual_departure=None,
+                        track=None,
+                        track_assigned_at=None,
+                        raw_status=RawStopStatus(
+                            amtrak_status=None,
+                            njt_departed_flag=None,
+                        ),
+                        has_departed_station=False,
+                        predicted_arrival=None,
+                        predicted_arrival_samples=None,
+                    )
+                )
+
+            if not stops:
+                continue
+
+            # Determine effective train_id
+            effective_train_id = stored_train_id or self._extract_train_id(gtfs_trip_id) or gtfs_trip_id
+
+            # Build line info
+            line_code = route_short or data_source[:2]
+            line_name = route_long or route_short or data_source
+            line_color = f"#{route_color}" if route_color else "#666666"
+
+            # Get origin and destination from stops
+            origin_stop = stops[0]
+            dest_stop = stops[-1]
+
+            # Get feed info for last_updated time
+            feed_info = await self.get_feed_info(db, data_source)
+            last_updated = feed_info.last_successful_parse_at if feed_info else now_et()
+
+            logger.info(
+                "gtfs_train_details_found",
+                train_id=effective_train_id,
+                data_source=data_source,
+                stops_count=len(stops),
+            )
+
+            return TrainDetails(
+                train_id=effective_train_id,
+                journey_date=target_date,
+                line=LineInfo(
+                    code=line_code[:3],
+                    name=line_name,
+                    color=line_color,
+                ),
+                route=RouteInfo(
+                    origin=origin_stop.station.name,
+                    destination=headsign or dest_stop.station.name,
+                    origin_code=origin_stop.station.code,
+                    destination_code=dest_stop.station.code,
+                ),
+                train_position=TrainPosition(
+                    last_departed_station_code=None,
+                    at_station_code=None,
+                    next_station_code=None,
+                    between_stations=False,
+                ),
+                stops=stops,
+                data_freshness=DataFreshness(
+                    last_updated=last_updated or now_et(),
+                    age_seconds=int((now_et() - (last_updated or now_et())).total_seconds()),
+                    update_count=None,
+                    collection_method="scheduled",
+                ),
+                data_source=data_source,
+                observation_type="SCHEDULED",
+                raw_train_state=None,
+                is_cancelled=False,
+                is_completed=False,
+                progress=None,
+                predicted_arrival=None,
+            )
+
+        logger.info(
+            "gtfs_train_details_not_found",
+            train_id=train_id,
+            target_date=str(target_date),
+        )
+        return None

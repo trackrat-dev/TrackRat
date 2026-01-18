@@ -35,6 +35,7 @@ from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.api_cache import ApiCacheService
 from trackrat.services.departure import DepartureService
 from trackrat.services.direct_forecaster import DirectArrivalForecaster
+from trackrat.services.gtfs import GTFSService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.utils.time import now_et, safe_datetime_subtract
 from trackrat.utils.train import get_effective_observation_type, is_amtrak_train
@@ -168,6 +169,18 @@ async def get_train_details(
     # Default to today
     if date is None:
         date = now_et().date()
+
+    # For future dates, use GTFS static schedule data
+    today = now_et().date()
+    if date > today:
+        gtfs_service = GTFSService()
+        gtfs_details = await gtfs_service.get_train_details(db, train_id, date)
+        if gtfs_details:
+            return TrainDetailsResponse(train=gtfs_details)
+        # If not found in GTFS, fall through to 404
+        raise HTTPException(
+            status_code=404, detail=f"Train {train_id} not found in schedule for date {date}"
+        )
 
     # Get fresh train data
     # For Amtrak trains, we don't need an NJT client
