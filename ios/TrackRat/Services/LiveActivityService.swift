@@ -132,8 +132,10 @@ class LiveActivityService: ObservableObject {
             // Subscribe to push token updates (async)
             startPushTokenSubscription(for: activity, train: train, from: originCode, to: destinationCode)
 
-            // Start periodic updates every 30 seconds
-            startPeriodicUpdates()
+            // Start periodic updates every 30 seconds (must be on main thread for Timer)
+            await MainActor.run {
+                startPeriodicUpdates()
+            }
 
             // Reset journey feedback state for new activity
             await JourneyFeedbackService.shared.onActivityStarted()
@@ -451,7 +453,10 @@ class LiveActivityService: ObservableObject {
         if let activity = Activity<TrainActivityAttributes>.activities.first {
             self.currentActivity = activity
             self.isActivityActive = true
-            startPeriodicUpdates()
+            // Ensure timer is scheduled on main thread
+            DispatchQueue.main.async { [weak self] in
+                self?.startPeriodicUpdates()
+            }
             
             // Note: For existing activities, we don't start a new push token subscription
             // since we don't have the original train data. The activity should already
