@@ -256,9 +256,6 @@ class DepartureService:
             )
             departures.append(departure)
 
-            if len(departures) >= limit:
-                break
-
         # PERFORMANCE: Log timing and result set metrics for observability
         total_duration_ms = (time.perf_counter() - perf_start) * 1000
         logger.info(
@@ -274,8 +271,46 @@ class DepartureService:
             skip_individual_refresh=skip_individual_refresh,
         )
 
+        # For TODAY: merge real-time departures with GTFS schedule for rest of day
+        # This shows trains that haven't entered the real-time feed yet
+        if target_date == today:
+            try:
+                from trackrat.services.gtfs import GTFSService
+
+                gtfs_service = GTFSService()
+                current_time = now_et()
+
+                gtfs_response = await gtfs_service.get_scheduled_departures(
+                    db=db,
+                    from_station=from_station,
+                    to_station=to_station,
+                    target_date=target_date,
+                    limit=200,  # Fetch more, we'll filter after merge
+                )
+
+                # Filter GTFS to only include future departures (after current time)
+                gtfs_future = [
+                    dep
+                    for dep in gtfs_response.departures
+                    if dep.departure.scheduled_time
+                    and dep.departure.scheduled_time > current_time
+                ]
+
+                departures = self._merge_departures(
+                    realtime=departures,
+                    gtfs=gtfs_future,
+                )
+            except Exception as e:
+                # GTFS merge failed - log warning but return real-time results
+                logger.warning(
+                    "gtfs_merge_failed",
+                    from_station=from_station,
+                    to_station=to_station,
+                    error=str(e),
+                )
+
         return DeparturesResponse(
-            departures=departures,
+            departures=departures[:limit],
             metadata={
                 "from_station": {
                     "code": from_station,
@@ -681,3 +716,91 @@ class DepartureService:
                         old_track=old_track,
                         new_track=sanitized_track,
                     )
+
+    def _make_dedup_keys(self, dep: TrainDeparture) -> tuple[str | None, str]:
+        """Create primary (train_id) and fallback (line+time) dedup keys.
+
+        Returns:
+            Tuple of (primary_key, fallback_key) where primary_key may be None
+            if train_id is missing or unreliable.
+        """
+        # Primary: normalized train_id
+        primary_key = None
+        if dep.train_id and dep.train_id not in ("Unknown", ""):
+            train_id = dep.train_id
+            # Normalize Amtrak IDs: "A2205" → "2205" for matching with GTFS
+            if dep.data_source == "AMTRAK":
+                train_id = train_id.lstrip("A")
+            primary_key = f"{train_id}:{dep.journey_date}:{dep.data_source}"
+
+        # Fallback: line + scheduled time (second precision)
+        scheduled = dep.departure.scheduled_time
+        time_str = scheduled.strftime("%H:%M:%S") if scheduled else "unknown"
+        fallback_key = f"{dep.line.code}:{dep.data_source}:{time_str}"
+
+        return primary_key, fallback_key
+
+    def _merge_departures(
+        self,
+        realtime: list[TrainDeparture],
+        gtfs: list[TrainDeparture],
+    ) -> list[TrainDeparture]:
+        """Merge real-time and GTFS departures, preferring real-time.
+
+        Deduplication uses two keys:
+        1. Primary: normalized train_id (handles Amtrak A-prefix mismatch)
+        2. Fallback: line + scheduled time (for unreliable train_ids)
+
+        Cancelled real-time trains suppress their GTFS counterparts.
+        """
+        # Build indexes from real-time departures
+        primary_keys: set[str] = set()
+        fallback_keys: set[str] = set()
+        cancelled_primary: set[str] = set()
+        cancelled_fallback: set[str] = set()
+
+        for dep in realtime:
+            primary, fallback = self._make_dedup_keys(dep)
+            if primary:
+                primary_keys.add(primary)
+                if dep.is_cancelled:
+                    cancelled_primary.add(primary)
+            fallback_keys.add(fallback)
+            if dep.is_cancelled:
+                cancelled_fallback.add(fallback)
+
+        # Start with all real-time trains
+        merged = list(realtime)
+        gtfs_added = 0
+
+        # Add GTFS trains not matched in real-time
+        for gtfs_dep in gtfs:
+            primary, fallback = self._make_dedup_keys(gtfs_dep)
+
+            # Check primary key match
+            if primary and primary in primary_keys:
+                continue
+            if primary and primary in cancelled_primary:
+                continue
+
+            # Check fallback key match
+            if fallback in fallback_keys:
+                continue
+            if fallback in cancelled_fallback:
+                continue
+
+            # No match found - add GTFS train
+            merged.append(gtfs_dep)
+            gtfs_added += 1
+
+        # Sort by scheduled departure time
+        merged.sort(key=lambda d: d.departure.scheduled_time or datetime.max)
+
+        logger.info(
+            "departures_merged",
+            realtime_count=len(realtime),
+            gtfs_added=gtfs_added,
+            total=len(merged),
+        )
+
+        return merged
