@@ -2,6 +2,46 @@
 Train-related utility functions for TrackRat V2.
 """
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from trackrat.models.database import TrainJourney
+
+
+def get_effective_observation_type(journey: "TrainJourney") -> str:
+    """
+    Get the effective observation type for display.
+
+    For SCHEDULED trains, we upgrade to OBSERVED if the train's origin
+    departure time has passed. This prevents showing "Scheduled" for
+    trains that are likely already running but haven't been confirmed
+    via real-time data yet (common with Amtrak pattern-based schedules).
+
+    Args:
+        journey: The train journey record
+
+    Returns:
+        "OBSERVED" or "SCHEDULED"
+    """
+    from trackrat.utils.time import now_et
+
+    if journey.observation_type != "SCHEDULED":
+        return journey.observation_type or "OBSERVED"
+
+    # Find the first stop (train's actual origin)
+    if not journey.stops:
+        return "SCHEDULED"
+
+    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+    first_stop = sorted_stops[0]
+
+    # Check if the origin departure time has passed
+    origin_departure = first_stop.scheduled_departure or first_stop.scheduled_arrival
+    if origin_departure and origin_departure <= now_et():
+        return "OBSERVED"
+
+    return "SCHEDULED"
+
 
 def is_amtrak_train(train_id: str) -> bool:
     """Determine if a train ID is for an Amtrak train.
