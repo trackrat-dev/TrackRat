@@ -136,6 +136,48 @@ class TestTrainIdExtraction:
         assert result is None
 
 
+class TestBlockIdExtraction:
+    """Tests for train ID extraction from GTFS block_id."""
+
+    def setup_method(self):
+        self.service = GTFSService()
+
+    def test_extract_numeric_block_id(self):
+        """Test extracting train number from numeric block_id."""
+        result = self.service._extract_train_id_from_block_id("4608")
+        assert result == "4608"
+
+    def test_extract_block_id_strips_leading_zeros(self):
+        """Test that leading zeros are stripped from block_id."""
+        result = self.service._extract_train_id_from_block_id("0301")
+        assert result == "301"
+
+    def test_extract_block_id_preserves_single_zero(self):
+        """Test that a single '0' is preserved."""
+        result = self.service._extract_train_id_from_block_id("0")
+        assert result == "0"
+
+    def test_extract_block_id_strips_quotes(self):
+        """Test that quotes around block_id are stripped."""
+        result = self.service._extract_train_id_from_block_id('"4662"')
+        assert result == "4662"
+
+    def test_extract_alphanumeric_block_id_returns_none(self):
+        """Test that alphanumeric block_id (light rail) returns None."""
+        result = self.service._extract_train_id_from_block_id("342JC001")
+        assert result is None
+
+    def test_extract_empty_block_id_returns_none(self):
+        """Test returns None for empty block_id."""
+        result = self.service._extract_train_id_from_block_id("")
+        assert result is None
+
+    def test_extract_none_block_id_returns_none(self):
+        """Test returns None for None block_id."""
+        result = self.service._extract_train_id_from_block_id(None)
+        assert result is None
+
+
 class TestRateLimiting:
     """Tests for GTFS download rate limiting."""
 

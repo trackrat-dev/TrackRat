@@ -397,10 +397,15 @@ class GTFSService:
                 if not trip_id or route_id not in routes:
                     continue
 
-                # Try to extract train_id from trip_headsign or trip_short_name
                 headsign = row.get("trip_headsign", "")
-                short_name = row.get("trip_short_name", "")
-                train_id = short_name or self._extract_train_id(headsign)
+
+                # Extract train_id: prefer block_id (NJT train number), fall back to others
+                block_id = row.get("block_id", "")
+                train_id = self._extract_train_id_from_block_id(block_id)
+                if not train_id:
+                    # Fallback: try trip_short_name or extract from headsign
+                    short_name = row.get("trip_short_name", "")
+                    train_id = short_name or self._extract_train_id(headsign)
 
                 direction_str = row.get("direction_id", "")
                 direction_id = int(direction_str) if direction_str.isdigit() else None
@@ -511,6 +516,26 @@ class GTFSService:
 
         match = re.search(r"\b(\d{2,4})\b", headsign)
         return match.group(1) if match else None
+
+    def _extract_train_id_from_block_id(self, block_id: str) -> str | None:
+        """Extract train number from GTFS block_id.
+
+        NJT uses block_id as the train number for heavy rail (numeric like "4608", "0301").
+        Light rail has alphanumeric block_ids like "342JC001" which aren't useful.
+
+        Args:
+            block_id: The block_id from GTFS trips.txt
+
+        Returns:
+            Train number with leading zeros stripped, or None if not numeric
+        """
+        if not block_id:
+            return None
+        cleaned = block_id.strip('"').strip()
+        if cleaned.isdigit():
+            # Strip leading zeros: "0301" -> "301", but keep "0" as "0"
+            return cleaned.lstrip("0") or cleaned
+        return None
 
     def _parse_gtfs_time(self, time_str: str, target_date: date) -> datetime | None:
         """Parse GTFS time string (HH:MM:SS, can be >24:00) to datetime.
@@ -689,7 +714,6 @@ class GTFSService:
         result = await db.execute(
             select(
                 GTFSTrip.id,
-                GTFSTrip.trip_id,  # GTFS trip_id string for fallback
                 GTFSTrip.train_id,
                 GTFSTrip.trip_headsign,
                 GTFSTrip.service_id,
@@ -735,7 +759,6 @@ class GTFSService:
         for row in trips_data:
             (
                 db_trip_id,
-                gtfs_trip_id,
                 train_id,
                 headsign,
                 service_id,
@@ -773,13 +796,9 @@ class GTFSService:
                 data_source, "#666666"
             )
 
-            # Determine train_id: try extracted train_id, then extract from gtfs_trip_id,
-            # then use gtfs_trip_id itself (never use headsign as train_id)
-            effective_train_id = train_id
-            if not effective_train_id:
-                effective_train_id = self._extract_train_id(gtfs_trip_id)
-            if not effective_train_id:
-                effective_train_id = gtfs_trip_id or "Unknown"
+            # Use train_id from database (populated from block_id during parsing)
+            # For light rail (no numeric block_id), fall back to headsign
+            effective_train_id = train_id or headsign or "Unknown"
 
             departure = TrainDeparture(
                 train_id=effective_train_id,
@@ -870,7 +889,6 @@ class GTFSService:
             result = await db.execute(
                 select(
                     GTFSTrip.id,
-                    GTFSTrip.trip_id,
                     GTFSTrip.train_id,
                     GTFSTrip.trip_headsign,
                     GTFSRoute.route_short_name,
@@ -893,7 +911,6 @@ class GTFSService:
                 result = await db.execute(
                     select(
                         GTFSTrip.id,
-                        GTFSTrip.trip_id,
                         GTFSTrip.train_id,
                         GTFSTrip.trip_headsign,
                         GTFSRoute.route_short_name,
@@ -916,7 +933,6 @@ class GTFSService:
 
             (
                 db_trip_id,
-                gtfs_trip_id,
                 stored_train_id,
                 headsign,
                 route_short,
@@ -977,8 +993,9 @@ class GTFSService:
             if not stops:
                 continue
 
-            # Determine effective train_id
-            effective_train_id = stored_train_id or self._extract_train_id(gtfs_trip_id) or gtfs_trip_id
+            # Use stored train_id (populated from block_id during parsing)
+            # For light rail (no numeric block_id), fall back to headsign
+            effective_train_id = stored_train_id or headsign or "Unknown"
 
             # Build line info
             line_code = route_short or data_source[:2]
