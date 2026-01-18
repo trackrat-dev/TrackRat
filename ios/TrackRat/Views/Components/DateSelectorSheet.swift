@@ -6,10 +6,18 @@ struct DateSelectorSheet: View {
     @Binding var selectedDate: Date
     @Environment(\.dismiss) private var dismiss
 
-    /// Available dates (today + next 6 days)
+    /// Eastern timezone calendar for consistent date handling with train schedules
+    private static let easternCalendar: Calendar = {
+        var calendar = Calendar.current
+        calendar.timeZone = TimeZone(identifier: "America/New_York") ?? TimeZone.current
+        return calendar
+    }()
+
+    /// Available dates (today + next 6 days) in Eastern time
     private var availableDates: [Date] {
-        (0..<7).compactMap { offset in
-            Calendar.current.date(byAdding: .day, value: offset, to: Date().startOfDay)
+        let today = Self.easternCalendar.startOfDay(for: Date())
+        return (0..<7).compactMap { offset in
+            Self.easternCalendar.date(byAdding: .day, value: offset, to: today)
         }
     }
 
@@ -18,11 +26,12 @@ struct DateSelectorSheet: View {
             List(availableDates, id: \.self) { date in
                 DateRow(
                     date: date,
-                    isSelected: Calendar.current.isDate(date, inSameDayAs: selectedDate),
+                    isSelected: Self.easternCalendar.isDate(date, inSameDayAs: selectedDate),
                     onSelect: {
                         selectedDate = date
                         dismiss()
-                    }
+                    },
+                    easternCalendar: Self.easternCalendar
                 )
             }
             .listStyle(.plain)
@@ -53,9 +62,10 @@ private struct DateRow: View {
     let date: Date
     let isSelected: Bool
     let onSelect: () -> Void
+    let easternCalendar: Calendar
 
     private var isToday: Bool {
-        Calendar.current.isDateInToday(date)
+        easternCalendar.isDateInToday(date)
     }
 
     var body: some View {
@@ -101,14 +111,6 @@ private struct DateRow: View {
                 : Color.clear
         )
         .listRowSeparatorTint(.white.opacity(0.1))
-    }
-}
-
-// MARK: - Date Extension for start of day
-private extension Date {
-    /// Returns the start of the current day
-    var startOfDay: Date {
-        Calendar.current.startOfDay(for: self)
     }
 }
 

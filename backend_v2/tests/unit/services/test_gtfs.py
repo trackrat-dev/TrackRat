@@ -100,6 +100,14 @@ class TestGTFSDateParsing:
 
         assert result == date.today()
 
+    def test_parse_malformed_date_with_correct_length(self):
+        """Test parsing date with correct length but invalid values (e.g., month=13)."""
+        # This would have crashed before the ValueError handling was added
+        result = self.service._parse_gtfs_date("20261340")
+
+        # Should return today instead of crashing
+        assert result == date.today()
+
 
 class TestTrainIdExtraction:
     """Tests for train ID extraction from headsign."""

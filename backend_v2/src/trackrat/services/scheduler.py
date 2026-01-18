@@ -212,6 +212,9 @@ class SchedulerService:
         asyncio.create_task(self.run_njt_discovery())
         asyncio.create_task(self.run_amtrak_discovery())
 
+        # Check and initialize GTFS feeds on startup (downloads if missing)
+        asyncio.create_task(self.check_and_initialize_gtfs_feeds())
+
         logger.info(
             "scheduler_started", jobs=[job.id for job in self.scheduler.get_jobs()]
         )
@@ -2110,6 +2113,57 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("gtfs_feed_refresh_skipped_still_fresh")
+
+    async def check_and_initialize_gtfs_feeds(self) -> None:
+        """Check if GTFS data exists and trigger initial download if needed.
+
+        Called on startup to ensure GTFS data is available for future date queries.
+        Only triggers download if no data exists (empty database or first run).
+        """
+        try:
+            from trackrat.services.gtfs import GTFSService
+
+            gtfs_service = GTFSService()
+
+            async with get_session() as db:
+                # Check if either NJT or Amtrak GTFS data is available
+                njt_available = await gtfs_service.is_feed_available(db, "NJT")
+                amtrak_available = await gtfs_service.is_feed_available(db, "AMTRAK")
+
+                if njt_available and amtrak_available:
+                    logger.info(
+                        "gtfs_data_already_available",
+                        njt=njt_available,
+                        amtrak=amtrak_available,
+                    )
+                    return
+
+                # Data is missing - trigger initial download
+                logger.info(
+                    "gtfs_data_missing_triggering_initial_download",
+                    njt_available=njt_available,
+                    amtrak_available=amtrak_available,
+                )
+
+                if not njt_available:
+                    njt_result = await gtfs_service.refresh_feed(db, "NJT", force=True)
+                    logger.info("gtfs_njt_initial_download_complete", success=njt_result)
+
+                if not amtrak_available:
+                    amtrak_result = await gtfs_service.refresh_feed(
+                        db, "AMTRAK", force=True
+                    )
+                    logger.info(
+                        "gtfs_amtrak_initial_download_complete", success=amtrak_result
+                    )
+
+        except Exception as e:
+            logger.error(
+                "gtfs_initialization_check_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            # Don't raise - this is a startup optimization, not a critical failure
 
     async def precompute_congestion_cache(self) -> None:
         """Pre-compute congestion API responses for common parameter combinations."""

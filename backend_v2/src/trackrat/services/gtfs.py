@@ -379,6 +379,9 @@ class GTFSService:
     ) -> dict[str, int]:
         """Parse trips.txt and store in database. Returns trip_id -> db_id mapping."""
         trips: dict[str, int] = {}
+        batch: list[GTFSTrip] = []
+        batch_trip_ids: list[str] = []  # Track trip_ids in current batch
+        batch_size = 500
 
         with zf.open("trips.txt") as f:
             reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
@@ -406,9 +409,24 @@ class GTFSService:
                     train_id=train_id,
                     direction_id=direction_id,
                 )
-                db.add(trip)
-                await db.flush()
-                trips[trip_id] = trip.id
+                batch.append(trip)
+                batch_trip_ids.append(trip_id)
+
+                if len(batch) >= batch_size:
+                    db.add_all(batch)
+                    await db.flush()
+                    # Map trip_ids to db ids after flush
+                    for i, t in enumerate(batch):
+                        trips[batch_trip_ids[i]] = t.id
+                    batch = []
+                    batch_trip_ids = []
+
+        # Add remaining
+        if batch:
+            db.add_all(batch)
+            await db.flush()
+            for i, t in enumerate(batch):
+                trips[batch_trip_ids[i]] = t.id
 
         return trips
 
@@ -473,7 +491,11 @@ class GTFSService:
         """Parse GTFS date format (YYYYMMDD)."""
         if not date_str or len(date_str) != 8:
             return date.today()
-        return date(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
+        try:
+            return date(int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8]))
+        except ValueError:
+            logger.warning("Invalid GTFS date", date_str=date_str)
+            return date.today()
 
     def _extract_train_id(self, headsign: str) -> str | None:
         """Try to extract train number from headsign."""
@@ -619,7 +641,9 @@ class GTFSService:
             departures.extend(source_departures)
 
         # Sort by departure time
-        departures.sort(key=lambda d: d.departure.scheduled_time or datetime.max)
+        # Use timezone-aware datetime for comparison (scheduled_time is ET-localized)
+        max_dt = ET.localize(datetime.max.replace(year=9999, month=12, day=31, hour=23, minute=59))
+        departures.sort(key=lambda d: d.departure.scheduled_time or max_dt)
 
         # Apply limit
         departures = departures[:limit]
@@ -682,6 +706,25 @@ class GTFSService:
 
         trips_data = result.all()
 
+        # Pre-fetch destination station data in one query to avoid N+1 problem
+        to_station_data: dict[int, tuple[str, int]] = {}  # trip_id -> (arrival_time, sequence)
+        if to_station and trips_data:
+            trip_ids = [row[0] for row in trips_data]
+            dest_result = await db.execute(
+                select(
+                    GTFSStopTime.trip_id,
+                    GTFSStopTime.arrival_time,
+                    GTFSStopTime.stop_sequence,
+                ).where(
+                    and_(
+                        GTFSStopTime.trip_id.in_(trip_ids),
+                        GTFSStopTime.station_code == to_station,
+                    )
+                )
+            )
+            for dest_row in dest_result.all():
+                to_station_data[dest_row[0]] = (dest_row[1], dest_row[2])
+
         for row in trips_data:
             (
                 trip_id,
@@ -698,19 +741,11 @@ class GTFSService:
             # If to_station specified, verify this trip also stops there after from_station
             arrival_time_str = None
             if to_station:
-                arr_result = await db.execute(
-                    select(GTFSStopTime.arrival_time, GTFSStopTime.stop_sequence).where(
-                        and_(
-                            GTFSStopTime.trip_id == trip_id,
-                            GTFSStopTime.station_code == to_station,
-                        )
-                    )
-                )
-                arr_row = arr_result.first()
-                if not arr_row or arr_row[1] <= dep_sequence:
+                dest_info = to_station_data.get(trip_id)
+                if not dest_info or dest_info[1] <= dep_sequence:
                     # Trip doesn't stop at destination, or stops before origin
                     continue
-                arrival_time_str = arr_row[0]
+                arrival_time_str = dest_info[0]
 
             # Parse times
             departure_dt = self._parse_gtfs_time(dep_time_str, target_date)
