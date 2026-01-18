@@ -3,11 +3,12 @@ import SwiftUI
 struct AdvancedConfigurationView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var selectedEnvironment: ServerEnvironment
     @State private var hasChanges = false
     @State private var healthCheckResult: HealthCheckResult?
     @State private var isTestingConnection = false
-    
+
     private let storageService = StorageService()
     
     init() {
@@ -28,6 +29,9 @@ struct AdvancedConfigurationView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
+                    #if DEBUG
+                    createSubscriptionDebugSection()
+                    #endif
                     serverEnvironmentSection
                     healthCheckSection
                 }
@@ -42,6 +46,81 @@ struct AdvancedConfigurationView: View {
         }
     }
     
+    @ViewBuilder
+    private func createSubscriptionDebugSection() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Subscription Debug")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+
+            Text("Toggle premium mode to test the free user experience.")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+
+            // Premium mode toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Premium Mode")
+                        .font(.headline)
+                        .foregroundColor(.white)
+
+                    Text(subscriptionService.debugOverrideEnabled ? "All Pro features enabled" : "Viewing as free user")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $subscriptionService.debugOverrideEnabled)
+                    .labelsHidden()
+                    .tint(.orange)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(subscriptionService.debugOverrideEnabled ? .orange.opacity(0.2) : .white.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(subscriptionService.debugOverrideEnabled ? .orange.opacity(0.5) : .white.opacity(0.1), lineWidth: 1)
+                    )
+            )
+
+            // Status indicator
+            HStack(spacing: 8) {
+                Image(systemName: subscriptionService.isPro ? "checkmark.seal.fill" : "xmark.seal.fill")
+                    .foregroundColor(subscriptionService.isPro ? .green : .red)
+
+                Text(subscriptionService.isPro ? "Pro features active" : "Pro features locked")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.8))
+
+                Spacer()
+
+                if subscriptionService.debugOverrideEnabled {
+                    Text("DEBUG")
+                        .font(.caption2.bold())
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(.orange.opacity(0.2))
+                        )
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+
     @ViewBuilder
     private func createServerEnvironmentSection() -> some View {
         VStack(alignment: .leading, spacing: 16) {

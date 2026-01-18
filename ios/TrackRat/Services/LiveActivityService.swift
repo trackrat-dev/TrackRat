@@ -259,8 +259,8 @@ class LiveActivityService: ObservableObject {
                 hasDepartedOrigin = true
                 print("🚀 Train departed from origin - triggering journey events")
 
-                // Record trip immediately on departure
-                TripRecordingService.shared.recordDeparture(
+                // Record trip immediately on departure (Pro feature)
+                await TripRecordingService.shared.recordDeparture(
                     train: train,
                     originCode: activity.attributes.originStationCode,
                     destinationCode: activity.attributes.destinationStationCode,

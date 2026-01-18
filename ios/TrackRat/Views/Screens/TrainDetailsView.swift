@@ -4,8 +4,11 @@ import ActivityKit
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainDetailsViewModel
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
+    @State private var showingPaywall = false
+    @State private var paywallContext: PaywallContext = .generic
 
     let trainId: Int  // Keep for backwards compatibility
 
@@ -89,26 +92,35 @@ struct TrainDetailsView: View {
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 16) {
-                            // Train performance summary (similar trains + historical)
+                            // Train performance summary (similar trains + historical) - Pro feature
                             // Hide after train departs from user's origin station
                             if let originCode = appState.departureStationCode,
                                !train.hasTrainDepartedFromStation(originCode) {
-                                TrainStatsSummaryView(
-                                    trainId: train.trainId,
-                                    fromStation: appState.departureStationCode,
-                                    toStation: appState.destinationStationCode,
-                                    journeyDate: train.journeyDate,
-                                    onTrainTap: { selectedTrainId in
-                                        // Navigate to the selected train's detail view
-                                        appState.navigationPath.append(
-                                            NavigationDestination.trainDetailsFlexible(
-                                                trainNumber: selectedTrainId,
-                                                fromStation: appState.departureStationCode,
-                                                journeyDate: nil
+                                if subscriptionService.isPro {
+                                    TrainStatsSummaryView(
+                                        trainId: train.trainId,
+                                        fromStation: appState.departureStationCode,
+                                        toStation: appState.destinationStationCode,
+                                        journeyDate: train.journeyDate,
+                                        onTrainTap: { selectedTrainId in
+                                            // Navigate to the selected train's detail view
+                                            appState.navigationPath.append(
+                                                NavigationDestination.trainDetailsFlexible(
+                                                    trainNumber: selectedTrainId,
+                                                    fromStation: appState.departureStationCode,
+                                                    journeyDate: nil
+                                                )
                                             )
-                                        )
-                                    }
-                                )
+                                        }
+                                    )
+                                } else {
+                                    // Locked historical data for free users
+                                    ProFeatureLockView(
+                                        feature: .historicalData,
+                                        context: .historicalData,
+                                        showingPaywall: $showingPaywall
+                                    )
+                                }
                             }
 
                             CombinedDetailsCard(
@@ -182,6 +194,16 @@ struct TrainDetailsView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: paywallContext)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func showPaywall(for context: PaywallContext) {
+        paywallContext = context
+        showingPaywall = true
     }
 }
 
@@ -191,6 +213,9 @@ struct CombinedDetailsCard: View {
     let selectedDestination: String?
     let selectedDestinationCode: String?
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
+    @State private var showingPaywall = false
+    @State private var paywallContext: PaywallContext = .generic
 
     // ViewModel provided properties
     let displayableTrainStops: [StopV2]
@@ -351,13 +376,22 @@ struct CombinedDetailsCard: View {
                     }
                 }
                 
-                // Track predictions section
+                // Track predictions section (Pro feature)
                 if shouldShowPredictions {
-                    SegmentedTrackPredictionView(
-                        train: train,
-                        isDepartingFromNYPenn: appState.departureStationCode == "NY"
-                    )
-                    .allowsHitTesting(true)  // Ensure predictions card is interactive
+                    if subscriptionService.isPro {
+                        SegmentedTrackPredictionView(
+                            train: train,
+                            isDepartingFromNYPenn: appState.departureStationCode == "NY"
+                        )
+                        .allowsHitTesting(true)  // Ensure predictions card is interactive
+                    } else {
+                        // Locked track predictions for free users
+                        ProFeatureLockView(
+                            feature: .trackPredictions,
+                            context: .trackPredictions,
+                            showingPaywall: $showingPaywall
+                        )
+                    }
                 }
             }
             .padding([.horizontal, .top])
@@ -446,6 +480,16 @@ struct CombinedDetailsCard: View {
         .background(Color.white.opacity(0.9))
         .cornerRadius(TrackRatTheme.CornerRadius.lg)
         .trackRatShadow()
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: paywallContext)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func showPaywall(for context: PaywallContext) {
+        paywallContext = context
+        showingPaywall = true
     }
 }
 
@@ -1039,7 +1083,9 @@ struct TrainFollowToolbarButton: View {
     let destinationCode: String
 
     @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var isStarting = false
+    @State private var showingPaywall = false
 
     private var isTrackingThisTrain: Bool {
         liveActivityService.currentActivity?.attributes.trainNumber == train.trainId
@@ -1056,36 +1102,49 @@ struct TrainFollowToolbarButton: View {
         .buttonStyle(.plain)
         .disabled(isStarting)
         .opacity(isStarting ? 0.5 : 1.0)
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: .liveActivities)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     private func handleTap() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
+        // If already tracking, allow stopping regardless of subscription status
         if isTrackingThisTrain {
             Task {
                 await liveActivityService.endCurrentActivity()
             }
-        } else {
-            isStarting = true
-            Task {
-                try? await Task.sleep(for: .milliseconds(50))
-                do {
-                    try await liveActivityService.startTrackingTrain(
-                        train,
-                        from: originCode,
-                        to: destinationCode,
-                        origin: Stations.stationName(forCode: originCode) ?? originCode,
-                        destination: destinationName ?? ""
-                    )
-                } catch {
-                    print("Failed to start Live Activity: \(error)")
-                    await MainActor.run {
-                        UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    }
-                }
+            return
+        }
+
+        // Check subscription status before starting Live Activity
+        guard subscriptionService.isPro else {
+            showingPaywall = true
+            return
+        }
+
+        isStarting = true
+        Task {
+            try? await Task.sleep(for: .milliseconds(50))
+            do {
+                try await liveActivityService.startTrackingTrain(
+                    train,
+                    from: originCode,
+                    to: destinationCode,
+                    origin: Stations.stationName(forCode: originCode) ?? originCode,
+                    destination: destinationName ?? ""
+                )
+            } catch {
+                print("Failed to start Live Activity: \(error)")
                 await MainActor.run {
-                    isStarting = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
+            }
+            await MainActor.run {
+                isStarting = false
             }
         }
     }
@@ -1467,16 +1526,26 @@ enum TrackLabelPosition {
 // MARK: - Penn Station Waiting Link
 struct PennStationWaitingLink: View {
     let isAmtrak: Bool
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var showingGuide = false
-    
+    @State private var showingPaywall = false
+
     var body: some View {
         HStack {
             Spacer()
             Button(action: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showingGuide = true
+                if subscriptionService.isPro {
+                    showingGuide = true
+                } else {
+                    showingPaywall = true
+                }
             }) {
                 HStack(spacing: 3) {
+                    if !subscriptionService.isPro {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 10))
+                    }
                     Text("where should I wait?")
                         .font(.system(size: 12))
                         .fontWeight(.medium)
@@ -1495,6 +1564,11 @@ struct PennStationWaitingLink: View {
         .padding(.top, 8)
         .sheet(isPresented: $showingGuide) {
             PennStationGuideView(isAmtrak: isAmtrak)
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: .pennStationGuide)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
 }

@@ -16,6 +16,7 @@ struct TripSelectionView: View {
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var liveActivityService = LiveActivityService.shared
     @StateObject private var ratSenseService = RatSenseService.shared
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var searchTask: Task<Void, Never>?
 
     // Train validation state - now supports multiple train results
@@ -65,8 +66,12 @@ struct TripSelectionView: View {
         // Native sheet handles scrolling automatically
         ScrollView {
             VStack(spacing: 8) {
-                    // Rat Sense suggestion at the top
-                    if let suggestion = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive, !isSearching, !isNavigatingToProfile {
+                    // RatSense AI suggestion at the top (Pro feature - hidden for free users)
+                    if subscriptionService.isPro,
+                       let suggestion = ratSenseService.suggestedJourney,
+                       !liveActivityService.isActivityActive,
+                       !isSearching,
+                       !isNavigatingToProfile {
                         Button {
                             selectRatSenseSuggestion(suggestion)
                         } label: {
@@ -100,7 +105,7 @@ struct TripSelectionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
-                .padding(.top, (ratSenseService.suggestedJourney != nil && !liveActivityService.isActivityActive && !isSearching && !isNavigatingToProfile) ? 8 : 28)
+                .padding(.top, (subscriptionService.isPro && ratSenseService.suggestedJourney != nil && !liveActivityService.isActivityActive && !isSearching && !isNavigatingToProfile) ? 8 : 28)
                 
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {

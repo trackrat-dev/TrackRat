@@ -4,9 +4,11 @@ struct MyProfileView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.openURL) private var openURL
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
 
     @State private var tripStats: TripStats = .empty
     @State private var recentTrips: [CompletedTrip] = []
+    @State private var showingPaywall = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,10 +28,28 @@ struct MyProfileView: View {
 
                 Spacer()
 
-                // Center title
-                Text("My Profile")
-                    .font(.headline)
-                    .foregroundColor(.white)
+                // Center title with Pro badge
+                HStack(spacing: 8) {
+                    Text("My Profile")
+                        .font(.headline)
+                        .foregroundColor(.white)
+
+                    if subscriptionService.isPro {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.caption2)
+                            Text("PRO")
+                                .font(.caption2.bold())
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(.orange.opacity(0.2))
+                        )
+                    }
+                }
 
                 Spacer()
 
@@ -43,8 +63,23 @@ struct MyProfileView: View {
             // Scrollable content
             ScrollView {
                 VStack(spacing: 24) {
-                    // Trip Stats Section
-                    TripStatsSection(stats: tripStats, recentTrips: recentTrips, appState: appState)
+                    // Subscription Section
+                    SubscriptionStatusSection(
+                        subscriptionService: subscriptionService,
+                        showingPaywall: $showingPaywall
+                    )
+
+                    // Trip Stats Section (Pro only)
+                    if subscriptionService.isPro {
+                        TripStatsSection(stats: tripStats, recentTrips: recentTrips, appState: appState)
+                    } else {
+                        // Locked Trip Stats
+                        ProFeatureLockView(
+                            feature: .tripStatistics,
+                            context: .tripStatistics,
+                            showingPaywall: $showingPaywall
+                        )
+                    }
 
                     // Feedback & Ideas section
                     VStack(spacing: 16) {
@@ -434,6 +469,108 @@ struct MyProfileView: View {
             tripStats = StorageService.shared.computeTripStats()
             recentTrips = StorageService.shared.loadCompletedTrips()
         }
+        .paywallSheet(isPresented: $showingPaywall, context: .generic)
+    }
+}
+
+// MARK: - Subscription Status Section
+
+struct SubscriptionStatusSection: View {
+    @ObservedObject var subscriptionService: SubscriptionService
+    @Binding var showingPaywall: Bool
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if subscriptionService.isPro {
+                // Pro user - show appreciation
+                ProUserCard()
+            } else {
+                // Free user - show upgrade prompt
+                UpgradePromptCard(
+                    headline: "Unlock All Features",
+                    subtext: "Get Live Activities, track predictions, delay forecasts, and more",
+                    showingPaywall: $showingPaywall
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Pro User Card
+
+struct ProUserCard: View {
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Image(systemName: "star.fill")
+                    .foregroundColor(.orange)
+                Text("TrackRat Pro")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Spacer()
+
+                // Status badge
+                Text(subscriptionService.subscriptionStatus.statusText)
+                    .font(.caption.bold())
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(.green.opacity(0.2))
+                    )
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Thank you for your support!")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.9))
+
+                    if let expirationText = subscriptionService.subscriptionStatus.expirationText {
+                        Text(expirationText)
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.6))
+                    } else if subscriptionService.debugOverrideEnabled {
+                        Text("Debug mode enabled")
+                            .font(.caption)
+                            .foregroundColor(.orange.opacity(0.8))
+                    }
+                }
+
+                Spacer()
+
+                // Manage subscription button
+                if !subscriptionService.debugOverrideEnabled {
+                    Button {
+                        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Text("Manage")
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(
+                    LinearGradient(
+                        colors: [.orange.opacity(0.15), .orange.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.orange.opacity(0.3), lineWidth: 1)
+                )
+        )
     }
 }
 

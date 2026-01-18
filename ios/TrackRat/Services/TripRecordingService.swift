@@ -2,6 +2,7 @@ import Foundation
 
 /// Service responsible for recording trips when user's train departs from origin.
 /// Trips are recorded immediately on departure and updated with latest arrival data.
+/// Note: Trip recording is a Pro feature - only Pro users can record and view trip statistics.
 final class TripRecordingService {
     static let shared = TripRecordingService()
 
@@ -10,11 +11,18 @@ final class TripRecordingService {
     private var activeTripId: UUID?
     private var destinationCode: String?
 
+    // Reference to subscription service for Pro check
+    private var subscriptionService: SubscriptionService {
+        SubscriptionService.shared
+    }
+
     private init() {}
 
     // MARK: - Public API
 
     /// Called once when train departs from user's origin station - creates the trip record
+    /// Note: Trip recording is gated to Pro users only
+    @MainActor
     func recordDeparture(
         train: TrainV2,
         originCode: String,
@@ -22,6 +30,12 @@ final class TripRecordingService {
         originName: String,
         destinationName: String
     ) {
+        // Trip recording is a Pro feature
+        guard subscriptionService.isPro else {
+            print("TripRecording: Skipping - not a Pro user")
+            return
+        }
+
         guard let stops = train.stops else {
             print("TripRecording: No stops data - cannot record trip")
             return

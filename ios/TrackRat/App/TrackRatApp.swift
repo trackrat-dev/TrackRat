@@ -38,6 +38,8 @@ struct TrackRatApp: App {
                     Task {
                         BackendWakeupService.shared.wakeupBackend()
                     }
+                    // Refresh subscription status in case user cancelled in Settings
+                    SubscriptionService.shared.refreshOnForeground()
                 case .inactive:
                     print("📱 Scene Phase Inactive")
                 case .background:
