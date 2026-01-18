@@ -2189,9 +2189,11 @@ class SchedulerService:
                                     )
 
                                     if refreshed_journey:
-                                        # Re-query in our session to get the updated data
-                                        session.refresh(journey)
-                                        # Re-load stops with the refreshed data
+                                        # Remove stale journey from session identity map
+                                        # so we get fresh data including updated stops
+                                        # (session.refresh doesn't reload eagerly-loaded relationships)
+                                        session.expunge(journey)
+                                        # Re-query to get fresh data from database
                                         refreshed_journey_obj = session.scalar(
                                             journey_stmt
                                         )
