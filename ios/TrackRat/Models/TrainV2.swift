@@ -284,6 +284,24 @@ struct TrainV2: Identifiable, Codable {
         // If no departure time available, don't filter out (safe default)
         return false
     }
+
+    /// Returns minutes since departure from the specified station, or nil if train hasn't departed
+    func minutesSinceDeparture(fromStationCode: String) -> Int? {
+        guard hasAlreadyDeparted(fromStationCode: fromStationCode) else { return nil }
+
+        // Get the actual or scheduled departure time
+        let departureTime: Date?
+        if let stop = stops?.first(where: { $0.stationCode == fromStationCode }) {
+            departureTime = stop.actualDeparture ?? stop.scheduledDeparture
+        } else if fromStationCode == originStationCode {
+            departureTime = departure.actualTime ?? departure.scheduledTime
+        } else {
+            departureTime = nil
+        }
+
+        guard let depTime = departureTime else { return 0 }
+        return max(0, Int(Date().timeIntervalSince(depTime) / 60))
+    }
 }
 
 // MARK: - Supporting Models
