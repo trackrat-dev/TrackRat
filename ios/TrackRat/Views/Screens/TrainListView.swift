@@ -236,9 +236,14 @@ struct TrainCard: View {
         // Use context-aware boarding check and verify track + departure timing
         // Don't show boarding for scheduled-only trains
         return !isScheduledOnly &&
-               train.isBoarding(fromStationCode: departureStationCode) && 
+               train.isBoarding(fromStationCode: departureStationCode) &&
                train.track != nil &&
                train.isDepartingSoon(fromStationCode: departureStationCode, withinMinutes: 11)
+    }
+
+    /// Check if train has already departed from origin
+    private var hasDeparted: Bool {
+        return train.hasAlreadyDeparted(fromStationCode: departureStationCode)
     }
     
     private var departureTime: String {
@@ -281,13 +286,13 @@ struct TrainCard: View {
                 HStack(spacing: 4) {
                     Text("Train \(train.trainId)")
                         .font(.headline)
-                        .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .black))
+                        .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white : .black))
                         .strikethrough(isCancelled)
 
                     if isExpress {
                         Image(systemName: "bolt.fill")
                             .font(.caption)
-                            .foregroundColor(isCancelled ? .black.opacity(0.7) : (isBoardingAtOrigin ? .white : .orange))
+                            .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white : .orange))
                     }
                 }
 
@@ -296,9 +301,9 @@ struct TrainCard: View {
                 HStack(spacing: 2) {
                     Text(departureTime)
                         .font(.subheadline)
-                        .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
+                        .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
 
-                    if let depDelay = departureDelayText, !isCancelled {
+                    if let depDelay = departureDelayText, !isCancelled && !hasDeparted {
                         Text(depDelay)
                             .font(.caption)
                             .foregroundColor(isBoardingAtOrigin ? .white : .orange)
@@ -306,13 +311,13 @@ struct TrainCard: View {
 
                     Text(" → ")
                         .font(.subheadline)
-                        .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
+                        .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
 
                     Text(arrivalTime)
                         .font(.subheadline)
-                        .foregroundColor(isCancelled ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
+                        .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white.opacity(0.9) : .black.opacity(0.7)))
 
-                    if let arrDelay = arrivalDelayText, !isCancelled {
+                    if let arrDelay = arrivalDelayText, !isCancelled && !hasDeparted {
                         Text(arrDelay)
                             .font(.caption)
                             .foregroundColor(isBoardingAtOrigin ? .white : .orange)
@@ -320,12 +325,16 @@ struct TrainCard: View {
                 }
             }
 
-            // Show cancellation or scheduled-only status
+            // Show cancellation, departed, or scheduled-only status
             if isCancelled {
                 Text("Cancelled")
                     .font(.caption)
                     .foregroundColor(.red.opacity(0.8))
                     .fontWeight(.medium)
+            } else if hasDeparted {
+                Text("Departed")
+                    .font(.caption)
+                    .foregroundColor(.gray)
             } else if isScheduledOnly {
                 Text("Scheduled")
                     .font(.caption)
@@ -343,11 +352,12 @@ struct TrainCard: View {
         }
         .padding()
         .background(
-            isBoardingAtOrigin ? Color.orange.opacity(0.9) : Color.white.opacity(0.9)
+            isBoardingAtOrigin ? Color.orange.opacity(0.9) :
+            hasDeparted ? Color.white.opacity(0.6) : Color.white.opacity(0.9)
         )
         .cornerRadius(TrackRatTheme.CornerRadius.lg)
         .trackRatShadow()
-        .opacity(1.0)
+        .opacity(hasDeparted ? 0.7 : 1.0)
         .onTapGesture {
             onTap()
         }
@@ -523,12 +533,11 @@ class TrainListViewModel: ObservableObject {
             print("🔍 DEBUG: Current time: \(now)")
 
             let filteredTrains = fetchedTrains.filter { train in
-                let hasDeparted = train.hasAlreadyDeparted(fromStationCode: fromStationCode)
-                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode)
-                if hasDeparted {
-                    print("🔍 DEBUG: Train \(train.trainId) filtered out - scheduled: \(departureTime?.description ?? "nil"), hasDeparted: \(hasDeparted)")
+                // Show trains that haven't departed OR departed within 10 minutes
+                if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
+                    return minutesAgo <= 10
                 }
-                return !hasDeparted
+                return true
             }
 
             print("🔍 DEBUG: After filtering departed trains: \(filteredTrains.count) trains remain")
@@ -573,9 +582,12 @@ class TrainListViewModel: ObservableObject {
             let filteredTrains = fetchedTrains.filter { train in
                 let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
                 let isWithinTimeWindow = departureTime <= sixHoursFromNow
-                let hasNotDeparted = !train.hasAlreadyDeparted(fromStationCode: fromStationCode)
-                
-                return isWithinTimeWindow && hasNotDeparted
+
+                // Show trains that haven't departed OR departed within 10 minutes
+                if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
+                    return minutesAgo <= 10
+                }
+                return isWithinTimeWindow
             }
             
             // Deduplicate trains by ID to prevent ForEach crashes
