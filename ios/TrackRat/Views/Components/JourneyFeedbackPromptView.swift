@@ -83,7 +83,9 @@ struct JourneyFeedbackPromptView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showImprovementForm) {
+        .sheet(isPresented: $showImprovementForm, onDismiss: {
+            feedbackService.shouldShowFeedbackPrompt = false
+        }) {
             ImprovementFeedbackSheet(context: feedbackService.currentJourneyContext)
         }
     }

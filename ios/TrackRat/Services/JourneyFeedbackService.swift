@@ -112,8 +112,8 @@ class JourneyFeedbackService: ObservableObject {
 
     /// Called when user taps "Not really" - show feedback form
     /// Returns true to indicate the caller should present the feedback form
+    /// Note: Does NOT dismiss the prompt - the prompt stays visible until the feedback form is dismissed
     func userRespondedNegatively() -> Bool {
-        shouldShowFeedbackPrompt = false
         promptQueuedForForeground = false
 
         // Record with longer cooldown for negative feedback
