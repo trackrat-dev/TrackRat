@@ -144,6 +144,17 @@ struct MapContainerView: View {
             )
             .ignoresSafeArea()
 
+            // Tap-to-dismiss overlay for layers menu
+            if showingLayers {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showingLayers = false
+                        }
+                    }
+            }
+
             // Operations summary pill (network scope) - positioned at top
             // Shows network summary + route summary when RatSense has a prediction
             VStack {
@@ -180,12 +191,15 @@ struct MapContainerView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 30)
 
-                // Layer controls (collapsible)
+                // Layer controls (collapsible, right-aligned below button)
                 if showingLayers {
-                    MapLayerControlsView(viewModel: mapViewModel)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    HStack {
+                        Spacer()
+                        MapLayerControlsView(viewModel: mapViewModel)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 Spacer()
