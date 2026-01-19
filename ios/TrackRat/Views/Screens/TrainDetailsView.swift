@@ -92,35 +92,27 @@ struct TrainDetailsView: View {
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 16) {
-                            // Train performance summary (similar trains + historical) - Pro feature
+                            // Train performance summary (similar trains + historical) - Pro feature only
                             // Hide after train departs from user's origin station
-                            if let originCode = appState.departureStationCode,
+                            if subscriptionService.isPro,
+                               let originCode = appState.departureStationCode,
                                !train.hasTrainDepartedFromStation(originCode) {
-                                if subscriptionService.isPro {
-                                    TrainStatsSummaryView(
-                                        trainId: train.trainId,
-                                        fromStation: appState.departureStationCode,
-                                        toStation: appState.destinationStationCode,
-                                        journeyDate: train.journeyDate,
-                                        onTrainTap: { selectedTrainId in
-                                            // Navigate to the selected train's detail view
-                                            appState.navigationPath.append(
-                                                NavigationDestination.trainDetailsFlexible(
-                                                    trainNumber: selectedTrainId,
-                                                    fromStation: appState.departureStationCode,
-                                                    journeyDate: nil
-                                                )
+                                TrainStatsSummaryView(
+                                    trainId: train.trainId,
+                                    fromStation: appState.departureStationCode,
+                                    toStation: appState.destinationStationCode,
+                                    journeyDate: train.journeyDate,
+                                    onTrainTap: { selectedTrainId in
+                                        // Navigate to the selected train's detail view
+                                        appState.navigationPath.append(
+                                            NavigationDestination.trainDetailsFlexible(
+                                                trainNumber: selectedTrainId,
+                                                fromStation: appState.departureStationCode,
+                                                journeyDate: nil
                                             )
-                                        }
-                                    )
-                                } else {
-                                    // Locked historical data for free users
-                                    ProFeatureLockView(
-                                        feature: .historicalData,
-                                        context: .historicalData,
-                                        showingPaywall: $showingPaywall
-                                    )
-                                }
+                                        )
+                                    }
+                                )
                             }
 
                             CombinedDetailsCard(
