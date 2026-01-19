@@ -290,10 +290,10 @@ class DepartureService:
 
                 # Filter GTFS departures:
                 # 1. Must be in the future (after current time)
-                # 2. PATH trains: Only include if >60 min away (real-time API handles
+                # 2. PATH trains: Only include if >30 min away (real-time API handles
                 #    closer trains). This prevents duplicate entries since PATH discovery
                 #    uses different train_id format than GTFS.
-                path_cutoff_time = current_time + timedelta(minutes=60)
+                path_cutoff_time = current_time + timedelta(minutes=30)
                 gtfs_future = [
                     dep
                     for dep in gtfs_response.departures
