@@ -424,11 +424,11 @@ struct TrainCard: View {
             } else if hasDeparted {
                 Text("Departed")
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Color.black.opacity(0.5))
             } else if shouldShowScheduledLabel {
                 Text("Scheduled")
                     .font(.caption)
-                    .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.7) : .gray)
+                    .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.7) : Color.black.opacity(0.5))
             }
 
             // Track and status - only show for boarding trains at origin
