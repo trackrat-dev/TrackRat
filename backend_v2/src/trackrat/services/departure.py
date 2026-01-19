@@ -121,7 +121,7 @@ class DepartureService:
             JourneyStop.scheduled_departure <= time_to,
             journey_date_filter,
             # Include all supported data sources
-            TrainJourney.data_source.in_(["NJT", "AMTRAK", "PATH"]),
+            TrainJourney.data_source.in_(["NJT", "AMTRAK", "PATH", "PATCO"]),
         ]
 
         # PERFORMANCE: Filter out trains that have already departed from origin station

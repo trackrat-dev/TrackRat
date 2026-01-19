@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.config.stations import (
+    get_patco_route_info,
     get_path_route_info,
     get_station_name,
     map_gtfs_stop_to_station_code,
@@ -51,6 +52,7 @@ GTFS_FEED_URLS = {
     "NJT": "https://content.njtransit.com/public/developers-resources/rail_data.zip",
     "AMTRAK": "https://content.amtrak.com/content/gtfs/GTFS.zip",
     "PATH": "http://data.trilliumtransit.com/gtfs/path-nj-us/path-nj-us.zip",
+    "PATCO": "https://rapid.nationalrtap.org/GTFSFileManagement/UserUploadFiles/13562/PATCO_GTFS.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -61,6 +63,7 @@ DEFAULT_LINE_COLORS = {
     "NJT": "#003DA5",  # NJ Transit blue
     "AMTRAK": "#004B87",  # Amtrak blue
     "PATH": "#0039A6",  # PATH blue
+    "PATCO": "#BC0035",  # PATCO red
 }
 
 
@@ -808,11 +811,13 @@ class GTFSService:
         njt_services = await self.get_active_service_ids(db, "NJT", target_date)
         amtrak_services = await self.get_active_service_ids(db, "AMTRAK", target_date)
         path_services = await self.get_active_service_ids(db, "PATH", target_date)
+        patco_services = await self.get_active_service_ids(db, "PATCO", target_date)
 
         all_services = {
             "NJT": njt_services,
             "AMTRAK": amtrak_services,
             "PATH": path_services,
+            "PATCO": patco_services,
         }
 
         for data_source, service_ids in all_services.items():
@@ -946,7 +951,7 @@ class GTFSService:
                 continue
 
             # Build the departure response
-            # PATH routes need special handling - use get_path_route_info for proper line codes
+            # PATH and PATCO routes need special handling for proper line codes/colors
             if data_source == "PATH":
                 path_route_info = get_path_route_info(gtfs_route_id)
                 if path_route_info:
@@ -960,6 +965,20 @@ class GTFSService:
                     line_name = route_long or route_short or "PATH"
                     line_color = f"#{route_color}" if route_color else DEFAULT_LINE_COLORS.get(
                         data_source, "#666666"
+                    )
+            elif data_source == "PATCO":
+                patco_route_info = get_patco_route_info(gtfs_route_id)
+                if patco_route_info:
+                    line_code, line_name, line_color = patco_route_info
+                    # Ensure color has # prefix
+                    if not line_color.startswith("#"):
+                        line_color = f"#{line_color}"
+                else:
+                    # Fallback for unknown PATCO routes
+                    line_code = route_short or "PATCO"
+                    line_name = route_long or route_short or "PATCO Speedline"
+                    line_color = f"#{route_color}" if route_color else DEFAULT_LINE_COLORS.get(
+                        data_source, "#BC0035"
                     )
             else:
                 line_code = route_short or data_source[:2]
@@ -1052,7 +1071,7 @@ class GTFSService:
         )
 
         # Try all data sources
-        for data_source in ["NJT", "AMTRAK", "PATH"]:
+        for data_source in ["NJT", "AMTRAK", "PATH", "PATCO"]:
             service_ids = await self.get_active_service_ids(db, data_source, target_date)
             if not service_ids:
                 continue
@@ -1099,6 +1118,30 @@ class GTFSService:
                             GTFSTrip.trip_id == train_id,
                         )
                     )
+                )
+                trip_row = result.first()
+
+            # For PATH/PATCO, also try matching by headsign since they don't have train numbers
+            if not trip_row and data_source in ("PATH", "PATCO"):
+                result = await db.execute(
+                    select(
+                        GTFSTrip.id,
+                        GTFSTrip.train_id,
+                        GTFSTrip.trip_headsign,
+                        GTFSRoute.route_id,  # GTFS route_id string
+                        GTFSRoute.route_short_name,
+                        GTFSRoute.route_long_name,
+                        GTFSRoute.route_color,
+                    )
+                    .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
+                    .where(
+                        and_(
+                            GTFSTrip.data_source == data_source,
+                            GTFSTrip.service_id.in_(service_ids),
+                            GTFSTrip.trip_headsign == train_id,
+                        )
+                    )
+                    .limit(1)  # Just get one matching trip
                 )
                 trip_row = result.first()
 
@@ -1173,7 +1216,7 @@ class GTFSService:
             effective_train_id = stored_train_id or headsign or "Unknown"
 
             # Build line info
-            # PATH routes need special handling - use get_path_route_info for proper line codes
+            # PATH and PATCO routes need special handling for proper line codes/colors
             if data_source == "PATH":
                 path_route_info = get_path_route_info(gtfs_route_id)
                 if path_route_info:
@@ -1186,6 +1229,18 @@ class GTFSService:
                     line_code = route_short or "PATH"
                     line_name = route_long or route_short or "PATH"
                     line_color = f"#{route_color}" if route_color else "#666666"
+            elif data_source == "PATCO":
+                patco_route_info = get_patco_route_info(gtfs_route_id)
+                if patco_route_info:
+                    line_code, line_name, line_color = patco_route_info
+                    # Ensure color has # prefix
+                    if not line_color.startswith("#"):
+                        line_color = f"#{line_color}"
+                else:
+                    # Fallback for unknown PATCO routes
+                    line_code = route_short or "PATCO"
+                    line_name = route_long or route_short or "PATCO Speedline"
+                    line_color = f"#{route_color}" if route_color else "#BC0035"
             else:
                 line_code = route_short or data_source[:2]
                 line_name = route_long or route_short or data_source

@@ -596,15 +596,22 @@ extension TrainV2 {
         return 0
     }
     
-    /// Get the train class for express comparison (NJ Transit vs Amtrak vs PATH)
+    /// Get the train class for express comparison (NJ Transit vs Amtrak vs PATH vs PATCO)
     var trainClass: String {
         switch dataSource {
         case "AMTRAK":
             return "Amtrak"
         case "PATH":
             return "PATH"
+        case "PATCO":
+            return "PATCO"
         default:
             return "NJ Transit"
         }
+    }
+
+    /// Check if this is a schedule-only data source (no real-time data available)
+    var isScheduleOnly: Bool {
+        return dataSource == "PATCO"
     }
 }

@@ -257,6 +257,22 @@ STATION_NAMES: dict[str, str] = {
     "GAI": "Gainesville",
     "TOC": "Toccoa",
     "CSN": "Clemson",
+    # PATCO Speedline stations (Philadelphia - South Jersey)
+    # 3-char codes chosen to avoid conflicts with NJT, Amtrak, and PATH
+    "LND": "Lindenwold",  # PATCO terminus (NJ)
+    "ASD": "Ashland",
+    "WCT": "Woodcrest",
+    "HDF": "Haddonfield",
+    "WMT": "Westmont",
+    "CLD": "Collingswood",
+    "FRY": "Ferry Avenue",
+    "BWY": "Broadway",
+    "CTH": "City Hall",  # Camden City Hall
+    "FKS": "Franklin Square",
+    "EMK": "8th and Market",
+    "NTL": "9-10th and Locust",
+    "TWL": "12-13th and Locust",
+    "FFL": "15-16th and Locust",  # PATCO terminus (Philadelphia)
     # PATH stations (3-char codes to match API constraints)
     "PNK": "Newark PATH",
     "PHR": "Harrison PATH",
@@ -562,6 +578,107 @@ PATH_GTFS_NAME_TO_INTERNAL_MAP: dict[str, str] = {
     "world trade center": "PWC",
     "wtc": "PWC",
 }
+
+
+# =============================================================================
+# PATCO Speedline Configuration
+# =============================================================================
+
+# PATCO GTFS stop_id to internal station code mapping
+# GTFS uses numeric stop_id (1-14), matching stop_code
+PATCO_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
+    "1": "LND",   # Lindenwold
+    "2": "ASD",   # Ashland
+    "3": "WCT",   # Woodcrest
+    "4": "HDF",   # Haddonfield
+    "5": "WMT",   # Westmont
+    "6": "CLD",   # Collingswood
+    "7": "FRY",   # Ferry Avenue
+    "8": "BWY",   # Broadway
+    "9": "CTH",   # City Hall
+    "10": "FKS",  # Franklin Square
+    "11": "EMK",  # 8th and Market
+    "12": "NTL",  # 9-10th and Locust
+    "13": "TWL",  # 12-13th and Locust
+    "14": "FFL",  # 15-16th and Locust
+}
+
+# Reverse mapping for PATCO
+INTERNAL_TO_PATCO_GTFS_STOP_MAP: dict[str, str] = {
+    v: k for k, v in PATCO_GTFS_STOP_TO_INTERNAL_MAP.items()
+}
+
+# PATCO route definition (route_id -> line_code, name, color)
+# Only one route in PATCO GTFS
+PATCO_ROUTES: dict[str, tuple[str, str, str]] = {
+    "2": ("PATCO", "PATCO Speedline", "#BC0035"),
+}
+
+# PATCO station sequence (Lindenwold to Philadelphia)
+# Used for building complete journeys
+PATCO_ROUTE_STOPS: list[str] = [
+    "LND",  # Lindenwold (NJ terminus)
+    "ASD",  # Ashland
+    "WCT",  # Woodcrest
+    "HDF",  # Haddonfield
+    "WMT",  # Westmont
+    "CLD",  # Collingswood
+    "FRY",  # Ferry Avenue
+    "BWY",  # Broadway
+    "CTH",  # City Hall
+    "FKS",  # Franklin Square
+    "EMK",  # 8th and Market
+    "NTL",  # 9-10th and Locust
+    "TWL",  # 12-13th and Locust
+    "FFL",  # 15-16th and Locust (Philadelphia terminus)
+]
+
+# PATCO terminus stations for schedule generation
+PATCO_TERMINUS_STATIONS = ["LND", "FFL"]
+
+# PATCO GTFS feed URL
+PATCO_GTFS_FEED_URL = "https://rapid.nationalrtap.org/GTFSFileManagement/UserUploadFiles/13562/PATCO_GTFS.zip"
+
+
+def get_patco_route_info(gtfs_route_id: str) -> tuple[str, str, str] | None:
+    """Get PATCO route info from GTFS route ID.
+
+    Args:
+        gtfs_route_id: GTFS route_id (e.g., '2')
+
+    Returns:
+        Tuple of (line_code, route_name, color) or None if not mapped
+    """
+    return PATCO_ROUTES.get(gtfs_route_id)
+
+
+def map_patco_gtfs_stop(gtfs_stop_id: str) -> str | None:
+    """Map PATCO GTFS stop_id to our internal station code.
+
+    Args:
+        gtfs_stop_id: GTFS stop_id (e.g., '1' for Lindenwold)
+
+    Returns:
+        Our internal station code (e.g., 'LND') or None if not mapped
+    """
+    return PATCO_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
+
+
+def get_patco_route_stops(direction_id: int) -> list[str]:
+    """Get ordered station list for PATCO based on direction.
+
+    Args:
+        direction_id: 0 for westbound (to Philadelphia), 1 for eastbound (to Lindenwold)
+
+    Returns:
+        List of station codes in travel order
+    """
+    if direction_id == 0:
+        # Westbound: Lindenwold -> Philadelphia
+        return PATCO_ROUTE_STOPS.copy()
+    else:
+        # Eastbound: Philadelphia -> Lindenwold
+        return list(reversed(PATCO_ROUTE_STOPS))
 
 
 def get_path_route_stops(route_id: str, terminus_station: str) -> list[str]:
@@ -879,6 +996,21 @@ STATION_COORDINATES = {
     "P23": {"lat": 40.7428, "lon": -73.9927},  # 23rd Street
     "P33": {"lat": 40.7491, "lon": -73.9882},  # 33rd Street
     "PWC": {"lat": 40.7116, "lon": -74.0112},  # World Trade Center
+    # PATCO Speedline stations (coordinates from GTFS)
+    "LND": {"lat": 39.833962, "lon": -75.000664},  # Lindenwold
+    "ASD": {"lat": 39.858705, "lon": -75.00921},   # Ashland
+    "WCT": {"lat": 39.870263, "lon": -75.011242},  # Woodcrest
+    "HDF": {"lat": 39.89764, "lon": -75.037141},   # Haddonfield
+    "WMT": {"lat": 39.90706, "lon": -75.046553},   # Westmont
+    "CLD": {"lat": 39.91359, "lon": -75.06456},    # Collingswood
+    "FRY": {"lat": 39.922572, "lon": -75.091805},  # Ferry Avenue
+    "BWY": {"lat": 39.943135, "lon": -75.120364},  # Broadway
+    "CTH": {"lat": 39.945469, "lon": -75.121242},  # City Hall
+    "FKS": {"lat": 39.955298, "lon": -75.151157},  # Franklin Square
+    "EMK": {"lat": 39.950979, "lon": -75.153515},  # 8th and Market
+    "NTL": {"lat": 39.947345, "lon": -75.15751},   # 9-10th and Locust
+    "TWL": {"lat": 39.947944, "lon": -75.162365},  # 12-13th and Locust
+    "FFL": {"lat": 39.948634, "lon": -75.167792},  # 15-16th and Locust
 }
 
 
@@ -964,7 +1096,7 @@ def map_gtfs_stop_to_station_code(
     Args:
         gtfs_stop_id: The GTFS stop_id (numeric for NJT, code for Amtrak)
         gtfs_stop_name: The GTFS stop_name for fallback matching
-        data_source: "NJT", "AMTRAK", or "PATH"
+        data_source: "NJT", "AMTRAK", "PATH", or "PATCO"
 
     Returns:
         Our internal station code or None if no match found
@@ -972,6 +1104,10 @@ def map_gtfs_stop_to_station_code(
     if data_source == "AMTRAK":
         # Amtrak uses their standard codes as stop_id
         return map_amtrak_station_code(gtfs_stop_id)
+
+    if data_source == "PATCO":
+        # PATCO uses numeric stop_id (1-14)
+        return PATCO_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
 
     if data_source == "PATH":
         # PATH - first try by stop_id (GTFS uses same IDs as Transiter: 26722-26734)

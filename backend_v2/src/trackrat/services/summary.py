@@ -1284,6 +1284,7 @@ class SummaryService:
             "NJT": "NJ Transit",
             "AMTRAK": "Amtrak",
             "PATH": "PATH",
+            "PATCO": "PATCO",
         }.get(data_source)
 
         # Total cancellations from similar trains

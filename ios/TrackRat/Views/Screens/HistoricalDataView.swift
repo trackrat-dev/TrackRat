@@ -146,6 +146,7 @@ struct PerformanceSection: View {
         switch source {
         case "AMTRAK": return "All Amtrak trains"
         case "PATH": return "All PATH trains"
+        case "PATCO": return "All PATCO trains"
         default: return "All NJ Transit trains"
         }
     }
@@ -157,13 +158,13 @@ struct PerformanceSection: View {
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
-                
+
                 VStack(spacing: 20) {
                     if let stats = trainStats {
                         let fromCode = fromStationCode ?? "?"
                         let toCode = toStationCode ?? "?"
-                        // PATH trains display destination instead of synthetic train ID
-                        let trainLabel = train.dataSource == "PATH" ? train.destination : "Train \(train.trainId)"
+                        // PATH and PATCO trains display destination instead of synthetic train ID
+                        let trainLabel = (train.dataSource == "PATH" || train.dataSource == "PATCO") ? train.destination : "Train \(train.trainId)"
                         DelayPerformanceBar(
                             label: "\(trainLabel) (\(fromCode)→\(toCode))",
                             stats: stats
@@ -222,6 +223,7 @@ struct TrackUsageSection: View {
         switch source {
         case "AMTRAK": return "All Amtrak trains"
         case "PATH": return "All PATH trains"
+        case "PATCO": return "All PATCO trains"
         default: return "All NJ Transit trains"
         }
     }
@@ -233,13 +235,13 @@ struct TrackUsageSection: View {
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
-                
+
                 VStack(spacing: 20) {
                     if let stats = trainStats {
                         let fromCode = fromStationCode ?? "?"
                         let toCode = toStationCode ?? "?"
-                        // PATH trains display destination instead of synthetic train ID
-                        let trainLabel = train.dataSource == "PATH" ? train.destination : "Train \(train.trainId)"
+                        // PATH and PATCO trains display destination instead of synthetic train ID
+                        let trainLabel = (train.dataSource == "PATH" || train.dataSource == "PATCO") ? train.destination : "Train \(train.trainId)"
                         TrackUsageBar(
                             label: "\(trainLabel) (\(fromCode)→\(toCode))",
                             stats: stats
@@ -461,9 +463,9 @@ class HistoricalDataViewModel: ObservableObject {
         }
         
         do {
-            // Determine data source from train
-            let dataSource = train.trainClass == "Amtrak" ? "AMTRAK" : "NJT"
-            
+            // Use train's data source directly (handles NJT, AMTRAK, PATH, PATCO)
+            let dataSource = train.dataSource
+
             // Use new route-based API
             let routeData = try await apiService.fetchRouteHistoricalData(
                 from: fromCode,

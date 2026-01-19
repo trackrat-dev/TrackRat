@@ -78,6 +78,12 @@ struct Stations {
         "14th Street", "23rd Street", "33rd Street",
         "World Trade Center",
 
+        // PATCO Speedline Stations (Philadelphia - South Jersey)
+        "Lindenwold", "Ashland", "Woodcrest", "Haddonfield",
+        "Westmont", "Collingswood", "Ferry Avenue", "Broadway PATCO",
+        "City Hall PATCO", "Franklin Square", "8th and Market",
+        "9-10th and Locust", "12-13th and Locust", "15-16th and Locust",
+
         // Pennsylvania Stations (Keystone Service)
         "Middletown PA", "Elizabethtown", "Mount Joy", "Parkesburg",
         "Coatesville", "Downingtown", "Exton", "Paoli",
@@ -283,6 +289,22 @@ struct Stations {
         "23rd Street": "P23",
         "33rd Street": "P33",
         "World Trade Center": "PWC",
+
+        // PATCO Speedline stations (Philadelphia - South Jersey)
+        "Lindenwold": "LND",
+        "Ashland": "ASD",
+        "Woodcrest": "WCT",
+        "Haddonfield": "HDF",
+        "Westmont": "WMT",
+        "Collingswood": "CLD",
+        "Ferry Avenue": "FRY",
+        "Broadway PATCO": "BWY",
+        "City Hall PATCO": "CTH",
+        "Franklin Square": "FKS",
+        "8th and Market": "EMK",
+        "9-10th and Locust": "NTL",
+        "12-13th and Locust": "TWL",
+        "15-16th and Locust": "FFL",
 
         // Missing Keystone Service stations (PA)
         "Middletown PA": "MIDPA",  // Renamed to avoid conflict with Middletown NJ
@@ -620,6 +642,22 @@ struct Stations {
         "P23": CLLocationCoordinate2D(latitude: 40.7428, longitude: -73.9930),   // 23rd Street
         "P33": CLLocationCoordinate2D(latitude: 40.7487, longitude: -73.9880),   // 33rd Street
         "PWC": CLLocationCoordinate2D(latitude: 40.7118, longitude: -74.0101),   // World Trade Center
+
+        // PATCO Speedline stations - synced with backend_v2/src/trackrat/config/stations.py
+        "LND": CLLocationCoordinate2D(latitude: 39.833962, longitude: -75.000664),  // Lindenwold
+        "ASD": CLLocationCoordinate2D(latitude: 39.858705, longitude: -75.00921),   // Ashland
+        "WCT": CLLocationCoordinate2D(latitude: 39.870263, longitude: -75.011242),  // Woodcrest
+        "HDF": CLLocationCoordinate2D(latitude: 39.89764, longitude: -75.037141),   // Haddonfield
+        "WMT": CLLocationCoordinate2D(latitude: 39.90706, longitude: -75.046553),   // Westmont
+        "CLD": CLLocationCoordinate2D(latitude: 39.91359, longitude: -75.06456),    // Collingswood
+        "FRY": CLLocationCoordinate2D(latitude: 39.922572, longitude: -75.091805),  // Ferry Avenue
+        "BWY": CLLocationCoordinate2D(latitude: 39.943135, longitude: -75.120364),  // Broadway PATCO
+        "CTH": CLLocationCoordinate2D(latitude: 39.945469, longitude: -75.121242),  // City Hall PATCO
+        "FKS": CLLocationCoordinate2D(latitude: 39.955298, longitude: -75.151157),  // Franklin Square
+        "EMK": CLLocationCoordinate2D(latitude: 39.950979, longitude: -75.153515),  // 8th and Market
+        "NTL": CLLocationCoordinate2D(latitude: 39.947345, longitude: -75.15751),   // 9-10th and Locust
+        "TWL": CLLocationCoordinate2D(latitude: 39.947944, longitude: -75.162365),  // 12-13th and Locust
+        "FFL": CLLocationCoordinate2D(latitude: 39.948634, longitude: -75.167792),  // 15-16th and Locust
 
         // Additional Amtrak stations (Southeast/South)
         "ATL": CLLocationCoordinate2D(latitude: 33.7995643615723, longitude: -84.3917846679688),   // Atlanta, GA

@@ -2071,11 +2071,16 @@ class SchedulerService:
                     path_result = await gtfs_service.refresh_feed(db, "PATH")
                     logger.info("gtfs_path_refresh_complete", refreshed=path_result)
 
+                    # Refresh PATCO feed (schedule-only, no real-time data)
+                    patco_result = await gtfs_service.refresh_feed(db, "PATCO")
+                    logger.info("gtfs_patco_refresh_complete", refreshed=patco_result)
+
                 logger.info(
                     "gtfs_feed_refresh_complete",
                     njt_refreshed=njt_result,
                     amtrak_refreshed=amtrak_result,
                     path_refreshed=path_result,
+                    patco_refreshed=patco_result,
                 )
 
             except Exception as e:
@@ -2114,17 +2119,19 @@ class SchedulerService:
             gtfs_service = GTFSService()
 
             async with get_session() as db:
-                # Check if NJT, Amtrak, and PATH GTFS data is available
+                # Check if NJT, Amtrak, PATH, and PATCO GTFS data is available
                 njt_available = await gtfs_service.is_feed_available(db, "NJT")
                 amtrak_available = await gtfs_service.is_feed_available(db, "AMTRAK")
                 path_available = await gtfs_service.is_feed_available(db, "PATH")
+                patco_available = await gtfs_service.is_feed_available(db, "PATCO")
 
-                if njt_available and amtrak_available and path_available:
+                if njt_available and amtrak_available and path_available and patco_available:
                     logger.info(
                         "gtfs_data_already_available",
                         njt=njt_available,
                         amtrak=amtrak_available,
                         path=path_available,
+                        patco=patco_available,
                     )
                     return
 
@@ -2134,6 +2141,7 @@ class SchedulerService:
                     njt_available=njt_available,
                     amtrak_available=amtrak_available,
                     path_available=path_available,
+                    patco_available=patco_available,
                 )
 
                 if not njt_available:
@@ -2152,6 +2160,12 @@ class SchedulerService:
                     path_result = await gtfs_service.refresh_feed(db, "PATH", force=True)
                     logger.info(
                         "gtfs_path_initial_download_complete", success=path_result
+                    )
+
+                if not patco_available:
+                    patco_result = await gtfs_service.refresh_feed(db, "PATCO", force=True)
+                    logger.info(
+                        "gtfs_patco_initial_download_complete", success=patco_result
                     )
 
         except Exception as e:
