@@ -6,9 +6,8 @@ struct MyProfileView: View {
     @Environment(\.openURL) private var openURL
     @ObservedObject private var subscriptionService = SubscriptionService.shared
 
-    @State private var tripStats: TripStats = .empty
-    @State private var recentTrips: [CompletedTrip] = []
     @State private var showingPaywall = false
+    @State private var showingFeedbackSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -122,12 +121,45 @@ struct MyProfileView: View {
                         }
 
                         // Report an Issue
-                        FeedbackButton(
-                            screen: "my_profile",
-                            trainId: nil,
-                            originCode: nil,
-                            destinationCode: nil
-                        )
+                        Button {
+                            showingFeedbackSheet = true
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.bubble.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Report an Issue")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                        .sheet(isPresented: $showingFeedbackSheet) {
+                            FeedbackSheet(
+                                screen: "my_profile",
+                                trainId: nil,
+                                originCode: nil,
+                                destinationCode: nil
+                            )
+                        }
                     }
 
                     // Profile image - aligned to top
@@ -379,7 +411,60 @@ struct MyProfileView: View {
                             Spacer()
                         }
                         .padding(.horizontal)
-                        
+
+                        // Trip Statistics
+                        Button {
+                            if subscriptionService.isPro {
+                                appState.navigationPath.append(NavigationDestination.tripHistory)
+                            } else {
+                                showingPaywall = true
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "chart.bar.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Trip Statistics")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                if !subscriptionService.isPro {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "lock.fill")
+                                            .font(.caption2)
+                                        Text("PRO")
+                                            .font(.caption2.bold())
+                                    }
+                                    .foregroundColor(.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule()
+                                            .fill(.orange.opacity(0.2))
+                                    )
+                                } else {
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+
                         // Favorite Stations
                         Button {
                             appState.navigationPath.append(NavigationDestination.favoriteStations)
@@ -446,28 +531,12 @@ struct MyProfileView: View {
                             )
                         }
                     }
-
-                    // Trip Stats Section (Pro only)
-                    if subscriptionService.isPro {
-                        TripStatsSection(stats: tripStats, recentTrips: recentTrips, appState: appState)
-                    } else {
-                        // Locked Trip Stats
-                        ProFeatureLockView(
-                            feature: .tripStatistics,
-                            context: .tripStatistics,
-                            showingPaywall: $showingPaywall
-                        )
-                    }
                 }
                 .padding()
                 .padding(.bottom, 40)
             }
         }
         .navigationBarHidden(true)
-        .onAppear {
-            tripStats = StorageService.shared.computeTripStats()
-            recentTrips = StorageService.shared.loadCompletedTrips()
-        }
         .paywallSheet(isPresented: $showingPaywall, context: .generic)
     }
 }
