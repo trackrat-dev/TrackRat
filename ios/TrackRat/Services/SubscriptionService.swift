@@ -86,7 +86,7 @@ enum PaywallContext {
         case .delayForecasts:
             return "Get delay and cancellation predictions before you leave"
         case .historicalData:
-            return "365 days of on-time performance and track patterns"
+            return "Leverage past on-time performance and track patterns"
         case .tripStatistics:
             return "Track every trip and see your on-time percentage"
         case .pennStationGuide:
