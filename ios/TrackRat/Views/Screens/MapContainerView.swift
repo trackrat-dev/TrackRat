@@ -946,7 +946,7 @@ private struct MapLayerToggleButton: View {
                         )
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.trailing, 24)
             .contentShape(Rectangle())
             .padding(.vertical, 4)
         }
