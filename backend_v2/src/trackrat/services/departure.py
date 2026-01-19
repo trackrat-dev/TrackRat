@@ -141,7 +141,7 @@ class DepartureService:
         # incorrect delay calculations in the response.
         jit_start = time.perf_counter()
         await self._ensure_fresh_station_data(
-            db, from_station, target_date, skip_individual_refresh
+            db, from_station, target_date, skip_individual_refresh, hide_departed
         )
         jit_duration_ms = (time.perf_counter() - jit_start) * 1000
 
@@ -437,6 +437,7 @@ class DepartureService:
         station_code: str,
         target_date: date,
         skip_individual_refresh: bool = False,
+        hide_departed: bool = False,
     ) -> None:
         """Ensure station departure data is fresh using getTrainSchedule with embedded stops.
 
@@ -447,6 +448,8 @@ class DepartureService:
             skip_individual_refresh: If True, skip the second pass that individually
                 refreshes stale trains. Used during cache precomputation to avoid
                 excessive API calls.
+            hide_departed: If True, skip refreshing past trains since they won't be
+                shown in the response anyway.
         """
 
         # Check if station data needs refresh (60 second staleness)
@@ -574,12 +577,13 @@ class DepartureService:
                 )
 
             # Skip second pass if requested (e.g., during cache precomputation)
+            # or if hiding departed trains (past trains won't be shown anyway)
             # This prevents excessive API calls when bulk refresh is sufficient
-            if skip_individual_refresh:
+            if skip_individual_refresh or hide_departed:
                 logger.debug(
                     "skipping_individual_refresh",
                     station_code=station_code,
-                    reason="skip_individual_refresh=True",
+                    reason="skip_individual_refresh=True" if skip_individual_refresh else "hide_departed=True",
                 )
                 return
 
