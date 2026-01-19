@@ -16,10 +16,12 @@ struct CongestionMapView: View {
     var body: some View {
         ZStack {
             // Map
+            // Note: segments/individualSegments arrays are controlled by applyDisplayModeFilter()
+            // which sets them based on showCongestion mode - no need for ternary checks here
             SystemCongestionMapView(
                 region: $region,
-                segments: viewModel.showCongestion != .off ? viewModel.segments : [],
-                individualSegments: viewModel.showCongestion == .individual ? viewModel.individualSegments : [],
+                segments: viewModel.segments,
+                individualSegments: viewModel.individualSegments,
                 stations: viewModel.showStations ? (viewModel.showRoutes ? viewModel.routeStations : viewModel.stations) : [],
                 showRoutes: viewModel.showRoutes,
                 onSegmentTap: { segment in
@@ -175,12 +177,20 @@ struct CongestionMapView: View {
             // Congestion toggle (tri-state)
             LayerToggleButton(
                 label: "Congestion",
-                icon: viewModel.showCongestion.iconName,
+                icon: "train.side.front.car",
                 isOn: viewModel.showCongestion != .off,
                 detail: viewModel.showCongestion.rawValue
             ) {
+                let wasOff = viewModel.showCongestion == .off
                 viewModel.cycleCongestionMode()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+                // Reload congestion data when turning on (from off state)
+                if wasOff && viewModel.showCongestion != .off {
+                    Task {
+                        await viewModel.fetchCongestionData()
+                    }
+                }
             }
 
             // Routes toggle
@@ -541,7 +551,17 @@ class CongestionMapViewModel: ObservableObject {
     func cycleCongestionMode() {
         showCongestion = showCongestion.next()
         print("🚦 Congestion mode changed to: \(showCongestion.rawValue)")
-        applyDisplayModeFilter()
+        // Defer filter application to let UI animations complete
+        applyDisplayModeFilterDeferred()
+    }
+
+    /// Applies display mode filter with a delay to prevent UI lag during button animations
+    private func applyDisplayModeFilterDeferred() {
+        Task { @MainActor in
+            // Small delay to let button animation complete
+            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+            applyDisplayModeFilter()
+        }
     }
 
     private func applyDisplayModeFilter() {

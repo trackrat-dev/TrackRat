@@ -127,10 +127,12 @@ struct MapContainerView: View {
     var body: some View {
         ZStack {
             // Always show the map, just without congestion data when loading
+            // Note: segments/individualSegments arrays are controlled by applyDisplayModeFilter()
+            // which sets them based on showCongestion mode - no need for ternary checks here
             SystemCongestionMapView(
                 region: $mapRegionVM.mapRegion,
-                segments: mapViewModel.showCongestion != .off ? mapViewModel.segments : [],
-                individualSegments: mapViewModel.showCongestion == .individual ? mapViewModel.individualSegments : [],
+                segments: mapViewModel.segments,
+                individualSegments: mapViewModel.individualSegments,
                 stations: mapViewModel.showStations ? mapViewModel.routeStations : [],
                 showRoutes: mapViewModel.showRoutes,
                 onSegmentTap: { segment in
@@ -839,15 +841,23 @@ struct MapLayerControlsView: View {
             // Congestion toggle (tri-state: Off -> Summary -> Trains) - Pro only
             MapLayerToggleButton(
                 label: "Congestion",
-                icon: viewModel.showCongestion.iconName,
+                icon: "train.side.front.car",
                 isOn: viewModel.showCongestion != .off,
                 detail: viewModel.showCongestion.rawValue,
                 isPro: subscriptionService.isPro,
                 showProBadge: viewModel.showCongestion == .off
             ) {
                 if subscriptionService.isPro {
+                    let wasOff = viewModel.showCongestion == .off
                     viewModel.cycleCongestionMode()
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+                    // Reload congestion data when turning on (from off state)
+                    if wasOff && viewModel.showCongestion != .off {
+                        Task {
+                            await viewModel.fetchCongestionData()
+                        }
+                    }
                 } else {
                     // Non-Pro user trying to enable congestion - show paywall
                     showingPaywall = true
