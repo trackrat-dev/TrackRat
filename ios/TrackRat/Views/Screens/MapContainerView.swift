@@ -159,12 +159,12 @@ struct MapContainerView: View {
             // Shows network summary + route summary when RatSense has a prediction
             VStack {
                 HStack(alignment: .top) {
-                    OperationsSummaryView(
-                        scope: .network,
-                        ratSenseRoute: mapViewModel.showCongestion != .off
-                            ? ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
-                            : nil
-                    )
+                    if mapViewModel.showCongestion != .off {
+                        OperationsSummaryView(
+                            scope: .network,
+                            ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
+                        )
+                    }
 
                     Spacer()
 
