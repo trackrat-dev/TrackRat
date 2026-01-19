@@ -86,7 +86,7 @@ struct JourneyFeedbackPromptView: View {
         .sheet(isPresented: $showImprovementForm, onDismiss: {
             feedbackService.shouldShowFeedbackPrompt = false
         }) {
-            ImprovementFeedbackSheet(context: feedbackService.currentJourneyContext)
+            FeedbackSheet(mode: .improvement, context: feedbackService.currentJourneyContext)
         }
     }
 }

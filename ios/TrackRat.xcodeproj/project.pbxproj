@@ -116,7 +116,6 @@
 		A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */; };
 		A1JF00012F00000100000001 /* JourneyFeedbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00012F00000000000001 /* JourneyFeedbackService.swift */; };
 		A1JF00022F00000100000002 /* JourneyFeedbackPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */; };
-		A1JF00032F00000100000003 /* ImprovementFeedbackSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */; };
 		A1WIDGET012DFC73650002FB39 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET022DFC73650002FB39 /* WidgetKit.framework */; };
 		A1WIDGET032DFC73650002FB39 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET042DFC73650002FB39 /* SwiftUI.framework */; };
 		A1WIDGET052DFC73650002FB39 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1WIDGET062DFC73650002FB39 /* ActivityKit.framework */; };
@@ -248,7 +247,6 @@
 		A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendWakeupService.swift; path = TrackRat/Services/BackendWakeupService.swift; sourceTree = "<group>"; };
 		A1JF00012F00000000000001 /* JourneyFeedbackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackService.swift; path = TrackRat/Services/JourneyFeedbackService.swift; sourceTree = "<group>"; };
 		A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackPromptView.swift; path = TrackRat/Views/Components/JourneyFeedbackPromptView.swift; sourceTree = "<group>"; };
-		A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ImprovementFeedbackSheet.swift; path = TrackRat/Views/Components/ImprovementFeedbackSheet.swift; sourceTree = "<group>"; };
 		A1WIDGET022DFC73650002FB39 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		A1WIDGET042DFC73650002FB39 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		A1WIDGET062DFC73650002FB39 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
@@ -322,7 +320,6 @@
 				A1D92A732F0AF01E0098897F /* CompletedTrip.swift */,
 				A1JF00012F00000000000001 /* JourneyFeedbackService.swift */,
 				A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */,
-				A1JF00032F00000000000003 /* ImprovementFeedbackSheet.swift */,
 				A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */,
 				A12C31402F1DA61700CAF76D /* PaywallView.swift */,
 				A12C31432F1DA62600CAF76D /* ProFeatureLockView.swift */,
@@ -676,7 +673,6 @@
 				A16C81EE2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A1JF00012F00000100000001 /* JourneyFeedbackService.swift in Sources */,
 				A1JF00022F00000100000002 /* JourneyFeedbackPromptView.swift in Sources */,
-				A1JF00032F00000100000003 /* ImprovementFeedbackSheet.swift in Sources */,
 				A1CB28332E3D634C004A49E6 /* JourneyCongestionMapView.swift in Sources */,
 				A10684812E36B6EC0052C4AE /* ThemeManager.swift in Sources */,
 				A1AA1BB32DEF00BB001FA904 /* TrackRatTheme.swift in Sources */,

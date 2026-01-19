@@ -1,5 +1,60 @@
 import SwiftUI
 
+/// The type of feedback being submitted
+enum FeedbackMode {
+    case issue       // Reporting data problems
+    case improvement // Suggestions for making the app better
+
+    var title: String {
+        switch self {
+        case .issue: return "Report Issue"
+        case .improvement: return "Help Us Improve"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .issue: return "Help us improve TrackRat by reporting incorrect or missing data."
+        case .improvement: return "We'd love to hear how we can make TrackRat better for you."
+        }
+    }
+
+    var prompt: String {
+        switch self {
+        case .issue: return "What's wrong?"
+        case .improvement: return "What could we improve?"
+        }
+    }
+
+    var placeholder: String {
+        switch self {
+        case .issue: return "Describe the issue..."
+        case .improvement: return "Tell us what's on your mind..."
+        }
+    }
+
+    var buttonLabel: String {
+        switch self {
+        case .issue: return "Submit"
+        case .improvement: return "Send Feedback"
+        }
+    }
+
+    var confirmationIcon: String {
+        switch self {
+        case .issue: return "checkmark.circle.fill"
+        case .improvement: return "heart.fill"
+        }
+    }
+
+    var messagePrefix: String? {
+        switch self {
+        case .issue: return nil
+        case .improvement: return "[Improvement Suggestion] "
+        }
+    }
+}
+
 /// A button that allows users to report data issues
 struct FeedbackButton: View {
     let screen: String
@@ -26,6 +81,7 @@ struct FeedbackButton: View {
         .buttonStyle(.plain)
         .sheet(isPresented: $showingSheet) {
             FeedbackSheet(
+                mode: .issue,
                 screen: screen,
                 trainId: trainId,
                 originCode: originCode,
@@ -35,17 +91,37 @@ struct FeedbackButton: View {
     }
 }
 
-/// Sheet for submitting feedback
+/// Unified sheet for submitting feedback (issues or improvement suggestions)
 struct FeedbackSheet: View {
+    let mode: FeedbackMode
     let screen: String
     let trainId: String?
     let originCode: String?
     let destinationCode: String?
 
+    init(mode: FeedbackMode = .issue, screen: String, trainId: String?, originCode: String?, destinationCode: String?) {
+        self.mode = mode
+        self.screen = screen
+        self.trainId = trainId
+        self.originCode = originCode
+        self.destinationCode = destinationCode
+    }
+
+    /// Convenience initializer for journey feedback context
+    init(mode: FeedbackMode, context: JourneyFeedbackContext?) {
+        self.mode = mode
+        self.screen = "journey_feedback_prompt"
+        self.trainId = context?.trainId
+        self.originCode = context?.originCode
+        self.destinationCode = context?.destinationCode
+    }
+
     @Environment(\.dismiss) private var dismiss
     @State private var message = ""
     @State private var isSubmitting = false
     @State private var showingConfirmation = false
+    @State private var iconScale: CGFloat = 0.5
+    @State private var iconOpacity: Double = 0
     @FocusState private var isTextFieldFocused: Bool
 
     var body: some View {
@@ -58,7 +134,7 @@ struct FeedbackSheet: View {
                 }
             }
             .padding()
-            .navigationTitle("Report Issue")
+            .navigationTitle(mode.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -71,13 +147,13 @@ struct FeedbackSheet: View {
 
     private var formView: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Help us improve TrackRat by reporting incorrect or missing data.")
+            Text(mode.subtitle)
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.7))
 
             // Message input
             VStack(alignment: .leading, spacing: 8) {
-                Text("What's wrong?")
+                Text(mode.prompt)
                     .font(.headline)
                     .foregroundColor(.white)
 
@@ -98,7 +174,7 @@ struct FeedbackSheet: View {
                     .focused($isTextFieldFocused)
                     .overlay(alignment: .topLeading) {
                         if message.isEmpty {
-                            Text("Describe the issue...")
+                            Text(mode.placeholder)
                                 .font(.body)
                                 .foregroundColor(.white.opacity(0.4))
                                 .padding(.horizontal, 16)
@@ -120,7 +196,7 @@ struct FeedbackSheet: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
                 } else {
-                    Text("Submit")
+                    Text(mode.buttonLabel)
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
@@ -139,17 +215,31 @@ struct FeedbackSheet: View {
         VStack(spacing: 20) {
             Spacer()
 
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: mode.confirmationIcon)
                 .font(.system(size: 72))
-                .foregroundColor(.orange)
-                .shadow(color: .orange.opacity(0.3), radius: 12, x: 0, y: 4)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.orange, .orange.opacity(0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: .orange.opacity(0.4), radius: 16, x: 0, y: 8)
+                .scaleEffect(iconScale)
+                .opacity(iconOpacity)
+                .onAppear {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.6, blendDuration: 0)) {
+                        iconScale = 1.0
+                        iconOpacity = 1.0
+                    }
+                }
 
             Text("Thank you!")
                 .font(.title)
                 .fontWeight(.bold)
                 .foregroundColor(.white)
 
-            Text("Your feedback helps us improve TrackRat for everyone.")
+            Text("Your feedback helps make TrackRat\nbetter for everyone.")
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
@@ -176,10 +266,17 @@ struct FeedbackSheet: View {
         isSubmitting = true
         isTextFieldFocused = false
 
+        let finalMessage: String
+        if let prefix = mode.messagePrefix {
+            finalMessage = prefix + message
+        } else {
+            finalMessage = message
+        }
+
         Task {
             do {
                 try await APIService.shared.submitFeedback(
-                    message: message,
+                    message: finalMessage,
                     screen: screen,
                     trainId: trainId,
                     originCode: originCode,
