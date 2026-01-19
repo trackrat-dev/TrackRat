@@ -1,6 +1,6 @@
 # TrackRat iOS App 🚂
 
-A comprehensive iOS app for tracking NJ Transit and Amtrak trains with Live Activities, real-time updates, intelligent track predictions, and innovative navigation features.
+A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, and PATCO trains with Live Activities, real-time updates, intelligent track predictions, and innovative navigation features.
 
 ## 🎯 Key Features
 
@@ -14,13 +14,19 @@ A comprehensive iOS app for tracking NJ Transit and Amtrak trains with Live Acti
 - **Primary Hubs**: NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark
 - **Southeast Corridor**: 44+ Amtrak stations across NC, SC, GA, FL, VA, WV
 - **Total Coverage**: ~144 stations across the Eastern United States
-- **Train Services**: NJ Transit, Amtrak (Silver Star, Silver Meteor, Carolinian, Piedmont, Crescent)
+- **Train Services**: NJ Transit, Amtrak (Silver Star, Silver Meteor, Carolinian, Piedmont, Crescent), PATH, PATCO
 
 ### Intelligent Features
 - **🦉 Owl Track Predictions**: AI-powered track predictions with confidence levels
 - **🐀 RatSense Journey Suggestions**: Learns your travel patterns and suggests likely trips
 - **Penn Station Navigation Guide**: Interactive video guides for efficient navigation
 - **Historical Analytics**: Performance data, delay statistics, and track usage patterns
+- **Map Layer Controls**: Toggleable congestion, routes, and station markers on map
+- **GTFS Future Schedules**: View train schedules for future dates via GTFS data
+
+### Pro Subscription Features
+- **Congestion Maps**: Premium map overlay showing network congestion levels
+- **StoreKit 2 Integration**: Modern subscription management
 
 ### User Experience
 - **Native iOS Design**: SwiftUI with glassmorphism and smooth animations
@@ -67,7 +73,7 @@ TrackRat/
 │   ├── DeepLink.swift          # URL scheme handling
 │   └── Train.swift             # Legacy compatibility model
 │
-├── Services/                    # Business logic (10 services)
+├── Services/                    # Business logic (12 services)
 │   ├── APIService.swift        # Network communication
 │   ├── LiveActivityService.swift # Live Activity management
 │   ├── RatSenseService.swift   # AI journey predictions
@@ -77,6 +83,8 @@ TrackRat/
 │   ├── ShareService.swift      # Social sharing
 │   ├── TrainCacheService.swift # Two-tier train caching with LRU
 │   ├── ThemeManager.swift      # Theme configuration
+│   ├── SubscriptionService.swift # Pro subscription management
+│   ├── TripRecordingService.swift # Trip statistics tracking
 │   └── StaticTrackDistributionService.swift # Track analytics
 │
 ├── Views/                       # UI layer
@@ -108,7 +116,8 @@ TrackRat/
 │
 ├── Shared/                      # Cross-target code
 │   ├── Stations.swift          # Station database
-│   └── LiveActivityModels.swift # Widget shared types
+│   ├── LiveActivityModels.swift # Widget shared types
+│   └── RouteTopology.swift      # Route definitions for map layers
 │
 ├── Theme/                       # Visual design
 │   └── TrackRatTheme.swift     # Colors and styles
@@ -284,7 +293,7 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 - [ ] iPad optimization
 - [ ] macOS Catalyst app
 - [ ] CarPlay support
-- [ ] Additional transit systems (LIRR, Metro-North)
+- [ ] Additional transit systems (LIRR, Metro-North, SEPTA)
 - [ ] Social features (trip sharing)
 
 ## 📝 License

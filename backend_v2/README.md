@@ -1,6 +1,6 @@
 # TrackRat V2 Backend
 
-A simplified, efficient train tracking system for NJ Transit and Amtrak built with FastAPI, PostgreSQL, and modern Python.
+A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, and PATCO built with FastAPI, PostgreSQL, and modern Python.
 
 **Version:** 2.0.0 (December 2025)
 **Database:** PostgreSQL with asyncpg (production-ready)
@@ -9,7 +9,8 @@ A simplified, efficient train tracking system for NJ Transit and Amtrak built wi
 ## ✨ Features
 
 - **🔄 Minimal API Polling**: 30-min discovery + on-demand updates (~95% fewer API calls)
-- **📅 Schedule Generation**: Daily NJT schedules + Amtrak pattern-based predictions
+- **📅 Schedule Generation**: Daily NJT schedules + Amtrak pattern-based predictions + GTFS static data
+- **📆 Future Date Schedules**: View train schedules for future dates via GTFS data integration
 - **⚡ Just-in-Time Updates**: Fresh data when users request it (<1 minute staleness)
 - **🎯 Single Journey Records**: One record per train, no duplicates
 - **🛡️ Type-Safe**: Strict mypy checking enforced from day one
@@ -17,7 +18,7 @@ A simplified, efficient train tracking system for NJ Transit and Amtrak built wi
 - **📊 Built-in Monitoring**: Health checks, metrics, validation, and structured logging
 - **🤖 ML Predictions**: Track assignment predictions with confidence scoring
 - **📱 Live Activities**: Push notification support for iOS Live Activity updates
-- **🚂 Multi-Transit**: NJ Transit + Amtrak with extensible architecture
+- **🚂 Multi-Transit**: NJ Transit, Amtrak, PATH, and PATCO with extensible architecture
 - **🔍 Coverage Validation**: Hourly validation ensures complete train coverage
 - **💾 API Caching**: Intelligent response caching with pre-computation
 - **🔄 Horizontal Scaling**: Database-coordinated task execution across replicas
@@ -654,7 +655,7 @@ The V2 backend is designed for easy contribution:
 ### Future Enhancements
 1. **WebSocket Support**: Real-time updates for connected clients
 2. **GraphQL API**: More flexible querying for complex data needs
-3. **Additional Transit**: LIRR, Metro-North, SEPTA, PATH support
+3. **Additional Transit**: LIRR, Metro-North, SEPTA support
 4. **Advanced ML**: Delay prediction and passenger flow analysis
 
 Ready to enhance train tracking for millions of commuters! 🚂

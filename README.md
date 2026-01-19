@@ -1,6 +1,6 @@
 # TrackRat 🚂
 
-Real-time train tracking system with ML-powered track predictions for NJ Transit and Amtrak, with planned support for SEPTA, PATH, and LIRR.
+Real-time train tracking system with ML-powered track predictions for NJ Transit, Amtrak, PATH, and PATCO, with planned support for SEPTA and LIRR.
 
 ## ✨ Features
 
@@ -8,7 +8,7 @@ Real-time train tracking system with ML-powered track predictions for NJ Transit
 - **Multi-Platform**: Native iOS app with Live Activities + Android app (in development)
 - **Track Predictions**: ML models predict platform assignments with confidence levels ("Owl" system)
 - **Real-Time Updates**: Live train status, delays, and journey progress with 30-second refresh
-- **Multi-Transit Support**: NJ Transit and Amtrak (SEPTA, PATH, LIRR placeholders exist)
+- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, and PATCO (SEPTA, LIRR placeholders exist)
 - **Station Coverage**: ~144 stations including NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark, plus 44 Southeast Amtrak stations
 - **Smart Consolidation**: Merges duplicate trains across data sources with conflict resolution
 
@@ -23,6 +23,9 @@ Real-time train tracking system with ML-powered track predictions for NJ Transit
 - **RatSense AI**: Intelligent journey suggestions based on user patterns (iOS)
 - **Penn Station Guide**: Interactive navigation assistance with video guides (iOS)
 - **Journey Feedback**: Proactive feedback collection at 2/3 journey progress (iOS)
+- **Map Layer Controls**: Toggleable congestion, routes, and station layers (iOS)
+- **Pro Subscription**: Premium features including congestion maps with StoreKit 2 (iOS)
+- **GTFS Schedule Viewing**: View future date schedules via GTFS static data
 - **Validation System**: Hourly coverage checks ensure data completeness
 
 ## 🏗️ Architecture
@@ -227,7 +230,7 @@ make setup                           # Setup development environment
 4. Accessibility improvements
 
 ### Long Term (3-6 Months)
-1. Additional transit systems (LIRR, Metro-North, SEPTA, PATH)
+1. Additional transit systems (LIRR, Metro-North, SEPTA)
 2. GraphQL API for efficient queries
 3. Apple Watch and Wear OS apps
 4. Multi-language support
@@ -238,7 +241,7 @@ make setup                           # Setup development environment
 - Backend V2 API with horizontal scaling
 - iOS app with Live Activities, delay forecasting, and trip statistics
 - Infrastructure with monitoring
-- NJ Transit and Amtrak integration
+- NJ Transit, Amtrak, PATH, and PATCO integration
 - ML-powered track and delay predictions
 
 ### 🚧 In Development

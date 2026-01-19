@@ -2,7 +2,7 @@
 
 ## Overview
 
-TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from multiple origin stations in the NJ Transit and Amtrak network. The app features Live Activities for real-time train tracking on the Lock Screen and Dynamic Island, intelligent track predictions via the Owl system, and historical analytics. Built with iOS 18.0+ and leveraging the latest iOS features including ActivityKit, push notifications, and consolidated train data APIs.
+TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from multiple origin stations in the NJ Transit, Amtrak, PATH, and PATCO networks. The app features Live Activities for real-time train tracking on the Lock Screen and Dynamic Island, intelligent track predictions via the Owl system, historical analytics, and Pro subscription features. Built with iOS 18.0+ and leveraging the latest iOS features including ActivityKit, push notifications, StoreKit 2, and consolidated train data APIs.
 
 ## Architecture
 
@@ -34,6 +34,8 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - Integrated journey planning and Live Activity management
 - Congestion visualization overlay
 - Coordinated scrolling between map and sheet content
+- Map layer controls (congestion, routes, stations) via layers button
+- Route topology overlay for all transit systems (NJT, Amtrak, PATH, PATCO)
 
 ### 3. **TripSelectionView** (Journey Planning Screen)
 - Shows active Live Activities at the top with journey progress
@@ -92,6 +94,9 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - Interactive segment selection for detailed train lists
 - Color-coded congestion levels
 - Time window filtering (1-24 hours)
+- Map layer controls: Congestion (Off/Summary/Trains), Routes, Stations
+- Route topology overlay for NJT, Amtrak, PATH, PATCO lines
+- Pro-only congestion map feature with paywall prompt
 
 ### 10. **OnboardingView**
 - Multi-step user onboarding flow
@@ -403,6 +408,7 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 10. **TrainCacheService** - Two-tier train data caching with LRU eviction
 11. **TripRecordingService** - Records completed trips from Live Activities for statistics
 12. **JourneyFeedbackService** - Triggers feedback prompts during active journeys
+13. **SubscriptionService** - Pro subscription management with StoreKit 2
 
 ### LiveActivityService
 - **Singleton Pattern**: Shared instance for app-wide access
@@ -672,6 +678,34 @@ xcodebuild archive -scheme TrackRat -archivePath ./build/TrackRat.xcarchive
 
 ### New Features (January 2026)
 
+#### PATH and PATCO Support
+New transit system integrations:
+- **PATH Train Support**: Full schedule and real-time data via GTFS
+- **PATCO Speedline**: Schedule-based data integration with 14 stations
+- **RouteTopology.swift**: Client-side route definitions for map visualization
+- **Multi-transit Map Layers**: Visual overlays for all transit lines on map
+
+#### Pro Subscription Tier
+Premium features with StoreKit 2 integration:
+- **SubscriptionService**: Manages Pro subscription state and purchases
+- **ProFeatureLockView**: Paywall prompt for premium features
+- **Congestion Map Access**: Pro-only network congestion visualization
+- **StoreKit 2**: Modern subscription purchase and management
+
+#### Map Layer Controls
+Toggleable map visualization options:
+- **Layer Controls Button**: Top-right corner access to map layers
+- **Congestion Mode**: Cycles through Off/Summary/Trains visualization
+- **Route Topology**: Shows/hides static rail line topology
+- **Station Markers**: Toggleable station dot markers
+- **MapLayerControlsView**: Compact menu for layer selection
+
+#### GTFS Future Date Schedules
+View train schedules for future dates:
+- **GTFS Static Data**: Integration with transit agency schedule files
+- **Future Date Departures**: Browse schedules days in advance
+- **Train Details Endpoint**: Support for future date journey viewing
+
 #### Delay and Cancellation Forecasting
 ML-powered delay predictions shown in train details:
 - **DelayForecastView**: Shows cancellation probability, delay breakdown, and expected delay minutes
@@ -790,7 +824,7 @@ Live Activities now use the enhanced data for better tracking:
 ## Future Considerations
 
 ### Planned Features
-- **Additional Transit Systems**: LIRR, Metro-North, SEPTA, PATH integration
+- **Additional Transit Systems**: LIRR, Metro-North, SEPTA integration
 - **Widget Extension**: Home/Lock Screen widgets for favorite routes
 - **Apple Watch App**: Companion app with Live Activity sync
 - **Siri Shortcuts**: Quick access to frequent trips

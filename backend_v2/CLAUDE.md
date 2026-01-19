@@ -2,9 +2,9 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** January 4, 2026
+**Last Updated:** January 19, 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
-**Key Features:** Multi-transit support (NJT + Amtrak), ML predictions, API caching, schedule generation
+**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO), ML predictions, API caching, schedule generation, GTFS integration
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ The V2 backend eliminates the complexity of V1 by:
 - **Minimal API calls**: ~95% reduction through smart caching and scheduling
 - **No consolidation needed**: Unified data model from the start
 - **PostgreSQL**: Production-ready database with async driver and connection pooling
-- **Multi-Transit Support**: NJ Transit and Amtrak data sources with extensible architecture
+- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, and PATCO data sources with extensible architecture
 - **ML-Powered Features**: Track predictions, arrival forecasting, and congestion analysis
 - **API Response Caching**: Intelligent caching system for performance optimization
 
@@ -43,8 +43,9 @@ The V2 backend eliminates the complexity of V1 by:
 │ Transit APIs    │────▶│  Backend V2     │────▶│  Client Apps    │
 │ • NJ Transit    │     │ • Discovery     │     │ • iOS App       │
 │ • Amtrak        │     │ • Schedule Gen  │     │ • Web App       │
-│ • (Future: More)│     │ • JIT Updates   │     │ • Live Activities│
-└─────────────────┘     │ • ML Predictions│     └─────────────────┘
+│ • PATH (GTFS)   │     │ • JIT Updates   │     │ • Live Activities│
+│ • PATCO (GTFS)  │     │ • ML Predictions│     └─────────────────┘
+└─────────────────┘     │ • GTFS Feed     │
                         │ • API Caching   │
                         │ • Analytics     │
                         │ • Validation    │
@@ -565,7 +566,7 @@ asyncio.run(check_tasks())
 
 1. **Enhanced Track Prediction Models**: Improved ML models with occupancy detection
 2. **WebSocket Support**: Real-time updates for clients
-3. **Additional Transit Systems**: LIRR, Metro-North, SEPTA, PATH (placeholder directories exist)
+3. **Additional Transit Systems**: LIRR, Metro-North, SEPTA (placeholder directories exist)
 4. **Advanced Analytics**: Enhanced journey pattern analysis
 5. **GraphQL API**: More efficient client queries
 
@@ -628,6 +629,12 @@ The backend is organized into service classes for better maintainability:
 ## Recent Improvements & Known Issues
 
 ### Recent Improvements (January 2026)
+- ✅ Added PATH train support with full GTFS integration
+- ✅ Added PATCO Speedline support with schedule-based GTFS data (14 stations)
+- ✅ Implemented GTFS future date schedule viewing for all transit systems
+- ✅ Added headsign fallback lookup for PATH/PATCO train details
+- ✅ Fixed train lookup for systems without numeric train IDs
+- ✅ Simplified route summary body text format with natural language
 - ✅ Added delay and cancellation forecasting with ML-powered predictions
 - ✅ Expanded track predictions to support multiple stations beyond NY Penn
 - ✅ Added hot train updates for reduced event latency
