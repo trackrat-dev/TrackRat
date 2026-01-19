@@ -288,12 +288,23 @@ class DepartureService:
                     limit=200,  # Fetch more, we'll filter after merge
                 )
 
-                # Filter GTFS to only include future departures (after current time)
+                # Filter GTFS departures:
+                # 1. Must be in the future (after current time)
+                # 2. PATH trains: Only include if >60 min away (real-time API handles
+                #    closer trains). This prevents duplicate entries since PATH discovery
+                #    uses different train_id format than GTFS.
+                path_cutoff_time = current_time + timedelta(minutes=60)
                 gtfs_future = [
                     dep
                     for dep in gtfs_response.departures
                     if dep.departure.scheduled_time
                     and dep.departure.scheduled_time > current_time
+                    and (
+                        # Non-PATH: include all future departures
+                        dep.data_source != "PATH"
+                        # PATH: only include if beyond cutoff window
+                        or dep.departure.scheduled_time > path_cutoff_time
+                    )
                 ]
 
                 departures = self._merge_departures(

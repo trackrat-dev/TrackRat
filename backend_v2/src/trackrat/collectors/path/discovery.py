@@ -16,11 +16,11 @@ from trackrat.collectors.base import BaseDiscoveryCollector
 from trackrat.collectors.path.ridepath_client import PathArrival, RidePathClient
 from trackrat.config.stations import (
     PATH_DISCOVERY_STATIONS,
+    get_path_stops_by_origin_destination,
     get_station_name,
 )
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.services.gtfs import GTFSService
 from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
@@ -332,26 +332,27 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
             )
             return False
 
-        # Get GTFS stop times for the route from origin to destination
-        gtfs_service = GTFSService()
+        # Get destination station code from headsign
         destination_station = HEADSIGN_TO_STATION_MAP.get(destination.lower(), None)
 
-        gtfs_stop_times = None
+        # Get route stops from hardcoded PATH routes (no GTFS dependency)
+        route_stops = None
         if destination_station:
-            gtfs_stop_times = await gtfs_service.get_path_route_stop_times_from_origin(
-                session,
-                origin_station,
-                destination_station,
-                departure_time,
+            route_stops = get_path_stops_by_origin_destination(
+                origin_station, destination_station
             )
 
-        if gtfs_stop_times:
-            terminal_station = gtfs_stop_times[-1][0]
-            terminal_arrival = gtfs_stop_times[-1][1]
+        # PATH average travel time: ~3 minutes per segment
+        minutes_per_segment = 3
+
+        if route_stops and len(route_stops) >= 2:
+            terminal_station = route_stops[-1]
+            total_travel_minutes = (len(route_stops) - 1) * minutes_per_segment
+            terminal_arrival = departure_time + timedelta(minutes=total_travel_minutes)
             has_complete_journey = True
-            stops_count = len(gtfs_stop_times)
+            stops_count = len(route_stops)
         else:
-            # No GTFS data - create journey with origin and destination only
+            # No route found - create journey with origin and destination only
             terminal_station = destination_station or origin_station
             terminal_arrival = departure_time + timedelta(minutes=20)  # Estimate
             has_complete_journey = False
@@ -382,22 +383,25 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
         await session.flush()
 
         # Create stops
-        if gtfs_stop_times:
-            for sequence, (station_code, arrival_dt, departure_dt) in enumerate(
-                gtfs_stop_times, start=1
-            ):
+        if route_stops and len(route_stops) >= 2:
+            for sequence, station_code in enumerate(route_stops, start=1):
                 is_origin = sequence == 1
-                is_terminus = sequence == len(gtfs_stop_times)
+                is_terminus = sequence == len(route_stops)
+
+                # Calculate estimated times based on position in route
+                # Each segment takes ~3 minutes
+                minutes_from_origin = (sequence - 1) * minutes_per_segment
+                stop_time = departure_time + timedelta(minutes=minutes_from_origin)
 
                 stop = JourneyStop(
                     journey_id=journey.id,
                     station_code=station_code,
                     station_name=get_station_name(station_code),
                     stop_sequence=sequence,
-                    scheduled_arrival=arrival_dt if not is_origin else None,
-                    scheduled_departure=departure_dt if not is_terminus else None,
-                    updated_arrival=arrival_dt if not is_origin else None,
-                    updated_departure=departure_dt if not is_terminus else None,
+                    scheduled_arrival=stop_time if not is_origin else None,
+                    scheduled_departure=stop_time if not is_terminus else None,
+                    updated_arrival=stop_time if not is_origin else None,
+                    updated_departure=stop_time if not is_terminus else None,
                 )
                 session.add(stop)
         else:
@@ -432,7 +436,7 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
             destination=destination,
             departure=departure_time.isoformat(),
             stops=stops_count,
-            has_gtfs=gtfs_stop_times is not None,
+            has_complete_route=route_stops is not None,
         )
 
         return True

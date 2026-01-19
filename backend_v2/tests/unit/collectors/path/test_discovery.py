@@ -277,17 +277,7 @@ class TestPathDiscoveryCollector:
             )
             mock_get_session.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            # Mock GTFS service
-            with patch(
-                "trackrat.collectors.path.discovery.GTFSService"
-            ) as mock_gtfs:
-                mock_gtfs_instance = MagicMock()
-                mock_gtfs_instance.get_path_route_stop_times_from_origin = AsyncMock(
-                    return_value=None
-                )
-                mock_gtfs.return_value = mock_gtfs_instance
-
-                result = await collector.run()
+            result = await collector.run()
 
         assert isinstance(result, dict)
         assert result["data_source"] == "PATH"
@@ -358,21 +348,8 @@ class TestPathDiscoveryProcessArrival:
         session.flush = AsyncMock()
         return session
 
-    @pytest.fixture(autouse=False)
-    def mock_gtfs_service(self):
-        """Create a mock for GTFSService that returns None (no GTFS data)."""
-        with patch(
-            "trackrat.collectors.path.discovery.GTFSService"
-        ) as mock_class:
-            mock_instance = MagicMock()
-            mock_instance.get_path_route_stop_times_from_origin = AsyncMock(
-                return_value=None
-            )
-            mock_class.return_value = mock_instance
-            yield mock_instance
-
     async def test_process_arrival_creates_journey(
-        self, collector, mock_session, mock_gtfs_service
+        self, collector, mock_session
     ):
         """Test _process_arrival creates new journey for new train."""
         arrival = PathArrival(
@@ -434,7 +411,7 @@ class TestPathDiscoveryProcessArrival:
         assert created is False
 
     async def test_process_arrival_uses_line_color_from_api(
-        self, collector, mock_session, mock_gtfs_service
+        self, collector, mock_session
     ):
         """Test _process_arrival uses line color from API when available."""
         arrival = PathArrival(
@@ -455,7 +432,7 @@ class TestPathDiscoveryProcessArrival:
         assert journey.line_color == "#FF0000"
 
     async def test_process_arrival_creates_origin_stop(
-        self, collector, mock_session, mock_gtfs_service
+        self, collector, mock_session
     ):
         """Test _process_arrival creates journey stop for origin station."""
         arrival = PathArrival(
@@ -473,7 +450,7 @@ class TestPathDiscoveryProcessArrival:
         assert mock_session.add.call_count >= 2
 
     async def test_process_arrival_departing_train_creates_journey(
-        self, collector, mock_session, mock_gtfs_service
+        self, collector, mock_session
     ):
         """Test _process_arrival creates journey for departing trains.
 
