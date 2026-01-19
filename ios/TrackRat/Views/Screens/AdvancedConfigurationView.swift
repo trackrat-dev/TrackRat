@@ -4,10 +4,13 @@ struct AdvancedConfigurationView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
     @ObservedObject private var subscriptionService = SubscriptionService.shared
+    @ObservedObject private var journeyFeedbackService = JourneyFeedbackService.shared
     @State private var selectedEnvironment: ServerEnvironment
     @State private var hasChanges = false
     @State private var healthCheckResult: HealthCheckResult?
     @State private var isTestingConnection = false
+    @State private var showClearHistoryConfirmation = false
+    @State private var resetDataSuccessMessage: String?
 
     private let storageService = StorageService()
     
@@ -32,6 +35,7 @@ struct AdvancedConfigurationView: View {
                     createSubscriptionDebugSection()
                     serverEnvironmentSection
                     healthCheckSection
+                    createResetDataSection()
                 }
                 .padding()
                 .padding(.bottom, 40)
@@ -42,6 +46,30 @@ struct AdvancedConfigurationView: View {
             selectedEnvironment = storageService.loadServerEnvironment()
             hasChanges = false
         }
+        .alert("Clear Trip History", isPresented: $showClearHistoryConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Clear", role: .destructive) {
+                clearTripHistory()
+            }
+        } message: {
+            Text("This will permanently delete all your recorded trips and statistics. This cannot be undone.")
+        }
+        .overlay(alignment: .bottom) {
+            if let message = resetDataSuccessMessage {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule()
+                            .fill(.green.opacity(0.9))
+                    )
+                    .padding(.bottom, 100)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: resetDataSuccessMessage)
     }
     
     @ViewBuilder
@@ -299,8 +327,140 @@ struct AdvancedConfigurationView: View {
                 )
         )
     }
-    
-    
+
+    @ViewBuilder
+    private func createResetDataSection() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Reset Data")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+
+            Text("Debug tools for testing feedback prompts and clearing stored data.")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+
+            VStack(spacing: 12) {
+                // Show Feedback Prompt
+                Button {
+                    showFeedbackPrompt()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Show Feedback Prompt")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            Text("Displays the \"Enjoying TrackRat?\" prompt")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        Spacer()
+                        Image(systemName: "bubble.left.and.bubble.right")
+                            .foregroundColor(.orange)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.white.opacity(0.05))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.white.opacity(0.1), lineWidth: 1)
+                            )
+                    )
+                }
+
+                // Reset Feedback Cooldowns
+                Button {
+                    resetFeedbackCooldowns()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Reset Feedback Cooldowns")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            Text("Allows prompt to appear on next departure")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        Spacer()
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundColor(.orange)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.white.opacity(0.05))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.white.opacity(0.1), lineWidth: 1)
+                            )
+                    )
+                }
+
+                // Clear Trip History
+                Button {
+                    showClearHistoryConfirmation = true
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Clear Trip History")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            Text("Removes all recorded trips and statistics")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                        Spacer()
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.red.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.red.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+
+    private func showFeedbackPrompt() {
+        journeyFeedbackService.forceShowPrompt()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func resetFeedbackCooldowns() {
+        journeyFeedbackService.resetCooldowns()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        showSuccessMessage("Cooldowns reset")
+    }
+
+    private func clearTripHistory() {
+        storageService.clearCompletedTrips()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        showSuccessMessage("Trip history cleared")
+    }
+
+    private func showSuccessMessage(_ message: String) {
+        resetDataSuccessMessage = message
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            resetDataSuccessMessage = nil
+        }
+    }
+
     private func saveConfiguration() {
         storageService.saveServerEnvironment(selectedEnvironment)
         APIService.shared.updateServerEnvironment(selectedEnvironment)

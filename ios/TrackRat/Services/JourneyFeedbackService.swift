@@ -135,6 +135,23 @@ class JourneyFeedbackService: ObservableObject {
         print("📊 Journey feedback: User dismissed prompt, starting \(dismissCooldownDays)-day cooldown")
     }
 
+    /// Resets all cooldown periods, allowing the prompt to appear on the next departure
+    func resetCooldowns() {
+        UserDefaults.standard.removeObject(forKey: lastPromptDismissedDateKey)
+        UserDefaults.standard.removeObject(forKey: cooldownDaysKey)
+        hasPromptedDuringCurrentActivity = false
+        promptQueuedForForeground = false
+
+        print("📊 Journey feedback: Cooldowns reset")
+    }
+
+    /// Forces the feedback prompt to show immediately (for testing)
+    func forceShowPrompt() {
+        shouldShowFeedbackPrompt = true
+
+        print("📊 Journey feedback: Force showing prompt")
+    }
+
     // MARK: - Private Methods
 
     @objc private func appDidBecomeActive() {
