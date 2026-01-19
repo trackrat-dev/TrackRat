@@ -1129,43 +1129,48 @@ class SummaryService:
         """
         Format headline and body for route summary.
 
-        Rules:
-        - Cancellations lead the headline when present
-        - Body shows departure %, then arrival delay if available
+        Body format: "{status}, {arrival}."
+        - Status based on cancellations or departure on-time percentage
+        - Arrival based on average arrival delay
         """
-        # Determine headline - always show on-time percentage
+        # Headline - cancellations lead when present
         if cancellations > 0:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
         else:
             headline = f"Recent departures: {dep_on_time_pct:.0f}% on time"
 
-        # Build body
-        body_parts = []
-
-        # Cancellation notice first
+        # Status clause
         if cancellations > 0:
-            train_word = "train" if cancellations == 1 else "trains"
-            body_parts.append(f"{cancellations} {train_word} cancelled.")
-
-        # Departure and arrival stats
-        if arr_avg_delay is not None and arr_avg_delay >= 1:
-            # Have arrival data with delays
-            body_parts.append(
-                f"{dep_on_time_pct:.0f}% departing on time, "
-                f"averaging {arr_avg_delay:.0f} minutes late on arrival."
-            )
-        elif arr_on_time_pct is not None:
-            # Have arrival data, minimal delays
-            body_parts.append(
-                f"{dep_on_time_pct:.0f}% departing on time, "
-                f"arriving roughly on schedule."
-            )
+            status = "Trains cancelled"
+            connector = ", the rest "
+        elif dep_on_time_pct >= 90:
+            status = "Trains departing on time"
+            connector = ", "
+        elif dep_on_time_pct >= 65:
+            status = "Most trains departing on time"
+            connector = ", "
         else:
-            # No arrival data yet
-            body_parts.append(f"{dep_on_time_pct:.0f}% departing on time.")
+            status = "Trains delayed"
+            connector = ", "
 
-        return headline, " ".join(body_parts)
+        # Arrival clause
+        if arr_avg_delay is not None and arr_avg_delay >= 1:
+            mins = int(round(arr_avg_delay))
+            minute_word = "minute" if mins == 1 else "minutes"
+            arrival = f"arriving {mins} {minute_word} late"
+        elif arr_on_time_pct is not None:
+            arrival = "arriving roughly on schedule"
+        else:
+            arrival = None
+
+        # Combine
+        if arrival:
+            body = f"{status}{connector}{arrival}."
+        else:
+            body = f"{status}."
+
+        return headline, body
 
     def _calculate_historical_departure_stats(
         self,
