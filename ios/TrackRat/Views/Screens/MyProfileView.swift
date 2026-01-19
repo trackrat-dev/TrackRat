@@ -63,20 +63,11 @@ struct MyProfileView: View {
             // Scrollable content
             ScrollView {
                 VStack(spacing: 24) {
-                    // Subscription Section
+                    // Subscription Section (includes soft trial state)
                     SubscriptionStatusSection(
                         subscriptionService: subscriptionService,
                         showingPaywall: $showingPaywall
                     )
-
-                    // Soft trial banner (show during 24-hour preview, not for subscribers)
-                    if subscriptionService.isInSoftTrial,
-                       !subscriptionService.subscriptionStatus.isActive {
-                        SoftTrialBannerView {
-                            paywallContext = .generic
-                            showingPaywall = true
-                        }
-                    }
 
                     // Feedback & Ideas section
                     VStack(spacing: 16) {
@@ -569,11 +560,17 @@ struct SubscriptionStatusSection: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            if subscriptionService.isPro {
-                // Pro user - show appreciation
+            if subscriptionService.debugOverrideEnabled {
+                // Debug mode - show pro card with debug indicator
                 ProUserCard()
+            } else if subscriptionService.subscriptionStatus.isActive {
+                // Actual subscriber (StoreKit trial or paid) - show appreciation
+                ProUserCard()
+            } else if subscriptionService.isInSoftTrial {
+                // Soft trial active (preview period) - show timer + subscribe CTA
+                SoftTrialProCard(showingPaywall: $showingPaywall)
             } else {
-                // Free user - show upgrade prompt
+                // Not subscribed, no soft trial - show upgrade prompt
                 UpgradePromptCard(
                     subtext: "Support continued development, get Live Activities, track predictions, delay forecasts, and more",
                     showingPaywall: $showingPaywall
@@ -658,6 +655,96 @@ struct ProUserCard: View {
                         .stroke(.orange.opacity(0.3), lineWidth: 1)
                 )
         )
+    }
+}
+
+// MARK: - Soft Trial Pro Card
+
+struct SoftTrialProCard: View {
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
+    @Binding var showingPaywall: Bool
+    @State private var currentTime = Date()
+
+    private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
+    private var hoursRemaining: Int {
+        subscriptionService.softTrialHoursRemaining ?? 0
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Image(systemName: "star.fill")
+                    .foregroundColor(.orange)
+                Text("TrackRat Pro")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Spacer()
+
+                // Preview badge
+                Text("Preview")
+                    .font(.caption.bold())
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(.orange.opacity(0.2))
+                    )
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.fill")
+                            .font(.subheadline)
+                            .foregroundColor(.orange)
+                        Text("\(hoursRemaining) \(hoursRemaining == 1 ? "hour" : "hours") remaining")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.white)
+                    }
+
+                    Text("Subscribe to keep using Pro features")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                Button {
+                    showingPaywall = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Text("Subscribe")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(.orange)
+                        )
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(
+                    LinearGradient(
+                        colors: [.orange.opacity(0.15), .orange.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.orange.opacity(0.3), lineWidth: 1)
+                )
+        )
+        .onReceive(timer) { time in
+            currentTime = time
+        }
     }
 }
 
