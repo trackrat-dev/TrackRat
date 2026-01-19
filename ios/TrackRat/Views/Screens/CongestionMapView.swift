@@ -5,6 +5,7 @@ import Combine
 import ActivityKit
 
 struct CongestionMapView: View {
+    @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel = CongestionMapViewModel()
     @State private var region = MKCoordinateRegion.newarkPennDefault
     @State private var selectedSegment: CongestionSegment?
@@ -214,6 +215,25 @@ struct CongestionMapView: View {
                 viewModel.showStations.toggle()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
+
+            Divider()
+                .background(Color.white.opacity(0.2))
+
+            // Train Systems section
+            Text("Train Systems")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+
+            ForEach(TrainSystem.allCases, id: \.self) { system in
+                SystemToggleButton(
+                    system: system,
+                    isSelected: appState.isSystemSelected(system),
+                    action: {
+                        appState.toggleSystem(system)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                )
+            }
         }
         .padding()
         .background(
@@ -293,6 +313,37 @@ private struct LayerToggleButton: View {
                         Capsule()
                             .fill(isOn ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
                     )
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - System Toggle Button
+
+private struct SystemToggleButton: View {
+    let system: TrainSystem
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: system.icon)
+                    .font(.body)
+                    .foregroundColor(isSelected ? .orange : .secondary)
+                    .frame(width: 20)
+
+                Text(system.displayName)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.body)
+                    .foregroundColor(isSelected ? .orange : .secondary.opacity(0.5))
             }
             .padding(.vertical, 4)
         }

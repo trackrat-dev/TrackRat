@@ -119,7 +119,8 @@ struct TrainListView: View {
                                 await viewModel.loadTrains(
                                     destination: destination,
                                     fromStationCode: departureStationCode,
-                                    date: selectedDate
+                                    date: selectedDate,
+                                    selectedSystems: appState.selectedSystems
                                 )
                             }
                         }
@@ -222,7 +223,8 @@ struct TrainListView: View {
             await viewModel.loadTrains(
                 destination: destination,
                 fromStationCode: departureStationCode,
-                date: selectedDate
+                date: selectedDate,
+                selectedSystems: appState.selectedSystems
             )
         }
         .task(id: isViewVisible) {
@@ -232,7 +234,7 @@ struct TrainListView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
                 guard !Task.isCancelled, isViewVisible, !isFutureDate else { break }
-                await viewModel.refreshTrains(date: selectedDate)
+                await viewModel.refreshTrains(date: selectedDate, selectedSystems: appState.selectedSystems)
             }
         }
         .sheet(isPresented: $showDatePicker) {
@@ -588,10 +590,13 @@ class TrainListViewModel: ObservableObject {
 
     private var currentDate: Date?
 
-    func loadTrains(destination: String, fromStationCode: String, date: Date = Date()) async {
+    private var currentSelectedSystems: Set<TrainSystem>?
+
+    func loadTrains(destination: String, fromStationCode: String, date: Date = Date(), selectedSystems: Set<TrainSystem>? = nil) async {
         self.currentDestination = destination
         self.currentFromStationCode = fromStationCode
         self.currentDate = date
+        self.currentSelectedSystems = selectedSystems
 
         isLoading = true
         hasStartedLoading = true
@@ -606,11 +611,12 @@ class TrainListViewModel: ObservableObject {
 
             print("🔍 DEBUG: Loading trains from \(fromStationCode) to \(toStationCode) for date \(date)")
 
-            // Use injected apiService
+            // Use injected apiService with optional data sources filter
             let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode,
-                date: date
+                date: date,
+                dataSources: selectedSystems
             )
 
             print("🔍 DEBUG: API returned \(fetchedTrains.count) trains")
@@ -649,19 +655,23 @@ class TrainListViewModel: ObservableObject {
         isLoading = false
     }
     
-    func refreshTrains(date: Date = Date()) async {
+    func refreshTrains(date: Date = Date(), selectedSystems: Set<TrainSystem>? = nil) async {
         guard let destination = currentDestination,
               let fromStationCode = currentFromStationCode,
               let toStationCode = Stations.getStationCode(destination) else {
             return // Or set an error if appropriate for silent refresh
         }
 
+        // Use provided systems or fall back to stored systems
+        let systems = selectedSystems ?? currentSelectedSystems
+
         do {
-            // Use injected apiService
+            // Use injected apiService with optional data sources filter
             let fetchedTrains = try await self.apiService.searchTrains(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode,
-                date: date
+                date: date,
+                dataSources: systems
             )
 
             let now = Date()

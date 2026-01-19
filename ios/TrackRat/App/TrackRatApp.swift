@@ -541,11 +541,19 @@ final class AppState: ObservableObject {
     
     // Favorite stations
     @Published var favoriteStations: [FavoriteStation] = []
-    
+
+    // Selected train systems (persisted via UserDefaults)
+    @Published var selectedSystems: Set<TrainSystem> = .all {
+        didSet {
+            UserDefaults.standard.set(selectedSystems.commaSeparated, forKey: "selectedTrainSystems")
+        }
+    }
+
     init() {
         loadRecentTrips()
         loadFavoriteStations()
-        
+        loadSelectedSystems()
+
         // Migrate existing data
         storageService.migrateRecentDestinations()
         loadRecentTrips() // Reload after migration
@@ -642,5 +650,38 @@ final class AppState: ObservableObject {
             }
         }
     }
-    
+
+    // MARK: - Train Systems
+
+    /// Load selected systems from UserDefaults
+    private func loadSelectedSystems() {
+        if let stored = UserDefaults.standard.string(forKey: "selectedTrainSystems"), !stored.isEmpty {
+            selectedSystems = .from(commaSeparated: stored)
+        } else {
+            // Default to all systems
+            selectedSystems = .all
+        }
+    }
+
+    /// Check if a system is selected
+    func isSystemSelected(_ system: TrainSystem) -> Bool {
+        selectedSystems.contains(system)
+    }
+
+    /// Toggle a system's selection state (ensures at least one remains selected)
+    func toggleSystem(_ system: TrainSystem) {
+        if selectedSystems.contains(system) {
+            // Don't allow deselecting the last system
+            guard selectedSystems.count > 1 else { return }
+            selectedSystems.remove(system)
+        } else {
+            selectedSystems.insert(system)
+        }
+    }
+
+    /// Select all systems
+    func selectAllSystems() {
+        selectedSystems = .all
+    }
+
 }

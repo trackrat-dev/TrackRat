@@ -873,6 +873,97 @@ struct Stations {
             return normalizedName
         }
     }
+
+    // MARK: - Station to Train System Mapping
+
+    /// Maps station codes to the train systems that serve them
+    /// Used to filter stations based on user's selected train systems
+    static let stationSystems: [String: Set<TrainSystem>] = [
+        // PATH stations (PATH only)
+        "PNK": [.path],   // Newark PATH
+        "PHR": [.path],   // Harrison PATH
+        "PJS": [.path],   // Journal Square
+        "PGR": [.path],   // Grove Street
+        "PEX": [.path],   // Exchange Place
+        "PNP": [.path],   // Newport
+        "PHO": [.path],   // Hoboken PATH
+        "PCH": [.path],   // Christopher Street
+        "P9S": [.path],   // 9th Street
+        "P14": [.path],   // 14th Street
+        "P23": [.path],   // 23rd Street
+        "P33": [.path],   // 33rd Street
+        "PWC": [.path],   // World Trade Center
+
+        // PATCO stations (PATCO only)
+        "LND": [.patco],  // Lindenwold
+        "ASD": [.patco],  // Ashland
+        "WCT": [.patco],  // Woodcrest
+        "HDF": [.patco],  // Haddonfield
+        "WMT": [.patco],  // Westmont
+        "CLD": [.patco],  // Collingswood
+        "FRY": [.patco],  // Ferry Avenue
+        "BWY": [.patco],  // Broadway PATCO
+        "CTH": [.patco],  // City Hall PATCO
+        "FKS": [.patco],  // Franklin Square
+        "EMK": [.patco],  // 8th and Market
+        "NTL": [.patco],  // 9-10th and Locust
+        "TWL": [.patco],  // 12-13th and Locust
+        "FFL": [.patco],  // 15-16th and Locust
+
+        // Multi-system stations
+        "NY": [.njt, .amtrak],  // New York Penn Station
+        "NP": [.njt, .amtrak, .path],  // Newark Penn Station (PATH adjacent)
+        "TR": [.njt, .amtrak],  // Trenton
+        "PH": [.njt, .amtrak],  // Philadelphia 30th Street
+        "WI": [.amtrak],  // Wilmington
+        "BA": [.amtrak],  // BWI Airport
+        "BL": [.amtrak],  // Baltimore Penn
+        "WS": [.amtrak],  // Washington Union
+
+        // Amtrak-only stations
+        "BOS": [.amtrak],  // Boston South
+        "BBY": [.amtrak],  // Boston Back Bay
+        "PVD": [.amtrak],  // Providence
+        "NHV": [.amtrak],  // New Haven
+        "BRP": [.amtrak],  // Bridgeport
+        "STM": [.amtrak],  // Stamford
+        "HFD": [.amtrak],  // Hartford
+        "SPG": [.amtrak],  // Springfield
+        "HAR": [.amtrak],  // Harrisburg
+        "LNC": [.amtrak],  // Lancaster
+
+        // Keystone stations (Amtrak)
+        "PAO": [.amtrak],  // Paoli
+        "EXT": [.amtrak],  // Exton
+        "DOW": [.amtrak],  // Downingtown
+        "COT": [.amtrak],  // Coatesville
+        "PKB": [.amtrak],  // Parkesburg
+        "ELT": [.amtrak],  // Elizabethtown
+        "MJY": [.amtrak],  // Mount Joy
+
+        // Southeast Amtrak stations
+        "CLT": [.amtrak],  // Charlotte
+        "RGH": [.amtrak],  // Raleigh
+        "ATL": [.amtrak],  // Atlanta
+        "JAX": [.amtrak],  // Jacksonville
+        "MIA": [.amtrak],  // Miami
+        "ORL": [.amtrak],  // Orlando
+        "TPA": [.amtrak],  // Tampa
+        "SAV": [.amtrak],  // Savannah
+    ]
+
+    /// Returns the train systems that serve a given station
+    /// Defaults to NJT + Amtrak if not explicitly mapped (most NJT commuter stations)
+    static func systemsForStation(_ code: String) -> Set<TrainSystem> {
+        return stationSystems[code] ?? [.njt, .amtrak]
+    }
+
+    /// Check if a station should be visible based on selected systems
+    /// A station is visible if ANY of the selected systems serve it
+    static func isStationVisible(_ code: String, withSystems selectedSystems: Set<TrainSystem>) -> Bool {
+        let stationSystems = systemsForStation(code)
+        return !stationSystems.isDisjoint(with: selectedSystems)
+    }
 }
 
 // MARK: - Default Map Region

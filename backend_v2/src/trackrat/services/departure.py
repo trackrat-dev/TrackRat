@@ -43,6 +43,7 @@ class DepartureService:
         time_to: datetime | None = None,
         limit: int = 50,
         hide_departed: bool = False,
+        data_sources: list[str] | None = None,
         skip_individual_refresh: bool = False,
     ) -> DeparturesResponse:
         """Get train departures between stations.
@@ -115,13 +116,16 @@ class DepartureService:
         # Determine the target date for prioritization
         target_date = date if date else now_et().date()
 
-        # Build additional filters for hide_departed
+        # Build additional filters for hide_departed and data_sources
+        # Default to all data sources if not specified
+        allowed_sources = data_sources if data_sources else ["NJT", "AMTRAK", "PATH", "PATCO"]
+
         departure_filters = [
             JourneyStop.scheduled_departure >= time_from,
             JourneyStop.scheduled_departure <= time_to,
             journey_date_filter,
-            # Include all supported data sources
-            TrainJourney.data_source.in_(["NJT", "AMTRAK", "PATH", "PATCO"]),
+            # Filter by selected data sources
+            TrainJourney.data_source.in_(allowed_sources),
         ]
 
         # PERFORMANCE: Filter out trains that have already departed from origin station

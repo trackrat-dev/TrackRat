@@ -71,6 +71,10 @@ async def get_departures(
         False,
         description="Hide trains that have already departed from the origin station",
     ),
+    data_sources: str | None = Query(
+        None,
+        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO. Default: all",
+    ),
     limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
 ) -> DeparturesResponse:
@@ -83,9 +87,15 @@ async def get_departures(
         time_from=time_from,
         time_to=time_to,
         hide_departed=hide_departed,
+        data_sources=data_sources,
     )
 
     cache_service = ApiCacheService()
+
+    # Parse data_sources into a list
+    source_list: list[str] | None = None
+    if data_sources:
+        source_list = [s.strip().upper() for s in data_sources.split(",") if s.strip()]
 
     # Use cache when using default time parameters (date, time_from, time_to are None)
     # Cache supports both hide_departed=true and hide_departed=false
@@ -98,6 +108,7 @@ async def get_departures(
             "date": None,
             "limit": limit,
             "hide_departed": hide_departed,
+            "data_sources": ",".join(sorted(source_list)) if source_list else None,
         }
 
         cached_response = await cache_service.get_cached_response(
@@ -130,7 +141,7 @@ async def get_departures(
 
     service = DepartureService()
     response = await service.get_departures(
-        db, from_station, to_station, date, time_from, time_to, limit, hide_departed
+        db, from_station, to_station, date, time_from, time_to, limit, hide_departed, source_list
     )
 
     if use_cache:

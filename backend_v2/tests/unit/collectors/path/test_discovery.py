@@ -13,6 +13,7 @@ from trackrat.collectors.path.ridepath_client import PathArrival
 from trackrat.collectors.path.discovery import (
     PathDiscoveryCollector,
     _generate_path_train_id,
+    _get_destination_station_from_headsign,
     _get_line_info_from_headsign,
     _headsign_matches_station,
 )
@@ -88,6 +89,54 @@ class TestGetLineInfoFromHeadsign:
         code, name, color = _get_line_info_from_headsign("Unknown Destination")
         assert code == "PATH"
         assert "Unknown Destination" in name
+
+
+class TestGetDestinationStationFromHeadsign:
+    """Tests for destination station extraction using substring matching."""
+
+    def test_journal_square_via_hoboken(self):
+        """Test 'Journal Square via Hoboken' matches to PJS."""
+        result = _get_destination_station_from_headsign("Journal Square via Hoboken")
+        assert result == "PJS"
+
+    def test_journal_square_simple(self):
+        """Test simple 'Journal Square' matches to PJS."""
+        result = _get_destination_station_from_headsign("Journal Square")
+        assert result == "PJS"
+
+    def test_hoboken(self):
+        """Test 'Hoboken' matches to PHO."""
+        result = _get_destination_station_from_headsign("Hoboken")
+        assert result == "PHO"
+
+    def test_world_trade_center(self):
+        """Test 'World Trade Center' matches to PWC."""
+        result = _get_destination_station_from_headsign("World Trade Center")
+        assert result == "PWC"
+
+    def test_33rd_street(self):
+        """Test '33rd Street' matches to P33."""
+        result = _get_destination_station_from_headsign("33rd Street")
+        assert result == "P33"
+
+    def test_newark(self):
+        """Test 'Newark' matches to PNK."""
+        result = _get_destination_station_from_headsign("Newark")
+        assert result == "PNK"
+
+    def test_case_insensitive(self):
+        """Test matching is case insensitive."""
+        assert _get_destination_station_from_headsign("JOURNAL SQUARE") == "PJS"
+        assert _get_destination_station_from_headsign("hoboken") == "PHO"
+
+    def test_unknown_headsign(self):
+        """Test unknown headsign returns None."""
+        assert _get_destination_station_from_headsign("Unknown Destination") is None
+
+    def test_empty_headsign(self):
+        """Test empty/None headsign returns None."""
+        assert _get_destination_station_from_headsign("") is None
+        assert _get_destination_station_from_headsign(None) is None
 
 
 class TestHeadsignMatchesStation:

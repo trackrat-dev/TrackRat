@@ -17,7 +17,8 @@ struct OnboardingView: View {
     @State private var hasLoadedExistingStations = false
     @State private var isCompletingOnboarding = false
     @State private var hasClearedPreviousData = false
-    
+    @State private var showSystemSelection = true  // Show system selection after video
+
     private enum StationType {
         case home, work
     }
@@ -48,8 +49,11 @@ struct OnboardingView: View {
                         showVideo = false
                     }
                 }
+            } else if showSystemSelection && !isRepeating {
+                // Show train system selection after video (only on first onboarding)
+                systemSelectionView()
             } else {
-                // Show station selection after video
+                // Show station selection after system selection
                 VStack(spacing: 0) {
                     // Custom header when editing favorites (pushed onto NavigationStack)
                     if isRepeating {
@@ -118,7 +122,69 @@ struct OnboardingView: View {
             )
         }
     }
-    
+
+    // MARK: - Train System Selection
+
+    private func systemSelectionView() -> some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            // Header
+            VStack(spacing: 16) {
+                Text("Train Systems")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+
+                Text("Which systems do you use?")
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+            }
+
+            // System selection cards
+            VStack(spacing: 12) {
+                ForEach(TrainSystem.allCases, id: \.self) { system in
+                    SystemSelectionCard(
+                        system: system,
+                        isSelected: appState.isSystemSelected(system),
+                        onTap: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                appState.toggleSystem(system)
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 20)
+
+            Spacer()
+
+            // Continue button and helper text
+            VStack(spacing: 12) {
+                Button(appState.selectedSystems == .all ? "Confirm All" : "Continue") {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showSystemSelection = false
+                    }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+                .font(.headline)
+                .foregroundColor(.white)
+                .frame(height: 50)
+                .frame(minWidth: 160)
+                .background(Color.orange)
+                .cornerRadius(TrackRatTheme.CornerRadius.md)
+
+                Text("Change later in Map → Layers")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 40)
+        }
+    }
+
     // MARK: - Screen 1: Welcome + Station Setup
     private func welcomeAndSetupView() -> some View {
         VStack(spacing: 32) {
@@ -486,6 +552,50 @@ struct StationSelectionCard: View {
             .padding()
             .background(Material.ultraThin)
             .cornerRadius(TrackRatTheme.CornerRadius.md)
+        }
+    }
+}
+
+// MARK: - System Selection Card
+struct SystemSelectionCard: View {
+    let system: TrainSystem
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 16) {
+                // System icon
+                Image(systemName: system.icon)
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
+                    .frame(width: 32)
+
+                // System info
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(system.displayName)
+                        .font(.headline)
+                        .foregroundColor(.white)
+
+                    Text(system.description)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                // Selection indicator
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
+            }
+            .padding()
+            .background(Material.ultraThin)
+            .cornerRadius(TrackRatTheme.CornerRadius.md)
+            .overlay(
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                    .stroke(isSelected ? Color.orange.opacity(0.5) : Color.clear, lineWidth: 1)
+            )
         }
     }
 }

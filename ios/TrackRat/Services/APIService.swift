@@ -94,8 +94,8 @@ final class APIService: ObservableObject {
     }()
     
     // MARK: - Train Search
-    
-    func searchTrains(fromStationCode: String, toStationCode: String, date: Date? = nil) async throws -> [TrainV2] {
+
+    func searchTrains(fromStationCode: String, toStationCode: String, date: Date? = nil, dataSources: Set<TrainSystem>? = nil) async throws -> [TrainV2] {
         guard var components = URLComponents(string: "\(baseURL)/v2/trains/departures") else {
             throw APIError.invalidURL
         }
@@ -114,6 +114,11 @@ final class APIService: ObservableObject {
             formatter.dateFormat = "yyyy-MM-dd"
             formatter.timeZone = TimeZone(identifier: "America/New_York")
             queryItems.append(URLQueryItem(name: "date", value: formatter.string(from: date)))
+        }
+
+        // Add data_sources filter if specified (comma-separated)
+        if let dataSources = dataSources, !dataSources.isEmpty {
+            queryItems.append(URLQueryItem(name: "data_sources", value: dataSources.commaSeparated))
         }
 
         components.queryItems = queryItems

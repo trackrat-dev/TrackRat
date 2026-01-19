@@ -27,6 +27,7 @@ logger = get_logger(__name__)
 
 
 # Mapping from headsign keywords to station codes
+# These are SUBSTRINGS that will be matched against the headsign
 HEADSIGN_TO_STATION_MAP: dict[str, str] = {
     "world trade": "PWC",
     "wtc": "PWC",
@@ -82,6 +83,38 @@ def _headsign_matches_station(headsign: str, station_code: str) -> bool:
             return True
 
     return False
+
+
+def _get_destination_station_from_headsign(headsign: str) -> str | None:
+    """Get destination station code from headsign using substring matching.
+
+    Finds the keyword that appears EARLIEST in the headsign string.
+    This correctly handles "Journal Square via Hoboken" → PJS (not PHO).
+
+    Args:
+        headsign: Train headsign (e.g., "Journal Square via Hoboken")
+
+    Returns:
+        Station code if matched, None otherwise
+    """
+    if not headsign:
+        return None
+
+    headsign_lower = headsign.lower().strip()
+
+    # Find all matching keywords and their positions
+    matches: list[tuple[int, str]] = []
+    for keyword, station_code in HEADSIGN_TO_STATION_MAP.items():
+        pos = headsign_lower.find(keyword)
+        if pos >= 0:
+            matches.append((pos, station_code))
+
+    if not matches:
+        return None
+
+    # Return station code for the keyword that appears first in the headsign
+    matches.sort(key=lambda x: x[0])
+    return matches[0][1]
 
 
 def _get_line_info_from_headsign(headsign: str) -> tuple[str, str, str]:
@@ -332,8 +365,8 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
             )
             return False
 
-        # Get destination station code from headsign
-        destination_station = HEADSIGN_TO_STATION_MAP.get(destination.lower(), None)
+        # Get destination station code from headsign (substring matching)
+        destination_station = _get_destination_station_from_headsign(destination)
 
         # Get route stops from hardcoded PATH routes (no GTFS dependency)
         route_stops = None
