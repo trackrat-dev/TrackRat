@@ -57,6 +57,7 @@ struct MapContainerView: View {
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
+    @State private var showingLayers = false  // Layer controls visibility
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @ObservedObject private var ratSenseService = RatSenseService.shared
     @ObservedObject private var feedbackService = JourneyFeedbackService.shared
@@ -128,9 +129,10 @@ struct MapContainerView: View {
             // Always show the map, just without congestion data when loading
             SystemCongestionMapView(
                 region: $mapRegionVM.mapRegion,
-                segments: mapViewModel.segments,
-                individualSegments: mapViewModel.individualSegments,
-                stations: mapViewModel.stations,
+                segments: mapViewModel.showCongestion != .off ? mapViewModel.segments : [],
+                individualSegments: mapViewModel.showCongestion == .individual ? mapViewModel.individualSegments : [],
+                stations: mapViewModel.showStations ? mapViewModel.routeStations : [],
+                showRoutes: mapViewModel.showRoutes,
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -141,16 +143,48 @@ struct MapContainerView: View {
                 }
             )
             .ignoresSafeArea()
-            
+
             // Operations summary pill (network scope) - positioned at top
             // Shows network summary + route summary when RatSense has a prediction
             VStack {
-                OperationsSummaryView(
-                    scope: .network,
-                    ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
-                )
-                    .padding(.horizontal, 16)
-                    .padding(.top, 30)
+                HStack(alignment: .top) {
+                    OperationsSummaryView(
+                        scope: .network,
+                        ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
+                    )
+
+                    Spacer()
+
+                    // Layers button
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showingLayers.toggle()
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Image(systemName: "square.3.layers.3d")
+                            .font(.title2)
+                            .foregroundColor(showingLayers ? .white : .orange)
+                            .padding(10)
+                            .background {
+                                if showingLayers {
+                                    Circle().fill(Color.orange)
+                                } else {
+                                    Circle().fill(.ultraThinMaterial)
+                                }
+                            }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 30)
+
+                // Layer controls (collapsible)
+                if showingLayers {
+                    MapLayerControlsView(viewModel: mapViewModel)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
                 Spacer()
 
@@ -173,7 +207,7 @@ struct MapContainerView: View {
                 }
             }
             .padding(.bottom, 120) // Above bottom sheet
-            
+
             // Gradient overlay at top for better readability
             VStack {
                 LinearGradient(
@@ -183,7 +217,7 @@ struct MapContainerView: View {
                 )
                 .frame(height: 100)
                 .ignoresSafeArea()
-                
+
                 Spacer()
             }
         }
@@ -769,6 +803,91 @@ struct CongestionMapControlsView: View {
     }
 }
 
+
+// MARK: - Map Layer Controls View
+struct MapLayerControlsView: View {
+    @ObservedObject var viewModel: CongestionMapViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Congestion toggle (tri-state: Off -> Summary -> Trains)
+            MapLayerToggleButton(
+                label: "Congestion",
+                icon: viewModel.showCongestion.iconName,
+                isOn: viewModel.showCongestion != .off,
+                detail: viewModel.showCongestion.rawValue
+            ) {
+                viewModel.cycleCongestionMode()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+
+            // Routes toggle
+            MapLayerToggleButton(
+                label: "Routes",
+                icon: "point.topleft.down.to.point.bottomright.curvepath",
+                isOn: viewModel.showRoutes,
+                detail: viewModel.showRoutes ? "On" : "Off"
+            ) {
+                viewModel.showRoutes.toggle()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+
+            // Stations toggle
+            MapLayerToggleButton(
+                label: "Stations",
+                icon: "mappin.circle.fill",
+                isOn: viewModel.showStations,
+                detail: viewModel.showStations ? "On" : "Off"
+            ) {
+                viewModel.showStations.toggle()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+        )
+    }
+}
+
+// MARK: - Map Layer Toggle Button
+private struct MapLayerToggleButton: View {
+    let label: String
+    let icon: String
+    let isOn: Bool
+    let detail: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.body)
+                    .foregroundColor(isOn ? .orange : .secondary)
+                    .frame(width: 24)
+
+                Text(label)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundColor(isOn ? .orange : .secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(isOn ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
+                    )
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
 
 #Preview {
     MapContainerView()

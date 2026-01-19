@@ -11,28 +11,28 @@ struct CongestionMapView: View {
     @State private var showingFilters = false
     @State private var timeWindow = 1
     @State private var selectedDataSource: String = "All"
-    
+    @State private var showingLayers = false
+
     var body: some View {
         ZStack {
             // Map
             SystemCongestionMapView(
                 region: $region,
-                segments: viewModel.segments,
-                individualSegments: viewModel.individualSegments,
-                stations: viewModel.stations,
+                segments: viewModel.showCongestion != .off ? viewModel.segments : [],
+                individualSegments: viewModel.showCongestion == .individual ? viewModel.individualSegments : [],
+                stations: viewModel.showStations ? (viewModel.showRoutes ? viewModel.routeStations : viewModel.stations) : [],
+                showRoutes: viewModel.showRoutes,
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 },
                 onIndividualSegmentTap: { individualSegment in
-                    // For now, we'll just show regular segment details
-                    // TODO: Create specific individual segment details view
                     print("Tapped individual segment: \(individualSegment.trainDisplayName) \(individualSegment.fromStation) → \(individualSegment.toStation)")
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             )
             .ignoresSafeArea()
-            
+
             // Controls overlay
             VStack {
                 // Header
@@ -41,43 +41,41 @@ struct CongestionMapView: View {
                         Text("Train Traffic")
                             .font(.largeTitle)
                             .fontWeight(.bold)
-                        
+
                         if viewModel.isLoading {
                             Text("Loading...")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         } else {
-                            Text("\(viewModel.segments.count) segments")
+                            Text(headerSubtitle)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
-                    
+
                     Spacer()
-                    
+
                     HStack(spacing: 12) {
-                        // Display mode toggle
+                        // Layers button
                         Button {
-                            Task {
-                                switch viewModel.displayMode {
-                                case .aggregated:
-                                    await viewModel.updateDisplayMode(.individual)
-                                case .individual, .individualLimited:
-                                    await viewModel.updateDisplayMode(.aggregated)
-                                }
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showingLayers.toggle()
                             }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {
-                            Image(systemName: viewModel.displayMode == .aggregated ? "line.horizontal.3" : "dot.square")
+                            Image(systemName: "square.3.layers.3d")
                                 .font(.title2)
-                                .foregroundColor(.orange)
+                                .foregroundColor(showingLayers ? .white : .orange)
                                 .padding(10)
-                                .background(
-                                    Circle()
-                                        .fill(.ultraThinMaterial)
-                                )
+                                .background {
+                                    if showingLayers {
+                                        Circle().fill(Color.orange)
+                                    } else {
+                                        Circle().fill(.ultraThinMaterial)
+                                    }
+                                }
                         }
-                        
+
                         // Filter button
                         Button {
                             showingFilters.toggle()
@@ -104,52 +102,22 @@ struct CongestionMapView: View {
                     )
                     .ignoresSafeArea()
                 )
-                
-                Spacer()
-                
-                // Legend
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Congestion Levels")
-                        .trackRatSectionHeader()
 
-                    HStack(spacing: 16) {
-                        LegendItem(color: .green, label: "Normal")
-                        LegendItem(color: .yellow, label: "Moderate")
-                        LegendItem(color: .orange, label: "Heavy")
-                        LegendItem(color: .red, label: "Severe")
+                Spacer()
+
+                // Bottom panel: Layers + Legend
+                VStack(spacing: 12) {
+                    // Layer Controls (collapsible)
+                    if showingLayers {
+                        layerControlsView
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
-                    
-                    // Cancellation legend
-                    HStack(spacing: 8) {
-                        HStack(spacing: 4) {
-                            Rectangle()
-                                .fill(.red)
-                                .frame(width: 20, height: 2)
-                                .overlay(
-                                    Rectangle()
-                                        .fill(.clear)
-                                        .frame(width: 20, height: 2)
-                                        .overlay(
-                                            HStack(spacing: 1) {
-                                                ForEach(0..<4, id: \.self) { _ in
-                                                    Rectangle()
-                                                        .fill(.red)
-                                                        .frame(width: 2, height: 2)
-                                                }
-                                            }
-                                        )
-                                )
-                            Text("High Cancellations")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
+
+                    // Congestion Legend (only when congestion is visible)
+                    if viewModel.showCongestion != .off {
+                        congestionLegendView
                     }
                 }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
                 .padding()
             }
         }
@@ -176,31 +144,207 @@ struct CongestionMapView: View {
             await viewModel.fetchCongestionData()
         }
     }
-    
+
+    // MARK: - Computed Properties
+
+    private var headerSubtitle: String {
+        var parts: [String] = []
+        if viewModel.showCongestion != .off && !viewModel.segments.isEmpty {
+            parts.append("\(viewModel.segments.count) segments")
+        }
+        if viewModel.showRoutes {
+            parts.append("\(RouteTopology.allRoutes.count) routes")
+        }
+        if viewModel.showStations {
+            let stationCount = viewModel.showRoutes ? viewModel.routeStations.count : viewModel.stations.count
+            if stationCount > 0 {
+                parts.append("\(stationCount) stations")
+            }
+        }
+        return parts.isEmpty ? "No layers visible" : parts.joined(separator: " · ")
+    }
+
+    // MARK: - Layer Controls View
+
+    private var layerControlsView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Layers")
+                .font(.headline)
+                .fontWeight(.semibold)
+
+            // Congestion toggle (tri-state)
+            LayerToggleButton(
+                label: "Congestion",
+                icon: viewModel.showCongestion.iconName,
+                isOn: viewModel.showCongestion != .off,
+                detail: viewModel.showCongestion.rawValue
+            ) {
+                viewModel.cycleCongestionMode()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+
+            // Routes toggle
+            LayerToggleButton(
+                label: "Routes",
+                icon: "point.topleft.down.to.point.bottomright.curvepath",
+                isOn: viewModel.showRoutes,
+                detail: viewModel.showRoutes ? "On" : "Off"
+            ) {
+                viewModel.showRoutes.toggle()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+
+            // Stations toggle
+            LayerToggleButton(
+                label: "Stations",
+                icon: "mappin.circle.fill",
+                isOn: viewModel.showStations,
+                detail: viewModel.showStations ? "On" : "Off"
+            ) {
+                viewModel.showStations.toggle()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+        )
+    }
+
+    // MARK: - Congestion Legend View
+
+    private var congestionLegendView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Congestion Levels")
+                .trackRatSectionHeader()
+
+            HStack(spacing: 16) {
+                LegendItem(color: .green, label: "Normal")
+                LegendItem(color: .yellow, label: "Moderate")
+                LegendItem(color: .orange, label: "Heavy")
+                LegendItem(color: .red, label: "Severe")
+            }
+
+            // Cancellation legend
+            HStack(spacing: 4) {
+                Rectangle()
+                    .fill(.red)
+                    .frame(width: 20, height: 2)
+                    .overlay(
+                        HStack(spacing: 2) {
+                            ForEach(0..<4, id: \.self) { _ in
+                                Rectangle()
+                                    .fill(.black)
+                                    .frame(width: 2, height: 2)
+                            }
+                        }
+                    )
+                Text("High Cancellations")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+        )
+    }
+}
+
+// MARK: - Layer Toggle Button
+
+private struct LayerToggleButton: View {
+    let label: String
+    let icon: String
+    let isOn: Bool
+    let detail: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.body)
+                    .foregroundColor(isOn ? .orange : .secondary)
+                    .frame(width: 24)
+
+                Text(label)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Text(detail)
+                    .font(.caption)
+                    .foregroundColor(isOn ? .orange : .secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(isOn ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
+                    )
+            }
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 // MARK: - View Model
 
+/// Legacy display mode for API parameter selection
 enum CongestionDisplayMode: Equatable {
     case aggregated
     case individual
     case individualLimited(maxPerSegment: Int)
 }
 
+/// Congestion layer mode: off, aggregated summary, or individual train journeys
+enum CongestionMode: String, CaseIterable {
+    case off = "Off"
+    case aggregated = "Summary"
+    case individual = "Trains"
+
+    /// Cycle to next mode
+    func next() -> CongestionMode {
+        switch self {
+        case .off: return .aggregated
+        case .aggregated: return .individual
+        case .individual: return .off
+        }
+    }
+
+    /// Icon for the current mode
+    var iconName: String {
+        switch self {
+        case .off: return "eye.slash"
+        case .aggregated: return "chart.bar.fill"
+        case .individual: return "train.side.front.car"
+        }
+    }
+}
+
 @MainActor
 class CongestionMapViewModel: ObservableObject {
+    // MARK: - Layer Visibility (all default ON)
+    @Published var showCongestion: CongestionMode = .aggregated
+    @Published var showRoutes: Bool = true
+    @Published var showStations: Bool = true
+
+    // MARK: - Data
     @Published var segments: [CongestionSegment] = []
     @Published var individualSegments: [IndividualJourneySegment] = []
     @Published var stations: [MapStation] = []
+    @Published var routeStations: [MapStation] = []  // Stations from route topology
     @Published var isLoading = false
     @Published var error: String?
-    @Published var displayMode: CongestionDisplayMode = .individual
-    
-    // Store all segments and filter based on display mode
+
+    // MARK: - Internal State
     private var allAggregatedSegments: [CongestionSegment] = []
     private var allIndividualSegments: [IndividualJourneySegment] = []
     private var allStations: [MapStation] = []
-    private var currentDisplayMode: MapDisplayMode = .overallCongestion
     
     // Current journey filter
     private var selectedRoute: TripPair?
@@ -214,8 +358,21 @@ class CongestionMapViewModel: ObservableObject {
         // This prevents blocking the UI during app startup and navigation
         print("🚦 CongestionMapViewModel init - data loading deferred")
 
+        // Load route topology stations (immediate, client-side)
+        loadRouteTopologyStations()
+
         // Observe Live Activity state changes
         observeLiveActivityState()
+    }
+
+    /// Loads all stations from route topology (client-side, no API call)
+    private func loadRouteTopologyStations() {
+        routeStations = RouteTopology.allStationCodes.compactMap { code in
+            guard let coord = Stations.getCoordinates(for: code) else { return nil }
+            let name = Stations.stationName(forCode: code) ?? code
+            return MapStation(code: code, name: name, coordinate: coord)
+        }
+        print("🗺️ Loaded \(routeStations.count) route topology stations")
     }
 
     private func observeLiveActivityState() {
@@ -276,10 +433,13 @@ class CongestionMapViewModel: ObservableObject {
         error = nil
         
         do {
-            let maxPerSegment = switch displayMode {
-            case .aggregated: 0
-            case .individual: 100
-            case .individualLimited(let max): max
+            // Determine maxPerSegment based on congestion mode
+            let maxPerSegment: Int
+            switch showCongestion {
+            case .off, .aggregated:
+                maxPerSegment = 0
+            case .individual:
+                maxPerSegment = 100
             }
             
             let response = try await APIService.shared.fetchCongestionData(
@@ -377,31 +537,36 @@ class CongestionMapViewModel: ObservableObject {
         print("🚦 Congestion data fetch completed. Final segments: \(segments.count)")
     }
     
-    func updateDisplayMode(_ mode: CongestionDisplayMode) async {
-        print("🚦 Updating display mode to: \(mode)")
-        displayMode = mode
-
-        // OPTIMIZATION: Only re-filter cached data instead of re-fetching from API
-        // This is instant and doesn't require a network call
+    /// Cycles the congestion mode (off -> aggregated -> individual -> off)
+    func cycleCongestionMode() {
+        showCongestion = showCongestion.next()
+        print("🚦 Congestion mode changed to: \(showCongestion.rawValue)")
         applyDisplayModeFilter()
     }
-    
+
     private func applyDisplayModeFilter() {
         // First apply route filter if we have one
         let filteredAggregated = selectedRoute != nil ? filterSegmentsForRoute(allAggregatedSegments) : allAggregatedSegments
         let filteredIndividual = selectedRoute != nil ? filterIndividualSegmentsForRoute(allIndividualSegments) : allIndividualSegments
-        
-        switch displayMode {
+
+        switch showCongestion {
+        case .off:
+            // Hide congestion data
+            segments = []
+            individualSegments = []
+            stations = allStations
+            print("🚦 Congestion hidden")
+
         case .aggregated:
             // Show aggregated segments only
             segments = filteredAggregated
             individualSegments = []
             stations = allStations
             print("🚦 Applied aggregated filter: \(segments.count) aggregated segments")
-            
-        case .individual, .individualLimited:
+
+        case .individual:
             // Show individual journey segments
-            segments = filteredAggregated // Keep aggregated for reference
+            segments = filteredAggregated // Keep aggregated for reference (dimmed)
             individualSegments = filteredIndividual
             stations = allStations
             print("🚦 Applied individual filter: \(individualSegments.count) individual segments")
@@ -573,20 +738,21 @@ struct SystemCongestionMapView: UIViewRepresentable {
     let segments: [CongestionSegment]
     let individualSegments: [IndividualJourneySegment]
     let stations: [MapStation]
+    let showRoutes: Bool
     let onSegmentTap: (CongestionSegment) -> Void
     let onIndividualSegmentTap: ((IndividualJourneySegment) -> Void)?
-    
+
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = true
         mapView.userTrackingMode = .none
-        
+
         // Configure map appearance
         mapView.mapType = .standard
         mapView.showsCompass = true
         mapView.showsScale = true
-        
+
         return mapView
     }
     
@@ -606,9 +772,14 @@ struct SystemCongestionMapView: UIViewRepresentable {
         let desiredAggregatedState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
         let desiredIndividualState = Set(individualSegments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: String($0.congestionFactor)) })
 
+        // Check if anything changed (congestion, routes, or stations)
+        let congestionChanged = desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
+                               desiredIndividualState != context.coordinator.currentIndividualOverlayState
+        let routesChanged = showRoutes != context.coordinator.routesVisible
+        let stationsChanged = !stations.isEmpty || !mapView.annotations.filter { !($0 is MKUserLocation) }.isEmpty
+
         // Early exit if nothing changed
-        guard desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
-              desiredIndividualState != context.coordinator.currentIndividualOverlayState else {
+        guard congestionChanged || routesChanged || stationsChanged else {
             return
         }
 
@@ -706,8 +877,50 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
-        // Always clear and re-add annotations (they're lightweight)
+        // Handle route topology overlays
+        if showRoutes != context.coordinator.routesVisible {
+            if showRoutes {
+                // Add route topology overlays (insert at bottom so congestion renders on top)
+                var newRouteOverlays: [RouteTopologyPolyline] = []
+                for route in RouteTopology.allRoutes {
+                    for (from, to) in route.coordinatePairs {
+                        let coordinates = [from, to]
+                        let polyline = RouteTopologyPolyline(coordinates: coordinates, count: coordinates.count)
+                        polyline.routeId = route.id
+                        polyline.routeName = route.name
+                        polyline.dataSource = route.dataSource
+                        newRouteOverlays.append(polyline)
+                    }
+                }
+                if !newRouteOverlays.isEmpty {
+                    mapView.insertOverlay(newRouteOverlays.first!, at: 0)
+                    for (index, overlay) in newRouteOverlays.dropFirst().enumerated() {
+                        mapView.insertOverlay(overlay, at: index + 1)
+                    }
+                }
+                context.coordinator.routeTopologyOverlays = newRouteOverlays
+            } else {
+                // Remove route topology overlays
+                if !context.coordinator.routeTopologyOverlays.isEmpty {
+                    mapView.removeOverlays(context.coordinator.routeTopologyOverlays)
+                    context.coordinator.routeTopologyOverlays = []
+                }
+            }
+            context.coordinator.routesVisible = showRoutes
+        }
+
+        // Handle station annotations
         mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
+        if !stations.isEmpty {
+            for station in stations {
+                let annotation = SystemStationAnnotation()
+                annotation.coordinate = station.coordinate
+                annotation.title = station.name
+                annotation.subtitle = station.code
+                annotation.station = station
+                mapView.addAnnotation(annotation)
+            }
+        }
 
         // Update state
         context.coordinator.currentAggregatedOverlayState = desiredAggregatedState
@@ -740,6 +953,10 @@ struct SystemCongestionMapView: UIViewRepresentable {
         var aggregatedOverlayMap: [String: SystemCongestionPolyline] = [:]
         var currentIndividualOverlayState: Set<OverlayIdentity> = []
         var individualOverlayMap: [String: IndividualJourneyPolyline] = [:]
+
+        // Route topology state
+        var routeTopologyOverlays: [RouteTopologyPolyline] = []
+        var routesVisible: Bool = false
 
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
@@ -796,9 +1013,19 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 
                 return renderer
             }
+
+            // Handle route topology polylines
+            if let polyline = overlay as? RouteTopologyPolyline {
+                let renderer = MKPolylineRenderer(polyline: polyline)
+                renderer.strokeColor = UIColor.white
+                renderer.lineWidth = 4.0
+                renderer.alpha = 0.6
+                return renderer
+            }
+
             return MKOverlayRenderer(overlay: overlay)
         }
-        
+
         // MARK: - Annotation Rendering
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             // Handle user location
@@ -912,6 +1139,12 @@ class SystemCongestionPolyline: MKPolyline {
 class IndividualJourneyPolyline: MKPolyline {
     var individualSegment: IndividualJourneySegment?
     var offsetIndex: Int = 0
+}
+
+class RouteTopologyPolyline: MKPolyline {
+    var routeId: String = ""
+    var routeName: String = ""
+    var dataSource: String = ""
 }
 
 // MARK: - Custom Annotation Class for System Map

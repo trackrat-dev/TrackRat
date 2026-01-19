@@ -37,6 +37,12 @@
 		A12C31482F1DA63A00CAF76D /* TrackTrainInlineButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C31462F1DA63A00CAF76D /* TrackTrainInlineButton.swift */; };
 		A12C314A2F1DA64A00CAF76D /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C31492F1DA64A00CAF76D /* SubscriptionService.swift */; };
 		A12C314B2F1DA64A00CAF76D /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C31492F1DA64A00CAF76D /* SubscriptionService.swift */; };
+		A12C314D2F1DB9D100CAF76D /* JourneyCongestionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C314C2F1DB9D100CAF76D /* JourneyCongestionMapView.swift */; };
+		A12C314E2F1DB9D100CAF76D /* JourneyCongestionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C314C2F1DB9D100CAF76D /* JourneyCongestionMapView.swift */; };
+		A12C31502F1DB9E400CAF76D /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C314F2F1DB9E400CAF76D /* SubscriptionService.swift */; };
+		A12C31512F1DB9E400CAF76D /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C314F2F1DB9E400CAF76D /* SubscriptionService.swift */; };
+		A12C31532F1DB9F200CAF76D /* RouteTopology.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C31522F1DB9F200CAF76D /* RouteTopology.swift */; };
+		A12C31542F1DB9F200CAF76D /* RouteTopology.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C31522F1DB9F200CAF76D /* RouteTopology.swift */; };
 		A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4ABD2E1949A400E13005 /* V2APIModels.swift */; };
 		A16C81EE2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
 		A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */; };
@@ -182,6 +188,9 @@
 		A12C31432F1DA62600CAF76D /* ProFeatureLockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProFeatureLockView.swift; path = TrackRat/Views/Paywall/ProFeatureLockView.swift; sourceTree = "<group>"; };
 		A12C31462F1DA63A00CAF76D /* TrackTrainInlineButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackTrainInlineButton.swift; path = TrackRat/Views/Components/TrackTrainInlineButton.swift; sourceTree = "<group>"; };
 		A12C31492F1DA64A00CAF76D /* SubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubscriptionService.swift; path = TrackRat/Services/SubscriptionService.swift; sourceTree = "<group>"; };
+		A12C314C2F1DB9D100CAF76D /* JourneyCongestionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyCongestionMapView.swift; path = TrackRat/Views/Components/JourneyCongestionMapView.swift; sourceTree = "<group>"; };
+		A12C314F2F1DB9E400CAF76D /* SubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubscriptionService.swift; path = TrackRat/Services/SubscriptionService.swift; sourceTree = "<group>"; };
+		A12C31522F1DB9F200CAF76D /* RouteTopology.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteTopology.swift; path = TrackRat/Shared/RouteTopology.swift; sourceTree = "<group>"; };
 		A14A4ABB2E19499800E13005 /* TrainV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2.swift; path = TrackRat/Models/TrainV2.swift; sourceTree = "<group>"; };
 		A14A4ABD2E1949A400E13005 /* V2APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModels.swift; path = TrackRat/Models/V2APIModels.swift; sourceTree = "<group>"; };
 		A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FeedbackButton.swift; path = TrackRat/Views/Components/FeedbackButton.swift; sourceTree = "<group>"; };
@@ -319,6 +328,9 @@
 				A12C31432F1DA62600CAF76D /* ProFeatureLockView.swift */,
 				A12C31462F1DA63A00CAF76D /* TrackTrainInlineButton.swift */,
 				A12C31492F1DA64A00CAF76D /* SubscriptionService.swift */,
+				A12C314C2F1DB9D100CAF76D /* JourneyCongestionMapView.swift */,
+				A12C314F2F1DB9E400CAF76D /* SubscriptionService.swift */,
+				A12C31522F1DB9F200CAF76D /* RouteTopology.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -639,6 +651,7 @@
 				A10E97F82DE39EF9002F3214 /* StorageService.swift in Sources */,
 				A10E98022DE39F23002F3214 /* DestinationPickerView.swift in Sources */,
 				A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */,
+				A12C31532F1DB9F200CAF76D /* RouteTopology.swift in Sources */,
 				A12C31482F1DA63A00CAF76D /* TrackTrainInlineButton.swift in Sources */,
 				A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */,
 				A183B7E12E6352E80024FADC /* LegacySheetAwareScrollView.swift in Sources */,
@@ -646,10 +659,12 @@
 				A1AD0D092E106D1B003DA39F /* Stations.swift in Sources */,
 				A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */,
 				A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */,
+				A12C314D2F1DB9D100CAF76D /* JourneyCongestionMapView.swift in Sources */,
 				A10E97F92DE39EF9002F3214 /* APIService.swift in Sources */,
 				A17A63E22EE60FD2003BD685 /* TrainStatsSummaryView.swift in Sources */,
 				A10E97FA2DE39F0F002F3215 /* RatSenseService.swift in Sources */,
 				A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */,
+				A12C31502F1DB9E400CAF76D /* SubscriptionService.swift in Sources */,
 				A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */,
 				A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
@@ -689,6 +704,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A12C31542F1DB9F200CAF76D /* RouteTopology.swift in Sources */,
 				A1BA60EC2DFC73650002FB39 /* BuildTests.swift in Sources */,
 				A1BA60ED2DFC73650002FB39 /* StationsTests.swift in Sources */,
 				A1B2375E2F002DCF0011A16E /* TrackTrainInlineButton.swift in Sources */,
@@ -703,6 +719,7 @@
 				A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */,
 				A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */,
 				A1D92A6E2F0AEFE50098897F /* TripRecordingService.swift in Sources */,
+				A12C31512F1DB9E400CAF76D /* SubscriptionService.swift in Sources */,
 				A12C31472F1DA63A00CAF76D /* TrackTrainInlineButton.swift in Sources */,
 				A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */,
 				A17A63DF2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
@@ -712,6 +729,7 @@
 				A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */,
 				A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */,
 				A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */,
+				A12C314E2F1DB9D100CAF76D /* JourneyCongestionMapView.swift in Sources */,
 				A1F670E92EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */,
 				A12C31412F1DA61700CAF76D /* PaywallView.swift in Sources */,
 				A1D92A742F0AF01E0098897F /* CompletedTrip.swift in Sources */,
