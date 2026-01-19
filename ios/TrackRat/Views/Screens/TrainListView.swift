@@ -3,6 +3,7 @@ import SwiftUI
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainListViewModel
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
 
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 6
@@ -22,6 +23,7 @@ struct TrainListView: View {
     // Date selection for future schedules
     @State private var selectedDate: Date = Date()
     @State private var showDatePicker: Bool = false
+    @State private var showingPaywall: Bool = false
 
     /// Check if viewing a future date (not today)
     private var isFutureDate: Bool {
@@ -66,11 +68,20 @@ struct TrainListView: View {
 
                 Spacer()
 
-                // Date picker button
+                // Date picker button - Pro feature
                 Button {
-                    showDatePicker = true
+                    if subscriptionService.isPro {
+                        showDatePicker = true
+                    } else {
+                        showingPaywall = true
+                    }
                 } label: {
                     HStack(spacing: 4) {
+                        if !subscriptionService.isPro {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.orange)
+                        }
                         Image(systemName: "calendar")
                             .font(.system(size: 14))
                         Text(isFutureDate ? selectedDate.formatted(.dateTime.weekday(.abbreviated)) : "Today")
@@ -120,27 +131,37 @@ struct TrainListView: View {
                             ScheduleInfoBanner(date: selectedDate)
                         }
 
-                        // Route summary (if we have both origin and destination) - only for today
+                        // Route summary (if we have both origin and destination) - only for today - Pro feature
                         if !isFutureDate,
                            !departureStationCode.isEmpty,
                            let destinationCode = Stations.getStationCode(destination) {
-                            OperationsSummaryView(
-                                scope: .route,
-                                fromStation: departureStationCode,
-                                toStation: destinationCode,
-                                isExpandable: true,
-                                onTrainTap: { selectedTrainId in
-                                    // Navigate to the selected train's detail view
-                                    appState.navigationPath.append(
-                                        NavigationDestination.trainDetailsFlexible(
-                                            trainNumber: selectedTrainId,
-                                            fromStation: departureStationCode,
-                                            journeyDate: nil
+                            if subscriptionService.isPro {
+                                OperationsSummaryView(
+                                    scope: .route,
+                                    fromStation: departureStationCode,
+                                    toStation: destinationCode,
+                                    isExpandable: true,
+                                    onTrainTap: { selectedTrainId in
+                                        // Navigate to the selected train's detail view
+                                        appState.navigationPath.append(
+                                            NavigationDestination.trainDetailsFlexible(
+                                                trainNumber: selectedTrainId,
+                                                fromStation: departureStationCode,
+                                                journeyDate: nil
+                                            )
                                         )
-                                    )
-                                }
-                            )
-                            .padding(.bottom, 4)
+                                    }
+                                )
+                                .padding(.bottom, 4)
+                            } else {
+                                // Locked route summary for free users
+                                ProFeatureLockView(
+                                    feature: .historicalData,
+                                    context: .historicalData,
+                                    showingPaywall: $showingPaywall
+                                )
+                                .padding(.bottom, 4)
+                            }
                         }
 
                         ForEach(viewModel.trains) { train in
@@ -216,6 +237,11 @@ struct TrainListView: View {
         }
         .sheet(isPresented: $showDatePicker) {
             DateSelectorSheet(selectedDate: $selectedDate)
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: .historicalData)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .onAppear {
             isViewVisible = true

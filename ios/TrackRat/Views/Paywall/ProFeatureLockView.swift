@@ -23,7 +23,7 @@ struct ProFeatureLockView: View {
                     HStack(spacing: 6) {
                         Text(feature.displayName)
                             .font(.subheadline.weight(.medium))
-                            .foregroundColor(.white)
+                            .foregroundColor(.black)
 
                         // Pro badge
                         Text("PRO")
@@ -39,7 +39,7 @@ struct ProFeatureLockView: View {
 
                     Text(context.subtext)
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(.black.opacity(0.6))
                         .lineLimit(2)
                 }
 
@@ -47,12 +47,12 @@ struct ProFeatureLockView: View {
 
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.black.opacity(0.4))
             }
             .padding()
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(.white.opacity(0.05))
+                    .fill(.orange.opacity(0.08))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(.orange.opacity(0.3), lineWidth: 1)
@@ -190,7 +190,7 @@ extension View {
         )
         .padding()
     }
-    .background(Color.black)
+    .background(Color.white)
 }
 
 #Preview("ProBadgeLock") {

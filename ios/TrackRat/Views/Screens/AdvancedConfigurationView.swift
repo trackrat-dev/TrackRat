@@ -96,18 +96,6 @@ struct AdvancedConfigurationView: View {
                     .foregroundColor(.white.opacity(0.8))
 
                 Spacer()
-
-                if subscriptionService.debugOverrideEnabled {
-                    Text("DEBUG")
-                        .font(.caption2.bold())
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule()
-                                .fill(.orange.opacity(0.2))
-                        )
-                }
             }
         }
         .padding()
