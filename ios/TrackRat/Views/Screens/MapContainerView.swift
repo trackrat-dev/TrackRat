@@ -903,22 +903,24 @@ struct MapLayerControlsView: View {
             Divider()
                 .background(Color.white.opacity(0.2))
 
-            // Train Systems section
-            Text("Train Systems")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.secondary)
-                .padding(.top, 4)
+            // Train Systems section (only shows enabled systems)
+            if appState.enabledSystems.count > 1 {
+                Text("Train Systems")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 4)
 
-            ForEach(TrainSystem.allCases, id: \.self) { system in
-                SystemToggleRow(
-                    system: system,
-                    isSelected: appState.isSystemSelected(system),
-                    action: {
-                        appState.toggleSystem(system)
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                )
+                ForEach(Array(appState.enabledSystems).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { system in
+                    SystemToggleRow(
+                        system: system,
+                        isSelected: appState.isSystemSelected(system),
+                        action: {
+                            appState.toggleSystem(system)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    )
+                }
             }
         }
         .padding(12)

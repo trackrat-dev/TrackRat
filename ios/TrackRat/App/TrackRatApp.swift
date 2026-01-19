@@ -543,15 +543,31 @@ final class AppState: ObservableObject {
     @Published var favoriteStations: [FavoriteStation] = []
 
     // Selected train systems (persisted via UserDefaults)
-    @Published var selectedSystems: Set<TrainSystem> = .all {
+    // These are the systems currently active/toggled on in the layers menu
+    @Published var selectedSystems: Set<TrainSystem> = .defaultEnabled {
         didSet {
             UserDefaults.standard.set(selectedSystems.commaSeparated, forKey: "selectedTrainSystems")
+        }
+    }
+
+    // Enabled train systems (persisted via UserDefaults)
+    // These are the systems available to use at all (gates UI visibility)
+    // PATH and PATCO start disabled and must be enabled in Advanced Configuration
+    @Published var enabledSystems: Set<TrainSystem> = .defaultEnabled {
+        didSet {
+            UserDefaults.standard.set(enabledSystems.commaSeparated, forKey: "enabledTrainSystems")
+            // Ensure selectedSystems only contains enabled systems
+            let invalidSelected = selectedSystems.subtracting(enabledSystems)
+            if !invalidSelected.isEmpty {
+                selectedSystems = selectedSystems.intersection(enabledSystems)
+            }
         }
     }
 
     init() {
         loadRecentTrips()
         loadFavoriteStations()
+        loadEnabledSystems()
         loadSelectedSystems()
 
         // Migrate existing data
@@ -653,23 +669,47 @@ final class AppState: ObservableObject {
 
     // MARK: - Train Systems
 
-    /// Load selected systems from UserDefaults
-    private func loadSelectedSystems() {
-        if let stored = UserDefaults.standard.string(forKey: "selectedTrainSystems"), !stored.isEmpty {
-            selectedSystems = .from(commaSeparated: stored)
+    /// Load enabled systems from UserDefaults (systems available in UI)
+    private func loadEnabledSystems() {
+        if let stored = UserDefaults.standard.string(forKey: "enabledTrainSystems"), !stored.isEmpty {
+            enabledSystems = .from(commaSeparated: stored)
         } else {
-            // Default to all systems
-            selectedSystems = .all
+            // Default to NJT and Amtrak only (PATH/PATCO disabled by default)
+            enabledSystems = .defaultEnabled
         }
     }
 
-    /// Check if a system is selected
+    /// Load selected systems from UserDefaults (systems currently active)
+    private func loadSelectedSystems() {
+        if let stored = UserDefaults.standard.string(forKey: "selectedTrainSystems"), !stored.isEmpty {
+            // Only load systems that are also enabled
+            let loaded = Set<TrainSystem>.from(commaSeparated: stored)
+            selectedSystems = loaded.intersection(enabledSystems)
+            // Ensure at least one system is selected
+            if selectedSystems.isEmpty {
+                selectedSystems = enabledSystems
+            }
+        } else {
+            // Default to all enabled systems
+            selectedSystems = enabledSystems
+        }
+    }
+
+    /// Check if a system is selected (active in layers menu)
     func isSystemSelected(_ system: TrainSystem) -> Bool {
         selectedSystems.contains(system)
     }
 
+    /// Check if a system is enabled (available in UI)
+    func isSystemEnabled(_ system: TrainSystem) -> Bool {
+        enabledSystems.contains(system)
+    }
+
     /// Toggle a system's selection state (ensures at least one remains selected)
     func toggleSystem(_ system: TrainSystem) {
+        // Can only toggle systems that are enabled
+        guard enabledSystems.contains(system) else { return }
+
         if selectedSystems.contains(system) {
             // Don't allow deselecting the last system
             guard selectedSystems.count > 1 else { return }
@@ -679,9 +719,24 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Select all systems
+    /// Enable or disable a system (controls UI visibility)
+    func setSystemEnabled(_ system: TrainSystem, enabled: Bool) {
+        if enabled {
+            enabledSystems.insert(system)
+            // Also select it when enabling
+            selectedSystems.insert(system)
+        } else {
+            // Don't allow disabling the last system
+            guard enabledSystems.count > 1 else { return }
+            enabledSystems.remove(system)
+            // Also deselect it when disabling
+            selectedSystems.remove(system)
+        }
+    }
+
+    /// Select all enabled systems
     func selectAllSystems() {
-        selectedSystems = .all
+        selectedSystems = enabledSystems
     }
 
 }

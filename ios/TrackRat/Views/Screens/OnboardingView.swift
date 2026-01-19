@@ -143,9 +143,9 @@ struct OnboardingView: View {
                     .multilineTextAlignment(.center)
             }
 
-            // System selection cards
+            // System selection cards (only shows enabled systems)
             VStack(spacing: 12) {
-                ForEach(TrainSystem.allCases, id: \.self) { system in
+                ForEach(Array(appState.enabledSystems).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { system in
                     SystemSelectionCard(
                         system: system,
                         isSelected: appState.isSystemSelected(system),
