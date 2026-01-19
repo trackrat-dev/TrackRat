@@ -579,6 +579,25 @@ PATH_GTFS_NAME_TO_INTERNAL_MAP: dict[str, str] = {
     "wtc": "PWC",
 }
 
+# PATH native RidePATH API station codes to internal codes
+# The native API uses different codes than Transiter (e.g., "NWK" vs "26733")
+# Used by collectors/path/ridepath_client.py for real-time arrival data
+PATH_RIDEPATH_API_TO_INTERNAL_MAP: dict[str, str] = {
+    "NWK": "PNK",  # Newark
+    "HAR": "PHR",  # Harrison
+    "JSQ": "PJS",  # Journal Square
+    "GRV": "PGR",  # Grove Street
+    "NEW": "PNP",  # Newport
+    "EXP": "PEX",  # Exchange Place
+    "WTC": "PWC",  # World Trade Center
+    "HOB": "PHO",  # Hoboken
+    "CHR": "PCH",  # Christopher Street
+    "09S": "P9S",  # 9th Street
+    "14S": "P14",  # 14th Street
+    "23S": "P23",  # 23rd Street
+    "33S": "P33",  # 33rd Street
+}
+
 
 # =============================================================================
 # PATCO Speedline Configuration

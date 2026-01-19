@@ -14,6 +14,7 @@ from structlog import get_logger
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
+from trackrat.collectors.path.journey import PathJourneyCollector
 from trackrat.models.database import TrainJourney
 from trackrat.settings import get_settings
 from trackrat.utils.time import is_stale, now_et, safe_datetime_subtract
@@ -34,6 +35,7 @@ class JustInTimeUpdateService:
         self.njt_client = njt_client
         self._njt_collector: JourneyCollector | None = None
         self._amtrak_collector: AmtrakJourneyCollector | None = None
+        self._path_collector: PathJourneyCollector | None = None
 
     async def __aenter__(self) -> "JustInTimeUpdateService":
         """Enter async context."""
@@ -45,9 +47,13 @@ class JustInTimeUpdateService:
         exc_val: BaseException | None,
         exc_tb: Any | None,
     ) -> None:
-        """Exit async context."""
-        # No cleanup needed - client is managed externally
-        pass
+        """Exit async context and clean up resources."""
+        if self._path_collector:
+            await self._path_collector.close()
+            self._path_collector = None
+        if self._amtrak_collector:
+            await self._amtrak_collector.close()
+            self._amtrak_collector = None
 
     @property
     def njt_collector(self) -> JourneyCollector:
@@ -65,9 +71,16 @@ class JustInTimeUpdateService:
             self._amtrak_collector = AmtrakJourneyCollector()
         return self._amtrak_collector
 
+    @property
+    def path_collector(self) -> PathJourneyCollector:
+        """Get or create PATH journey collector."""
+        if self._path_collector is None:
+            self._path_collector = PathJourneyCollector()
+        return self._path_collector
+
     async def get_collector_for_journey(
         self, journey: TrainJourney
-    ) -> JourneyCollector | AmtrakJourneyCollector:
+    ) -> JourneyCollector | AmtrakJourneyCollector | PathJourneyCollector:
         """Get the appropriate collector for a journey based on its data source.
 
         Args:
@@ -80,6 +93,8 @@ class JustInTimeUpdateService:
             return self.njt_collector
         elif journey.data_source == "AMTRAK":
             return self.amtrak_collector
+        elif journey.data_source == "PATH":
+            return self.path_collector
         else:
             raise ValueError(f"Unknown data source: {journey.data_source}")
 

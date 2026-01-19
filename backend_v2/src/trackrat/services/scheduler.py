@@ -22,6 +22,7 @@ from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.discovery import PathDiscoveryCollector
+from trackrat.collectors.path.journey import PathJourneyCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
@@ -109,6 +110,18 @@ class SchedulerService:
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=300,
+        )
+
+        # Schedule PATH journey collection (every 2 minutes)
+        # More frequent than NJT because PATH uses real-time API
+        self.scheduler.add_job(
+            self.run_path_journey_collection,
+            trigger=IntervalTrigger(minutes=2),
+            id="path_journey_collection",
+            name="PATH Journey Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=60,
         )
 
         # Schedule journey collection check (every 5 minutes)
@@ -411,6 +424,56 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("path_discovery_skipped_still_fresh")
+
+    async def run_path_journey_collection(self) -> None:
+        """Update active PATH journeys with real-time data from RidePATH API."""
+        task_id = f"path_journey_collection_{now_et().isoformat()}"
+
+        async def do_path_collection_work() -> dict[str, Any]:
+            """The actual PATH collection work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_path_journey_collection")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Run PATH journey collection
+                collector = PathJourneyCollector()
+                try:
+                    async with get_session() as session:
+                        result = await collector.collect_active_journeys(session)
+
+                    logger.info(
+                        "path_journey_collection_completed",
+                        journeys_processed=result.get("journeys_processed", 0),
+                        updated=result.get("updated", 0),
+                        completed=result.get("completed", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        async with get_session() as db:
+            # 2 minute interval, use 90% = 108 seconds safe interval
+            safe_interval = calculate_safe_interval(2)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="path_journey_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_path_collection_work,
+            )
+
+            if not executed:
+                logger.debug("path_journey_collection_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
