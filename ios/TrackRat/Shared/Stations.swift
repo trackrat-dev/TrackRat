@@ -697,6 +697,7 @@ struct Stations {
         "WTH": CLLocationCoordinate2D(latitude: 28.0222, longitude: -81.7323),                     // Winter Haven, FL
 
         // Missing Southeast stations (added for route topology)
+        "SOU": CLLocationCoordinate2D(latitude: 35.1740, longitude: -79.3920),                     // Southern Pines, NC
         "SEL": CLLocationCoordinate2D(latitude: 35.5351, longitude: -78.2836),                     // Selma-Smithfield, NC
         "CAR": CLLocationCoordinate2D(latitude: 35.7830, longitude: -78.7810),                     // Cary, NC
         "GRB": CLLocationCoordinate2D(latitude: 36.0726, longitude: -79.7920),                     // Greensboro, NC

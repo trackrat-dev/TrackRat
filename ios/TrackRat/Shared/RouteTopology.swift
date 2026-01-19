@@ -152,6 +152,14 @@ struct RouteTopology {
             stationCodes: ["CLT", "GAS", "SPB", "GVL", "TOC", "GAI", "ATL"]
         ),
 
+        // Silver Service (Selma to Dillon via Hamlet)
+        RouteLine(
+            id: "amtrak-silver-south",
+            name: "Silver Service (South)",
+            dataSource: "AMTRAK",
+            stationCodes: ["SEL", "SOU", "HAM", "DIL"]
+        ),
+
         // Coastal Route (Dillon to Jacksonville via Charleston/Savannah)
         RouteLine(
             id: "amtrak-coastal",
