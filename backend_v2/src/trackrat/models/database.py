@@ -267,7 +267,7 @@ class SegmentTransitTime(Base):
     from_station_code = Column(String(3), nullable=False)
     to_station_code = Column(String(3), nullable=False)
     data_source = Column(String(10), nullable=False)
-    line_code = Column(String(2))
+    line_code = Column(String(10))
 
     # Timing data
     scheduled_minutes = Column(Integer, nullable=False)
@@ -311,7 +311,7 @@ class StationDwellTime(Base):
     journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
     station_code = Column(String(3), nullable=False)
     data_source = Column(String(10), nullable=False)
-    line_code = Column(String(2))
+    line_code = Column(String(10))
 
     # Timing data
     scheduled_minutes = Column(Integer)  # Can be NULL for unscheduled stops
