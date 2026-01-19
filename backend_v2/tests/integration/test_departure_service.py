@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
 from trackrat.utils.time import now_et
@@ -569,7 +570,9 @@ class TestDepartureServiceIntegration:
 
         # Verify all journeys were updated
         updated_journeys = await db_session.execute(
-            select(TrainJourney).where(
+            select(TrainJourney)
+            .options(selectinload(TrainJourney.stops))
+            .where(
                 and_(
                     TrainJourney.train_id.in_(train_ids),
                     TrainJourney.data_source == "NJT",
