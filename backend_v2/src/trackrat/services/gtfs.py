@@ -643,11 +643,12 @@ class GTFSService:
         terminus_station: str,
         observed_terminus_time: datetime,
     ) -> list[tuple[str, datetime | None, datetime | None]] | None:
-        """Get stop times for a PATH route, adjusted to observed terminus time.
+        """Get stop times for a PATH route going TO the terminus station.
 
-        Finds any GTFS trip on the specified route, extracts its stop times,
-        and adjusts all times based on the difference between the scheduled
-        and observed terminus arrival.
+        Finds a GTFS trip on the specified route where the LAST stop matches
+        the terminus_station. This ensures we get the correct direction for
+        bidirectional PATH routes (e.g., HOB-33 goes both Hoboken→33rd and
+        33rd→Hoboken).
 
         Args:
             db: Database session
@@ -658,7 +659,7 @@ class GTFSService:
         Returns:
             List of (station_code, arrival_time, departure_time) tuples,
             ordered from origin to terminus. Times may be None for origin/terminus.
-            Returns None if no GTFS data available.
+            Returns None if no GTFS data available or no trip in correct direction.
         """
         target_date = observed_terminus_time.date()
 
@@ -691,25 +692,21 @@ class GTFSService:
 
         gtfs_route_db_id = route_row[0]
 
-        # Find any trip on this route with active service
-        trip_result = await db.execute(
-            select(GTFSTrip.id).where(
-                and_(
-                    GTFSTrip.route_id == gtfs_route_db_id,
-                    GTFSTrip.service_id.in_(service_ids),
-                )
-            ).limit(1)
+        # Find a trip going TO the terminus (last stop = terminus_station)
+        # We use a subquery to find the max stop_sequence per trip, then filter
+        # for trips where that last stop is the terminus_station
+        gtfs_trip_id = await self._find_trip_ending_at_station(
+            db, gtfs_route_db_id, terminus_station, service_ids
         )
-        trip_row = trip_result.first()
-        if not trip_row:
+
+        if not gtfs_trip_id:
             logger.warning(
-                "path_no_active_trips",
+                "path_no_trip_to_terminus",
                 route_id=route_id,
+                terminus_station=terminus_station,
                 service_ids=list(service_ids)[:5],
             )
             return None
-
-        gtfs_trip_id = trip_row[0]
 
         # Get all stop times for this trip, ordered by sequence
         stops_result = await db.execute(
@@ -732,7 +729,7 @@ class GTFSService:
             )
             return None
 
-        # Parse stop times and find terminus
+        # Parse stop times
         parsed_stops: list[tuple[str, datetime | None, datetime | None]] = []
         terminus_scheduled_time: datetime | None = None
 
@@ -745,17 +742,26 @@ class GTFSService:
 
             parsed_stops.append((station_code, arrival_dt, departure_dt))
 
-            # Check if this is the terminus station
+            # The last stop should be the terminus
             if station_code == terminus_station and arrival_dt:
                 terminus_scheduled_time = arrival_dt
 
         if not parsed_stops:
             return None
 
-        # If we couldn't find the terminus, use the last stop's arrival
+        # Verify the last stop is indeed the terminus
+        if parsed_stops[-1][0] != terminus_station:
+            logger.warning(
+                "path_trip_wrong_direction",
+                route_id=route_id,
+                terminus_station=terminus_station,
+                actual_last_stop=parsed_stops[-1][0],
+            )
+            return None
+
+        # Use the last stop's arrival time as terminus time
         if terminus_scheduled_time is None:
-            last_stop = parsed_stops[-1]
-            terminus_scheduled_time = last_stop[1]  # arrival time
+            terminus_scheduled_time = parsed_stops[-1][1]
 
         if terminus_scheduled_time is None:
             logger.warning(
@@ -780,10 +786,263 @@ class GTFSService:
             route_id=route_id,
             terminus_station=terminus_station,
             stop_count=len(adjusted_stops),
+            origin_station=adjusted_stops[0][0] if adjusted_stops else None,
             time_delta_minutes=time_delta.total_seconds() / 60,
         )
 
         return adjusted_stops
+
+    async def _find_trip_ending_at_station(
+        self,
+        db: AsyncSession,
+        route_db_id: int,
+        terminus_station: str,
+        service_ids: set[str],
+    ) -> int | None:
+        """Find a GTFS trip that ends at the specified station.
+
+        Args:
+            db: Database session
+            route_db_id: Database ID of the GTFSRoute
+            terminus_station: Station code where trip should end
+            service_ids: Active service IDs
+
+        Returns:
+            Database ID of a matching GTFSTrip, or None if not found
+        """
+        from sqlalchemy import func
+
+        # Subquery to find the max stop_sequence for each trip
+        max_seq_subq = (
+            select(
+                GTFSStopTime.trip_id,
+                func.max(GTFSStopTime.stop_sequence).label("max_seq"),
+            )
+            .group_by(GTFSStopTime.trip_id)
+            .subquery()
+        )
+
+        # Find trips where the last stop is the terminus_station
+        result = await db.execute(
+            select(GTFSTrip.id)
+            .join(max_seq_subq, GTFSTrip.id == max_seq_subq.c.trip_id)
+            .join(
+                GTFSStopTime,
+                and_(
+                    GTFSStopTime.trip_id == GTFSTrip.id,
+                    GTFSStopTime.stop_sequence == max_seq_subq.c.max_seq,
+                ),
+            )
+            .where(
+                and_(
+                    GTFSTrip.route_id == route_db_id,
+                    GTFSTrip.service_id.in_(service_ids),
+                    GTFSStopTime.station_code == terminus_station,
+                )
+            )
+            .limit(1)
+        )
+        row = result.first()
+        return row[0] if row else None
+
+    async def get_path_route_stop_times_from_origin(
+        self,
+        db: AsyncSession,
+        origin_station: str,
+        destination_station: str,
+        departure_time: datetime,
+    ) -> list[tuple[str, datetime | None, datetime | None]] | None:
+        """Get stop times for a PATH route from origin to destination.
+
+        Finds a GTFS trip that starts at origin_station and ends at destination_station,
+        then returns all stop times along the route, adjusted to match the observed
+        departure time.
+
+        Args:
+            db: Database session
+            origin_station: Internal station code of the origin (e.g., "PHO")
+            destination_station: Internal station code of destination (e.g., "P33")
+            departure_time: Observed departure time from origin
+
+        Returns:
+            List of (station_code, arrival_time, departure_time) tuples,
+            ordered from origin to destination. Returns None if no GTFS data.
+        """
+        target_date = departure_time.date()
+
+        # Get active service IDs for PATH
+        service_ids = await self.get_active_service_ids(db, "PATH", target_date)
+        if not service_ids:
+            logger.warning(
+                "path_no_active_services_origin",
+                origin=origin_station,
+                destination=destination_station,
+                target_date=str(target_date),
+            )
+            return None
+
+        # Find a trip that goes from origin to destination
+        trip_id = await self._find_trip_from_origin_to_destination(
+            db, origin_station, destination_station, service_ids
+        )
+
+        if not trip_id:
+            logger.debug(
+                "path_no_trip_origin_to_dest",
+                origin=origin_station,
+                destination=destination_station,
+            )
+            return None
+
+        # Get all stop times for this trip
+        stops_result = await db.execute(
+            select(
+                GTFSStopTime.station_code,
+                GTFSStopTime.stop_sequence,
+                GTFSStopTime.arrival_time,
+                GTFSStopTime.departure_time,
+            )
+            .where(GTFSStopTime.trip_id == trip_id)
+            .order_by(GTFSStopTime.stop_sequence)
+        )
+        stop_rows = stops_result.all()
+
+        if not stop_rows:
+            return None
+
+        # Parse stop times
+        parsed_stops: list[tuple[str, datetime | None, datetime | None]] = []
+        origin_scheduled_time: datetime | None = None
+
+        for station_code, sequence, arrival_str, departure_str in stop_rows:
+            if not station_code:
+                continue
+
+            arrival_dt = self._parse_gtfs_time(arrival_str, target_date)
+            departure_dt = self._parse_gtfs_time(departure_str, target_date)
+
+            parsed_stops.append((station_code, arrival_dt, departure_dt))
+
+            # Record origin departure time for adjustment
+            if station_code == origin_station and departure_dt:
+                origin_scheduled_time = departure_dt
+
+        if not parsed_stops or origin_scheduled_time is None:
+            return None
+
+        # Verify the route goes origin -> destination
+        if parsed_stops[0][0] != origin_station or parsed_stops[-1][0] != destination_station:
+            logger.debug(
+                "path_trip_wrong_route",
+                expected_origin=origin_station,
+                expected_dest=destination_station,
+                actual_origin=parsed_stops[0][0],
+                actual_dest=parsed_stops[-1][0],
+            )
+            return None
+
+        # Calculate time delta and adjust all stop times
+        time_delta = departure_time - origin_scheduled_time
+
+        adjusted_stops: list[tuple[str, datetime | None, datetime | None]] = []
+        for station_code, arrival_dt, departure_dt in parsed_stops:
+            adjusted_arrival = arrival_dt + time_delta if arrival_dt else None
+            adjusted_departure = departure_dt + time_delta if departure_dt else None
+            adjusted_stops.append((station_code, adjusted_arrival, adjusted_departure))
+
+        logger.debug(
+            "path_stop_times_from_origin",
+            origin=origin_station,
+            destination=destination_station,
+            stop_count=len(adjusted_stops),
+            time_delta_minutes=time_delta.total_seconds() / 60,
+        )
+
+        return adjusted_stops
+
+    async def _find_trip_from_origin_to_destination(
+        self,
+        db: AsyncSession,
+        origin_station: str,
+        destination_station: str,
+        service_ids: set[str],
+    ) -> int | None:
+        """Find a GTFS trip that goes from origin to destination.
+
+        Args:
+            db: Database session
+            origin_station: Station code where trip should start
+            destination_station: Station code where trip should end
+            service_ids: Active service IDs
+
+        Returns:
+            Database ID of a matching GTFSTrip, or None if not found
+        """
+        from sqlalchemy import func
+
+        # Find trips where first stop is origin and last stop is destination
+        # Subquery for min stop_sequence (origin)
+        min_seq_subq = (
+            select(
+                GTFSStopTime.trip_id,
+                func.min(GTFSStopTime.stop_sequence).label("min_seq"),
+            )
+            .group_by(GTFSStopTime.trip_id)
+            .subquery()
+        )
+
+        # Subquery for max stop_sequence (destination)
+        max_seq_subq = (
+            select(
+                GTFSStopTime.trip_id,
+                func.max(GTFSStopTime.stop_sequence).label("max_seq"),
+            )
+            .group_by(GTFSStopTime.trip_id)
+            .subquery()
+        )
+
+        # Find trips that match both criteria
+        # First, find trips where origin is the first stop
+        origin_trips = (
+            select(GTFSTrip.id)
+            .join(min_seq_subq, GTFSTrip.id == min_seq_subq.c.trip_id)
+            .join(
+                GTFSStopTime,
+                and_(
+                    GTFSStopTime.trip_id == GTFSTrip.id,
+                    GTFSStopTime.stop_sequence == min_seq_subq.c.min_seq,
+                ),
+            )
+            .where(
+                and_(
+                    GTFSTrip.data_source == "PATH",
+                    GTFSTrip.service_id.in_(service_ids),
+                    GTFSStopTime.station_code == origin_station,
+                )
+            )
+        ).subquery()
+
+        # Then find trips where destination is the last stop
+        result = await db.execute(
+            select(GTFSTrip.id)
+            .join(max_seq_subq, GTFSTrip.id == max_seq_subq.c.trip_id)
+            .join(
+                GTFSStopTime,
+                and_(
+                    GTFSStopTime.trip_id == GTFSTrip.id,
+                    GTFSStopTime.stop_sequence == max_seq_subq.c.max_seq,
+                ),
+            )
+            .where(
+                and_(
+                    GTFSTrip.id.in_(select(origin_trips.c.id)),
+                    GTFSStopTime.station_code == destination_station,
+                )
+            )
+            .limit(1)
+        )
+        row = result.first()
+        return row[0] if row else None
 
     async def get_scheduled_departures(
         self,
@@ -873,6 +1132,7 @@ class GTFSService:
         result = await db.execute(
             select(
                 GTFSTrip.id,
+                GTFSTrip.trip_id,  # GTFS trip_id string for unique identification
                 GTFSTrip.train_id,
                 GTFSTrip.trip_headsign,
                 GTFSTrip.service_id,
@@ -919,6 +1179,7 @@ class GTFSService:
         for row in trips_data:
             (
                 db_trip_id,
+                gtfs_trip_id,  # GTFS trip_id string for unique identification
                 train_id,
                 headsign,
                 service_id,
@@ -988,8 +1249,14 @@ class GTFSService:
                 )
 
             # Use train_id from database (populated from block_id during parsing)
-            # For light rail (no numeric block_id), fall back to headsign
-            effective_train_id = train_id or headsign or "Unknown"
+            # For PATH/PATCO without numeric train_ids, use GTFS trip_id for unique identification
+            # This ensures each trip can be looked up correctly in get_train_details
+            if train_id:
+                effective_train_id = train_id
+            elif data_source in ("PATH", "PATCO"):
+                effective_train_id = gtfs_trip_id
+            else:
+                effective_train_id = headsign or "Unknown"
 
             departure = TrainDeparture(
                 train_id=effective_train_id,
@@ -1118,30 +1385,6 @@ class GTFSService:
                             GTFSTrip.trip_id == train_id,
                         )
                     )
-                )
-                trip_row = result.first()
-
-            # For PATH/PATCO, also try matching by headsign since they don't have train numbers
-            if not trip_row and data_source in ("PATH", "PATCO"):
-                result = await db.execute(
-                    select(
-                        GTFSTrip.id,
-                        GTFSTrip.train_id,
-                        GTFSTrip.trip_headsign,
-                        GTFSRoute.route_id,  # GTFS route_id string
-                        GTFSRoute.route_short_name,
-                        GTFSRoute.route_long_name,
-                        GTFSRoute.route_color,
-                    )
-                    .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
-                    .where(
-                        and_(
-                            GTFSTrip.data_source == data_source,
-                            GTFSTrip.service_id.in_(service_ids),
-                            GTFSTrip.trip_headsign == train_id,
-                        )
-                    )
-                    .limit(1)  # Just get one matching trip
                 )
                 trip_row = result.first()
 

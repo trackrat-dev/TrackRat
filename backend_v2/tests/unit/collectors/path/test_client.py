@@ -39,7 +39,8 @@ class TestPathStopTime:
         assert result is not None
         assert result.trip_id == "trip_123"
         assert result.route_id == "859"
-        assert result.headsign == "33rd St"
+        # Headsign prefers trip.destination.name over data.headsign
+        assert result.headsign == "33rd Street"
         assert result.direction_id == 0
         assert result.departure_time is not None
         assert result.arrival_time is not None
@@ -209,7 +210,8 @@ class TestPathClient:
         assert len(result) == 1
         assert result[0].trip_id == "trip_abc"
         assert result[0].route_id == "859"
-        assert result[0].headsign == "33rd St via Hoboken"
+        # Headsign prefers trip.destination.name over data.headsign
+        assert result[0].headsign == "33rd Street"
 
     @pytest.mark.asyncio
     async def test_get_station_arrivals_handles_empty_response(self, client):

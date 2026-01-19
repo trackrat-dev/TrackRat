@@ -1,21 +1,21 @@
 """
 PATH train discovery collector for TrackRat V2.
 
-Discovers active PATH trains by polling station arrival boards via Transiter API.
+Discovers active PATH trains using the RidePATH API (official PATH API).
+This provides real-time predictions at all 13 stations for reliable discovery.
 """
 
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.base import BaseDiscoveryCollector
-from trackrat.collectors.path.client import PathClient, PathStopTime
+from trackrat.collectors.path.ridepath_client import PathArrival, RidePathClient
 from trackrat.config.stations import (
-    INTERNAL_TO_PATH_TRANSITER_MAP,
     PATH_DISCOVERY_STATIONS,
-    get_path_route_info,
     get_station_name,
 )
 from trackrat.db.engine import get_session
@@ -26,35 +26,121 @@ from trackrat.utils.time import now_et
 logger = get_logger(__name__)
 
 
-def _generate_path_train_id(route_id: str, trip_id: str) -> str:
-    """Generate a stable train ID for PATH trains.
+# Mapping from headsign keywords to station codes
+HEADSIGN_TO_STATION_MAP: dict[str, str] = {
+    "world trade": "PWC",
+    "wtc": "PWC",
+    "hoboken": "PHO",
+    "newark": "PNK",
+    "journal square": "PJS",
+    "jsq": "PJS",
+    "33rd": "P33",
+    "33 st": "P33",
+    "grove": "PGR",
+    "harrison": "PHR",
+    "exchange": "PEX",
+    "newport": "PNP",
+    "christopher": "PCH",
+    "9th": "P9S",
+    "14th": "P14",
+    "23rd": "P23",
+}
 
-    PATH doesn't have traditional train numbers, so we generate IDs from
-    the route and trip. The trip_id from Transiter is stable for a given
-    departure.
+# Mapping from headsign to line info (line_code, line_name, line_color)
+# Based on PATH route patterns
+HEADSIGN_TO_LINE_INFO: dict[str, tuple[str, str, str]] = {
+    "hoboken": ("HOB-33", "Hoboken - 33rd Street", "#4d92fb"),
+    "33rd street": ("HOB-33", "Hoboken - 33rd Street", "#4d92fb"),
+    "33rd st": ("HOB-33", "Hoboken - 33rd Street", "#4d92fb"),
+    "world trade center": ("NWK-WTC", "Newark - World Trade Center", "#d93a30"),
+    "wtc": ("NWK-WTC", "Newark - World Trade Center", "#d93a30"),
+    "newark": ("NWK-WTC", "Newark - World Trade Center", "#d93a30"),
+    "journal square": ("JSQ-33", "Journal Square - 33rd Street", "#ff9900"),
+    "jsq": ("JSQ-33", "Journal Square - 33rd Street", "#ff9900"),
+}
+
+
+def _headsign_matches_station(headsign: str, station_code: str) -> bool:
+    """Check if a headsign indicates the train's destination is this station.
+
+    Used to detect trains that have ARRIVED at their destination (skip these).
 
     Args:
-        route_id: Transiter route ID (e.g., '859')
-        trip_id: Transiter trip ID
+        headsign: Train headsign (e.g., "33rd Street", "World Trade Center")
+        station_code: Internal station code (e.g., "P33", "PWC")
 
     Returns:
-        Generated train ID (e.g., 'PATH_859_abc123')
+        True if the headsign indicates the train is going TO this station
     """
-    # Use a shortened trip ID to keep the train_id reasonable
-    short_trip = trip_id[:12] if len(trip_id) > 12 else trip_id
-    return f"PATH_{route_id}_{short_trip}"
+    if not headsign:
+        return False
+
+    headsign_lower = headsign.lower().strip()
+
+    for keyword, mapped_station in HEADSIGN_TO_STATION_MAP.items():
+        if keyword in headsign_lower and mapped_station == station_code:
+            return True
+
+    return False
+
+
+def _get_line_info_from_headsign(headsign: str) -> tuple[str, str, str]:
+    """Get line code, name, and color from headsign.
+
+    Args:
+        headsign: Train headsign (e.g., "33rd Street", "Hoboken")
+
+    Returns:
+        Tuple of (line_code, line_name, line_color)
+    """
+    if not headsign:
+        return ("PATH", "PATH", "#4d92fb")
+
+    headsign_lower = headsign.lower().strip()
+
+    for key, info in HEADSIGN_TO_LINE_INFO.items():
+        if key in headsign_lower:
+            return info
+
+    # Default fallback
+    return ("PATH", f"PATH to {headsign}", "#4d92fb")
+
+
+def _generate_path_train_id(
+    origin_station: str, headsign: str, departure_time: Any
+) -> str:
+    """Generate a stable train ID for PATH trains.
+
+    Uses origin station, destination, and departure time to create a unique ID.
+    This approach works without Transiter's trip_id.
+
+    Args:
+        origin_station: Station code where train departs (e.g., 'PHO')
+        headsign: Train destination (e.g., '33rd Street')
+        departure_time: Scheduled departure datetime
+
+    Returns:
+        Generated train ID (e.g., 'PATH_PHO_33rd_1705500000')
+    """
+    # Normalize headsign for ID
+    dest_short = headsign[:10].replace(" ", "").lower() if headsign else "unk"
+
+    # Use unix timestamp for uniqueness
+    ts = int(departure_time.timestamp()) if departure_time else 0
+
+    return f"PATH_{origin_station}_{dest_short}_{ts}"
 
 
 class PathDiscoveryCollector(BaseDiscoveryCollector):
-    """Discovers active PATH trains from station arrival boards."""
+    """Discovers active PATH trains from RidePATH API."""
 
-    def __init__(self, client: PathClient | None = None) -> None:
+    def __init__(self, client: RidePathClient | None = None) -> None:
         """Initialize the PATH discovery collector.
 
         Args:
-            client: Optional PATH client (creates one if not provided)
+            client: Optional RidePATH client (creates one if not provided)
         """
-        self.client = client or PathClient()
+        self.client = client or RidePathClient()
         self._owns_client = client is None
 
     async def discover_trains(self) -> list[str]:
@@ -65,31 +151,26 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
         """
         discovered_ids: set[str] = set()
 
-        for station_code in PATH_DISCOVERY_STATIONS:
-            try:
-                transiter_id = INTERNAL_TO_PATH_TRANSITER_MAP.get(station_code)
-                if not transiter_id:
-                    logger.warning(
-                        "path_station_not_mapped",
-                        station_code=station_code,
-                    )
+        try:
+            # Get all arrivals from RidePATH API (single call for all stations)
+            all_arrivals = await self.client.get_all_arrivals()
+
+            # Filter for discovery stations and departing trains
+            for arrival in all_arrivals:
+                if arrival.station_code not in PATH_DISCOVERY_STATIONS:
                     continue
 
-                arrivals = await self.client.get_station_arrivals(transiter_id)
+                # Skip trains arriving at this station (destination matches station)
+                if _headsign_matches_station(arrival.headsign, arrival.station_code):
+                    continue
 
-                for arrival in arrivals:
-                    train_id = _generate_path_train_id(
-                        arrival.route_id, arrival.trip_id
-                    )
-                    discovered_ids.add(train_id)
-
-            except Exception as e:
-                logger.error(
-                    "path_discovery_station_failed",
-                    station_code=station_code,
-                    error=str(e),
+                train_id = _generate_path_train_id(
+                    arrival.station_code, arrival.headsign, arrival.arrival_time
                 )
-                continue
+                discovered_ids.add(train_id)
+
+        except Exception as e:
+            logger.error("path_discovery_failed", error=str(e))
 
         return list(discovered_ids)
 
@@ -107,7 +188,7 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
                 await self.client.close()
 
     async def collect(self, session: AsyncSession) -> dict[str, Any]:
-        """Run discovery for all configured PATH stations.
+        """Run discovery using RidePATH API.
 
         Args:
             session: Database session
@@ -117,15 +198,48 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
         """
         logger.info("discovery.path.started", stations=PATH_DISCOVERY_STATIONS)
 
+        try:
+            # Single API call gets all arrivals
+            all_arrivals = await self.client.get_all_arrivals()
+        except Exception as e:
+            logger.error("path_ridepath_api_failed", error=str(e))
+            return {
+                "data_source": "PATH",
+                "stations_processed": 0,
+                "total_arrivals": 0,
+                "total_new": 0,
+                "error": str(e),
+            }
+
         total_arrivals = 0
         total_new = 0
-        station_results = {}
+        station_results: dict[str, dict[str, Any]] = {
+            station: {"arrivals_found": 0, "new_journeys": 0}
+            for station in PATH_DISCOVERY_STATIONS
+        }
 
-        for station_code in PATH_DISCOVERY_STATIONS:
-            result = await self._discover_station_trains(session, station_code)
-            station_results[station_code] = result
-            total_arrivals += result.get("arrivals_found", 0)
-            total_new += result.get("new_journeys", 0)
+        # Group arrivals by station
+        for arrival in all_arrivals:
+            if arrival.station_code not in PATH_DISCOVERY_STATIONS:
+                continue
+
+            station_results[arrival.station_code]["arrivals_found"] += 1
+            total_arrivals += 1
+
+            # Skip trains arriving at their destination
+            if _headsign_matches_station(arrival.headsign, arrival.station_code):
+                logger.debug(
+                    "path_skip_arriving_train",
+                    station=arrival.station_code,
+                    headsign=arrival.headsign,
+                )
+                continue
+
+            # Process this departure
+            created = await self._process_arrival(session, arrival)
+            if created:
+                station_results[arrival.station_code]["new_journeys"] += 1
+                total_new += 1
 
         await session.commit()
 
@@ -144,73 +258,48 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
             "station_results": station_results,
         }
 
-    async def _discover_station_trains(
-        self, session: AsyncSession, station_code: str
-    ) -> dict[str, Any]:
-        """Discover trains from a single PATH station.
-
-        Args:
-            session: Database session
-            station_code: Internal station code (e.g., 'PATH_HOB')
-
-        Returns:
-            Discovery results for this station
-        """
-        transiter_id = INTERNAL_TO_PATH_TRANSITER_MAP.get(station_code)
-        if not transiter_id:
-            return {"error": f"No Transiter ID for {station_code}"}
-
-        try:
-            arrivals = await self.client.get_station_arrivals(transiter_id)
-
-            new_journeys = 0
-            for arrival in arrivals:
-                created = await self._process_arrival(
-                    session, station_code, arrival
-                )
-                if created:
-                    new_journeys += 1
-
-            return {
-                "arrivals_found": len(arrivals),
-                "new_journeys": new_journeys,
-            }
-
-        except Exception as e:
-            logger.error(
-                "path_station_discovery_failed",
-                station_code=station_code,
-                error=str(e),
-            )
-            return {"error": str(e), "arrivals_found": 0, "new_journeys": 0}
-
     async def _process_arrival(
         self,
         session: AsyncSession,
-        discovery_station: str,
-        arrival: PathStopTime,
+        arrival: PathArrival,
     ) -> bool:
         """Process a single arrival and create/update journey record.
 
+        With RidePATH, we discover trains at their ORIGIN station (departing).
+        The discovery station IS the origin, and headsign IS the destination.
+
         Args:
             session: Database session
-            discovery_station: Station where this arrival was discovered
-            arrival: Arrival data from Transiter
+            arrival: Arrival data from RidePATH
 
         Returns:
-            True if a new journey was created, False if existing
+            True if a new journey was created, False if existing/skipped
         """
-        train_id = _generate_path_train_id(arrival.route_id, arrival.trip_id)
+        origin_station = arrival.station_code
+        destination = arrival.headsign
+        departure_time = arrival.arrival_time  # When train departs this station
 
-        # Determine journey date from departure time
-        departure_time = arrival.departure_time or arrival.arrival_time
         if not departure_time:
-            logger.debug("path_arrival_no_time", trip_id=arrival.trip_id)
+            logger.debug("path_arrival_no_time", station=origin_station)
             return False
 
         journey_date = departure_time.date()
 
-        # Check if journey already exists
+        # Get line info from headsign
+        line_code, line_name, line_color = _get_line_info_from_headsign(destination)
+
+        # Use line color from API if available
+        if arrival.line_color:
+            # RidePATH may return multiple colors separated by comma
+            color = arrival.line_color.split(",")[0]
+            if not color.startswith("#"):
+                color = f"#{color}"
+            line_color = color
+
+        # Generate train_id
+        train_id = _generate_path_train_id(origin_station, destination, departure_time)
+
+        # Check if journey already exists by exact train_id
         stmt = select(TrainJourney).where(
             TrainJourney.train_id == train_id,
             TrainJourney.journey_date == journey_date,
@@ -219,51 +308,54 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
         existing = await session.scalar(stmt)
 
         if existing:
-            # Update last seen time
             existing.last_updated_at = now_et()
             return False
 
-        # Get route info for line code and name
-        route_info = get_path_route_info(arrival.route_id)
-        if route_info:
-            line_code, line_name, line_color = route_info
-        else:
-            line_code = arrival.route_id[:6]
-            line_name = f"PATH Route {arrival.route_id}"
-            line_color = None
-
-        # Use route color from API if available (without # prefix)
-        if arrival.route_color:
-            line_color = f"#{arrival.route_color}"
-
-        # Get stop times from GTFS for accurate scheduling
-        gtfs_service = GTFSService()
-        gtfs_stop_times = await gtfs_service.get_path_route_stop_times(
+        # Secondary deduplication: Check for existing journey with same characteristics
+        existing_by_schedule = await self._find_matching_journey(
             session,
-            arrival.route_id,
-            discovery_station,  # terminus station
-            departure_time,  # observed terminus time
+            journey_date=journey_date,
+            line_code=line_code,
+            origin_station=origin_station,
+            scheduled_departure=departure_time,
+            destination=destination,
         )
 
+        if existing_by_schedule:
+            existing_by_schedule.last_updated_at = now_et()
+            logger.debug(
+                "path_matched_existing_journey",
+                new_train_id=train_id,
+                existing_train_id=existing_by_schedule.train_id,
+                line_code=line_code,
+                origin=origin_station,
+            )
+            return False
+
+        # Get GTFS stop times for the route from origin to destination
+        gtfs_service = GTFSService()
+        destination_station = HEADSIGN_TO_STATION_MAP.get(destination.lower(), None)
+
+        gtfs_stop_times = None
+        if destination_station:
+            gtfs_stop_times = await gtfs_service.get_path_route_stop_times_from_origin(
+                session,
+                origin_station,
+                destination_station,
+                departure_time,
+            )
+
         if gtfs_stop_times:
-            # Use GTFS-based stop times
-            origin_station = gtfs_stop_times[0][0]
             terminal_station = gtfs_stop_times[-1][0]
-            origin_departure_time = gtfs_stop_times[0][2]  # departure from origin
+            terminal_arrival = gtfs_stop_times[-1][1]
             has_complete_journey = True
             stops_count = len(gtfs_stop_times)
         else:
-            # No GTFS data - create minimal journey with just terminus info
-            logger.warning(
-                "path_no_gtfs_fallback",
-                route_id=arrival.route_id,
-                terminus=discovery_station,
-            )
-            origin_station = discovery_station
-            terminal_station = discovery_station
-            origin_departure_time = departure_time
+            # No GTFS data - create journey with origin and destination only
+            terminal_station = destination_station or origin_station
+            terminal_arrival = departure_time + timedelta(minutes=20)  # Estimate
             has_complete_journey = False
-            stops_count = 1
+            stops_count = 2 if destination_station else 1
 
         # Create new journey
         journey = TrainJourney(
@@ -272,11 +364,11 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
             line_code=line_code,
             line_name=line_name,
             line_color=line_color,
-            destination=arrival.headsign or "",
+            destination=destination,
             origin_station_code=origin_station,
             terminal_station_code=terminal_station,
-            scheduled_departure=origin_departure_time,
-            scheduled_arrival=departure_time,  # Arrival at terminus
+            scheduled_departure=departure_time,
+            scheduled_arrival=terminal_arrival,
             data_source="PATH",
             observation_type="OBSERVED",
             first_seen_at=now_et(),
@@ -289,7 +381,7 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
         session.add(journey)
         await session.flush()
 
-        # Create stops from GTFS data or minimal terminus-only stop
+        # Create stops
         if gtfs_stop_times:
             for sequence, (station_code, arrival_dt, departure_dt) in enumerate(
                 gtfs_stop_times, start=1
@@ -309,28 +401,90 @@ class PathDiscoveryCollector(BaseDiscoveryCollector):
                 )
                 session.add(stop)
         else:
-            # Minimal stop: just the terminus we observed
-            stop = JourneyStop(
+            # Create minimal stops: origin and destination
+            origin_stop = JourneyStop(
                 journey_id=journey.id,
-                station_code=discovery_station,
-                station_name=get_station_name(discovery_station),
+                station_code=origin_station,
+                station_name=get_station_name(origin_station),
                 stop_sequence=1,
-                scheduled_arrival=departure_time,
-                scheduled_departure=None,  # Terminus has no departure
-                updated_arrival=departure_time,
-                updated_departure=None,
+                scheduled_departure=departure_time,
+                updated_departure=departure_time,
             )
-            session.add(stop)
+            session.add(origin_stop)
+
+            if destination_station and destination_station != origin_station:
+                dest_stop = JourneyStop(
+                    journey_id=journey.id,
+                    station_code=destination_station,
+                    station_name=get_station_name(destination_station),
+                    stop_sequence=2,
+                    scheduled_arrival=terminal_arrival,
+                    updated_arrival=terminal_arrival,
+                )
+                session.add(dest_stop)
 
         logger.debug(
             "path_journey_created",
             train_id=train_id,
             journey_date=journey_date,
             line=line_code,
-            destination=arrival.headsign,
+            origin=origin_station,
+            destination=destination,
             departure=departure_time.isoformat(),
             stops=stops_count,
             has_gtfs=gtfs_stop_times is not None,
         )
 
         return True
+
+    async def _find_matching_journey(
+        self,
+        session: AsyncSession,
+        journey_date: Any,
+        line_code: str,
+        origin_station: str,
+        scheduled_departure: Any,
+        destination: str,
+        time_tolerance_minutes: int = 5,
+    ) -> TrainJourney | None:
+        """Find an existing journey that matches the given characteristics.
+
+        Matching criteria:
+        - Same journey_date
+        - Same line_code
+        - Same origin_station
+        - Same destination (headsign)
+        - Scheduled departure within ±time_tolerance_minutes
+
+        Args:
+            session: Database session
+            journey_date: Date of the journey
+            line_code: PATH line code (e.g., "HOB-33")
+            origin_station: Origin station code
+            scheduled_departure: Scheduled departure datetime
+            destination: Destination headsign
+            time_tolerance_minutes: Max minutes difference for time matching
+
+        Returns:
+            Matching TrainJourney if found, None otherwise
+        """
+        if not scheduled_departure:
+            return None
+
+        time_window = timedelta(minutes=time_tolerance_minutes)
+        time_min = scheduled_departure - time_window
+        time_max = scheduled_departure + time_window
+
+        stmt = select(TrainJourney).where(
+            and_(
+                TrainJourney.data_source == "PATH",
+                TrainJourney.journey_date == journey_date,
+                TrainJourney.line_code == line_code,
+                TrainJourney.origin_station_code == origin_station,
+                TrainJourney.destination == destination,
+                TrainJourney.scheduled_departure >= time_min,
+                TrainJourney.scheduled_departure <= time_max,
+            )
+        )
+
+        return await session.scalar(stmt)
