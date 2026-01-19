@@ -14,7 +14,7 @@ from structlog import get_logger
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
-from trackrat.collectors.path.journey import PathJourneyCollector
+from trackrat.collectors.path.collector import PathCollector
 from trackrat.models.database import TrainJourney
 from trackrat.settings import get_settings
 from trackrat.utils.time import is_stale, now_et, safe_datetime_subtract
@@ -35,7 +35,7 @@ class JustInTimeUpdateService:
         self.njt_client = njt_client
         self._njt_collector: JourneyCollector | None = None
         self._amtrak_collector: AmtrakJourneyCollector | None = None
-        self._path_collector: PathJourneyCollector | None = None
+        self._path_collector: PathCollector | None = None
 
     async def __aenter__(self) -> "JustInTimeUpdateService":
         """Enter async context."""
@@ -72,15 +72,15 @@ class JustInTimeUpdateService:
         return self._amtrak_collector
 
     @property
-    def path_collector(self) -> PathJourneyCollector:
+    def path_collector(self) -> PathCollector:
         """Get or create PATH journey collector."""
         if self._path_collector is None:
-            self._path_collector = PathJourneyCollector()
+            self._path_collector = PathCollector()
         return self._path_collector
 
     async def get_collector_for_journey(
         self, journey: TrainJourney
-    ) -> JourneyCollector | AmtrakJourneyCollector | PathJourneyCollector:
+    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector:
         """Get the appropriate collector for a journey based on its data source.
 
         Args:
