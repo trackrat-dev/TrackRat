@@ -20,11 +20,12 @@ enum PremiumFeature: String, CaseIterable {
     case liveActivities = "Live Activities"
     case trackPredictions = "Track Predictions"
     case delayForecasts = "Delay Forecasts"
+    case congestionMap = "Live Congestion Map"
     case historicalData = "Historical Analytics"
     case tripStatistics = "Trip Statistics"
     case ratSense = "RatSense AI"
-    case pennStationGuide = "Penn Station Guide"
-    case congestionMap = "Live Congestion Map"
+    case pennStationGuide = "Penn Station Boarding Guide"
+    case supportDevelopment = "Support Continued Development"
 
     var displayName: String { rawValue }
 
@@ -33,11 +34,12 @@ enum PremiumFeature: String, CaseIterable {
         case .liveActivities: return "pin.fill"
         case .trackPredictions: return "number.circle.fill"
         case .delayForecasts: return "chart.line.uptrend.xyaxis"
+        case .congestionMap: return "map.circle.fill"
         case .historicalData: return "clock.arrow.circlepath"
         case .tripStatistics: return "chart.bar.fill"
         case .ratSense: return "brain.head.profile"
         case .pennStationGuide: return "map.fill"
-        case .congestionMap: return "map.circle.fill"
+        case .supportDevelopment: return "heart.fill"
         }
     }
 }

@@ -555,8 +555,7 @@ struct SubscriptionStatusSection: View {
             } else {
                 // Free user - show upgrade prompt
                 UpgradePromptCard(
-                    headline: "Unlock All Features",
-                    subtext: "Get Live Activities, track predictions, delay forecasts, and more",
+                    subtext: "Support continued development, get Live Activities, track predictions, delay forecasts, and more",
                     showingPaywall: $showingPaywall
                 )
             }

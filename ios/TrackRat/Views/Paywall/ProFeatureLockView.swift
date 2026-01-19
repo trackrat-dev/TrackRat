@@ -96,7 +96,7 @@ struct ProBadgeLock: View {
 
 /// A full-width upgrade prompt card
 struct UpgradePromptCard: View {
-    let headline: String
+    var headline: String? = nil
     let subtext: String
     @Binding var showingPaywall: Bool
 
@@ -115,10 +115,12 @@ struct UpgradePromptCard: View {
                     Spacer()
                 }
 
-                Text(headline)
-                    .font(.title3.bold())
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let headline, !headline.isEmpty {
+                    Text(headline)
+                        .font(.title3.bold())
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 Text(subtext)
                     .font(.subheadline)
