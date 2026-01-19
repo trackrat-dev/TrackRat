@@ -29,9 +29,7 @@ struct AdvancedConfigurationView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    #if DEBUG
                     createSubscriptionDebugSection()
-                    #endif
                     serverEnvironmentSection
                     healthCheckSection
                 }
