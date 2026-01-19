@@ -68,12 +68,22 @@ npm run build                        # TypeScript compile + build check
 
 ### Architecture Patterns
 
-**Backend Data Collection (Multi-Phase):**
+**Backend Data Collection (NJT/Amtrak - Multi-Phase):**
 1. Schedule Generation (daily) - creates SCHEDULED records
 2. Discovery (30min) - updates to OBSERVED when trains appear
 3. Collection (15min) - fetches full journey details
 4. JIT Updates (on-demand) - refreshes stale data (>60s)
 5. Validation (hourly) - ensures coverage
+
+**Backend Data Collection (PATH - Unified):**
+- Single collector runs every 4 minutes using native RidePATH API
+- Discovers trains at all 13 stations (not just terminus)
+- Handles both discovery and journey updates in one pass
+- Infers train origin from route when seen mid-journey
+
+**Backend Data Collection (PATCO - Schedule-only):**
+- Uses GTFS static schedules from SEPTA feed
+- No real-time API available; times are scheduled only
 
 **Key Design Principles:**
 - Single Journey Record: One database row per train per day

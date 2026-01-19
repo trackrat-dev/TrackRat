@@ -1,10 +1,12 @@
 # PATH Real-Time Tracking Implementation Design
 
+> **Status**: ✅ IMPLEMENTED (January 2026)
+
 ## Executive Summary
 
-This document proposes implementing real-time tracking for PATH trains using the **native PATH RidePATH API** (`ridepath.json`). This API provides real-time arrival predictions at ALL 13 stations, enabling full intermediate stop tracking similar to NJT and Amtrak.
+This document describes the implementation of real-time tracking for PATH trains using the **native PATH RidePATH API** (`ridepath.json`). This API provides real-time arrival predictions at ALL 13 stations, enabling full intermediate stop tracking similar to NJT and Amtrak.
 
-**Key discovery**: The Transiter API (used for discovery) only exposes terminus data, but the native PATH API provides arrivals at every station along each route.
+**Key insight**: The native PATH API provides arrivals at every station along each route, unlike the Transiter API which only exposes terminus data.
 
 ---
 
@@ -76,32 +78,31 @@ By correlating headsign + arrival time progression, we can identify the same tra
 
 ## Architecture
 
-### Data Flow
+### Data Flow (Implemented)
 
 ```
                     ┌─────────────────────────────────┐
-                    │  PATH Discovery (Transiter)     │
-                    │  - Creates TrainJourney records │
-                    │  - Populates stops from GTFS    │
-                    │  - Runs every 30 min            │
-                    └─────────────┬───────────────────┘
-                                  │
-                                  ▼
-                    ┌─────────────────────────────────┐
-                    │  PATH Journey Collection        │
-                    │  (Native ridepath.json API)     │
-                    │  - Updates stop arrival times   │
-                    │  - Tracks train progression     │
-                    │  - Runs every 1-2 min           │
+                    │  Unified PATH Collector         │
+                    │  (RidePATH API + GTFS routes)   │
+                    │  - Discovers trains at all 13   │
+                    │    stations (not just terminus) │
+                    │  - Updates journey stops with   │
+                    │    real-time arrival times      │
+                    │  - Runs every 4 minutes         │
                     └─────────────────────────────────┘
 ```
 
-### New Components
+### Implemented Components
 
-1. **`collectors/path/ridepath_client.py`** - Client for native PATH API
-2. **`collectors/path/journey.py`** - Journey collector using native API
-3. **Updates to `services/jit.py`** - PATH collector support
-4. **Updates to `services/scheduler.py`** - PATH collection job
+| File | Description |
+|------|-------------|
+| `collectors/path/collector.py` | Unified discovery + journey collection |
+| `collectors/path/ridepath_client.py` | Native PATH API client with 30s caching |
+| `config/stations.py` | PATH station code mappings (API → internal) |
+| `services/jit.py` | PATH collector support for on-demand refresh |
+| `services/scheduler.py` | 4-minute PATH collection job |
+
+**Note**: The original design proposed separate discovery (Transiter) and journey (RidePATH) collectors. Implementation unified these into a single `PathCollector` using only RidePATH for both operations, eliminating redundant API calls.
 
 ---
 
@@ -587,27 +588,34 @@ With actual arrival times at intermediate stops:
 
 ---
 
-## File Summary
+## Implementation Summary
 
-| File | Action | Lines (Est.) |
+| File | Status | Description |
 |------|--------|-------------|
-| `collectors/path/ridepath_client.py` | Create | ~100 |
-| `collectors/path/journey.py` | Create | ~250 |
-| `services/jit.py` | Modify | +15 |
-| `services/scheduler.py` | Modify | +25 |
-| `config/stations.py` | Modify | +15 |
-| `tests/unit/collectors/test_path_journey.py` | Create | ~150 |
+| `collectors/path/collector.py` | ✅ Implemented | Unified discovery + journey collection |
+| `collectors/path/ridepath_client.py` | ✅ Implemented | Native PATH API client |
+| `services/jit.py` | ✅ Updated | PATH collector support |
+| `services/scheduler.py` | ✅ Updated | 4-minute PATH collection job |
+| `config/stations.py` | ✅ Updated | Station code mappings |
+| `tests/unit/collectors/path/test_collector.py` | ✅ Implemented | 56 tests for collector |
+| `tests/unit/collectors/path/test_ridepath_client.py` | ✅ Implemented | Client tests |
 
-**Total estimated changes**: ~555 lines
+**Deleted files** (consolidated into unified collector):
+- `collectors/path/discovery.py`
+- `collectors/path/journey.py`
+- `tests/unit/collectors/path/test_discovery.py`
+- `tests/unit/collectors/path/test_journey.py`
 
 ---
 
-## Remaining Questions
+## Implementation Decisions (Resolved)
 
-1. **Polling frequency**: 2 minutes seems reasonable. Should we go faster (1 min) for better granularity?
+1. **Polling frequency**: Settled on 4 minutes - balances API load with data freshness for PATH's ~5-10 minute headways.
 
-2. **Train matching**: If multiple trains have the same headsign, we take the soonest. Should we try to correlate by scheduled departure time?
+2. **Train matching**: Uses scheduled time correlation with 10-minute tolerance. When multiple trains head to the same destination, matches arrivals to journeys by comparing predicted vs scheduled times to prevent data collision.
 
-3. **Transit analysis**: Run after each update, or batch at the end of collection?
+3. **Transit analysis**: Runs after each journey update within the unified collector pass.
 
-4. **Error handling**: If the RidePATH API is unavailable, should we fall back to Transiter for terminus-only data?
+4. **Error handling**: No Transiter fallback implemented. If RidePATH is unavailable, journeys retain their last known state. Errors increment `api_error_count`; journeys marked expired after 2 consecutive failures.
+
+5. **Train discovery**: Discovers at all 13 stations (not just terminus). Infers true origin from route when train is seen mid-journey, generating consistent `train_id` for deduplication.

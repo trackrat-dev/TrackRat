@@ -78,10 +78,13 @@ poetry run uvicorn trackrat.main:app --reload
 - **Daily 4:00 AM ET**: NJT 27-hour schedule collection
 - **Daily 4:30 AM ET**: Amtrak pattern-based schedule generation
 - **Every 30 minutes**: Train discovery for NJT and Amtrak
-- **Every 15 minutes**: Journey collection for active trains
+- **Every 15 minutes**: Journey collection for active NJT/Amtrak trains
+- **Every 4 minutes**: PATH train collection (unified discovery + updates)
 - **Every 5 minutes**: Update checks for active journeys
 - **Hourly at :05**: Validation across key routes
 - Monitor scheduler status at `/scheduler/status` endpoint
+
+**Note**: PATH uses a unified collector that handles both discovery and journey updates in a single pass. PATCO uses GTFS static schedules only (no real-time API).
 
 ## Configuration
 
@@ -139,12 +142,13 @@ All configuration is done via environment variables. See `.env.example` for avai
 
 #### Train Departures
 ```
-GET /api/v2/trains/departures?from=NY&to=TR&limit=50&data_source=ALL
+GET /api/v2/trains/departures?from=NY&to=TR&limit=50&data_source=ALL&hide_departed=true
 ```
 Get trains between stations with filtering:
 - `from`/`to`: Station codes (works for any segment)
 - `limit`: Max results (default: 50)
-- `data_source`: NJT, AMTRAK, or ALL
+- `data_source`: NJT, AMTRAK, PATH, PATCO, or ALL
+- `hide_departed`: Skip trains that have already departed (default: false). When true, also skips expensive past-train refresh for better performance.
 - Returns both SCHEDULED and OBSERVED trains
 
 #### Train Details
@@ -347,11 +351,23 @@ The system uses a sophisticated multi-phase approach:
   - Identifies trains that run regularly (≥2 times in 3 weeks)
   - Generates SCHEDULED records for expected trains
 
-#### 2. Train Discovery (Every 30 minutes)
+#### 2. Train Discovery (Every 30 minutes for NJT/Amtrak)
 - Polls major stations for active trains
 - NJT: NY, NP, PJ, TR, LB, PL, DN stations
 - Amtrak: Major corridor stations
 - Updates journey status from SCHEDULED to OBSERVED
+
+#### PATH Collection (Every 4 minutes - Unified)
+- Uses native RidePATH API (`panynj.gov/bin/portauthority/ridepath.json`)
+- Discovers trains at all 13 PATH stations (not just terminus)
+- Unified collector handles both discovery and journey updates in single pass
+- Infers train origin from route when seen mid-journey
+- Calculates consistent train_id for deduplication across stations
+
+#### PATCO Collection (Schedule-based only)
+- Uses GTFS static schedules from SEPTA feed
+- 14 stations from Lindenwold to 15-16th & Locust
+- No real-time API available; times are scheduled only
 
 #### 3. Journey Collection (Every 15 minutes)
 - Fetches complete journey details for active trains
@@ -383,7 +399,11 @@ The scheduler supports multiple replicas:
 - **SchedulerService**: Orchestrates all background tasks
 - **NJTScheduleCollector**: Daily NJT schedule fetching
 - **AmtrakPatternScheduler**: Pattern-based Amtrak schedules
-- **JustInTimeUpdateService**: On-demand data refresh
+- **PathCollector**: Unified PATH discovery + journey collection using RidePATH API
+- **RidePathClient**: Native PATH API client with 30-second caching
+- **JustInTimeUpdateService**: On-demand data refresh (supports NJT, Amtrak, PATH)
+
+**Note**: PATCO uses GTFS static schedules only (no dedicated collector).
 
 #### API & Analytics
 - **DepartureService**: Train departure queries

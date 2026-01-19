@@ -26,7 +26,19 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, and PATCO trains 
 
 ### Pro Subscription Features
 - **Congestion Maps**: Premium map overlay showing network congestion levels
-- **StoreKit 2 Integration**: Modern subscription management
+- **Historical Analytics**: Performance data, delay statistics, and track usage patterns
+- **Penn Station Boarding Guide**: Interactive navigation assistance
+- **Delay Forecasts**: AI-powered delay predictions
+- **24-Hour Soft Trial**: New users get full Pro access for 24 hours with countdown banner
+- **StoreKit 2 Integration**: Modern subscription management with PaywallView
+- **SoftTrialBannerView**: Countdown timer during trial period linking to paywall
+
+### Train System Filtering
+- **Opt-in PATH/PATCO**: Users can enable/disable transit systems in Advanced Configuration
+- **Default Systems**: NJT and Amtrak enabled by default; PATH and PATCO require opt-in
+- **Map Layer Filtering**: Disabled systems hidden from congestion map and route overlays
+- **Station Filtering**: Disabled systems excluded from station picker and onboarding
+- **TrainSystem.swift**: Model for system preferences with UserDefaults persistence
 
 ### User Experience
 - **Native iOS Design**: SwiftUI with glassmorphism and smooth animations
@@ -70,6 +82,7 @@ TrackRat/
 ├── Models/                      # Data layer
 │   ├── TrainV2.swift           # Pure data model with context-aware calculations
 │   ├── V2APIModels.swift       # Backend V2 API models
+│   ├── TrainSystem.swift       # Train system enum (NJT, Amtrak, PATH, PATCO)
 │   ├── DeepLink.swift          # URL scheme handling
 │   └── Train.swift             # Legacy compatibility model
 │
@@ -102,7 +115,7 @@ TrackRat/
 │   │   ├── OnboardingView.swift         # User onboarding
 │   │   └── AdvancedConfigurationView.swift # Developer settings
 │   │
-│   └── Components/              # Reusable UI components (16 files)
+│   └── Components/              # Reusable UI components (17+ files)
 │       ├── ActiveTripsSection.swift     # Live Activity cards
 │       ├── LegacyBottomSheetView.swift  # Draggable sheets
 │       ├── LegacySheetAwareScrollView.swift # Coordinated scrolling
@@ -112,7 +125,12 @@ TrackRat/
 │       ├── FeedbackButton.swift         # Issue reporting
 │       ├── OperationsSummaryView.swift  # Operations summary
 │       ├── TrainStatsSummaryView.swift  # Train performance
-│       └── TrainDistributionChart.swift # Delay visualization
+│       ├── TrainDistributionChart.swift # Delay visualization
+│       └── SoftTrialBannerView.swift    # 24-hour trial countdown
+│
+├── Views/Paywall/               # Subscription UI
+│   ├── PaywallView.swift        # Subscription purchase flow
+│   └── ProFeatureLockView.swift # Feature lock overlay with upgrade prompt
 │
 ├── Shared/                      # Cross-target code
 │   ├── Stations.swift          # Station database
