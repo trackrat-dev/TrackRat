@@ -69,18 +69,6 @@ struct MyProfileView: View {
                         showingPaywall: $showingPaywall
                     )
 
-                    // Trip Stats Section (Pro only)
-                    if subscriptionService.isPro {
-                        TripStatsSection(stats: tripStats, recentTrips: recentTrips, appState: appState)
-                    } else {
-                        // Locked Trip Stats
-                        ProFeatureLockView(
-                            feature: .tripStatistics,
-                            context: .tripStatistics,
-                            showingPaywall: $showingPaywall
-                        )
-                    }
-
                     // Feedback & Ideas section
                     VStack(spacing: 16) {
                         // Section header
@@ -113,7 +101,7 @@ struct MyProfileView: View {
                                         .foregroundColor(.white)
                                         .multilineTextAlignment(.leading)
 
-                                    Text("Send bugs and ideas for new features")
+                                    Text("Send ideas for new features")
                                         .font(.caption)
                                         .foregroundColor(.white.opacity(0.7))
                                         .multilineTextAlignment(.leading)
@@ -132,6 +120,14 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
+
+                        // Report an Issue
+                        FeedbackButton(
+                            screen: "my_profile",
+                            trainId: nil,
+                            originCode: nil,
+                            destinationCode: nil
+                        )
                     }
 
                     // Profile image - aligned to top
@@ -451,14 +447,17 @@ struct MyProfileView: View {
                         }
                     }
 
-                // Report an issue
-                FeedbackButton(
-                    screen: "my_profile",
-                    trainId: nil,
-                    originCode: nil,
-                    destinationCode: nil
-                )
-                .padding(.top, 8)
+                    // Trip Stats Section (Pro only)
+                    if subscriptionService.isPro {
+                        TripStatsSection(stats: tripStats, recentTrips: recentTrips, appState: appState)
+                    } else {
+                        // Locked Trip Stats
+                        ProFeatureLockView(
+                            feature: .tripStatistics,
+                            context: .tripStatistics,
+                            showingPaywall: $showingPaywall
+                        )
+                    }
                 }
                 .padding()
                 .padding(.bottom, 40)
