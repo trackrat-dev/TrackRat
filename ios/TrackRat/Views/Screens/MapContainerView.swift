@@ -289,13 +289,21 @@ struct MapContainerView: View {
             print("🗺️ MapContainer: onAppear called")
             print("🗺️ MapContainer: selectedDetent = \(selectedDetent)")
             print("🗺️ MapContainer: Map already initialized by view model - Center: \(mapRegionVM.mapRegion.center.latitude), \(mapRegionVM.mapRegion.center.longitude), Span: \(mapRegionVM.mapRegion.span.latitudeDelta)°")
-            
+
             // Check for active Live Activity first
             checkForActiveLiveActivity()
-            
+
             // Always ensure we start with overall congestion view (but preserve activeTrainRoute)
             appState.mapDisplayMode = .overallCongestion
-            
+
+            // Set default congestion mode based on subscription status
+            // Pro users: show Trains view, non-Pro: keep Off (congestion is Pro-only)
+            if SubscriptionService.shared.isPro {
+                mapViewModel.showCongestion = .individual  // "Trains" mode
+            } else {
+                mapViewModel.showCongestion = .off
+            }
+
             // IMPORTANT: Don't clear selectedRoute if we're navigating within the app
             // Only clear it if we're at the root (no navigation path)
             if appState.navigationPath.isEmpty {
@@ -807,18 +815,28 @@ struct CongestionMapControlsView: View {
 // MARK: - Map Layer Controls View
 struct MapLayerControlsView: View {
     @ObservedObject var viewModel: CongestionMapViewModel
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
+    @State private var showingPaywall = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Congestion toggle (tri-state: Off -> Summary -> Trains)
+            // Congestion toggle (tri-state: Off -> Summary -> Trains) - Pro only
             MapLayerToggleButton(
                 label: "Congestion",
                 icon: viewModel.showCongestion.iconName,
                 isOn: viewModel.showCongestion != .off,
-                detail: viewModel.showCongestion.rawValue
+                detail: viewModel.showCongestion.rawValue,
+                isPro: subscriptionService.isPro,
+                showProBadge: viewModel.showCongestion == .off
             ) {
-                viewModel.cycleCongestionMode()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if subscriptionService.isPro {
+                    viewModel.cycleCongestionMode()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } else {
+                    // Non-Pro user trying to enable congestion - show paywall
+                    showingPaywall = true
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
             }
 
             // Routes toggle
@@ -826,7 +844,9 @@ struct MapLayerControlsView: View {
                 label: "Routes",
                 icon: "point.topleft.down.to.point.bottomright.curvepath",
                 isOn: viewModel.showRoutes,
-                detail: viewModel.showRoutes ? "On" : "Off"
+                detail: viewModel.showRoutes ? "On" : "Off",
+                isPro: true,
+                showProBadge: false
             ) {
                 viewModel.showRoutes.toggle()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -837,7 +857,9 @@ struct MapLayerControlsView: View {
                 label: "Stations",
                 icon: "mappin.circle.fill",
                 isOn: viewModel.showStations,
-                detail: viewModel.showStations ? "On" : "Off"
+                detail: viewModel.showStations ? "On" : "Off",
+                isPro: true,
+                showProBadge: false
             ) {
                 viewModel.showStations.toggle()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -848,6 +870,14 @@ struct MapLayerControlsView: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.ultraThinMaterial)
         )
+        .onAppear {
+            // Ensure non-Pro users can't have congestion enabled
+            // (handles edge case if subscription lapses while app is running)
+            if !subscriptionService.isPro && viewModel.showCongestion != .off {
+                viewModel.showCongestion = .off
+            }
+        }
+        .paywallSheet(isPresented: $showingPaywall, context: .congestionMap)
     }
 }
 
@@ -857,31 +887,48 @@ private struct MapLayerToggleButton: View {
     let icon: String
     let isOn: Bool
     let detail: String
+    var isPro: Bool = true
+    var showProBadge: Bool = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.body)
                     .foregroundColor(isOn ? .orange : .secondary)
-                    .frame(width: 24)
+                    .frame(width: 20)
 
                 Text(label)
                     .font(.subheadline)
                     .foregroundColor(.primary)
 
-                Spacer()
-
-                Text(detail)
-                    .font(.caption)
-                    .foregroundColor(isOn ? .orange : .secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                // Show PRO badge for locked features
+                if showProBadge && !isPro {
+                    HStack(spacing: 2) {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                        Text("PRO")
+                            .font(.caption2.bold())
+                    }
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
                     .background(
                         Capsule()
-                            .fill(isOn ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
+                            .fill(.orange.opacity(0.15))
                     )
+                } else {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundColor(isOn ? .orange : .secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(isOn ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
+                        )
+                }
             }
             .padding(.vertical, 4)
         }

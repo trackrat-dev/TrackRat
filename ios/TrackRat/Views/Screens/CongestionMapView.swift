@@ -264,29 +264,27 @@ private struct LayerToggleButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.body)
                     .foregroundColor(isOn ? .orange : .secondary)
-                    .frame(width: 24)
+                    .frame(width: 20)
 
                 Text(label)
                     .font(.subheadline)
                     .foregroundColor(.primary)
 
-                Spacer()
-
                 Text(detail)
                     .font(.caption)
                     .foregroundColor(isOn ? .orange : .secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
                     .background(
                         Capsule()
                             .fill(isOn ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
                     )
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
         }
         .buttonStyle(.plain)
     }
@@ -328,10 +326,12 @@ enum CongestionMode: String, CaseIterable {
 
 @MainActor
 class CongestionMapViewModel: ObservableObject {
-    // MARK: - Layer Visibility (all default ON)
-    @Published var showCongestion: CongestionMode = .aggregated
+    // MARK: - Layer Visibility
+    // Note: Congestion defaults to Off since it's a Pro feature
+    // Pro users will have it enabled via MapLayerControlsView.onAppear
+    @Published var showCongestion: CongestionMode = .off
     @Published var showRoutes: Bool = true
-    @Published var showStations: Bool = true
+    @Published var showStations: Bool = false  // Default: Off
 
     // MARK: - Data
     @Published var segments: [CongestionSegment] = []
@@ -1032,8 +1032,38 @@ struct SystemCongestionMapView: UIViewRepresentable {
             if annotation is MKUserLocation {
                 return nil // Use default user location view
             }
-            
-            
+
+            // Handle station annotations with small markers
+            if let stationAnnotation = annotation as? SystemStationAnnotation {
+                let identifier = "StationMarker"
+                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+
+                if annotationView == nil {
+                    annotationView = MKAnnotationView(annotation: stationAnnotation, reuseIdentifier: identifier)
+                    annotationView?.canShowCallout = true
+                } else {
+                    annotationView?.annotation = stationAnnotation
+                }
+
+                // Create small station marker (~30% of default pin size)
+                let size: CGFloat = 12  // Small dot size
+                let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size))
+                let image = renderer.image { context in
+                    // Draw orange circle
+                    UIColor.systemOrange.setFill()
+                    context.cgContext.fillEllipse(in: CGRect(x: 0, y: 0, width: size, height: size))
+                    // Draw white border
+                    UIColor.white.setStroke()
+                    context.cgContext.setLineWidth(1.5)
+                    context.cgContext.strokeEllipse(in: CGRect(x: 0.75, y: 0.75, width: size - 1.5, height: size - 1.5))
+                }
+
+                annotationView?.image = image
+                annotationView?.centerOffset = CGPoint(x: 0, y: 0)
+
+                return annotationView
+            }
+
             return nil
         }
         
