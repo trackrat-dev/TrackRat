@@ -389,7 +389,8 @@ struct CombinedDetailsCard: View {
                         ProFeatureLockView(
                             feature: .trackPredictions,
                             context: .trackPredictions,
-                            showingPaywall: $showingPaywall
+                            showingPaywall: $showingPaywall,
+                            useLightBackground: true
                         )
                     }
                 }

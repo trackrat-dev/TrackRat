@@ -7,6 +7,8 @@ struct ProFeatureLockView: View {
     let feature: PremiumFeature
     let context: PaywallContext
     @Binding var showingPaywall: Bool
+    /// When true, uses dark text colors suitable for light backgrounds
+    var useLightBackground: Bool = false
 
     var body: some View {
         Button {
@@ -14,7 +16,7 @@ struct ProFeatureLockView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
             HStack(spacing: 12) {
-                // Lock icon
+                // Lock icon - always orange regardless of background
                 Image(systemName: "lock.fill")
                     .font(.title3)
                     .foregroundColor(.orange)
@@ -23,9 +25,9 @@ struct ProFeatureLockView: View {
                     HStack(spacing: 6) {
                         Text(feature.displayName)
                             .font(.subheadline.weight(.medium))
-                            .foregroundColor(.white)
+                            .foregroundColor(useLightBackground ? .black : .white)
 
-                        // Pro badge
+                        // Pro badge - always orange regardless of background
                         Text("PRO")
                             .font(.caption2.bold())
                             .foregroundColor(.orange)
@@ -39,7 +41,7 @@ struct ProFeatureLockView: View {
 
                     Text(context.subtext)
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(useLightBackground ? .black.opacity(0.6) : .white.opacity(0.6))
                         .lineLimit(2)
                 }
 
@@ -47,7 +49,7 @@ struct ProFeatureLockView: View {
 
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(useLightBackground ? .black.opacity(0.4) : .white.opacity(0.4))
             }
             .padding()
             .background(
