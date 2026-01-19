@@ -67,4 +67,26 @@ extension Set where Element == TrainSystem {
     static var all: Set<TrainSystem> {
         Set(TrainSystem.allCases)
     }
+
+    /// Converts to raw string set for use with Stations filtering
+    var asRawStrings: Set<String> {
+        Set(self.map(\.rawValue))
+    }
+}
+
+// MARK: - Stations Extensions (TrainSystem-aware wrappers)
+
+extension Stations {
+    /// Returns the train systems that serve a given station
+    /// Defaults to NJT + Amtrak if not explicitly mapped (most NJT commuter stations)
+    static func systemsForStation(_ code: String) -> Set<TrainSystem> {
+        let rawSystems = systemStringsForStation(code)
+        return Set(rawSystems.compactMap { TrainSystem(rawValue: $0) })
+    }
+
+    /// Check if a station should be visible based on selected systems
+    /// A station is visible if ANY of the selected systems serve it
+    static func isStationVisible(_ code: String, withSystems selectedSystems: Set<TrainSystem>) -> Bool {
+        return isStationVisible(code, withSystemStrings: selectedSystems.asRawStrings)
+    }
 }

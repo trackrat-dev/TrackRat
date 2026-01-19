@@ -62,27 +62,23 @@ HEADSIGN_TO_LINE_INFO: dict[str, tuple[str, str, str]] = {
 
 
 def _headsign_matches_station(headsign: str, station_code: str) -> bool:
-    """Check if a headsign indicates the train's destination is this station.
+    """Check if a headsign indicates the train's PRIMARY destination is this station.
 
     Used to detect trains that have ARRIVED at their destination (skip these).
 
+    For headsigns like "33rd Street via Hoboken", only P33 (33rd Street) is the
+    destination. PHO (Hoboken) is just an intermediate stop and should NOT match.
+
     Args:
-        headsign: Train headsign (e.g., "33rd Street", "World Trade Center")
+        headsign: Train headsign (e.g., "33rd Street", "Journal Square via Hoboken")
         station_code: Internal station code (e.g., "P33", "PWC")
 
     Returns:
-        True if the headsign indicates the train is going TO this station
+        True if the headsign's PRIMARY destination matches this station
     """
-    if not headsign:
-        return False
-
-    headsign_lower = headsign.lower().strip()
-
-    for keyword, mapped_station in HEADSIGN_TO_STATION_MAP.items():
-        if keyword in headsign_lower and mapped_station == station_code:
-            return True
-
-    return False
+    # Get the primary destination (first matching keyword in headsign)
+    primary_destination = _get_destination_station_from_headsign(headsign)
+    return primary_destination == station_code
 
 
 def _get_destination_station_from_headsign(headsign: str) -> str | None:
