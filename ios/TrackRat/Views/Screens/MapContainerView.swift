@@ -150,7 +150,9 @@ struct MapContainerView: View {
                 HStack(alignment: .top) {
                     OperationsSummaryView(
                         scope: .network,
-                        ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
+                        ratSenseRoute: mapViewModel.showCongestion != .off
+                            ? ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
+                            : nil
                     )
 
                     Spacer()
