@@ -6,7 +6,6 @@ struct AdvancedConfigurationView: View {
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     @ObservedObject private var journeyFeedbackService = JourneyFeedbackService.shared
     @State private var selectedEnvironment: ServerEnvironment
-    @State private var hasChanges = false
     @State private var healthCheckResult: HealthCheckResult?
     @State private var isTestingConnection = false
     @State private var showClearHistoryConfirmation = false
@@ -44,7 +43,6 @@ struct AdvancedConfigurationView: View {
         .navigationBarHidden(true)
         .onAppear {
             selectedEnvironment = storageService.loadServerEnvironment()
-            hasChanges = false
         }
         .alert("Clear Trip History", isPresented: $showClearHistoryConfirmation) {
             Button("Cancel", role: .cancel) { }
@@ -154,31 +152,10 @@ struct AdvancedConfigurationView: View {
                         isSelected: selectedEnvironment == environment
                     ) {
                         selectedEnvironment = environment
-                        hasChanges = true
                         healthCheckResult = nil
+                        saveConfiguration()
                     }
                 }
-            }
-            
-            // Save Button inside the server section
-            if hasChanges {
-                Button {
-                    saveConfiguration()
-                } label: {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("Save Changes")
-                    }
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.orange)
-                    )
-                }
-                .padding(.top, 8)
             }
         }
         .padding()
@@ -464,8 +441,7 @@ struct AdvancedConfigurationView: View {
     private func saveConfiguration() {
         storageService.saveServerEnvironment(selectedEnvironment)
         APIService.shared.updateServerEnvironment(selectedEnvironment)
-        hasChanges = false
-        
+
         // Haptic feedback
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
