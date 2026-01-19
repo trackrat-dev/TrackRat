@@ -6,7 +6,7 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -296,10 +296,13 @@ class DepartureService:
 
                 # Filter GTFS departures:
                 # 1. Must be in the future (after current time)
-                # 2. PATH trains: Only include if >30 min away (real-time API handles
-                #    closer trains). This prevents duplicate entries since PATH discovery
-                #    uses different train_id format than GTFS.
-                path_cutoff_time = current_time + timedelta(minutes=30)
+                # 2. PATH trains: Only include if beyond dynamic cutoff window.
+                #    Cutoff = max(now + 20min, last_observed_departure + 2min).
+                #    This prevents duplicates while showing schedules until realtime
+                #    data reliably covers them.
+                path_cutoff_time = await self._get_path_cutoff_time(
+                    db, from_station, current_time, target_date
+                )
                 gtfs_future = [
                     dep
                     for dep in gtfs_response.departures
@@ -432,6 +435,42 @@ class DepartureService:
                 and next_station_code is not None
             ),
         )
+
+    async def _get_path_cutoff_time(
+        self,
+        db: AsyncSession,
+        station_code: str,
+        current_time: datetime,
+        journey_date: date,
+    ) -> datetime:
+        """Calculate dynamic cutoff for PATH scheduled trains.
+
+        Returns max(now + 20min, last_observed_departure + 2min).
+        This ensures we show scheduled trains until realtime data
+        reliably covers them, while avoiding duplicates once realtime
+        trains are observed.
+        """
+        min_cutoff = current_time + timedelta(minutes=20)
+
+        # Find the latest scheduled departure among observed PATH trains at this station
+        result = await db.execute(
+            select(func.max(JourneyStop.scheduled_departure))
+            .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                TrainJourney.data_source == "PATH",
+                TrainJourney.observation_type == "OBSERVED",
+                TrainJourney.journey_date == journey_date,
+                JourneyStop.station_code == station_code,
+                JourneyStop.scheduled_departure > current_time,
+            )
+        )
+        last_observed = result.scalar()
+
+        if last_observed is None:
+            return min_cutoff
+
+        observed_cutoff = last_observed + timedelta(minutes=2)
+        return max(min_cutoff, observed_cutoff)
 
     async def _ensure_fresh_station_data(
         self,
