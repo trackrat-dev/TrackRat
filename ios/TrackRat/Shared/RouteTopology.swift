@@ -73,7 +73,7 @@ struct RouteTopology {
             id: "njt-rvl",
             name: "Raritan Valley Line",
             dataSource: "NJT",
-            stationCodes: ["NP", "EZ", "RL", "US", "XC", "GW", "WF", "FW", "NE", "PF", "DN", "BK", "BW", "SM", "RA", "OR", "WH", "ON", "AN", "HG"]
+            stationCodes: ["NP", "EZ", "US", "RL", "XC", "GW", "WF", "FW", "NE", "PF", "DN", "BK", "BW", "SM", "RA", "OR", "WH", "ON", "AN", "HG"]
         ),
 
         // Montclair-Boonton Line
@@ -125,7 +125,7 @@ struct RouteTopology {
             id: "amtrak-nec",
             name: "Northeast Corridor",
             dataSource: "AMTRAK",
-            stationCodes: ["BOS", "BBY", "PVD", "KIN", "WLY", "NLC", "OSB", "NHV", "BRP", "STM", "NY", "NP", "TR", "PH", "WI", "BA", "BL", "WS"]
+            stationCodes: ["BOS", "BBY", "PVD", "KIN", "WLY", "NLC", "OSB", "NHV", "BRP", "STM", "NY", "NP", "TR", "PH", "WI", "BL", "BA", "WS"]
         ),
 
         // Keystone Service (NY to Harrisburg)
