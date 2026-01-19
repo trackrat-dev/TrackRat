@@ -324,7 +324,9 @@ class TestActiveServiceIds:
                 result.all.return_value = []
             else:
                 # Calendar dates query - service added for this date
-                result.all.return_value = [("SPECIAL_SERVICE", 1)]  # exception_type=1 means added
+                result.all.return_value = [
+                    ("SPECIAL_SERVICE", 1)
+                ]  # exception_type=1 means added
             return result
 
         mock_db.execute = mock_execute
@@ -351,7 +353,9 @@ class TestActiveServiceIds:
                 result.all.return_value = [("REGULAR_SERVICE",)]
             else:
                 # Calendar dates query - service removed for this date
-                result.all.return_value = [("REGULAR_SERVICE", 2)]  # exception_type=2 means removed
+                result.all.return_value = [
+                    ("REGULAR_SERVICE", 2)
+                ]  # exception_type=2 means removed
             return result
 
         mock_db.execute = mock_execute
@@ -381,9 +385,7 @@ class TestStationMapping:
         from trackrat.config.stations import map_gtfs_stop_to_station_code
 
         # NJT uses numeric IDs, so we match by name
-        result = map_gtfs_stop_to_station_code(
-            "12345", "New York Penn Station", "NJT"
-        )
+        result = map_gtfs_stop_to_station_code("12345", "New York Penn Station", "NJT")
         assert result == "NY"
 
         result = map_gtfs_stop_to_station_code("67890", "Trenton", "NJT")
@@ -393,9 +395,7 @@ class TestStationMapping:
         """Test that unmapped stations return None."""
         from trackrat.config.stations import map_gtfs_stop_to_station_code
 
-        result = map_gtfs_stop_to_station_code(
-            "99999", "Unknown Station XYZ", "NJT"
-        )
+        result = map_gtfs_stop_to_station_code("99999", "Unknown Station XYZ", "NJT")
         assert result is None
 
 

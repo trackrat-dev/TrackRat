@@ -118,7 +118,9 @@ class DepartureService:
 
         # Build additional filters for hide_departed and data_sources
         # Default to all data sources if not specified
-        allowed_sources = data_sources if data_sources else ["NJT", "AMTRAK", "PATH", "PATCO"]
+        allowed_sources = (
+            data_sources if data_sources else ["NJT", "AMTRAK", "PATH", "PATCO"]
+        )
 
         departure_filters = [
             JourneyStop.scheduled_departure >= time_from,
@@ -583,7 +585,11 @@ class DepartureService:
                 logger.debug(
                     "skipping_individual_refresh",
                     station_code=station_code,
-                    reason="skip_individual_refresh=True" if skip_individual_refresh else "hide_departed=True",
+                    reason=(
+                        "skip_individual_refresh=True"
+                        if skip_individual_refresh
+                        else "hide_departed=True"
+                    ),
                 )
                 return
 

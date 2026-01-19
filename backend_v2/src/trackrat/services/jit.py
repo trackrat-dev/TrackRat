@@ -51,9 +51,8 @@ class JustInTimeUpdateService:
         if self._path_collector:
             await self._path_collector.close()
             self._path_collector = None
-        if self._amtrak_collector:
-            await self._amtrak_collector.close()
-            self._amtrak_collector = None
+        # AmtrakJourneyCollector doesn't have a close method - no cleanup needed
+        self._amtrak_collector = None
 
     @property
     def njt_collector(self) -> JourneyCollector:

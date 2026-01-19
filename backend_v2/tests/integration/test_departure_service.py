@@ -1039,8 +1039,11 @@ class TestDepartureServiceIntegration:
 
                 # Call with hide_departed=True
                 await service._ensure_fresh_station_data(
-                    db_session, "NY", now_et().date(), skip_individual_refresh=False,
-                    hide_departed=True
+                    db_session,
+                    "NY",
+                    now_et().date(),
+                    skip_individual_refresh=False,
+                    hide_departed=True,
                 )
 
                 # Verify JourneyCollector was NOT instantiated (second pass skipped)
@@ -1104,8 +1107,11 @@ class TestDepartureServiceIntegration:
 
                 # Call with hide_departed=False (default)
                 await service._ensure_fresh_station_data(
-                    db_session, "NY", now_et().date(), skip_individual_refresh=False,
-                    hide_departed=False
+                    db_session,
+                    "NY",
+                    now_et().date(),
+                    skip_individual_refresh=False,
+                    hide_departed=False,
                 )
 
                 # Verify JourneyCollector WAS instantiated (second pass ran)

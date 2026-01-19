@@ -212,7 +212,10 @@ class TestNormalizeHeadsign:
 
     def test_unknown_headsign(self):
         """Test unknown headsign passes through normalized."""
-        assert _normalize_headsign("Some Unknown Destination") == "some_unknown_destination"
+        assert (
+            _normalize_headsign("Some Unknown Destination")
+            == "some_unknown_destination"
+        )
 
 
 class TestInferOriginStation:
@@ -322,7 +325,9 @@ class TestPathCollector:
         """Test run method returns proper summary structure."""
         mock_client.get_all_arrivals.return_value = []
 
-        with patch("trackrat.collectors.path.collector.get_session") as mock_get_session:
+        with patch(
+            "trackrat.collectors.path.collector.get_session"
+        ) as mock_get_session:
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
 
@@ -330,7 +335,9 @@ class TestPathCollector:
             mock_scalars_result.all.return_value = []
             mock_session.scalars = AsyncMock(return_value=mock_scalars_result)
 
-            mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_get_session.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
             mock_get_session.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = await collector.run()
@@ -349,14 +356,18 @@ class TestPathCollector:
         collector._owns_client = True
         mock_client.get_all_arrivals.return_value = []
 
-        with patch("trackrat.collectors.path.collector.get_session") as mock_get_session:
+        with patch(
+            "trackrat.collectors.path.collector.get_session"
+        ) as mock_get_session:
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             mock_scalars_result = MagicMock()
             mock_scalars_result.all.return_value = []
             mock_session.scalars = AsyncMock(return_value=mock_scalars_result)
 
-            mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_get_session.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
             mock_get_session.return_value.__aexit__ = AsyncMock(return_value=None)
 
             await collector.run()
@@ -368,14 +379,18 @@ class TestPathCollector:
         """Test run method does not close externally provided client."""
         mock_client.get_all_arrivals.return_value = []
 
-        with patch("trackrat.collectors.path.collector.get_session") as mock_get_session:
+        with patch(
+            "trackrat.collectors.path.collector.get_session"
+        ) as mock_get_session:
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             mock_scalars_result = MagicMock()
             mock_scalars_result.all.return_value = []
             mock_session.scalars = AsyncMock(return_value=mock_scalars_result)
 
-            mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_get_session.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session
+            )
             mock_get_session.return_value.__aexit__ = AsyncMock(return_value=None)
 
             await collector.run()
@@ -517,7 +532,9 @@ class TestPathCollectorDiscovery:
         mock_session.add.assert_called()
 
     @pytest.mark.asyncio
-    async def test_process_arrival_skips_existing_journey(self, collector, mock_session):
+    async def test_process_arrival_skips_existing_journey(
+        self, collector, mock_session
+    ):
         """Test _process_arrival_for_discovery does not create duplicate journeys."""
         existing_journey = MagicMock()
         existing_journey.last_updated_at = datetime.now()
@@ -538,7 +555,9 @@ class TestPathCollectorDiscovery:
         assert created is False
 
     @pytest.mark.asyncio
-    async def test_process_arrival_uses_line_color_from_api(self, collector, mock_session):
+    async def test_process_arrival_uses_line_color_from_api(
+        self, collector, mock_session
+    ):
         """Test _process_arrival_for_discovery uses line color from API."""
         arrival = PathArrival(
             station_code="PHO",
@@ -557,7 +576,9 @@ class TestPathCollectorDiscovery:
         assert journey.line_color == "#FF0000"
 
     @pytest.mark.asyncio
-    async def test_process_arrival_mid_route_infers_origin(self, collector, mock_session):
+    async def test_process_arrival_mid_route_infers_origin(
+        self, collector, mock_session
+    ):
         """Test mid-route discovery infers correct origin station."""
         # Train seen at Grove Street (PGR) heading to WTC
         # Should infer origin as Newark (PNK) since NWK-WTC route goes through Grove St
@@ -645,7 +666,9 @@ class TestPathCollectorDiscovery:
         # PGR and beyond should NOT be marked as departed
 
         departed_stations = [s.station_code for s in stops if s.has_departed_station]
-        not_departed_stations = [s.station_code for s in stops if not s.has_departed_station]
+        not_departed_stations = [
+            s.station_code for s in stops if not s.has_departed_station
+        ]
 
         assert "PNK" in departed_stations, "Newark should be marked as departed"
         assert "PHR" in departed_stations, "Harrison should be marked as departed"
@@ -859,7 +882,7 @@ class TestPathCollectorUpdate:
             mock_now.return_value = datetime.now()
             with patch(
                 "trackrat.collectors.path.collector.TransitAnalyzer",
-                return_value=mock_analyzer_instance
+                return_value=mock_analyzer_instance,
             ):
                 await collector.collect_journey_details(mock_session, sample_journey)
 

@@ -115,7 +115,7 @@ class RidePathClient:
             logger.debug(
                 "ridepath_arrivals_fetched",
                 arrival_count=len(arrivals),
-                stations=len(set(a.station_code for a in arrivals)),
+                stations=len({a.station_code for a in arrivals}),
             )
 
             return arrivals

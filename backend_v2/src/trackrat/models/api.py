@@ -48,7 +48,9 @@ class TrainStatus(str, Enum):
 class LineInfo(BaseModel):
     """Train line information."""
 
-    code: str = Field(..., min_length=1, max_length=10)  # PATH line codes are ~6-7 chars
+    code: str = Field(
+        ..., min_length=1, max_length=10
+    )  # PATH line codes are ~6-7 chars
     name: str
     color: str = Field(..., pattern="^#[0-9A-Fa-f]{6}$")
 

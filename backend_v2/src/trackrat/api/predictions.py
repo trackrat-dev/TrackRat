@@ -343,7 +343,6 @@ async def predict_delay(
     # Generate forecast
     prediction_start = time.time()
 
-
     from trackrat.utils.time import now_et
 
     scheduled_departure = train_journey.scheduled_departure or now_et()

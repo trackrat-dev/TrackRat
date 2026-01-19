@@ -2126,7 +2126,12 @@ class SchedulerService:
                 path_available = await gtfs_service.is_feed_available(db, "PATH")
                 patco_available = await gtfs_service.is_feed_available(db, "PATCO")
 
-                if njt_available and amtrak_available and path_available and patco_available:
+                if (
+                    njt_available
+                    and amtrak_available
+                    and path_available
+                    and patco_available
+                ):
                     logger.info(
                         "gtfs_data_already_available",
                         njt=njt_available,
@@ -2147,7 +2152,9 @@ class SchedulerService:
 
                 if not njt_available:
                     njt_result = await gtfs_service.refresh_feed(db, "NJT", force=True)
-                    logger.info("gtfs_njt_initial_download_complete", success=njt_result)
+                    logger.info(
+                        "gtfs_njt_initial_download_complete", success=njt_result
+                    )
 
                 if not amtrak_available:
                     amtrak_result = await gtfs_service.refresh_feed(
@@ -2158,13 +2165,17 @@ class SchedulerService:
                     )
 
                 if not path_available:
-                    path_result = await gtfs_service.refresh_feed(db, "PATH", force=True)
+                    path_result = await gtfs_service.refresh_feed(
+                        db, "PATH", force=True
+                    )
                     logger.info(
                         "gtfs_path_initial_download_complete", success=path_result
                     )
 
                 if not patco_available:
-                    patco_result = await gtfs_service.refresh_feed(db, "PATCO", force=True)
+                    patco_result = await gtfs_service.refresh_feed(
+                        db, "PATCO", force=True
+                    )
                     logger.info(
                         "gtfs_patco_initial_download_complete", success=patco_result
                     )

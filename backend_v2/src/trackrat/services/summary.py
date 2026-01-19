@@ -1290,7 +1290,7 @@ class SummaryService:
             "AMTRAK": "Amtrak",
             "PATH": "PATH",
             "PATCO": "PATCO",
-        }.get(data_source)
+        }.get(data_source or "")
 
         # Total cancellations from similar trains
         total_cancellations = similar_dep_stats.cancellation_count

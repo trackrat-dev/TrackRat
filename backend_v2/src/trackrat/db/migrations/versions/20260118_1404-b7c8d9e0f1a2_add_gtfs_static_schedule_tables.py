@@ -52,7 +52,9 @@ def upgrade() -> None:
         sa.Column("route_long_name", sa.String(200)),
         sa.Column("route_color", sa.String(6)),
     )
-    op.create_unique_constraint("uq_gtfs_route", "gtfs_routes", ["data_source", "route_id"])
+    op.create_unique_constraint(
+        "uq_gtfs_route", "gtfs_routes", ["data_source", "route_id"]
+    )
     op.create_index("idx_gtfs_route_lookup", "gtfs_routes", ["data_source", "route_id"])
 
     # Create gtfs_trips table
@@ -61,21 +63,29 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column("data_source", sa.String(10), nullable=False),
         sa.Column("trip_id", sa.String(100), nullable=False),
-        sa.Column("route_id", sa.Integer, sa.ForeignKey("gtfs_routes.id"), nullable=False),
+        sa.Column(
+            "route_id", sa.Integer, sa.ForeignKey("gtfs_routes.id"), nullable=False
+        ),
         sa.Column("service_id", sa.String(50), nullable=False),
         sa.Column("trip_headsign", sa.String(100)),
         sa.Column("train_id", sa.String(20)),
         sa.Column("direction_id", sa.Integer),
     )
-    op.create_unique_constraint("uq_gtfs_trip", "gtfs_trips", ["data_source", "trip_id"])
-    op.create_index("idx_gtfs_trip_service", "gtfs_trips", ["data_source", "service_id"])
+    op.create_unique_constraint(
+        "uq_gtfs_trip", "gtfs_trips", ["data_source", "trip_id"]
+    )
+    op.create_index(
+        "idx_gtfs_trip_service", "gtfs_trips", ["data_source", "service_id"]
+    )
     op.create_index("idx_gtfs_trip_lookup", "gtfs_trips", ["data_source", "trip_id"])
 
     # Create gtfs_stop_times table
     op.create_table(
         "gtfs_stop_times",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("trip_id", sa.Integer, sa.ForeignKey("gtfs_trips.id"), nullable=False),
+        sa.Column(
+            "trip_id", sa.Integer, sa.ForeignKey("gtfs_trips.id"), nullable=False
+        ),
         sa.Column("stop_sequence", sa.Integer, nullable=False),
         sa.Column("gtfs_stop_id", sa.String(50), nullable=False),
         sa.Column("station_code", sa.String(3)),
@@ -84,8 +94,14 @@ def upgrade() -> None:
         sa.Column("pickup_type", sa.Integer, default=0),
         sa.Column("drop_off_type", sa.Integer, default=0),
     )
-    op.create_index("idx_gtfs_stop_time_trip", "gtfs_stop_times", ["trip_id", "stop_sequence"])
-    op.create_index("idx_gtfs_stop_time_station", "gtfs_stop_times", ["station_code", "departure_time"])
+    op.create_index(
+        "idx_gtfs_stop_time_trip", "gtfs_stop_times", ["trip_id", "stop_sequence"]
+    )
+    op.create_index(
+        "idx_gtfs_stop_time_station",
+        "gtfs_stop_times",
+        ["station_code", "departure_time"],
+    )
 
     # Create gtfs_calendar table
     op.create_table(
@@ -103,8 +119,14 @@ def upgrade() -> None:
         sa.Column("start_date", sa.Date, nullable=False),
         sa.Column("end_date", sa.Date, nullable=False),
     )
-    op.create_unique_constraint("uq_gtfs_calendar", "gtfs_calendar", ["data_source", "service_id"])
-    op.create_index("idx_gtfs_calendar_dates", "gtfs_calendar", ["data_source", "start_date", "end_date"])
+    op.create_unique_constraint(
+        "uq_gtfs_calendar", "gtfs_calendar", ["data_source", "service_id"]
+    )
+    op.create_index(
+        "idx_gtfs_calendar_dates",
+        "gtfs_calendar",
+        ["data_source", "start_date", "end_date"],
+    )
 
     # Create gtfs_calendar_dates table
     op.create_table(
@@ -116,9 +138,13 @@ def upgrade() -> None:
         sa.Column("exception_type", sa.Integer, nullable=False),
     )
     op.create_unique_constraint(
-        "uq_gtfs_calendar_date", "gtfs_calendar_dates", ["data_source", "service_id", "date"]
+        "uq_gtfs_calendar_date",
+        "gtfs_calendar_dates",
+        ["data_source", "service_id", "date"],
     )
-    op.create_index("idx_gtfs_calendar_date_lookup", "gtfs_calendar_dates", ["data_source", "date"])
+    op.create_index(
+        "idx_gtfs_calendar_date_lookup", "gtfs_calendar_dates", ["data_source", "date"]
+    )
 
 
 def downgrade() -> None:

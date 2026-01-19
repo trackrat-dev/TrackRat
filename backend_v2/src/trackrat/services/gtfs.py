@@ -303,7 +303,8 @@ class GTFSService:
                 )
                 db.add(route)
                 await db.flush()
-                routes[route.route_id] = route.id
+                if route.route_id and route.id is not None:
+                    routes[route.route_id] = route.id
 
         return routes
 
@@ -433,7 +434,8 @@ class GTFSService:
                     await db.flush()
                     # Map trip_ids to db ids after flush
                     for i, t in enumerate(batch):
-                        trips[batch_trip_ids[i]] = t.id
+                        if t.id is not None:
+                            trips[batch_trip_ids[i]] = t.id
                     batch = []
                     batch_trip_ids = []
 
@@ -442,7 +444,8 @@ class GTFSService:
             db.add_all(batch)
             await db.flush()
             for i, t in enumerate(batch):
-                trips[batch_trip_ids[i]] = t.id
+                if t.id is not None:
+                    trips[batch_trip_ids[i]] = t.id
 
         return trips
 
@@ -733,7 +736,7 @@ class GTFSService:
         parsed_stops: list[tuple[str, datetime | None, datetime | None]] = []
         terminus_scheduled_time: datetime | None = None
 
-        for station_code, sequence, arrival_str, departure_str in stop_rows:
+        for station_code, _sequence, arrival_str, departure_str in stop_rows:
             if not station_code:
                 continue
 
@@ -914,7 +917,7 @@ class GTFSService:
         parsed_stops: list[tuple[str, datetime | None, datetime | None]] = []
         origin_scheduled_time: datetime | None = None
 
-        for station_code, sequence, arrival_str, departure_str in stop_rows:
+        for station_code, _sequence, arrival_str, departure_str in stop_rows:
             if not station_code:
                 continue
 
@@ -931,7 +934,10 @@ class GTFSService:
             return None
 
         # Verify the route goes origin -> destination
-        if parsed_stops[0][0] != origin_station or parsed_stops[-1][0] != destination_station:
+        if (
+            parsed_stops[0][0] != origin_station
+            or parsed_stops[-1][0] != destination_station
+        ):
             logger.debug(
                 "path_trip_wrong_route",
                 expected_origin=origin_station,
@@ -1104,12 +1110,14 @@ class GTFSService:
                     "code": from_station,
                     "name": get_station_name(from_station),
                 },
-                "to_station": {
-                    "code": to_station,
-                    "name": get_station_name(to_station),
-                }
-                if to_station
-                else None,
+                "to_station": (
+                    {
+                        "code": to_station,
+                        "name": get_station_name(to_station),
+                    }
+                    if to_station
+                    else None
+                ),
                 "count": len(departures),
                 "generated_at": now_et().isoformat(),
             },
@@ -1158,7 +1166,9 @@ class GTFSService:
         trips_data = result.all()
 
         # Pre-fetch destination station data in one query to avoid N+1 problem
-        to_station_data: dict[int, tuple[str, int]] = {}  # trip_id -> (arrival_time, sequence)
+        to_station_data: dict[int, tuple[str, int]] = (
+            {}
+        )  # trip_id -> (arrival_time, sequence)
         if to_station and trips_data:
             trip_ids = [row[0] for row in trips_data]
             dest_result = await db.execute(
@@ -1224,8 +1234,10 @@ class GTFSService:
                     # Fallback for unknown PATH routes
                     line_code = route_short or "PATH"
                     line_name = route_long or route_short or "PATH"
-                    line_color = f"#{route_color}" if route_color else DEFAULT_LINE_COLORS.get(
-                        data_source, "#666666"
+                    line_color = (
+                        f"#{route_color}"
+                        if route_color
+                        else DEFAULT_LINE_COLORS.get(data_source, "#666666")
                     )
             elif data_source == "PATCO":
                 patco_route_info = get_patco_route_info(gtfs_route_id)
@@ -1238,14 +1250,18 @@ class GTFSService:
                     # Fallback for unknown PATCO routes
                     line_code = route_short or "PATCO"
                     line_name = route_long or route_short or "PATCO Speedline"
-                    line_color = f"#{route_color}" if route_color else DEFAULT_LINE_COLORS.get(
-                        data_source, "#BC0035"
+                    line_color = (
+                        f"#{route_color}"
+                        if route_color
+                        else DEFAULT_LINE_COLORS.get(data_source, "#BC0035")
                     )
             else:
                 line_code = route_short or data_source[:2]
                 line_name = route_long or route_short or data_source
-                line_color = f"#{route_color}" if route_color else DEFAULT_LINE_COLORS.get(
-                    data_source, "#666666"
+                line_color = (
+                    f"#{route_color}"
+                    if route_color
+                    else DEFAULT_LINE_COLORS.get(data_source, "#666666")
                 )
 
             # Use train_id from database (populated from block_id during parsing)
@@ -1275,16 +1291,18 @@ class GTFSService:
                     actual_time=None,
                     track=None,
                 ),
-                arrival=StationInfo(
-                    code=to_station,
-                    name=get_station_name(to_station),
-                    scheduled_time=arrival_dt,
-                    updated_time=None,
-                    actual_time=None,
-                    track=None,
-                )
-                if to_station and arrival_dt
-                else None,
+                arrival=(
+                    StationInfo(
+                        code=to_station,
+                        name=get_station_name(to_station),
+                        scheduled_time=arrival_dt,
+                        updated_time=None,
+                        actual_time=None,
+                        track=None,
+                    )
+                    if to_station and arrival_dt
+                    else None
+                ),
                 train_position=TrainPosition(
                     last_departed_station_code=None,
                     at_station_code=None,
@@ -1339,7 +1357,9 @@ class GTFSService:
 
         # Try all data sources
         for data_source in ["NJT", "AMTRAK", "PATH", "PATCO"]:
-            service_ids = await self.get_active_service_ids(db, data_source, target_date)
+            service_ids = await self.get_active_service_ids(
+                db, data_source, target_date
+            )
             if not service_ids:
                 continue
 
@@ -1527,7 +1547,9 @@ class GTFSService:
                 stops=stops,
                 data_freshness=DataFreshness(
                     last_updated=last_updated or now_et(),
-                    age_seconds=int((now_et() - (last_updated or now_et())).total_seconds()),
+                    age_seconds=int(
+                        (now_et() - (last_updated or now_et())).total_seconds()
+                    ),
                     update_count=None,
                     collection_method="scheduled",
                 ),

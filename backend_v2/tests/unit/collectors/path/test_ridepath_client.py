@@ -233,15 +233,17 @@ class TestRidePathClient:
 
     def test_clear_cache(self, client):
         """Test cache clearing."""
-        client._cache = [PathArrival(
-            station_code="PJS",
-            headsign="Test",
-            direction="ToNY",
-            minutes_away=5,
-            arrival_time=datetime.now(),
-            line_color="000000",
-            last_updated=None,
-        )]
+        client._cache = [
+            PathArrival(
+                station_code="PJS",
+                headsign="Test",
+                direction="ToNY",
+                minutes_away=5,
+                arrival_time=datetime.now(),
+                line_color="000000",
+                last_updated=None,
+            )
+        ]
         client._cache_time = datetime.now()
 
         client.clear_cache()

@@ -405,7 +405,9 @@ class PathCollector:
         journey_date = discovered_arrival_time.date()
 
         # Get destination station code from headsign
-        destination_station = _get_destination_station_from_headsign(destination_headsign)
+        destination_station = _get_destination_station_from_headsign(
+            destination_headsign
+        )
         if not destination_station:
             logger.debug(
                 "path_skip_unknown_destination",
@@ -415,7 +417,9 @@ class PathCollector:
             return False
 
         # Infer the true origin station (may be different if discovered mid-route)
-        origin_station = _infer_origin_station(discovered_at_station, destination_station)
+        origin_station = _infer_origin_station(
+            discovered_at_station, destination_station
+        )
 
         # Get full route from origin to destination
         route_stops = get_path_stops_by_origin_destination(
@@ -489,7 +493,9 @@ class PathCollector:
         # Calculate terminal arrival time
         terminal_station = route_stops[-1]
         total_travel_minutes = (len(route_stops) - 1) * minutes_per_segment
-        terminal_arrival = origin_departure_time + timedelta(minutes=total_travel_minutes)
+        terminal_arrival = origin_departure_time + timedelta(
+            minutes=total_travel_minutes
+        )
 
         # Create new journey
         journey = TrainJourney(
@@ -602,17 +608,21 @@ class PathCollector:
                 session.add(stop)
         else:
             # Create minimal stops: origin and destination
+            origin_code = journey.origin_station_code or ""
             origin_stop = JourneyStop(
                 journey_id=journey.id,
-                station_code=journey.origin_station_code,
-                station_name=get_station_name(journey.origin_station_code),
+                station_code=origin_code,
+                station_name=get_station_name(origin_code) if origin_code else "",
                 stop_sequence=1,
                 scheduled_departure=departure_time,
                 updated_departure=departure_time,
             )
             session.add(origin_stop)
 
-            if destination_station and destination_station != journey.origin_station_code:
+            if (
+                destination_station
+                and destination_station != journey.origin_station_code
+            ):
                 terminal_arrival = departure_time + timedelta(minutes=20)
                 dest_stop = JourneyStop(
                     journey_id=journey.id,
@@ -667,7 +677,8 @@ class PathCollector:
             )
         )
 
-        return await session.scalar(stmt)
+        result = await session.scalar(stmt)
+        return result if isinstance(result, TrainJourney) else None
 
     # =========================================================================
     # PHASE 2: UPDATES
@@ -714,11 +725,13 @@ class PathCollector:
 
         for journey in journeys:
             try:
-                journey_headsign = _normalize_headsign(journey.destination)
+                journey_headsign = _normalize_headsign(journey.destination or "")
                 matching = arrivals_by_headsign.get(journey_headsign, [])
 
                 stops = await self._get_journey_stops(session, journey)
-                await self._update_stops_from_arrivals(session, journey, stops, matching)
+                await self._update_stops_from_arrivals(
+                    session, journey, stops, matching
+                )
 
                 journey.last_updated_at = now_et()
                 journey.update_count = (journey.update_count or 0) + 1
@@ -783,7 +796,9 @@ class PathCollector:
             best_diff: float = float("inf")
 
             for arrival in station_arrivals:
-                diff = abs((arrival.arrival_time - stop.scheduled_arrival).total_seconds())
+                diff = abs(
+                    (arrival.arrival_time - stop.scheduled_arrival).total_seconds()
+                )
                 diff_minutes = diff / 60
 
                 if diff_minutes <= tolerance_minutes and diff < best_diff:
@@ -825,19 +840,22 @@ class PathCollector:
         max_departed_sequence = 0
 
         for stop in stops:
-            station_arrivals = arrivals_by_station.get(stop.station_code, [])
-            arrival = self._find_best_matching_arrival(stop, station_arrivals)
+            station_code = stop.station_code or ""
+            station_arrivals = arrivals_by_station.get(station_code, [])
+            matched_arrival = self._find_best_matching_arrival(stop, station_arrivals)
 
-            if arrival:
-                stop.actual_arrival = arrival.arrival_time
-                stop.updated_arrival = arrival.arrival_time
+            if matched_arrival:
+                stop.actual_arrival = matched_arrival.arrival_time
+                stop.updated_arrival = matched_arrival.arrival_time
 
-                if arrival.arrival_time <= now:
+                if matched_arrival.arrival_time <= now:
                     stop.has_departed_station = True
-                    stop.actual_departure = arrival.arrival_time
+                    stop.actual_departure = matched_arrival.arrival_time
                     stop.departure_source = "time_inference"
                     if stop.stop_sequence:
-                        max_departed_sequence = max(max_departed_sequence, stop.stop_sequence)
+                        max_departed_sequence = max(
+                            max_departed_sequence, stop.stop_sequence
+                        )
                 else:
                     stop.has_departed_station = False
                     stop.actual_departure = None
@@ -846,7 +864,9 @@ class PathCollector:
             elif stop.stop_sequence and stop.stop_sequence < max_departed_sequence:
                 if not stop.has_departed_station:
                     stop.has_departed_station = True
-                    stop.actual_departure = stop.actual_arrival or stop.scheduled_arrival
+                    stop.actual_departure = (
+                        stop.actual_arrival or stop.scheduled_arrival
+                    )
                     stop.departure_source = "sequential_inference"
 
             elif not arrival and stop.scheduled_arrival:
@@ -857,7 +877,9 @@ class PathCollector:
                         stop.actual_departure = stop.scheduled_arrival
                         stop.departure_source = "time_inference"
                         if stop.stop_sequence:
-                            max_departed_sequence = max(max_departed_sequence, stop.stop_sequence)
+                            max_departed_sequence = max(
+                                max_departed_sequence, stop.stop_sequence
+                            )
 
             stop.updated_at = now
 
@@ -865,7 +887,9 @@ class PathCollector:
         terminal_stop = stops[-1] if stops else None
         if terminal_stop and terminal_stop.has_departed_station:
             journey.is_completed = True
-            journey.actual_arrival = terminal_stop.actual_arrival or terminal_stop.scheduled_arrival
+            journey.actual_arrival = (
+                terminal_stop.actual_arrival or terminal_stop.scheduled_arrival
+            )
             logger.info(
                 "path_journey_completed",
                 train_id=journey.train_id,
@@ -924,9 +948,10 @@ class PathCollector:
             all_arrivals = await self.client.get_all_arrivals()
 
             # Filter to this journey's destination
-            journey_headsign = _normalize_headsign(journey.destination)
+            journey_headsign = _normalize_headsign(journey.destination or "")
             matching = [
-                a for a in all_arrivals
+                a
+                for a in all_arrivals
                 if _normalize_headsign(a.headsign) == journey_headsign
             ]
 

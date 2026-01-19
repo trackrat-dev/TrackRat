@@ -141,7 +141,15 @@ async def get_departures(
 
     service = DepartureService()
     response = await service.get_departures(
-        db, from_station, to_station, date, time_from, time_to, limit, hide_departed, source_list
+        db,
+        from_station,
+        to_station,
+        date,
+        time_from,
+        time_to,
+        limit,
+        hide_departed,
+        source_list,
     )
 
     if use_cache:
@@ -190,7 +198,8 @@ async def get_train_details(
             return TrainDetailsResponse(train=gtfs_details)
         # If not found in GTFS, fall through to 404
         raise HTTPException(
-            status_code=404, detail=f"Train {train_id} not found in schedule for date {date}"
+            status_code=404,
+            detail=f"Train {train_id} not found in schedule for date {date}",
         )
 
     # Get fresh train data

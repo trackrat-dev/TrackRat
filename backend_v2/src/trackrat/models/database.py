@@ -607,7 +607,9 @@ class GTFSCalendarDate(Base):
     data_source = Column(String(10), nullable=False)
     service_id = Column(String(50), nullable=False)
     date = Column(Date, nullable=False)
-    exception_type = Column(Integer, nullable=False)  # 1=service added, 2=service removed
+    exception_type = Column(
+        Integer, nullable=False
+    )  # 1=service added, 2=service removed
 
     __table_args__ = (
         UniqueConstraint(

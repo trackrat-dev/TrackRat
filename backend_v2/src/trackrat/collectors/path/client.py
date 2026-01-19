@@ -153,9 +153,7 @@ class PathClient(BaseClient):
         return self._cache
 
     @track_api_call(api_name="path", endpoint="station_arrivals")
-    async def get_station_arrivals(
-        self, transiter_stop_id: str
-    ) -> list[PathStopTime]:
+    async def get_station_arrivals(self, transiter_stop_id: str) -> list[PathStopTime]:
         """Fetch upcoming arrivals at a PATH station.
 
         Args:

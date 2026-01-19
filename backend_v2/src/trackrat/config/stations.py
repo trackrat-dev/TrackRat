@@ -606,15 +606,15 @@ PATH_RIDEPATH_API_TO_INTERNAL_MAP: dict[str, str] = {
 # PATCO GTFS stop_id to internal station code mapping
 # GTFS uses numeric stop_id (1-14), matching stop_code
 PATCO_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
-    "1": "LND",   # Lindenwold
-    "2": "ASD",   # Ashland
-    "3": "WCT",   # Woodcrest
-    "4": "HDF",   # Haddonfield
-    "5": "WMT",   # Westmont
-    "6": "CLD",   # Collingswood
-    "7": "FRY",   # Ferry Avenue
-    "8": "BWY",   # Broadway
-    "9": "CTH",   # City Hall
+    "1": "LND",  # Lindenwold
+    "2": "ASD",  # Ashland
+    "3": "WCT",  # Woodcrest
+    "4": "HDF",  # Haddonfield
+    "5": "WMT",  # Westmont
+    "6": "CLD",  # Collingswood
+    "7": "FRY",  # Ferry Avenue
+    "8": "BWY",  # Broadway
+    "9": "CTH",  # City Hall
     "10": "FKS",  # Franklin Square
     "11": "EMK",  # 8th and Market
     "12": "NTL",  # 9-10th and Locust
@@ -1050,17 +1050,17 @@ STATION_COORDINATES = {
     "PWC": {"lat": 40.7116, "lon": -74.0112},  # World Trade Center
     # PATCO Speedline stations (coordinates from GTFS)
     "LND": {"lat": 39.833962, "lon": -75.000664},  # Lindenwold
-    "ASD": {"lat": 39.858705, "lon": -75.00921},   # Ashland
+    "ASD": {"lat": 39.858705, "lon": -75.00921},  # Ashland
     "WCT": {"lat": 39.870263, "lon": -75.011242},  # Woodcrest
-    "HDF": {"lat": 39.89764, "lon": -75.037141},   # Haddonfield
-    "WMT": {"lat": 39.90706, "lon": -75.046553},   # Westmont
-    "CLD": {"lat": 39.91359, "lon": -75.06456},    # Collingswood
+    "HDF": {"lat": 39.89764, "lon": -75.037141},  # Haddonfield
+    "WMT": {"lat": 39.90706, "lon": -75.046553},  # Westmont
+    "CLD": {"lat": 39.91359, "lon": -75.06456},  # Collingswood
     "FRY": {"lat": 39.922572, "lon": -75.091805},  # Ferry Avenue
     "BWY": {"lat": 39.943135, "lon": -75.120364},  # Broadway
     "CTH": {"lat": 39.945469, "lon": -75.121242},  # City Hall
     "FKS": {"lat": 39.955298, "lon": -75.151157},  # Franklin Square
     "EMK": {"lat": 39.950979, "lon": -75.153515},  # 8th and Market
-    "NTL": {"lat": 39.947345, "lon": -75.15751},   # 9-10th and Locust
+    "NTL": {"lat": 39.947345, "lon": -75.15751},  # 9-10th and Locust
     "TWL": {"lat": 39.947944, "lon": -75.162365},  # 12-13th and Locust
     "FFL": {"lat": 39.948634, "lon": -75.167792},  # 15-16th and Locust
 }
