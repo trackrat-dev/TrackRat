@@ -144,15 +144,31 @@ struct RouteTopology {
             stationCodes: ["WS", "ALX", "RVR", "PTB", "RMT", "WLN", "SEL", "RGH", "CAR", "DNC", "GRB", "HPT", "SAL", "CLT"]
         ),
 
-        // Silver Meteor / Star (to Florida)
+        // Crescent (Charlotte to Atlanta via Spartanburg/Greenville)
         RouteLine(
-            id: "amtrak-florida",
-            name: "Silver Meteor / Star",
+            id: "amtrak-crescent",
+            name: "Crescent",
             dataSource: "AMTRAK",
-            stationCodes: ["CLT", "SPB", "GVL", "TOC", "GAI", "ATL", "JES", "SAV", "CHS", "KTR", "FLO", "DIL", "JAX", "PAL", "DLD", "SAN", "WPK", "ORL", "KIS", "LKL", "WTH", "TPA"]
+            stationCodes: ["CLT", "GAS", "SPB", "GVL", "TOC", "GAI", "ATL"]
         ),
 
-        // Silver Meteor (Miami branch)
+        // Coastal Route (Dillon to Jacksonville via Charleston/Savannah)
+        RouteLine(
+            id: "amtrak-coastal",
+            name: "Silver Service (Coastal)",
+            dataSource: "AMTRAK",
+            stationCodes: ["DIL", "FLO", "KTR", "CHS", "SAV", "JES", "JAX"]
+        ),
+
+        // Silver Star (Jacksonville to Tampa)
+        RouteLine(
+            id: "amtrak-florida",
+            name: "Silver Star (Tampa)",
+            dataSource: "AMTRAK",
+            stationCodes: ["JAX", "PAL", "DLD", "SAN", "WPK", "ORL", "KIS", "LKL", "WTH", "TPA"]
+        ),
+
+        // Silver Meteor (Jacksonville to Miami)
         RouteLine(
             id: "amtrak-miami",
             name: "Silver Meteor (Miami)",

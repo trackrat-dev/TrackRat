@@ -694,7 +694,19 @@ struct Stations {
         "WLN": CLLocationCoordinate2D(latitude: 35.7230682373047, longitude: -77.9082946777344),   // Wilson, NC
         "WPB": CLLocationCoordinate2D(latitude: 26.7153, longitude: -80.0534),                     // West Palm Beach, FL
         "WPK": CLLocationCoordinate2D(latitude: 28.5990, longitude: -81.3392),                     // Winter Park, FL
-        "WTH": CLLocationCoordinate2D(latitude: 28.0222, longitude: -81.7323)                      // Winter Haven, FL
+        "WTH": CLLocationCoordinate2D(latitude: 28.0222, longitude: -81.7323),                     // Winter Haven, FL
+
+        // Missing Southeast stations (added for route topology)
+        "SEL": CLLocationCoordinate2D(latitude: 35.5351, longitude: -78.2836),                     // Selma-Smithfield, NC
+        "CAR": CLLocationCoordinate2D(latitude: 35.7830, longitude: -78.7810),                     // Cary, NC
+        "GRB": CLLocationCoordinate2D(latitude: 36.0726, longitude: -79.7920),                     // Greensboro, NC
+        "GVL": CLLocationCoordinate2D(latitude: 34.8526, longitude: -82.3940),                     // Greenville, SC
+        "TOC": CLLocationCoordinate2D(latitude: 34.5773, longitude: -83.3315),                     // Toccoa, GA
+        "GAI": CLLocationCoordinate2D(latitude: 34.2979, longitude: -83.8241),                     // Gainesville, GA
+        "JES": CLLocationCoordinate2D(latitude: 31.6036, longitude: -81.8854),                     // Jesup, GA
+        "PAL": CLLocationCoordinate2D(latitude: 29.6486, longitude: -81.6376),                     // Palatka, FL
+        "SAN": CLLocationCoordinate2D(latitude: 28.8122, longitude: -81.3130),                     // Sanford, FL
+        "HLW": CLLocationCoordinate2D(latitude: 26.0112, longitude: -80.1495)                      // Hollywood, FL
     ]
     
     // Supported departure stations - Updated to match backend
