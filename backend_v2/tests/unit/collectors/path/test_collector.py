@@ -739,8 +739,8 @@ class TestStopUpdateLogic:
         assert result is not None
         assert result.minutes_away == 9
 
-    def test_find_best_matching_arrival_fallback_to_soonest(self, collector):
-        """Test fallback to soonest arrival when no scheduled time."""
+    def test_find_best_matching_arrival_no_scheduled_time_returns_none(self, collector):
+        """Test returns None when no scheduled time (can't reliably match)."""
         now = datetime.now()
 
         arrivals = [
@@ -757,7 +757,7 @@ class TestStopUpdateLogic:
                 station_code="PJS",
                 headsign="World Trade Center",
                 direction="ToNY",
-                minutes_away=5,  # Soonest
+                minutes_away=5,
                 arrival_time=now + timedelta(minutes=5),
                 line_color="D93A30",
                 last_updated=now,
@@ -768,12 +768,12 @@ class TestStopUpdateLogic:
         stop.scheduled_arrival = None
         stop.station_code = "PJS"
 
+        # Without scheduled_arrival, we can't reliably match to a specific train
         result = collector._find_best_matching_arrival(stop, arrivals)
-        assert result is not None
-        assert result.minutes_away == 5
+        assert result is None
 
-    def test_find_best_matching_arrival_outside_tolerance(self, collector):
-        """Test fallback when scheduled time match is outside tolerance."""
+    def test_find_best_matching_arrival_outside_tolerance_returns_none(self, collector):
+        """Test returns None when no arrival matches within tolerance."""
         now = datetime.now()
         scheduled_arrival = now + timedelta(minutes=30)  # Far from any arrival
 
@@ -802,10 +802,9 @@ class TestStopUpdateLogic:
         stop.scheduled_arrival = scheduled_arrival
         stop.station_code = "PJS"
 
-        # Both arrivals are >10 min from scheduled, so fallback to soonest
+        # Both arrivals are >10 min from scheduled - don't match to wrong train
         result = collector._find_best_matching_arrival(stop, arrivals)
-        assert result is not None
-        assert result.minutes_away == 5
+        assert result is None
 
     def test_find_best_matching_arrival_no_arrivals(self, collector):
         """Test returns None when no arrivals at station."""

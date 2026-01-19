@@ -689,11 +689,12 @@ class PathCollector:
                     best_diff = diff
                     best_match = arrival
 
-            if best_match:
-                return best_match
+            # Only return if we found a match within tolerance
+            # Don't fall back to soonest - that could be a different train
+            return best_match
 
-        # Fallback: return the soonest arrival at this station
-        return min(station_arrivals, key=lambda a: a.minutes_away)
+        # No scheduled arrival time to match against - can't reliably match
+        return None
 
     async def _update_stops_from_arrivals(
         self,
