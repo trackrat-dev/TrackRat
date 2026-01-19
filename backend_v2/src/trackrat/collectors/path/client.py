@@ -16,6 +16,7 @@ from structlog import get_logger
 
 from trackrat.collectors.base import BaseClient
 from trackrat.utils.metrics import track_api_call
+from trackrat.utils.time import ET
 
 logger = get_logger(__name__)
 
@@ -62,9 +63,9 @@ class PathStopTime(BaseModel):
             arrival_time = None
 
             if departure.get("time"):
-                departure_time = datetime.fromtimestamp(int(departure["time"]))
+                departure_time = datetime.fromtimestamp(int(departure["time"]), tz=ET)
             if arrival.get("time"):
-                arrival_time = datetime.fromtimestamp(int(arrival["time"]))
+                arrival_time = datetime.fromtimestamp(int(arrival["time"]), tz=ET)
 
             # Get headsign - prefer trip destination over stop-level headsign
             # The stop-level headsign often shows the current stop, not final destination
