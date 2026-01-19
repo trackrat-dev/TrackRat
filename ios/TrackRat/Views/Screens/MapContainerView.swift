@@ -926,6 +926,7 @@ struct MapLayerControlsView: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.ultraThinMaterial)
         )
+        .fixedSize(horizontal: true, vertical: false)
         .onAppear {
             // Ensure non-Pro users can't have congestion enabled
             // (handles edge case if subscription lapses while app is running)
@@ -954,8 +955,6 @@ private struct SystemToggleRow: View {
                 Text(system.displayName)
                     .font(.subheadline)
                     .foregroundColor(.primary)
-
-                Spacer()
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.subheadline)

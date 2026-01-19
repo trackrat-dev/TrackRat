@@ -113,8 +113,11 @@ struct CongestionMapView: View {
                 VStack(spacing: 12) {
                     // Layer Controls (collapsible)
                     if showingLayers {
-                        layerControlsView
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        HStack {
+                            Spacer()
+                            layerControlsView
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
 
                     // Congestion Legend (only when congestion is visible)
@@ -251,6 +254,7 @@ struct CongestionMapView: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.ultraThinMaterial)
         )
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     // MARK: - Congestion Legend View
@@ -349,8 +353,6 @@ private struct SystemToggleButton: View {
                 Text(system.displayName)
                     .font(.subheadline)
                     .foregroundColor(.primary)
-
-                Spacer()
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.body)
