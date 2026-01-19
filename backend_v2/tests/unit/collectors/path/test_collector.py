@@ -15,6 +15,7 @@ from trackrat.collectors.path.collector import (
     _get_destination_station_from_headsign,
     _get_line_info_from_headsign,
     _headsign_matches_station,
+    _infer_origin_station,
     _normalize_headsign,
 )
 from trackrat.collectors.path.ridepath_client import PathArrival
@@ -214,6 +215,75 @@ class TestNormalizeHeadsign:
         assert _normalize_headsign("Some Unknown Destination") == "some_unknown_destination"
 
 
+class TestInferOriginStation:
+    """Tests for origin station inference for mid-route discovery."""
+
+    def test_terminus_discovery_returns_current_station(self):
+        """Test that discovery at terminus returns same station as origin."""
+        # At Hoboken, train going to 33rd Street - origin IS Hoboken
+        result = _infer_origin_station("PHO", "P33")
+        assert result == "PHO"
+
+    def test_mid_route_nwk_wtc_from_grove_street(self):
+        """Test inferring Newark origin when train seen at Grove Street going to WTC."""
+        # NWK-WTC route: PNK → PHR → PJS → PGR → PEX → PWC
+        # Seen at Grove Street (PGR), going to WTC (PWC) → origin is Newark (PNK)
+        result = _infer_origin_station("PGR", "PWC")
+        assert result == "PNK"
+
+    def test_mid_route_nwk_wtc_from_journal_square(self):
+        """Test inferring Newark origin when train seen at Journal Square going to WTC."""
+        # NWK-WTC route: PNK → PHR → PJS → PGR → PEX → PWC
+        # Seen at Journal Square (PJS), going to WTC (PWC) → origin is Newark (PNK)
+        result = _infer_origin_station("PJS", "PWC")
+        assert result == "PNK"
+
+    def test_mid_route_jsq_33_from_newport(self):
+        """Test inferring Journal Square origin when train seen at Newport going to 33rd."""
+        # JSQ-33 route: PJS → PGR → PNP → PCH → P9S → P14 → P23 → P33
+        # Seen at Newport (PNP), going to 33rd (P33) → origin is Journal Square (PJS)
+        result = _infer_origin_station("PNP", "P33")
+        # Could be JSQ-33 (PJS) or HOB-33 (PHO) - both go through Newport to 33rd
+        # Should pick the one where Newport is closest to start (more complete journey)
+        # HOB-33: PHO(0) → PCH(1) → P9S(2) → P14(3) → P23(4) → P33(5) - Newport NOT in this route!
+        # JSQ-33: PJS(0) → PGR(1) → PNP(2) → PCH(3) → ... - Newport at index 2
+        # JSQ-33-HOB: PJS(0) → PGR(1) → PNP(2) → PHO(3) → ... - Newport at index 2
+        # So origin should be PJS
+        assert result == "PJS"
+
+    def test_mid_route_hob_wtc_from_newport(self):
+        """Test inferring Hoboken origin when train seen at Newport going to WTC."""
+        # HOB-WTC route: PHO → PNP → PEX → PWC
+        # Seen at Newport (PNP), going to WTC (PWC) → origin is Hoboken (PHO)
+        result = _infer_origin_station("PNP", "PWC")
+        # Could be HOB-WTC (PHO) or NWK-WTC (PNK)
+        # HOB-WTC: PHO(0) → PNP(1) → PEX(2) → PWC(3) - Newport at index 1
+        # NWK-WTC: PNK(0) → PHR(1) → PJS(2) → PGR(3) → PEX(4) → PWC(5) - Newport NOT in this route!
+        # So origin should be PHO
+        assert result == "PHO"
+
+    def test_mid_route_christopher_to_33rd(self):
+        """Test inferring origin when train seen at Christopher Street going to 33rd."""
+        # Could be HOB-33: PHO(0) → PCH(1) → ... → P33(5)
+        # Or JSQ-33: PJS(0) → PGR(1) → PNP(2) → PCH(3) → ... → P33(7)
+        # Christopher St at index 1 in HOB-33, index 3 in JSQ-33
+        # Should pick HOB-33 (PHO) since Christopher is closer to start
+        result = _infer_origin_station("PCH", "P33")
+        assert result == "PHO"
+
+    def test_no_matching_route_returns_current_station(self):
+        """Test that when no route matches, returns current station as fallback."""
+        # No route goes from P33 to PNK (would be reverse direction)
+        result = _infer_origin_station("P33", "PNK")
+        # P33 to PNK doesn't exist as a forward route - return current station
+        assert result == "P33"
+
+    def test_same_station_returns_same(self):
+        """Test edge case where current and destination are same."""
+        result = _infer_origin_station("PHO", "PHO")
+        assert result == "PHO"
+
+
 # =============================================================================
 # PATH COLLECTOR TESTS
 # =============================================================================
@@ -343,13 +413,13 @@ class TestPathCollectorDiscovery:
         return session
 
     @pytest.mark.asyncio
-    async def test_discover_trains_filters_non_discovery_stations(
+    async def test_discover_trains_processes_all_stations(
         self, collector, mock_client, mock_session
     ):
-        """Test discover_trains filters out non-discovery stations."""
+        """Test discover_trains processes arrivals at ALL stations (not just terminus)."""
         arrivals = [
             PathArrival(
-                station_code="PHO",  # Discovery station
+                station_code="PHO",  # Terminus station
                 headsign="33rd Street",
                 direction="ToNY",
                 minutes_away=5,
@@ -358,20 +428,20 @@ class TestPathCollectorDiscovery:
                 last_updated=None,
             ),
             PathArrival(
-                station_code="PGR",  # NOT a discovery station
-                headsign="33rd Street",
+                station_code="PGR",  # Mid-route station (Grove Street)
+                headsign="World Trade Center",
                 direction="ToNY",
                 minutes_away=3,
                 arrival_time=datetime.now() + timedelta(minutes=3),
-                line_color="4D92FB",
+                line_color="D93A30",
                 last_updated=None,
             ),
         ]
 
         result = await collector._discover_trains(mock_session, arrivals)
 
-        # Only PHO arrival should be processed
-        assert result["discovery_arrivals"] == 1
+        # Both arrivals should be processed (no longer filtering by station)
+        assert result["discovery_arrivals"] == 2
 
     @pytest.mark.asyncio
     async def test_discover_trains_skips_arriving_trains(
@@ -485,6 +555,180 @@ class TestPathCollectorDiscovery:
         add_call = mock_session.add.call_args_list[0]
         journey = add_call[0][0]
         assert journey.line_color == "#FF0000"
+
+    @pytest.mark.asyncio
+    async def test_process_arrival_mid_route_infers_origin(self, collector, mock_session):
+        """Test mid-route discovery infers correct origin station."""
+        # Train seen at Grove Street (PGR) heading to WTC
+        # Should infer origin as Newark (PNK) since NWK-WTC route goes through Grove St
+        arrival = PathArrival(
+            station_code="PGR",  # Grove Street - mid-route
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=5,
+            arrival_time=datetime.now() + timedelta(minutes=5),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, arrival)
+
+        # Get the journey that was added
+        journey_add_call = mock_session.add.call_args_list[0]
+        journey = journey_add_call[0][0]
+
+        # Origin should be inferred as Newark, not Grove Street
+        assert journey.origin_station_code == "PNK"
+        # Train ID should use inferred origin
+        assert "PNK" in journey.train_id
+
+    @pytest.mark.asyncio
+    async def test_process_arrival_mid_route_calculates_origin_departure(
+        self, collector, mock_session
+    ):
+        """Test mid-route discovery calculates origin departure time correctly."""
+        now = datetime.now()
+        # Train arrives at Grove Street in 5 minutes
+        # NWK-WTC: PNK → PHR → PJS → PGR (index 3) → PEX → PWC
+        # At 3 min/segment, Grove St is 9 min from Newark
+        # So origin departure should be arrival_time - 9 min = now - 4 min
+        arrival = PathArrival(
+            station_code="PGR",
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=5,
+            arrival_time=now + timedelta(minutes=5),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, arrival)
+
+        journey_add_call = mock_session.add.call_args_list[0]
+        journey = journey_add_call[0][0]
+
+        # Scheduled departure should be ~9 min before arrival at Grove St
+        # arrival_time (now+5) - 9 min = now - 4 min
+        expected_departure = now + timedelta(minutes=5) - timedelta(minutes=9)
+        actual_departure = journey.scheduled_departure
+
+        # Allow 1 second tolerance for test timing
+        diff = abs((actual_departure - expected_departure).total_seconds())
+        assert diff < 1, f"Expected {expected_departure}, got {actual_departure}"
+
+    @pytest.mark.asyncio
+    async def test_process_arrival_mid_route_marks_earlier_stops_departed(
+        self, collector, mock_session
+    ):
+        """Test mid-route discovery marks stops before discovery station as departed."""
+        arrival = PathArrival(
+            station_code="PGR",  # Grove Street - index 3 in NWK-WTC route
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=5,
+            arrival_time=datetime.now() + timedelta(minutes=5),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, arrival)
+
+        # Collect all JourneyStop objects that were added
+        stops = [
+            call[0][0]
+            for call in mock_session.add.call_args_list
+            if isinstance(call[0][0], JourneyStop)
+        ]
+
+        # NWK-WTC route: PNK(1) → PHR(2) → PJS(3) → PGR(4) → PEX(5) → PWC(6)
+        # Stops at PNK, PHR, PJS should be marked as departed (indices 0, 1, 2)
+        # PGR and beyond should NOT be marked as departed
+
+        departed_stations = [s.station_code for s in stops if s.has_departed_station]
+        not_departed_stations = [s.station_code for s in stops if not s.has_departed_station]
+
+        assert "PNK" in departed_stations, "Newark should be marked as departed"
+        assert "PHR" in departed_stations, "Harrison should be marked as departed"
+        assert "PJS" in departed_stations, "Journal Square should be marked as departed"
+        assert "PGR" in not_departed_stations, "Grove Street should NOT be departed"
+        assert "PWC" in not_departed_stations, "WTC should NOT be departed"
+
+    @pytest.mark.asyncio
+    async def test_process_arrival_mid_route_sets_departure_source(
+        self, collector, mock_session
+    ):
+        """Test mid-route discovery sets departure_source for inferred stops."""
+        arrival = PathArrival(
+            station_code="PJS",  # Journal Square - mid-route on NWK-WTC
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=3,
+            arrival_time=datetime.now() + timedelta(minutes=3),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, arrival)
+
+        stops = [
+            call[0][0]
+            for call in mock_session.add.call_args_list
+            if isinstance(call[0][0], JourneyStop)
+        ]
+
+        # Earlier stops should have departure_source set
+        earlier_stops = [s for s in stops if s.has_departed_station]
+        for stop in earlier_stops:
+            assert stop.departure_source == "inferred_from_discovery"
+
+    @pytest.mark.asyncio
+    async def test_mid_route_and_terminus_produce_same_train_id(
+        self, collector, mock_session
+    ):
+        """Test that same train discovered at terminus and mid-route gets same train_id."""
+        base_time = datetime(2026, 1, 19, 10, 0, 0)
+
+        # Train discovered at terminus (Newark) departing at 10:00
+        terminus_arrival = PathArrival(
+            station_code="PNK",
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=0,
+            arrival_time=base_time,  # Departing now
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        # Same train discovered mid-route at Grove Street (9 min later)
+        # NWK-WTC: PNK → PHR → PJS → PGR (index 3, 9 min from origin)
+        midroute_arrival = PathArrival(
+            station_code="PGR",
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=0,
+            arrival_time=base_time + timedelta(minutes=9),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        # Process terminus discovery
+        await collector._process_arrival_for_discovery(mock_session, terminus_arrival)
+        terminus_journey = mock_session.add.call_args_list[0][0][0]
+        terminus_train_id = terminus_journey.train_id
+
+        # Reset mock for second call
+        mock_session.reset_mock()
+
+        # Process mid-route discovery
+        await collector._process_arrival_for_discovery(mock_session, midroute_arrival)
+        midroute_journey = mock_session.add.call_args_list[0][0][0]
+        midroute_train_id = midroute_journey.train_id
+
+        # Both should generate the same train_id since they're the same train
+        assert terminus_train_id == midroute_train_id, (
+            f"Same train should have same ID. "
+            f"Terminus: {terminus_train_id}, Mid-route: {midroute_train_id}"
+        )
 
 
 # =============================================================================

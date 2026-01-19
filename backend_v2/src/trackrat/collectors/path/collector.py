@@ -2,7 +2,7 @@
 Unified PATH train collector for TrackRat V2.
 
 Combines discovery and journey tracking into a single task that:
-1. Discovers new trains at terminus stations (PHO, PWC, P33, PNK)
+1. Discovers new trains at ALL stations (including mid-route)
 2. Updates existing journeys with real-time arrival data
 
 Runs every 4 minutes for responsive tracking with single API call.
@@ -18,7 +18,7 @@ from structlog import get_logger
 
 from trackrat.collectors.path.ridepath_client import PathArrival, RidePathClient
 from trackrat.config.stations import (
-    PATH_DISCOVERY_STATIONS,
+    PATH_ROUTE_STOPS,
     get_path_stops_by_origin_destination,
     get_station_name,
 )
@@ -201,6 +201,52 @@ def _normalize_headsign(headsign: str) -> str:
     return h.replace(" ", "_")
 
 
+def _infer_origin_station(
+    current_station: str,
+    destination_station: str,
+) -> str:
+    """Infer the origin station for a train seen mid-route.
+
+    Finds all routes where current_station appears before destination_station,
+    then picks the one where current_station is closest to the start
+    (giving us the most complete journey).
+
+    Args:
+        current_station: Station code where the train was seen
+        destination_station: Train's destination station code
+
+    Returns:
+        Origin station code (first stop of the best matching route),
+        or current_station if no route found
+    """
+    matching_routes: list[tuple[str, list[str], int]] = []
+
+    for route_id, stops in PATH_ROUTE_STOPS.items():
+        if current_station not in stops or destination_station not in stops:
+            continue
+
+        current_idx = stops.index(current_station)
+        dest_idx = stops.index(destination_station)
+
+        # Route must go from current to destination (not reverse)
+        if current_idx < dest_idx:
+            # Store route with position of current_station (lower = more complete)
+            matching_routes.append((route_id, stops, current_idx))
+
+    if not matching_routes:
+        # No matching route - use current station as origin
+        return current_station
+
+    if len(matching_routes) == 1:
+        # Unambiguous - return first stop of this route
+        return matching_routes[0][1][0]
+
+    # Multiple routes possible - pick the one where current_station
+    # is closest to the start (most complete journey to track)
+    best_route = min(matching_routes, key=lambda r: r[2])
+    return best_route[1][0]
+
+
 # =============================================================================
 # UNIFIED PATH COLLECTOR
 # =============================================================================
@@ -290,7 +336,7 @@ class PathCollector:
     ) -> dict[str, Any]:
         """Discovery phase - create journeys for new trains.
 
-        Only processes arrivals at discovery stations (terminus stations).
+        Processes arrivals at ALL stations, not just terminus stations.
         Skips trains that are arriving at their destination.
 
         Args:
@@ -302,15 +348,11 @@ class PathCollector:
         """
         total_arrivals = 0
         new_journeys = 0
-        station_results: dict[str, dict[str, Any]] = {
-            station: {"arrivals_found": 0, "new_journeys": 0}
-            for station in PATH_DISCOVERY_STATIONS
-        }
+        station_results: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {"arrivals_found": 0, "new_journeys": 0}
+        )
 
         for arrival in arrivals:
-            if arrival.station_code not in PATH_DISCOVERY_STATIONS:
-                continue
-
             station_results[arrival.station_code]["arrivals_found"] += 1
             total_arrivals += 1
 
@@ -323,7 +365,7 @@ class PathCollector:
                 )
                 continue
 
-            # Process this departure
+            # Process this departure (may be at terminus or mid-route)
             created = await self._process_arrival_for_discovery(session, arrival)
             if created:
                 station_results[arrival.station_code]["new_journeys"] += 1
@@ -342,6 +384,10 @@ class PathCollector:
     ) -> bool:
         """Process a single arrival and create journey record if new.
 
+        Handles both terminus discovery (train starting its journey) and
+        mid-route discovery (train already in progress). For mid-route,
+        infers the true origin and marks earlier stops as departed.
+
         Args:
             session: Database session
             arrival: Arrival data from RidePATH
@@ -349,17 +395,57 @@ class PathCollector:
         Returns:
             True if a new journey was created, False if existing/skipped
         """
-        origin_station = arrival.station_code
-        destination = arrival.headsign
-        departure_time = arrival.arrival_time
+        discovered_at_station = arrival.station_code
+        destination_headsign = arrival.headsign
+        discovered_arrival_time = arrival.arrival_time
 
-        if not departure_time:
+        if not discovered_arrival_time:
             return False
 
-        journey_date = departure_time.date()
+        journey_date = discovered_arrival_time.date()
+
+        # Get destination station code from headsign
+        destination_station = _get_destination_station_from_headsign(destination_headsign)
+        if not destination_station:
+            logger.debug(
+                "path_skip_unknown_destination",
+                station=discovered_at_station,
+                headsign=destination_headsign,
+            )
+            return False
+
+        # Infer the true origin station (may be different if discovered mid-route)
+        origin_station = _infer_origin_station(discovered_at_station, destination_station)
+
+        # Get full route from origin to destination
+        route_stops = get_path_stops_by_origin_destination(
+            origin_station, destination_station
+        )
+
+        if not route_stops or len(route_stops) < 2:
+            logger.debug(
+                "path_skip_no_route",
+                origin=origin_station,
+                destination=destination_station,
+            )
+            return False
+
+        # Calculate origin departure time by working backwards from discovery station
+        minutes_per_segment = 3
+        if discovered_at_station in route_stops:
+            stops_from_origin = route_stops.index(discovered_at_station)
+            minutes_from_origin = stops_from_origin * minutes_per_segment
+            origin_departure_time = discovered_arrival_time - timedelta(
+                minutes=minutes_from_origin
+            )
+        else:
+            # Discovery station not in route (shouldn't happen) - use arrival time
+            origin_departure_time = discovered_arrival_time
 
         # Get line info from headsign
-        line_code, line_name, line_color = _get_line_info_from_headsign(destination)
+        line_code, line_name, line_color = _get_line_info_from_headsign(
+            destination_headsign
+        )
 
         # Use line color from API if available
         if arrival.line_color:
@@ -368,8 +454,11 @@ class PathCollector:
                 color = f"#{color}"
             line_color = color
 
-        # Generate train_id
-        train_id = _generate_path_train_id(origin_station, destination, departure_time)
+        # Generate train_id using ORIGIN station and origin departure time
+        # This ensures consistent deduplication regardless of where train is discovered
+        train_id = _generate_path_train_id(
+            origin_station, destination_headsign, origin_departure_time
+        )
 
         # Check if journey already exists by exact train_id
         stmt = select(TrainJourney).where(
@@ -389,38 +478,18 @@ class PathCollector:
             journey_date=journey_date,
             line_code=line_code,
             origin_station=origin_station,
-            scheduled_departure=departure_time,
-            destination=destination,
+            scheduled_departure=origin_departure_time,
+            destination=destination_headsign,
         )
 
         if existing_by_schedule:
             existing_by_schedule.last_updated_at = now_et()
             return False
 
-        # Get destination station code from headsign
-        destination_station = _get_destination_station_from_headsign(destination)
-
-        # Get route stops from hardcoded PATH routes
-        route_stops = None
-        if destination_station:
-            route_stops = get_path_stops_by_origin_destination(
-                origin_station, destination_station
-            )
-
-        # PATH average travel time: ~3 minutes per segment
-        minutes_per_segment = 3
-
-        if route_stops and len(route_stops) >= 2:
-            terminal_station = route_stops[-1]
-            total_travel_minutes = (len(route_stops) - 1) * minutes_per_segment
-            terminal_arrival = departure_time + timedelta(minutes=total_travel_minutes)
-            has_complete_journey = True
-            stops_count = len(route_stops)
-        else:
-            terminal_station = destination_station or origin_station
-            terminal_arrival = departure_time + timedelta(minutes=20)
-            has_complete_journey = False
-            stops_count = 2 if destination_station else 1
+        # Calculate terminal arrival time
+        terminal_station = route_stops[-1]
+        total_travel_minutes = (len(route_stops) - 1) * minutes_per_segment
+        terminal_arrival = origin_departure_time + timedelta(minutes=total_travel_minutes)
 
         # Create new journey
         journey = TrainJourney(
@@ -429,35 +498,43 @@ class PathCollector:
             line_code=line_code,
             line_name=line_name,
             line_color=line_color,
-            destination=destination,
+            destination=destination_headsign,
             origin_station_code=origin_station,
             terminal_station_code=terminal_station,
-            scheduled_departure=departure_time,
+            scheduled_departure=origin_departure_time,
             scheduled_arrival=terminal_arrival,
             data_source="PATH",
             observation_type="OBSERVED",
             first_seen_at=now_et(),
             last_updated_at=now_et(),
-            has_complete_journey=has_complete_journey,
-            stops_count=stops_count,
+            has_complete_journey=True,
+            stops_count=len(route_stops),
             update_count=1,
         )
 
         session.add(journey)
         await session.flush()
 
-        # Create stops
+        # Create stops (marking earlier ones as departed if mid-route discovery)
         await self._create_journey_stops(
-            session, journey, route_stops, departure_time, destination_station
+            session,
+            journey,
+            route_stops,
+            origin_departure_time,
+            destination_station,
+            discovered_at_station=discovered_at_station,
         )
 
+        is_mid_route = origin_station != discovered_at_station
         logger.debug(
             "path_journey_created",
             train_id=train_id,
             line=line_code,
             origin=origin_station,
-            destination=destination,
-            stops=stops_count,
+            destination=destination_headsign,
+            stops=len(route_stops),
+            discovered_at=discovered_at_station,
+            mid_route=is_mid_route,
         )
 
         return True
@@ -469,8 +546,12 @@ class PathCollector:
         route_stops: list[str] | None,
         departure_time: Any,
         destination_station: str | None,
+        discovered_at_station: str | None = None,
     ) -> None:
         """Create journey stop records.
+
+        For mid-route discoveries, marks stops before the discovery station
+        as already departed with inferred times.
 
         Args:
             session: Database session
@@ -478,15 +559,27 @@ class PathCollector:
             route_stops: List of station codes in order, or None
             departure_time: Departure time from origin
             destination_station: Destination station code
+            discovered_at_station: Station where train was discovered (for mid-route)
         """
         minutes_per_segment = 3
 
         if route_stops and len(route_stops) >= 2:
+            # Find the index of the discovery station for mid-route handling
+            discovered_idx = None
+            if discovered_at_station and discovered_at_station in route_stops:
+                discovered_idx = route_stops.index(discovered_at_station)
+
             for sequence, station_code in enumerate(route_stops, start=1):
                 is_origin = sequence == 1
                 is_terminus = sequence == len(route_stops)
                 minutes_from_origin = (sequence - 1) * minutes_per_segment
                 stop_time = departure_time + timedelta(minutes=minutes_from_origin)
+
+                # Determine if this stop is before the discovery station (already passed)
+                stop_idx = sequence - 1  # 0-based index
+                is_before_discovery = (
+                    discovered_idx is not None and stop_idx < discovered_idx
+                )
 
                 stop = JourneyStop(
                     journey_id=journey.id,
@@ -498,6 +591,14 @@ class PathCollector:
                     updated_arrival=stop_time if not is_origin else None,
                     updated_departure=stop_time if not is_terminus else None,
                 )
+
+                # Mark stops before discovery as already departed
+                if is_before_discovery:
+                    stop.has_departed_station = True
+                    stop.actual_arrival = stop.scheduled_arrival
+                    stop.actual_departure = stop.scheduled_departure
+                    stop.departure_source = "inferred_from_discovery"
+
                 session.add(stop)
         else:
             # Create minimal stops: origin and destination
