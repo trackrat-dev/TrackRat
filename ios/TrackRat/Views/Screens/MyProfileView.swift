@@ -8,6 +8,7 @@ struct MyProfileView: View {
 
     @State private var showingPaywall = false
     @State private var showingFeedbackSheet = false
+    @State private var paywallContext: PaywallContext = .generic
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,6 +68,15 @@ struct MyProfileView: View {
                         subscriptionService: subscriptionService,
                         showingPaywall: $showingPaywall
                     )
+
+                    // Soft trial banner (show during 24-hour preview, not for subscribers)
+                    if subscriptionService.isInSoftTrial,
+                       !subscriptionService.subscriptionStatus.isActive {
+                        SoftTrialBannerView {
+                            paywallContext = .generic
+                            showingPaywall = true
+                        }
+                    }
 
                     // Feedback & Ideas section
                     VStack(spacing: 16) {
@@ -537,7 +547,17 @@ struct MyProfileView: View {
             }
         }
         .navigationBarHidden(true)
-        .paywallSheet(isPresented: $showingPaywall, context: .generic)
+        .onAppear {
+            // Show paywall if soft trial expired and user is not subscribed
+            if subscriptionService.softTrialExpired,
+               !subscriptionService.subscriptionStatus.isActive {
+                paywallContext = .trialExpired
+                showingPaywall = true
+            }
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: paywallContext)
+        }
     }
 }
 

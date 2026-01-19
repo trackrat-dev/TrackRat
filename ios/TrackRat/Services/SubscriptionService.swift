@@ -55,6 +55,7 @@ enum PaywallContext {
     case pennStationGuide
     case congestionMap
     case generic
+    case trialExpired
 
     var headline: String {
         switch self {
@@ -74,6 +75,8 @@ enum PaywallContext {
             return "See Network Traffic"
         case .generic:
             return "Upgrade to Pro"
+        case .trialExpired:
+            return "Your Preview Has Ended"
         }
     }
 
@@ -95,6 +98,8 @@ enum PaywallContext {
             return "Real-time train congestion across the network"
         case .generic:
             return "Unlock all premium features"
+        case .trialExpired:
+            return "Start your free trial to keep using Live Activities, track predictions, and all Pro features."
         }
     }
 }
@@ -119,10 +124,14 @@ final class SubscriptionService: ObservableObject {
         }
     }
 
+    // Soft trial start date (24-hour preview for new users)
+    @Published private(set) var softTrialStartDate: Date?
+
     // MARK: - Private Properties
 
     private let userDefaults = UserDefaults.standard
     private let debugOverrideKey = "trackrat.subscription.debugOverride"
+    private let softTrialStartDateKey = "trackrat.softTrial.startDate"
     private var updateTask: Task<Void, Never>?
 
     // Product IDs - configure these in App Store Connect
@@ -132,10 +141,34 @@ final class SubscriptionService: ObservableObject {
 
     // MARK: - Computed Properties
 
-    /// Returns true if user has active subscription OR debug override is enabled
+    /// Returns true if user has active subscription, debug override is enabled, OR in soft trial
     var isPro: Bool {
         if debugOverrideEnabled { return true }
-        return subscriptionStatus.isActive
+        if subscriptionStatus.isActive { return true }
+        if isInSoftTrial { return true }
+        return false
+    }
+
+    /// Returns true if user is currently within the 24-hour soft trial window
+    var isInSoftTrial: Bool {
+        guard let startDate = softTrialStartDate else { return false }
+        let hoursElapsed = Date().timeIntervalSince(startDate) / 3600
+        return hoursElapsed < 24
+    }
+
+    /// Returns hours remaining in soft trial (1-24), or nil if not in trial
+    var softTrialHoursRemaining: Int? {
+        guard let startDate = softTrialStartDate else { return nil }
+        let hoursElapsed = Date().timeIntervalSince(startDate) / 3600
+        guard hoursElapsed < 24 else { return nil }
+        return max(1, Int(ceil(24 - hoursElapsed)))
+    }
+
+    /// Returns true if soft trial was started but has now expired
+    var softTrialExpired: Bool {
+        guard let startDate = softTrialStartDate else { return false }
+        let hoursElapsed = Date().timeIntervalSince(startDate) / 3600
+        return hoursElapsed >= 24
     }
 
     var monthlyProduct: Product? {
@@ -157,6 +190,17 @@ final class SubscriptionService: ObservableObject {
             userDefaults.set(true, forKey: debugOverrideKey)
         } else {
             self.debugOverrideEnabled = userDefaults.bool(forKey: debugOverrideKey)
+        }
+
+        // Load soft trial start date from UserDefaults
+        if let storedDate = userDefaults.object(forKey: softTrialStartDateKey) as? Date {
+            self.softTrialStartDate = storedDate
+        } else {
+            // New user - start the soft trial
+            let now = Date()
+            self.softTrialStartDate = now
+            userDefaults.set(now, forKey: softTrialStartDateKey)
+            print("Soft trial started for new user at \(now)")
         }
 
         // Start listening for transaction updates
