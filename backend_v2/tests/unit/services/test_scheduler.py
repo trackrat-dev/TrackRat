@@ -90,6 +90,8 @@ class TestSchedulerService:
             expected_jobs = [
                 ("njt_train_discovery", IntervalTrigger, {"minutes": 30}),
                 ("amtrak_train_discovery", IntervalTrigger, {"minutes": 30}),
+                ("path_train_discovery", IntervalTrigger, {"minutes": 30}),
+                ("path_journey_collection", IntervalTrigger, {"minutes": 2}),
                 ("journey_update_check", IntervalTrigger, {"minutes": 5}),
                 ("live_activity_updates", IntervalTrigger, {"minutes": 1}),
                 ("live_activity_token_cleanup", IntervalTrigger, {"hours": 1}),

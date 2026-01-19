@@ -358,7 +358,7 @@ class TestPathDiscoveryProcessArrival:
         session.flush = AsyncMock()
         return session
 
-    @pytest.fixture
+    @pytest.fixture(autouse=False)
     def mock_gtfs_service(self):
         """Create a mock for GTFSService that returns None (no GTFS data)."""
         with patch(
@@ -371,8 +371,9 @@ class TestPathDiscoveryProcessArrival:
             mock_class.return_value = mock_instance
             yield mock_instance
 
-    @pytest.mark.usefixtures("mock_gtfs_service")
-    async def test_process_arrival_creates_journey(self, collector, mock_session):
+    async def test_process_arrival_creates_journey(
+        self, collector, mock_session, mock_gtfs_service
+    ):
         """Test _process_arrival creates new journey for new train."""
         arrival = PathArrival(
             station_code="PHO",
@@ -432,9 +433,8 @@ class TestPathDiscoveryProcessArrival:
 
         assert created is False
 
-    @pytest.mark.usefixtures("mock_gtfs_service")
     async def test_process_arrival_uses_line_color_from_api(
-        self, collector, mock_session
+        self, collector, mock_session, mock_gtfs_service
     ):
         """Test _process_arrival uses line color from API when available."""
         arrival = PathArrival(
@@ -454,9 +454,8 @@ class TestPathDiscoveryProcessArrival:
         journey = add_call[0][0]
         assert journey.line_color == "#FF0000"
 
-    @pytest.mark.usefixtures("mock_gtfs_service")
     async def test_process_arrival_creates_origin_stop(
-        self, collector, mock_session
+        self, collector, mock_session, mock_gtfs_service
     ):
         """Test _process_arrival creates journey stop for origin station."""
         arrival = PathArrival(
@@ -473,9 +472,8 @@ class TestPathDiscoveryProcessArrival:
         # Should add journey AND at least one stop
         assert mock_session.add.call_count >= 2
 
-    @pytest.mark.usefixtures("mock_gtfs_service")
     async def test_process_arrival_departing_train_creates_journey(
-        self, collector, mock_session
+        self, collector, mock_session, mock_gtfs_service
     ):
         """Test _process_arrival creates journey for departing trains.
 
