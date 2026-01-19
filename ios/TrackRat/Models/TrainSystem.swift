@@ -70,7 +70,11 @@ extension Set where Element == TrainSystem {
 
     /// Converts to raw string set for use with Stations filtering
     var asRawStrings: Set<String> {
-        Set(self.map(\.rawValue))
+        var result = Set<String>()
+        for system in self {
+            result.insert(system.rawValue)
+        }
+        return result
     }
 }
 

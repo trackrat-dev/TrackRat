@@ -101,6 +101,7 @@ struct OnboardingView: View {
             StationPickerSheet(
                 selectedStation: binding(for: stationBeingEdited),
                 disabledStation: disabledStation(for: stationBeingEdited),
+                selectedSystems: appState.selectedSystems,
                 onStationSelected: { station in
                     // Explicitly handle station assignment with proper state update
                     DispatchQueue.main.async {
@@ -665,19 +666,27 @@ struct Station: Identifiable, Equatable {
 struct StationPickerSheet: View {
     @Binding var selectedStation: Station?
     let disabledStation: Station?  // Station that should be shown as disabled
+    var selectedSystems: Set<TrainSystem>? = nil  // Optional: filter stations by selected systems
     let onStationSelected: (Station) -> Void
     @Environment(\.dismiss) private var dismiss
-    
+
     @State private var searchText = ""
-    
+
     private var filteredStations: [Station] {
-        let allStations = Stations.all.compactMap { name -> Station? in
+        var allStations = Stations.all.compactMap { name -> Station? in
             guard let code = Stations.getStationCode(name) else { return nil }
             return Station(code: code, name: name)
         }
-        
+
+        // Filter by selected systems if provided
+        if let systems = selectedSystems {
+            allStations = allStations.filter { station in
+                Stations.isStationVisible(station.code, withSystems: systems)
+            }
+        }
+
         if searchText.isEmpty {
-            // Show NY Penn Station first, then all others alphabetically
+            // Show NY Penn Station first (if visible), then all others alphabetically
             let nyPenn = allStations.first { $0.code == "NY" }
             let otherStations = allStations.filter { $0.code != "NY" }.sorted { $0.name < $1.name }
             return [nyPenn].compactMap { $0 } + otherStations

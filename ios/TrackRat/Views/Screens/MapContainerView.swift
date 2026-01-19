@@ -135,6 +135,7 @@ struct MapContainerView: View {
                 individualSegments: mapViewModel.individualSegments,
                 stations: mapViewModel.showStations ? mapViewModel.routeStations : [],
                 showRoutes: mapViewModel.showRoutes,
+                selectedSystems: appState.selectedSystems,
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -264,6 +265,13 @@ struct MapContainerView: View {
             Task.detached(priority: .utility) { [weak mapViewModel] in
                 await mapViewModel?.fetchCongestionDataIfNeeded()
             }
+        }
+        .onAppear {
+            // Sync selected systems on appear
+            mapViewModel.setSelectedSystems(appState.selectedSystems)
+        }
+        .onChange(of: appState.selectedSystems) { _, newSystems in
+            mapViewModel.setSelectedSystems(newSystems)
         }
         .onChange(of: appState.deepLinkTrainNumber) { _, trainNumber in
             // Handle deep link navigation when train number is set
@@ -832,6 +840,7 @@ struct CongestionMapControlsView: View {
 
 // MARK: - Map Layer Controls View
 struct MapLayerControlsView: View {
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var viewModel: CongestionMapViewModel
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var showingPaywall = false
@@ -890,6 +899,27 @@ struct MapLayerControlsView: View {
                 viewModel.showStations.toggle()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
+
+            Divider()
+                .background(Color.white.opacity(0.2))
+
+            // Train Systems section
+            Text("Train Systems")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.secondary)
+                .padding(.top, 4)
+
+            ForEach(TrainSystem.allCases, id: \.self) { system in
+                SystemToggleRow(
+                    system: system,
+                    isSelected: appState.isSystemSelected(system),
+                    action: {
+                        appState.toggleSystem(system)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                )
+            }
         }
         .padding(12)
         .background(
@@ -904,6 +934,36 @@ struct MapLayerControlsView: View {
             }
         }
         .paywallSheet(isPresented: $showingPaywall, context: .congestionMap)
+    }
+}
+
+// MARK: - System Toggle Row
+private struct SystemToggleRow: View {
+    let system: TrainSystem
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: system.icon)
+                    .font(.subheadline)
+                    .foregroundColor(isSelected ? .orange : .secondary)
+                    .frame(width: 20)
+
+                Text(system.displayName)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.subheadline)
+                    .foregroundColor(isSelected ? .orange : .secondary.opacity(0.5))
+            }
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
     }
 }
 

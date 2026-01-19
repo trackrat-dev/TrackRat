@@ -23,20 +23,26 @@ struct TripSelectionView: View {
     @State private var trainValidationStates: [String: TrainValidationState] = [:]
     @State private var validationTasks: [String: Task<Void, Never>] = [:]
 
-    // Get favorite stations
+    // Get favorite stations filtered by selected systems
     private var favoriteStations: [FavoriteStation] {
-        return appState.favoriteStations
+        return appState.favoriteStations.filter { station in
+            Stations.isStationVisible(station.id, withSystems: appState.selectedSystems)
+        }
     }
     
     private var searchResults: (stations: [String], trainNumbers: [String]) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
-        
-        // Always search stations
-        let stationResults = Stations.search(query)
-        
+
+        // Search stations and filter by selected systems
+        let allStationResults = Stations.search(query)
+        let stationResults = allStationResults.filter { stationName in
+            guard let code = Stations.getStationCode(stationName) else { return false }
+            return Stations.isStationVisible(code, withSystems: appState.selectedSystems)
+        }
+
         // Generate potential train numbers for dual search
         let trainNumbers = getPotentialTrainNumbers(query)
-        
+
         return (stations: stationResults, trainNumbers: trainNumbers)
     }
     
@@ -67,8 +73,11 @@ struct TripSelectionView: View {
         ScrollView {
             VStack(spacing: 8) {
                     // RatSense AI suggestion at the top (Pro feature - hidden for free users)
+                    // Only show if both from/to stations are visible for selected systems
                     if subscriptionService.isPro,
                        let suggestion = ratSenseService.suggestedJourney,
+                       Stations.isStationVisible(suggestion.fromStation, withSystems: appState.selectedSystems),
+                       Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems),
                        !liveActivityService.isActivityActive,
                        !isSearching,
                        !isNavigatingToProfile {

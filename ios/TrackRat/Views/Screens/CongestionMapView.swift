@@ -25,6 +25,7 @@ struct CongestionMapView: View {
                 individualSegments: viewModel.individualSegments,
                 stations: viewModel.showStations ? (viewModel.showRoutes ? viewModel.routeStations : viewModel.stations) : [],
                 showRoutes: viewModel.showRoutes,
+                selectedSystems: appState.selectedSystems,
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -146,6 +147,13 @@ struct CongestionMapView: View {
         .task {
             await viewModel.fetchCongestionData()
         }
+        .onChange(of: appState.selectedSystems) { _, newSystems in
+            viewModel.setSelectedSystems(newSystems)
+        }
+        .onAppear {
+            // Sync selected systems on appear
+            viewModel.setSelectedSystems(appState.selectedSystems)
+        }
     }
 
     // MARK: - Computed Properties
@@ -156,7 +164,10 @@ struct CongestionMapView: View {
             parts.append("\(viewModel.segments.count) segments")
         }
         if viewModel.showRoutes {
-            parts.append("\(RouteTopology.allRoutes.count) routes")
+            // Count only routes for selected systems
+            let selectedSystemStrings = appState.selectedSystems.asRawStrings
+            let filteredRouteCount = RouteTopology.allRoutes.filter { selectedSystemStrings.contains($0.dataSource) }.count
+            parts.append("\(filteredRouteCount) routes")
         }
         if viewModel.showStations {
             let stationCount = viewModel.showRoutes ? viewModel.routeStations.count : viewModel.stations.count
@@ -406,10 +417,14 @@ class CongestionMapViewModel: ObservableObject {
     private var allAggregatedSegments: [CongestionSegment] = []
     private var allIndividualSegments: [IndividualJourneySegment] = []
     private var allStations: [MapStation] = []
-    
+    private var allRouteStations: [MapStation] = []
+
     // Current journey filter
     private var selectedRoute: TripPair?
     private var journeyStations: [String] = []
+
+    // System filter
+    private var selectedSystems: Set<TrainSystem> = .all
 
     // Live Activity observation
     private var liveActivityCancellables = Set<AnyCancellable>()
@@ -428,12 +443,31 @@ class CongestionMapViewModel: ObservableObject {
 
     /// Loads all stations from route topology (client-side, no API call)
     private func loadRouteTopologyStations() {
-        routeStations = RouteTopology.allStationCodes.compactMap { code in
+        allRouteStations = RouteTopology.allStationCodes.compactMap { code in
             guard let coord = Stations.getCoordinates(for: code) else { return nil }
             let name = Stations.stationName(forCode: code) ?? code
             return MapStation(code: code, name: name, coordinate: coord)
         }
-        print("🗺️ Loaded \(routeStations.count) route topology stations")
+        // Apply system filter to get visible stations
+        routeStations = allRouteStations.filter { station in
+            Stations.isStationVisible(station.code, withSystems: selectedSystems)
+        }
+        print("🗺️ Loaded \(allRouteStations.count) route topology stations, \(routeStations.count) visible with current systems")
+    }
+
+    /// Updates the selected systems filter and reapplies all filtering
+    func setSelectedSystems(_ systems: Set<TrainSystem>) {
+        guard systems != selectedSystems else { return }
+        selectedSystems = systems
+        print("🚦 Selected systems updated: \(systems.map(\.rawValue).sorted().joined(separator: ", "))")
+
+        // Refilter route stations
+        routeStations = allRouteStations.filter { station in
+            Stations.isStationVisible(station.code, withSystems: selectedSystems)
+        }
+
+        // Reapply all filters
+        applyDisplayModeFilter()
     }
 
     private func observeLiveActivityState() {
@@ -616,30 +650,38 @@ class CongestionMapViewModel: ObservableObject {
     }
 
     private func applyDisplayModeFilter() {
-        // First apply route filter if we have one
-        let filteredAggregated = selectedRoute != nil ? filterSegmentsForRoute(allAggregatedSegments) : allAggregatedSegments
-        let filteredIndividual = selectedRoute != nil ? filterIndividualSegmentsForRoute(allIndividualSegments) : allIndividualSegments
+        // Get raw values of selected systems for filtering
+        let selectedSystemStrings = selectedSystems.asRawStrings
+
+        // First filter by selected systems
+        let systemFilteredAggregated = allAggregatedSegments.filter { selectedSystemStrings.contains($0.dataSource) }
+        let systemFilteredIndividual = allIndividualSegments.filter { selectedSystemStrings.contains($0.dataSource) }
+        let systemFilteredStations = allStations.filter { Stations.isStationVisible($0.code, withSystems: selectedSystems) }
+
+        // Then apply route filter if we have one
+        let filteredAggregated = selectedRoute != nil ? filterSegmentsForRoute(systemFilteredAggregated) : systemFilteredAggregated
+        let filteredIndividual = selectedRoute != nil ? filterIndividualSegmentsForRoute(systemFilteredIndividual) : systemFilteredIndividual
 
         switch showCongestion {
         case .off:
             // Hide congestion data
             segments = []
             individualSegments = []
-            stations = allStations
+            stations = systemFilteredStations
             print("🚦 Congestion hidden")
 
         case .aggregated:
             // Show aggregated segments only
             segments = filteredAggregated
             individualSegments = []
-            stations = allStations
+            stations = systemFilteredStations
             print("🚦 Applied aggregated filter: \(segments.count) aggregated segments")
 
         case .individual:
             // Show individual journey segments
             segments = filteredAggregated // Keep aggregated for reference (dimmed)
             individualSegments = filteredIndividual
-            stations = allStations
+            stations = systemFilteredStations
             print("🚦 Applied individual filter: \(individualSegments.count) individual segments")
         }
     }
@@ -810,6 +852,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
     let individualSegments: [IndividualJourneySegment]
     let stations: [MapStation]
     let showRoutes: Bool
+    let selectedSystems: Set<TrainSystem>
     let onSegmentTap: (CongestionSegment) -> Void
     let onIndividualSegmentTap: ((IndividualJourneySegment) -> Void)?
 
@@ -949,11 +992,23 @@ struct SystemCongestionMapView: UIViewRepresentable {
         }
 
         // Handle route topology overlays
-        if showRoutes != context.coordinator.routesVisible {
+        let systemsChanged = selectedSystems != context.coordinator.currentSelectedSystems
+        let routesVisibilityChanged = showRoutes != context.coordinator.routesVisible
+
+        if routesVisibilityChanged || (showRoutes && systemsChanged) {
+            // Remove existing overlays
+            if !context.coordinator.routeTopologyOverlays.isEmpty {
+                mapView.removeOverlays(context.coordinator.routeTopologyOverlays)
+                context.coordinator.routeTopologyOverlays = []
+            }
+
             if showRoutes {
-                // Add route topology overlays (insert at bottom so congestion renders on top)
+                // Filter routes by selected systems and add overlays
+                let selectedSystemStrings = selectedSystems.asRawStrings
+                let filteredRoutes = RouteTopology.allRoutes.filter { selectedSystemStrings.contains($0.dataSource) }
+
                 var newRouteOverlays: [RouteTopologyPolyline] = []
-                for route in RouteTopology.allRoutes {
+                for route in filteredRoutes {
                     for (from, to) in route.coordinatePairs {
                         let coordinates = [from, to]
                         let polyline = RouteTopologyPolyline(coordinates: coordinates, count: coordinates.count)
@@ -970,14 +1025,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     }
                 }
                 context.coordinator.routeTopologyOverlays = newRouteOverlays
-            } else {
-                // Remove route topology overlays
-                if !context.coordinator.routeTopologyOverlays.isEmpty {
-                    mapView.removeOverlays(context.coordinator.routeTopologyOverlays)
-                    context.coordinator.routeTopologyOverlays = []
-                }
             }
             context.coordinator.routesVisible = showRoutes
+            context.coordinator.currentSelectedSystems = selectedSystems
         }
 
         // Handle station annotations
@@ -1028,6 +1078,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         // Route topology state
         var routeTopologyOverlays: [RouteTopologyPolyline] = []
         var routesVisible: Bool = false
+        var currentSelectedSystems: Set<TrainSystem> = .all
 
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {

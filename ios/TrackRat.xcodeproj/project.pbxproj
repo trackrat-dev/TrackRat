@@ -113,6 +113,8 @@
 		A1F0BAAB2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
 		A1F670E92EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
 		A1F670EA2EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
+		A1F97BB42F1E8B2500BF816D /* TrainSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */; };
+		A1F97BB52F1E8B2500BF816D /* TrainSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */; };
 		A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */; };
 		A1JF00012F00000100000001 /* JourneyFeedbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00012F00000000000001 /* JourneyFeedbackService.swift */; };
 		A1JF00022F00000100000002 /* JourneyFeedbackPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */; };
@@ -244,6 +246,7 @@
 		A1D92A732F0AF01E0098897F /* CompletedTrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompletedTrip.swift; path = TrackRat/Models/CompletedTrip.swift; sourceTree = "<group>"; };
 		A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainCacheService.swift; path = TrackRat/Services/TrainCacheService.swift; sourceTree = "<group>"; };
 		A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatNavigationHeader.swift; path = TrackRat/Views/Components/TrackRatNavigationHeader.swift; sourceTree = "<group>"; };
+		A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainSystem.swift; path = TrackRat/Models/TrainSystem.swift; sourceTree = "<group>"; };
 		A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendWakeupService.swift; path = TrackRat/Services/BackendWakeupService.swift; sourceTree = "<group>"; };
 		A1JF00012F00000000000001 /* JourneyFeedbackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackService.swift; path = TrackRat/Services/JourneyFeedbackService.swift; sourceTree = "<group>"; };
 		A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackPromptView.swift; path = TrackRat/Views/Components/JourneyFeedbackPromptView.swift; sourceTree = "<group>"; };
@@ -328,6 +331,7 @@
 				A12C314C2F1DB9D100CAF76D /* JourneyCongestionMapView.swift */,
 				A12C314F2F1DB9E400CAF76D /* SubscriptionService.swift */,
 				A12C31522F1DB9F200CAF76D /* RouteTopology.swift */,
+				A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -667,6 +671,7 @@
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
 				A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */,
+				A1F97BB42F1E8B2500BF816D /* TrainSystem.swift in Sources */,
 				A10E97FB2DE39F0F002F3214 /* Extensions.swift in Sources */,
 				A10E98062DE39F23002F3214 /* DeparturePickerView.swift in Sources */,
 				A10E98DBA82DE39F23002F3214 /* TripSelectionView.swift in Sources */,
@@ -720,6 +725,7 @@
 				A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */,
 				A17A63DF2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
 				A1D92A722F0AEFFC0098897F /* TripHistoryView.swift in Sources */,
+				A1F97BB52F1E8B2500BF816D /* TrainSystem.swift in Sources */,
 				A17A63E12EE60FD2003BD685 /* TrainStatsSummaryView.swift in Sources */,
 				A1BA60F02DFC73650002FB39 /* StorageServiceTests.swift in Sources */,
 				A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */,
