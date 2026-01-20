@@ -845,7 +845,11 @@ extension IndividualJourneySegment {
     }
     
     var trainDisplayName: String {
-        "Train \(trainId)"
+        // For PATH/PATCO trains with synthetic IDs, show destination instead
+        if dataSource == "PATH" || dataSource == "PATCO" {
+            return toStationName.isEmpty ? Stations.displayName(for: toStation) : toStationName
+        }
+        return "Train \(trainId)"
     }
 }
 

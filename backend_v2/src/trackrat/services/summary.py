@@ -1295,6 +1295,9 @@ class SummaryService:
         # Total cancellations from similar trains
         total_cancellations = similar_dep_stats.cancellation_count
 
+        # Get destination for display (used for PATH/PATCO friendly names)
+        destination = train_journeys[0].destination if train_journeys else None
+
         # Generate headline and body
         headline, body = self._format_train_headline_body(
             similar_dep_stats,
@@ -1303,6 +1306,8 @@ class SummaryService:
             train_id,
             carrier_name,
             total_cancellations,
+            destination=destination,
+            data_source=data_source,
         )
 
         if not headline:
@@ -1364,6 +1369,8 @@ class SummaryService:
         train_id: str,
         carrier_name: str | None,
         cancellations: int,
+        destination: str | None = None,
+        data_source: str | None = None,
     ) -> tuple[str, str]:
         """
         Format headline and body for train summary.
@@ -1413,8 +1420,13 @@ class SummaryService:
                 )
 
         # Historical stats for this train
+        # For PATH/PATCO, use destination instead of synthetic train_id
         if train_stats.has_data:
-            hist_text = f"Train {train_id} historically departs on time {train_stats.on_time_percentage:.0f}% of the time."
+            if data_source in ("PATH", "PATCO") and destination:
+                train_display = f"This {destination} train"
+            else:
+                train_display = f"Train {train_id}"
+            hist_text = f"{train_display} historically departs on time {train_stats.on_time_percentage:.0f}% of the time."
             if train_stats.cancellation_count > 0:
                 hist_text += (
                     f" Cancelled {train_stats.cancellation_count} "
