@@ -51,10 +51,11 @@ class LiveActivityService: ObservableObject {
             throw error
         }
 
-        // Get scheduled times for the user's journey using existing train data
+        // Get estimated times for the user's journey using existing train data
         // (We'll refresh with detailed data after the activity starts for snappier UX)
-        let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: originCode)
-        let scheduledArrivalTime = train.getScheduledArrivalTime(toStationCode: destinationCode)
+        // Use estimated times (delay-adjusted) so Live Activity shows accurate arrival times
+        let estimatedDepartureTime = train.getEstimatedDepartureTime(fromStationCode: originCode)
+        let estimatedArrivalTime = train.getEstimatedArrivalTime(toStationCode: destinationCode)
 
         // Extract journey station codes from origin to destination using existing stops
         if let stops = train.stops {
@@ -104,8 +105,8 @@ class LiveActivityService: ObservableObject {
             delayMinutes: train.delayMinutes,
             journeyProgress: 0.0,
             dataTimestamp: Date().timeIntervalSince1970,  // Current timestamp for local data
-            scheduledDepartureTime: scheduledDepartureTime?.toISO8601String(),
-            scheduledArrivalTime: scheduledArrivalTime?.toISO8601String(),
+            scheduledDepartureTime: estimatedDepartureTime?.toISO8601String(),
+            scheduledArrivalTime: estimatedArrivalTime?.toISO8601String(),
             nextStopArrivalTime: nextStopArrivalTime?.toISO8601String(),
             hasTrainDeparted: hasTrainDeparted,
             originStationCode: originCode,
@@ -119,8 +120,8 @@ class LiveActivityService: ObservableObject {
         print("  - Has Departed: \(hasTrainDeparted)")
         print("  - Initial Progress: 0.0")
         print("  - Track: \(train.track ?? "none")")
-        print("  - Scheduled Departure: \(scheduledDepartureTime?.description ?? "none")")
-        print("  - Scheduled Arrival: \(scheduledArrivalTime?.description ?? "none")")
+        print("  - Estimated Departure: \(estimatedDepartureTime?.description ?? "none")")
+        print("  - Estimated Arrival: \(estimatedArrivalTime?.description ?? "none")")
 
         // Start the activity
         do {
@@ -287,10 +288,10 @@ class LiveActivityService: ObservableObject {
             
             print("🔄 Live Activity Update Source: Client calculation (30s timer)")
             print("  - Client calculated progress: \(progress)")
-            
-            // Get scheduled times and departure status
-            let scheduledDepartureTime = train.getScheduledDepartureTime(fromStationCode: activity.attributes.originStationCode)
-            let scheduledArrivalTime = train.getScheduledArrivalTime(toStationCode: activity.attributes.destinationStationCode)
+
+            // Get estimated times (delay-adjusted) and departure status
+            let estimatedDepartureTime = train.getEstimatedDepartureTime(fromStationCode: activity.attributes.originStationCode)
+            let estimatedArrivalTime = train.getEstimatedArrivalTime(toStationCode: activity.attributes.destinationStationCode)
             let hasTrainDeparted = self.hasTrainDeparted(train, fromStation: activity.attributes.originStationCode)
             
             // Get current and next stop names using new fields
@@ -310,8 +311,8 @@ class LiveActivityService: ObservableObject {
                 delayMinutes: train.delayMinutes,
                 journeyProgress: progress,
                 dataTimestamp: Date().timeIntervalSince1970,  // Current timestamp for local update
-                scheduledDepartureTime: scheduledDepartureTime?.toISO8601String(),
-                scheduledArrivalTime: scheduledArrivalTime?.toISO8601String(),
+                scheduledDepartureTime: estimatedDepartureTime?.toISO8601String(),
+                scheduledArrivalTime: estimatedArrivalTime?.toISO8601String(),
                 nextStopArrivalTime: nextStopArrivalTime?.toISO8601String(),
                 hasTrainDeparted: hasTrainDeparted,
                 originStationCode: activity.attributes.originStationCode,
@@ -325,8 +326,8 @@ class LiveActivityService: ObservableObject {
             print("  - Next Stop: \(nextStop ?? "none")")
             print("  - Track: \(train.track ?? "none")")
             print("  - Has Departed: \(hasTrainDeparted)")
-            print("  - Scheduled Departure: \(scheduledDepartureTime?.description ?? "none")")
-            print("  - Scheduled Arrival: \(scheduledArrivalTime?.description ?? "none")")
+            print("  - Estimated Departure: \(estimatedDepartureTime?.description ?? "none")")
+            print("  - Estimated Arrival: \(estimatedArrivalTime?.description ?? "none")")
             
             // Update the activity
             await activity.update(

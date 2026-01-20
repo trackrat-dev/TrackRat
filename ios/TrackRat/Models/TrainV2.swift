@@ -232,6 +232,32 @@ struct TrainV2: Identifiable, Codable {
         // Fallback to train's final destination if station not found
         return arrival?.scheduledTime
     }
+
+    // Get estimated (delay-adjusted) departure time from a specific station
+    // Returns updatedDeparture if available, otherwise falls back to scheduledDeparture
+    func getEstimatedDepartureTime(fromStationCode: String) -> Date? {
+        if let stop = stops?.first(where: { $0.stationCode.uppercased() == fromStationCode.uppercased() }) {
+            return stop.updatedDeparture ?? stop.scheduledDeparture
+        }
+        // Fallback for origin station
+        if fromStationCode.uppercased() == originStationCode.uppercased() {
+            return departure.updatedTime ?? departure.scheduledTime
+        }
+        return nil
+    }
+
+    // Get estimated (delay-adjusted) arrival time at specific destination station
+    // Returns updatedArrival if available, otherwise falls back to scheduledArrival
+    func getEstimatedArrivalTime(toStationCode: String) -> Date? {
+        if let stops = stops,
+           let destinationStop = stops.first(where: {
+               $0.stationCode.uppercased() == toStationCode.uppercased()
+           }) {
+            return destinationStop.updatedArrival ?? destinationStop.scheduledArrival
+        }
+        // Fallback to train's final destination if station not found
+        return arrival?.updatedTime ?? arrival?.scheduledTime
+    }
     
     // Get formatted departure time for display
     func getFormattedDepartureTime(fromStationCode: String) -> String {
@@ -474,27 +500,27 @@ extension TrainV2 {
             delayMinutes: delayMinutes,
             journeyProgress: progress,
             dataTimestamp: Date().timeIntervalSince1970,
-            scheduledDepartureTime: getScheduledDepartureTime(fromStationCode: originCode)?.toISO8601String(),
-            scheduledArrivalTime: getScheduledArrivalTime(toStationCode: destinationCode)?.toISO8601String(),
+            scheduledDepartureTime: getEstimatedDepartureTime(fromStationCode: originCode)?.toISO8601String(),
+            scheduledArrivalTime: getEstimatedArrivalTime(toStationCode: destinationCode)?.toISO8601String(),
             nextStopArrivalTime: nextStopArrivalTime?.toISO8601String(),
             hasTrainDeparted: hasTrainDeparted,
             originStationCode: originCode,
             destinationStationCode: destinationStationCode ?? ""
         )
     }
-    
+
     // Convert to Live Activity content state (simple version)
     func toContentState() -> TrainActivityAttributes.ContentState {
         // Calculate overall progress
         let progress = calculateOverallProgress()
-        
+
         // Get current and next stop names from train position
-        let currentStop = trainPosition?.atStationCode ?? 
-                         stops?.last(where: { $0.hasDepartedStation })?.stationName ?? 
+        let currentStop = trainPosition?.atStationCode ??
+                         stops?.last(where: { $0.hasDepartedStation })?.stationName ??
                          departure.name
         let nextStop = trainPosition?.nextStationCode ??
                       stops?.first(where: { !$0.hasDepartedStation })?.stationName
-        
+
         return TrainActivityAttributes.ContentState(
             status: status.rawValue,
             track: track,
@@ -503,8 +529,8 @@ extension TrainV2 {
             delayMinutes: delayMinutes,
             journeyProgress: progress,
             dataTimestamp: Date().timeIntervalSince1970,
-            scheduledDepartureTime: departure.scheduledTime?.toISO8601String(),
-            scheduledArrivalTime: arrival?.scheduledTime?.toISO8601String(),
+            scheduledDepartureTime: getEstimatedDepartureTime(fromStationCode: originStationCode)?.toISO8601String(),
+            scheduledArrivalTime: getEstimatedArrivalTime(toStationCode: destinationStationCode ?? "")?.toISO8601String(),
             nextStopArrivalTime: getNextStopArrivalTime()?.toISO8601String(),
             hasTrainDeparted: hasTrainDepartedFromStation(originStationCode),
             originStationCode: originStationCode,
