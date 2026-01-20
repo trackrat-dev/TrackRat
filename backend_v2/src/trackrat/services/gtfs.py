@@ -66,6 +66,20 @@ DEFAULT_LINE_COLORS = {
     "PATCO": "#BC0035",  # PATCO red
 }
 
+# NJT GTFS route_short_name to API line code mapping
+# GTFS uses full abbreviations, API uses 2-character codes
+NJT_LINE_CODE_MAPPING = {
+    "NEC": "NE",    # Northeast Corridor
+    "NJCL": "NC",   # North Jersey Coast Line
+    "MNE": "Me",    # Morris & Essex (Gladstone, Morristown)
+    "MOBO": "Mo",   # Montclair-Boonton
+    "RARV": "Ra",   # Raritan Valley
+    "BERGL": "Be",  # Bergen County Line
+    "MAIN": "Ma",   # Main Line
+    "PASC": "Pa",   # Pascack Valley
+    "ACRL": "AC",   # Atlantic City Rail Line
+}
+
 
 class GTFSService:
     """Service for managing GTFS static schedule data."""
@@ -1261,7 +1275,11 @@ class GTFSService:
                         else DEFAULT_LINE_COLORS.get(data_source, "#BC0035")
                     )
             else:
-                line_code = route_short or data_source[:2]
+                # For NJT, map GTFS route_short_name to API line codes for deduplication
+                if data_source == "NJT" and route_short:
+                    line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
+                else:
+                    line_code = route_short or data_source[:2]
                 line_name = route_long or route_short or data_source
                 line_color = (
                     f"#{route_color}"
@@ -1269,12 +1287,12 @@ class GTFSService:
                     else DEFAULT_LINE_COLORS.get(data_source, "#666666")
                 )
 
-            # Use gtfs_trip_id as the unique identifier for all GTFS-based lookups.
-            # GTFS trip_id is guaranteed unique per trip and enables reliable lookup
-            # in get_train_details(). The train_id field from database is not used
-            # because GTFS block_id (previously used to populate it) is an equipment
-            # identifier, not a train number.
-            effective_train_id = gtfs_trip_id
+            # Determine effective train_id:
+            # - If train_id is set (from trip_short_name, e.g., Amtrak), use it
+            # - Otherwise fall back to gtfs_trip_id for lookup purposes
+            # For Amtrak, train_id will be the actual train number (e.g., "112")
+            # For NJT, train_id is usually None since NJT GTFS lacks trip_short_name
+            effective_train_id = train_id if train_id else gtfs_trip_id
 
             departure = TrainDeparture(
                 train_id=effective_train_id,
@@ -1369,10 +1387,11 @@ class GTFSService:
             if not service_ids:
                 continue
 
-            # Primary: Find trip by gtfs_trip_id (used as identifier in departures)
+            # Primary: Find trip by gtfs_trip_id (used as identifier for NJT GTFS)
             result = await db.execute(
                 select(
                     GTFSTrip.id,
+                    GTFSTrip.trip_id,  # GTFS trip_id for display
                     GTFSTrip.train_id,
                     GTFSTrip.trip_headsign,
                     GTFSRoute.route_id,  # GTFS route_id string
@@ -1391,12 +1410,37 @@ class GTFSService:
             )
             trip_row = result.first()
 
+            # Fallback: Try matching by stored train_id (for Amtrak with trip_short_name)
+            if not trip_row:
+                result = await db.execute(
+                    select(
+                        GTFSTrip.id,
+                        GTFSTrip.trip_id,  # GTFS trip_id for display
+                        GTFSTrip.train_id,
+                        GTFSTrip.trip_headsign,
+                        GTFSRoute.route_id,  # GTFS route_id string
+                        GTFSRoute.route_short_name,
+                        GTFSRoute.route_long_name,
+                        GTFSRoute.route_color,
+                    )
+                    .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
+                    .where(
+                        and_(
+                            GTFSTrip.data_source == data_source,
+                            GTFSTrip.service_id.in_(service_ids),
+                            GTFSTrip.train_id == train_id,
+                        )
+                    )
+                )
+                trip_row = result.first()
+
             if not trip_row:
                 continue
 
             (
                 db_trip_id,
-                stored_train_id,
+                gtfs_trip_id,  # GTFS trip_id string
+                stored_train_id,  # train_id from trip_short_name (e.g., Amtrak "112")
                 headsign,
                 gtfs_route_id,  # GTFS route_id string
                 route_short,
@@ -1457,9 +1501,9 @@ class GTFSService:
             if not stops:
                 continue
 
-            # Use the gtfs_trip_id (passed as train_id parameter) as the display ID.
-            # This matches what we show in departure listings and ensures consistency.
-            effective_train_id = train_id
+            # Use stored_train_id (from trip_short_name) if available (e.g., Amtrak "112")
+            # Otherwise use gtfs_trip_id for NJT where no train_id exists
+            effective_train_id = stored_train_id if stored_train_id else gtfs_trip_id
 
             # Build line info
             # PATH and PATCO routes need special handling for proper line codes/colors
@@ -1488,7 +1532,11 @@ class GTFSService:
                     line_name = route_long or route_short or "PATCO Speedline"
                     line_color = f"#{route_color}" if route_color else "#BC0035"
             else:
-                line_code = route_short or data_source[:2]
+                # For NJT, map GTFS route_short_name to API line codes for consistency
+                if data_source == "NJT" and route_short:
+                    line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
+                else:
+                    line_code = route_short or data_source[:2]
                 line_name = route_long or route_short or data_source
                 line_color = f"#{route_color}" if route_color else "#666666"
 

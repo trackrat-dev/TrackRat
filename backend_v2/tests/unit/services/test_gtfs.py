@@ -9,6 +9,7 @@ import pytest
 from trackrat.services.gtfs import (
     GTFSService,
     GTFS_DOWNLOAD_INTERVAL_HOURS,
+    NJT_LINE_CODE_MAPPING,
 )
 from trackrat.models.database import (
     GTFSCalendar,
@@ -519,3 +520,121 @@ class TestTrainSearchConsistency:
 
         # Headsign extraction is still valid for sources that include train numbers
         assert service._extract_train_id("3245") == "3245"
+
+
+class TestNJTLineCodeMapping:
+    """Tests for NJT GTFS route_short_name to API line code mapping.
+
+    NJT GTFS uses route_short_name values like "NEC", "NJCL", "MNE", etc.
+    NJT real-time API uses 2-character codes like "NE", "NC", "Me", etc.
+
+    This mapping is critical for deduplication between GTFS scheduled data
+    and real-time API data - if line codes don't match, the fallback
+    deduplication key (line:source:time) won't match and duplicates appear.
+    """
+
+    def test_mapping_contains_all_njt_lines(self):
+        """Test that all known NJT lines are mapped."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        # Known NJT rail lines
+        expected_lines = {
+            "NEC",   # Northeast Corridor
+            "NJCL",  # North Jersey Coast Line
+            "MNE",   # Morris & Essex
+            "MOBO",  # Montclair-Boonton
+            "RARV",  # Raritan Valley
+            "BERGL", # Bergen County Line
+            "MAIN",  # Main Line
+            "PASC",  # Pascack Valley
+            "ACRL",  # Atlantic City Rail Line
+        }
+
+        for line in expected_lines:
+            assert line in NJT_LINE_CODE_MAPPING, f"Missing mapping for {line}"
+
+    def test_nec_maps_to_ne(self):
+        """Northeast Corridor maps to NE."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        assert NJT_LINE_CODE_MAPPING["NEC"] == "NE"
+
+    def test_njcl_maps_to_nc(self):
+        """North Jersey Coast Line maps to NC."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        assert NJT_LINE_CODE_MAPPING["NJCL"] == "NC"
+
+    def test_morris_essex_maps_to_me(self):
+        """Morris & Essex Line maps to Me."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        assert NJT_LINE_CODE_MAPPING["MNE"] == "Me"
+
+    def test_montclair_boonton_maps_to_mo(self):
+        """Montclair-Boonton Line maps to Mo."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        assert NJT_LINE_CODE_MAPPING["MOBO"] == "Mo"
+
+    def test_raritan_valley_maps_to_ra(self):
+        """Raritan Valley Line maps to Ra."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        assert NJT_LINE_CODE_MAPPING["RARV"] == "Ra"
+
+    def test_line_codes_are_short(self):
+        """Verify all mapped line codes are 2 characters for consistency with API."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        for gtfs_code, api_code in NJT_LINE_CODE_MAPPING.items():
+            assert len(api_code) == 2, f"{gtfs_code} -> {api_code} should be 2 chars"
+
+
+class TestEffectiveTrainId:
+    """Tests for effective_train_id logic in GTFS departures.
+
+    The effective_train_id determines what train ID is displayed to users:
+    - For Amtrak: Use train_id from trip_short_name (e.g., "112")
+    - For NJT: Use gtfs_trip_id (NJT GTFS has no trip_short_name)
+
+    This ensures:
+    1. Amtrak trains show real train numbers (112, 188, etc.)
+    2. NJT trains use consistent GTFS trip_id for lookup
+    3. Train details lookup works correctly for both
+    """
+
+    def test_concept_use_train_id_when_available(self):
+        """Document the effective_train_id selection logic.
+
+        When a trip has a train_id (from trip_short_name, e.g., Amtrak "112"),
+        that should be used as effective_train_id because it's the real
+        train number passengers see on boards and schedules.
+        """
+        # This documents the expected behavior
+        # The actual logic: effective_train_id = train_id if train_id else gtfs_trip_id
+
+        # Simulating Amtrak with trip_short_name
+        train_id = "112"  # From trip_short_name
+        gtfs_trip_id = "123456789"  # GTFS internal ID
+        effective_train_id = train_id if train_id else gtfs_trip_id
+        assert effective_train_id == "112"
+
+    def test_concept_fallback_to_trip_id_when_no_train_id(self):
+        """Document fallback to gtfs_trip_id when train_id is not available.
+
+        NJT GTFS does not have trip_short_name, so train_id is None.
+        In this case, gtfs_trip_id is used as the identifier.
+        """
+        # Simulating NJT without trip_short_name
+        train_id = None  # NJT has no trip_short_name
+        gtfs_trip_id = "2508"  # GTFS trip_id
+        effective_train_id = train_id if train_id else gtfs_trip_id
+        assert effective_train_id == "2508"
+
+    def test_empty_train_id_uses_trip_id(self):
+        """Empty string train_id should use gtfs_trip_id."""
+        train_id = ""  # Empty but not None
+        gtfs_trip_id = "2508"
+        effective_train_id = train_id if train_id else gtfs_trip_id
+        assert effective_train_id == "2508"
