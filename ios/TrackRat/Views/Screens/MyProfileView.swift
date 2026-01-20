@@ -680,17 +680,6 @@ struct SoftTrialProCard: View {
                     .font(.headline)
                     .foregroundColor(.white)
                 Spacer()
-
-                // Preview badge
-                Text("Preview")
-                    .font(.caption.bold())
-                    .foregroundColor(.orange)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(.orange.opacity(0.2))
-                    )
             }
 
             HStack {
