@@ -857,9 +857,11 @@ class PathCollector:
                             max_departed_sequence, stop.stop_sequence
                         )
                 else:
-                    stop.has_departed_station = False
-                    stop.actual_departure = None
-                    stop.departure_source = None
+                    # Don't reset departure status if already departed
+                    # (train may have passed even if API shows future arrival)
+                    if not stop.has_departed_station:
+                        stop.actual_departure = None
+                        stop.departure_source = None
 
             elif stop.stop_sequence and stop.stop_sequence < max_departed_sequence:
                 if not stop.has_departed_station:
@@ -869,7 +871,7 @@ class PathCollector:
                     )
                     stop.departure_source = "sequential_inference"
 
-            elif not arrival and stop.scheduled_arrival:
+            elif not matched_arrival and stop.scheduled_arrival:
                 grace_period = timedelta(minutes=2)
                 if stop.scheduled_arrival + grace_period < now:
                     if not stop.has_departed_station:

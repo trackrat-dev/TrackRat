@@ -1181,3 +1181,468 @@ class TestBatchUpdate:
         collector._owns_client = False
         await collector.close()
         mock_client.close.assert_not_called()
+
+
+# =============================================================================
+# DEPARTURE STATUS INFERENCE TESTS
+# =============================================================================
+
+
+class TestDepartureStatusInference:
+    """Tests for the three-tier departure status inference in _update_stops_from_arrivals.
+
+    PATH relies on inference because the RidePath API only shows UPCOMING arrivals.
+    Once a train passes a station, that station disappears from the API response.
+
+    Three tiers of inference:
+    1. Time inference with matched arrival: If arrival_time <= now, mark as departed
+    2. Sequential inference: If a later stop is departed, earlier stops must be too
+    3. Time inference without matched arrival: If scheduled_arrival + grace < now, mark departed
+    """
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create a mock RidePathClient."""
+        client = AsyncMock()
+        client.close = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def collector(self, mock_client):
+        """Create a PathCollector with mock client."""
+        return PathCollector(client=mock_client)
+
+    @pytest.fixture
+    def mock_session(self):
+        """Create a mock database session with proper async support."""
+        session = AsyncMock()
+        session.execute = AsyncMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+
+        # Mock scalars result for TransitAnalyzer queries
+        mock_scalars_result = MagicMock()
+        mock_scalars_result.all.return_value = []
+        session.scalars = AsyncMock(return_value=mock_scalars_result)
+
+        return session
+
+    @pytest.fixture
+    def mock_transit_analyzer(self):
+        """Create a mock TransitAnalyzer."""
+        analyzer = MagicMock()
+        analyzer.analyze_new_segments = AsyncMock(return_value=0)
+        analyzer.analyze_journey = AsyncMock()
+        return analyzer
+
+    @pytest.fixture
+    def sample_journey(self):
+        """Create a sample TrainJourney."""
+        journey = MagicMock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "PATH_PNK_wtc_12345"
+        journey.destination = "World Trade Center"
+        journey.is_completed = False
+        journey.stops_count = 6
+        return journey
+
+    def _create_stops(self, base_time: datetime) -> list[MagicMock]:
+        """Create sample stops for a NWK-WTC journey.
+
+        Route: PNK(1) -> PHR(2) -> PJS(3) -> PGR(4) -> PEX(5) -> PWC(6)
+        Each stop is 3 minutes apart from scheduled perspective.
+        """
+        stations = [
+            ("PNK", "Newark", 1),
+            ("PHR", "Harrison", 2),
+            ("PJS", "Journal Square", 3),
+            ("PGR", "Grove Street", 4),
+            ("PEX", "Exchange Place", 5),
+            ("PWC", "World Trade Center", 6),
+        ]
+
+        stops = []
+        for code, name, seq in stations:
+            stop = MagicMock(spec=JourneyStop)
+            stop.station_code = code
+            stop.station_name = name
+            stop.stop_sequence = seq
+            stop.scheduled_arrival = base_time + timedelta(minutes=(seq - 1) * 3)
+            stop.scheduled_departure = base_time + timedelta(minutes=(seq - 1) * 3 + 1)
+            stop.actual_arrival = None
+            stop.actual_departure = None
+            stop.updated_arrival = None
+            stop.updated_departure = None
+            stop.has_departed_station = False
+            stop.departure_source = None
+            stop.updated_at = None
+            stops.append(stop)
+
+        return stops
+
+    @pytest.mark.asyncio
+    async def test_time_inference_without_matched_arrival(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test Tier 3: Stops without API arrivals are marked departed via scheduled time.
+
+        This was the bug: stations that the train has passed no longer appear in the
+        RidePath API response. The time-based fallback inference should mark these
+        as departed based on scheduled_arrival + grace_period < now.
+        """
+        # Train departed Newark 10 minutes ago
+        # API only shows arrivals for upcoming stops (PGR onwards)
+        now = datetime.now()
+        base_time = now - timedelta(minutes=10)  # Train started 10 min ago
+
+        stops = self._create_stops(base_time)
+        # PNK: scheduled at base_time (10 min ago) - should be departed
+        # PHR: scheduled at base_time + 3min (7 min ago) - should be departed
+        # PJS: scheduled at base_time + 6min (4 min ago) - should be departed (>2 min grace)
+        # PGR: scheduled at base_time + 9min (1 min ago) - might have API arrival
+        # PEX: scheduled at base_time + 12min (2 min in future) - not departed
+        # PWC: scheduled at base_time + 15min (5 min in future) - not departed
+
+        # Simulate API only returning arrivals for upcoming stops (PGR onwards)
+        arrivals = [
+            PathArrival(
+                station_code="PGR",
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=1,
+                arrival_time=now + timedelta(minutes=1),  # Slightly in future
+                line_color="D93A30",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="PEX",
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=4,
+                arrival_time=now + timedelta(minutes=4),
+                line_color="D93A30",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="PWC",
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=7,
+                arrival_time=now + timedelta(minutes=7),
+                line_color="D93A30",
+                last_updated=now,
+            ),
+        ]
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # Verify earlier stops (no API arrivals) marked as departed via time inference
+        pnk_stop = stops[0]  # Newark - 10 min ago, no API arrival
+        assert pnk_stop.has_departed_station is True, "Newark should be departed"
+        assert pnk_stop.departure_source == "time_inference"
+
+        phr_stop = stops[1]  # Harrison - 7 min ago, no API arrival
+        assert phr_stop.has_departed_station is True, "Harrison should be departed"
+        assert phr_stop.departure_source == "time_inference"
+
+        pjs_stop = stops[2]  # Journal Square - 4 min ago, no API arrival
+        assert pjs_stop.has_departed_station is True, "Journal Square should be departed"
+        assert pjs_stop.departure_source == "time_inference"
+
+        # PGR has API arrival in future - should NOT be departed
+        pgr_stop = stops[3]  # Grove Street - API shows 1 min away
+        assert pgr_stop.has_departed_station is False, "Grove Street should NOT be departed"
+
+        # Future stops should NOT be departed
+        pex_stop = stops[4]
+        assert pex_stop.has_departed_station is False, "Exchange Place should NOT be departed"
+
+        pwc_stop = stops[5]
+        assert pwc_stop.has_departed_station is False, "WTC should NOT be departed"
+
+    @pytest.mark.asyncio
+    async def test_departure_status_preserved_when_already_departed(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test defensive check: Existing departure status is not reset.
+
+        Once a stop is marked as departed, it should stay departed even if
+        a subsequent API update shows an arrival time in the future for that stop.
+        """
+        now = datetime.now()
+        base_time = now - timedelta(minutes=5)
+
+        stops = self._create_stops(base_time)
+
+        # Simulate: Newark was already marked as departed in a previous update
+        stops[0].has_departed_station = True
+        stops[0].departure_source = "time_inference"
+        stops[0].actual_departure = base_time
+
+        # API now (incorrectly?) shows an arrival for Newark in the future
+        # This could happen with API glitches or clock skew
+        arrivals = [
+            PathArrival(
+                station_code="PNK",  # Newark - already departed
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=2,  # API says 2 min away (impossible if departed!)
+                arrival_time=now + timedelta(minutes=2),
+                line_color="D93A30",
+                last_updated=now,
+            ),
+        ]
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # Newark should STILL be marked as departed (not reset)
+        pnk_stop = stops[0]
+        assert pnk_stop.has_departed_station is True, (
+            "Newark should STILL be departed - status should not be reset"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sequential_inference_marks_earlier_stops(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test Tier 2: If a later stop is departed, earlier stops must be too.
+
+        When we process stops in order and find that stop N has departed,
+        we set max_departed_sequence = N. Earlier stops with sequence < N
+        should be marked as departed via sequential inference.
+
+        Note: Since stops are processed in order, earlier stops get marked via
+        time inference (if their scheduled time + 2min grace < now) before we
+        process later stops. Sequential inference helps when earlier stops
+        don't have matched arrivals AND their scheduled time is very recent.
+        """
+        now = datetime.now()
+        # Set base_time far enough back that ALL earlier stops (PNK, PHR, PJS)
+        # have scheduled_arrival + 2min_grace < now
+        # PJS scheduled at base_time + 6min, so base_time needs to be > 8min ago
+        # for scheduled_arrival + 2min grace to be < now
+        base_time = now - timedelta(minutes=12)
+
+        stops = self._create_stops(base_time)
+        # PNK: scheduled at base_time (12 min ago) - will be departed via time inference
+        # PHR: scheduled at base_time + 3min (9 min ago) - will be departed via time inference
+        # PJS: scheduled at base_time + 6min (6 min ago) - will be departed via time inference
+        # PGR: scheduled at base_time + 9min (3 min ago) - will be departed via matched arrival
+
+        # API shows Grove Street (seq 4) has arrival in the past
+        # Earlier stops (PNK, PHR, PJS) have no API arrivals
+        arrivals = [
+            PathArrival(
+                station_code="PGR",  # Grove Street - seq 4
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=0,
+                arrival_time=now - timedelta(minutes=1),  # Just passed
+                line_color="D93A30",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="PEX",
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=2,
+                arrival_time=now + timedelta(minutes=2),
+                line_color="D93A30",
+                last_updated=now,
+            ),
+        ]
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # Grove Street should be departed via time inference (arrival_time <= now)
+        pgr_stop = stops[3]
+        assert pgr_stop.has_departed_station is True
+
+        # Earlier stops should be departed via time inference
+        # (since base_time is 12 min ago, all scheduled times are well past grace period)
+        for i, stop in enumerate(stops[:3]):
+            assert stop.has_departed_station is True, (
+                f"Stop {stop.station_code} (seq {stop.stop_sequence}) should be departed"
+            )
+
+    @pytest.mark.asyncio
+    async def test_all_stops_departed_marks_journey_complete(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test that journey is marked complete when terminal stop is departed."""
+        now = datetime.now()
+        base_time = now - timedelta(minutes=20)  # Train started 20 min ago
+
+        stops = self._create_stops(base_time)
+        # All stops scheduled in the past
+
+        # API shows no arrivals (train has passed all stations)
+        arrivals = []
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # All stops should be departed via time inference
+        for stop in stops:
+            assert stop.has_departed_station is True, (
+                f"Stop {stop.station_code} should be departed"
+            )
+            assert stop.departure_source == "time_inference"
+
+        # Journey should be marked complete
+        assert sample_journey.is_completed is True
+
+    @pytest.mark.asyncio
+    async def test_future_stops_not_marked_departed(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test that stops with future scheduled times are not marked as departed."""
+        now = datetime.now()
+        base_time = now + timedelta(minutes=5)  # Train hasn't started yet
+
+        stops = self._create_stops(base_time)
+
+        # API shows arrivals for all stops in the future
+        arrivals = [
+            PathArrival(
+                station_code="PNK",
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=5,
+                arrival_time=now + timedelta(minutes=5),
+                line_color="D93A30",
+                last_updated=now,
+            ),
+        ]
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # No stops should be departed
+        for stop in stops:
+            assert stop.has_departed_station is False, (
+                f"Stop {stop.station_code} should NOT be departed (train hasn't started)"
+            )
+
+        # Journey should not be complete
+        assert sample_journey.is_completed is False
+
+    @pytest.mark.asyncio
+    async def test_grace_period_respected(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test that the 2-minute grace period is respected for time inference."""
+        now = datetime.now()
+
+        stops = self._create_stops(now)  # All stops scheduled starting now
+
+        # Stop 0 (PNK) scheduled exactly at 'now'
+        # Stop 1 (PHR) scheduled at now + 3min
+
+        # No API arrivals - rely purely on time inference
+        arrivals = []
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # PNK scheduled at 'now', grace period is 2 min
+        # scheduled_arrival + grace_period (now + 2min) is NOT < now
+        # So PNK should NOT be departed yet
+        pnk_stop = stops[0]
+        assert pnk_stop.has_departed_station is False, (
+            "Newark should NOT be departed yet (within grace period)"
+        )
+
+        # Now simulate time passing - 3 minutes later
+        later = now + timedelta(minutes=3)
+        with patch("trackrat.collectors.path.collector.now_et", return_value=later):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # Now PNK should be departed (scheduled_arrival + 2min < now + 3min)
+        assert pnk_stop.has_departed_station is True, (
+            "Newark should be departed (grace period exceeded)"
+        )
+        assert pnk_stop.departure_source == "time_inference"
+
+    @pytest.mark.asyncio
+    async def test_matched_arrival_in_past_marks_departed(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test Tier 1: Matched arrival with arrival_time <= now marks as departed."""
+        now = datetime.now()
+        base_time = now - timedelta(minutes=5)
+
+        stops = self._create_stops(base_time)
+
+        # API shows arrival for PJS that's already in the past
+        arrivals = [
+            PathArrival(
+                station_code="PJS",  # Journal Square - seq 3
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=0,
+                arrival_time=now - timedelta(seconds=30),  # Just passed
+                line_color="D93A30",
+                last_updated=now,
+            ),
+        ]
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # PJS should be departed via time inference (matched arrival in past)
+        pjs_stop = stops[2]
+        assert pjs_stop.has_departed_station is True
+        assert pjs_stop.departure_source == "time_inference"
+        assert pjs_stop.actual_departure == arrivals[0].arrival_time
