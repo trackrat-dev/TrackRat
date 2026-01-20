@@ -713,11 +713,17 @@ class PathCollector:
         if not journeys:
             return {"updated": 0, "completed": 0, "errors": 0}
 
-        # Group arrivals by normalized headsign
-        arrivals_by_headsign: dict[str, list[PathArrival]] = defaultdict(list)
+        # Group arrivals by normalized headsign AND line color
+        # This prevents cross-train matching when multiple lines serve same destination
+        arrivals_by_headsign_color: dict[str, list[PathArrival]] = defaultdict(list)
         for arrival in arrivals:
-            key = _normalize_headsign(arrival.headsign)
-            arrivals_by_headsign[key].append(arrival)
+            headsign_key = _normalize_headsign(arrival.headsign)
+            # Normalize line color: remove # prefix and lowercase
+            color = (arrival.line_color or "").split(",")[0].lstrip("#").lower()
+            key = f"{headsign_key}:{color}"
+            arrivals_by_headsign_color[key].append(arrival)
+            # Also add to headsign-only key as fallback
+            arrivals_by_headsign_color[headsign_key].append(arrival)
 
         updated = 0
         completed = 0
@@ -726,7 +732,16 @@ class PathCollector:
         for journey in journeys:
             try:
                 journey_headsign = _normalize_headsign(journey.destination or "")
-                matching = arrivals_by_headsign.get(journey_headsign, [])
+                # Normalize journey's line color
+                journey_color = (journey.line_color or "").lstrip("#").lower()
+
+                # Try to match by headsign + line color first (more precise)
+                color_key = f"{journey_headsign}:{journey_color}"
+                matching = arrivals_by_headsign_color.get(color_key, [])
+
+                # Fall back to headsign-only if no color match
+                if not matching:
+                    matching = arrivals_by_headsign_color.get(journey_headsign, [])
 
                 stops = await self._get_journey_stops(session, journey)
                 await self._update_stops_from_arrivals(
@@ -776,9 +791,12 @@ class PathCollector:
         self,
         stop: JourneyStop,
         station_arrivals: list[PathArrival],
-        tolerance_minutes: int = 10,
+        tolerance_minutes: int = 5,
     ) -> PathArrival | None:
         """Find the best matching arrival for a stop based on scheduled time.
+
+        Uses a tighter tolerance (5 min) to prevent cross-train matching on
+        PATH's frequent service (trains every 5-10 minutes).
 
         Args:
             stop: The journey stop to match
@@ -811,6 +829,76 @@ class PathCollector:
 
         # No scheduled arrival time to match against - can't reliably match
         return None
+
+    def _validate_and_fix_stop_times(
+        self, stops: list[JourneyStop], train_id: str
+    ) -> None:
+        """Validate that stop times are sequential and fix any inconsistencies.
+
+        After matching arrivals from API, times may be out of order due to:
+        - API returning stale/incorrect data for some stations
+        - Cross-train matching (despite our filters)
+        - Timing inconsistencies in the PATH API
+
+        This method ensures all departed stops have times in ascending order.
+        If a stop has an arrival time LATER than a subsequent stop's arrival,
+        it's corrected to use the scheduled time.
+
+        Args:
+            stops: List of journey stops (will be modified in place)
+            train_id: Train ID for logging
+        """
+        if len(stops) < 2:
+            return
+
+        # Get departed stops with their times
+        departed_stops = [s for s in stops if s.has_departed_station]
+        if len(departed_stops) < 2:
+            return
+
+        # Sort by stop_sequence to ensure we process in order
+        departed_stops.sort(key=lambda s: s.stop_sequence or 0)
+
+        # Find the latest valid arrival time seen so far
+        # (the "high water mark" for sequential validation)
+        corrections_made = 0
+
+        for i in range(len(departed_stops) - 1):
+            current = departed_stops[i]
+            next_stop = departed_stops[i + 1]
+
+            current_time = current.actual_arrival or current.actual_departure
+            next_time = next_stop.actual_arrival or next_stop.actual_departure
+
+            if current_time and next_time and current_time > next_time:
+                # Current stop has a later time than next stop - impossible!
+                # Fix by using scheduled time for current stop
+                logger.warning(
+                    "path_fixing_out_of_order_time",
+                    train_id=train_id,
+                    station_code=current.station_code,
+                    stop_sequence=current.stop_sequence,
+                    bad_time=current_time.isoformat() if current_time else None,
+                    next_station=next_stop.station_code,
+                    next_time=next_time.isoformat() if next_time else None,
+                    using_scheduled=current.scheduled_arrival.isoformat()
+                    if current.scheduled_arrival
+                    else None,
+                )
+
+                # Use scheduled time instead
+                current.actual_arrival = current.scheduled_arrival
+                current.actual_departure = current.scheduled_arrival
+                if current.departure_source not in ("sequential_consistency",):
+                    current.departure_source = "time_corrected"
+                corrections_made += 1
+
+        if corrections_made > 0:
+            logger.info(
+                "path_stop_times_corrected",
+                train_id=train_id,
+                corrections=corrections_made,
+            )
 
     async def _update_stops_from_arrivals(
         self,
@@ -866,9 +954,10 @@ class PathCollector:
             elif stop.stop_sequence and stop.stop_sequence < max_departed_sequence:
                 if not stop.has_departed_station:
                     stop.has_departed_station = True
-                    stop.actual_departure = (
-                        stop.actual_arrival or stop.scheduled_arrival
-                    )
+                    # Use scheduled time - we don't have a reliable actual time
+                    # and actual_arrival might be from a stale/wrong API response
+                    stop.actual_arrival = stop.scheduled_arrival
+                    stop.actual_departure = stop.scheduled_arrival
                     stop.departure_source = "sequential_inference"
 
             elif not matched_arrival and stop.scheduled_arrival:
@@ -899,7 +988,10 @@ class PathCollector:
                     and not stop.has_departed_station
                 ):
                     stop.has_departed_station = True
-                    stop.actual_departure = stop.actual_arrival or stop.scheduled_arrival
+                    # Use scheduled_arrival, not actual_arrival which may be wrong
+                    # (API can return future times for stations already passed)
+                    stop.actual_arrival = stop.scheduled_arrival
+                    stop.actual_departure = stop.scheduled_arrival
                     stop.departure_source = "sequential_consistency"
                     logger.debug(
                         "path_sequential_consistency_fix",
@@ -907,6 +999,10 @@ class PathCollector:
                         stop_sequence=stop.stop_sequence,
                         max_departed_sequence=max_departed,
                     )
+
+        # Validate and fix out-of-order arrival times
+        # This handles cases where API returned inconsistent times
+        self._validate_and_fix_stop_times(stops, journey.train_id)
 
         # Check journey completion
         terminal_stop = stops[-1] if stops else None
