@@ -1377,240 +1377,298 @@ class GTFSService:
         )
         return result.scalar_one_or_none()
 
+    async def _find_trip_in_source(
+        self,
+        db: AsyncSession,
+        train_id: str,
+        source: str,
+        service_ids: set[str],
+        match_field: str,
+    ) -> Any:
+        """Find a trip in a specific source by train_id or trip_id.
+
+        Args:
+            db: Database session
+            train_id: The ID to search for
+            source: Data source (NJT, AMTRAK, PATH, PATCO)
+            service_ids: Active service IDs for the target date
+            match_field: "train_id" or "trip_id"
+
+        Returns:
+            Trip row tuple or None if not found
+        """
+        field = GTFSTrip.train_id if match_field == "train_id" else GTFSTrip.trip_id
+        result = await db.execute(
+            select(
+                GTFSTrip.id,
+                GTFSTrip.trip_id,
+                GTFSTrip.train_id,
+                GTFSTrip.trip_headsign,
+                GTFSRoute.route_id,
+                GTFSRoute.route_short_name,
+                GTFSRoute.route_long_name,
+                GTFSRoute.route_color,
+            )
+            .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
+            .where(
+                and_(
+                    GTFSTrip.data_source == source,
+                    GTFSTrip.service_id.in_(service_ids),
+                    field == train_id,
+                )
+            )
+        )
+        return result.first()
+
     async def get_train_details(
-        self, db: AsyncSession, train_id: str, target_date: date
+        self,
+        db: AsyncSession,
+        train_id: str,
+        target_date: date,
+        data_source: str | None = None,
     ) -> TrainDetails | None:
         """Get train details from GTFS data for future dates.
 
-        The train_id parameter is expected to be the GTFS trip_id (used as the
-        unique identifier in departure listings). Falls back to matching by
-        stored train_id for compatibility.
+        Args:
+            db: Database session
+            train_id: Train ID or GTFS trip_id to look up
+            target_date: The date to get schedule for
+            data_source: Optional data source filter (NJT, AMTRAK, PATH, PATCO).
+                        If provided, only searches that source.
+                        If not provided, uses two-phase search:
+                        1. Search all sources for train_id (real train numbers)
+                        2. Fall back to trip_id (GTFS internal IDs)
 
-        Returns TrainDetails if the train is found in GTFS, None otherwise.
+        Returns:
+            TrainDetails if the train is found in GTFS, None otherwise.
         """
         logger.info(
             "gtfs_get_train_details",
             train_id=train_id,
             target_date=str(target_date),
+            data_source=data_source,
         )
 
-        # Try all data sources
-        for data_source in ["NJT", "AMTRAK", "PATH", "PATCO"]:
-            service_ids = await self.get_active_service_ids(
-                db, data_source, target_date
-            )
-            if not service_ids:
-                continue
+        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO"]
+        sources_to_search = [data_source] if data_source else all_sources
 
-            # Primary: Find trip by gtfs_trip_id (used as identifier for NJT GTFS)
-            result = await db.execute(
-                select(
-                    GTFSTrip.id,
-                    GTFSTrip.trip_id,  # GTFS trip_id for display
-                    GTFSTrip.train_id,
-                    GTFSTrip.trip_headsign,
-                    GTFSRoute.route_id,  # GTFS route_id string
-                    GTFSRoute.route_short_name,
-                    GTFSRoute.route_long_name,
-                    GTFSRoute.route_color,
+        # Cache service_ids per source to avoid repeated queries
+        source_service_ids: dict[str, set[str]] = {}
+        for source in sources_to_search:
+            service_ids = await self.get_active_service_ids(db, source, target_date)
+            if service_ids:
+                source_service_ids[source] = service_ids
+
+        trip_row = None
+        matched_source = None
+
+        if data_source:
+            # Single source mode: try train_id first, then trip_id
+            if data_source in source_service_ids:
+                service_ids = source_service_ids[data_source]
+                trip_row = await self._find_trip_in_source(
+                    db, train_id, data_source, service_ids, "train_id"
                 )
-                .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
-                .where(
-                    and_(
-                        GTFSTrip.data_source == data_source,
-                        GTFSTrip.service_id.in_(service_ids),
-                        GTFSTrip.trip_id == train_id,
+                if not trip_row:
+                    trip_row = await self._find_trip_in_source(
+                        db, train_id, data_source, service_ids, "trip_id"
                     )
+                if trip_row:
+                    matched_source = data_source
+        else:
+            # Two-phase search: prioritize train_id (real numbers) over trip_id (GTFS IDs)
+            # Phase 1: Search all sources for train_id match
+            for source, service_ids in source_service_ids.items():
+                trip_row = await self._find_trip_in_source(
+                    db, train_id, source, service_ids, "train_id"
                 )
-            )
-            trip_row = result.first()
+                if trip_row:
+                    matched_source = source
+                    break
 
-            # Fallback: Try matching by stored train_id (for Amtrak with trip_short_name)
+            # Phase 2: Fall back to trip_id match
             if not trip_row:
-                result = await db.execute(
-                    select(
-                        GTFSTrip.id,
-                        GTFSTrip.trip_id,  # GTFS trip_id for display
-                        GTFSTrip.train_id,
-                        GTFSTrip.trip_headsign,
-                        GTFSRoute.route_id,  # GTFS route_id string
-                        GTFSRoute.route_short_name,
-                        GTFSRoute.route_long_name,
-                        GTFSRoute.route_color,
+                for source, service_ids in source_service_ids.items():
+                    trip_row = await self._find_trip_in_source(
+                        db, train_id, source, service_ids, "trip_id"
                     )
-                    .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
-                    .where(
-                        and_(
-                            GTFSTrip.data_source == data_source,
-                            GTFSTrip.service_id.in_(service_ids),
-                            GTFSTrip.train_id == train_id,
-                        )
-                    )
-                )
-                trip_row = result.first()
+                    if trip_row:
+                        matched_source = source
+                        break
 
-            if not trip_row:
-                continue
-
-            (
-                db_trip_id,
-                gtfs_trip_id,  # GTFS trip_id string
-                stored_train_id,  # train_id from trip_short_name (e.g., Amtrak "112")
-                headsign,
-                gtfs_route_id,  # GTFS route_id string
-                route_short,
-                route_long,
-                route_color,
-            ) = trip_row
-
-            # Get all stops for this trip
-            stops_result = await db.execute(
-                select(
-                    GTFSStopTime.station_code,
-                    GTFSStopTime.stop_sequence,
-                    GTFSStopTime.arrival_time,
-                    GTFSStopTime.departure_time,
-                )
-                .where(GTFSStopTime.trip_id == db_trip_id)
-                .order_by(GTFSStopTime.stop_sequence)
-            )
-            stop_rows = stops_result.all()
-
-            if not stop_rows:
-                continue
-
-            # Build stops list (skip stops without mapped station codes)
-            stops: list[StopDetails] = []
-            for station_code, stop_sequence, arrival_time, departure_time in stop_rows:
-                if not station_code:
-                    continue
-
-                arrival_dt = self._parse_gtfs_time(arrival_time, target_date)
-                departure_dt = self._parse_gtfs_time(departure_time, target_date)
-
-                stops.append(
-                    StopDetails(
-                        station=SimpleStationInfo(
-                            code=station_code,
-                            name=get_station_name(station_code),
-                        ),
-                        stop_sequence=stop_sequence or 0,
-                        scheduled_arrival=arrival_dt,
-                        scheduled_departure=departure_dt,
-                        updated_arrival=None,
-                        updated_departure=None,
-                        actual_arrival=None,
-                        actual_departure=None,
-                        track=None,
-                        track_assigned_at=None,
-                        raw_status=RawStopStatus(
-                            amtrak_status=None,
-                            njt_departed_flag=None,
-                        ),
-                        has_departed_station=False,
-                        predicted_arrival=None,
-                        predicted_arrival_samples=None,
-                    )
-                )
-
-            if not stops:
-                continue
-
-            # Use stored_train_id (from trip_short_name) if available (e.g., Amtrak "112")
-            # Otherwise use gtfs_trip_id for NJT where no train_id exists
-            effective_train_id = stored_train_id if stored_train_id else gtfs_trip_id
-
-            # Build line info
-            # PATH and PATCO routes need special handling for proper line codes/colors
-            if data_source == "PATH":
-                path_route_info = get_path_route_info(gtfs_route_id)
-                if path_route_info:
-                    line_code, line_name, line_color = path_route_info
-                    # Ensure color has # prefix
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    # Fallback for unknown PATH routes
-                    line_code = route_short or "PATH"
-                    line_name = route_long or route_short or "PATH"
-                    line_color = f"#{route_color}" if route_color else "#666666"
-            elif data_source == "PATCO":
-                patco_route_info = get_patco_route_info(gtfs_route_id)
-                if patco_route_info:
-                    line_code, line_name, line_color = patco_route_info
-                    # Ensure color has # prefix
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    # Fallback for unknown PATCO routes
-                    line_code = route_short or "PATCO"
-                    line_name = route_long or route_short or "PATCO Speedline"
-                    line_color = f"#{route_color}" if route_color else "#BC0035"
-            else:
-                # For NJT, map GTFS route_short_name to API line codes for consistency
-                if data_source == "NJT" and route_short:
-                    line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
-                else:
-                    line_code = route_short or data_source[:2]
-                line_name = route_long or route_short or data_source
-                line_color = f"#{route_color}" if route_color else "#666666"
-
-            # Get origin and destination from stops
-            origin_stop = stops[0]
-            dest_stop = stops[-1]
-
-            # Get feed info for last_updated time
-            feed_info = await self.get_feed_info(db, data_source)
-            last_updated = feed_info.last_successful_parse_at if feed_info else now_et()
-
+        if not trip_row or not matched_source:
             logger.info(
-                "gtfs_train_details_found",
-                train_id=effective_train_id,
+                "gtfs_train_details_not_found",
+                train_id=train_id,
+                target_date=str(target_date),
                 data_source=data_source,
-                stops_count=len(stops),
+            )
+            return None
+
+        (
+            db_trip_id,
+            gtfs_trip_id,  # GTFS trip_id string
+            stored_train_id,  # train_id from trip_short_name (e.g., Amtrak "112")
+            headsign,
+            gtfs_route_id,  # GTFS route_id string
+            route_short,
+            route_long,
+            route_color,
+        ) = trip_row
+
+        # Get all stops for this trip
+        stops_result = await db.execute(
+            select(
+                GTFSStopTime.station_code,
+                GTFSStopTime.stop_sequence,
+                GTFSStopTime.arrival_time,
+                GTFSStopTime.departure_time,
+            )
+            .where(GTFSStopTime.trip_id == db_trip_id)
+            .order_by(GTFSStopTime.stop_sequence)
+        )
+        stop_rows = stops_result.all()
+
+        if not stop_rows:
+            logger.info(
+                "gtfs_train_details_no_stops",
+                train_id=train_id,
+                target_date=str(target_date),
+                data_source=matched_source,
+            )
+            return None
+
+        # Build stops list (skip stops without mapped station codes)
+        stops: list[StopDetails] = []
+        for station_code, stop_sequence, arrival_time, departure_time in stop_rows:
+            if not station_code:
+                continue
+
+            arrival_dt = self._parse_gtfs_time(arrival_time, target_date)
+            departure_dt = self._parse_gtfs_time(departure_time, target_date)
+
+            stops.append(
+                StopDetails(
+                    station=SimpleStationInfo(
+                        code=station_code,
+                        name=get_station_name(station_code),
+                    ),
+                    stop_sequence=stop_sequence or 0,
+                    scheduled_arrival=arrival_dt,
+                    scheduled_departure=departure_dt,
+                    updated_arrival=None,
+                    updated_departure=None,
+                    actual_arrival=None,
+                    actual_departure=None,
+                    track=None,
+                    track_assigned_at=None,
+                    raw_status=RawStopStatus(
+                        amtrak_status=None,
+                        njt_departed_flag=None,
+                    ),
+                    has_departed_station=False,
+                    predicted_arrival=None,
+                    predicted_arrival_samples=None,
+                )
             )
 
-            return TrainDetails(
-                train_id=effective_train_id,
-                journey_date=target_date,
-                line=LineInfo(
-                    code=line_code[:10],
-                    name=line_name,
-                    color=line_color,
-                ),
-                route=RouteInfo(
-                    origin=origin_stop.station.name,
-                    destination=headsign or dest_stop.station.name,
-                    origin_code=origin_stop.station.code,
-                    destination_code=dest_stop.station.code,
-                ),
-                train_position=TrainPosition(
-                    last_departed_station_code=None,
-                    at_station_code=None,
-                    next_station_code=None,
-                    between_stations=False,
-                ),
-                stops=stops,
-                data_freshness=DataFreshness(
-                    last_updated=last_updated or now_et(),
-                    age_seconds=int(
-                        (now_et() - (last_updated or now_et())).total_seconds()
-                    ),
-                    update_count=None,
-                    collection_method="scheduled",
-                ),
-                data_source=data_source,
-                observation_type="SCHEDULED",
-                raw_train_state=None,
-                is_cancelled=False,
-                is_completed=False,
-                progress=None,
-                predicted_arrival=None,
+        if not stops:
+            logger.info(
+                "gtfs_train_details_no_mapped_stops",
+                train_id=train_id,
+                target_date=str(target_date),
+                data_source=matched_source,
             )
+            return None
+
+        # Use stored_train_id (from trip_short_name) if available (e.g., Amtrak "112")
+        # Otherwise use gtfs_trip_id for NJT where no train_id exists
+        effective_train_id = stored_train_id if stored_train_id else gtfs_trip_id
+
+        # Build line info
+        # PATH and PATCO routes need special handling for proper line codes/colors
+        if matched_source == "PATH":
+            path_route_info = get_path_route_info(gtfs_route_id)
+            if path_route_info:
+                line_code, line_name, line_color = path_route_info
+                # Ensure color has # prefix
+                if not line_color.startswith("#"):
+                    line_color = f"#{line_color}"
+            else:
+                # Fallback for unknown PATH routes
+                line_code = route_short or "PATH"
+                line_name = route_long or route_short or "PATH"
+                line_color = f"#{route_color}" if route_color else "#666666"
+        elif matched_source == "PATCO":
+            patco_route_info = get_patco_route_info(gtfs_route_id)
+            if patco_route_info:
+                line_code, line_name, line_color = patco_route_info
+                # Ensure color has # prefix
+                if not line_color.startswith("#"):
+                    line_color = f"#{line_color}"
+            else:
+                # Fallback for unknown PATCO routes
+                line_code = route_short or "PATCO"
+                line_name = route_long or route_short or "PATCO Speedline"
+                line_color = f"#{route_color}" if route_color else "#BC0035"
+        else:
+            # For NJT, map GTFS route_short_name to API line codes for consistency
+            if matched_source == "NJT" and route_short:
+                line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
+            else:
+                line_code = route_short or matched_source[:2]
+            line_name = route_long or route_short or matched_source
+            line_color = f"#{route_color}" if route_color else "#666666"
+
+        # Get origin and destination from stops
+        origin_stop = stops[0]
+        dest_stop = stops[-1]
+
+        # Get feed info for last_updated time
+        feed_info = await self.get_feed_info(db, matched_source)
+        last_updated = feed_info.last_successful_parse_at if feed_info else now_et()
 
         logger.info(
-            "gtfs_train_details_not_found",
-            train_id=train_id,
-            target_date=str(target_date),
+            "gtfs_train_details_found",
+            train_id=effective_train_id,
+            data_source=matched_source,
+            stops_count=len(stops),
         )
-        return None
+
+        return TrainDetails(
+            train_id=effective_train_id,
+            journey_date=target_date,
+            line=LineInfo(
+                code=line_code[:10],
+                name=line_name,
+                color=line_color,
+            ),
+            route=RouteInfo(
+                origin=origin_stop.station.name,
+                destination=headsign or dest_stop.station.name,
+                origin_code=origin_stop.station.code,
+                destination_code=dest_stop.station.code,
+            ),
+            train_position=TrainPosition(
+                last_departed_station_code=None,
+                at_station_code=None,
+                next_station_code=None,
+                between_stations=False,
+            ),
+            stops=stops,
+            data_freshness=DataFreshness(
+                last_updated=last_updated or now_et(),
+                age_seconds=int(
+                    (now_et() - (last_updated or now_et())).total_seconds()
+                ),
+                update_count=None,
+                collection_method="scheduled",
+            ),
+            data_source=matched_source,
+            observation_type="SCHEDULED",
+            raw_train_state=None,
+            is_cancelled=False,
+            is_completed=False,
+            progress=None,
+            predicted_arrival=None,
+        )

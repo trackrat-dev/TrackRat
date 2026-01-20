@@ -174,6 +174,9 @@ async def get_train_details(
     from_station: str | None = Query(
         None, description="User's origin station code (filters predictions)"
     ),
+    data_source: str | None = Query(
+        None, description="Data source filter (NJT, AMTRAK, PATH, PATCO)"
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> TrainDetailsResponse:
     """Get detailed information for a specific train."""
@@ -183,6 +186,7 @@ async def get_train_details(
         date=date,
         refresh=refresh,
         from_station=from_station,
+        data_source=data_source,
     )
 
     # Default to today
@@ -193,7 +197,9 @@ async def get_train_details(
     today = now_et().date()
     if date > today:
         gtfs_service = GTFSService()
-        gtfs_details = await gtfs_service.get_train_details(db, train_id, date)
+        gtfs_details = await gtfs_service.get_train_details(
+            db, train_id, date, data_source=data_source
+        )
         if gtfs_details:
             return TrainDetailsResponse(train=gtfs_details)
         # If not found in GTFS, fall through to 404
@@ -211,7 +217,7 @@ async def get_train_details(
     try:
         async with JustInTimeUpdateService(njt_client) as jit_service:
             journey = await jit_service.get_fresh_train(
-                db, train_id, date, force_refresh=refresh
+                db, train_id, date, force_refresh=refresh, data_source=data_source
             )
     finally:
         if njt_client:
@@ -221,7 +227,9 @@ async def get_train_details(
         # For today's trains: try GTFS fallback for scheduled-only trains
         # (trains that appear in departure listing but haven't been discovered yet)
         gtfs_service = GTFSService()
-        gtfs_details = await gtfs_service.get_train_details(db, train_id, date)
+        gtfs_details = await gtfs_service.get_train_details(
+            db, train_id, date, data_source=data_source
+        )
         if gtfs_details:
             return TrainDetailsResponse(train=gtfs_details)
         raise HTTPException(

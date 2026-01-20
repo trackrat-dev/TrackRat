@@ -103,6 +103,7 @@ class JustInTimeUpdateService:
         train_id: str,
         journey_date: date | None = None,
         force_refresh: bool = False,
+        data_source: str | None = None,
     ) -> TrainJourney | None:
         """Ensure train data is fresh, updating if necessary.
 
@@ -111,6 +112,7 @@ class JustInTimeUpdateService:
             train_id: Train ID to check
             journey_date: Optional journey date (defaults to today)
             force_refresh: Force a refresh regardless of staleness
+            data_source: Optional data source filter (NJT, AMTRAK, PATH, PATCO)
 
         Returns:
             Updated TrainJourney or None if not found
@@ -123,19 +125,23 @@ class JustInTimeUpdateService:
             train_id=train_id,
             journey_date=journey_date,
             force_refresh=force_refresh,
+            data_source=data_source,
         )
 
         # Find the journey - eagerly load stops to avoid lazy loading issues
         from sqlalchemy.orm import selectinload
 
+        # Build query conditions
+        conditions = [
+            TrainJourney.train_id == train_id,
+            TrainJourney.journey_date == journey_date,
+        ]
+        if data_source:
+            conditions.append(TrainJourney.data_source == data_source)
+
         stmt = (
             select(TrainJourney)
-            .where(
-                and_(
-                    TrainJourney.train_id == train_id,
-                    TrainJourney.journey_date == journey_date,
-                )
-            )
+            .where(and_(*conditions))
             .options(
                 selectinload(TrainJourney.stops),
                 selectinload(TrainJourney.progress_snapshots),
@@ -317,6 +323,7 @@ class JustInTimeUpdateService:
         train_id: str,
         journey_date: date | None = None,
         force_refresh: bool = False,
+        data_source: str | None = None,
     ) -> TrainJourney | None:
         """Get a train with guaranteed fresh data.
 
@@ -328,12 +335,13 @@ class JustInTimeUpdateService:
             train_id: Train ID
             journey_date: Optional journey date
             force_refresh: Force refresh even if data seems fresh
+            data_source: Optional data source filter (NJT, AMTRAK, PATH, PATCO)
 
         Returns:
             Fresh TrainJourney or None
         """
         journey = await self.ensure_fresh_data(
-            session, train_id, journey_date, force_refresh
+            session, train_id, journey_date, force_refresh, data_source
         )
 
         # Note: stops are already loaded via selectinload in ensure_fresh_data()

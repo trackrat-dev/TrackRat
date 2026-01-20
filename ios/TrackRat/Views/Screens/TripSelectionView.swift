@@ -520,7 +520,8 @@ struct TripSelectionView: View {
                     appState.pendingNavigation = .trainDetailsFlexible(
                         trainNumber: trainNumber,
                         fromStation: nil,  // No specific departure station when searching globally
-                        journeyDate: foundTrain.journeyDate
+                        journeyDate: foundTrain.journeyDate,
+                        dataSource: foundTrain.dataSource
                     )
 
                     // Reset search WITHOUT animation to prevent ghosting during navigation

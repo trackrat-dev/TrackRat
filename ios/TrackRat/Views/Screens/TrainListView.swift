@@ -144,11 +144,13 @@ struct TrainListView: View {
                                     isExpandable: true,
                                     onTrainTap: { selectedTrainId in
                                         // Navigate to the selected train's detail view
+                                        // Note: dataSource not available from this callback, backend uses two-phase search
                                         appState.navigationPath.append(
                                             NavigationDestination.trainDetailsFlexible(
                                                 trainNumber: selectedTrainId,
                                                 fromStation: departureStationCode,
-                                                journeyDate: nil
+                                                journeyDate: nil,
+                                                dataSource: nil
                                             )
                                         )
                                     }
@@ -192,7 +194,8 @@ struct TrainListView: View {
                                     appState.pendingNavigation = .trainDetailsFlexible(
                                         trainNumber: train.trainId,
                                         fromStation: departureStationCode.isEmpty ? nil : departureStationCode,
-                                        journeyDate: train.journeyDate
+                                        journeyDate: train.journeyDate,
+                                        dataSource: train.dataSource
                                     )
                                 },
                                 isExpress: viewModel.expressTrainIds.contains(train.trainId)

@@ -288,10 +288,12 @@ struct MapContainerView: View {
 
             // Use pendingNavigation to expand sheet FIRST, then navigate
             // This ensures smooth transition even when deep linking
+            // Note: dataSource not available from deep links, backend uses two-phase search
             appState.pendingNavigation = .trainDetailsFlexible(
                 trainNumber: trainNumber,
                 fromStation: appState.deepLinkFromStation,
-                journeyDate: nil
+                journeyDate: nil,
+                dataSource: nil
             )
             print("🔗 Pending navigation set for train \(trainNumber)")
 
@@ -701,8 +703,8 @@ struct MapContainerView: View {
                 TrainListView(destination: stationName, departureStationCode: departureStationCode)
             case .trainDetails(let trainId):
                 TrainDetailsView(trainId: trainId)
-            case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate):
-                TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate)
+            case .trainDetailsFlexible(let trainNumber, let fromStation, let journeyDate, let dataSource):
+                TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate, dataSource: dataSource)
             case .advancedConfiguration:
                 AdvancedConfigurationView()
             case .myProfile:

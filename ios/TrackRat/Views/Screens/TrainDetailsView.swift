@@ -20,13 +20,14 @@ struct TrainDetailsView: View {
     }
 
     // New initializer for train number
-    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil) {
+    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil, dataSource: String? = nil) {
         self.trainId = 0  // Not used for train number based initialization
         let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
             fromStationCode: fromStation,
-            journeyDate: journeyDate
+            journeyDate: journeyDate,
+            dataSource: dataSource
         )
         self._viewModel = StateObject(wrappedValue: VModel)
     }
@@ -104,11 +105,13 @@ struct TrainDetailsView: View {
                                     journeyDate: train.journeyDate,
                                     onTrainTap: { selectedTrainId in
                                         // Navigate to the selected train's detail view
+                                        // Note: dataSource not available from this callback, backend uses two-phase search
                                         appState.navigationPath.append(
                                             NavigationDestination.trainDetailsFlexible(
                                                 trainNumber: selectedTrainId,
                                                 fromStation: appState.departureStationCode,
-                                                journeyDate: nil
+                                                journeyDate: nil,
+                                                dataSource: nil
                                             )
                                         )
                                     }
@@ -760,6 +763,7 @@ class TrainDetailsViewModel: ObservableObject {
     let trainNumber: String?  // Made public for transaction tracking
     private let preferredStationCode: String?
     private let journeyDate: Date?
+    private let dataSource: String?  // Data source for disambiguation (NJT, AMTRAK, PATH, PATCO)
 
     // Store current origin and destination for stop filtering
     private var currentOriginStationCode: String?
@@ -775,14 +779,16 @@ class TrainDetailsViewModel: ObservableObject {
         self.trainNumber = nil
         self.preferredStationCode = nil
         self.journeyDate = nil
+        self.dataSource = nil
     }
 
     // New flexible initializer
-    init(databaseId: Int? = nil, trainNumber: String? = nil, fromStationCode: String? = nil, journeyDate: Date? = nil) {
+    init(databaseId: Int? = nil, trainNumber: String? = nil, fromStationCode: String? = nil, journeyDate: Date? = nil, dataSource: String? = nil) {
         self.databaseId = databaseId
         self.trainNumber = trainNumber
         self.preferredStationCode = fromStationCode
         self.journeyDate = journeyDate
+        self.dataSource = dataSource
     }
     
     // Computed property for backwards compatibility
@@ -925,12 +931,13 @@ class TrainDetailsViewModel: ObservableObject {
             isLoading = true
 
             do {
-                // Use the flexible API method
+                // Use the flexible API method with dataSource for disambiguation
                 let fetchedTrain = try await apiService.fetchTrainDetailsFlexible(
                     id: databaseId.map(String.init),
                     trainId: trainNumber,
                     fromStationCode: fromStationCode ?? preferredStationCode,
-                    date: journeyDate
+                    date: journeyDate,
+                    dataSource: dataSource
                 )
 
                 train = fetchedTrain
@@ -975,7 +982,8 @@ class TrainDetailsViewModel: ObservableObject {
                 id: databaseId.map(String.init),
                 trainId: trainNumber,
                 fromStationCode: fromStationCode ?? preferredStationCode,
-                date: journeyDate
+                date: journeyDate,
+                dataSource: dataSource
             )
 
             // Cache the fresh data
@@ -1014,7 +1022,8 @@ class TrainDetailsViewModel: ObservableObject {
                 id: databaseId.map(String.init),
                 trainId: trainNumber,
                 fromStationCode: fromStationCode ?? preferredStationCode,
-                date: journeyDate
+                date: journeyDate,
+                dataSource: dataSource
             )
 
             print("✅ TrainDetailsView refresh successful for train \(identifier)")

@@ -446,7 +446,8 @@ struct DeparturePickerView: View {
                     appState.pendingNavigation = .trainDetailsFlexible(
                         trainNumber: trainNumber,
                         fromStation: nil,  // No specific departure station when searching globally
-                        journeyDate: train.journeyDate
+                        journeyDate: train.journeyDate,
+                        dataSource: train.dataSource
                     )
 
                     // Reset search WITHOUT animation to prevent ghosting during navigation

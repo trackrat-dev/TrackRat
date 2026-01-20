@@ -154,7 +154,7 @@ final class APIService: ObservableObject {
     
     // MARK: - Train Details
     
-    func fetchTrainDetails(id: String, fromStationCode: String? = nil, date: Date? = nil) async throws -> TrainV2 {
+    func fetchTrainDetails(id: String, fromStationCode: String? = nil, date: Date? = nil, dataSource: String? = nil) async throws -> TrainV2 {
         var components = URLComponents(string: "\(baseURL)/v2/trains/\(id)")!
 
         let formatter = DateFormatter()
@@ -166,13 +166,19 @@ final class APIService: ObservableObject {
             URLQueryItem(name: "date", value: formatter.string(from: queryDate)),
             URLQueryItem(name: "include_predictions", value: "true")
         ]
-        
+
         // Pass the user's origin station to filter out meaningless predictions
         // Only pass if not nil and not empty
         if let fromStation = fromStationCode, !fromStation.isEmpty {
             queryItems.append(URLQueryItem(name: "from_station", value: fromStation))
         }
-        
+
+        // Pass data source to filter to specific transit system (NJT, AMTRAK, PATH, PATCO)
+        // This avoids ambiguity when train IDs collide between systems
+        if let source = dataSource, !source.isEmpty {
+            queryItems.append(URLQueryItem(name: "data_source", value: source))
+        }
+
         components.queryItems = queryItems
         
         guard let url = components.url else {
@@ -206,10 +212,10 @@ final class APIService: ObservableObject {
     }
     
     // MARK: - Flexible Train Details
-    
-    func fetchTrainDetailsFlexible(id: String? = nil, trainId: String? = nil, fromStationCode: String? = nil, date: Date? = nil) async throws -> TrainV2 {
+
+    func fetchTrainDetailsFlexible(id: String? = nil, trainId: String? = nil, fromStationCode: String? = nil, date: Date? = nil, dataSource: String? = nil) async throws -> TrainV2 {
         let trainNumber = id ?? trainId ?? ""
-        return try await fetchTrainDetails(id: trainNumber, fromStationCode: fromStationCode, date: date)
+        return try await fetchTrainDetails(id: trainNumber, fromStationCode: fromStationCode, date: date, dataSource: dataSource)
     }
     
     // MARK: - Historical Data (Simplified for V2)

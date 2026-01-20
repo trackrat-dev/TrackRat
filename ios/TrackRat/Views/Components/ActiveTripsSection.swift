@@ -60,10 +60,12 @@ struct ActiveTripsSection: View {
 
                         // Use pendingNavigation to expand sheet FIRST, then navigate
                         // This prevents the glitch where sheet expands with empty space
+                        // Note: dataSource not available in LiveActivity attributes, backend uses two-phase search
                         appState.pendingNavigation = .trainDetailsFlexible(
                             trainNumber: activity.attributes.trainNumber,
                             fromStation: activity.attributes.originStationCode,
-                            journeyDate: nil  // TODO: Add journeyDate to LiveActivity attributes
+                            journeyDate: nil,  // TODO: Add journeyDate to LiveActivity attributes
+                            dataSource: nil
                         )
                     } label: {
                         HStack {

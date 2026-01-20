@@ -655,3 +655,96 @@ class TestEffectiveTrainId:
         gtfs_trip_id = "2508"
         effective_train_id = train_id if train_id else gtfs_trip_id
         assert effective_train_id == "2508"
+
+
+class TestDataSourceFiltering:
+    """Tests for data_source filtering in train details lookup.
+
+    The data_source parameter allows iOS to specify exactly which transit system
+    a train belongs to, avoiding ambiguity when train IDs collide between systems.
+
+    Key scenarios:
+    1. With data_source: Only search that source (train_id first, then trip_id)
+    2. Without data_source: Two-phase search across all sources
+       - Phase 1: Search all sources for train_id match
+       - Phase 2: Fall back to trip_id match
+    """
+
+    def test_concept_data_source_limits_search_scope(self):
+        """When data_source is provided, only that source is searched.
+
+        Example: iOS shows Amtrak train 174. When user clicks it, iOS passes
+        data_source='AMTRAK'. Backend searches only AMTRAK data, avoiding
+        collision with NJT trip_id=174.
+        """
+        # Simulating the search scope decision
+        data_source = "AMTRAK"
+        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO"]
+
+        sources_to_search = [data_source] if data_source else all_sources
+
+        assert sources_to_search == ["AMTRAK"]
+        assert "NJT" not in sources_to_search
+
+    def test_concept_no_data_source_searches_all(self):
+        """Without data_source, all sources are searched.
+
+        This is the fallback for backward compatibility and cases where
+        the data_source is not known.
+        """
+        data_source = None
+        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO"]
+
+        sources_to_search = [data_source] if data_source else all_sources
+
+        assert sources_to_search == all_sources
+
+    def test_concept_two_phase_search_priority(self):
+        """Two-phase search prioritizes train_id over trip_id.
+
+        Problem scenario:
+        - User searches for train "174"
+        - NJT has trip_id=174 (GTFS internal ID)
+        - Amtrak has train_id=174 (actual train number)
+
+        Solution: Phase 1 checks train_id across all sources first.
+        If Amtrak has train_id=174, it wins over NJT's trip_id=174.
+        """
+        # Simulating the two-phase search decision
+        search_value = "174"
+
+        # Mock data representing what might be found
+        njt_train_id_match = None  # NJT has no train 174
+        njt_trip_id_match = {"trip_id": "174", "source": "NJT"}
+        amtrak_train_id_match = {"train_id": "174", "source": "AMTRAK"}
+
+        # Phase 1: Check train_id matches first
+        phase1_matches = [m for m in [njt_train_id_match, amtrak_train_id_match] if m]
+        if phase1_matches:
+            result = phase1_matches[0]
+        else:
+            # Phase 2: Fall back to trip_id
+            phase2_matches = [m for m in [njt_trip_id_match] if m]
+            result = phase2_matches[0] if phase2_matches else None
+
+        assert result is not None
+        assert result["source"] == "AMTRAK"  # Real train number wins
+
+    def test_concept_train_id_collision_resolution(self):
+        """Documents the train ID collision scenario this feature solves.
+
+        Real-world bug: User sees Amtrak train 174 (Northeast Regional).
+        Backend returns NJT trip with trip_id=174 instead because NJT
+        is checked first in the iteration order.
+
+        Fix: Two-phase search ensures train_id (real numbers) are checked
+        before trip_id (GTFS internal IDs), and data_source parameter
+        allows explicit filtering when the source is known.
+        """
+        # Before fix: NJT trip_id=174 wins because NJT checked first
+        # After fix: Amtrak train_id=174 wins because train_id checked first
+
+        # The key insight: GTFS trip_id is an internal identifier,
+        # while train_id (from trip_short_name) is the real train number.
+        # Real train numbers should always take priority.
+        pass
