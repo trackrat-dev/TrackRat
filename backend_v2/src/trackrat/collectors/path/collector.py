@@ -885,6 +885,29 @@ class PathCollector:
 
             stop.updated_at = now
 
+        # Enforce sequential consistency: if a later stop is departed,
+        # all earlier stops must also be departed (train can't skip stations)
+        departed_sequences = [
+            s.stop_sequence for s in stops if s.has_departed_station and s.stop_sequence
+        ]
+        if departed_sequences:
+            max_departed = max(departed_sequences)
+            for stop in stops:
+                if (
+                    stop.stop_sequence
+                    and stop.stop_sequence < max_departed
+                    and not stop.has_departed_station
+                ):
+                    stop.has_departed_station = True
+                    stop.actual_departure = stop.actual_arrival or stop.scheduled_arrival
+                    stop.departure_source = "sequential_consistency"
+                    logger.debug(
+                        "path_sequential_consistency_fix",
+                        station_code=stop.station_code,
+                        stop_sequence=stop.stop_sequence,
+                        max_departed_sequence=max_departed,
+                    )
+
         # Check journey completion
         terminal_stop = stops[-1] if stops else None
         if terminal_stop and terminal_stop.has_departed_station:

@@ -1646,3 +1646,312 @@ class TestDepartureStatusInference:
         assert pjs_stop.has_departed_station is True
         assert pjs_stop.departure_source == "time_inference"
         assert pjs_stop.actual_departure == arrivals[0].arrival_time
+
+    @pytest.mark.asyncio
+    async def test_sequential_consistency_fixes_inconsistent_api_data(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test the specific bug: later stop departed but earlier stop shows future arrival.
+
+        This is the Christopher Street bug: The API returns arrival data for both
+        Christopher Street (seq 4) and 9th Street (seq 5), but with inconsistent
+        timestamps - Christopher Street shows future arrival while 9th Street shows
+        past arrival. This is logically impossible (train can't skip stations).
+
+        The sequential consistency post-processing should fix this by marking
+        Christopher Street as departed since 9th Street is departed.
+        """
+        now = datetime.now()
+        base_time = now - timedelta(minutes=10)
+
+        # Create stops for a HOB-33 style journey
+        # PHO(1) -> PCH(2) -> P9S(3) -> P14(4) -> P23(5) -> P33(6)
+        stations = [
+            ("PHO", "Hoboken", 1),
+            ("PCH", "Christopher Street", 2),
+            ("P9S", "9th Street", 3),
+            ("P14", "14th Street", 4),
+            ("P23", "23rd Street", 5),
+            ("P33", "33rd Street", 6),
+        ]
+
+        stops = []
+        for code, name, seq in stations:
+            stop = MagicMock(spec=JourneyStop)
+            stop.station_code = code
+            stop.station_name = name
+            stop.stop_sequence = seq
+            stop.scheduled_arrival = base_time + timedelta(minutes=(seq - 1) * 3)
+            stop.scheduled_departure = base_time + timedelta(minutes=(seq - 1) * 3 + 1)
+            stop.actual_arrival = None
+            stop.actual_departure = None
+            stop.updated_arrival = None
+            stop.updated_departure = None
+            stop.has_departed_station = False
+            stop.departure_source = None
+            stop.updated_at = None
+            stops.append(stop)
+
+        # THE BUG SCENARIO:
+        # API returns arrivals for both Christopher St and 9th St
+        # Christopher St shows FUTURE arrival (API glitch/timing issue)
+        # 9th St shows PAST arrival (train already passed)
+        # This is impossible - if 9th St is passed, Christopher St must be too
+        arrivals = [
+            PathArrival(
+                station_code="PCH",  # Christopher Street - seq 2
+                headsign="33rd Street",
+                direction="ToNY",
+                minutes_away=2,
+                arrival_time=now + timedelta(minutes=2),  # FUTURE - API says not passed yet
+                line_color="4D92FB",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="P9S",  # 9th Street - seq 3
+                headsign="33rd Street",
+                direction="ToNY",
+                minutes_away=0,
+                arrival_time=now - timedelta(minutes=1),  # PAST - train already passed
+                line_color="4D92FB",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="P14",  # 14th Street - seq 4
+                headsign="33rd Street",
+                direction="ToNY",
+                minutes_away=3,
+                arrival_time=now + timedelta(minutes=3),
+                line_color="4D92FB",
+                last_updated=now,
+            ),
+        ]
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # Verify the bug is fixed:
+        # 9th Street (seq 3) should be departed (arrival_time <= now)
+        p9s_stop = stops[2]
+        assert p9s_stop.has_departed_station is True, (
+            "9th Street should be departed (arrival_time in past)"
+        )
+        assert p9s_stop.departure_source == "time_inference"
+
+        # Christopher Street (seq 2) MUST also be departed via sequential consistency
+        # Even though its API arrival_time is in the future
+        pch_stop = stops[1]
+        assert pch_stop.has_departed_station is True, (
+            "Christopher Street MUST be departed - train can't skip stations! "
+            "If 9th Street is departed, Christopher Street must be too."
+        )
+        assert pch_stop.departure_source == "sequential_consistency", (
+            "Christopher Street should be fixed via sequential_consistency post-processing"
+        )
+
+        # Hoboken (seq 1) should also be departed (earlier than Christopher St)
+        pho_stop = stops[0]
+        assert pho_stop.has_departed_station is True, (
+            "Hoboken should be departed (via time inference or sequential consistency)"
+        )
+
+        # 14th Street (seq 4) should NOT be departed (future arrival, after 9th St)
+        p14_stop = stops[3]
+        assert p14_stop.has_departed_station is False, (
+            "14th Street should NOT be departed (arrival in future)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sequential_consistency_with_empty_stops(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test sequential consistency handles empty stops list gracefully."""
+        now = datetime.now()
+        stops = []
+        arrivals = []
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                # Should not raise any errors
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # Journey should not be marked complete with no stops
+        assert sample_journey.is_completed is False
+
+    @pytest.mark.asyncio
+    async def test_sequential_consistency_single_stop(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test sequential consistency with single stop (edge case)."""
+        now = datetime.now()
+
+        stop = MagicMock(spec=JourneyStop)
+        stop.station_code = "PWC"
+        stop.station_name = "World Trade Center"
+        stop.stop_sequence = 1
+        stop.scheduled_arrival = now - timedelta(minutes=5)
+        stop.scheduled_departure = None
+        stop.actual_arrival = None
+        stop.actual_departure = None
+        stop.updated_arrival = None
+        stop.updated_departure = None
+        stop.has_departed_station = False
+        stop.departure_source = None
+        stop.updated_at = None
+
+        stops = [stop]
+        arrivals = []
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # Single stop should be departed via time inference
+        assert stop.has_departed_station is True
+        assert stop.departure_source == "time_inference"
+
+    @pytest.mark.asyncio
+    async def test_sequential_consistency_multiple_gaps(
+        self, collector, mock_session, sample_journey, mock_transit_analyzer
+    ):
+        """Test sequential consistency fixes multiple inconsistent stops.
+
+        Scenario: API returns arrivals showing stops 2 and 4 still in the future,
+        but stop 5 has already passed. Sequential consistency should fix 2 and 4.
+
+        This simulates API timing inconsistencies where later stops show as passed
+        but earlier stops still show future arrival times.
+
+        Note: Arrivals must be within 10min of scheduled time to match.
+        """
+        now = datetime.now()
+        # Set base_time so that stop times are close to 'now'
+        # _create_stops uses: scheduled_arrival = base_time + (seq-1)*3
+        # We want PEX (seq 5) scheduled around now, so base_time = now - 12min
+        base_time = now - timedelta(minutes=12)
+
+        stops = self._create_stops(base_time)
+        # Scheduled times with base_time = now - 12min:
+        # PNK (seq 1): now - 12 + 0 = now - 12min
+        # PHR (seq 2): now - 12 + 3 = now - 9min
+        # PJS (seq 3): now - 12 + 6 = now - 6min
+        # PGR (seq 4): now - 12 + 9 = now - 3min
+        # PEX (seq 5): now - 12 + 12 = now
+        # PWC (seq 6): now - 12 + 15 = now + 3min
+
+        # API shows inconsistent data - arrivals MUST be within 10min of scheduled:
+        # - PNK (sched: now-12): arrival at now-11 -> within tolerance, PAST -> departed
+        # - PHR (sched: now-9): arrival at now+2 -> 11min diff, but let's keep within tolerance
+        #   Actually, let's make arrival at now-7 (2min diff) but still claim it's "future"
+        #   No, that won't work. The key is: matched_arrival.arrival_time <= now determines departed.
+        #
+        # Real scenario: API has clock skew or propagation delay
+        # - PHR shows arrival_time slightly in future even though train passed
+        # - PGR shows arrival_time slightly in future even though train passed
+        # - PEX shows arrival_time in past (train definitely passed)
+
+        arrivals = [
+            PathArrival(
+                station_code="PNK",  # sched: now-12min
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=0,
+                arrival_time=now - timedelta(minutes=11),  # PAST, within tolerance
+                line_color="D93A30",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="PHR",  # sched: now-9min
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=1,
+                arrival_time=now + timedelta(minutes=1),  # FUTURE! (API glitch)
+                # diff from scheduled (-9) is 10min - at tolerance edge
+                line_color="D93A30",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="PJS",  # sched: now-6min
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=0,
+                arrival_time=now - timedelta(minutes=5),  # PAST, within tolerance
+                line_color="D93A30",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="PGR",  # sched: now-3min
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=2,
+                arrival_time=now + timedelta(minutes=2),  # FUTURE! (API glitch)
+                # diff from scheduled (-3) is 5min - within tolerance
+                line_color="D93A30",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="PEX",  # sched: now
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=0,
+                arrival_time=now - timedelta(minutes=1),  # PAST, within tolerance
+                line_color="D93A30",
+                last_updated=now,
+            ),
+            PathArrival(
+                station_code="PWC",  # sched: now+3min
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=5,
+                arrival_time=now + timedelta(minutes=5),  # FUTURE (terminal, not passed)
+                line_color="D93A30",
+                last_updated=now,
+            ),
+        ]
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=mock_transit_analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, sample_journey, stops, arrivals
+                )
+
+        # All stops up to seq 5 should now be departed
+        for i, stop in enumerate(stops[:5]):
+            assert stop.has_departed_station is True, (
+                f"Stop {stop.station_code} (seq {stop.stop_sequence}) should be departed"
+            )
+
+        # Stops 2 (PHR) and 4 (PGR) should have been fixed by sequential consistency
+        # Their API arrivals were in the future, but PEX (seq 5) is departed
+        assert stops[1].departure_source == "sequential_consistency", (
+            f"Harrison (seq 2) should be fixed via sequential_consistency, "
+            f"got {stops[1].departure_source}"
+        )
+        assert stops[3].departure_source == "sequential_consistency", (
+            f"Grove Street (seq 4) should be fixed via sequential_consistency, "
+            f"got {stops[3].departure_source}"
+        )
+
+        # Terminal (seq 6) should still NOT be departed
+        assert stops[5].has_departed_station is False, (
+            "WTC (terminal) should NOT be departed"
+        )
