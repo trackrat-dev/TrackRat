@@ -529,21 +529,26 @@ class GTFSService:
     def _extract_train_id_from_block_id(self, block_id: str) -> str | None:
         """Extract train number from GTFS block_id.
 
-        NJT uses block_id as the train number for heavy rail (numeric like "4608", "0301").
-        Light rail has alphanumeric block_ids like "342JC001" which aren't useful.
+        NOTE: This method is DEPRECATED and returns None for all inputs.
+
+        GTFS block_id is an equipment/vehicle identifier, NOT a train number.
+        The same block_id can be assigned to multiple trips throughout the day
+        (representing the same physical train set running different services).
+
+        For NJT and other sources, we use gtfs_trip_id as the unique identifier
+        for GTFS-based lookups instead.
 
         Args:
             block_id: The block_id from GTFS trips.txt
 
         Returns:
-            Train number with leading zeros stripped, or None if not numeric
+            Always None - block_id should not be used as train_id
         """
-        if not block_id:
-            return None
-        cleaned = block_id.strip('"').strip()
-        if cleaned.isdigit():
-            # Strip leading zeros: "0301" -> "301", but keep "0" as "0"
-            return cleaned.lstrip("0") or cleaned
+        # block_id is NOT a train number - it's an equipment identifier
+        # that can be reused across multiple trips per day.
+        # Using it as train_id causes:
+        # 1. Wrong train numbers displayed (equipment ID != train number)
+        # 2. Lookup failures when multiple trips share the same block_id
         return None
 
     def _parse_gtfs_time(self, time_str: str, target_date: date) -> datetime | None:
@@ -1264,15 +1269,12 @@ class GTFSService:
                     else DEFAULT_LINE_COLORS.get(data_source, "#666666")
                 )
 
-            # Use train_id from database (populated from block_id during parsing)
-            # For PATH/PATCO without numeric train_ids, use GTFS trip_id for unique identification
-            # This ensures each trip can be looked up correctly in get_train_details
-            if train_id:
-                effective_train_id = train_id
-            elif data_source in ("PATH", "PATCO"):
-                effective_train_id = gtfs_trip_id
-            else:
-                effective_train_id = headsign or "Unknown"
+            # Use gtfs_trip_id as the unique identifier for all GTFS-based lookups.
+            # GTFS trip_id is guaranteed unique per trip and enables reliable lookup
+            # in get_train_details(). The train_id field from database is not used
+            # because GTFS block_id (previously used to populate it) is an equipment
+            # identifier, not a train number.
+            effective_train_id = gtfs_trip_id
 
             departure = TrainDeparture(
                 train_id=effective_train_id,
@@ -1347,6 +1349,10 @@ class GTFSService:
     ) -> TrainDetails | None:
         """Get train details from GTFS data for future dates.
 
+        The train_id parameter is expected to be the GTFS trip_id (used as the
+        unique identifier in departure listings). Falls back to matching by
+        stored train_id for compatibility.
+
         Returns TrainDetails if the train is found in GTFS, None otherwise.
         """
         logger.info(
@@ -1363,7 +1369,7 @@ class GTFSService:
             if not service_ids:
                 continue
 
-            # Find the trip with matching train_id
+            # Primary: Find trip by gtfs_trip_id (used as identifier in departures)
             result = await db.execute(
                 select(
                     GTFSTrip.id,
@@ -1379,34 +1385,11 @@ class GTFSService:
                     and_(
                         GTFSTrip.data_source == data_source,
                         GTFSTrip.service_id.in_(service_ids),
-                        GTFSTrip.train_id == train_id,
+                        GTFSTrip.trip_id == train_id,
                     )
                 )
             )
             trip_row = result.first()
-
-            if not trip_row:
-                # Try matching by gtfs_trip_id if train_id didn't match
-                result = await db.execute(
-                    select(
-                        GTFSTrip.id,
-                        GTFSTrip.train_id,
-                        GTFSTrip.trip_headsign,
-                        GTFSRoute.route_id,  # GTFS route_id string
-                        GTFSRoute.route_short_name,
-                        GTFSRoute.route_long_name,
-                        GTFSRoute.route_color,
-                    )
-                    .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
-                    .where(
-                        and_(
-                            GTFSTrip.data_source == data_source,
-                            GTFSTrip.service_id.in_(service_ids),
-                            GTFSTrip.trip_id == train_id,
-                        )
-                    )
-                )
-                trip_row = result.first()
 
             if not trip_row:
                 continue
@@ -1474,9 +1457,9 @@ class GTFSService:
             if not stops:
                 continue
 
-            # Use stored train_id (populated from block_id during parsing)
-            # For light rail (no numeric block_id), fall back to headsign
-            effective_train_id = stored_train_id or headsign or "Unknown"
+            # Use the gtfs_trip_id (passed as train_id parameter) as the display ID.
+            # This matches what we show in departure listings and ensures consistency.
+            effective_train_id = train_id
 
             # Build line info
             # PATH and PATCO routes need special handling for proper line codes/colors

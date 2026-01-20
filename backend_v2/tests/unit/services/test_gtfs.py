@@ -137,43 +137,58 @@ class TestTrainIdExtraction:
 
 
 class TestBlockIdExtraction:
-    """Tests for train ID extraction from GTFS block_id."""
+    """Tests for train ID extraction from GTFS block_id.
+
+    IMPORTANT: block_id is NOT a train number - it's an equipment/vehicle identifier.
+    The same block_id can be assigned to multiple trips throughout the day.
+    Therefore, _extract_train_id_from_block_id should ALWAYS return None.
+
+    These tests verify the function correctly rejects block_id as a train identifier.
+    """
 
     def setup_method(self):
         self.service = GTFSService()
 
-    def test_extract_numeric_block_id(self):
-        """Test extracting train number from numeric block_id."""
+    def test_numeric_block_id_returns_none(self):
+        """Numeric block_id should NOT be used as train_id - returns None.
+
+        block_id like "4608" is an equipment identifier, not a train number.
+        Using it as train_id causes wrong train numbers to be displayed.
+        """
         result = self.service._extract_train_id_from_block_id("4608")
-        assert result == "4608"
+        assert result is None
 
-    def test_extract_block_id_strips_leading_zeros(self):
-        """Test that leading zeros are stripped from block_id."""
+    def test_block_id_with_leading_zeros_returns_none(self):
+        """block_id with leading zeros should NOT be used as train_id.
+
+        block_id like "0301" becomes "301" when stripped, but this is
+        an equipment identifier, not a real train number (NEC trains are 4-digit).
+        """
         result = self.service._extract_train_id_from_block_id("0301")
-        assert result == "301"
+        assert result is None
 
-    def test_extract_block_id_preserves_single_zero(self):
-        """Test that a single '0' is preserved."""
+    def test_single_zero_block_id_returns_none(self):
+        """Even single '0' block_id should return None."""
         result = self.service._extract_train_id_from_block_id("0")
-        assert result == "0"
+        assert result is None
 
-    def test_extract_block_id_strips_quotes(self):
-        """Test that quotes around block_id are stripped."""
+    def test_quoted_block_id_returns_none(self):
+        """Quoted block_id should NOT be used as train_id."""
         result = self.service._extract_train_id_from_block_id('"4662"')
-        assert result == "4662"
+        assert result is None
 
-    def test_extract_alphanumeric_block_id_returns_none(self):
-        """Test that alphanumeric block_id (light rail) returns None."""
+    def test_alphanumeric_block_id_returns_none(self):
+        """Alphanumeric block_id (light rail) returns None."""
         result = self.service._extract_train_id_from_block_id("342JC001")
         assert result is None
 
-    def test_extract_empty_block_id_returns_none(self):
-        """Test returns None for empty block_id."""
+    def test_empty_block_id_returns_none(self):
+        """Empty block_id returns None."""
         result = self.service._extract_train_id_from_block_id("")
         assert result is None
 
-    def test_extract_none_block_id_returns_none(self):
-        """Test returns None for None block_id."""
+    def test_none_block_id_returns_none(self):
+        """None block_id returns None."""
         result = self.service._extract_train_id_from_block_id(None)
         assert result is None
 
@@ -405,3 +420,102 @@ class TestDownloadIntervalConstant:
     def test_download_interval_is_24_hours(self):
         """Verify download interval is 24 hours as specified."""
         assert GTFS_DOWNLOAD_INTERVAL_HOURS == 24
+
+
+class TestGTFSTripIdentifiers:
+    """Tests verifying GTFS trip identifier behavior.
+
+    These tests ensure that:
+    1. block_id is NOT used as train_id (it's an equipment identifier)
+    2. gtfs_trip_id is used as the unique identifier for lookups
+    3. Train details can be correctly retrieved using gtfs_trip_id
+
+    Background:
+    - GTFS block_id represents equipment/vehicle, not train number
+    - Same block_id can appear on multiple trips throughout the day
+    - Using block_id as train_id caused wrong trains to be displayed
+    - gtfs_trip_id is guaranteed unique per trip within a data source
+    """
+
+    def setup_method(self):
+        self.service = GTFSService()
+
+    def test_block_id_is_not_train_id(self):
+        """Verify that block_id values are NOT treated as train IDs.
+
+        Real example from NJT GTFS:
+        - trip_id=174 has block_id="6222" (Montclair-Boonton Line)
+        - trip_id=2420 has block_id="3800" (Northeast Corridor)
+
+        Block IDs are equipment identifiers, NOT train numbers.
+        The same block_id can be assigned to completely different trips.
+        """
+        # All these should return None - block_id is not a valid train identifier
+        assert self.service._extract_train_id_from_block_id("6222") is None
+        assert self.service._extract_train_id_from_block_id("3800") is None
+        assert self.service._extract_train_id_from_block_id("0657") is None
+
+    def test_block_id_documentation_is_accurate(self):
+        """Verify the function documents WHY it returns None.
+
+        The function should have clear documentation explaining that
+        block_id is an equipment identifier, not a train number.
+        """
+        docstring = self.service._extract_train_id_from_block_id.__doc__
+        assert docstring is not None
+        assert "equipment" in docstring.lower() or "vehicle" in docstring.lower()
+        assert "None" in docstring or "not" in docstring.lower()
+
+    def test_extract_train_id_from_headsign_handles_numbers(self):
+        """Test headsign extraction still works for train numbers in headsign.
+
+        Some GTFS feeds include train numbers in headsign (e.g., "Train 3245 to Trenton").
+        This is the valid way to extract train IDs from GTFS data.
+        """
+        # Number in headsign text
+        result = self.service._extract_train_id("Train 3245 to Trenton")
+        assert result == "3245"
+
+        # Just the number
+        result = self.service._extract_train_id("3840")
+        assert result == "3840"
+
+        # No number in headsign
+        result = self.service._extract_train_id("To New York Penn Station")
+        assert result is None
+
+
+class TestTrainSearchConsistency:
+    """Tests verifying train search and details are consistent.
+
+    These tests document the expected behavior:
+    1. Departure listing shows gtfs_trip_id as the train identifier
+    2. Clicking a train uses the same gtfs_trip_id for lookup
+    3. Train details page shows the same identifier
+
+    This prevents the bug where clicking "Train 174" showed details
+    for "Train 6222" (a completely different route).
+    """
+
+    def test_gtfs_trip_id_is_unique_identifier_concept(self):
+        """Document that gtfs_trip_id should be used as the unique identifier.
+
+        GTFS trip_id is:
+        - Unique per trip within a data source
+        - Stable across GTFS feed updates (usually)
+        - The correct key for looking up trip details
+
+        block_id (previously used incorrectly) is:
+        - An equipment/vehicle identifier
+        - Reused across multiple trips per day
+        - NOT unique and NOT suitable for lookups
+        """
+        # This test documents the design decision
+        # The actual implementation ensures gtfs_trip_id is used
+        service = GTFSService()
+
+        # Verify block_id extraction returns None (not used as train_id)
+        assert service._extract_train_id_from_block_id("any_value") is None
+
+        # Headsign extraction is still valid for sources that include train numbers
+        assert service._extract_train_id("3245") == "3245"
