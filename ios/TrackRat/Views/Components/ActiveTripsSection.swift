@@ -68,10 +68,15 @@ struct ActiveTripsSection: View {
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Train \(activity.attributes.trainNumber)")
+                                // For PATH/PATCO trains with synthetic IDs, show destination instead
+                                let trainLabel = activity.attributes.trainNumber.hasPrefix("PATH_") ||
+                                                 activity.attributes.trainNumber.hasPrefix("PATCO_")
+                                    ? activity.attributes.destination
+                                    : "Train \(activity.attributes.trainNumber)"
+                                Text(trainLabel)
                                     .font(.headline)
                                     .foregroundColor(.white)
-                                
+
                                 Text("\(activity.attributes.origin) → \(activity.attributes.destination)")
                                     .font(.subheadline)
                                     .foregroundColor(.white.opacity(0.8))
