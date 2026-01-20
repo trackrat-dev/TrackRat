@@ -25,7 +25,8 @@ from trackrat.config.stations import (
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
-from trackrat.utils.time import now_et
+from trackrat.utils.locks import with_train_lock
+from trackrat.utils.time import normalize_to_et, now_et
 
 logger = get_logger(__name__)
 
@@ -465,10 +466,15 @@ class PathCollector:
         )
 
         # Check if journey already exists by exact train_id
-        stmt = select(TrainJourney).where(
-            TrainJourney.train_id == train_id,
-            TrainJourney.journey_date == journey_date,
-            TrainJourney.data_source == "PATH",
+        # Use FOR UPDATE SKIP LOCKED to prevent duplicate creation during concurrent discovery
+        stmt = (
+            select(TrainJourney)
+            .where(
+                TrainJourney.train_id == train_id,
+                TrainJourney.journey_date == journey_date,
+                TrainJourney.data_source == "PATH",
+            )
+            .with_for_update(skip_locked=True)
         )
         existing = await session.scalar(stmt)
 
@@ -665,16 +671,20 @@ class PathCollector:
         time_min = scheduled_departure - time_window
         time_max = scheduled_departure + time_window
 
-        stmt = select(TrainJourney).where(
-            and_(
-                TrainJourney.data_source == "PATH",
-                TrainJourney.journey_date == journey_date,
-                TrainJourney.line_code == line_code,
-                TrainJourney.origin_station_code == origin_station,
-                TrainJourney.destination == destination,
-                TrainJourney.scheduled_departure >= time_min,
-                TrainJourney.scheduled_departure <= time_max,
+        stmt = (
+            select(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.data_source == "PATH",
+                    TrainJourney.journey_date == journey_date,
+                    TrainJourney.line_code == line_code,
+                    TrainJourney.origin_station_code == origin_station,
+                    TrainJourney.destination == destination,
+                    TrainJourney.scheduled_departure >= time_min,
+                    TrainJourney.scheduled_departure <= time_max,
+                )
             )
+            .with_for_update(skip_locked=True)
         )
 
         result = await session.scalar(stmt)
@@ -870,7 +880,13 @@ class PathCollector:
             current_time = current.actual_arrival or current.actual_departure
             next_time = next_stop.actual_arrival or next_stop.actual_departure
 
-            if current_time and next_time and current_time > next_time:
+            # Normalize both times to ET before comparing to avoid timezone issues
+            # (DB may return UTC, API returns ET)
+            if (
+                current_time
+                and next_time
+                and normalize_to_et(current_time) > normalize_to_et(next_time)
+            ):
                 # Current stop has a later time than next stop - impossible!
                 # Fix by using scheduled time for current stop
                 logger.warning(
@@ -962,7 +978,10 @@ class PathCollector:
 
             elif not matched_arrival and stop.scheduled_arrival:
                 grace_period = timedelta(minutes=2)
-                if stop.scheduled_arrival + grace_period < now:
+                # Normalize both to ET for consistent comparison (handles naive datetimes)
+                scheduled_et = normalize_to_et(stop.scheduled_arrival)
+                now_et_normalized = normalize_to_et(now)
+                if scheduled_et + grace_period < now_et_normalized:
                     if not stop.has_departed_station:
                         stop.has_departed_station = True
                         stop.actual_departure = stop.scheduled_arrival
@@ -1002,7 +1021,7 @@ class PathCollector:
 
         # Validate and fix out-of-order arrival times
         # This handles cases where API returned inconsistent times
-        self._validate_and_fix_stop_times(stops, journey.train_id)
+        self._validate_and_fix_stop_times(stops, journey.train_id or "")
 
         # Check journey completion
         terminal_stop = stops[-1] if stops else None
@@ -1056,6 +1075,7 @@ class PathCollector:
         """Update a single journey with real-time arrival data.
 
         Used by the JIT service to refresh data for an existing journey.
+        Uses train-level locking to prevent concurrent updates to the same journey.
 
         Args:
             session: Database session
@@ -1064,6 +1084,25 @@ class PathCollector:
         if journey.is_completed or journey.is_cancelled or journey.is_expired:
             return
 
+        # Use train-level locking to prevent deadlocks from concurrent updates
+        train_id = journey.train_id or ""
+        journey_date = (
+            journey.journey_date.isoformat()
+            if journey.journey_date
+            else now_et().date().isoformat()
+        )
+        await with_train_lock(
+            train_id,
+            journey_date,
+            self._collect_journey_details_impl,
+            session,
+            journey,
+        )
+
+    async def _collect_journey_details_impl(
+        self, session: AsyncSession, journey: TrainJourney
+    ) -> None:
+        """Implementation of journey details collection (called under lock)."""
         try:
             # Fetch all arrivals
             all_arrivals = await self.client.get_all_arrivals()
