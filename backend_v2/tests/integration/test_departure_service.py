@@ -1197,3 +1197,309 @@ class TestDepartureServiceIntegration:
             mock_refresh.assert_called_once()
             call_args = mock_refresh.call_args
             assert call_args[0][4] is False  # 5th positional arg is hide_departed
+
+
+@pytest.mark.asyncio
+class TestPathCutoffTime:
+    """Test suite for dynamic PATH train cutoff time calculation."""
+
+    async def test_no_observed_trains_returns_minimum_cutoff(
+        self, db_session: AsyncSession
+    ):
+        """When no observed PATH trains exist, cutoff is now + 20 min."""
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # No PATH trains in database
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # Should return minimum: now + 20 minutes
+        expected = current_time + timedelta(minutes=20)
+        # Allow 1 second tolerance for test execution time
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    async def test_observed_train_within_minimum_uses_minimum(
+        self, db_session: AsyncSession
+    ):
+        """When last observed train is within 20 min, use 20 min minimum."""
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # Create observed PATH train departing in 10 minutes
+        path_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_12345",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            line_name="Hoboken - 33rd Street",
+            line_color="#65C100",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=10),
+            first_seen_at=current_time - timedelta(minutes=5),
+            last_updated_at=current_time,
+            has_complete_journey=True,
+            update_count=1,
+        )
+        stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=10),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        path_journey.stops = [stop]
+        db_session.add(path_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # Last observed at +10 min → +12 min cutoff
+        # But minimum is +20 min, so should use minimum
+        expected = current_time + timedelta(minutes=20)
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    async def test_observed_train_beyond_minimum_uses_observed_plus_buffer(
+        self, db_session: AsyncSession
+    ):
+        """When last observed train is beyond 20 min, use observed + 2 min."""
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # Create observed PATH train departing in 25 minutes
+        path_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_12345",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            line_name="Hoboken - 33rd Street",
+            line_color="#65C100",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=25),
+            first_seen_at=current_time - timedelta(minutes=5),
+            last_updated_at=current_time,
+            has_complete_journey=True,
+            update_count=1,
+        )
+        stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=25),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        path_journey.stops = [stop]
+        db_session.add(path_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # Last observed at +25 min → +27 min cutoff (greater than +20 min minimum)
+        expected = current_time + timedelta(minutes=27)
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    async def test_only_considers_future_departures(self, db_session: AsyncSession):
+        """Past observed trains should not affect the cutoff calculation."""
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # Create observed PATH train that already departed (past)
+        past_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_past",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time - timedelta(minutes=5),
+            first_seen_at=current_time - timedelta(minutes=30),
+            last_updated_at=current_time - timedelta(minutes=5),
+            update_count=1,
+        )
+        past_stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time - timedelta(minutes=5),
+            stop_sequence=0,
+            has_departed_station=True,
+        )
+        past_journey.stops = [past_stop]
+        db_session.add(past_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # Past train should be ignored, so use minimum cutoff
+        expected = current_time + timedelta(minutes=20)
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    async def test_only_considers_observed_trains(self, db_session: AsyncSession):
+        """SCHEDULED trains (not yet seen in realtime) should not affect cutoff."""
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # Create SCHEDULED PATH train (not yet observed in realtime)
+        scheduled_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_sched",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="SCHEDULED",  # Not observed yet
+            line_code="HOB-33",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=30),
+            first_seen_at=current_time,
+            last_updated_at=current_time,
+            update_count=1,
+        )
+        stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=30),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        scheduled_journey.stops = [stop]
+        db_session.add(scheduled_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # SCHEDULED train should be ignored, so use minimum cutoff
+        expected = current_time + timedelta(minutes=20)
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    async def test_station_specific_cutoff(self, db_session: AsyncSession):
+        """Cutoff is calculated per-station, not globally."""
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # Create observed PATH train at PWC (World Trade Center)
+        wtc_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_12345",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=30),
+            first_seen_at=current_time - timedelta(minutes=5),
+            last_updated_at=current_time,
+            update_count=1,
+        )
+        wtc_stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=30),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        wtc_journey.stops = [wtc_stop]
+        db_session.add(wtc_journey)
+        await db_session.commit()
+
+        # Check cutoff for PWC (should use observed train)
+        pwc_cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+        expected_pwc = current_time + timedelta(minutes=32)  # 30 + 2 min buffer
+        assert abs((pwc_cutoff - expected_pwc).total_seconds()) < 1
+
+        # Check cutoff for PHO (Hoboken) - no observed trains there
+        pho_cutoff = await service._get_path_cutoff_time(
+            db_session, "PHO", current_time, today
+        )
+        expected_pho = current_time + timedelta(minutes=20)  # minimum
+        assert abs((pho_cutoff - expected_pho).total_seconds()) < 1
+
+    async def test_multiple_observed_trains_uses_latest(self, db_session: AsyncSession):
+        """When multiple observed trains exist, use the one with latest departure."""
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # Create first observed PATH train departing in 25 min
+        first_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_first",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=25),
+            first_seen_at=current_time - timedelta(minutes=10),
+            last_updated_at=current_time,
+            update_count=1,
+        )
+        first_stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=25),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        first_journey.stops = [first_stop]
+
+        # Create second observed PATH train departing in 35 min (later)
+        second_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_second",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=35),
+            first_seen_at=current_time - timedelta(minutes=5),
+            last_updated_at=current_time,
+            update_count=1,
+        )
+        second_stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=35),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        second_journey.stops = [second_stop]
+
+        db_session.add(first_journey)
+        db_session.add(second_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # Should use the later train: 35 min + 2 min buffer = 37 min
+        expected = current_time + timedelta(minutes=37)
+        assert abs((cutoff - expected).total_seconds()) < 1
