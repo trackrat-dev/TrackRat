@@ -1453,6 +1453,12 @@ class GTFSService:
             data_source=data_source,
         )
 
+        # Normalize Amtrak train_id: strip "A" prefix for lookup since GTFS stores without it
+        # (We add "A" prefix for display consistency with real-time data)
+        search_train_id = train_id
+        if data_source == "AMTRAK" and train_id.startswith("A") and train_id[1:].isdigit():
+            search_train_id = train_id[1:]
+
         all_sources = ["NJT", "AMTRAK", "PATH", "PATCO"]
         sources_to_search = [data_source] if data_source else all_sources
 
@@ -1471,11 +1477,11 @@ class GTFSService:
             if data_source in source_service_ids:
                 service_ids = source_service_ids[data_source]
                 trip_row = await self._find_trip_in_source(
-                    db, train_id, data_source, service_ids, "train_id"
+                    db, search_train_id, data_source, service_ids, "train_id"
                 )
                 if not trip_row:
                     trip_row = await self._find_trip_in_source(
-                        db, train_id, data_source, service_ids, "trip_id"
+                        db, search_train_id, data_source, service_ids, "trip_id"
                     )
                 if trip_row:
                     matched_source = data_source
@@ -1483,8 +1489,10 @@ class GTFSService:
             # Two-phase search: prioritize train_id (real numbers) over trip_id (GTFS IDs)
             # Phase 1: Search all sources for train_id match
             for source, service_ids in source_service_ids.items():
+                # For Amtrak, also try without "A" prefix
+                lookup_id = search_train_id if source == "AMTRAK" else train_id
                 trip_row = await self._find_trip_in_source(
-                    db, train_id, source, service_ids, "train_id"
+                    db, lookup_id, source, service_ids, "train_id"
                 )
                 if trip_row:
                     matched_source = source
@@ -1493,8 +1501,9 @@ class GTFSService:
             # Phase 2: Fall back to trip_id match
             if not trip_row:
                 for source, service_ids in source_service_ids.items():
+                    lookup_id = search_train_id if source == "AMTRAK" else train_id
                     trip_row = await self._find_trip_in_source(
-                        db, train_id, source, service_ids, "trip_id"
+                        db, lookup_id, source, service_ids, "trip_id"
                     )
                     if trip_row:
                         matched_source = source
