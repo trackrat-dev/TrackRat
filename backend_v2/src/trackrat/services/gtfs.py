@@ -1309,6 +1309,10 @@ class GTFSService:
             # For NJT, train_id is usually None since NJT GTFS lacks trip_short_name
             effective_train_id = train_id if train_id else gtfs_trip_id
 
+            # Add "A" prefix for Amtrak to match real-time format (e.g., "112" -> "A112")
+            if data_source == "AMTRAK" and effective_train_id and not effective_train_id.startswith("A"):
+                effective_train_id = f"A{effective_train_id}"
+
             departure = TrainDeparture(
                 train_id=effective_train_id,
                 journey_date=target_date,
@@ -1584,6 +1588,10 @@ class GTFSService:
         # Use stored_train_id (from trip_short_name) if available (e.g., Amtrak "112")
         # Otherwise use gtfs_trip_id for NJT where no train_id exists
         effective_train_id = stored_train_id if stored_train_id else gtfs_trip_id
+
+        # Add "A" prefix for Amtrak to match real-time format (e.g., "112" -> "A112")
+        if matched_source == "AMTRAK" and effective_train_id and not effective_train_id.startswith("A"):
+            effective_train_id = f"A{effective_train_id}"
 
         # Build line info
         # PATH and PATCO routes need special handling for proper line codes/colors
