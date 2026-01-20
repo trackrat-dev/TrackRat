@@ -525,65 +525,82 @@ class TestTrainSearchConsistency:
 class TestNJTLineCodeMapping:
     """Tests for NJT GTFS route_short_name to API line code mapping.
 
-    NJT GTFS uses route_short_name values like "NEC", "NJCL", "MNE", etc.
-    NJT real-time API uses 2-character codes like "NE", "NC", "Me", etc.
+    NJT GTFS uses route_short_name values like "NEC", "NJCL", "BNTN", etc.
+    NJT real-time API returns full line names like "Northeast Corridor" which
+    get truncated to 2 characters ("No").
 
     This mapping is critical for deduplication between GTFS scheduled data
     and real-time API data - if line codes don't match, the fallback
     deduplication key (line:source:time) won't match and duplicates appear.
     """
 
-    def test_mapping_contains_all_njt_lines(self):
-        """Test that all known NJT lines are mapped."""
+    def test_mapping_contains_actual_gtfs_routes(self):
+        """Test that actual NJT GTFS route_short_name values are mapped."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        # Known NJT rail lines
-        expected_lines = {
-            "NEC",   # Northeast Corridor
-            "NJCL",  # North Jersey Coast Line
-            "MNE",   # Morris & Essex
-            "MOBO",  # Montclair-Boonton
-            "RARV",  # Raritan Valley
-            "BERGL", # Bergen County Line
-            "MAIN",  # Main Line
-            "PASC",  # Pascack Valley
-            "ACRL",  # Atlantic City Rail Line
+        # Actual NJT GTFS route_short_name values (from GTFS feed)
+        expected_routes = {
+            "NEC",    # Northeast Corridor
+            "NJCL",   # North Jersey Coast Line
+            "NJCLL",  # North Jersey Coast Line (variation)
+            "MNE",    # Morris & Essex Line
+            "MNEG",   # Gladstone Branch
+            "BNTN",   # Montclair-Boonton Line
+            "BNTNM",  # Montclair-Boonton Line (variation)
+            "MNBN",   # Main/Bergen County Line
+            "MNBNP",  # Port Jervis Line
+            "PASC",   # Pascack Valley Line
+            "RARV",   # Raritan Valley Line
+            "ATLC",   # Atlantic City Rail Line
+            "PRIN",   # Princeton Shuttle
         }
 
-        for line in expected_lines:
-            assert line in NJT_LINE_CODE_MAPPING, f"Missing mapping for {line}"
+        for route in expected_routes:
+            assert route in NJT_LINE_CODE_MAPPING, f"Missing mapping for {route}"
 
-    def test_nec_maps_to_ne(self):
-        """Northeast Corridor maps to NE."""
+    def test_nec_maps_to_no(self):
+        """Northeast Corridor maps to 'No' (from 'Northeast Corridor' truncated)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["NEC"] == "NE"
+        assert NJT_LINE_CODE_MAPPING["NEC"] == "No"
 
-    def test_njcl_maps_to_nc(self):
-        """North Jersey Coast Line maps to NC."""
+    def test_njcl_maps_to_no(self):
+        """North Jersey Coast Line maps to 'No' (from 'North Jersey...' truncated)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["NJCL"] == "NC"
+        assert NJT_LINE_CODE_MAPPING["NJCL"] == "No"
 
-    def test_morris_essex_maps_to_me(self):
-        """Morris & Essex Line maps to Me."""
+    def test_morris_essex_maps_to_mo(self):
+        """Morris & Essex Line maps to 'Mo' (from 'Morris and Essex' truncated)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["MNE"] == "Me"
+        assert NJT_LINE_CODE_MAPPING["MNE"] == "Mo"
+
+    def test_gladstone_maps_to_gl(self):
+        """Gladstone Branch maps to 'Gl' (from 'Gladstone Branch' truncated)."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        assert NJT_LINE_CODE_MAPPING["MNEG"] == "Gl"
 
     def test_montclair_boonton_maps_to_mo(self):
-        """Montclair-Boonton Line maps to Mo."""
+        """Montclair-Boonton Line maps to 'Mo' (from 'Montclair-Boonton' truncated)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["MOBO"] == "Mo"
+        assert NJT_LINE_CODE_MAPPING["BNTN"] == "Mo"
 
     def test_raritan_valley_maps_to_ra(self):
-        """Raritan Valley Line maps to Ra."""
+        """Raritan Valley Line maps to 'Ra'."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         assert NJT_LINE_CODE_MAPPING["RARV"] == "Ra"
 
-    def test_line_codes_are_short(self):
+    def test_pascack_valley_maps_to_pa(self):
+        """Pascack Valley Line maps to 'Pa'."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        assert NJT_LINE_CODE_MAPPING["PASC"] == "Pa"
+
+    def test_line_codes_are_two_chars(self):
         """Verify all mapped line codes are 2 characters for consistency with API."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 

@@ -67,17 +67,32 @@ DEFAULT_LINE_COLORS = {
 }
 
 # NJT GTFS route_short_name to API line code mapping
-# GTFS uses full abbreviations, API uses 2-character codes
+# GTFS uses abbreviations like "NEC", API uses 2-char codes from truncated line names
+# e.g., API returns "Northeast Corridor" which becomes "No" when truncated to 2 chars
 NJT_LINE_CODE_MAPPING = {
-    "NEC": "NE",    # Northeast Corridor
-    "NJCL": "NC",   # North Jersey Coast Line
-    "MNE": "Me",    # Morris & Essex (Gladstone, Morristown)
-    "MOBO": "Mo",   # Montclair-Boonton
-    "RARV": "Ra",   # Raritan Valley
-    "BERGL": "Be",  # Bergen County Line
-    "MAIN": "Ma",   # Main Line
-    "PASC": "Pa",   # Pascack Valley
-    "ACRL": "AC",   # Atlantic City Rail Line
+    # Northeast Corridor
+    "NEC": "No",
+    # North Jersey Coast Line
+    "NJCL": "No",    # API returns "North Jersey Coast Line" -> "No"
+    "NJCLL": "No",   # Variation
+    # Morris & Essex Line (Morristown, Dover)
+    "MNE": "Mo",     # API returns "Morris and Essex" -> "Mo"
+    # Gladstone Branch (part of Morris & Essex)
+    "MNEG": "Gl",    # API returns "Gladstone Branch" -> "Gl"
+    # Montclair-Boonton Line
+    "BNTN": "Mo",    # API returns "Montclair-Boonton" -> "Mo"
+    "BNTNM": "Mo",   # Variation
+    # Main/Bergen County Line
+    "MNBN": "Ma",    # API returns "Main Line" or "Bergen Line" -> "Ma" or "Be"
+    "MNBNP": "Ma",   # Port Jervis Line (part of Main/Bergen)
+    # Pascack Valley Line
+    "PASC": "Pa",
+    # Raritan Valley Line
+    "RARV": "Ra",
+    # Atlantic City Rail Line
+    "ATLC": "At",
+    # Princeton Shuttle (Dinky)
+    "PRIN": "Pr",
 }
 
 

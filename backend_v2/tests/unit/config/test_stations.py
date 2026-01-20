@@ -256,3 +256,69 @@ class TestPathStopsByOriginDestination:
 
         stops = get_path_stops_by_origin_destination("PHO", "INVALID")
         assert stops is None
+
+
+class TestNJTGTFSStopMapping:
+    """Tests for NJT GTFS stop_id to internal station code mapping.
+
+    NJT GTFS uses numeric stop_ids and uppercase abbreviated names like
+    "PRINCETON JCT." which don't always match our station names exactly.
+    The explicit mapping handles these cases.
+    """
+
+    def test_princeton_junction_mapping(self):
+        """Test Princeton Junction maps correctly (was broken before fix)."""
+        from trackrat.config.stations import map_gtfs_stop_to_station_code
+
+        result = map_gtfs_stop_to_station_code("125", "PRINCETON JCT.", "NJT")
+        assert result == "PJ", f"Expected PJ, got {result}"
+
+    def test_trenton_transit_center_mapping(self):
+        """Test Trenton Transit Center maps correctly."""
+        from trackrat.config.stations import map_gtfs_stop_to_station_code
+
+        result = map_gtfs_stop_to_station_code("148", "TRENTON TRANSIT CENTER", "NJT")
+        assert result == "TR", f"Expected TR, got {result}"
+
+    def test_edison_station_mapping(self):
+        """Test Edison Station maps correctly."""
+        from trackrat.config.stations import map_gtfs_stop_to_station_code
+
+        result = map_gtfs_stop_to_station_code("38", "EDISON STATION", "NJT")
+        assert result == "ED", f"Expected ED, got {result}"
+
+    def test_philadelphia_mapping(self):
+        """Test 30th St Philadelphia maps correctly."""
+        from trackrat.config.stations import map_gtfs_stop_to_station_code
+
+        result = map_gtfs_stop_to_station_code("1", "30TH ST. PHL.", "NJT")
+        assert result == "PH", f"Expected PH, got {result}"
+
+    def test_ny_penn_still_works(self):
+        """Test NY Penn Station still maps via name matching."""
+        from trackrat.config.stations import map_gtfs_stop_to_station_code
+
+        result = map_gtfs_stop_to_station_code("105", "NEW YORK PENN STATION", "NJT")
+        assert result == "NY", f"Expected NY, got {result}"
+
+    def test_hamilton_still_works(self):
+        """Test Hamilton still maps via name matching."""
+        from trackrat.config.stations import map_gtfs_stop_to_station_code
+
+        result = map_gtfs_stop_to_station_code("32905", "HAMILTON", "NJT")
+        assert result == "HL", f"Expected HL, got {result}"
+
+    def test_explicit_mapping_takes_precedence(self):
+        """Test that explicit stop_id mapping is checked before name matching."""
+        from trackrat.config.stations import (
+            NJT_GTFS_STOP_TO_INTERNAL_MAP,
+            map_gtfs_stop_to_station_code,
+        )
+
+        # Verify explicit mapping exists
+        assert "125" in NJT_GTFS_STOP_TO_INTERNAL_MAP
+        assert NJT_GTFS_STOP_TO_INTERNAL_MAP["125"] == "PJ"
+
+        # Verify it's used even with a different name
+        result = map_gtfs_stop_to_station_code("125", "SOME OTHER NAME", "NJT")
+        assert result == "PJ", "Explicit mapping should take precedence over name"

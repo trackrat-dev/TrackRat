@@ -78,7 +78,7 @@ class TestMakeDedupKeys:
         """Test primary key includes train_id, date, and source."""
         departure = self._create_departure(
             train_id="3936",
-            line_code="NE",
+            line_code="No",
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
             data_source="NJT",
         )
@@ -91,33 +91,33 @@ class TestMakeDedupKeys:
         """Test fallback key includes line code, source, and time."""
         departure = self._create_departure(
             train_id="3936",
-            line_code="NE",
+            line_code="No",
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
             data_source="NJT",
         )
 
         primary, fallback = self.service._make_dedup_keys(departure)
 
-        assert fallback == "NE:NJT:09:15"
+        assert fallback == "No:NJT:09:15"
 
     def test_no_primary_key_when_train_id_missing(self):
         """Test no primary key when train_id is empty."""
         departure = self._create_departure(
             train_id="",
-            line_code="NE",
+            line_code="No",
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
         )
 
         primary, fallback = self.service._make_dedup_keys(departure)
 
         assert primary is None
-        assert fallback == "NE:NJT:09:15"
+        assert fallback == "No:NJT:09:15"
 
     def test_no_primary_key_when_train_id_unknown(self):
         """Test no primary key when train_id is 'Unknown'."""
         departure = self._create_departure(
             train_id="Unknown",
-            line_code="NE",
+            line_code="No",
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
         )
 
@@ -138,6 +138,40 @@ class TestMakeDedupKeys:
 
         # A2205 should become 2205 in the key
         assert primary == "2205:2026-01-20:AMTRAK"
+
+    def test_fallback_key_normalizes_timezone_to_et(self):
+        """Test fallback key uses ET time regardless of input timezone.
+
+        This is critical for deduplication: GTFS times are stored in ET,
+        while real-time API times may be in UTC. Both should produce the
+        same fallback key for the same moment in time.
+        """
+        from zoneinfo import ZoneInfo
+
+        # Same moment: 13:03 ET = 18:03 UTC
+        time_in_et = ET.localize(datetime(2026, 1, 20, 13, 3))
+        time_in_utc = datetime(2026, 1, 20, 18, 3, tzinfo=ZoneInfo("UTC"))
+
+        departure_et = self._create_departure(
+            train_id="2483",
+            line_code="No",
+            scheduled_time=time_in_et,
+            data_source="NJT",
+        )
+        departure_utc = self._create_departure(
+            train_id="3846",
+            line_code="No",
+            scheduled_time=time_in_utc,
+            data_source="NJT",
+        )
+
+        _, fallback_et = self.service._make_dedup_keys(departure_et)
+        _, fallback_utc = self.service._make_dedup_keys(departure_utc)
+
+        # Both should produce the same fallback key (13:03 in ET)
+        assert fallback_et == "No:NJT:13:03"
+        assert fallback_utc == "No:NJT:13:03"
+        assert fallback_et == fallback_utc
 
 
 class TestMergeDepartures:
@@ -191,10 +225,10 @@ class TestMergeDepartures:
         time = ET.localize(datetime(2026, 1, 20, 9, 15))
 
         realtime = [
-            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
         ]
         gtfs = [
-            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)
@@ -209,11 +243,11 @@ class TestMergeDepartures:
 
         # Real-time has different train_id but same line+time
         realtime = [
-            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
         ]
         # GTFS uses gtfs_trip_id as train_id
         gtfs = [
-            self._create_departure(train_id="2508", line_code="NE", scheduled_time=time)
+            self._create_departure(train_id="2508", line_code="No", scheduled_time=time)
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)
@@ -225,16 +259,16 @@ class TestMergeDepartures:
     def test_line_code_must_match_for_dedup(self):
         """Test that different line codes don't deduplicate.
 
-        This is the key bug scenario: if GTFS uses "NEC" and real-time uses "NE",
+        This is the key bug scenario: if GTFS uses "NEC" and real-time uses "No",
         the fallback keys won't match and we get duplicates.
 
-        After the fix, both should use "NE" for NJT.
+        After the fix, GTFS is normalized to "No" via NJT_LINE_CODE_MAPPING.
         """
         time = ET.localize(datetime(2026, 1, 20, 9, 15))
 
-        # Real-time uses API line code
+        # Real-time uses API line code "No" (from "Northeast Corridor" truncated)
         realtime = [
-            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
         ]
         # If GTFS wasn't normalized, it would use "NEC" - causing duplicates
         gtfs = [
@@ -254,14 +288,14 @@ class TestMergeDepartures:
         """Test that normalized line codes enable correct deduplication."""
         time = ET.localize(datetime(2026, 1, 20, 9, 15))
 
-        # Both use normalized line code "NE"
+        # Both use normalized line code "No" (after GTFS NEC -> No mapping)
         realtime = [
-            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
         ]
         gtfs = [
             self._create_departure(
-                train_id="2508", line_code="NE", scheduled_time=time
-            )  # After normalization
+                train_id="2508", line_code="No", scheduled_time=time
+            )  # After NJT_LINE_CODE_MAPPING: NEC -> No
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)
@@ -275,11 +309,11 @@ class TestMergeDepartures:
         time2 = ET.localize(datetime(2026, 1, 20, 10, 15))
 
         realtime = [
-            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time1)
+            self._create_departure(train_id="3936", line_code="No", scheduled_time=time1)
         ]
         gtfs = [
             self._create_departure(
-                train_id="2508", line_code="NE", scheduled_time=time2
+                train_id="2508", line_code="No", scheduled_time=time2
             )  # Different time
         ]
 
@@ -294,11 +328,11 @@ class TestMergeDepartures:
 
         realtime = [
             self._create_departure(
-                train_id="3936", line_code="NE", scheduled_time=time, is_cancelled=True
+                train_id="3936", line_code="No", scheduled_time=time, is_cancelled=True
             )
         ]
         gtfs = [
-            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)
@@ -306,3 +340,35 @@ class TestMergeDepartures:
         # GTFS train should not appear (suppressed by cancelled real-time)
         assert len(merged) == 1
         assert merged[0].is_cancelled is True
+
+    def test_dedup_works_across_timezones(self):
+        """Test that trains at same time but different timezones deduplicate.
+
+        Real-world scenario: GTFS times are in ET, real-time API times are in UTC.
+        Train 2483 (GTFS) at 13:03 ET should deduplicate with
+        Train 3846 (real-time) at 18:03 UTC (same moment).
+        """
+        from zoneinfo import ZoneInfo
+
+        # Same moment: 13:03 ET = 18:03 UTC
+        time_et = ET.localize(datetime(2026, 1, 20, 13, 3))
+        time_utc = datetime(2026, 1, 20, 18, 3, tzinfo=ZoneInfo("UTC"))
+
+        # Real-time train with UTC time
+        realtime = [
+            self._create_departure(
+                train_id="3846", line_code="No", scheduled_time=time_utc
+            )
+        ]
+        # GTFS train with ET time (same moment)
+        gtfs = [
+            self._create_departure(
+                train_id="2483", line_code="No", scheduled_time=time_et
+            )
+        ]
+
+        merged = self.service._merge_departures(realtime, gtfs)
+
+        # Should deduplicate to 1 train (real-time preferred)
+        assert len(merged) == 1
+        assert merged[0].train_id == "3846"  # Real-time train wins

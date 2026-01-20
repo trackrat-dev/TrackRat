@@ -600,6 +600,25 @@ PATH_RIDEPATH_API_TO_INTERNAL_MAP: dict[str, str] = {
 
 
 # =============================================================================
+# NJ Transit GTFS Configuration
+# =============================================================================
+
+# NJT GTFS stop_id to internal station code mapping
+# Only includes stops where name-based matching fails
+# (Most NJT stops are mapped by fuzzy name matching)
+NJT_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
+    "1": "PH",    # 30TH ST. PHL. -> Philadelphia
+    "38": "ED",   # EDISON STATION -> Edison
+    "85": "MI",   # MIDDLETOWN NJ -> Middletown
+    "125": "PJ",  # PRINCETON JCT. -> Princeton Junction
+    "126": "FZ",  # RADBURN -> Radburn Fair Lawn
+    "128": "17",  # RAMSEY -> Ramsey Route 17
+    "148": "TR",  # TRENTON TRANSIT CENTER -> Trenton
+    "160": "WR",  # WOOD-RIDGE -> Wood Ridge
+}
+
+
+# =============================================================================
 # PATCO Speedline Configuration
 # =============================================================================
 
@@ -1175,7 +1194,11 @@ def map_gtfs_stop_to_station_code(
                 return code
         return None
 
-    # For NJ Transit, try to match by name
+    # For NJ Transit, first try explicit stop_id mapping for known problem stops
+    if data_source == "NJT" and gtfs_stop_id in NJT_GTFS_STOP_TO_INTERNAL_MAP:
+        return NJT_GTFS_STOP_TO_INTERNAL_MAP[gtfs_stop_id]
+
+    # Then try to match by name
     name_map = _build_name_to_code_map()
     normalized_name = _normalize_station_name(gtfs_stop_name)
 

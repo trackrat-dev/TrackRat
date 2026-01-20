@@ -24,7 +24,7 @@ from trackrat.models.api import (
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
-from trackrat.utils.time import now_et, parse_njt_time, safe_datetime_subtract
+from trackrat.utils.time import normalize_to_et, now_et, parse_njt_time, safe_datetime_subtract
 from trackrat.utils.train import get_effective_observation_type
 
 logger = get_logger(__name__)
@@ -805,8 +805,14 @@ class DepartureService:
         # Fallback: line + scheduled time (minute precision for robust matching)
         # PATH trains don't have stable train_ids across Transiter/GTFS, so fallback
         # matching is critical. Minute precision handles minor time variations.
+        # Normalize to ET to handle timezone differences between data sources
+        # (GTFS times are in ET, real-time API times may be in UTC).
         scheduled = dep.departure.scheduled_time
-        time_str = scheduled.strftime("%H:%M") if scheduled else "unknown"
+        if scheduled:
+            scheduled_et = normalize_to_et(scheduled)
+            time_str = scheduled_et.strftime("%H:%M")
+        else:
+            time_str = "unknown"
         fallback_key = f"{dep.line.code}:{dep.data_source}:{time_str}"
 
         return primary_key, fallback_key
