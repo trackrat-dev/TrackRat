@@ -56,6 +56,7 @@ class LiveActivityService: ObservableObject {
         // Use estimated times (delay-adjusted) so Live Activity shows accurate arrival times
         let estimatedDepartureTime = train.getEstimatedDepartureTime(fromStationCode: originCode)
         let estimatedArrivalTime = train.getEstimatedArrivalTime(toStationCode: destinationCode)
+        let scheduledArrivalTime = train.getScheduledArrivalTime(toStationCode: destinationCode)
 
         // Extract journey station codes from origin to destination using existing stops
         if let stops = train.stops {
