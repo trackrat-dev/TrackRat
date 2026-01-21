@@ -4,6 +4,7 @@ struct MyProfileView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.openURL) private var openURL
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject private var subscriptionService = SubscriptionService.shared
 
     @State private var showingPaywall = false
@@ -12,15 +13,13 @@ struct MyProfileView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Fixed header - replaces system navigation bar to avoid layout shift
+            // Fixed header with close button for sheet presentation
             HStack {
-                // Back button
+                // Close button
                 Button {
-                    if !appState.navigationPath.isEmpty {
-                        appState.navigationPath.removeLast()
-                    }
+                    dismiss()
                 } label: {
-                    Image(systemName: "chevron.left")
+                    Image(systemName: "xmark")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(width: 44, height: 44)

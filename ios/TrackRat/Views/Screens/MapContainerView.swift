@@ -707,8 +707,6 @@ struct MapContainerView: View {
                 TrainDetailsView(trainNumber: trainNumber, fromStation: fromStation, journeyDate: journeyDate, dataSource: dataSource)
             case .advancedConfiguration:
                 AdvancedConfigurationView()
-            case .myProfile:
-                MyProfileView()
             case .favoriteStations:
                 OnboardingView(isRepeating: true)
             case .congestionMap:
