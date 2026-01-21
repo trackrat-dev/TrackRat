@@ -147,6 +147,47 @@ extension DateFormatter {
     }
 }
 
+// MARK: - Edge Swipe Back Gesture
+
+/// A view modifier that adds edge-swipe-to-go-back functionality.
+/// This enables iOS-native-feeling swipe-back navigation even when
+/// the system navigation bar is hidden.
+struct EdgeSwipeBackModifier: ViewModifier {
+    @Binding var navigationPath: NavigationPath
+    @GestureState private var dragOffset: CGFloat = 0
+
+    private let edgeWidth: CGFloat = 30
+    private let triggerThreshold: CGFloat = 80
+
+    func body(content: Content) -> some View {
+        content
+            .gesture(
+                DragGesture()
+                    .updating($dragOffset) { value, state, _ in
+                        // Only track if started from left edge
+                        if value.startLocation.x < edgeWidth {
+                            state = value.translation.width
+                        }
+                    }
+                    .onEnded { value in
+                        // Check if started from left edge and dragged far enough
+                        if value.startLocation.x < edgeWidth && value.translation.width > triggerThreshold {
+                            if !navigationPath.isEmpty {
+                                navigationPath.removeLast()
+                            }
+                        }
+                    }
+            )
+    }
+}
+
+extension View {
+    /// Adds edge-swipe gesture to navigate back
+    func edgeSwipeBack(path: Binding<NavigationPath>) -> some View {
+        self.modifier(EdgeSwipeBackModifier(navigationPath: path))
+    }
+}
+
 // MARK: - Navigation Bar Styling
 struct GlassmorphicNavigationBar: ViewModifier {
     func body(content: Content) -> some View {
