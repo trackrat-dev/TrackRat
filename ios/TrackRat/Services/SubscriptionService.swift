@@ -183,10 +183,10 @@ final class SubscriptionService: ObservableObject {
 
     private init() {
         // Load debug override state
-        // Default to false (premium mode disabled) - users must explicitly enable
+        // Default to true (premium mode enabled) - all users get Pro features
         if userDefaults.object(forKey: debugOverrideKey) == nil {
-            self.debugOverrideEnabled = false
-            userDefaults.set(false, forKey: debugOverrideKey)
+            self.debugOverrideEnabled = true
+            userDefaults.set(true, forKey: debugOverrideKey)
         } else {
             self.debugOverrideEnabled = userDefaults.bool(forKey: debugOverrideKey)
         }
