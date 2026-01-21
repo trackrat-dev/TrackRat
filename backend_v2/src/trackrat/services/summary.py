@@ -43,6 +43,14 @@ DELAY_CATEGORY_SLIGHT_DELAY = "slight_delay"
 DELAY_CATEGORY_DELAYED = "delayed"
 DELAY_CATEGORY_CANCELLED = "cancelled"
 
+# Carrier data source to display name mapping
+CARRIER_DISPLAY_NAMES: dict[str, str] = {
+    "NJT": "NJ Transit",
+    "AMTRAK": "Amtrak",
+    "PATH": "PATH",
+    "PATCO": "PATCO",
+}
+
 
 @dataclass
 class LineStats:
@@ -960,51 +968,31 @@ class SummaryService:
                 metrics=None,
             )
 
-        # Group journeys by carrier
-        njt_journeys = [j for j in journeys if j.data_source == "NJT"]
-        amtrak_journeys = [j for j in journeys if j.data_source == "AMTRAK"]
+        # Calculate stats for each carrier
+        carrier_dep_stats: dict[str, OnTimeStats] = {}
+        carrier_arr_stats: dict[str, OnTimeStats] = {}
 
-        # Calculate departure stats for each carrier
-        njt_dep_stats = (
-            self._calculate_departure_stats(
-                njt_journeys, from_station, "NJ Transit", current_time
-            )
-            if njt_journeys
-            else None
-        )
-        amtrak_dep_stats = (
-            self._calculate_departure_stats(
-                amtrak_journeys, from_station, "Amtrak", current_time
-            )
-            if amtrak_journeys
-            else None
-        )
+        for data_source, display_name in CARRIER_DISPLAY_NAMES.items():
+            carrier_journeys = [j for j in journeys if j.data_source == data_source]
+            if carrier_journeys:
+                carrier_dep_stats[data_source] = self._calculate_departure_stats(
+                    carrier_journeys, from_station, display_name, current_time
+                )
+                arr_stats = self._calculate_arrival_stats(carrier_journeys, to_station)
+                if arr_stats is not None:
+                    carrier_arr_stats[data_source] = arr_stats
 
-        # Calculate arrival stats for each carrier
-        njt_arr_stats = (
-            self._calculate_arrival_stats(njt_journeys, to_station)
-            if njt_journeys
-            else None
+        # Aggregate departure metrics from all carriers
+        total_trains = sum(
+            s.train_count_with_cancellations for s in carrier_dep_stats.values()
         )
-        amtrak_arr_stats = (
-            self._calculate_arrival_stats(amtrak_journeys, to_station)
-            if amtrak_journeys
-            else None
+        total_non_cancelled = sum(s.total_count for s in carrier_dep_stats.values())
+        total_cancellations = sum(
+            s.cancellation_count for s in carrier_dep_stats.values()
         )
 
-        # Aggregate departure metrics
-        total_trains = (
-            njt_dep_stats.train_count_with_cancellations if njt_dep_stats else 0
-        ) + (amtrak_dep_stats.train_count_with_cancellations if amtrak_dep_stats else 0)
-        total_non_cancelled = (njt_dep_stats.total_count if njt_dep_stats else 0) + (
-            amtrak_dep_stats.total_count if amtrak_dep_stats else 0
-        )
-        total_cancellations = (
-            njt_dep_stats.cancellation_count if njt_dep_stats else 0
-        ) + (amtrak_dep_stats.cancellation_count if amtrak_dep_stats else 0)
-
-        # Merge trains by category from both carriers
-        merged_trains = self._merge_trains_by_category(njt_dep_stats, amtrak_dep_stats)
+        # Merge trains by category from all carriers
+        merged_trains = self._merge_trains_by_category(*carrier_dep_stats.values())
 
         # Handle all-cancelled scenario
         if total_non_cancelled == 0 and total_cancellations > 0:
@@ -1031,27 +1019,12 @@ class SummaryService:
 
         # Calculate weighted departure averages
         if total_non_cancelled > 0:
-            njt_weight = njt_dep_stats.total_count if njt_dep_stats else 0
-            amtrak_weight = amtrak_dep_stats.total_count if amtrak_dep_stats else 0
-            dep_on_time_pct = (
-                (njt_dep_stats.on_time_percentage * njt_weight if njt_dep_stats else 0)
-                + (
-                    amtrak_dep_stats.on_time_percentage * amtrak_weight
-                    if amtrak_dep_stats
-                    else 0
-                )
+            dep_on_time_pct = sum(
+                s.on_time_percentage * s.total_count for s in carrier_dep_stats.values()
             ) / total_non_cancelled
-            dep_avg_delay = (
-                (
-                    njt_dep_stats.average_delay_minutes * njt_weight
-                    if njt_dep_stats
-                    else 0
-                )
-                + (
-                    amtrak_dep_stats.average_delay_minutes * amtrak_weight
-                    if amtrak_dep_stats
-                    else 0
-                )
+            dep_avg_delay = sum(
+                s.average_delay_minutes * s.total_count
+                for s in carrier_dep_stats.values()
             ) / total_non_cancelled
         else:
             dep_on_time_pct = 0.0
@@ -1060,35 +1033,14 @@ class SummaryService:
         # Calculate weighted arrival averages (may be None if no arrival data)
         arr_on_time_pct: float | None = None
         arr_avg_delay: float | None = None
-        arr_total = (njt_arr_stats.total_count if njt_arr_stats else 0) + (
-            amtrak_arr_stats.total_count if amtrak_arr_stats else 0
-        )
+        arr_total = sum(s.total_count for s in carrier_arr_stats.values())
         if arr_total > 0:
-            njt_arr_weight = njt_arr_stats.total_count if njt_arr_stats else 0
-            amtrak_arr_weight = amtrak_arr_stats.total_count if amtrak_arr_stats else 0
-            arr_on_time_pct = (
-                (
-                    njt_arr_stats.on_time_percentage * njt_arr_weight
-                    if njt_arr_stats
-                    else 0
-                )
-                + (
-                    amtrak_arr_stats.on_time_percentage * amtrak_arr_weight
-                    if amtrak_arr_stats
-                    else 0
-                )
+            arr_on_time_pct = sum(
+                s.on_time_percentage * s.total_count for s in carrier_arr_stats.values()
             ) / arr_total
-            arr_avg_delay = (
-                (
-                    njt_arr_stats.average_delay_minutes * njt_arr_weight
-                    if njt_arr_stats
-                    else 0
-                )
-                + (
-                    amtrak_arr_stats.average_delay_minutes * amtrak_arr_weight
-                    if amtrak_arr_stats
-                    else 0
-                )
+            arr_avg_delay = sum(
+                s.average_delay_minutes * s.total_count
+                for s in carrier_arr_stats.values()
             ) / arr_total
 
         # Generate headline and body
@@ -1285,12 +1237,7 @@ class SummaryService:
         # Calculate stats for this specific train (historical)
         train_stats = self._calculate_historical_departure_stats(train_journeys)
 
-        carrier_name = {
-            "NJT": "NJ Transit",
-            "AMTRAK": "Amtrak",
-            "PATH": "PATH",
-            "PATCO": "PATCO",
-        }.get(data_source or "")
+        carrier_name = CARRIER_DISPLAY_NAMES.get(data_source or "")
 
         # Total cancellations from similar trains
         total_cancellations = similar_dep_stats.cancellation_count
