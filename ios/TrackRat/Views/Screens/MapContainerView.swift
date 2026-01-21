@@ -325,9 +325,9 @@ struct MapContainerView: View {
             appState.mapDisplayMode = .overallCongestion
 
             // Set default congestion mode based on subscription status
-            // Pro users: show Trains view, non-Pro: keep Off (congestion is Pro-only)
+            // Pro users: show congestion on, non-Pro: keep Off (congestion is Pro-only)
             if SubscriptionService.shared.isPro {
-                mapViewModel.showCongestion = .individual  // "Trains" mode
+                mapViewModel.showCongestion = .aggregated
             } else {
                 mapViewModel.showCongestion = .off
             }

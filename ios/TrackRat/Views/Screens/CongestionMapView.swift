@@ -373,18 +373,18 @@ enum CongestionDisplayMode: Equatable {
     case individualLimited(maxPerSegment: Int)
 }
 
-/// Congestion layer mode: off, aggregated summary, or individual train journeys
+/// Congestion layer mode: off or on (aggregated summary)
 enum CongestionMode: String, CaseIterable {
     case off = "Off"
-    case aggregated = "Summary"
-    case individual = "Trains"
+    case aggregated = "On"
+    case individual = "Trains"  // Deprecated: kept for type safety, never used
 
-    /// Cycle to next mode
+    /// Toggle between off and on
     func next() -> CongestionMode {
         switch self {
         case .off: return .aggregated
-        case .aggregated: return .individual
-        case .individual: return .off
+        case .aggregated: return .off
+        case .individual: return .off  // Fallback if somehow reached
         }
     }
 
@@ -393,7 +393,7 @@ enum CongestionMode: String, CaseIterable {
         switch self {
         case .off: return "eye.slash"
         case .aggregated: return "chart.bar.fill"
-        case .individual: return "train.side.front.car"
+        case .individual: return "chart.bar.fill"  // Fallback, same as aggregated
         }
     }
 }
