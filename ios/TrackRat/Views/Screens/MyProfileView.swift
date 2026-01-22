@@ -545,13 +545,26 @@ struct MyProfileView: View {
                 .padding(.bottom, 40)
             }
             .navigationDestination(for: ProfileDestination.self) { destination in
-                switch destination {
-                case .tripHistory:
-                    TripHistoryView()
-                case .favoriteStations:
-                    FavoriteStationsView()
-                case .advancedConfiguration:
-                    AdvancedConfigurationView()
+                Group {
+                    switch destination {
+                    case .tripHistory:
+                        TripHistoryView()
+                    case .favoriteStations:
+                        OnboardingView(isRepeating: true)
+                    case .advancedConfiguration:
+                        AdvancedConfigurationView()
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                    }
                 }
             }
             .navigationBarHidden(true)
@@ -570,6 +583,7 @@ struct MyProfileView: View {
             PaywallView(context: paywallContext)
         }
     }
+}
 }
 
 // MARK: - Subscription Status Section

@@ -25,7 +25,7 @@ struct AdvancedConfigurationView: View {
         return VStack(spacing: 0) {
             TrackRatNavigationHeader(
                 title: "Advanced Configuration",
-                showBackButton: true,
+                showBackButton: false,
                 showCloseButton: true
             )
 

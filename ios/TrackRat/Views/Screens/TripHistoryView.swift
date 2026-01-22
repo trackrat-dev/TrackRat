@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TripHistoryView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     @State private var trips: [CompletedTrip] = []
     @State private var stats: TripStats = .empty
 
@@ -26,16 +27,9 @@ struct TripHistoryView: View {
         VStack(spacing: 0) {
             // Fixed header
             HStack {
-                Button {
-                    if !appState.navigationPath.isEmpty {
-                        appState.navigationPath.removeLast()
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                }
+                // Spacer for symmetry
+                Color.clear
+                    .frame(width: 44, height: 44)
 
                 Spacer()
 
@@ -45,8 +39,15 @@ struct TripHistoryView: View {
 
                 Spacer()
 
-                Color.clear
-                    .frame(width: 44, height: 44)
+                // Close button
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 8)

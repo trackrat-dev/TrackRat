@@ -59,7 +59,7 @@ struct OnboardingView: View {
                     if isRepeating {
                         TrackRatNavigationHeader(
                             title: "Edit Favorites",
-                            showBackButton: true,
+                            showBackButton: false,
                             showCloseButton: true
                         )
                     }

@@ -4,6 +4,7 @@ import SwiftUI
 /// to prevent layout shift issues on initial load.
 struct TrackRatNavigationHeader<TrailingContent: View>: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
 
     let title: String
     var subtitle: String? = nil
@@ -48,12 +49,14 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
                     trailingContent()
                         .frame(height: 44)
                 } else if showCloseButton {
-                    Button("Close") {
-                        appState.navigationPath = NavigationPath()
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
                     }
-                    .foregroundColor(.white)
-                    .font(.body)
-                    .frame(height: 44)
                 }
             }
         }

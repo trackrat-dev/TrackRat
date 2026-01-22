@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import UIKit
 
 // MARK: - Date Formatter Extensions for API
 extension Formatter {
@@ -149,42 +150,66 @@ extension DateFormatter {
 
 // MARK: - Edge Swipe Back Gesture
 
-/// A view modifier that adds edge-swipe-to-go-back functionality.
-/// This enables iOS-native-feeling swipe-back navigation even when
-/// the system navigation bar is hidden.
-struct EdgeSwipeBackModifier: ViewModifier {
-    @Binding var navigationPath: NavigationPath
-    @GestureState private var dragOffset: CGFloat = 0
-
+/// A UIView that only intercepts touches near the left edge.
+/// All other touches pass through to views below.
+fileprivate class EdgeSwipeView: UIView {
     private let edgeWidth: CGFloat = 30
-    private let triggerThreshold: CGFloat = 80
 
-    func body(content: Content) -> some View {
-        content
-            .gesture(
-                DragGesture()
-                    .updating($dragOffset) { value, state, _ in
-                        // Only track if started from left edge
-                        if value.startLocation.x < edgeWidth {
-                            state = value.translation.width
-                        }
-                    }
-                    .onEnded { value in
-                        // Check if started from left edge and dragged far enough
-                        if value.startLocation.x < edgeWidth && value.translation.width > triggerThreshold {
-                            if !navigationPath.isEmpty {
-                                navigationPath.removeLast()
-                            }
-                        }
-                    }
-            )
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        // Only intercept touches near the left edge
+        if point.x <= edgeWidth {
+            return self
+        }
+        // Let all other touches pass through
+        return nil
+    }
+}
+
+/// Uses UIScreenEdgePanGestureRecognizer for reliable edge-swipe-to-go-back.
+/// This is the same gesture recognizer Apple uses for the system back gesture.
+/// Unlike SwiftUI's DragGesture, it doesn't conflict with ScrollViews.
+struct EdgeSwipeBackGesture: UIViewRepresentable {
+    @Binding var navigationPath: NavigationPath
+
+    func makeUIView(context: Context) -> UIView {
+        let view = EdgeSwipeView()
+        view.backgroundColor = .clear
+
+        let edgePan = UIScreenEdgePanGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleSwipe(_:))
+        )
+        edgePan.edges = .left
+        view.addGestureRecognizer(edgePan)
+
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(navigationPath: $navigationPath)
+    }
+
+    class Coordinator: NSObject {
+        @Binding var navigationPath: NavigationPath
+
+        init(navigationPath: Binding<NavigationPath>) {
+            _navigationPath = navigationPath
+        }
+
+        @objc func handleSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
+            if gesture.state == .ended && !navigationPath.isEmpty {
+                navigationPath.removeLast()
+            }
+        }
     }
 }
 
 extension View {
-    /// Adds edge-swipe gesture to navigate back
+    /// Adds edge-swipe gesture to navigate back using UIScreenEdgePanGestureRecognizer
     func edgeSwipeBack(path: Binding<NavigationPath>) -> some View {
-        self.modifier(EdgeSwipeBackModifier(navigationPath: path))
+        self.overlay(EdgeSwipeBackGesture(navigationPath: path))
     }
 }
 
