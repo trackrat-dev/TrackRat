@@ -309,7 +309,9 @@ class TestMergeDepartures:
         time2 = ET.localize(datetime(2026, 1, 20, 10, 15))
 
         realtime = [
-            self._create_departure(train_id="3936", line_code="No", scheduled_time=time1)
+            self._create_departure(
+                train_id="3936", line_code="No", scheduled_time=time1
+            )
         ]
         gtfs = [
             self._create_departure(

@@ -897,9 +897,11 @@ class PathCollector:
                     bad_time=current_time.isoformat() if current_time else None,
                     next_station=next_stop.station_code,
                     next_time=next_time.isoformat() if next_time else None,
-                    using_scheduled=current.scheduled_arrival.isoformat()
-                    if current.scheduled_arrival
-                    else None,
+                    using_scheduled=(
+                        current.scheduled_arrival.isoformat()
+                        if current.scheduled_arrival
+                        else None
+                    ),
                 )
 
                 # Use scheduled time instead

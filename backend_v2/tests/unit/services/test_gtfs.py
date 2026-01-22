@@ -540,19 +540,19 @@ class TestNJTLineCodeMapping:
 
         # Actual NJT GTFS route_short_name values (from GTFS feed)
         expected_routes = {
-            "NEC",    # Northeast Corridor
-            "NJCL",   # North Jersey Coast Line
+            "NEC",  # Northeast Corridor
+            "NJCL",  # North Jersey Coast Line
             "NJCLL",  # North Jersey Coast Line (variation)
-            "MNE",    # Morris & Essex Line
-            "MNEG",   # Gladstone Branch
-            "BNTN",   # Montclair-Boonton Line
+            "MNE",  # Morris & Essex Line
+            "MNEG",  # Gladstone Branch
+            "BNTN",  # Montclair-Boonton Line
             "BNTNM",  # Montclair-Boonton Line (variation)
-            "MNBN",   # Main/Bergen County Line
+            "MNBN",  # Main/Bergen County Line
             "MNBNP",  # Port Jervis Line
-            "PASC",   # Pascack Valley Line
-            "RARV",   # Raritan Valley Line
-            "ATLC",   # Atlantic City Rail Line
-            "PRIN",   # Princeton Shuttle
+            "PASC",  # Pascack Valley Line
+            "RARV",  # Raritan Valley Line
+            "ATLC",  # Atlantic City Rail Line
+            "PRIN",  # Princeton Shuttle
         }
 
         for route in expected_routes:

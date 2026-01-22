@@ -1355,16 +1355,22 @@ class TestDepartureStatusInference:
         assert phr_stop.departure_source == "time_inference"
 
         pjs_stop = stops[2]  # Journal Square - 4 min ago, no API arrival
-        assert pjs_stop.has_departed_station is True, "Journal Square should be departed"
+        assert (
+            pjs_stop.has_departed_station is True
+        ), "Journal Square should be departed"
         assert pjs_stop.departure_source == "time_inference"
 
         # PGR has API arrival in future - should NOT be departed
         pgr_stop = stops[3]  # Grove Street - API shows 1 min away
-        assert pgr_stop.has_departed_station is False, "Grove Street should NOT be departed"
+        assert (
+            pgr_stop.has_departed_station is False
+        ), "Grove Street should NOT be departed"
 
         # Future stops should NOT be departed
         pex_stop = stops[4]
-        assert pex_stop.has_departed_station is False, "Exchange Place should NOT be departed"
+        assert (
+            pex_stop.has_departed_station is False
+        ), "Exchange Place should NOT be departed"
 
         pwc_stop = stops[5]
         assert pwc_stop.has_departed_station is False, "WTC should NOT be departed"
@@ -1413,9 +1419,9 @@ class TestDepartureStatusInference:
 
         # Newark should STILL be marked as departed (not reset)
         pnk_stop = stops[0]
-        assert pnk_stop.has_departed_station is True, (
-            "Newark should STILL be departed - status should not be reset"
-        )
+        assert (
+            pnk_stop.has_departed_station is True
+        ), "Newark should STILL be departed - status should not be reset"
 
     @pytest.mark.asyncio
     async def test_sequential_inference_marks_earlier_stops(
@@ -1484,9 +1490,9 @@ class TestDepartureStatusInference:
         # Earlier stops should be departed via time inference
         # (since base_time is 12 min ago, all scheduled times are well past grace period)
         for i, stop in enumerate(stops[:3]):
-            assert stop.has_departed_station is True, (
-                f"Stop {stop.station_code} (seq {stop.stop_sequence}) should be departed"
-            )
+            assert (
+                stop.has_departed_station is True
+            ), f"Stop {stop.station_code} (seq {stop.stop_sequence}) should be departed"
 
     @pytest.mark.asyncio
     async def test_all_stops_departed_marks_journey_complete(
@@ -1513,9 +1519,9 @@ class TestDepartureStatusInference:
 
         # All stops should be departed via time inference
         for stop in stops:
-            assert stop.has_departed_station is True, (
-                f"Stop {stop.station_code} should be departed"
-            )
+            assert (
+                stop.has_departed_station is True
+            ), f"Stop {stop.station_code} should be departed"
             assert stop.departure_source == "time_inference"
 
         # Journey should be marked complete
@@ -1555,9 +1561,9 @@ class TestDepartureStatusInference:
 
         # No stops should be departed
         for stop in stops:
-            assert stop.has_departed_station is False, (
-                f"Stop {stop.station_code} should NOT be departed (train hasn't started)"
-            )
+            assert (
+                stop.has_departed_station is False
+            ), f"Stop {stop.station_code} should NOT be departed (train hasn't started)"
 
         # Journey should not be complete
         assert sample_journey.is_completed is False
@@ -1590,9 +1596,9 @@ class TestDepartureStatusInference:
         # scheduled_arrival + grace_period (now + 2min) is NOT < now
         # So PNK should NOT be departed yet
         pnk_stop = stops[0]
-        assert pnk_stop.has_departed_station is False, (
-            "Newark should NOT be departed yet (within grace period)"
-        )
+        assert (
+            pnk_stop.has_departed_station is False
+        ), "Newark should NOT be departed yet (within grace period)"
 
         # Now simulate time passing - 3 minutes later
         later = now + timedelta(minutes=3)
@@ -1606,9 +1612,9 @@ class TestDepartureStatusInference:
                 )
 
         # Now PNK should be departed (scheduled_arrival + 2min < now + 3min)
-        assert pnk_stop.has_departed_station is True, (
-            "Newark should be departed (grace period exceeded)"
-        )
+        assert (
+            pnk_stop.has_departed_station is True
+        ), "Newark should be departed (grace period exceeded)"
         assert pnk_stop.departure_source == "time_inference"
 
     @pytest.mark.asyncio
@@ -1705,7 +1711,8 @@ class TestDepartureStatusInference:
                 headsign="33rd Street",
                 direction="ToNY",
                 minutes_away=2,
-                arrival_time=now + timedelta(minutes=2),  # FUTURE - API says not passed yet
+                arrival_time=now
+                + timedelta(minutes=2),  # FUTURE - API says not passed yet
                 line_color="4D92FB",
                 last_updated=now,
             ),
@@ -1741,9 +1748,9 @@ class TestDepartureStatusInference:
         # Verify the bug is fixed:
         # 9th Street (seq 3) should be departed (arrival_time <= now)
         p9s_stop = stops[2]
-        assert p9s_stop.has_departed_station is True, (
-            "9th Street should be departed (arrival_time in past)"
-        )
+        assert (
+            p9s_stop.has_departed_station is True
+        ), "9th Street should be departed (arrival_time in past)"
         assert p9s_stop.departure_source == "time_inference"
 
         # Christopher Street (seq 2) MUST also be departed
@@ -1756,22 +1763,26 @@ class TestDepartureStatusInference:
             "If 9th Street is departed, Christopher Street must be too."
         )
         # May be time_inference (grace period) or sequential_consistency depending on timing
-        assert pch_stop.departure_source in ("sequential_consistency", "time_inference", "sequential_inference"), (
+        assert pch_stop.departure_source in (
+            "sequential_consistency",
+            "time_inference",
+            "sequential_inference",
+        ), (
             f"Christopher Street should be marked departed via some inference method, "
             f"got {pch_stop.departure_source}"
         )
 
         # Hoboken (seq 1) should also be departed (earlier than Christopher St)
         pho_stop = stops[0]
-        assert pho_stop.has_departed_station is True, (
-            "Hoboken should be departed (via time inference or sequential consistency)"
-        )
+        assert (
+            pho_stop.has_departed_station is True
+        ), "Hoboken should be departed (via time inference or sequential consistency)"
 
         # 14th Street (seq 4) should NOT be departed (future arrival, after 9th St)
         p14_stop = stops[3]
-        assert p14_stop.has_departed_station is False, (
-            "14th Street should NOT be departed (arrival in future)"
-        )
+        assert (
+            p14_stop.has_departed_station is False
+        ), "14th Street should NOT be departed (arrival in future)"
 
     @pytest.mark.asyncio
     async def test_sequential_consistency_with_empty_stops(
@@ -1882,7 +1893,8 @@ class TestDepartureStatusInference:
                 headsign="World Trade Center",
                 direction="ToNY",
                 minutes_away=1,
-                arrival_time=now - timedelta(minutes=6),  # PAST but won't match (>5min diff)
+                arrival_time=now
+                - timedelta(minutes=6),  # PAST but won't match (>5min diff)
                 # This arrival won't match because diff is 3 min but still in past
                 line_color="D93A30",
                 last_updated=now,
@@ -1920,7 +1932,8 @@ class TestDepartureStatusInference:
                 headsign="World Trade Center",
                 direction="ToNY",
                 minutes_away=5,
-                arrival_time=now + timedelta(minutes=5),  # FUTURE (terminal, not passed)
+                arrival_time=now
+                + timedelta(minutes=5),  # FUTURE (terminal, not passed)
                 line_color="D93A30",
                 last_updated=now,
             ),
@@ -1937,9 +1950,9 @@ class TestDepartureStatusInference:
 
         # All stops up to seq 5 should now be departed
         for i, stop in enumerate(stops[:5]):
-            assert stop.has_departed_station is True, (
-                f"Stop {stop.station_code} (seq {stop.stop_sequence}) should be departed"
-            )
+            assert (
+                stop.has_departed_station is True
+            ), f"Stop {stop.station_code} (seq {stop.stop_sequence}) should be departed"
 
         # Stops 2 (PHR) and 4 (PGR) should have been marked departed
         # PHR: scheduled at now-9, arrival at now-6 (3 min diff) - matches within 5 min tolerance
@@ -1947,19 +1960,27 @@ class TestDepartureStatusInference:
         # PGR: scheduled at now-3, arrival at now+1 (4 min diff) - matches within 5 min tolerance
         #      arrival_time (now+1) > now, so NOT departed via time_inference
         #      BUT later stop (PEX) is departed, so PGR gets fixed via sequential_consistency
-        assert stops[1].departure_source in ("time_inference", "sequential_consistency", "sequential_inference"), (
+        assert stops[1].departure_source in (
+            "time_inference",
+            "sequential_consistency",
+            "sequential_inference",
+        ), (
             f"Harrison (seq 2) should be marked departed, "
             f"got {stops[1].departure_source}"
         )
-        assert stops[3].departure_source in ("sequential_consistency", "time_inference", "sequential_inference"), (
+        assert stops[3].departure_source in (
+            "sequential_consistency",
+            "time_inference",
+            "sequential_inference",
+        ), (
             f"Grove Street (seq 4) should be marked departed, "
             f"got {stops[3].departure_source}"
         )
 
         # Terminal (seq 6) should still NOT be departed
-        assert stops[5].has_departed_station is False, (
-            "WTC (terminal) should NOT be departed"
-        )
+        assert (
+            stops[5].has_departed_station is False
+        ), "WTC (terminal) should NOT be departed"
 
 
 class TestTimeValidation:
@@ -2000,10 +2021,16 @@ class TestTimeValidation:
         stops = [
             self._create_departed_stop("PNK", 1, base_time, base_time),
             self._create_departed_stop(
-                "PHR", 2, base_time + timedelta(minutes=3), base_time + timedelta(minutes=3)
+                "PHR",
+                2,
+                base_time + timedelta(minutes=3),
+                base_time + timedelta(minutes=3),
             ),
             self._create_departed_stop(
-                "PJS", 3, base_time + timedelta(minutes=6), base_time + timedelta(minutes=5)
+                "PJS",
+                3,
+                base_time + timedelta(minutes=6),
+                base_time + timedelta(minutes=5),
             ),
         ]
 
@@ -2024,11 +2051,15 @@ class TestTimeValidation:
         stops = [
             self._create_departed_stop("PNK", 1, base_time, base_time),
             self._create_departed_stop(
-                "PHR", 2, base_time + timedelta(minutes=3),
+                "PHR",
+                2,
+                base_time + timedelta(minutes=3),
                 base_time + timedelta(minutes=10),  # BAD: later than stop 3!
             ),
             self._create_departed_stop(
-                "PJS", 3, base_time + timedelta(minutes=6),
+                "PJS",
+                3,
+                base_time + timedelta(minutes=6),
                 base_time + timedelta(minutes=5),  # Earlier than stop 2
             ),
         ]
@@ -2046,14 +2077,27 @@ class TestTimeValidation:
 
         # Multiple stops have times out of order
         stops = [
-            self._create_departed_stop("PNK", 1, base_time,
-                                       base_time + timedelta(minutes=8)),  # BAD
-            self._create_departed_stop("PHR", 2, base_time + timedelta(minutes=3),
-                                       base_time + timedelta(minutes=6)),  # BAD
-            self._create_departed_stop("PJS", 3, base_time + timedelta(minutes=6),
-                                       base_time + timedelta(minutes=5)),
-            self._create_departed_stop("PGR", 4, base_time + timedelta(minutes=9),
-                                       base_time + timedelta(minutes=9)),
+            self._create_departed_stop(
+                "PNK", 1, base_time, base_time + timedelta(minutes=8)
+            ),  # BAD
+            self._create_departed_stop(
+                "PHR",
+                2,
+                base_time + timedelta(minutes=3),
+                base_time + timedelta(minutes=6),
+            ),  # BAD
+            self._create_departed_stop(
+                "PJS",
+                3,
+                base_time + timedelta(minutes=6),
+                base_time + timedelta(minutes=5),
+            ),
+            self._create_departed_stop(
+                "PGR",
+                4,
+                base_time + timedelta(minutes=9),
+                base_time + timedelta(minutes=9),
+            ),
         ]
 
         collector._validate_and_fix_stop_times(stops, "test_train")
@@ -2098,12 +2142,14 @@ class TestTimeValidation:
         """Test that stops fixed via sequential_consistency keep that source."""
         base_time = datetime.now() - timedelta(minutes=20)
 
-        stop1 = self._create_departed_stop("PNK", 1, base_time,
-                                           base_time + timedelta(minutes=10))
+        stop1 = self._create_departed_stop(
+            "PNK", 1, base_time, base_time + timedelta(minutes=10)
+        )
         stop1.departure_source = "sequential_consistency"
 
-        stop2 = self._create_departed_stop("PHR", 2, base_time + timedelta(minutes=3),
-                                           base_time + timedelta(minutes=5))
+        stop2 = self._create_departed_stop(
+            "PHR", 2, base_time + timedelta(minutes=3), base_time + timedelta(minutes=5)
+        )
 
         stops = [stop1, stop2]
 
@@ -2129,7 +2175,9 @@ class TestLineColorFiltering:
     def mock_session(self):
         """Create a mock database session."""
         session = MagicMock(spec=AsyncSession)
-        session.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        session.scalars = AsyncMock(
+            return_value=MagicMock(all=MagicMock(return_value=[]))
+        )
         session.scalar = AsyncMock(return_value=None)
         session.execute = AsyncMock()
         session.flush = AsyncMock()
@@ -2177,10 +2225,16 @@ class TestLineColorFiltering:
         ]
 
         # Call _update_journeys
-        with patch.object(collector, "_get_journey_stops", new_callable=AsyncMock) as mock_get_stops:
+        with patch.object(
+            collector, "_get_journey_stops", new_callable=AsyncMock
+        ) as mock_get_stops:
             mock_get_stops.return_value = []
-            with patch.object(collector, "_update_stops_from_arrivals", new_callable=AsyncMock) as mock_update:
-                with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch.object(
+                collector, "_update_stops_from_arrivals", new_callable=AsyncMock
+            ) as mock_update:
+                with patch(
+                    "trackrat.collectors.path.collector.now_et", return_value=now
+                ):
                     await collector._update_journeys(mock_session, arrivals)
 
                 # Check that _update_stops_from_arrivals was called

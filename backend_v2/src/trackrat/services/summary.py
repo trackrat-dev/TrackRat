@@ -1019,13 +1019,20 @@ class SummaryService:
 
         # Calculate weighted departure averages
         if total_non_cancelled > 0:
-            dep_on_time_pct = sum(
-                s.on_time_percentage * s.total_count for s in carrier_dep_stats.values()
-            ) / total_non_cancelled
-            dep_avg_delay = sum(
-                s.average_delay_minutes * s.total_count
-                for s in carrier_dep_stats.values()
-            ) / total_non_cancelled
+            dep_on_time_pct = (
+                sum(
+                    s.on_time_percentage * s.total_count
+                    for s in carrier_dep_stats.values()
+                )
+                / total_non_cancelled
+            )
+            dep_avg_delay = (
+                sum(
+                    s.average_delay_minutes * s.total_count
+                    for s in carrier_dep_stats.values()
+                )
+                / total_non_cancelled
+            )
         else:
             dep_on_time_pct = 0.0
             dep_avg_delay = 0.0
@@ -1035,13 +1042,20 @@ class SummaryService:
         arr_avg_delay: float | None = None
         arr_total = sum(s.total_count for s in carrier_arr_stats.values())
         if arr_total > 0:
-            arr_on_time_pct = sum(
-                s.on_time_percentage * s.total_count for s in carrier_arr_stats.values()
-            ) / arr_total
-            arr_avg_delay = sum(
-                s.average_delay_minutes * s.total_count
-                for s in carrier_arr_stats.values()
-            ) / arr_total
+            arr_on_time_pct = (
+                sum(
+                    s.on_time_percentage * s.total_count
+                    for s in carrier_arr_stats.values()
+                )
+                / arr_total
+            )
+            arr_avg_delay = (
+                sum(
+                    s.average_delay_minutes * s.total_count
+                    for s in carrier_arr_stats.values()
+                )
+                / arr_total
+            )
 
         # Generate headline and body
         headline, body = self._format_route_headline_body(

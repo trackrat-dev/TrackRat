@@ -24,7 +24,12 @@ from trackrat.models.api import (
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
-from trackrat.utils.time import normalize_to_et, now_et, parse_njt_time, safe_datetime_subtract
+from trackrat.utils.time import (
+    normalize_to_et,
+    now_et,
+    parse_njt_time,
+    safe_datetime_subtract,
+)
 from trackrat.utils.train import get_effective_observation_type
 
 logger = get_logger(__name__)

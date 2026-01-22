@@ -607,9 +607,9 @@ PATH_RIDEPATH_API_TO_INTERNAL_MAP: dict[str, str] = {
 # Only includes stops where name-based matching fails
 # (Most NJT stops are mapped by fuzzy name matching)
 NJT_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
-    "1": "PH",    # 30TH ST. PHL. -> Philadelphia
-    "38": "ED",   # EDISON STATION -> Edison
-    "85": "MI",   # MIDDLETOWN NJ -> Middletown
+    "1": "PH",  # 30TH ST. PHL. -> Philadelphia
+    "38": "ED",  # EDISON STATION -> Edison
+    "85": "MI",  # MIDDLETOWN NJ -> Middletown
     "125": "PJ",  # PRINCETON JCT. -> Princeton Junction
     "126": "FZ",  # RADBURN -> Radburn Fair Lawn
     "128": "17",  # RAMSEY -> Ramsey Route 17

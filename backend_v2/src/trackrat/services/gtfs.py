@@ -73,18 +73,18 @@ NJT_LINE_CODE_MAPPING = {
     # Northeast Corridor
     "NEC": "No",
     # North Jersey Coast Line
-    "NJCL": "No",    # API returns "North Jersey Coast Line" -> "No"
-    "NJCLL": "No",   # Variation
+    "NJCL": "No",  # API returns "North Jersey Coast Line" -> "No"
+    "NJCLL": "No",  # Variation
     # Morris & Essex Line (Morristown, Dover)
-    "MNE": "Mo",     # API returns "Morris and Essex" -> "Mo"
+    "MNE": "Mo",  # API returns "Morris and Essex" -> "Mo"
     # Gladstone Branch (part of Morris & Essex)
-    "MNEG": "Gl",    # API returns "Gladstone Branch" -> "Gl"
+    "MNEG": "Gl",  # API returns "Gladstone Branch" -> "Gl"
     # Montclair-Boonton Line
-    "BNTN": "Mo",    # API returns "Montclair-Boonton" -> "Mo"
-    "BNTNM": "Mo",   # Variation
+    "BNTN": "Mo",  # API returns "Montclair-Boonton" -> "Mo"
+    "BNTNM": "Mo",  # Variation
     # Main/Bergen County Line
-    "MNBN": "Ma",    # API returns "Main Line" or "Bergen Line" -> "Ma" or "Be"
-    "MNBNP": "Ma",   # Port Jervis Line (part of Main/Bergen)
+    "MNBN": "Ma",  # API returns "Main Line" or "Bergen Line" -> "Ma" or "Be"
+    "MNBNP": "Ma",  # Port Jervis Line (part of Main/Bergen)
     # Pascack Valley Line
     "PASC": "Pa",
     # Raritan Valley Line
@@ -1310,7 +1310,11 @@ class GTFSService:
             effective_train_id = train_id if train_id else gtfs_trip_id
 
             # Add "A" prefix for Amtrak to match real-time format (e.g., "112" -> "A112")
-            if data_source == "AMTRAK" and effective_train_id and not effective_train_id.startswith("A"):
+            if (
+                data_source == "AMTRAK"
+                and effective_train_id
+                and not effective_train_id.startswith("A")
+            ):
                 effective_train_id = f"A{effective_train_id}"
 
             departure = TrainDeparture(
@@ -1456,7 +1460,11 @@ class GTFSService:
         # Normalize Amtrak train_id: strip "A" prefix for lookup since GTFS stores without it
         # (We add "A" prefix for display consistency with real-time data)
         search_train_id = train_id
-        if data_source == "AMTRAK" and train_id.startswith("A") and train_id[1:].isdigit():
+        if (
+            data_source == "AMTRAK"
+            and train_id.startswith("A")
+            and train_id[1:].isdigit()
+        ):
             search_train_id = train_id[1:]
 
         all_sources = ["NJT", "AMTRAK", "PATH", "PATCO"]
@@ -1599,7 +1607,11 @@ class GTFSService:
         effective_train_id = stored_train_id if stored_train_id else gtfs_trip_id
 
         # Add "A" prefix for Amtrak to match real-time format (e.g., "112" -> "A112")
-        if matched_source == "AMTRAK" and effective_train_id and not effective_train_id.startswith("A"):
+        if (
+            matched_source == "AMTRAK"
+            and effective_train_id
+            and not effective_train_id.startswith("A")
+        ):
             effective_train_id = f"A{effective_train_id}"
 
         # Build line info
