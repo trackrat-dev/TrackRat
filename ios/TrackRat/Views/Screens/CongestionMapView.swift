@@ -934,7 +934,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
             for segment in sortedSegments {
                 if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
                    let toCoords = Stations.getCoordinates(for: segment.toStation) {
-                    let coordinates = [fromCoords, toCoords]
+                    // Offset based on direction so opposite-direction segments don't overlap
+                    let directionOffset = segment.fromStation < segment.toStation ? 1 : -1
+                    let coordinates = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: directionOffset)
                     let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
                     polyline.segment = segment
                     polyline.isDimmed = !individualSegments.isEmpty
@@ -1251,26 +1253,31 @@ struct SystemCongestionMapView: UIViewRepresentable {
 // MARK: - Helper Functions
 
 func createOffsetCoordinates(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D, offsetIndex: Int) -> [CLLocationCoordinate2D] {
-    guard offsetIndex > 0 else { return [from, to] }
-    
-    // Calculate perpendicular offset (small distance to prevent overlap)
-    let offsetDistance = Double(offsetIndex) * 0.0001 // About 10 meters per offset
-    
-    // Calculate the perpendicular direction
-    let dx = to.longitude - from.longitude
-    let dy = to.latitude - from.latitude
-    
-    // Perpendicular vector (rotated 90 degrees)
+    guard offsetIndex != 0 else { return [from, to] }
+
+    // Calculate perpendicular offset to separate bidirectional segments
+    let offsetDistance = Double(offsetIndex) * 0.00015 // About 15 meters per offset
+
+    // Use CANONICAL direction (west-to-east) for perpendicular calculation
+    // This ensures +1 always means north side, -1 always means south side,
+    // regardless of which way the train is traveling
+    let (refFrom, refTo) = from.longitude <= to.longitude ? (from, to) : (to, from)
+
+    let dx = refTo.longitude - refFrom.longitude
+    let dy = refTo.latitude - refFrom.latitude
+
+    // Perpendicular vector (rotated 90 degrees counterclockwise)
     let perpDx = -dy
     let perpDy = dx
-    
+
     // Normalize and apply offset
     let length = sqrt(perpDx * perpDx + perpDy * perpDy)
     guard length > 0 else { return [from, to] }
-    
+
     let offsetLat = offsetDistance * (perpDy / length)
     let offsetLon = offsetDistance * (perpDx / length)
-    
+
+    // Apply offset to ORIGINAL from/to coordinates
     let offsetFrom = CLLocationCoordinate2D(
         latitude: from.latitude + offsetLat,
         longitude: from.longitude + offsetLon
@@ -1279,7 +1286,7 @@ func createOffsetCoordinates(from: CLLocationCoordinate2D, to: CLLocationCoordin
         latitude: to.latitude + offsetLat,
         longitude: to.longitude + offsetLon
     )
-    
+
     return [offsetFrom, offsetTo]
 }
 
