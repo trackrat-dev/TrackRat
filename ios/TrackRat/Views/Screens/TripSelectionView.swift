@@ -12,7 +12,7 @@ struct TripSelectionView: View {
     @Environment(\.openURL) private var openURL
     @State private var searchText = ""
     @State private var isSearching = false
-    @State private var isNavigatingToProfile = false
+    @State private var showingProfile = false
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var liveActivityService = LiveActivityService.shared
     @StateObject private var ratSenseService = RatSenseService.shared
@@ -80,7 +80,7 @@ struct TripSelectionView: View {
                        Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems),
                        !liveActivityService.isActivityActive,
                        !isSearching,
-                       !isNavigatingToProfile {
+                       !showingProfile {
                         Button {
                             selectRatSenseSuggestion(suggestion)
                         } label: {
@@ -114,7 +114,7 @@ struct TripSelectionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
-                .padding(.top, (subscriptionService.isPro && ratSenseService.suggestedJourney != nil && !liveActivityService.isActivityActive && !isSearching && !isNavigatingToProfile) ? 8 : 28)
+                .padding(.top, (subscriptionService.isPro && ratSenseService.suggestedJourney != nil && !liveActivityService.isActivityActive && !isSearching && !showingProfile) ? 8 : 28)
                 
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
@@ -155,13 +155,9 @@ struct TripSelectionView: View {
                                 }
                             }
                         
-                        // Profile icon - moved from top navigation
+                        // Profile icon - presented as dismissable sheet
                         Button {
-                            // Immediately hide RatSense to prevent content shift during navigation
-                            isNavigatingToProfile = true
-                            // Use pendingNavigation to expand sheet FIRST, then navigate
-                            // This prevents the glitch where sheet expands with empty space
-                            appState.pendingNavigation = .myProfile
+                            showingProfile = true
                         } label: {
                             Image(systemName: "person.circle.fill")
                                 .font(.system(size: 24))
@@ -262,9 +258,6 @@ struct TripSelectionView: View {
         .onAppear {
             print("🐀🐀🐀 TripSelectionView appeared - updating Rat Sense")
 
-            // Reset navigation flag when returning to this view
-            isNavigatingToProfile = false
-
             // Debug: Check what's in storage
             print("🐀 DEBUG: Home station = \(ratSenseService.getHomeStation() ?? "nil")")
             print("🐀 DEBUG: Work station = \(ratSenseService.getWorkStation() ?? "nil")")
@@ -272,6 +265,11 @@ struct TripSelectionView: View {
             ratSenseService.updateSuggestion()
             appState.loadRecentTrips()
             appState.loadFavoriteStations()
+        }
+        .sheet(isPresented: $showingProfile) {
+            MyProfileView()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .onDisappear {
             // Cancel any pending validation tasks
