@@ -152,56 +152,89 @@ extension DateFormatter {
 
 /// A UIView that only intercepts touches near the left edge.
 /// All other touches pass through to views below.
-fileprivate class EdgeSwipeView: UIView {
-    private let edgeWidth: CGFloat = 30
+class EdgeSwipeView: UIView {
+    // Keep narrow to not block back button, but store initial touch for gesture
+    private let hitTestEdgeWidth: CGFloat = 16
+
+    // Store initial touch location for edge detection
+    var initialTouchX: CGFloat = 0
+
+    override var intrinsicContentSize: CGSize {
+        return CGSize(width: UIView.noIntrinsicMetric, height: UIView.noIntrinsicMetric)
+    }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        // Only intercept touches near the left edge
-        if point.x <= edgeWidth {
+        // Only intercept touches at the very edge (before content padding begins)
+        if point.x <= hitTestEdgeWidth {
+            initialTouchX = point.x
             return self
         }
-        // Let all other touches pass through
+        // Let all other touches pass through to back button and content
         return nil
     }
 }
 
-/// Uses UIScreenEdgePanGestureRecognizer for reliable edge-swipe-to-go-back.
-/// This is the same gesture recognizer Apple uses for the system back gesture.
-/// Unlike SwiftUI's DragGesture, it doesn't conflict with ScrollViews.
+/// Enables edge-swipe-to-go-back navigation using a UIPanGestureRecognizer.
+/// Captures initial touch position via hitTest to detect edge swipes reliably,
+/// even when used alongside ScrollViews in a sheet presentation.
 struct EdgeSwipeBackGesture: UIViewRepresentable {
     @Binding var navigationPath: NavigationPath
 
-    func makeUIView(context: Context) -> UIView {
+    func makeUIView(context: Context) -> EdgeSwipeView {
         let view = EdgeSwipeView()
         view.backgroundColor = .clear
 
-        let edgePan = UIScreenEdgePanGestureRecognizer(
+        let panGesture = UIPanGestureRecognizer(
             target: context.coordinator,
-            action: #selector(Coordinator.handleSwipe(_:))
+            action: #selector(Coordinator.handlePan(_:))
         )
-        edgePan.edges = .left
-        view.addGestureRecognizer(edgePan)
+        panGesture.delegate = context.coordinator
+        view.addGestureRecognizer(panGesture)
 
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: EdgeSwipeView, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
         Coordinator(navigationPath: $navigationPath)
     }
 
-    class Coordinator: NSObject {
+    class Coordinator: NSObject, UIGestureRecognizerDelegate {
         @Binding var navigationPath: NavigationPath
+        private var gestureStartX: CGFloat = 0
+        // Larger threshold because gesture.location reports position at recognition time,
+        // not initial touch time - finger may have moved 20-30px by then
+        private let edgeThreshold: CGFloat = 50
+        private let swipeThreshold: CGFloat = 80
 
         init(navigationPath: Binding<NavigationPath>) {
             _navigationPath = navigationPath
         }
 
-        @objc func handleSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
-            if gesture.state == .ended && !navigationPath.isEmpty {
-                navigationPath.removeLast()
+        @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
+            guard let edgeView = gesture.view as? EdgeSwipeView else { return }
+
+            switch gesture.state {
+            case .began:
+                gestureStartX = edgeView.initialTouchX
+            case .ended:
+                let translation = gesture.translation(in: gesture.view)
+                if gestureStartX <= edgeThreshold && translation.x > swipeThreshold {
+                    if !navigationPath.isEmpty {
+                        navigationPath.removeLast()
+                    }
+                }
+            default:
+                break
             }
+        }
+
+        // MARK: - UIGestureRecognizerDelegate
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            // Allow simultaneous recognition to not block scroll views
+            return true
         }
     }
 }
@@ -209,7 +242,11 @@ struct EdgeSwipeBackGesture: UIViewRepresentable {
 extension View {
     /// Adds edge-swipe gesture to navigate back using UIScreenEdgePanGestureRecognizer
     func edgeSwipeBack(path: Binding<NavigationPath>) -> some View {
-        self.overlay(EdgeSwipeBackGesture(navigationPath: path))
+        self.overlay(
+            EdgeSwipeBackGesture(navigationPath: path)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+        )
     }
 }
 
