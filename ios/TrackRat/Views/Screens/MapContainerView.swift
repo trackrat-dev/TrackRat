@@ -726,6 +726,7 @@ struct MapContainerView: View {
             }
         }
         .transparentNavigationBackground()
+        .edgeSwipeBack(path: $appState.navigationPath)
     }
 }
 
