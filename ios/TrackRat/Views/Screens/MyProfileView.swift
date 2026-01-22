@@ -1,5 +1,12 @@
 import SwiftUI
 
+// MARK: - Profile Navigation
+enum ProfileDestination: Hashable {
+    case tripHistory
+    case favoriteStations
+    case advancedConfiguration
+}
+
 struct MyProfileView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
@@ -10,20 +17,16 @@ struct MyProfileView: View {
     @State private var showingPaywall = false
     @State private var showingFeedbackSheet = false
     @State private var paywallContext: PaywallContext = .generic
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Fixed header with close button for sheet presentation
-            HStack {
-                // Close button
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
+        NavigationStack(path: $navigationPath) {
+            VStack(spacing: 0) {
+                // Fixed header with close button for sheet presentation
+                HStack {
+                    // Spacer for symmetry (same width as close button)
+                    Color.clear
                         .frame(width: 44, height: 44)
-                }
 
                 Spacer()
 
@@ -52,9 +55,15 @@ struct MyProfileView: View {
 
                 Spacer()
 
-                // Spacer for symmetry (same width as back button)
-                Color.clear
-                    .frame(width: 44, height: 44)
+                // Close button
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
@@ -415,7 +424,7 @@ struct MyProfileView: View {
                         // Trip Statistics
                         Button {
                             if subscriptionService.isPro {
-                                appState.navigationPath.append(NavigationDestination.tripHistory)
+                                navigationPath.append(ProfileDestination.tripHistory)
                             } else {
                                 showingPaywall = true
                             }
@@ -467,7 +476,7 @@ struct MyProfileView: View {
 
                         // Favorite Stations
                         Button {
-                            appState.navigationPath.append(NavigationDestination.favoriteStations)
+                            navigationPath.append(ProfileDestination.favoriteStations)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {
                             HStack(spacing: 16) {
@@ -500,7 +509,7 @@ struct MyProfileView: View {
 
                         // Advanced Configuration
                         Button {
-                            appState.navigationPath.append(NavigationDestination.advancedConfiguration)
+                            navigationPath.append(ProfileDestination.advancedConfiguration)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {
                             HStack(spacing: 16) {
@@ -535,11 +544,23 @@ struct MyProfileView: View {
                 .padding()
                 .padding(.bottom, 40)
             }
+            .navigationDestination(for: ProfileDestination.self) { destination in
+                switch destination {
+                case .tripHistory:
+                    TripHistoryView()
+                case .favoriteStations:
+                    FavoriteStationsView()
+                case .advancedConfiguration:
+                    AdvancedConfigurationView()
+                }
+            }
+            .navigationBarHidden(true)
         }
-        .navigationBarHidden(true)
         .onAppear {
             // Show paywall if soft trial expired and user is not subscribed
-            if subscriptionService.softTrialExpired,
+            // Skip if debug mode is enabled
+            if !subscriptionService.debugOverrideEnabled,
+               subscriptionService.softTrialExpired,
                !subscriptionService.subscriptionStatus.isActive {
                 paywallContext = .trialExpired
                 showingPaywall = true
@@ -560,8 +581,8 @@ struct SubscriptionStatusSection: View {
     var body: some View {
         VStack(spacing: 16) {
             if subscriptionService.debugOverrideEnabled {
-                // Debug mode - show pro card with debug indicator
-                ProUserCard()
+                // Debug mode - show nothing (silent Pro mode)
+                EmptyView()
             } else if subscriptionService.subscriptionStatus.isActive {
                 // Actual subscriber (StoreKit trial or paid) - show appreciation
                 ProUserCard()
