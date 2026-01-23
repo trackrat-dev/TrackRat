@@ -137,7 +137,7 @@ struct OnboardingView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.white)
 
-                Text("Which systems do you use?")
+                Text("Which do you use?")
                     .font(.body)
                     .foregroundColor(.white.opacity(0.8))
                     .multilineTextAlignment(.center)
