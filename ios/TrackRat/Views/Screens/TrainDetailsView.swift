@@ -939,7 +939,24 @@ class TrainDetailsViewModel: ObservableObject {
         let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? ""
         let effectiveDate = journeyDate ?? Date()
 
-        // PRIORITY 1: Use existingTrain from appState if provided (instant display)
+        // PRIORITY 1: Check cache first (will have full train data with stops from previous visits)
+        if !trainIdentifier.isEmpty,
+           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate) {
+            // Load from cache immediately - NO loading indicator
+            print("📦 Loading from cache - instant display")
+            train = cached.train
+            updateComputedProperties()
+
+            // Only fetch fresh data in background if cache is older than 30 seconds
+            if cached.ageSeconds > 30 {
+                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
+            } else {
+                print("📦 Cache is fresh (\(cached.ageSeconds)s old) - skipping background refresh")
+            }
+            return
+        }
+
+        // PRIORITY 2: Use existingTrain from appState for instant header display (first visit)
         if let existingTrain = existingTrain {
             let hasStops = existingTrain.stops != nil && !existingTrain.stops!.isEmpty
             print("⚡ Using existing train from appState - instant display (hasStops: \(hasStops))")
@@ -961,24 +978,7 @@ class TrainDetailsViewModel: ObservableObject {
             return
         }
 
-        // PRIORITY 2: Check cache
-        if !trainIdentifier.isEmpty,
-           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate) {
-            // Load from cache immediately - NO loading indicator
-            print("📦 Loading from cache - instant display")
-            train = cached.train
-            updateComputedProperties()
-
-            // Only fetch fresh data in background if cache is older than 30 seconds
-            if cached.ageSeconds > 30 {
-                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
-            } else {
-                print("📦 Cache is fresh (\(cached.ageSeconds)s old) - skipping background refresh")
-            }
-            return
-        }
-
-        // PRIORITY 3: No cached data - show loading indicator and fetch from network
+        // PRIORITY 3: No cached data and no existing train - show loading indicator and fetch from network
         print("🌐 No cache available - fetching from network")
         isLoading = true
 
