@@ -437,7 +437,7 @@ struct MyProfileView: View {
                                     .frame(width: 24, height: 24)
 
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Trip Statistics")
+                                    Text("Trip History (beta)")
                                         .font(.headline)
                                         .fontWeight(.medium)
                                         .foregroundColor(.white)

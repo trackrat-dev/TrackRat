@@ -22,7 +22,7 @@ enum PremiumFeature: String, CaseIterable {
     case delayForecasts = "Delay Forecasts"
     case congestionMap = "Live Congestion Map"
     case historicalData = "Historical Analytics"
-    case tripStatistics = "Trip Statistics"
+    case tripStatistics = "Trip History (beta)"
     case ratSense = "RatSense AI"
     case pennStationGuide = "Penn Station Boarding Guide"
     case supportDevelopment = "Support Continued Development"

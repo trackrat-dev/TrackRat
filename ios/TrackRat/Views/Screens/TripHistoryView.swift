@@ -33,7 +33,7 @@ struct TripHistoryView: View {
 
                 Spacer()
 
-                Text("Trip History")
+                Text("Trip History (beta)")
                     .font(.headline)
                     .foregroundColor(.white)
 
