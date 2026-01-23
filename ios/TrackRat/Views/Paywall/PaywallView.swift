@@ -449,7 +449,7 @@ private struct PurchaseSuccessOverlay: View {
                 }
 
                 VStack(spacing: 8) {
-                    Text("Welcome to Pro!")
+                    Text("Thank you for your support!")
                         .font(.title.bold())
                         .foregroundColor(.white)
 
