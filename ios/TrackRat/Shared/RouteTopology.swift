@@ -173,7 +173,7 @@ struct RouteTopology {
             id: "amtrak-florida",
             name: "Silver Star (Tampa)",
             dataSource: "AMTRAK",
-            stationCodes: ["JAX", "PAL", "DLD", "SAN", "WPK", "ORL", "KIS", "LKL", "WTH", "TPA"]
+            stationCodes: ["JAX", "PAL", "DLD", "SAN", "WPK", "ORL", "KIS", "WTH", "LKL", "TPA"]
         ),
 
         // Silver Meteor (Jacksonville to Miami)
