@@ -139,10 +139,13 @@ struct TrainDetailsView: View {
         }
         .navigationBarHidden(true)
         .task {
-            // Check if appState.currentTrain matches this view's train
-            // This provides instant display when navigating from the train list
+            // Check if appState.currentTrain matches this view's train AND has stops data
+            // This provides instant display when navigating from a previously-viewed train
+            // We require stops because the departures list doesn't include them
             let existingTrain: TrainV2? = {
-                guard let currentTrain = appState.currentTrain else { return nil }
+                guard let currentTrain = appState.currentTrain,
+                      let stops = currentTrain.stops,
+                      !stops.isEmpty else { return nil }
                 // Match by trainId (train number)
                 if let trainNumber = viewModel.trainNumber,
                    currentTrain.trainId == trainNumber {
@@ -915,18 +918,19 @@ class TrainDetailsViewModel: ObservableObject {
         let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? ""
         let effectiveDate = journeyDate ?? Date()
 
-        // PRIORITY 1: Use existingTrain from appState if provided (instant display from list navigation)
+        // PRIORITY 1: Use existingTrain from appState if provided (instant display)
+        // Note: existingTrain should only be provided if it has stops data (checked in View)
         if let existingTrain = existingTrain {
             print("⚡ Using existing train from appState - instant display")
             train = existingTrain
             updateComputedProperties()
 
-            // Cache it for future use
-            if !trainIdentifier.isEmpty {
+            // Only cache if train has stops data (don't overwrite good cache with partial data)
+            if !trainIdentifier.isEmpty, let stops = existingTrain.stops, !stops.isEmpty {
                 cacheService.cacheTrain(existingTrain, trainNumber: trainIdentifier, date: effectiveDate)
             }
 
-            // Background refresh to get full stops data (list may have partial data)
+            // Background refresh to ensure we have latest data
             await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
             return
         }
