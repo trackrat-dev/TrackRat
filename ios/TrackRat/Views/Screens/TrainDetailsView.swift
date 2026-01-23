@@ -139,10 +139,23 @@ struct TrainDetailsView: View {
         }
         .navigationBarHidden(true)
         .task {
+            // Check if appState.currentTrain matches this view's train
+            // This provides instant display when navigating from the train list
+            let existingTrain: TrainV2? = {
+                guard let currentTrain = appState.currentTrain else { return nil }
+                // Match by trainId (train number)
+                if let trainNumber = viewModel.trainNumber,
+                   currentTrain.trainId == trainNumber {
+                    return currentTrain
+                }
+                return nil
+            }()
+
             await viewModel.loadTrainDetails(
                 fromStationCode: appState.departureStationCode,
                 toStationCode: appState.destinationStationCode,
-                selectedDestinationName: appState.selectedDestination
+                selectedDestinationName: appState.selectedDestination,
+                existingTrain: existingTrain
             )
         }
         .task(id: isViewVisible) {
@@ -890,7 +903,7 @@ class TrainDetailsViewModel: ObservableObject {
         journeyProgressPercentage = totalStops > 0 ? (completedStops * 100) / totalStops : 0
     }
     
-    func loadTrainDetails(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+    func loadTrainDetails(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil, existingTrain: TrainV2? = nil) async {
         error = nil
 
         // Store current origin and destination for filtering
@@ -898,85 +911,91 @@ class TrainDetailsViewModel: ObservableObject {
         self.currentDestinationStationCode = toStationCode
         self.currentDestinationName = selectedDestinationName
 
-        // CACHE-FIRST STRATEGY: Check cache before showing loading indicator
-        if let cachedTrain = cacheService.getCachedTrain(
-            trainId: databaseId.map(String.init),
-            trainNumber: trainNumber,
-            date: journeyDate,
-            fromStation: fromStationCode ?? preferredStationCode
-        ) {
-            // Load from cache immediately - NO loading indicator
-            print("📦 Loading from cache - instant display")
-            train = cachedTrain
+        // Get the train identifier for cache operations
+        let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? ""
+        let effectiveDate = journeyDate ?? Date()
+
+        // PRIORITY 1: Use existingTrain from appState if provided (instant display from list navigation)
+        if let existingTrain = existingTrain {
+            print("⚡ Using existing train from appState - instant display")
+            train = existingTrain
             updateComputedProperties()
 
-            // PERFORMANCE FIX: Only fetch fresh data in background if cache is older than 30 seconds
-            // This prevents the double-fetch issue where we always hit the API even with a fresh cache.
-            // The 30-second timer will refresh the data anyway, so no need for immediate background fetch
-            // when cache is fresh.
-            let cacheAge = cacheService.getCacheAge(
-                trainId: databaseId.map(String.init),
-                trainNumber: trainNumber,
-                date: journeyDate,
-                fromStation: fromStationCode ?? preferredStationCode
-            )
-            if cacheAge == nil || cacheAge! > 30 {
+            // Cache it for future use
+            if !trainIdentifier.isEmpty {
+                cacheService.cacheTrain(existingTrain, trainNumber: trainIdentifier, date: effectiveDate)
+            }
+
+            // Background refresh to get full stops data (list may have partial data)
+            await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
+            return
+        }
+
+        // PRIORITY 2: Check cache
+        if !trainIdentifier.isEmpty,
+           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate) {
+            // Load from cache immediately - NO loading indicator
+            print("📦 Loading from cache - instant display")
+            train = cached.train
+            updateComputedProperties()
+
+            // Only fetch fresh data in background if cache is older than 30 seconds
+            if cached.ageSeconds > 30 {
                 await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
             } else {
-                print("📦 Cache is fresh (\(Int(cacheAge!))s old) - skipping background refresh")
+                print("📦 Cache is fresh (\(cached.ageSeconds)s old) - skipping background refresh")
             }
-        } else {
-            // No cache available - show loading indicator and fetch
-            print("🌐 No cache available - fetching from network")
-            isLoading = true
-
-            do {
-                // Use the flexible API method with dataSource for disambiguation
-                let fetchedTrain = try await apiService.fetchTrainDetailsFlexible(
-                    id: databaseId.map(String.init),
-                    trainId: trainNumber,
-                    fromStationCode: fromStationCode ?? preferredStationCode,
-                    date: journeyDate,
-                    dataSource: dataSource
-                )
-
-                train = fetchedTrain
-
-                // Cache the newly fetched train
-                cacheService.cacheTrain(
-                    fetchedTrain,
-                    trainId: databaseId.map(String.init),
-                    trainNumber: trainNumber,
-                    date: journeyDate,
-                    fromStation: fromStationCode ?? preferredStationCode
-                )
-
-                // Update all computed properties after setting train
-                updateComputedProperties()
-
-            } catch {
-                // Handle APIError.noData specifically
-                if let apiError = error as? APIError {
-                    switch apiError {
-                    case .noData:
-                        self.error = "Train not found"
-                    default:
-                        self.error = apiError.localizedDescription
-                    }
-                } else {
-                    self.error = error.localizedDescription
-                }
-            }
-
-            isLoading = false
+            return
         }
+
+        // PRIORITY 3: No cached data - show loading indicator and fetch from network
+        print("🌐 No cache available - fetching from network")
+        isLoading = true
+
+        do {
+            // Use the flexible API method with dataSource for disambiguation
+            let fetchedTrain = try await apiService.fetchTrainDetailsFlexible(
+                id: databaseId.map(String.init),
+                trainId: trainNumber,
+                fromStationCode: fromStationCode ?? preferredStationCode,
+                date: journeyDate,
+                dataSource: dataSource
+            )
+
+            train = fetchedTrain
+
+            // Cache the newly fetched train
+            if !trainIdentifier.isEmpty {
+                cacheService.cacheTrain(fetchedTrain, trainNumber: trainIdentifier, date: effectiveDate)
+            }
+
+            // Update all computed properties after setting train
+            updateComputedProperties()
+
+        } catch {
+            // Handle APIError.noData specifically
+            if let apiError = error as? APIError {
+                switch apiError {
+                case .noData:
+                    self.error = "Train not found"
+                default:
+                    self.error = apiError.localizedDescription
+                }
+            } else {
+                self.error = error.localizedDescription
+            }
+        }
+
+        isLoading = false
     }
 
     /// Fetches fresh data in background without showing loading indicator
     private func refreshTrainDetailsInBackground(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
+        let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? "unknown"
+        let effectiveDate = journeyDate ?? Date()
+
         do {
-            let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
-            print("🔄 Background refresh for train \(identifier)")
+            print("🔄 Background refresh for train \(trainIdentifier)")
 
             let newTrain = try await apiService.fetchTrainDetailsFlexible(
                 id: databaseId.map(String.init),
@@ -987,13 +1006,9 @@ class TrainDetailsViewModel: ObservableObject {
             )
 
             // Cache the fresh data
-            cacheService.cacheTrain(
-                newTrain,
-                trainId: databaseId.map(String.init),
-                trainNumber: trainNumber,
-                date: journeyDate,
-                fromStation: fromStationCode ?? preferredStationCode
-            )
+            if trainIdentifier != "unknown" {
+                cacheService.cacheTrain(newTrain, trainNumber: trainIdentifier, date: effectiveDate)
+            }
 
             print("✅ Background refresh successful - updating UI")
 
@@ -1013,10 +1028,12 @@ class TrainDetailsViewModel: ObservableObject {
         self.currentDestinationStationCode = toStationCode
         self.currentDestinationName = selectedDestinationName
 
+        let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? "unknown"
+        let effectiveDate = journeyDate ?? Date()
+
         // Silent refresh
         do {
-            let identifier = trainNumber ?? (databaseId.map(String.init) ?? "unknown")
-            print("🔄 TrainDetailsView refreshing train \(identifier) from \(fromStationCode ?? preferredStationCode ?? "none")")
+            print("🔄 TrainDetailsView refreshing train \(trainIdentifier) from \(fromStationCode ?? preferredStationCode ?? "none")")
 
             let newTrain = try await apiService.fetchTrainDetailsFlexible(
                 id: databaseId.map(String.init),
@@ -1026,16 +1043,12 @@ class TrainDetailsViewModel: ObservableObject {
                 dataSource: dataSource
             )
 
-            print("✅ TrainDetailsView refresh successful for train \(identifier)")
+            print("✅ TrainDetailsView refresh successful for train \(trainIdentifier)")
 
             // Cache the fresh data
-            cacheService.cacheTrain(
-                newTrain,
-                trainId: databaseId.map(String.init),
-                trainNumber: trainNumber,
-                date: journeyDate,
-                fromStation: fromStationCode ?? preferredStationCode
-            )
+            if trainIdentifier != "unknown" {
+                cacheService.cacheTrain(newTrain, trainNumber: trainIdentifier, date: effectiveDate)
+            }
 
             // Check if Live Activity should auto-end (Primary Fix)
             let liveService = LiveActivityService.shared

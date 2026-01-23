@@ -243,14 +243,9 @@ class LiveActivityService: ObservableObject {
             )
 
             // Cache the fresh train data for instant loading in TrainDetailsView
+            // Use trainId (which is actually the train number) with today's date
             await MainActor.run {
-                cacheService.cacheTrain(
-                    train,
-                    trainId: activity.attributes.trainId,
-                    trainNumber: nil,
-                    date: nil,
-                    fromStation: activity.attributes.originStationCode
-                )
+                cacheService.cacheTrain(train, trainNumber: activity.attributes.trainId, date: Date())
             }
 
             // Check for departure event (fires exactly once when train departs origin)
