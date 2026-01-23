@@ -4,19 +4,6 @@ Departure service for handling train departure queries.
 
 import time
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING
-
-# NJT line code normalization for deduplication.
-# The NJT API inconsistently returns line names (e.g., "Northeast Corridor" vs "NEC"),
-# which when truncated to 2 chars gives different codes ("No" vs "NE").
-# This map normalizes all variations to canonical forms matching GTFS.
-NJT_LINE_CANONICALIZATION: dict[str, str] = {
-    # Northeast Corridor: API returns "NEC" -> "NE", but GTFS maps to "No"
-    "NE": "No",
-    "NEC": "No",  # In case full code is passed
-    # Raritan Valley: API sometimes returns "RV", GTFS maps RARV -> "Ra"
-    "RV": "Ra",
-}
 from typing import Any
 
 from sqlalchemy import and_, case, func, select
@@ -46,6 +33,18 @@ from trackrat.utils.time import (
 from trackrat.utils.train import get_effective_observation_type
 
 logger = get_logger(__name__)
+
+# NJT line code normalization for deduplication.
+# The NJT API inconsistently returns line names (e.g., "Northeast Corridor" vs "NEC"),
+# which when truncated to 2 chars gives different codes ("No" vs "NE").
+# This map normalizes all variations to canonical forms matching GTFS.
+NJT_LINE_CANONICALIZATION: dict[str, str] = {
+    # Northeast Corridor: API returns "NEC" -> "NE", but GTFS maps to "No"
+    "NE": "No",
+    "NEC": "No",  # In case full code is passed
+    # Raritan Valley: API sometimes returns "RV", GTFS maps RARV -> "Ra"
+    "RV": "Ra",
+}
 
 
 class DepartureService:
