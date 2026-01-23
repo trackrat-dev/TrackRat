@@ -41,7 +41,7 @@ struct RouteTopology {
             id: "njt-nec",
             name: "Northeast Corridor",
             dataSource: "NJT",
-            stationCodes: ["NY", "SE", "NP", "EZ", "NZ", "LI", "RH", "MP", "MU", "ED", "NB", "JA", "PJ", "HL", "TR"]
+            stationCodes: ["NY", "SE", "NP", "NZ", "EZ", "LI", "RH", "MP", "MU", "ED", "NB", "JA", "PJ", "HL", "TR"]
         ),
 
         // North Jersey Coast Line
