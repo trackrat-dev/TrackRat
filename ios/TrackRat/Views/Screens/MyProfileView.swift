@@ -660,16 +660,14 @@ struct ProUserCard: View {
                 Spacer()
 
                 // Manage subscription button
-                if !subscriptionService.debugOverrideEnabled {
-                    Button {
-                        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                            UIApplication.shared.open(url)
-                        }
-                    } label: {
-                        Text("Manage")
-                            .font(.caption.weight(.medium))
-                            .foregroundColor(.orange)
+                Button {
+                    if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                        UIApplication.shared.open(url)
                     }
+                } label: {
+                    Text("Manage")
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.orange)
                 }
             }
         }

@@ -133,19 +133,6 @@ struct PaywallView: View {
                         .padding()
                     } else {
                         VStack(spacing: 12) {
-                            // Yearly option (best value)
-                            if let yearly = subscriptionService.yearlyProduct {
-                                PricingOptionView(
-                                    product: yearly,
-                                    isSelected: selectedProduct?.id == yearly.id,
-                                    badge: "Best Value",
-                                    subtitle: subscriptionSubtitle(for: yearly)
-                                ) {
-                                    selectedProduct = yearly
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                }
-                            }
-
                             // Monthly option
                             if let monthly = subscriptionService.monthlyProduct {
                                 PricingOptionView(
@@ -251,14 +238,14 @@ struct PaywallView: View {
             Text(errorMessage)
         }
         .onAppear {
-            // Default to yearly selection
+            // Default to monthly selection
             if selectedProduct == nil {
-                selectedProduct = subscriptionService.yearlyProduct
+                selectedProduct = subscriptionService.monthlyProduct
             }
         }
         .onChange(of: subscriptionService.availableProducts) { _, products in
-            if selectedProduct == nil, let yearly = products.first(where: { $0.id == SubscriptionService.yearlyProductId }) {
-                selectedProduct = yearly
+            if selectedProduct == nil, let monthly = products.first(where: { $0.id == SubscriptionService.monthlyProductId }) {
+                selectedProduct = monthly
             }
         }
     }
@@ -291,8 +278,7 @@ struct PaywallView: View {
     /// Format the subscription subtitle with trial info if available
     private func subscriptionSubtitle(for product: Product) -> String {
         let trialPrefix = trialText(for: product)
-        let periodSuffix = product.id == SubscriptionService.yearlyProductId ? "/year" : "/month"
-        return "\(trialPrefix)\(product.displayPrice)\(periodSuffix)"
+        return "\(trialPrefix)\(product.displayPrice)/month"
     }
 
     private func purchase() async {

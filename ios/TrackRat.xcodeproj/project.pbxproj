@@ -109,6 +109,8 @@
 		A1D92A722F0AEFFC0098897F /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */; };
 		A1D92A742F0AF01E0098897F /* CompletedTrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A732F0AF01E0098897F /* CompletedTrip.swift */; };
 		A1D92A752F0AF01E0098897F /* CompletedTrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A732F0AF01E0098897F /* CompletedTrip.swift */; };
+		A1EA529D2F23A2450023CC09 /* Configuration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = A1EA529C2F23A2450023CC09 /* Configuration.storekit */; };
+		A1EA529E2F23A2450023CC09 /* Configuration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = A1EA529C2F23A2450023CC09 /* Configuration.storekit */; };
 		A1EF6A802F1ED24300AB1FDE /* SoftTrialBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */; };
 		A1EF6A812F1ED24300AB1FDE /* SoftTrialBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */; };
 		A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
@@ -246,6 +248,7 @@
 		A1D92A6D2F0AEFE50098897F /* TripRecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripRecordingService.swift; path = TrackRat/Services/TripRecordingService.swift; sourceTree = "<group>"; };
 		A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripHistoryView.swift; path = TrackRat/Views/Screens/TripHistoryView.swift; sourceTree = "<group>"; };
 		A1D92A732F0AF01E0098897F /* CompletedTrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompletedTrip.swift; path = TrackRat/Models/CompletedTrip.swift; sourceTree = "<group>"; };
+		A1EA529C2F23A2450023CC09 /* Configuration.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = Configuration.storekit; path = TrackRat/Configuration.storekit; sourceTree = "<group>"; };
 		A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SoftTrialBannerView.swift; path = TrackRat/Views/Components/SoftTrialBannerView.swift; sourceTree = "<group>"; };
 		A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainCacheService.swift; path = TrackRat/Services/TrainCacheService.swift; sourceTree = "<group>"; };
 		A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatNavigationHeader.swift; path = TrackRat/Views/Components/TrackRatNavigationHeader.swift; sourceTree = "<group>"; };
@@ -336,6 +339,7 @@
 				A12C31522F1DB9F200CAF76D /* RouteTopology.swift */,
 				A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */,
 				A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */,
+				A1EA529C2F23A2450023CC09 /* Configuration.storekit */,
 			);
 			sourceTree = "<group>";
 		};
@@ -605,6 +609,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1EA529E2F23A2450023CC09 /* Configuration.storekit in Resources */,
 				1A1A1A1A1A1A1A1A1A1A1A1E /* Assets.xcassets in Resources */,
 				A16D6EF02E1703C7008C6996 /* rat-train-icon@2x.png in Resources */,
 				A16D6EF12E1703C7008C6996 /* rat-train-icon@3x.png in Resources */,
@@ -618,6 +623,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1EA529D2F23A2450023CC09 /* Configuration.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
