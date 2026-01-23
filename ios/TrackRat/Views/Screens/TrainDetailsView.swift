@@ -185,13 +185,14 @@ struct TrainDetailsView: View {
         .onDisappear {
             isViewVisible = false
         }
-        .onChange(of: viewModel.train) { oldValue, newValue in
-            // Update appState.currentTrain when we get full train data with stops
+        .onChange(of: viewModel.isLoadingStops) { oldValue, newValue in
+            // When stops loading completes (true -> false), update appState with full train data
             // This enables instant display when navigating back to this train
-            if let newTrain = newValue,
-               let stops = newTrain.stops,
+            if oldValue == true && newValue == false,
+               let train = viewModel.train,
+               let stops = train.stops,
                !stops.isEmpty {
-                appState.currentTrain = newTrain
+                appState.currentTrain = train
             }
         }
         .onChange(of: viewModel.triggerBoardingHaptic) { oldValue, newValue in
