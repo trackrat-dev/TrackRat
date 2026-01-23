@@ -49,7 +49,7 @@ struct RouteTopology {
             id: "njt-njcl",
             name: "North Jersey Coast Line",
             dataSource: "NJT",
-            stationCodes: ["NY", "SE", "NP", "EZ", "RH", "AV", "WB", "PE", "CH", "AM", "HZ", "MI", "RB", "LS", "MK", "LB", "EL", "AH", "AP", "BB", "BS", "LA", "SQ", "PP", "BH"]
+            stationCodes: ["NY", "SE", "NP", "NZ", "EZ", "LI", "RH", "AV", "WB", "PE", "CH", "AM", "HZ", "MI", "RB", "LS", "MK", "LB", "EL", "AH", "AP", "BB", "BS", "LA", "SQ", "PP", "BH"]
         ),
 
         // Morris & Essex Line (Morristown)
