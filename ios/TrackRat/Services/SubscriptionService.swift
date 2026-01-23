@@ -72,7 +72,7 @@ enum PaywallContext {
         case .pennStationGuide:
             return "Navigate Penn Station"
         case .congestionMap:
-            return "See Network Traffic"
+            return "Network Traffic"
         case .generic:
             return "Upgrade to Pro"
         case .trialExpired:
@@ -85,19 +85,19 @@ enum PaywallContext {
         case .liveActivities:
             return "Follow your train in real-time without opening the app"
         case .trackPredictions:
-            return "AI predicts which platform your train arrives on"
+            return "Know the odds for which platform your train will depart from"
         case .delayForecasts:
-            return "Get delay and cancellation predictions before you leave"
+            return "Get delay and cancellation forecasts before you leave"
         case .historicalData:
             return "Leverage past performance and patterns"
         case .tripStatistics:
             return "Track every trip and see your on-time percentage"
         case .pennStationGuide:
-            return "Platform guides for NY Penn's confusing layout"
+            return "Platform guides to avoid the crowd"
         case .congestionMap:
-            return "Real-time train congestion across the network"
+            return "See real-time train congestion across the network"
         case .generic:
-            return "Unlock all premium features"
+            return "Support continued development and unlock all features"
         case .trialExpired:
             return "Start your free trial to keep using Live Activities, track predictions, and all Pro features."
         }
