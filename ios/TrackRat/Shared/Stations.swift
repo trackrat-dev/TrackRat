@@ -444,6 +444,9 @@ struct Stations {
         "DOW": CLLocationCoordinate2D(latitude: 40.0003, longitude: -75.7042),  // Downingtown, PA (Keystone)
         "COT": CLLocationCoordinate2D(latitude: 39.9823, longitude: -75.8233),  // Coatesville, PA (Keystone)
         "PKB": CLLocationCoordinate2D(latitude: 39.9612, longitude: -75.9193),  // Parkesburg, PA (Keystone)
+        "MJY": CLLocationCoordinate2D(latitude: 40.1071, longitude: -76.5033),  // Mount Joy, PA (Keystone)
+        "ELT": CLLocationCoordinate2D(latitude: 40.1524, longitude: -76.5258),  // Elizabethtown, PA (Keystone)
+        "MIDPA": CLLocationCoordinate2D(latitude: 40.1996, longitude: -76.7322),  // Middletown, PA (Keystone)
         "KIN": CLLocationCoordinate2D(latitude: 41.4885, longitude: -71.5204),  // Kingston, RI
         "PVD": CLLocationCoordinate2D(latitude: 41.8256, longitude: -71.4160),  // Providence, RI
         "WLY": CLLocationCoordinate2D(latitude: 41.3770, longitude: -71.8307),  // Westerly, RI
@@ -613,6 +616,7 @@ struct Stations {
 	"HS": CLLocationCoordinate2D(latitude: 40.85778632525093, longitude: -74.20258147801873), // Montclair Heights
 	"UV": CLLocationCoordinate2D(latitude: 40.869877328760076, longitude: -74.1973970868374),   // Montclair State University
 	"FA": CLLocationCoordinate2D(latitude: 40.880597100429924, longitude: -74.23527448868244),   // Little Falls
+	"GA": CLLocationCoordinate2D(latitude: 40.8847, longitude: -74.2539),   // Great Notch
 	"23": CLLocationCoordinate2D(latitude: 40.90014887124657, longitude: -74.25698821936236),   // Wayne Rt 23
 	"MV": CLLocationCoordinate2D(latitude: 40.913900511412734, longitude: -74.26769562647546),   // Mountain View
 	"LP": CLLocationCoordinate2D(latitude: 40.924111086002696, longitude: -74.3018546214956),   // Lincoln Park
@@ -691,6 +695,8 @@ struct Stations {
         "SAV": CLLocationCoordinate2D(latitude: 32.0835, longitude: -81.0998),                     // Savannah, GA
         "SPB": CLLocationCoordinate2D(latitude: 34.9496, longitude: -81.9318),                     // Spartanburg, SC
         "TPA": CLLocationCoordinate2D(latitude: 27.9506, longitude: -82.4572),                     // Tampa, FL
+        "WLD": CLLocationCoordinate2D(latitude: 29.7899, longitude: -82.1712),                     // Waldo, FL
+        "OCA": CLLocationCoordinate2D(latitude: 29.1871, longitude: -82.1301),                     // Ocala, FL
         "WLN": CLLocationCoordinate2D(latitude: 35.7230682373047, longitude: -77.9082946777344),   // Wilson, NC
         "WPB": CLLocationCoordinate2D(latitude: 26.7153, longitude: -80.0534),                     // West Palm Beach, FL
         "WPK": CLLocationCoordinate2D(latitude: 28.5990, longitude: -81.3392),                     // Winter Park, FL

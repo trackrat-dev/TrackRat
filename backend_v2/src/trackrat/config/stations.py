@@ -1042,6 +1042,9 @@ STATION_COORDINATES = {
     "EXR": {"lat": 42.9809, "lon": -70.9478},  # Exeter, NH
     "HAR": {"lat": 40.2616, "lon": -76.8782},  # Harrisburg, PA
     "LNC": {"lat": 40.0538, "lon": -76.3076},  # Lancaster, PA
+    "MJY": {"lat": 40.1071, "lon": -76.5033},  # Mount Joy, PA (Keystone)
+    "ELT": {"lat": 40.1524, "lon": -76.5258},  # Elizabethtown, PA (Keystone)
+    "MIDPA": {"lat": 40.1996, "lon": -76.7322},  # Middletown, PA (Keystone)
     "KIN": {"lat": 41.4885, "lon": -71.5204},  # Kingston, RI
     "PVD": {"lat": 41.8256, "lon": -71.4160},  # Providence, RI
     "WLY": {"lat": 41.3770, "lon": -71.8307},  # Westerly, RI
@@ -1082,6 +1085,9 @@ STATION_COORDINATES = {
     "NTL": {"lat": 39.947345, "lon": -75.15751},  # 9-10th and Locust
     "TWL": {"lat": 39.947944, "lon": -75.162365},  # 12-13th and Locust
     "FFL": {"lat": 39.948634, "lon": -75.167792},  # 15-16th and Locust
+    # Florida Amtrak stations
+    "WLD": {"lat": 29.7899, "lon": -82.1712},  # Waldo, FL
+    "OCA": {"lat": 29.1871, "lon": -82.1301},  # Ocala, FL
 }
 
 
