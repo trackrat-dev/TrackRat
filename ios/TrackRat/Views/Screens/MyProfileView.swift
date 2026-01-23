@@ -606,7 +606,7 @@ struct SubscriptionStatusSection: View {
         } else {
             // Not subscribed, no soft trial - show upgrade prompt
             UpgradePromptCard(
-                subtext: "Support continued development while getting Live Activities, track predictions, delay & arrival forecasts, and more",
+                subtext: "Support continued development while getting Live Activities, track predictions, delay forecasts, and more",
                 showingPaywall: $showingPaywall
             )
         }
