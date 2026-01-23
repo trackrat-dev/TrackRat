@@ -592,24 +592,23 @@ struct SubscriptionStatusSection: View {
     @ObservedObject var subscriptionService: SubscriptionService
     @Binding var showingPaywall: Bool
 
+    @ViewBuilder
     var body: some View {
-        VStack(spacing: 16) {
-            if subscriptionService.debugOverrideEnabled {
-                // Debug mode - show nothing (silent Pro mode)
-                EmptyView()
-            } else if subscriptionService.subscriptionStatus.isActive {
-                // Actual subscriber (StoreKit trial or paid) - show appreciation
-                ProUserCard()
-            } else if subscriptionService.isInSoftTrial {
-                // Soft trial active (preview period) - show timer + subscribe CTA
-                SoftTrialProCard(showingPaywall: $showingPaywall)
-            } else {
-                // Not subscribed, no soft trial - show upgrade prompt
-                UpgradePromptCard(
-                    subtext: "Support continued development, get Live Activities, track predictions, delay forecasts, and more",
-                    showingPaywall: $showingPaywall
-                )
-            }
+        if subscriptionService.debugOverrideEnabled {
+            // Debug mode - show nothing (silent Pro mode)
+            EmptyView()
+        } else if subscriptionService.subscriptionStatus.isActive {
+            // Actual subscriber (StoreKit trial or paid) - show appreciation
+            ProUserCard()
+        } else if subscriptionService.isInSoftTrial {
+            // Soft trial active (preview period) - show timer + subscribe CTA
+            SoftTrialProCard(showingPaywall: $showingPaywall)
+        } else {
+            // Not subscribed, no soft trial - show upgrade prompt
+            UpgradePromptCard(
+                subtext: "Support continued development while getting Live Activities, track predictions, delay & arrival forecasts, and more",
+                showingPaywall: $showingPaywall
+            )
         }
     }
 }
