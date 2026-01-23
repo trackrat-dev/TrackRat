@@ -83,12 +83,12 @@ class TestMakeDedupKeys:
             data_source="NJT",
         )
 
-        primary, fallback = self.service._make_dedup_keys(departure)
+        primary, fallbacks = self.service._make_dedup_keys(departure)
 
         assert primary == "3936:2026-01-20:NJT"
 
-    def test_fallback_key_format(self):
-        """Test fallback key includes line code, source, and time."""
+    def test_fallback_keys_include_time_tolerance(self):
+        """Test fallback keys include current time and ±1 minute for tolerance."""
         departure = self._create_departure(
             train_id="3936",
             line_code="No",
@@ -96,9 +96,13 @@ class TestMakeDedupKeys:
             data_source="NJT",
         )
 
-        primary, fallback = self.service._make_dedup_keys(departure)
+        primary, fallbacks = self.service._make_dedup_keys(departure)
 
-        assert fallback == "No:NJT:09:15"
+        # Should have 3 keys: 09:14, 09:15, 09:16
+        assert len(fallbacks) == 3
+        assert "No:NJT:09:14" in fallbacks
+        assert "No:NJT:09:15" in fallbacks
+        assert "No:NJT:09:16" in fallbacks
 
     def test_no_primary_key_when_train_id_missing(self):
         """Test no primary key when train_id is empty."""
@@ -108,10 +112,10 @@ class TestMakeDedupKeys:
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
         )
 
-        primary, fallback = self.service._make_dedup_keys(departure)
+        primary, fallbacks = self.service._make_dedup_keys(departure)
 
         assert primary is None
-        assert fallback == "No:NJT:09:15"
+        assert "No:NJT:09:15" in fallbacks
 
     def test_no_primary_key_when_train_id_unknown(self):
         """Test no primary key when train_id is 'Unknown'."""
@@ -121,7 +125,7 @@ class TestMakeDedupKeys:
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
         )
 
-        primary, fallback = self.service._make_dedup_keys(departure)
+        primary, fallbacks = self.service._make_dedup_keys(departure)
 
         assert primary is None
 
@@ -134,7 +138,7 @@ class TestMakeDedupKeys:
             data_source="AMTRAK",
         )
 
-        primary, fallback = self.service._make_dedup_keys(departure)
+        primary, fallbacks = self.service._make_dedup_keys(departure)
 
         # A2205 should become 2205 in the key
         assert primary == "2205:2026-01-20:AMTRAK"
@@ -165,13 +169,62 @@ class TestMakeDedupKeys:
             data_source="NJT",
         )
 
-        _, fallback_et = self.service._make_dedup_keys(departure_et)
-        _, fallback_utc = self.service._make_dedup_keys(departure_utc)
+        _, fallbacks_et = self.service._make_dedup_keys(departure_et)
+        _, fallbacks_utc = self.service._make_dedup_keys(departure_utc)
 
-        # Both should produce the same fallback key (13:03 in ET)
-        assert fallback_et == "No:NJT:13:03"
-        assert fallback_utc == "No:NJT:13:03"
-        assert fallback_et == fallback_utc
+        # Both should produce the same fallback keys (13:02, 13:03, 13:04 in ET)
+        assert "No:NJT:13:03" in fallbacks_et
+        assert "No:NJT:13:03" in fallbacks_utc
+        # The main key should be the same
+        assert fallbacks_et == fallbacks_utc
+
+    def test_njt_line_code_normalization_ne_to_no(self):
+        """Test NJT line code 'NE' is normalized to 'No' for deduplication.
+
+        The NJT API inconsistently returns "NEC" or "Northeast Corridor" for
+        the same line, which when truncated gives "NE" or "No". GTFS always
+        maps to "No", so we normalize "NE" -> "No" for matching.
+        """
+        departure = self._create_departure(
+            train_id="3936",
+            line_code="NE",  # From NJT API returning "NEC"
+            scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
+            data_source="NJT",
+        )
+
+        _, fallbacks = self.service._make_dedup_keys(departure)
+
+        # "NE" should be normalized to "No" in the fallback key
+        assert "No:NJT:09:15" in fallbacks
+        assert "NE:NJT:09:15" not in fallbacks
+
+    def test_njt_line_code_normalization_rv_to_ra(self):
+        """Test NJT line code 'RV' is normalized to 'Ra' for deduplication."""
+        departure = self._create_departure(
+            train_id="5409",
+            line_code="RV",  # From NJT API
+            scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
+            data_source="NJT",
+        )
+
+        _, fallbacks = self.service._make_dedup_keys(departure)
+
+        # "RV" should be normalized to "Ra"
+        assert "Ra:NJT:09:15" in fallbacks
+
+    def test_non_njt_line_codes_not_normalized(self):
+        """Test that non-NJT line codes are not affected by normalization."""
+        departure = self._create_departure(
+            train_id="A2205",
+            line_code="NE",  # Same code but for Amtrak
+            scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
+            data_source="AMTRAK",
+        )
+
+        _, fallbacks = self.service._make_dedup_keys(departure)
+
+        # AMTRAK "NE" should NOT be normalized (it's a different system)
+        assert "NE:AMTRAK:09:15" in fallbacks
 
 
 class TestMergeDepartures:
@@ -256,13 +309,12 @@ class TestMergeDepartures:
         assert len(merged) == 1
         assert merged[0].train_id == "3936"
 
-    def test_line_code_must_match_for_dedup(self):
-        """Test that different line codes don't deduplicate.
+    def test_line_code_normalization_enables_dedup(self):
+        """Test that line code normalization enables correct deduplication.
 
-        This is the key bug scenario: if GTFS uses "NEC" and real-time uses "No",
-        the fallback keys won't match and we get duplicates.
-
-        After the fix, GTFS is normalized to "No" via NJT_LINE_CODE_MAPPING.
+        The NJT API inconsistently returns "NEC" or "Northeast Corridor",
+        giving different 2-char codes ("NE" vs "No"). With normalization,
+        both map to "No" and correctly deduplicate.
         """
         time = ET.localize(datetime(2026, 1, 20, 9, 15))
 
@@ -270,7 +322,7 @@ class TestMergeDepartures:
         realtime = [
             self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
         ]
-        # If GTFS wasn't normalized, it would use "NEC" - causing duplicates
+        # Even if GTFS or another source uses "NEC", it normalizes to "No"
         gtfs = [
             self._create_departure(
                 train_id="2508", line_code="NEC", scheduled_time=time
@@ -279,10 +331,9 @@ class TestMergeDepartures:
 
         merged = self.service._merge_departures(realtime, gtfs)
 
-        # WITHOUT line code normalization: 2 trains (duplicate!)
-        # WITH line code normalization: 1 train (correct)
-        # This test documents the problem - GTFS must use normalized line codes
-        assert len(merged) == 2  # Documents the mismatch case
+        # With line code normalization: 1 train (correctly deduplicated)
+        assert len(merged) == 1
+        assert merged[0].train_id == "3936"  # Real-time preferred
 
     def test_normalized_line_codes_dedup_correctly(self):
         """Test that normalized line codes enable correct deduplication."""
@@ -302,6 +353,54 @@ class TestMergeDepartures:
 
         # With same line codes, fallback key matches - no duplicates
         assert len(merged) == 1
+
+    def test_time_tolerance_deduplicates_within_one_minute(self):
+        """Test that trains within 1 minute of each other deduplicate.
+
+        Schedule differences between GTFS and real-time API can cause
+        the same train to have slightly different scheduled times.
+        With ±1 minute tolerance, these should still deduplicate.
+        """
+        realtime_time = ET.localize(datetime(2026, 1, 20, 9, 15))
+        gtfs_time = ET.localize(datetime(2026, 1, 20, 9, 16))  # 1 minute later
+
+        realtime = [
+            self._create_departure(
+                train_id="3936", line_code="No", scheduled_time=realtime_time
+            )
+        ]
+        gtfs = [
+            self._create_departure(
+                train_id="2508", line_code="No", scheduled_time=gtfs_time
+            )
+        ]
+
+        merged = self.service._merge_departures(realtime, gtfs)
+
+        # Should deduplicate despite 1 minute difference
+        assert len(merged) == 1
+        assert merged[0].train_id == "3936"
+
+    def test_time_tolerance_does_not_dedup_beyond_one_minute(self):
+        """Test that trains more than 1 minute apart don't deduplicate."""
+        realtime_time = ET.localize(datetime(2026, 1, 20, 9, 15))
+        gtfs_time = ET.localize(datetime(2026, 1, 20, 9, 18))  # 3 minutes later
+
+        realtime = [
+            self._create_departure(
+                train_id="3936", line_code="No", scheduled_time=realtime_time
+            )
+        ]
+        gtfs = [
+            self._create_departure(
+                train_id="2508", line_code="No", scheduled_time=gtfs_time
+            )
+        ]
+
+        merged = self.service._merge_departures(realtime, gtfs)
+
+        # Should NOT deduplicate - 3 minutes is beyond tolerance
+        assert len(merged) == 2
 
     def test_gtfs_added_when_no_realtime_match(self):
         """Test GTFS trains are added when no real-time match exists."""

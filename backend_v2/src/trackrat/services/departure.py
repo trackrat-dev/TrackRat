@@ -4,6 +4,19 @@ Departure service for handling train departure queries.
 
 import time
 from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING
+
+# NJT line code normalization for deduplication.
+# The NJT API inconsistently returns line names (e.g., "Northeast Corridor" vs "NEC"),
+# which when truncated to 2 chars gives different codes ("No" vs "NE").
+# This map normalizes all variations to canonical forms matching GTFS.
+NJT_LINE_CANONICALIZATION: dict[str, str] = {
+    # Northeast Corridor: API returns "NEC" -> "NE", but GTFS maps to "No"
+    "NE": "No",
+    "NEC": "No",  # In case full code is passed
+    # Raritan Valley: API sometimes returns "RV", GTFS maps RARV -> "Ra"
+    "RV": "Ra",
+}
 from typing import Any
 
 from sqlalchemy import and_, case, func, select
@@ -791,12 +804,25 @@ class DepartureService:
                         new_track=sanitized_track,
                     )
 
-    def _make_dedup_keys(self, dep: TrainDeparture) -> tuple[str | None, str]:
+    def _normalize_line_code(self, line_code: str, data_source: str) -> str:
+        """Normalize line code to canonical form for deduplication.
+
+        NJT line codes can vary between real-time API and GTFS:
+        - API "NEC" truncated -> "NE", but GTFS maps to "No"
+        - API "Raritan Valley" -> "RV", but GTFS maps RARV -> "Ra"
+        """
+        if data_source == "NJT":
+            return NJT_LINE_CANONICALIZATION.get(line_code, line_code)
+        return line_code
+
+    def _make_dedup_keys(self, dep: TrainDeparture) -> tuple[str | None, list[str]]:
         """Create primary (train_id) and fallback (line+time) dedup keys.
 
         Returns:
-            Tuple of (primary_key, fallback_key) where primary_key may be None
-            if train_id is missing or unreliable.
+            Tuple of (primary_key, fallback_keys) where:
+            - primary_key may be None if train_id is missing or unreliable
+            - fallback_keys is a list of keys for the current time ±1 minute
+              to handle minor schedule differences between sources
         """
         # Primary: normalized train_id
         primary_key = None
@@ -807,20 +833,25 @@ class DepartureService:
                 train_id = train_id.lstrip("A")
             primary_key = f"{train_id}:{dep.journey_date}:{dep.data_source}"
 
-        # Fallback: line + scheduled time (minute precision for robust matching)
-        # PATH trains don't have stable train_ids across Transiter/GTFS, so fallback
-        # matching is critical. Minute precision handles minor time variations.
-        # Normalize to ET to handle timezone differences between data sources
-        # (GTFS times are in ET, real-time API times may be in UTC).
+        # Fallback: line + scheduled time with tolerance
+        # - Normalize line codes to handle NJT API inconsistencies
+        # - Generate keys for ±1 minute to handle minor time differences
+        # - Normalize to ET to handle timezone differences between data sources
+        line_code = self._normalize_line_code(dep.line.code, dep.data_source)
         scheduled = dep.departure.scheduled_time
+
         if scheduled:
             scheduled_et = normalize_to_et(scheduled)
-            time_str = scheduled_et.strftime("%H:%M")
+            # Generate keys for current minute and adjacent minutes
+            fallback_keys = []
+            for minute_offset in [-1, 0, 1]:
+                adj_time = scheduled_et + timedelta(minutes=minute_offset)
+                time_str = adj_time.strftime("%H:%M")
+                fallback_keys.append(f"{line_code}:{dep.data_source}:{time_str}")
         else:
-            time_str = "unknown"
-        fallback_key = f"{dep.line.code}:{dep.data_source}:{time_str}"
+            fallback_keys = [f"{line_code}:{dep.data_source}:unknown"]
 
-        return primary_key, fallback_key
+        return primary_key, fallback_keys
 
     def _merge_departures(
         self,
@@ -831,7 +862,7 @@ class DepartureService:
 
         Deduplication uses two keys:
         1. Primary: normalized train_id (handles Amtrak A-prefix mismatch)
-        2. Fallback: line + scheduled time (for unreliable train_ids)
+        2. Fallback: normalized line + time with ±1 minute tolerance
 
         Cancelled real-time trains suppress their GTFS counterparts.
         """
@@ -842,14 +873,15 @@ class DepartureService:
         cancelled_fallback: set[str] = set()
 
         for dep in realtime:
-            primary, fallback = self._make_dedup_keys(dep)
+            primary, fallbacks = self._make_dedup_keys(dep)
             if primary:
                 primary_keys.add(primary)
                 if dep.is_cancelled:
                     cancelled_primary.add(primary)
-            fallback_keys.add(fallback)
+            # Add all fallback keys (includes ±1 minute tolerance)
+            fallback_keys.update(fallbacks)
             if dep.is_cancelled:
-                cancelled_fallback.add(fallback)
+                cancelled_fallback.update(fallbacks)
 
         # Start with all real-time trains
         merged = list(realtime)
@@ -857,7 +889,7 @@ class DepartureService:
 
         # Add GTFS trains not matched in real-time
         for gtfs_dep in gtfs:
-            primary, fallback = self._make_dedup_keys(gtfs_dep)
+            primary, fallbacks = self._make_dedup_keys(gtfs_dep)
 
             # Check primary key match
             if primary and primary in primary_keys:
@@ -865,10 +897,10 @@ class DepartureService:
             if primary and primary in cancelled_primary:
                 continue
 
-            # Check fallback key match
-            if fallback in fallback_keys:
+            # Check fallback key match - any of the fallback keys matching is sufficient
+            if any(fb in fallback_keys for fb in fallbacks):
                 continue
-            if fallback in cancelled_fallback:
+            if any(fb in cancelled_fallback for fb in fallbacks):
                 continue
 
             # No match found - add GTFS train
