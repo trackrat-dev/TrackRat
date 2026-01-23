@@ -127,7 +127,8 @@ struct TrainDetailsView: View {
                                 hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
                                 journeyProgressPercentage: viewModel.journeyProgressPercentage,
                                 journeyStopsCompleted: viewModel.journeyStopsCompleted,
-                                journeyTotalStops: viewModel.journeyTotalStops
+                                journeyTotalStops: viewModel.journeyTotalStops,
+                                isLoadingStops: viewModel.isLoadingStops
                             )
                         }
                         .padding()
@@ -184,6 +185,15 @@ struct TrainDetailsView: View {
         .onDisappear {
             isViewVisible = false
         }
+        .onChange(of: viewModel.train) { oldValue, newValue in
+            // Update appState.currentTrain when we get full train data with stops
+            // This enables instant display when navigating back to this train
+            if let newTrain = newValue,
+               let stops = newTrain.stops,
+               !stops.isEmpty {
+                appState.currentTrain = newTrain
+            }
+        }
         .onChange(of: viewModel.triggerBoardingHaptic) { oldValue, newValue in
             if newValue {
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -232,6 +242,7 @@ struct CombinedDetailsCard: View {
     let journeyProgressPercentage: Int
     let journeyStopsCompleted: Int
     let journeyTotalStops: Int
+    let isLoadingStops: Bool
 
     private var departureTime: String {
         let formatter = DateFormatter()
@@ -475,6 +486,17 @@ struct CombinedDetailsCard: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 8)
+                } else if isLoadingStops {
+                    // Show loading indicator while fetching stops data
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Loading stops...")
+                            .foregroundColor(.black.opacity(0.6))
+                            .italic()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
                 } else {
                     Text("No stops information available for this journey segment.")
                         .foregroundColor(.black.opacity(0.6))
@@ -767,6 +789,7 @@ struct StopRowV2: View {
 class TrainDetailsViewModel: ObservableObject {
     @Published var train: TrainV2?
     @Published var isLoading = false
+    @Published var isLoadingStops = false  // True when we have partial train data awaiting stops
     @Published var error: String?
     @Published var triggerBoardingHaptic = false
     @Published var triggerTrackAssignedHaptic = false
@@ -915,18 +938,24 @@ class TrainDetailsViewModel: ObservableObject {
         let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? ""
         let effectiveDate = journeyDate ?? Date()
 
-        // PRIORITY 1: Use existingTrain from appState if provided (instant display from list navigation)
+        // PRIORITY 1: Use existingTrain from appState if provided (instant display)
         if let existingTrain = existingTrain {
-            print("⚡ Using existing train from appState - instant display")
+            let hasStops = existingTrain.stops != nil && !existingTrain.stops!.isEmpty
+            print("⚡ Using existing train from appState - instant display (hasStops: \(hasStops))")
             train = existingTrain
             updateComputedProperties()
 
-            // Cache it for future use
-            if !trainIdentifier.isEmpty {
+            // If train doesn't have stops, show loading indicator for stops section
+            if !hasStops {
+                isLoadingStops = true
+            }
+
+            // Only cache if train has stops data (don't overwrite good cache with partial data)
+            if !trainIdentifier.isEmpty && hasStops {
                 cacheService.cacheTrain(existingTrain, trainNumber: trainIdentifier, date: effectiveDate)
             }
 
-            // Background refresh to get full stops data (list may have partial data)
+            // Background refresh to get full data (including stops if missing)
             await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
             return
         }
@@ -993,6 +1022,11 @@ class TrainDetailsViewModel: ObservableObject {
     private func refreshTrainDetailsInBackground(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
         let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? "unknown"
         let effectiveDate = journeyDate ?? Date()
+
+        defer {
+            // Always clear stops loading state when background refresh completes
+            isLoadingStops = false
+        }
 
         do {
             print("🔄 Background refresh for train \(trainIdentifier)")
