@@ -15,6 +15,7 @@ from tests.fixtures.amtrak_api_responses import (
     EXPECTED_MULTI_HUB_TRAIN_IDS,
 )
 from tests.factories.amtrak import (
+    create_amtrak_station_data,
     create_amtrak_train_data,
     create_mock_amtrak_api_response,
 )
@@ -130,22 +131,27 @@ class TestAmtrakDiscoveryCollector:
         ), f"Expected 'amtrak_discovery_failed' event in {cap.entries}"
         assert error_entry["error"] == "API Error"
 
-    def test_stops_at_nyp_true(self, collector):
-        """Test _stops_at_nyp method returns True for trains serving NYP."""
+    def test_stops_at_any_hub_true(self, collector):
+        """Test _stops_at_any_hub method returns True for trains serving hub stations."""
         train = create_amtrak_train_data(stops_at_nyp=True)
-        result = collector._stops_at_nyp(train)
+        result = collector._stops_at_any_hub(train)
         assert result is True
 
-    def test_stops_at_nyp_false(self, collector):
-        """Test _stops_at_nyp method returns False for trains not serving NYP."""
-        train = create_amtrak_train_data(stops_at_nyp=False)
-        result = collector._stops_at_nyp(train)
+    def test_stops_at_any_hub_false(self, collector):
+        """Test _stops_at_any_hub method returns False for trains not serving hub stations."""
+        # Use non-existent station codes that are definitely not in DISCOVERY_HUBS
+        non_hub_stations = [
+            create_amtrak_station_data(code="XYZ", name="Fake Station 1"),
+            create_amtrak_station_data(code="ABC", name="Fake Station 2"),
+        ]
+        train = create_amtrak_train_data(stations=non_hub_stations)
+        result = collector._stops_at_any_hub(train)
         assert result is False
 
-    def test_stops_at_nyp_empty_stations(self, collector):
-        """Test _stops_at_nyp method with train having no stations."""
+    def test_stops_at_any_hub_empty_stations(self, collector):
+        """Test _stops_at_any_hub method with train having no stations."""
         train = create_amtrak_train_data(stations=[])
-        result = collector._stops_at_nyp(train)
+        result = collector._stops_at_any_hub(train)
         assert result is False
 
     async def test_run_method_interface(self, collector, mock_client):
