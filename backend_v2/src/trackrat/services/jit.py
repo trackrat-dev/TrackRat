@@ -9,12 +9,14 @@ from typing import Any
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.collectors.path.collector import PathCollector
+from trackrat.db.engine import retry_on_deadlock
 from trackrat.models.database import TrainJourney
 from trackrat.settings import get_settings
 from trackrat.utils.time import is_stale, now_et, safe_datetime_subtract
@@ -129,8 +131,6 @@ class JustInTimeUpdateService:
         )
 
         # Find the journey - eagerly load stops to avoid lazy loading issues
-        from sqlalchemy.orm import selectinload
-
         # Build query conditions
         conditions = [
             TrainJourney.train_id == train_id,
@@ -173,19 +173,27 @@ class JustInTimeUpdateService:
             )
 
             try:
-                # Get appropriate collector for this journey
-                collector = await self.get_collector_for_journey(journey)
+                # Wrap refresh in retry logic to handle deadlocks
+                # After rollback, we must re-query the journey since ORM objects are detached
+                async def do_refresh() -> TrainJourney:
+                    # Re-query journey to get fresh state after potential rollback
+                    fresh_journey = await session.scalar(stmt)
+                    if not fresh_journey:
+                        raise ValueError(f"Journey {train_id} disappeared during refresh")
+                    collector = await self.get_collector_for_journey(fresh_journey)
+                    await collector.collect_journey_details(session, fresh_journey)
+                    return fresh_journey
 
-                # Use collector to update journey
-                await collector.collect_journey_details(session, journey)
+                refreshed = await retry_on_deadlock(session, do_refresh)
 
                 logger.info(
                     "journey_data_refreshed",
                     train_id=train_id,
-                    data_source=journey.data_source,
-                    stops_count=journey.stops_count,
-                    is_completed=journey.is_completed,
+                    data_source=refreshed.data_source,
+                    stops_count=refreshed.stops_count,
+                    is_completed=refreshed.is_completed,
                 )
+                journey = refreshed
 
             except Exception as e:
                 logger.error(
@@ -298,15 +306,24 @@ class JustInTimeUpdateService:
     async def _refresh_journey_safe(
         self, session: AsyncSession, journey: TrainJourney
     ) -> None:
-        """Safely refresh a journey, catching exceptions.
+        """Safely refresh a journey with deadlock retry.
 
         Args:
             session: Database session
             journey: Journey to refresh
         """
+        journey_id = journey.id
+
+        async def do_refresh() -> None:
+            # Re-query to get fresh state after potential rollback
+            fresh_journey = await session.get(TrainJourney, journey_id)
+            if not fresh_journey:
+                raise ValueError(f"Journey {journey_id} not found during refresh")
+            collector = await self.get_collector_for_journey(fresh_journey)
+            await collector.collect_journey_details(session, fresh_journey)
+
         try:
-            collector = await self.get_collector_for_journey(journey)
-            await collector.collect_journey_details(session, journey)
+            await retry_on_deadlock(session, do_refresh)
         except Exception as e:
             logger.error(
                 "journey_refresh_failed",

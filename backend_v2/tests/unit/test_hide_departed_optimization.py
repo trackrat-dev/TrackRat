@@ -122,6 +122,8 @@ class TestHideDepartedOptimization:
 
         mock_session.scalar = AsyncMock(side_effect=mock_scalar_side_effect)
         mock_session.execute = AsyncMock(return_value=mock_result)
+        # Mock session.get() for the retry_on_deadlock re-query
+        mock_session.get = AsyncMock(return_value=stale_journey)
 
         with patch("trackrat.services.departure.NJTransitClient") as mock_njt:
             mock_client = AsyncMock()

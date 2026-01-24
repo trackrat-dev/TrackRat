@@ -6,7 +6,7 @@ Uses PostgreSQL with asyncpg for scalable, concurrent database access.
 
 import asyncio
 import functools
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any, TypeVar
 
@@ -88,6 +88,59 @@ def with_db_retry(max_attempts: int = 3, base_delay: float = 0.5) -> Callable[[F
         return wrapper  # type: ignore[return-value]
 
     return decorator
+
+
+T = TypeVar("T")
+
+
+async def retry_on_deadlock(
+    session: AsyncSession,
+    operation: Callable[[], Awaitable[T]],
+    max_attempts: int = 3,
+    base_delay: float = 0.1,
+) -> T:
+    """Retry an operation on deadlock, rolling back between attempts.
+
+    Use this when an operation may encounter deadlocks due to concurrent updates.
+    The session is rolled back between attempts to clear the failed transaction state.
+
+    Args:
+        session: The database session (will be rolled back on retry)
+        operation: Async callable to execute
+        max_attempts: Maximum retry attempts (default: 3)
+        base_delay: Base delay in seconds between retries (exponential backoff)
+
+    Returns:
+        Result of the operation
+
+    Raises:
+        Exception: Re-raises the last exception if all retries fail
+    """
+    last_error: Exception | None = None
+
+    for attempt in range(max_attempts):
+        try:
+            return await operation()
+        except Exception as e:
+            last_error = e
+            if _is_postgresql_concurrency_error(e) and attempt < max_attempts - 1:
+                wait_time = base_delay * (2**attempt)
+                logger.warning(
+                    "deadlock_retry",
+                    attempt=attempt + 1,
+                    max_attempts=max_attempts,
+                    wait_time=wait_time,
+                    error=str(e)[:200],
+                )
+                await session.rollback()
+                await asyncio.sleep(wait_time)
+                continue
+            raise
+
+    # Should not reach here, but satisfy type checker
+    if last_error:
+        raise last_error
+    raise RuntimeError("retry_on_deadlock: unexpected state")
 
 
 def get_engine() -> AsyncEngine:

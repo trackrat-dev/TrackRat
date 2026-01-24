@@ -14,6 +14,7 @@ from structlog import get_logger
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
 from trackrat.config.stations import get_station_name
+from trackrat.db.engine import retry_on_deadlock
 from trackrat.models.api import (
     DataFreshness,
     DeparturesResponse,
@@ -685,8 +686,19 @@ class DepartureService:
                 individual_updated = 0
 
                 for journey in remaining_stale:
+                    if journey.id is None:
+                        continue
+                    journey_id = journey.id
+
+                    async def refresh_journey(jid: int = journey_id) -> None:
+                        # Re-query to get fresh state after potential rollback
+                        # Default param captures journey_id at definition time
+                        fresh = await db.get(TrainJourney, jid)
+                        if fresh:
+                            await njt_collector.collect_journey_details(db, fresh)
+
                     try:
-                        await njt_collector.collect_journey_details(db, journey)
+                        await retry_on_deadlock(db, refresh_journey)
                         individual_updated += 1
                         logger.debug(
                             "stale_train_refreshed",
