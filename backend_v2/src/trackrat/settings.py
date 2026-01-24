@@ -95,6 +95,10 @@ class Settings(BaseSettings):
         default=False,
         description="Enable LIRR train collection and display",
     )
+    enable_mnr: bool = Field(
+        default=False,
+        description="Enable Metro-North train collection and display",
+    )
 
     # CORS Settings
     cors_allowed_origins: list[str] = Field(

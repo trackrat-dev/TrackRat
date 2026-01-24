@@ -23,6 +23,7 @@ from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.collector import PathCollector
 from trackrat.collectors.lirr.collector import LIRRCollector
+from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
@@ -119,6 +120,18 @@ class SchedulerService:
                 trigger=IntervalTrigger(minutes=4),
                 id="lirr_collection",
                 name="LIRR Collection",
+                replace_existing=True,
+                max_instances=1,
+                misfire_grace_time=120,
+            )
+
+        # Schedule MNR collection (every 4 minutes) - only if enabled
+        if self.settings.enable_mnr:
+            self.scheduler.add_job(
+                self.run_mnr_collection,
+                trigger=IntervalTrigger(minutes=4),
+                id="mnr_collection",
+                name="MNR Collection",
                 replace_existing=True,
                 max_instances=1,
                 misfire_grace_time=120,
@@ -240,6 +253,8 @@ class SchedulerService:
         asyncio.create_task(self.run_path_collection())
         if self.settings.enable_lirr:
             asyncio.create_task(self.run_lirr_collection())
+        if self.settings.enable_mnr:
+            asyncio.create_task(self.run_mnr_collection())
 
         # Check and initialize GTFS feeds on startup (downloads if missing)
         asyncio.create_task(self.check_and_initialize_gtfs_feeds())
@@ -476,6 +491,55 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("lirr_collection_skipped_still_fresh")
+
+    async def run_mnr_collection(self) -> None:
+        """Run unified Metro-North collection (discovery + journey updates)."""
+        task_id = f"mnr_collection_{now_et().isoformat()}"
+
+        async def do_mnr_collection_work() -> dict[str, Any]:
+            """The actual MNR collection work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_mnr_collection")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Run unified MNR collection
+                collector = MNRCollector()
+                try:
+                    result = await collector.run()
+
+                    logger.info(
+                        "mnr_collection_completed",
+                        total_arrivals=result.get("total_arrivals", 0),
+                        discovered=result.get("discovered", 0),
+                        updated=result.get("updated", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        async with get_session() as db:
+            # 4 minute interval, use 90% = 216 seconds safe interval
+            safe_interval = calculate_safe_interval(4)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="mnr_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_mnr_collection_work,
+            )
+
+            if not executed:
+                logger.debug("mnr_collection_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""

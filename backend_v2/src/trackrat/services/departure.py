@@ -142,6 +142,8 @@ class DepartureService:
         default_sources = ["NJT", "AMTRAK", "PATH", "PATCO"]
         if settings.enable_lirr:
             default_sources.append("LIRR")
+        if settings.enable_mnr:
+            default_sources.append("MNR")
         allowed_sources = data_sources if data_sources else default_sources
 
         departure_filters = [

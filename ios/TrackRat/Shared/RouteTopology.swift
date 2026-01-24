@@ -31,7 +31,7 @@ struct RouteTopology {
 
     // MARK: - All Routes
 
-    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes
+    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes
 
     // MARK: - NJ Transit Routes
 
@@ -354,6 +354,58 @@ struct RouteTopology {
             name: "Grand Central Madison",
             dataSource: "LIRR",
             stationCodes: ["GCT", "JAM"]
+        )
+    ]
+
+    // MARK: - Metro-North Routes
+
+    static let mnrRoutes: [RouteLine] = [
+        // Hudson Line
+        RouteLine(
+            id: "mnr-hudson",
+            name: "Hudson Line",
+            dataSource: "MNR",
+            stationCodes: ["GCT", "MHL", "MEYS", "MMRH", "MUNH", "MMBL", "MSDV", "MRVD", "MLUD", "MYON", "MGWD", "MGRY", "MHOH", "MDBF", "MARD", "MIRV", "MTTN", "MPHM", "MSCB", "MOSS", "MCRH", "MCRT", "MPKS", "MMAN", "MGAR", "MCSP", "MBRK", "MBCN", "MNHB", "MPOK"]
+        ),
+
+        // Harlem Line
+        RouteLine(
+            id: "mnr-harlem",
+            name: "Harlem Line",
+            dataSource: "MNR",
+            stationCodes: ["GCT", "MHL", "MMEL", "MTRM", "MFOR", "MBOG", "MWBG", "MWDL", "MWKF", "MMVW", "MFLT", "MBRX", "MTUC", "MCWD", "MSCD", "MHSD", "MWPL", "MNWP", "MVAL", "MMTP", "MHWT", "MPLV", "MCHP", "MMTK", "MBDH", "MKAT", "MGLD", "MPRD", "MCFL", "MBRS", "MSET", "MPAT", "MPAW", "MAPT", "MHVW", "MDVP", "MTMR", "MWAS"]
+        ),
+
+        // New Haven Line (main)
+        RouteLine(
+            id: "mnr-new-haven",
+            name: "New Haven Line",
+            dataSource: "MNR",
+            stationCodes: ["GCT", "MHL", "MMVE", "MPEL", "MNRC", "MLRM", "MMAM", "MHRR", "MRYE", "MPCH", "MGRN", "MCOC", "MRSD", "MODG", "MSTM", "MNOH", "MDAR", "MROW", "MSNW", "MENW", "MWPT", "MGRF", "MSPT", "MFFD", "MFBR", "MBGP", "MSTR", "MMIL", "MWHN", "MNHV", "MNSS"]
+        ),
+
+        // New Canaan Branch
+        RouteLine(
+            id: "mnr-new-canaan",
+            name: "New Canaan Branch",
+            dataSource: "MNR",
+            stationCodes: ["MSTM", "MGLB", "MSPD", "MTMH", "MNCA"]
+        ),
+
+        // Danbury Branch
+        RouteLine(
+            id: "mnr-danbury",
+            name: "Danbury Branch",
+            dataSource: "MNR",
+            stationCodes: ["MSNW", "MMR7", "MWIL", "MCAN", "MBVL", "MRED", "MBTH", "MDBY"]
+        ),
+
+        // Waterbury Branch
+        RouteLine(
+            id: "mnr-waterbury",
+            name: "Waterbury Branch",
+            dataSource: "MNR",
+            stationCodes: ["MBGP", "MSTR", "MDBS", "MANS", "MSYM", "MBCF", "MNAU", "MWTB"]
         )
     ]
 

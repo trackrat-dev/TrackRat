@@ -7,6 +7,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     case path = "PATH"
     case patco = "PATCO"
     case lirr = "LIRR"
+    case mnr = "MNR"
 
     var id: String { rawValue }
 
@@ -18,6 +19,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .path: return "PATH"
         case .patco: return "PATCO"
         case .lirr: return "LIRR"
+        case .mnr: return "Metro-North"
         }
     }
 
@@ -29,6 +31,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .path: return "NY-NJ rapid transit"
         case .patco: return "Philly-South Jersey"
         case .lirr: return "Long Island commuter rail"
+        case .mnr: return "NYC-Hudson Valley rail"
         }
     }
 
@@ -40,6 +43,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .path: return "tram"
         case .patco: return "lightrail.fill"
         case .lirr: return "train.side.rear.car"
+        case .mnr: return "train.side.front.car"
         }
     }
 
@@ -51,6 +55,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .path: return "#FF5722"  // PATH orange
         case .patco: return "#0072CE" // PATCO blue
         case .lirr: return "#0039A6"  // MTA LIRR blue
+        case .mnr: return "#0039A6"   // MTA Metro-North blue
         }
     }
 }

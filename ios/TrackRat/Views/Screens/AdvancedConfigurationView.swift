@@ -110,6 +110,15 @@ struct AdvancedConfigurationView: View {
                     appState.setSystemEnabled(.lirr, enabled: enabled)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
+
+                // Metro-North toggle
+                TrainSystemToggleRow(
+                    system: .mnr,
+                    isEnabled: appState.isSystemEnabled(.mnr)
+                ) { enabled in
+                    appState.setSystemEnabled(.mnr, enabled: enabled)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
             }
         }
         .padding()

@@ -414,6 +414,119 @@ STATION_NAMES: dict[str, str] = {
     "WDD": "Woodside",
     "WYD": "Wyandanch",
     "YPK": "Yaphank",
+    # Metro-North Railroad stations
+    "GCT": "Grand Central Terminal",
+    "MHL": "Harlem-125th Street",
+    "MEYS": "Yankees-E 153 St",
+    "MMRH": "Morris Heights",
+    "MUNH": "University Heights",
+    "MMBL": "Marble Hill",
+    "MSDV": "Spuyten Duyvil",
+    "MRVD": "Riverdale",
+    "MLUD": "Ludlow",
+    "MYON": "Yonkers",
+    "MGWD": "Glenwood",
+    "MGRY": "Greystone",
+    "MHOH": "Hastings-on-Hudson",
+    "MDBF": "Dobbs Ferry",
+    "MARD": "Ardsley-on-Hudson",
+    "MIRV": "Irvington",
+    "MTTN": "Tarrytown",
+    "MPHM": "Philipse Manor",
+    "MSCB": "Scarborough",
+    "MOSS": "Ossining",
+    "MCRH": "Croton-Harmon",
+    "MCRT": "Cortlandt",
+    "MPKS": "Peekskill",
+    "MMAN": "Manitou",
+    "MGAR": "Garrison",
+    "MCSP": "Cold Spring",
+    "MBRK": "Breakneck Ridge",
+    "MBCN": "Beacon",
+    "MNHB": "New Hamburg",
+    "MPOK": "Poughkeepsie",
+    "MMEL": "Melrose",
+    "MTRM": "Tremont",
+    "MFOR": "Fordham",
+    "MBOG": "Botanical Garden",
+    "MWBG": "Williams Bridge",
+    "MWDL": "Woodlawn",
+    "MWKF": "Wakefield",
+    "MMVW": "Mt Vernon West",
+    "MFLT": "Fleetwood",
+    "MBRX": "Bronxville",
+    "MTUC": "Tuckahoe",
+    "MCWD": "Crestwood",
+    "MSCD": "Scarsdale",
+    "MHSD": "Hartsdale",
+    "MWPL": "White Plains",
+    "MNWP": "North White Plains",
+    "MVAL": "Valhalla",
+    "MMTP": "Mt Pleasant",
+    "MHWT": "Hawthorne",
+    "MPLV": "Pleasantville",
+    "MCHP": "Chappaqua",
+    "MMTK": "Mt Kisco",
+    "MBDH": "Bedford Hills",
+    "MKAT": "Katonah",
+    "MGLD": "Goldens Bridge",
+    "MPRD": "Purdy's",
+    "MCFL": "Croton Falls",
+    "MBRS": "Brewster",
+    "MSET": "Southeast",
+    "MPAT": "Patterson",
+    "MPAW": "Pawling",
+    "MAPT": "Appalachian Trail",
+    "MHVW": "Harlem Valley-Wingdale",
+    "MDVP": "Dover Plains",
+    "MTMR": "Tenmile River",
+    "MWAS": "Wassaic",
+    "MMVE": "Mt Vernon East",
+    "MPEL": "Pelham",
+    "MNRC": "New Rochelle",
+    "MLRM": "Larchmont",
+    "MMAM": "Mamaroneck",
+    "MHRR": "Harrison",
+    "MRYE": "Rye",
+    "MPCH": "Port Chester",
+    "MGRN": "Greenwich",
+    "MCOC": "Cos Cob",
+    "MRSD": "Riverside",
+    "MODG": "Old Greenwich",
+    "MSTM": "Stamford",
+    "MNOH": "Noroton Heights",
+    "MDAR": "Darien",
+    "MROW": "Rowayton",
+    "MSNW": "South Norwalk",
+    "MENW": "East Norwalk",
+    "MWPT": "Westport",
+    "MGRF": "Green's Farms",
+    "MSPT": "Southport",
+    "MFFD": "Fairfield",
+    "MFBR": "Fairfield-Black Rock",
+    "MBGP": "Bridgeport",
+    "MSTR": "Stratford",
+    "MMIL": "Milford",
+    "MWHN": "West Haven",
+    "MNHV": "New Haven",
+    "MNSS": "New Haven-State St",
+    "MGLB": "Glenbrook",
+    "MSPD": "Springdale",
+    "MTMH": "Talmadge Hill",
+    "MNCA": "New Canaan",
+    "MMR7": "Merritt 7",
+    "MWIL": "Wilton",
+    "MCAN": "Cannondale",
+    "MBVL": "Branchville",
+    "MRED": "Redding",
+    "MBTH": "Bethel",
+    "MDBY": "Danbury",
+    "MDBS": "Derby-Shelton",
+    "MANS": "Ansonia",
+    "MSYM": "Seymour",
+    "MBCF": "Beacon Falls",
+    "MNAU": "Naugatuck",
+    "MWTB": "Waterbury",
 }
 
 
@@ -1002,6 +1115,187 @@ def map_lirr_gtfs_stop(gtfs_stop_id: str) -> str | None:
     return LIRR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
 
 
+# =============================================================================
+# METRO-NORTH RAILROAD (MNR) CONFIGURATION
+# =============================================================================
+
+# Metro-North GTFS-RT feed URL (MTA direct)
+MNR_GTFS_RT_FEED_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr"
+
+# MNR GTFS stop_id to internal station code mapping
+# Grand Central (stop_id 1) maps to "GCT" for unified experience
+# Codes use M prefix to avoid conflicts with NJT/Amtrak/LIRR
+MNR_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
+    # Hudson Line
+    "1": "GCT",       # Grand Central Terminal (shared)
+    "4": "MHL",       # Harlem-125th Street
+    "622": "MEYS",    # Yankees-E 153 St
+    "9": "MMRH",      # Morris Heights
+    "10": "MUNH",     # University Heights
+    "11": "MMBL",     # Marble Hill
+    "14": "MSDV",     # Spuyten Duyvil
+    "16": "MRVD",     # Riverdale
+    "17": "MLUD",     # Ludlow
+    "18": "MYON",     # Yonkers
+    "19": "MGWD",     # Glenwood
+    "20": "MGRY",     # Greystone
+    "22": "MHOH",     # Hastings-on-Hudson
+    "23": "MDBF",     # Dobbs Ferry
+    "24": "MARD",     # Ardsley-on-Hudson
+    "25": "MIRV",     # Irvington
+    "27": "MTTN",     # Tarrytown
+    "29": "MPHM",     # Philipse Manor
+    "30": "MSCB",     # Scarborough
+    "31": "MOSS",     # Ossining
+    "33": "MCRH",     # Croton-Harmon
+    "37": "MCRT",     # Cortlandt
+    "39": "MPKS",     # Peekskill
+    "40": "MMAN",     # Manitou
+    "42": "MGAR",     # Garrison
+    "43": "MCSP",     # Cold Spring
+    "44": "MBRK",     # Breakneck Ridge
+    "46": "MBCN",     # Beacon
+    "49": "MNHB",     # New Hamburg
+    "51": "MPOK",     # Poughkeepsie
+    # Harlem Line
+    "54": "MMEL",     # Melrose
+    "55": "MTRM",     # Tremont
+    "56": "MFOR",     # Fordham
+    "57": "MBOG",     # Botanical Garden
+    "58": "MWBG",     # Williams Bridge
+    "59": "MWDL",     # Woodlawn
+    "61": "MWKF",     # Wakefield
+    "62": "MMVW",     # Mt Vernon West
+    "64": "MFLT",     # Fleetwood
+    "65": "MBRX",     # Bronxville
+    "66": "MTUC",     # Tuckahoe
+    "68": "MCWD",     # Crestwood
+    "71": "MSCD",     # Scarsdale
+    "72": "MHSD",     # Hartsdale
+    "74": "MWPL",     # White Plains
+    "76": "MNWP",     # North White Plains
+    "78": "MVAL",     # Valhalla
+    "79": "MMTP",     # Mt Pleasant
+    "80": "MHWT",     # Hawthorne
+    "81": "MPLV",     # Pleasantville
+    "83": "MCHP",     # Chappaqua
+    "84": "MMTK",     # Mt Kisco
+    "85": "MBDH",     # Bedford Hills
+    "86": "MKAT",     # Katonah
+    "88": "MGLD",     # Goldens Bridge
+    "89": "MPRD",     # Purdy's
+    "90": "MCFL",     # Croton Falls
+    "91": "MBRS",     # Brewster
+    "94": "MSET",     # Southeast
+    "97": "MPAT",     # Patterson
+    "98": "MPAW",     # Pawling
+    "99": "MAPT",     # Appalachian Trail
+    "100": "MHVW",    # Harlem Valley-Wingdale
+    "101": "MDVP",    # Dover Plains
+    "176": "MTMR",    # Tenmile River
+    "177": "MWAS",    # Wassaic
+    # New Haven Line
+    "105": "MMVE",    # Mt Vernon East
+    "106": "MPEL",    # Pelham
+    "108": "MNRC",    # New Rochelle
+    "110": "MLRM",    # Larchmont
+    "111": "MMAM",    # Mamaroneck
+    "112": "MHRR",    # Harrison
+    "114": "MRYE",    # Rye
+    "115": "MPCH",    # Port Chester
+    "116": "MGRN",    # Greenwich
+    "118": "MCOC",    # Cos Cob
+    "120": "MRSD",    # Riverside
+    "121": "MODG",    # Old Greenwich
+    "124": "MSTM",    # Stamford
+    "127": "MNOH",    # Noroton Heights
+    "128": "MDAR",    # Darien
+    "129": "MROW",    # Rowayton
+    "131": "MSNW",    # South Norwalk
+    "133": "MENW",    # East Norwalk
+    "134": "MWPT",    # Westport
+    "136": "MGRF",    # Green's Farms
+    "137": "MSPT",    # Southport
+    "138": "MFFD",    # Fairfield
+    "188": "MFBR",    # Fairfield-Black Rock
+    "140": "MBGP",    # Bridgeport
+    "143": "MSTR",    # Stratford
+    "145": "MMIL",    # Milford
+    "190": "MWHN",    # West Haven
+    "149": "MNHV",    # New Haven
+    "151": "MNSS",    # New Haven-State St
+    # New Canaan Branch
+    "153": "MGLB",    # Glenbrook
+    "154": "MSPD",    # Springdale
+    "155": "MTMH",    # Talmadge Hill
+    "157": "MNCA",    # New Canaan
+    # Danbury Branch
+    "158": "MMR7",    # Merritt 7
+    "160": "MWIL",    # Wilton
+    "161": "MCAN",    # Cannondale
+    "162": "MBVL",    # Branchville
+    "163": "MRED",    # Redding
+    "164": "MBTH",    # Bethel
+    "165": "MDBY",    # Danbury
+    # Waterbury Branch
+    "167": "MDBS",    # Derby-Shelton
+    "168": "MANS",    # Ansonia
+    "169": "MSYM",    # Seymour
+    "170": "MBCF",    # Beacon Falls
+    "171": "MNAU",    # Naugatuck
+    "172": "MWTB",    # Waterbury
+}
+
+# Reverse mapping for MNR
+INTERNAL_TO_MNR_GTFS_STOP_MAP: dict[str, str] = {
+    v: k for k, v in MNR_GTFS_STOP_TO_INTERNAL_MAP.items()
+}
+
+# MNR route definitions (route_id -> line_code, name, color)
+# Colors from official MTA GTFS
+MNR_ROUTES: dict[str, tuple[str, str, str]] = {
+    "1": ("MNR-HUD", "Hudson Line", "#009B3A"),
+    "2": ("MNR-HAR", "Harlem Line", "#0039A6"),
+    "3": ("MNR-NH", "New Haven Line", "#EE0034"),
+    "4": ("MNR-NC", "New Canaan Branch", "#EE0034"),
+    "5": ("MNR-DAN", "Danbury Branch", "#EE0034"),
+    "6": ("MNR-WAT", "Waterbury Branch", "#EE0034"),
+}
+
+# MNR discovery stations - major hubs to poll for train discovery
+MNR_DISCOVERY_STATIONS = [
+    "GCT",    # Grand Central Terminal
+    "MHL",    # Harlem-125th Street
+    "MPOK",   # Poughkeepsie (Hudson terminus)
+    "MWAS",   # Wassaic (Harlem terminus)
+    "MNHV",   # New Haven (New Haven terminus)
+]
+
+
+def get_mnr_route_info(gtfs_route_id: str) -> tuple[str, str, str] | None:
+    """Get Metro-North route info from GTFS route ID.
+
+    Args:
+        gtfs_route_id: GTFS route_id (e.g., '1' for Hudson Line)
+
+    Returns:
+        Tuple of (line_code, route_name, color) or None if not mapped
+    """
+    return MNR_ROUTES.get(gtfs_route_id)
+
+
+def map_mnr_gtfs_stop(gtfs_stop_id: str) -> str | None:
+    """Map Metro-North GTFS stop_id to our internal station code.
+
+    Args:
+        gtfs_stop_id: GTFS stop_id (e.g., '1' for Grand Central)
+
+    Returns:
+        Our internal station code (e.g., 'GCT') or None if not mapped
+    """
+    return MNR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
+
+
 def get_patco_route_info(gtfs_route_id: str) -> tuple[str, str, str] | None:
     """Get PATCO route info from GTFS route ID.
 
@@ -1538,6 +1832,119 @@ STATION_COORDINATES = {
     "WDD": {"lat": 40.74585067, "lon": -73.90297516},  # Woodside
     "WYD": {"lat": 40.75480101, "lon": -73.35806588},  # Wyandanch
     "YPK": {"lat": 40.82561319, "lon": -72.91587848},  # Yaphank
+    # Metro-North Railroad stations
+    "GCT": {"lat": 40.752998, "lon": -73.977056},    # Grand Central Terminal
+    "MHL": {"lat": 40.805157, "lon": -73.939149},    # Harlem-125th Street
+    "MEYS": {"lat": 40.8253, "lon": -73.9299},       # Yankees-E 153 St
+    "MMRH": {"lat": 40.854252, "lon": -73.919583},   # Morris Heights
+    "MUNH": {"lat": 40.862248, "lon": -73.91312},    # University Heights
+    "MMBL": {"lat": 40.874333, "lon": -73.910941},   # Marble Hill
+    "MSDV": {"lat": 40.878245, "lon": -73.921455},   # Spuyten Duyvil
+    "MRVD": {"lat": 40.903981, "lon": -73.914126},   # Riverdale
+    "MLUD": {"lat": 40.924972, "lon": -73.904612},   # Ludlow
+    "MYON": {"lat": 40.935795, "lon": -73.902668},   # Yonkers
+    "MGWD": {"lat": 40.950496, "lon": -73.899062},   # Glenwood
+    "MGRY": {"lat": 40.972705, "lon": -73.889069},   # Greystone
+    "MHOH": {"lat": 40.994109, "lon": -73.884512},   # Hastings-on-Hudson
+    "MDBF": {"lat": 41.012459, "lon": -73.87949},    # Dobbs Ferry
+    "MARD": {"lat": 41.026198, "lon": -73.876543},   # Ardsley-on-Hudson
+    "MIRV": {"lat": 41.039993, "lon": -73.873083},   # Irvington
+    "MTTN": {"lat": 41.076473, "lon": -73.864563},   # Tarrytown
+    "MPHM": {"lat": 41.09492, "lon": -73.869755},    # Philipse Manor
+    "MSCB": {"lat": 41.135763, "lon": -73.866163},   # Scarborough
+    "MOSS": {"lat": 41.157663, "lon": -73.869281},   # Ossining
+    "MCRH": {"lat": 41.189903, "lon": -73.882394},   # Croton-Harmon
+    "MCRT": {"lat": 41.246259, "lon": -73.921884},   # Cortlandt
+    "MPKS": {"lat": 41.285962, "lon": -73.93042},    # Peekskill
+    "MMAN": {"lat": 41.332601, "lon": -73.970426},   # Manitou
+    "MGAR": {"lat": 41.38178, "lon": -73.947202},    # Garrison
+    "MCSP": {"lat": 41.415283, "lon": -73.95809},    # Cold Spring
+    "MBRK": {"lat": 41.450181, "lon": -73.982449},   # Breakneck Ridge
+    "MBCN": {"lat": 41.504007, "lon": -73.984528},   # Beacon
+    "MNHB": {"lat": 41.587448, "lon": -73.947226},   # New Hamburg
+    "MPOK": {"lat": 41.705839, "lon": -73.937946},   # Poughkeepsie
+    "MMEL": {"lat": 40.825761, "lon": -73.915231},   # Melrose
+    "MTRM": {"lat": 40.847301, "lon": -73.89955},    # Tremont
+    "MFOR": {"lat": 40.8615, "lon": -73.89058},      # Fordham
+    "MBOG": {"lat": 40.866555, "lon": -73.883109},   # Botanical Garden
+    "MWBG": {"lat": 40.878569, "lon": -73.871064},   # Williams Bridge
+    "MWDL": {"lat": 40.895361, "lon": -73.862916},   # Woodlawn
+    "MWKF": {"lat": 40.905936, "lon": -73.85568},    # Wakefield
+    "MMVW": {"lat": 40.912142, "lon": -73.851129},   # Mt Vernon West
+    "MFLT": {"lat": 40.92699, "lon": -73.83948},     # Fleetwood
+    "MBRX": {"lat": 40.93978, "lon": -73.835208},    # Bronxville
+    "MTUC": {"lat": 40.949393, "lon": -73.830166},   # Tuckahoe
+    "MCWD": {"lat": 40.958997, "lon": -73.820564},   # Crestwood
+    "MSCD": {"lat": 40.989168, "lon": -73.808634},   # Scarsdale
+    "MHSD": {"lat": 41.010333, "lon": -73.796407},   # Hartsdale
+    "MWPL": {"lat": 41.032589, "lon": -73.775208},   # White Plains
+    "MNWP": {"lat": 41.049806, "lon": -73.773142},   # North White Plains
+    "MVAL": {"lat": 41.072819, "lon": -73.772599},   # Valhalla
+    "MMTP": {"lat": 41.095877, "lon": -73.793822},   # Mt Pleasant
+    "MHWT": {"lat": 41.108581, "lon": -73.79625},    # Hawthorne
+    "MPLV": {"lat": 41.135222, "lon": -73.792661},   # Pleasantville
+    "MCHP": {"lat": 41.158015, "lon": -73.774885},   # Chappaqua
+    "MMTK": {"lat": 41.208242, "lon": -73.729778},   # Mt Kisco
+    "MBDH": {"lat": 41.237316, "lon": -73.699936},   # Bedford Hills
+    "MKAT": {"lat": 41.259552, "lon": -73.684155},   # Katonah
+    "MGLD": {"lat": 41.294338, "lon": -73.677655},   # Goldens Bridge
+    "MPRD": {"lat": 41.325775, "lon": -73.659061},   # Purdy's
+    "MCFL": {"lat": 41.347722, "lon": -73.662269},   # Croton Falls
+    "MBRS": {"lat": 41.39447, "lon": -73.619802},    # Brewster
+    "MSET": {"lat": 41.413203, "lon": -73.623787},   # Southeast
+    "MPAT": {"lat": 41.511827, "lon": -73.604584},   # Patterson
+    "MPAW": {"lat": 41.564205, "lon": -73.600524},   # Pawling
+    "MAPT": {"lat": 41.592871, "lon": -73.588032},   # Appalachian Trail
+    "MHVW": {"lat": 41.637525, "lon": -73.57145},    # Harlem Valley-Wingdale
+    "MDVP": {"lat": 41.740401, "lon": -73.576502},   # Dover Plains
+    "MTMR": {"lat": 41.779938, "lon": -73.558204},   # Tenmile River
+    "MWAS": {"lat": 41.814722, "lon": -73.562197},   # Wassaic
+    "MMVE": {"lat": 40.912161, "lon": -73.832185},   # Mt Vernon East
+    "MPEL": {"lat": 40.910321, "lon": -73.810242},   # Pelham
+    "MNRC": {"lat": 40.911605, "lon": -73.783807},   # New Rochelle
+    "MLRM": {"lat": 40.933394, "lon": -73.759792},   # Larchmont
+    "MMAM": {"lat": 40.954061, "lon": -73.736125},   # Mamaroneck
+    "MHRR": {"lat": 40.969432, "lon": -73.712964},   # Harrison
+    "MRYE": {"lat": 40.985922, "lon": -73.682553},   # Rye
+    "MPCH": {"lat": 41.000732, "lon": -73.6647},     # Port Chester
+    "MGRN": {"lat": 41.021277, "lon": -73.624621},   # Greenwich
+    "MCOC": {"lat": 41.030171, "lon": -73.598306},   # Cos Cob
+    "MRSD": {"lat": 41.031682, "lon": -73.588173},   # Riverside
+    "MODG": {"lat": 41.033817, "lon": -73.565859},   # Old Greenwich
+    "MSTM": {"lat": 41.046611, "lon": -73.542846},   # Stamford
+    "MNOH": {"lat": 41.069041, "lon": -73.49788},    # Noroton Heights
+    "MDAR": {"lat": 41.076913, "lon": -73.472966},   # Darien
+    "MROW": {"lat": 41.077456, "lon": -73.445527},   # Rowayton
+    "MSNW": {"lat": 41.09673, "lon": -73.421132},    # South Norwalk
+    "MENW": {"lat": 41.103996, "lon": -73.404588},   # East Norwalk
+    "MWPT": {"lat": 41.118928, "lon": -73.371413},   # Westport
+    "MGRF": {"lat": 41.122265, "lon": -73.315408},   # Green's Farms
+    "MSPT": {"lat": 41.134844, "lon": -73.28897},    # Southport
+    "MFFD": {"lat": 41.143077, "lon": -73.257742},   # Fairfield
+    "MFBR": {"lat": 41.161, "lon": -73.234336},      # Fairfield-Black Rock
+    "MBGP": {"lat": 41.178677, "lon": -73.187076},   # Bridgeport
+    "MSTR": {"lat": 41.194255, "lon": -73.131532},   # Stratford
+    "MMIL": {"lat": 41.223231, "lon": -73.057647},   # Milford
+    "MWHN": {"lat": 41.27142, "lon": -72.963488},    # West Haven
+    "MNHV": {"lat": 41.296501, "lon": -72.92829},    # New Haven
+    "MNSS": {"lat": 41.304979, "lon": -72.921747},   # New Haven-State St
+    "MGLB": {"lat": 41.070547, "lon": -73.520021},   # Glenbrook
+    "MSPD": {"lat": 41.08876, "lon": -73.517828},    # Springdale
+    "MTMH": {"lat": 41.116012, "lon": -73.498149},   # Talmadge Hill
+    "MNCA": {"lat": 41.146305, "lon": -73.495626},   # New Canaan
+    "MMR7": {"lat": 41.146618, "lon": -73.427859},   # Merritt 7
+    "MWIL": {"lat": 41.196202, "lon": -73.432434},   # Wilton
+    "MCAN": {"lat": 41.21662, "lon": -73.426703},    # Cannondale
+    "MBVL": {"lat": 41.26763, "lon": -73.441421},    # Branchville
+    "MRED": {"lat": 41.325684, "lon": -73.4338},     # Redding
+    "MBTH": {"lat": 41.376225, "lon": -73.418171},   # Bethel
+    "MDBY": {"lat": 41.396146, "lon": -73.44879},    # Danbury
+    "MDBS": {"lat": 41.319718, "lon": -73.083548},   # Derby-Shelton
+    "MANS": {"lat": 41.344156, "lon": -73.079892},   # Ansonia
+    "MSYM": {"lat": 41.395139, "lon": -73.072499},   # Seymour
+    "MBCF": {"lat": 41.441752, "lon": -73.06359},    # Beacon Falls
+    "MNAU": {"lat": 41.494204, "lon": -73.052655},   # Naugatuck
+    "MWTB": {"lat": 41.552728, "lon": -73.046126},   # Waterbury
 }
 
 
@@ -1623,7 +2030,7 @@ def map_gtfs_stop_to_station_code(
     Args:
         gtfs_stop_id: The GTFS stop_id (numeric for NJT, code for Amtrak)
         gtfs_stop_name: The GTFS stop_name for fallback matching
-        data_source: "NJT", "AMTRAK", "PATH", "PATCO", or "LIRR"
+        data_source: "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", or "MNR"
 
     Returns:
         Our internal station code or None if no match found
@@ -1639,6 +2046,10 @@ def map_gtfs_stop_to_station_code(
     if data_source == "LIRR":
         # LIRR uses numeric stop_id from MTA GTFS
         return LIRR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
+
+    if data_source == "MNR":
+        # Metro-North uses numeric stop_id from MTA GTFS
+        return MNR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
 
     if data_source == "PATH":
         # PATH - first try by stop_id (GTFS uses same IDs as Transiter: 26722-26734)

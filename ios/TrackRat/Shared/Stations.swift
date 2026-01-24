@@ -512,7 +512,121 @@ struct Stations {
         "Woodside": "WDD",
         "Wyandanch": "WYD",
         "Yaphank": "YPK",
-        
+
+        // Metro-North Railroad stations
+        "Grand Central Terminal": "GCT",
+        "Harlem-125th Street": "MHL",
+        "Yankees-E 153 St": "MEYS",
+        "Morris Heights": "MMRH",
+        "University Heights": "MUNH",
+        "Marble Hill": "MMBL",
+        "Spuyten Duyvil": "MSDV",
+        "Riverdale": "MRVD",
+        "Ludlow": "MLUD",
+        "Yonkers": "MYON",
+        "Glenwood": "MGWD",
+        "Greystone": "MGRY",
+        "Hastings-on-Hudson": "MHOH",
+        "Dobbs Ferry": "MDBF",
+        "Ardsley-on-Hudson": "MARD",
+        "Irvington": "MIRV",
+        "Tarrytown": "MTTN",
+        "Philipse Manor": "MPHM",
+        "Scarborough": "MSCB",
+        "Ossining": "MOSS",
+        "Croton-Harmon": "MCRH",
+        "Cortlandt": "MCRT",
+        "Peekskill": "MPKS",
+        "Manitou": "MMAN",
+        "Garrison": "MGAR",
+        "Cold Spring": "MCSP",
+        "Breakneck Ridge": "MBRK",
+        "Beacon": "MBCN",
+        "New Hamburg": "MNHB",
+        "Poughkeepsie": "MPOK",
+        "Melrose": "MMEL",
+        "Tremont": "MTRM",
+        "Fordham": "MFOR",
+        "Botanical Garden": "MBOG",
+        "Williams Bridge": "MWBG",
+        "Woodlawn": "MWDL",
+        "Wakefield": "MWKF",
+        "Mt Vernon West": "MMVW",
+        "Fleetwood": "MFLT",
+        "Bronxville": "MBRX",
+        "Tuckahoe": "MTUC",
+        "Crestwood": "MCWD",
+        "Scarsdale": "MSCD",
+        "Hartsdale": "MHSD",
+        "White Plains": "MWPL",
+        "North White Plains": "MNWP",
+        "Valhalla": "MVAL",
+        "Mt Pleasant": "MMTP",
+        "Hawthorne": "MHWT",
+        "Pleasantville": "MPLV",
+        "Chappaqua": "MCHP",
+        "Mt Kisco": "MMTK",
+        "Bedford Hills": "MBDH",
+        "Katonah": "MKAT",
+        "Goldens Bridge": "MGLD",
+        "Purdys": "MPRD",
+        "Croton Falls": "MCFL",
+        "Brewster": "MBRS",
+        "Southeast": "MSET",
+        "Patterson": "MPAT",
+        "Pawling": "MPAW",
+        "Appalachian Trail": "MAPT",
+        "Harlem Valley-Wingdale": "MHVW",
+        "Dover Plains": "MDVP",
+        "Tenmile River": "MTMR",
+        "Wassaic": "MWAS",
+        "Mt Vernon East": "MMVE",
+        "Pelham": "MPEL",
+        "New Rochelle": "MNRC",
+        "Larchmont": "MLRM",
+        "Mamaroneck": "MMAM",
+        "Harrison": "MHRR",
+        "Rye": "MRYE",
+        "Port Chester": "MPCH",
+        "Greenwich": "MGRN",
+        "Cos Cob": "MCOC",
+        "Riverside": "MRSD",
+        "Old Greenwich": "MODG",
+        "Stamford": "MSTM",
+        "Noroton Heights": "MNOH",
+        "Darien": "MDAR",
+        "Rowayton": "MROW",
+        "South Norwalk": "MSNW",
+        "East Norwalk": "MENW",
+        "Westport": "MWPT",
+        "Greens Farms": "MGRF",
+        "Southport": "MSPT",
+        "Fairfield": "MFFD",
+        "Fairfield-Black Rock": "MFBR",
+        "Bridgeport": "MBGP",
+        "Stratford": "MSTR",
+        "Milford": "MMIL",
+        "West Haven": "MWHN",
+        "New Haven": "MNHV",
+        "New Haven-State St": "MNSS",
+        "Glenbrook": "MGLB",
+        "Springdale": "MSPD",
+        "Talmadge Hill": "MTMH",
+        "New Canaan": "MNCA",
+        "Merritt 7": "MMR7",
+        "Wilton": "MWIL",
+        "Cannondale": "MCAN",
+        "Branchville": "MBVL",
+        "Redding": "MRED",
+        "Bethel": "MBTH",
+        "Danbury": "MDBY",
+        "Derby-Shelton": "MDBS",
+        "Ansonia": "MANS",
+        "Seymour": "MSYM",
+        "Beacon Falls": "MBCF",
+        "Naugatuck": "MNAU",
+        "Waterbury": "MWTB",
+
         // Southeast Amtrak stations
         "Charlotte": "CLT",
         "Raleigh": "RGH",
@@ -999,9 +1113,123 @@ struct Stations {
         "WMR": CLLocationCoordinate2D(latitude: 40.63133646, longitude: -73.71371544),  // Woodmere
         "WDD": CLLocationCoordinate2D(latitude: 40.74585067, longitude: -73.90297516),  // Woodside
         "WYD": CLLocationCoordinate2D(latitude: 40.75480101, longitude: -73.35806588),  // Wyandanch
-        "YPK": CLLocationCoordinate2D(latitude: 40.82561319, longitude: -72.91587848)   // Yaphank
+        "YPK": CLLocationCoordinate2D(latitude: 40.82561319, longitude: -72.91587848),  // Yaphank
+
+        // Metro-North Railroad stations
+        "GCT": CLLocationCoordinate2D(latitude: 40.752998, longitude: -73.977056),     // Grand Central Terminal
+        "MHL": CLLocationCoordinate2D(latitude: 40.805157, longitude: -73.939149),     // Harlem-125th Street
+        "MEYS": CLLocationCoordinate2D(latitude: 40.8253, longitude: -73.9299),        // Yankees-E 153 St
+        "MMRH": CLLocationCoordinate2D(latitude: 40.854252, longitude: -73.919583),    // Morris Heights
+        "MUNH": CLLocationCoordinate2D(latitude: 40.862248, longitude: -73.91312),     // University Heights
+        "MMBL": CLLocationCoordinate2D(latitude: 40.874333, longitude: -73.910941),    // Marble Hill
+        "MSDV": CLLocationCoordinate2D(latitude: 40.878245, longitude: -73.921455),    // Spuyten Duyvil
+        "MRVD": CLLocationCoordinate2D(latitude: 40.903981, longitude: -73.914126),    // Riverdale
+        "MLUD": CLLocationCoordinate2D(latitude: 40.924972, longitude: -73.904612),    // Ludlow
+        "MYON": CLLocationCoordinate2D(latitude: 40.935795, longitude: -73.902668),    // Yonkers
+        "MGWD": CLLocationCoordinate2D(latitude: 40.950496, longitude: -73.899062),    // Glenwood
+        "MGRY": CLLocationCoordinate2D(latitude: 40.972705, longitude: -73.889069),    // Greystone
+        "MHOH": CLLocationCoordinate2D(latitude: 40.994109, longitude: -73.884512),    // Hastings-on-Hudson
+        "MDBF": CLLocationCoordinate2D(latitude: 41.012459, longitude: -73.87949),     // Dobbs Ferry
+        "MARD": CLLocationCoordinate2D(latitude: 41.026198, longitude: -73.876543),    // Ardsley-on-Hudson
+        "MIRV": CLLocationCoordinate2D(latitude: 41.039993, longitude: -73.873083),    // Irvington
+        "MTTN": CLLocationCoordinate2D(latitude: 41.076473, longitude: -73.864563),    // Tarrytown
+        "MPHM": CLLocationCoordinate2D(latitude: 41.09492, longitude: -73.869755),     // Philipse Manor
+        "MSCB": CLLocationCoordinate2D(latitude: 41.135763, longitude: -73.866163),    // Scarborough
+        "MOSS": CLLocationCoordinate2D(latitude: 41.157663, longitude: -73.869281),    // Ossining
+        "MCRH": CLLocationCoordinate2D(latitude: 41.189903, longitude: -73.882394),    // Croton-Harmon
+        "MCRT": CLLocationCoordinate2D(latitude: 41.246259, longitude: -73.921884),    // Cortlandt
+        "MPKS": CLLocationCoordinate2D(latitude: 41.285962, longitude: -73.93042),     // Peekskill
+        "MMAN": CLLocationCoordinate2D(latitude: 41.332601, longitude: -73.970426),    // Manitou
+        "MGAR": CLLocationCoordinate2D(latitude: 41.38178, longitude: -73.947202),     // Garrison
+        "MCSP": CLLocationCoordinate2D(latitude: 41.415283, longitude: -73.95809),     // Cold Spring
+        "MBRK": CLLocationCoordinate2D(latitude: 41.450181, longitude: -73.982449),    // Breakneck Ridge
+        "MBCN": CLLocationCoordinate2D(latitude: 41.504007, longitude: -73.984528),    // Beacon
+        "MNHB": CLLocationCoordinate2D(latitude: 41.587448, longitude: -73.947226),    // New Hamburg
+        "MPOK": CLLocationCoordinate2D(latitude: 41.705839, longitude: -73.937946),    // Poughkeepsie
+        "MMEL": CLLocationCoordinate2D(latitude: 40.825761, longitude: -73.915231),    // Melrose
+        "MTRM": CLLocationCoordinate2D(latitude: 40.847301, longitude: -73.89955),     // Tremont
+        "MFOR": CLLocationCoordinate2D(latitude: 40.8615, longitude: -73.89058),       // Fordham
+        "MBOG": CLLocationCoordinate2D(latitude: 40.866555, longitude: -73.883109),    // Botanical Garden
+        "MWBG": CLLocationCoordinate2D(latitude: 40.878569, longitude: -73.871064),    // Williams Bridge
+        "MWDL": CLLocationCoordinate2D(latitude: 40.895361, longitude: -73.862916),    // Woodlawn
+        "MWKF": CLLocationCoordinate2D(latitude: 40.905936, longitude: -73.85568),     // Wakefield
+        "MMVW": CLLocationCoordinate2D(latitude: 40.912142, longitude: -73.851129),    // Mt Vernon West
+        "MFLT": CLLocationCoordinate2D(latitude: 40.92699, longitude: -73.83948),      // Fleetwood
+        "MBRX": CLLocationCoordinate2D(latitude: 40.93978, longitude: -73.835208),     // Bronxville
+        "MTUC": CLLocationCoordinate2D(latitude: 40.949393, longitude: -73.830166),    // Tuckahoe
+        "MCWD": CLLocationCoordinate2D(latitude: 40.958997, longitude: -73.820564),    // Crestwood
+        "MSCD": CLLocationCoordinate2D(latitude: 40.989168, longitude: -73.808634),    // Scarsdale
+        "MHSD": CLLocationCoordinate2D(latitude: 41.010333, longitude: -73.796407),    // Hartsdale
+        "MWPL": CLLocationCoordinate2D(latitude: 41.032589, longitude: -73.775208),    // White Plains
+        "MNWP": CLLocationCoordinate2D(latitude: 41.049806, longitude: -73.773142),    // North White Plains
+        "MVAL": CLLocationCoordinate2D(latitude: 41.072819, longitude: -73.772599),    // Valhalla
+        "MMTP": CLLocationCoordinate2D(latitude: 41.095877, longitude: -73.793822),    // Mt Pleasant
+        "MHWT": CLLocationCoordinate2D(latitude: 41.108581, longitude: -73.79625),     // Hawthorne
+        "MPLV": CLLocationCoordinate2D(latitude: 41.135222, longitude: -73.792661),    // Pleasantville
+        "MCHP": CLLocationCoordinate2D(latitude: 41.158015, longitude: -73.774885),    // Chappaqua
+        "MMTK": CLLocationCoordinate2D(latitude: 41.208242, longitude: -73.729778),    // Mt Kisco
+        "MBDH": CLLocationCoordinate2D(latitude: 41.237316, longitude: -73.699936),    // Bedford Hills
+        "MKAT": CLLocationCoordinate2D(latitude: 41.259552, longitude: -73.684155),    // Katonah
+        "MGLD": CLLocationCoordinate2D(latitude: 41.294338, longitude: -73.677655),    // Goldens Bridge
+        "MPRD": CLLocationCoordinate2D(latitude: 41.325775, longitude: -73.659061),    // Purdys
+        "MCFL": CLLocationCoordinate2D(latitude: 41.347722, longitude: -73.662269),    // Croton Falls
+        "MBRS": CLLocationCoordinate2D(latitude: 41.39447, longitude: -73.619802),     // Brewster
+        "MSET": CLLocationCoordinate2D(latitude: 41.413203, longitude: -73.623787),    // Southeast
+        "MPAT": CLLocationCoordinate2D(latitude: 41.511827, longitude: -73.604584),    // Patterson
+        "MPAW": CLLocationCoordinate2D(latitude: 41.564205, longitude: -73.600524),    // Pawling
+        "MAPT": CLLocationCoordinate2D(latitude: 41.592871, longitude: -73.588032),    // Appalachian Trail
+        "MHVW": CLLocationCoordinate2D(latitude: 41.637525, longitude: -73.57145),     // Harlem Valley-Wingdale
+        "MDVP": CLLocationCoordinate2D(latitude: 41.740401, longitude: -73.576502),    // Dover Plains
+        "MTMR": CLLocationCoordinate2D(latitude: 41.779938, longitude: -73.558204),    // Tenmile River
+        "MWAS": CLLocationCoordinate2D(latitude: 41.814722, longitude: -73.562197),    // Wassaic
+        "MMVE": CLLocationCoordinate2D(latitude: 40.912161, longitude: -73.832185),    // Mt Vernon East
+        "MPEL": CLLocationCoordinate2D(latitude: 40.910321, longitude: -73.810242),    // Pelham
+        "MNRC": CLLocationCoordinate2D(latitude: 40.911605, longitude: -73.783807),    // New Rochelle
+        "MLRM": CLLocationCoordinate2D(latitude: 40.933394, longitude: -73.759792),    // Larchmont
+        "MMAM": CLLocationCoordinate2D(latitude: 40.954061, longitude: -73.736125),    // Mamaroneck
+        "MHRR": CLLocationCoordinate2D(latitude: 40.969432, longitude: -73.712964),    // Harrison
+        "MRYE": CLLocationCoordinate2D(latitude: 40.985922, longitude: -73.682553),    // Rye
+        "MPCH": CLLocationCoordinate2D(latitude: 41.000732, longitude: -73.6647),      // Port Chester
+        "MGRN": CLLocationCoordinate2D(latitude: 41.021277, longitude: -73.624621),    // Greenwich
+        "MCOC": CLLocationCoordinate2D(latitude: 41.030171, longitude: -73.598306),    // Cos Cob
+        "MRSD": CLLocationCoordinate2D(latitude: 41.031682, longitude: -73.588173),    // Riverside
+        "MODG": CLLocationCoordinate2D(latitude: 41.033817, longitude: -73.565859),    // Old Greenwich
+        "MSTM": CLLocationCoordinate2D(latitude: 41.046611, longitude: -73.542846),    // Stamford
+        "MNOH": CLLocationCoordinate2D(latitude: 41.069041, longitude: -73.49788),     // Noroton Heights
+        "MDAR": CLLocationCoordinate2D(latitude: 41.076913, longitude: -73.472966),    // Darien
+        "MROW": CLLocationCoordinate2D(latitude: 41.077456, longitude: -73.445527),    // Rowayton
+        "MSNW": CLLocationCoordinate2D(latitude: 41.09673, longitude: -73.421132),     // South Norwalk
+        "MENW": CLLocationCoordinate2D(latitude: 41.103996, longitude: -73.404588),    // East Norwalk
+        "MWPT": CLLocationCoordinate2D(latitude: 41.118928, longitude: -73.371413),    // Westport
+        "MGRF": CLLocationCoordinate2D(latitude: 41.122265, longitude: -73.315408),    // Greens Farms
+        "MSPT": CLLocationCoordinate2D(latitude: 41.134844, longitude: -73.28897),     // Southport
+        "MFFD": CLLocationCoordinate2D(latitude: 41.143077, longitude: -73.257742),    // Fairfield
+        "MFBR": CLLocationCoordinate2D(latitude: 41.161, longitude: -73.234336),       // Fairfield-Black Rock
+        "MBGP": CLLocationCoordinate2D(latitude: 41.178677, longitude: -73.187076),    // Bridgeport
+        "MSTR": CLLocationCoordinate2D(latitude: 41.194255, longitude: -73.131532),    // Stratford
+        "MMIL": CLLocationCoordinate2D(latitude: 41.223231, longitude: -73.057647),    // Milford
+        "MWHN": CLLocationCoordinate2D(latitude: 41.27142, longitude: -72.963488),     // West Haven
+        "MNHV": CLLocationCoordinate2D(latitude: 41.296501, longitude: -72.92829),     // New Haven
+        "MNSS": CLLocationCoordinate2D(latitude: 41.304979, longitude: -72.921747),    // New Haven-State St
+        "MGLB": CLLocationCoordinate2D(latitude: 41.070547, longitude: -73.520021),    // Glenbrook
+        "MSPD": CLLocationCoordinate2D(latitude: 41.08876, longitude: -73.517828),     // Springdale
+        "MTMH": CLLocationCoordinate2D(latitude: 41.116012, longitude: -73.498149),    // Talmadge Hill
+        "MNCA": CLLocationCoordinate2D(latitude: 41.146305, longitude: -73.495626),    // New Canaan
+        "MMR7": CLLocationCoordinate2D(latitude: 41.146618, longitude: -73.427859),    // Merritt 7
+        "MWIL": CLLocationCoordinate2D(latitude: 41.196202, longitude: -73.432434),    // Wilton
+        "MCAN": CLLocationCoordinate2D(latitude: 41.21662, longitude: -73.426703),     // Cannondale
+        "MBVL": CLLocationCoordinate2D(latitude: 41.26763, longitude: -73.441421),     // Branchville
+        "MRED": CLLocationCoordinate2D(latitude: 41.325684, longitude: -73.4338),      // Redding
+        "MBTH": CLLocationCoordinate2D(latitude: 41.376225, longitude: -73.418171),    // Bethel
+        "MDBY": CLLocationCoordinate2D(latitude: 41.396146, longitude: -73.44879),     // Danbury
+        "MDBS": CLLocationCoordinate2D(latitude: 41.319718, longitude: -73.083548),    // Derby-Shelton
+        "MANS": CLLocationCoordinate2D(latitude: 41.344156, longitude: -73.079892),    // Ansonia
+        "MSYM": CLLocationCoordinate2D(latitude: 41.395139, longitude: -73.072499),    // Seymour
+        "MBCF": CLLocationCoordinate2D(latitude: 41.441752, longitude: -73.06359),     // Beacon Falls
+        "MNAU": CLLocationCoordinate2D(latitude: 41.494204, longitude: -73.052655),    // Naugatuck
+        "MWTB": CLLocationCoordinate2D(latitude: 41.552728, longitude: -73.046126)     // Waterbury
     ]
-    
+
     // Supported departure stations - Updated to match backend
     static let departureStations: [(name: String, code: String)] = [
         // Northeast Corridor
@@ -1380,6 +1608,120 @@ struct Stations {
         "WDD": ["LIRR"],  // Woodside
         "WYD": ["LIRR"],  // Wyandanch
         "YPK": ["LIRR"],  // Yaphank
+
+        // Metro-North Railroad stations
+        "GCT": ["MNR", "LIRR"],  // Grand Central Terminal (shared)
+        "MHL": ["MNR"],          // Harlem-125th Street
+        "MEYS": ["MNR"],         // Yankees-E 153 St
+        "MMRH": ["MNR"],         // Morris Heights
+        "MUNH": ["MNR"],         // University Heights
+        "MMBL": ["MNR"],         // Marble Hill
+        "MSDV": ["MNR"],         // Spuyten Duyvil
+        "MRVD": ["MNR"],         // Riverdale
+        "MLUD": ["MNR"],         // Ludlow
+        "MYON": ["MNR"],         // Yonkers
+        "MGWD": ["MNR"],         // Glenwood
+        "MGRY": ["MNR"],         // Greystone
+        "MHOH": ["MNR"],         // Hastings-on-Hudson
+        "MDBF": ["MNR"],         // Dobbs Ferry
+        "MARD": ["MNR"],         // Ardsley-on-Hudson
+        "MIRV": ["MNR"],         // Irvington
+        "MTTN": ["MNR"],         // Tarrytown
+        "MPHM": ["MNR"],         // Philipse Manor
+        "MSCB": ["MNR"],         // Scarborough
+        "MOSS": ["MNR"],         // Ossining
+        "MCRH": ["MNR"],         // Croton-Harmon
+        "MCRT": ["MNR"],         // Cortlandt
+        "MPKS": ["MNR"],         // Peekskill
+        "MMAN": ["MNR"],         // Manitou
+        "MGAR": ["MNR"],         // Garrison
+        "MCSP": ["MNR"],         // Cold Spring
+        "MBRK": ["MNR"],         // Breakneck Ridge
+        "MBCN": ["MNR"],         // Beacon
+        "MNHB": ["MNR"],         // New Hamburg
+        "MPOK": ["MNR"],         // Poughkeepsie
+        "MMEL": ["MNR"],         // Melrose
+        "MTRM": ["MNR"],         // Tremont
+        "MFOR": ["MNR"],         // Fordham
+        "MBOG": ["MNR"],         // Botanical Garden
+        "MWBG": ["MNR"],         // Williams Bridge
+        "MWDL": ["MNR"],         // Woodlawn
+        "MWKF": ["MNR"],         // Wakefield
+        "MMVW": ["MNR"],         // Mt Vernon West
+        "MFLT": ["MNR"],         // Fleetwood
+        "MBRX": ["MNR"],         // Bronxville
+        "MTUC": ["MNR"],         // Tuckahoe
+        "MCWD": ["MNR"],         // Crestwood
+        "MSCD": ["MNR"],         // Scarsdale
+        "MHSD": ["MNR"],         // Hartsdale
+        "MWPL": ["MNR"],         // White Plains
+        "MNWP": ["MNR"],         // North White Plains
+        "MVAL": ["MNR"],         // Valhalla
+        "MMTP": ["MNR"],         // Mt Pleasant
+        "MHWT": ["MNR"],         // Hawthorne
+        "MPLV": ["MNR"],         // Pleasantville
+        "MCHP": ["MNR"],         // Chappaqua
+        "MMTK": ["MNR"],         // Mt Kisco
+        "MBDH": ["MNR"],         // Bedford Hills
+        "MKAT": ["MNR"],         // Katonah
+        "MGLD": ["MNR"],         // Goldens Bridge
+        "MPRD": ["MNR"],         // Purdys
+        "MCFL": ["MNR"],         // Croton Falls
+        "MBRS": ["MNR"],         // Brewster
+        "MSET": ["MNR"],         // Southeast
+        "MPAT": ["MNR"],         // Patterson
+        "MPAW": ["MNR"],         // Pawling
+        "MAPT": ["MNR"],         // Appalachian Trail
+        "MHVW": ["MNR"],         // Harlem Valley-Wingdale
+        "MDVP": ["MNR"],         // Dover Plains
+        "MTMR": ["MNR"],         // Tenmile River
+        "MWAS": ["MNR"],         // Wassaic
+        "MMVE": ["MNR"],         // Mt Vernon East
+        "MPEL": ["MNR"],         // Pelham
+        "MNRC": ["MNR"],         // New Rochelle
+        "MLRM": ["MNR"],         // Larchmont
+        "MMAM": ["MNR"],         // Mamaroneck
+        "MHRR": ["MNR"],         // Harrison
+        "MRYE": ["MNR"],         // Rye
+        "MPCH": ["MNR"],         // Port Chester
+        "MGRN": ["MNR"],         // Greenwich
+        "MCOC": ["MNR"],         // Cos Cob
+        "MRSD": ["MNR"],         // Riverside
+        "MODG": ["MNR"],         // Old Greenwich
+        "MSTM": ["MNR"],         // Stamford
+        "MNOH": ["MNR"],         // Noroton Heights
+        "MDAR": ["MNR"],         // Darien
+        "MROW": ["MNR"],         // Rowayton
+        "MSNW": ["MNR"],         // South Norwalk
+        "MENW": ["MNR"],         // East Norwalk
+        "MWPT": ["MNR"],         // Westport
+        "MGRF": ["MNR"],         // Greens Farms
+        "MSPT": ["MNR"],         // Southport
+        "MFFD": ["MNR"],         // Fairfield
+        "MFBR": ["MNR"],         // Fairfield-Black Rock
+        "MBGP": ["MNR"],         // Bridgeport
+        "MSTR": ["MNR"],         // Stratford
+        "MMIL": ["MNR"],         // Milford
+        "MWHN": ["MNR"],         // West Haven
+        "MNHV": ["MNR"],         // New Haven
+        "MNSS": ["MNR"],         // New Haven-State St
+        "MGLB": ["MNR"],         // Glenbrook
+        "MSPD": ["MNR"],         // Springdale
+        "MTMH": ["MNR"],         // Talmadge Hill
+        "MNCA": ["MNR"],         // New Canaan
+        "MMR7": ["MNR"],         // Merritt 7
+        "MWIL": ["MNR"],         // Wilton
+        "MCAN": ["MNR"],         // Cannondale
+        "MBVL": ["MNR"],         // Branchville
+        "MRED": ["MNR"],         // Redding
+        "MBTH": ["MNR"],         // Bethel
+        "MDBY": ["MNR"],         // Danbury
+        "MDBS": ["MNR"],         // Derby-Shelton
+        "MANS": ["MNR"],         // Ansonia
+        "MSYM": ["MNR"],         // Seymour
+        "MBCF": ["MNR"],         // Beacon Falls
+        "MNAU": ["MNR"],         // Naugatuck
+        "MWTB": ["MNR"],         // Waterbury
     ]
 
     /// Returns the raw system strings that serve a given station
