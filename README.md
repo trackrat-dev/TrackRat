@@ -9,7 +9,7 @@ Real-time train tracking system with ML-powered track predictions for NJ Transit
 - **Track Predictions**: ML models predict platform assignments with confidence levels ("Owl" system)
 - **Real-Time Updates**: Live train status, delays, and journey progress with 30-second refresh
 - **Multi-Transit Support**: NJ Transit, Amtrak, PATH, and PATCO (SEPTA, LIRR placeholders exist)
-- **Station Coverage**: ~144 stations including NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark, plus 44 Southeast Amtrak stations
+- **Station Coverage**: 250+ stations including NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark, plus PATH, PATCO, Southeast Amtrak, and Keystone Service stations
 - **Smart Consolidation**: Merges duplicate trains across data sources with conflict resolution
 
 ### Advanced Features
@@ -101,7 +101,7 @@ export PATH=$JAVA_HOME/bin:$PATH
 
 ### Prerequisites
 - **Backend**: Python 3.11+, Poetry, PostgreSQL 14+
-- **iOS**: macOS 14+, Xcode 15+, iOS 17.0+ deployment target
+- **iOS**: macOS 14+, Xcode 15+, iOS 18.0+ deployment target
 - **Android**: Android Studio, JDK 17, Android SDK 34
 - **Infrastructure**: Terraform 1.0+, Google Cloud SDK
 

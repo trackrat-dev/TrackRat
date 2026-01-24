@@ -697,4 +697,4 @@ Ready to enhance train tracking for millions of commuters! 🚂
 
 ## License
 
-Copyright 2025 TrackRat Team
+Copyright 2025-2026 TrackRat Team

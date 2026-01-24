@@ -12,8 +12,11 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, and PATCO trains 
 
 ### Multi-Station Support
 - **Primary Hubs**: NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark
-- **Southeast Corridor**: 44+ Amtrak stations across NC, SC, GA, FL, VA, WV
-- **Total Coverage**: ~144 stations across the Eastern United States
+- **PATH Stations**: 13 stations (Newark to WTC/33rd Street)
+- **PATCO Speedline**: 14 stations (Lindenwold to Center City Philadelphia)
+- **Southeast Corridor**: 40+ Amtrak stations across NC, SC, GA, FL, VA
+- **Keystone Service**: 8 Pennsylvania stations
+- **Total Coverage**: 250+ stations across the Eastern United States
 - **Train Services**: NJ Transit, Amtrak (Silver Star, Silver Meteor, Carolinian, Piedmont, Crescent), PATH, PATCO
 
 ### Intelligent Features
@@ -32,6 +35,8 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, and PATCO trains 
 - **24-Hour Soft Trial**: New users get full Pro access for 24 hours with countdown banner
 - **StoreKit 2 Integration**: Modern subscription management with PaywallView
 - **SoftTrialBannerView**: Countdown timer during trial period linking to paywall
+- **Monthly-Only Subscription**: $3.99/month pricing (yearly option removed)
+- **Soft Launch Mode**: Debug override currently enabled - all users get Pro features free
 
 ### Train System Filtering
 - **Opt-in PATH/PATCO**: Users can enable/disable transit systems in Advanced Configuration
@@ -162,7 +167,7 @@ TrackRatTests/                   # Test suite
 ### Prerequisites
 - macOS 14.0+ (Sonoma or later)
 - Xcode 15.0+
-- iOS 17.0+ deployment target
+- iOS 18.0+ deployment target
 - Apple Developer account (for device testing)
 
 ### Installation
@@ -316,7 +321,7 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 
 ## 📝 License
 
-Copyright © 2024 TrackRat. All rights reserved.
+Copyright © 2025-2026 TrackRat. All rights reserved.
 
 ## 🤝 Acknowledgments
 
