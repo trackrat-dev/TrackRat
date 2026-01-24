@@ -24,6 +24,9 @@ psycopg2-binary = "^2.9.9"  # For Alembic migrations (sync driver)
 # HTTP Client
 httpx = {extras = ["http2"], version = "^0.27.0"}
 
+# GTFS Realtime (for LIRR)
+gtfs-realtime-bindings = "^1.0.0"
+
 # Task Scheduling
 apscheduler = "^3.10.4"
 

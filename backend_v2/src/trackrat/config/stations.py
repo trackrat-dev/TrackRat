@@ -287,6 +287,133 @@ STATION_NAMES: dict[str, str] = {
     "P23": "23rd Street",
     "P33": "33rd Street",
     "PWC": "World Trade Center",
+    # LIRR stations (Long Island Rail Road)
+    # Penn Station "NY" is already defined above, used for LIRR Penn Station too
+    "ABT": "Albertson",
+    "AGT": "Amagansett",
+    "AVL": "Amityville",
+    "LAT": "Atlantic Terminal",  # Using LAT to avoid conflict with Atlanta ATL
+    "ADL": "Auburndale",
+    "BTA": "Babylon",
+    "BWN": "Baldwin",
+    "BSR": "Bay Shore",
+    "BSD": "Bayside",
+    "BRS": "Bellerose",
+    "BMR": "Bellmore",
+    "BPT": "Bellport",
+    "BRT": "Belmont Park",
+    "BPG": "Bethpage",
+    "BWD": "Brentwood",
+    "BHN": "Bridgehampton",
+    "BDY": "Broadway LIRR",
+    "CPL": "Carle Place",
+    "CHT": "Cedarhurst",
+    "CI": "Central Islip",
+    "CAV": "Centre Avenue",
+    "CSH": "Cold Spring Harbor",
+    "CPG": "Copiague",
+    "CLP": "Country Life Press",
+    "DPK": "Deer Park",
+    "DGL": "Douglaston",
+    "EHN": "East Hampton",
+    "ENY": "East New York",
+    "ERY": "East Rockaway",
+    "EWN": "East Williston",
+    "EMT": "Elmont-UBS Arena",
+    "FRY": "Far Rockaway",
+    "FMD": "Farmingdale",
+    "FPK": "Floral Park",
+    "FLS": "Flushing Main Street",
+    "FHL": "Forest Hills",
+    "FPT": "Freeport",
+    "GCY": "Garden City",
+    "GBN": "Gibson",
+    "GCV": "Glen Cove",
+    "GHD": "Glen Head",
+    "GST": "Glen Street",
+    "GCT": "Grand Central Madison",
+    "GNK": "Great Neck",
+    "GRV": "Great River",
+    "GWN": "Greenlawn",
+    "GPT": "Greenport",
+    "GVL": "Greenvale",
+    "HBY": "Hampton Bays",
+    "HGN": "Hempstead Gardens",
+    "HEM": "Hempstead",
+    "HWT": "Hewlett",
+    "HVL": "Hicksville",
+    "HOL": "Hollis",
+    "HPA": "Hunterspoint Avenue",
+    "HUN": "Huntington",
+    "IWD": "Inwood",
+    "IPK": "Island Park",
+    "ISP": "Islip",
+    "JAM": "Jamaica",
+    "KGN": "Kew Gardens",
+    "KPK": "Kings Park",
+    "LVW": "Lakeview",
+    "LTN": "Laurelton",
+    "LCE": "Lawrence",
+    "LHT": "Lindenhurst",
+    "LNK": "Little Neck",
+    "LMR": "Locust Manor",
+    "LVL": "Locust Valley",
+    "LBH": "Long Beach",
+    "LIC": "Long Island City",
+    "LYN": "Lynbrook",
+    "MVN": "Malverne",
+    "MHT": "Manhasset",
+    "MPK": "Massapequa Park",
+    "MQA": "Massapequa",
+    "MSY": "Mastic-Shirley",
+    "MAK": "Mattituck",
+    "MFD": "Medford",
+    "MAV": "Merillon Avenue",
+    "MRK": "Merrick",
+    "SSM": "Mets-Willets Point",
+    "MIN": "Mineola",
+    "MTK": "Montauk",
+    "MHL": "Murray Hill LIRR",
+    "NBD": "Nassau Boulevard",
+    "NHP": "New Hyde Park",
+    "NPT": "Northport",
+    "NAV": "Nostrand Avenue",
+    "ODL": "Oakdale",
+    "ODE": "Oceanside",
+    "OBY": "Oyster Bay",
+    "PGE": "Patchogue",
+    "PLN": "Pinelawn",
+    "PDM": "Plandome",
+    "PJN": "Port Jefferson",
+    "PWS": "Port Washington",
+    "QVG": "Queens Village",
+    "RHD": "Riverhead",
+    "RVC": "Rockville Centre",
+    "RON": "Ronkonkoma",
+    "ROS": "Rosedale",
+    "RSN": "Roslyn",
+    "SVL": "Sayville",
+    "SCF": "Sea Cliff",
+    "SFD": "Seaford",
+    "STN": "Smithtown",
+    "SHN": "Southampton",
+    "SHD": "Southold",
+    "SPK": "Speonk",
+    "SAB": "St. Albans",
+    "SJM": "St. James",
+    "SMR": "Stewart Manor",
+    "LSBK": "Stony Brook",  # Using LSBK to avoid conflict with NJT BK (Bound Brook)
+    "SYT": "Syosset",
+    "VSM": "Valley Stream",
+    "WGH": "Wantagh",
+    "WHD": "West Hempstead",
+    "WBY": "Westbury",
+    "WHN": "Westhampton",
+    "WWD": "Westwood LIRR",
+    "WMR": "Woodmere",
+    "WDD": "Woodside",
+    "WYD": "Wyandanch",
+    "YPK": "Yaphank",
 }
 
 
@@ -676,6 +803,203 @@ PATCO_TERMINUS_STATIONS = ["LND", "FFL"]
 
 # PATCO GTFS feed URL
 PATCO_GTFS_FEED_URL = "https://rapid.nationalrtap.org/GTFSFileManagement/UserUploadFiles/13562/PATCO_GTFS.zip"
+
+
+# =============================================================================
+# LIRR (Long Island Rail Road) Configuration
+# =============================================================================
+
+# LIRR GTFS-RT feed URL (MTA direct)
+LIRR_GTFS_RT_FEED_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr"
+
+# LIRR GTFS stop_id to internal station code mapping
+# Penn Station (stop_id 237) maps to "NY" for unified experience with NJT/Amtrak
+# Atlantic Terminal uses "LAT" to avoid conflict with Atlanta "ATL"
+LIRR_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
+    "1": "ABT",      # Albertson
+    "100": "ISP",    # Islip
+    "101": "IWD",    # Inwood
+    "102": "JAM",    # Jamaica
+    "107": "KGN",    # Kew Gardens
+    "11": "BDY",     # Broadway
+    "111": "KPK",    # Kings Park
+    "113": "LBH",    # Long Beach
+    "114": "LCE",    # Lawrence
+    "117": "LHT",    # Lindenhurst
+    "118": "LIC",    # Long Island City
+    "119": "LMR",    # Locust Manor
+    "120": "LNK",    # Little Neck
+    "122": "LTN",    # Laurelton
+    "123": "LVL",    # Locust Valley
+    "124": "LVW",    # Lakeview
+    "125": "LYN",    # Lynbrook
+    "126": "MAK",    # Mattituck
+    "127": "MAV",    # Merillon Avenue
+    "129": "MFD",    # Medford
+    "13": "BHN",     # Bridgehampton
+    "130": "MHL",    # Murray Hill LIRR
+    "131": "MHT",    # Manhasset
+    "132": "MIN",    # Mineola
+    "135": "MPK",    # Massapequa Park
+    "136": "MQA",    # Massapequa
+    "14": "LSBK",    # Stony Brook (using LSBK to avoid NJT BK conflict)
+    "140": "MSY",    # Mastic-Shirley
+    "141": "MTK",    # Montauk
+    "142": "MVN",    # Malverne
+    "148": "NAV",    # Nostrand Avenue
+    "149": "NBD",    # Nassau Boulevard
+    "152": "NHP",    # New Hyde Park
+    "153": "NPT",    # Northport
+    "154": "OBY",    # Oyster Bay
+    "155": "ODE",    # Oceanside
+    "157": "ODL",    # Oakdale
+    "16": "BMR",     # Bellmore
+    "162": "PDM",    # Plandome
+    "163": "PGE",    # Patchogue
+    "164": "PJN",    # Port Jefferson
+    "165": "PLN",    # Pinelawn
+    "171": "PWS",    # Port Washington
+    "175": "QVG",    # Queens Village
+    "176": "RHD",    # Riverhead
+    "179": "RON",    # Ronkonkoma
+    "180": "ROS",    # Rosedale
+    "182": "RSN",    # Roslyn
+    "183": "RVC",    # Rockville Centre
+    "184": "SAB",    # St. Albans
+    "185": "SCF",    # Sea Cliff
+    "187": "SFD",    # Seaford
+    "190": "SHD",    # Southold
+    "191": "SHN",    # Southampton
+    "193": "SJM",    # St. James
+    "195": "SMR",    # Stewart Manor
+    "198": "SPK",    # Speonk
+    "199": "SSM",    # Mets-Willets Point
+    "2": "ADL",      # Auburndale
+    "20": "BPG",     # Bethpage
+    "202": "STN",    # Smithtown
+    "204": "SVL",    # Sayville
+    "205": "SYT",    # Syosset
+    "21": "BPT",     # Bellport
+    "211": "VSM",    # Valley Stream
+    "213": "WBY",    # Westbury
+    "214": "WDD",    # Woodside
+    "215": "WGH",    # Wantagh
+    "216": "WHD",    # West Hempstead
+    "217": "WMR",    # Woodmere
+    "219": "WWD",    # Westwood LIRR
+    "220": "WYD",    # Wyandanch
+    "223": "YPK",    # Yaphank
+    "225": "BWN",    # Baldwin
+    "226": "MRK",    # Merrick
+    "23": "BRS",     # Bellerose
+    "233": "WHN",    # Westhampton
+    "237": "NY",     # Penn Station (unified with NJT/Amtrak)
+    "24": "BRT",     # Belmont Park
+    "241": "LAT",    # Atlantic Terminal
+    "25": "BSD",     # Bayside
+    "26": "BSR",     # Bay Shore
+    "27": "BTA",     # Babylon
+    "29": "BWD",     # Brentwood
+    "31": "CAV",     # Centre Avenue
+    "32": "CHT",     # Cedarhurst
+    "33": "CI",      # Central Islip
+    "349": "GCT",    # Grand Central Madison
+    "359": "EMT",    # Elmont-UBS Arena
+    "36": "CLP",     # Country Life Press
+    "38": "CPG",     # Copiague
+    "39": "CPL",     # Carle Place
+    "4": "AGT",      # Amagansett
+    "40": "CSH",     # Cold Spring Harbor
+    "42": "DGL",     # Douglaston
+    "44": "DPK",     # Deer Park
+    "48": "EHN",     # East Hampton
+    "50": "ENY",     # East New York
+    "51": "ERY",     # East Rockaway
+    "52": "EWN",     # East Williston
+    "55": "FHL",     # Forest Hills
+    "56": "FLS",     # Flushing Main Street
+    "59": "FMD",     # Farmingdale
+    "63": "FPK",     # Floral Park
+    "64": "FPT",     # Freeport
+    "65": "FRY",     # Far Rockaway
+    "66": "GBN",     # Gibson
+    "67": "GCV",     # Glen Cove
+    "68": "GCY",     # Garden City
+    "71": "GHD",     # Glen Head
+    "72": "GNK",     # Great Neck
+    "73": "GPT",     # Greenport
+    "74": "GRV",     # Great River
+    "76": "GST",     # Glen Street
+    "77": "GVL",     # Greenvale
+    "78": "GWN",     # Greenlawn
+    "8": "AVL",      # Amityville
+    "83": "HBY",     # Hampton Bays
+    "84": "HEM",     # Hempstead
+    "85": "HGN",     # Hempstead Gardens
+    "89": "HOL",     # Hollis
+    "90": "HPA",     # Hunterspoint Avenue
+    "91": "HUN",     # Huntington
+    "92": "HVL",     # Hicksville
+    "94": "HWT",     # Hewlett
+    "99": "IPK",     # Island Park
+}
+
+# Reverse mapping for LIRR
+INTERNAL_TO_LIRR_GTFS_STOP_MAP: dict[str, str] = {
+    v: k for k, v in LIRR_GTFS_STOP_TO_INTERNAL_MAP.items()
+}
+
+# LIRR route definitions (route_id -> line_code, name, color)
+# Colors from official MTA GTFS
+LIRR_ROUTES: dict[str, tuple[str, str, str]] = {
+    "1": ("LIRR-BB", "Babylon Branch", "#00985F"),
+    "2": ("LIRR-HB", "Hempstead Branch", "#CE8E00"),
+    "3": ("LIRR-OB", "Oyster Bay Branch", "#00AF3F"),
+    "4": ("LIRR-RK", "Ronkonkoma Branch", "#A626AA"),
+    "5": ("LIRR-MK", "Montauk Branch", "#00B2A9"),
+    "6": ("LIRR-LB", "Long Beach Branch", "#FF6319"),
+    "7": ("LIRR-FR", "Far Rockaway Branch", "#6E3219"),
+    "8": ("LIRR-WH", "West Hempstead Branch", "#00A1DE"),
+    "9": ("LIRR-PW", "Port Washington Branch", "#C60C30"),
+    "10": ("LIRR-PJ", "Port Jefferson Branch", "#006EC7"),
+    "11": ("LIRR-BP", "Belmont Park", "#60269E"),
+    "12": ("LIRR-CT", "City Terminal Zone", "#4D5357"),
+    "13": ("LIRR-GP", "Greenport Service", "#A626AA"),
+}
+
+# LIRR discovery stations - major hubs to poll for train discovery
+# Penn Station and Jamaica are the two most critical hubs
+LIRR_DISCOVERY_STATIONS = [
+    "NY",   # Penn Station (all branches terminate here)
+    "JAM",  # Jamaica (transfer hub for all branches)
+    "LAT",  # Atlantic Terminal
+    "GCT",  # Grand Central Madison
+    "HPA",  # Hunterspoint Avenue
+]
+
+
+def get_lirr_route_info(gtfs_route_id: str) -> tuple[str, str, str] | None:
+    """Get LIRR route info from GTFS route ID.
+
+    Args:
+        gtfs_route_id: GTFS route_id (e.g., '1' for Babylon Branch)
+
+    Returns:
+        Tuple of (line_code, route_name, color) or None if not mapped
+    """
+    return LIRR_ROUTES.get(gtfs_route_id)
+
+
+def map_lirr_gtfs_stop(gtfs_stop_id: str) -> str | None:
+    """Map LIRR GTFS stop_id to our internal station code.
+
+    Args:
+        gtfs_stop_id: GTFS stop_id (e.g., '237' for Penn Station)
+
+    Returns:
+        Our internal station code (e.g., 'NY') or None if not mapped
+    """
+    return LIRR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
 
 
 def get_patco_route_info(gtfs_route_id: str) -> tuple[str, str, str] | None:
@@ -1088,6 +1412,132 @@ STATION_COORDINATES = {
     # Florida Amtrak stations
     "WLD": {"lat": 29.7899, "lon": -82.1712},  # Waldo, FL
     "OCA": {"lat": 29.1871, "lon": -82.1301},  # Ocala, FL
+    # LIRR stations (Long Island Rail Road)
+    "ABT": {"lat": 40.77206317, "lon": -73.64169095},  # Albertson
+    "AGT": {"lat": 40.98003964, "lon": -72.13233416},  # Amagansett
+    "AVL": {"lat": 40.68024859, "lon": -73.42031192},  # Amityville
+    "LAT": {"lat": 40.68359596, "lon": -73.97567112},  # Atlantic Terminal
+    "ADL": {"lat": 40.76144288, "lon": -73.78995927},  # Auburndale
+    "BTA": {"lat": 40.70068942, "lon": -73.32405561},  # Babylon
+    "BWN": {"lat": 40.65673224, "lon": -73.60716245},  # Baldwin
+    "BSR": {"lat": 40.72443344, "lon": -73.25408295},  # Bay Shore
+    "BSD": {"lat": 40.76315241, "lon": -73.77124986},  # Bayside
+    "BRS": {"lat": 40.72220443, "lon": -73.71665289},  # Bellerose
+    "BMR": {"lat": 40.66880043, "lon": -73.52886016},  # Bellmore
+    "BPT": {"lat": 40.7737389, "lon": -72.94396574},   # Bellport
+    "BRT": {"lat": 40.71368754, "lon": -73.72829722},  # Belmont Park
+    "BPG": {"lat": 40.74303924, "lon": -73.48343821},  # Bethpage
+    "BWD": {"lat": 40.78083474, "lon": -73.24361074},  # Brentwood
+    "BHN": {"lat": 40.93898378, "lon": -72.31004593},  # Bridgehampton
+    "BDY": {"lat": 40.76165318, "lon": -73.80176612},  # Broadway LIRR
+    "CPL": {"lat": 40.74920704, "lon": -73.60365242},  # Carle Place
+    "CHT": {"lat": 40.62217451, "lon": -73.72618275},  # Cedarhurst
+    "CI": {"lat": 40.79185312, "lon": -73.19486082},   # Central Islip
+    "CAV": {"lat": 40.64831835, "lon": -73.6639675},   # Centre Avenue
+    "CSH": {"lat": 40.83563832, "lon": -73.45108591},  # Cold Spring Harbor
+    "CPG": {"lat": 40.68101528, "lon": -73.39834027},  # Copiague
+    "CLP": {"lat": 40.72145656, "lon": -73.62967386},  # Country Life Press
+    "DPK": {"lat": 40.76948364, "lon": -73.29356494},  # Deer Park
+    "DGL": {"lat": 40.76806862, "lon": -73.74941265},  # Douglaston
+    "EHN": {"lat": 40.96508629, "lon": -72.19324238},  # East Hampton
+    "ENY": {"lat": 40.67581191, "lon": -73.90280882},  # East New York
+    "ERY": {"lat": 40.64221085, "lon": -73.65821626},  # East Rockaway
+    "EWN": {"lat": 40.7560191, "lon": -73.63940764},   # East Williston
+    "EMT": {"lat": 40.720074, "lon": -73.725549},      # Elmont-UBS Arena
+    "FRY": {"lat": 40.60914311, "lon": -73.75054135},  # Far Rockaway
+    "FMD": {"lat": 40.73591503, "lon": -73.44123878},  # Farmingdale
+    "FPK": {"lat": 40.72463725, "lon": -73.70639714},  # Floral Park
+    "FLS": {"lat": 40.75789494, "lon": -73.83134684},  # Flushing Main Street
+    "FHL": {"lat": 40.71957556, "lon": -73.84481402},  # Forest Hills
+    "FPT": {"lat": 40.65745799, "lon": -73.58232401},  # Freeport
+    "GCY": {"lat": 40.72310156, "lon": -73.64036107},  # Garden City
+    "GBN": {"lat": 40.64925173, "lon": -73.70183483},  # Gibson
+    "GCV": {"lat": 40.86583421, "lon": -73.61616614},  # Glen Cove
+    "GHD": {"lat": 40.83222531, "lon": -73.62611822},  # Glen Head
+    "GST": {"lat": 40.85798112, "lon": -73.62121715},  # Glen Street
+    "GCT": {"lat": 40.755162, "lon": -73.975455},      # Grand Central Madison
+    "GNK": {"lat": 40.78721647, "lon": -73.72610046},  # Great Neck
+    "GRV": {"lat": 40.74044444, "lon": -73.17019585},  # Great River
+    "GWN": {"lat": 40.86866524, "lon": -73.36284977},  # Greenlawn
+    "GPT": {"lat": 41.09970991, "lon": -72.36310396},  # Greenport
+    "GVL": {"lat": 40.81571566, "lon": -73.62687152},  # Greenvale
+    "HBY": {"lat": 40.87660916, "lon": -72.52394936},  # Hampton Bays
+    "HGN": {"lat": 40.69491356, "lon": -73.64620888},  # Hempstead Gardens
+    "HEM": {"lat": 40.71329663, "lon": -73.62503239},  # Hempstead
+    "HWT": {"lat": 40.63676432, "lon": -73.70513866},  # Hewlett
+    "HVL": {"lat": 40.76717491, "lon": -73.52853322},  # Hicksville
+    "HOL": {"lat": 40.71018151, "lon": -73.76675252},  # Hollis
+    "HPA": {"lat": 40.74239046, "lon": -73.94678997},  # Hunterspoint Avenue
+    "HUN": {"lat": 40.85300971, "lon": -73.40952576},  # Huntington
+    "IWD": {"lat": 40.61228773, "lon": -73.74418354},  # Inwood
+    "IPK": {"lat": 40.60129906, "lon": -73.65474248},  # Island Park
+    "ISP": {"lat": 40.73583449, "lon": -73.20932145},  # Islip
+    "JAM": {"lat": 40.69960817, "lon": -73.80852987},  # Jamaica
+    "KGN": {"lat": 40.70964917, "lon": -73.83088807},  # Kew Gardens
+    "KPK": {"lat": 40.88366659, "lon": -73.25624757},  # Kings Park
+    "LVW": {"lat": 40.68585582, "lon": -73.65213777},  # Lakeview
+    "LTN": {"lat": 40.66848304, "lon": -73.75174687},  # Laurelton
+    "LCE": {"lat": 40.6157347, "lon": -73.73589955},   # Lawrence
+    "LHT": {"lat": 40.68826504, "lon": -73.36921149},  # Lindenhurst
+    "LNK": {"lat": 40.77504393, "lon": -73.74064662},  # Little Neck
+    "LMR": {"lat": 40.67513907, "lon": -73.76504303},  # Locust Manor
+    "LVL": {"lat": 40.87446697, "lon": -73.59830284},  # Locust Valley
+    "LBH": {"lat": 40.5901817, "lon": -73.66481822},   # Long Beach
+    "LIC": {"lat": 40.74134343, "lon": -73.95763922},  # Long Island City
+    "LYN": {"lat": 40.65605814, "lon": -73.67607083},  # Lynbrook
+    "MVN": {"lat": 40.67547844, "lon": -73.66886364},  # Malverne
+    "MHT": {"lat": 40.7967241, "lon": -73.69989909},   # Manhasset
+    "MPK": {"lat": 40.6778591, "lon": -73.45473724},   # Massapequa Park
+    "MQA": {"lat": 40.67693014, "lon": -73.46905552},  # Massapequa
+    "MSY": {"lat": 40.79898815, "lon": -72.86442272},  # Mastic-Shirley
+    "MAK": {"lat": 40.99179354, "lon": -72.53606243},  # Mattituck
+    "MFD": {"lat": 40.81739665, "lon": -72.99890946},  # Medford
+    "MAV": {"lat": 40.73516903, "lon": -73.66252148},  # Merillon Avenue
+    "MRK": {"lat": 40.6638004, "lon": -73.55062102},   # Merrick
+    "SSM": {"lat": 40.75239835, "lon": -73.84370059},  # Mets-Willets Point
+    "MIN": {"lat": 40.74034743, "lon": -73.64086293},  # Mineola
+    "MTK": {"lat": 41.04710896, "lon": -71.95388103},  # Montauk
+    "MHL": {"lat": 40.76270926, "lon": -73.81453928},  # Murray Hill LIRR
+    "NBD": {"lat": 40.72296245, "lon": -73.66269823},  # Nassau Boulevard
+    "NHP": {"lat": 40.73075708, "lon": -73.68095886},  # New Hyde Park
+    "NPT": {"lat": 40.88064972, "lon": -73.32848513},  # Northport
+    "NAV": {"lat": 40.67838785, "lon": -73.94822108},  # Nostrand Avenue
+    "ODL": {"lat": 40.74343275, "lon": -73.13243549},  # Oakdale
+    "ODE": {"lat": 40.63472102, "lon": -73.65466582},  # Oceanside
+    "OBY": {"lat": 40.87533774, "lon": -73.53403366},  # Oyster Bay
+    "PGE": {"lat": 40.76187901, "lon": -73.01574451},  # Patchogue
+    "PLN": {"lat": 40.74535851, "lon": -73.39960092},  # Pinelawn
+    "PDM": {"lat": 40.81069853, "lon": -73.69521438},  # Plandome
+    "PJN": {"lat": 40.9345531, "lon": -73.05250164},   # Port Jefferson
+    "PWS": {"lat": 40.82903533, "lon": -73.687401},    # Port Washington
+    "QVG": {"lat": 40.71745785, "lon": -73.73645989},  # Queens Village
+    "RHD": {"lat": 40.91983928, "lon": -72.66691054},  # Riverhead
+    "RVC": {"lat": 40.65831811, "lon": -73.64654935},  # Rockville Centre
+    "RON": {"lat": 40.80808613, "lon": -73.10594023},  # Ronkonkoma
+    "ROS": {"lat": 40.66594933, "lon": -73.73554816},  # Rosedale
+    "RSN": {"lat": 40.7904781, "lon": -73.64326175},   # Roslyn
+    "SVL": {"lat": 40.74035373, "lon": -73.08645531},  # Sayville
+    "SCF": {"lat": 40.85236805, "lon": -73.62541695},  # Sea Cliff
+    "SFD": {"lat": 40.67572393, "lon": -73.48656847},  # Seaford
+    "STN": {"lat": 40.85654755, "lon": -73.19803235},  # Smithtown
+    "SHN": {"lat": 40.89471874, "lon": -72.39012376},  # Southampton
+    "SHD": {"lat": 41.06632089, "lon": -72.4278803},   # Southold
+    "SPK": {"lat": 40.82131516, "lon": -72.70526225},  # Speonk
+    "SAB": {"lat": 40.69118348, "lon": -73.76550937},  # St. Albans
+    "SJM": {"lat": 40.88216931, "lon": -73.15950725},  # St. James
+    "SMR": {"lat": 40.72302771, "lon": -73.68102041},  # Stewart Manor
+    "LSBK": {"lat": 40.92032252, "lon": -73.12854943}, # Stony Brook
+    "SYT": {"lat": 40.82485746, "lon": -73.5004456},   # Syosset
+    "VSM": {"lat": 40.66151762, "lon": -73.70475875},  # Valley Stream
+    "WGH": {"lat": 40.67299016, "lon": -73.50896484},  # Wantagh
+    "WHD": {"lat": 40.70196099, "lon": -73.64164361},  # West Hempstead
+    "WBY": {"lat": 40.75345386, "lon": -73.5858661},   # Westbury
+    "WHN": {"lat": 40.83030532, "lon": -72.65032454},  # Westhampton
+    "WWD": {"lat": 40.66837227, "lon": -73.68120878},  # Westwood LIRR
+    "WMR": {"lat": 40.63133646, "lon": -73.71371544},  # Woodmere
+    "WDD": {"lat": 40.74585067, "lon": -73.90297516},  # Woodside
+    "WYD": {"lat": 40.75480101, "lon": -73.35806588},  # Wyandanch
+    "YPK": {"lat": 40.82561319, "lon": -72.91587848},  # Yaphank
 }
 
 
@@ -1173,7 +1623,7 @@ def map_gtfs_stop_to_station_code(
     Args:
         gtfs_stop_id: The GTFS stop_id (numeric for NJT, code for Amtrak)
         gtfs_stop_name: The GTFS stop_name for fallback matching
-        data_source: "NJT", "AMTRAK", "PATH", or "PATCO"
+        data_source: "NJT", "AMTRAK", "PATH", "PATCO", or "LIRR"
 
     Returns:
         Our internal station code or None if no match found
@@ -1185,6 +1635,10 @@ def map_gtfs_stop_to_station_code(
     if data_source == "PATCO":
         # PATCO uses numeric stop_id (1-14)
         return PATCO_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
+
+    if data_source == "LIRR":
+        # LIRR uses numeric stop_id from MTA GTFS
+        return LIRR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
 
     if data_source == "PATH":
         # PATH - first try by stop_id (GTFS uses same IDs as Transiter: 26722-26734)

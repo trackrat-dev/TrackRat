@@ -1,0 +1,382 @@
+"""
+LIRR unified collector for train discovery and journey updates.
+
+Uses the LIRRClient to fetch GTFS-RT data and creates/updates TrainJourney records.
+Follows the same pattern as the PATH collector for simplicity.
+"""
+
+import logging
+from datetime import date, datetime, timedelta, timezone
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from trackrat.collectors.lirr.client import LIRRClient, LirrArrival
+from trackrat.config.stations import (
+    LIRR_DISCOVERY_STATIONS,
+    LIRR_ROUTES,
+    get_station_name,
+)
+from trackrat.db.engine import get_session
+from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.time import ET
+
+logger = logging.getLogger(__name__)
+
+
+def _generate_train_id(
+    route_id: str,
+    trip_id: str,
+    origin_code: str,
+    dest_code: str,
+    departure_time: datetime,
+) -> str:
+    """
+    Generate a stable train ID for LIRR trains.
+
+    Format: L{route_id}_{trip_suffix}_{departure_timestamp}
+
+    The "L" prefix ensures LIRR trains are displayed as "L6108" etc.
+    """
+    # Use last 4-6 chars of trip_id as the train number
+    trip_suffix = trip_id[-6:] if len(trip_id) > 6 else trip_id
+    # Remove any non-numeric characters for cleaner display
+    trip_suffix = "".join(c for c in trip_suffix if c.isdigit())
+    if not trip_suffix:
+        trip_suffix = trip_id[:6]
+
+    return f"L{trip_suffix}"
+
+
+class LIRRCollector:
+    """
+    Unified LIRR collector that discovers trains and updates journeys.
+
+    Polls the GTFS-RT feed every collection cycle to:
+    1. Discover new trains (create TrainJourney records)
+    2. Update existing trains with real-time data (delays, stops)
+
+    Similar to PATH's unified collector pattern.
+    """
+
+    def __init__(self, client: LIRRClient | None = None) -> None:
+        """Initialize collector.
+
+        Args:
+            client: Optional LIRRClient instance. Creates new one if not provided.
+        """
+        self.client = client or LIRRClient()
+        self._owns_client = client is None
+
+    async def run(self) -> dict[str, Any]:
+        """
+        Main entry point for the collector.
+
+        Creates a database session and runs collection.
+
+        Returns:
+            Statistics dict with discovery/update counts
+        """
+        async with get_session() as session:
+            return await self.collect(session)
+
+    async def collect(self, session: AsyncSession) -> dict[str, Any]:
+        """
+        Collect LIRR train data.
+
+        1. Fetch all arrivals from GTFS-RT feed
+        2. Group by trip_id to identify unique trains
+        3. For each train, create or update TrainJourney record
+
+        Args:
+            session: Database session
+
+        Returns:
+            Statistics dict
+        """
+        stats = {
+            "discovered": 0,
+            "updated": 0,
+            "errors": 0,
+            "total_arrivals": 0,
+        }
+
+        try:
+            # Fetch all arrivals
+            arrivals = await self.client.get_all_arrivals()
+            stats["total_arrivals"] = len(arrivals)
+
+            if not arrivals:
+                logger.warning("No LIRR arrivals found in GTFS-RT feed")
+                return stats
+
+            # Group arrivals by trip_id
+            trips: dict[str, list[LirrArrival]] = {}
+            for arrival in arrivals:
+                if arrival.trip_id not in trips:
+                    trips[arrival.trip_id] = []
+                trips[arrival.trip_id].append(arrival)
+
+            logger.info(f"Found {len(trips)} LIRR trips in GTFS-RT feed")
+
+            # Process each trip
+            for trip_id, trip_arrivals in trips.items():
+                try:
+                    result = await self._process_trip(session, trip_id, trip_arrivals)
+                    if result == "discovered":
+                        stats["discovered"] += 1
+                    elif result == "updated":
+                        stats["updated"] += 1
+                except Exception as e:
+                    logger.error(f"Error processing LIRR trip {trip_id}: {e}")
+                    stats["errors"] += 1
+
+            await session.commit()
+            logger.info(
+                f"LIRR collection complete: {stats['discovered']} discovered, "
+                f"{stats['updated']} updated, {stats['errors']} errors"
+            )
+
+        except Exception as e:
+            logger.error(f"LIRR collection failed: {e}")
+            stats["errors"] += 1
+
+        return stats
+
+    async def _process_trip(
+        self, session: AsyncSession, trip_id: str, arrivals: list[LirrArrival]
+    ) -> str | None:
+        """
+        Process a single trip from the GTFS-RT feed.
+
+        Creates a new TrainJourney if this trip doesn't exist,
+        or updates the existing one with new stop times.
+
+        Args:
+            session: Database session
+            trip_id: GTFS trip_id
+            arrivals: List of arrivals for this trip
+
+        Returns:
+            "discovered", "updated", or None
+        """
+        if not arrivals:
+            return None
+
+        # Sort arrivals by time to get stop sequence
+        arrivals.sort(key=lambda a: a.arrival_time)
+
+        # Get trip info from first arrival
+        first_arrival = arrivals[0]
+        last_arrival = arrivals[-1]
+        route_id = first_arrival.route_id
+
+        # Get route info
+        route_info = LIRR_ROUTES.get(route_id)
+        if route_info:
+            line_code, line_name, line_color = route_info
+        else:
+            line_code = f"LIRR-{route_id}"
+            line_name = f"LIRR Route {route_id}"
+            line_color = "#0039A6"  # Default LIRR blue
+
+        # Determine origin and destination
+        origin_code = first_arrival.station_code
+        terminal_code = last_arrival.station_code
+
+        # Generate train ID
+        train_id = _generate_train_id(
+            route_id,
+            trip_id,
+            origin_code,
+            terminal_code,
+            first_arrival.arrival_time,
+        )
+
+        # Determine journey date (in Eastern time)
+        # Use the departure time from origin, converted to ET for correct date
+        arrival_et = first_arrival.arrival_time.astimezone(ET)
+        journey_date = arrival_et.date()
+
+        # Check if journey already exists
+        existing = await session.execute(
+            select(TrainJourney).where(
+                TrainJourney.train_id == train_id,
+                TrainJourney.journey_date == journey_date,
+                TrainJourney.data_source == "LIRR",
+            )
+        )
+        journey = existing.scalar_one_or_none()
+
+        if journey is None:
+            # Create new journey
+            journey = TrainJourney(
+                train_id=train_id,
+                journey_date=journey_date,
+                data_source="LIRR",
+                observation_type="OBSERVED",
+                line_code=line_code,
+                line_name=line_name,
+                line_color=line_color,
+                destination=get_station_name(terminal_code),
+                origin_station_code=origin_code,
+                terminal_station_code=terminal_code,
+                scheduled_departure=first_arrival.arrival_time,
+                scheduled_arrival=last_arrival.arrival_time,
+                actual_departure=first_arrival.arrival_time
+                + timedelta(seconds=first_arrival.delay_seconds),
+                has_complete_journey=True,
+                stops_count=len(arrivals),
+                is_cancelled=False,
+                is_completed=False,
+                api_error_count=0,
+                is_expired=False,
+                discovery_station_code=origin_code,
+            )
+            session.add(journey)
+            await session.flush()
+
+            # Create stops
+            for seq, arr in enumerate(arrivals, start=1):
+                stop = JourneyStop(
+                    journey_id=journey.id,
+                    station_code=arr.station_code,
+                    station_name=get_station_name(arr.station_code),
+                    stop_sequence=seq,
+                    scheduled_arrival=arr.arrival_time,
+                    scheduled_departure=arr.departure_time or arr.arrival_time,
+                    actual_arrival=arr.arrival_time
+                    + timedelta(seconds=arr.delay_seconds),
+                    actual_departure=(
+                        (arr.departure_time + timedelta(seconds=arr.delay_seconds))
+                        if arr.departure_time
+                        else None
+                    ),
+                    track=arr.track,
+                    has_departed_station=False,
+                )
+                session.add(stop)
+
+            logger.debug(f"Discovered LIRR train {train_id}")
+            return "discovered"
+
+        else:
+            # Update existing journey
+            journey.actual_departure = first_arrival.arrival_time + timedelta(
+                seconds=first_arrival.delay_seconds
+            )
+            journey.actual_arrival = last_arrival.arrival_time + timedelta(
+                seconds=last_arrival.delay_seconds
+            )
+
+            # Update stops
+            for arr in arrivals:
+                # Find existing stop
+                stop_result = await session.execute(
+                    select(JourneyStop).where(
+                        JourneyStop.journey_id == journey.id,
+                        JourneyStop.station_code == arr.station_code,
+                    )
+                )
+                stop = stop_result.scalar_one_or_none()
+
+                if stop:
+                    stop.actual_arrival = arr.arrival_time + timedelta(
+                        seconds=arr.delay_seconds
+                    )
+                    if arr.departure_time:
+                        stop.actual_departure = arr.departure_time + timedelta(
+                            seconds=arr.delay_seconds
+                        )
+                    if arr.track:
+                        stop.track = arr.track
+
+            logger.debug(f"Updated LIRR train {train_id}")
+            return "updated"
+
+    async def collect_journey_details(
+        self, session: AsyncSession, journey: TrainJourney
+    ) -> None:
+        """
+        JIT update for a single journey.
+
+        Called by DepartureService when a journey's data is stale.
+
+        Args:
+            session: Database session
+            journey: TrainJourney to update
+        """
+        if journey.data_source != "LIRR":
+            return
+
+        # Fetch latest arrivals for all stops of this journey
+        arrivals = await self.client.get_all_arrivals()
+
+        # Find arrivals that match this journey's stops
+        journey_stops = {s.station_code for s in journey.stops}
+
+        # Find arrivals that might be part of this journey
+        # Match by origin station and approximate departure time
+        matching_trips: dict[str, list[LirrArrival]] = {}
+
+        for arr in arrivals:
+            if arr.station_code not in journey_stops:
+                continue
+            if arr.trip_id not in matching_trips:
+                matching_trips[arr.trip_id] = []
+            matching_trips[arr.trip_id].append(arr)
+
+        # Find the best matching trip (most overlapping stations)
+        best_trip: list[LirrArrival] | None = None
+        best_overlap = 0
+
+        for trip_arrivals in matching_trips.values():
+            trip_stations = {a.station_code for a in trip_arrivals}
+            overlap = len(trip_stations & journey_stops)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_trip = trip_arrivals
+
+        if not best_trip:
+            logger.debug(f"No matching LIRR trip found for journey {journey.train_id}")
+            return
+
+        # Update journey with latest data
+        for arr in best_trip:
+            stop_result = await session.execute(
+                select(JourneyStop).where(
+                    JourneyStop.journey_id == journey.id,
+                    JourneyStop.station_code == arr.station_code,
+                )
+            )
+            stop = stop_result.scalar_one_or_none()
+
+            if stop:
+                stop.actual_arrival = arr.arrival_time + timedelta(
+                    seconds=arr.delay_seconds
+                )
+                if arr.departure_time:
+                    stop.actual_departure = arr.departure_time + timedelta(
+                        seconds=arr.delay_seconds
+                    )
+                if arr.track:
+                    stop.track = arr.track
+
+        # Update journey-level times
+        first_stop = min(best_trip, key=lambda a: a.arrival_time)
+        last_stop = max(best_trip, key=lambda a: a.arrival_time)
+
+        journey.actual_departure = first_stop.arrival_time + timedelta(
+            seconds=first_stop.delay_seconds
+        )
+        journey.actual_arrival = last_stop.arrival_time + timedelta(
+            seconds=last_stop.delay_seconds
+        )
+
+        logger.debug(f"JIT updated LIRR journey {journey.train_id}")
+
+    async def close(self) -> None:
+        """Close the client if we own it."""
+        if self._owns_client:
+            await self.client.close()

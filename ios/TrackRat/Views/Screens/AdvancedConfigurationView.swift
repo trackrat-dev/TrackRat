@@ -79,7 +79,7 @@ struct AdvancedConfigurationView: View {
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
 
-            Text("Enable PATH and PATCO to see them in the app. NJ Transit and Amtrak are always available.")
+            Text("Enable PATH, PATCO, and LIRR to see them in the app. NJ Transit and Amtrak are always available.")
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.7))
 
@@ -99,6 +99,15 @@ struct AdvancedConfigurationView: View {
                     isEnabled: appState.isSystemEnabled(.patco)
                 ) { enabled in
                     appState.setSystemEnabled(.patco, enabled: enabled)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+
+                // LIRR toggle
+                TrainSystemToggleRow(
+                    system: .lirr,
+                    isEnabled: appState.isSystemEnabled(.lirr)
+                ) { enabled in
+                    appState.setSystemEnabled(.lirr, enabled: enabled)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }

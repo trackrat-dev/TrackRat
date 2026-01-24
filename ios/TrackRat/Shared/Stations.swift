@@ -87,6 +87,36 @@ struct Stations {
         // Pennsylvania Stations (Keystone Service)
         "Middletown PA", "Elizabethtown", "Mount Joy", "Parkesburg",
         "Coatesville", "Downingtown", "Exton", "Paoli",
+
+        // LIRR Stations (Long Island Rail Road)
+        "Albertson", "Amagansett", "Amityville", "Atlantic Terminal",
+        "Auburndale", "Babylon", "Baldwin", "Bay Shore", "Bayside",
+        "Bellerose", "Bellmore", "Bellport", "Belmont Park", "Bethpage",
+        "Brentwood", "Bridgehampton", "Broadway LIRR", "Carle Place",
+        "Cedarhurst", "Central Islip", "Centre Avenue", "Cold Spring Harbor",
+        "Copiague", "Country Life Press", "Deer Park", "Douglaston",
+        "East Hampton", "East New York", "East Rockaway", "East Williston",
+        "Elmont-UBS Arena", "Far Rockaway", "Farmingdale", "Floral Park",
+        "Flushing Main Street", "Forest Hills", "Freeport", "Garden City",
+        "Gibson", "Glen Cove", "Glen Head", "Glen Street", "Grand Central Madison",
+        "Great Neck", "Great River", "Greenlawn", "Greenport", "Greenvale",
+        "Hampton Bays", "Hempstead Gardens", "Hempstead", "Hewlett", "Hicksville",
+        "Hollis", "Hunterspoint Avenue", "Huntington", "Inwood", "Island Park",
+        "Islip", "Jamaica", "Kew Gardens", "Kings Park", "Lakeview",
+        "Laurelton", "Lawrence", "Lindenhurst", "Little Neck", "Locust Manor",
+        "Locust Valley", "Long Beach", "Long Island City", "Lynbrook",
+        "Malverne", "Manhasset", "Massapequa Park", "Massapequa",
+        "Mastic-Shirley", "Mattituck", "Medford", "Merillon Avenue", "Merrick",
+        "Mets-Willets Point", "Mineola", "Montauk", "Murray Hill LIRR",
+        "Nassau Boulevard", "New Hyde Park", "Northport", "Nostrand Avenue",
+        "Oakdale", "Oceanside", "Oyster Bay", "Patchogue", "Pinelawn",
+        "Plandome", "Port Jefferson", "Port Washington", "Queens Village",
+        "Riverhead", "Rockville Centre", "Ronkonkoma", "Rosedale", "Roslyn",
+        "Sayville", "Sea Cliff", "Seaford", "Smithtown", "Southampton",
+        "Southold", "Speonk", "St. Albans", "St. James", "Stewart Manor",
+        "Stony Brook", "Syosset", "Valley Stream", "Wantagh", "West Hempstead",
+        "Westbury", "Westhampton", "Westwood LIRR", "Woodmere", "Woodside",
+        "Wyandanch", "Yaphank",
         
         // Amtrak Northeast Corridor
         "Boston South", "Boston Back Bay", "Providence", "Kingston", "Westerly",
@@ -353,6 +383,135 @@ struct Stations {
         "Lancaster": "LNC",
         "Kingston": "KIN",
         "Westerly": "WLY",
+
+        // LIRR stations (Long Island Rail Road)
+        // Note: Penn Station maps to "NY" for unified experience with NJT/Amtrak
+        // Atlantic Terminal uses "LAT" to avoid conflict with Atlanta "ATL"
+        "Albertson": "ABT",
+        "Amagansett": "AGT",
+        "Amityville": "AVL",
+        "Atlantic Terminal": "LAT",
+        "Auburndale": "ADL",
+        "Babylon": "BTA",
+        "Baldwin": "BWN",
+        "Bay Shore": "BSR",
+        "Bayside": "BSD",
+        "Bellerose": "BRS",
+        "Bellmore": "BMR",
+        "Bellport": "BPT",
+        "Belmont Park": "BRT",
+        "Bethpage": "BPG",
+        "Brentwood": "BWD",
+        "Bridgehampton": "BHN",
+        "Broadway LIRR": "BDY",
+        "Carle Place": "CPL",
+        "Cedarhurst": "CHT",
+        "Central Islip": "CI",
+        "Centre Avenue": "CAV",
+        "Cold Spring Harbor": "CSH",
+        "Copiague": "CPG",
+        "Country Life Press": "CLP",
+        "Deer Park": "DPK",
+        "Douglaston": "DGL",
+        "East Hampton": "EHN",
+        "East New York": "ENY",
+        "East Rockaway": "ERY",
+        "East Williston": "EWN",
+        "Elmont-UBS Arena": "EMT",
+        "Far Rockaway": "FRY",
+        "Farmingdale": "FMD",
+        "Floral Park": "FPK",
+        "Flushing Main Street": "FLS",
+        "Forest Hills": "FHL",
+        "Freeport": "FPT",
+        "Garden City": "GCY",
+        "Gibson": "GBN",
+        "Glen Cove": "GCV",
+        "Glen Head": "GHD",
+        "Glen Street": "GST",
+        "Grand Central Madison": "GCT",
+        "Great Neck": "GNK",
+        "Great River": "GRV",
+        "Greenlawn": "GWN",
+        "Greenport": "GPT",
+        "Greenvale": "GVL",
+        "Hampton Bays": "HBY",
+        "Hempstead Gardens": "HGN",
+        "Hempstead": "HEM",
+        "Hewlett": "HWT",
+        "Hicksville": "HVL",
+        "Hollis": "HOL",
+        "Hunterspoint Avenue": "HPA",
+        "Huntington": "HUN",
+        "Inwood": "IWD",
+        "Island Park": "IPK",
+        "Islip": "ISP",
+        "Jamaica": "JAM",
+        "Kew Gardens": "KGN",
+        "Kings Park": "KPK",
+        "Lakeview": "LVW",
+        "Laurelton": "LTN",
+        "Lawrence": "LCE",
+        "Lindenhurst": "LHT",
+        "Little Neck": "LNK",
+        "Locust Manor": "LMR",
+        "Locust Valley": "LVL",
+        "Long Beach": "LBH",
+        "Long Island City": "LIC",
+        "Lynbrook": "LYN",
+        "Malverne": "MVN",
+        "Manhasset": "MHT",
+        "Massapequa Park": "MPK",
+        "Massapequa": "MQA",
+        "Mastic-Shirley": "MSY",
+        "Mattituck": "MAK",
+        "Medford": "MFD",
+        "Merillon Avenue": "MAV",
+        "Merrick": "MRK",
+        "Mets-Willets Point": "SSM",
+        "Mineola": "MIN",
+        "Montauk": "MTK",
+        "Murray Hill LIRR": "MHL",
+        "Nassau Boulevard": "NBD",
+        "New Hyde Park": "NHP",
+        "Northport": "NPT",
+        "Nostrand Avenue": "NAV",
+        "Oakdale": "ODL",
+        "Oceanside": "ODE",
+        "Oyster Bay": "OBY",
+        "Patchogue": "PGE",
+        "Pinelawn": "PLN",
+        "Plandome": "PDM",
+        "Port Jefferson": "PJN",
+        "Port Washington": "PWS",
+        "Queens Village": "QVG",
+        "Riverhead": "RHD",
+        "Rockville Centre": "RVC",
+        "Ronkonkoma": "RON",
+        "Rosedale": "ROS",
+        "Roslyn": "RSN",
+        "Sayville": "SVL",
+        "Sea Cliff": "SCF",
+        "Seaford": "SFD",
+        "Smithtown": "STN",
+        "Southampton": "SHN",
+        "Southold": "SHD",
+        "Speonk": "SPK",
+        "St. Albans": "SAB",
+        "St. James": "SJM",
+        "Stewart Manor": "SMR",
+        "Stony Brook": "LSBK",
+        "Syosset": "SYT",
+        "Valley Stream": "VSM",
+        "Wantagh": "WGH",
+        "West Hempstead": "WHD",
+        "Westbury": "WBY",
+        "Westhampton": "WHN",
+        "Westwood LIRR": "WWD",
+        "Woodmere": "WMR",
+        "Woodside": "WDD",
+        "Wyandanch": "WYD",
+        "Yaphank": "YPK",
         
         // Southeast Amtrak stations
         "Charlotte": "CLT",
@@ -713,7 +872,134 @@ struct Stations {
         "JES": CLLocationCoordinate2D(latitude: 31.6036, longitude: -81.8854),                     // Jesup, GA
         "PAL": CLLocationCoordinate2D(latitude: 29.6486, longitude: -81.6376),                     // Palatka, FL
         "SAN": CLLocationCoordinate2D(latitude: 28.8122, longitude: -81.3130),                     // Sanford, FL
-        "HLW": CLLocationCoordinate2D(latitude: 26.0112, longitude: -80.1495)                      // Hollywood, FL
+        "HLW": CLLocationCoordinate2D(latitude: 26.0112, longitude: -80.1495),                     // Hollywood, FL
+
+        // LIRR stations (Long Island Rail Road)
+        "ABT": CLLocationCoordinate2D(latitude: 40.77206317, longitude: -73.64169095),  // Albertson
+        "AGT": CLLocationCoordinate2D(latitude: 40.98003964, longitude: -72.13233416),  // Amagansett
+        "AVL": CLLocationCoordinate2D(latitude: 40.68024859, longitude: -73.42031192),  // Amityville
+        "LAT": CLLocationCoordinate2D(latitude: 40.68359596, longitude: -73.97567112),  // Atlantic Terminal
+        "ADL": CLLocationCoordinate2D(latitude: 40.76144288, longitude: -73.78995927),  // Auburndale
+        "BTA": CLLocationCoordinate2D(latitude: 40.70068942, longitude: -73.32405561),  // Babylon
+        "BWN": CLLocationCoordinate2D(latitude: 40.65673224, longitude: -73.60716245),  // Baldwin
+        "BSR": CLLocationCoordinate2D(latitude: 40.72443344, longitude: -73.25408295),  // Bay Shore
+        "BSD": CLLocationCoordinate2D(latitude: 40.76315241, longitude: -73.77124986),  // Bayside
+        "BRS": CLLocationCoordinate2D(latitude: 40.72220443, longitude: -73.71665289),  // Bellerose
+        "BMR": CLLocationCoordinate2D(latitude: 40.66880043, longitude: -73.52886016),  // Bellmore
+        "BPT": CLLocationCoordinate2D(latitude: 40.7737389, longitude: -72.94396574),   // Bellport
+        "BRT": CLLocationCoordinate2D(latitude: 40.71368754, longitude: -73.72829722),  // Belmont Park
+        "BPG": CLLocationCoordinate2D(latitude: 40.74303924, longitude: -73.48343821),  // Bethpage
+        "BWD": CLLocationCoordinate2D(latitude: 40.78083474, longitude: -73.24361074),  // Brentwood
+        "BHN": CLLocationCoordinate2D(latitude: 40.93898378, longitude: -72.31004593),  // Bridgehampton
+        "BDY": CLLocationCoordinate2D(latitude: 40.76165318, longitude: -73.80176612),  // Broadway LIRR
+        "CPL": CLLocationCoordinate2D(latitude: 40.74920704, longitude: -73.60365242),  // Carle Place
+        "CHT": CLLocationCoordinate2D(latitude: 40.62217451, longitude: -73.72618275),  // Cedarhurst
+        "CI": CLLocationCoordinate2D(latitude: 40.79185312, longitude: -73.19486082),   // Central Islip
+        "CAV": CLLocationCoordinate2D(latitude: 40.64831835, longitude: -73.6639675),   // Centre Avenue
+        "CSH": CLLocationCoordinate2D(latitude: 40.83563832, longitude: -73.45108591),  // Cold Spring Harbor
+        "CPG": CLLocationCoordinate2D(latitude: 40.68101528, longitude: -73.39834027),  // Copiague
+        "CLP": CLLocationCoordinate2D(latitude: 40.72145656, longitude: -73.62967386),  // Country Life Press
+        "DPK": CLLocationCoordinate2D(latitude: 40.76948364, longitude: -73.29356494),  // Deer Park
+        "DGL": CLLocationCoordinate2D(latitude: 40.76806862, longitude: -73.74941265),  // Douglaston
+        "EHN": CLLocationCoordinate2D(latitude: 40.96508629, longitude: -72.19324238),  // East Hampton
+        "ENY": CLLocationCoordinate2D(latitude: 40.67581191, longitude: -73.90280882),  // East New York
+        "ERY": CLLocationCoordinate2D(latitude: 40.64221085, longitude: -73.65821626),  // East Rockaway
+        "EWN": CLLocationCoordinate2D(latitude: 40.7560191, longitude: -73.63940764),   // East Williston
+        "EMT": CLLocationCoordinate2D(latitude: 40.720074, longitude: -73.725549),      // Elmont-UBS Arena
+        "FRY": CLLocationCoordinate2D(latitude: 40.60914311, longitude: -73.75054135),  // Far Rockaway
+        "FMD": CLLocationCoordinate2D(latitude: 40.73591503, longitude: -73.44123878),  // Farmingdale
+        "FPK": CLLocationCoordinate2D(latitude: 40.72463725, longitude: -73.70639714),  // Floral Park
+        "FLS": CLLocationCoordinate2D(latitude: 40.75789494, longitude: -73.83134684),  // Flushing Main Street
+        "FHL": CLLocationCoordinate2D(latitude: 40.71957556, longitude: -73.84481402),  // Forest Hills
+        "FPT": CLLocationCoordinate2D(latitude: 40.65745799, longitude: -73.58232401),  // Freeport
+        "GCY": CLLocationCoordinate2D(latitude: 40.72310156, longitude: -73.64036107),  // Garden City
+        "GBN": CLLocationCoordinate2D(latitude: 40.64925173, longitude: -73.70183483),  // Gibson
+        "GCV": CLLocationCoordinate2D(latitude: 40.86583421, longitude: -73.61616614),  // Glen Cove
+        "GHD": CLLocationCoordinate2D(latitude: 40.83222531, longitude: -73.62611822),  // Glen Head
+        "GST": CLLocationCoordinate2D(latitude: 40.85798112, longitude: -73.62121715),  // Glen Street
+        "GCT": CLLocationCoordinate2D(latitude: 40.755162, longitude: -73.975455),      // Grand Central Madison
+        "GNK": CLLocationCoordinate2D(latitude: 40.78721647, longitude: -73.72610046),  // Great Neck
+        "GRV": CLLocationCoordinate2D(latitude: 40.74044444, longitude: -73.17019585),  // Great River
+        "GWN": CLLocationCoordinate2D(latitude: 40.86866524, longitude: -73.36284977),  // Greenlawn
+        "GPT": CLLocationCoordinate2D(latitude: 41.09970991, longitude: -72.36310396),  // Greenport
+        "GVL": CLLocationCoordinate2D(latitude: 40.81571566, longitude: -73.62687152),  // Greenvale
+        "HBY": CLLocationCoordinate2D(latitude: 40.87660916, longitude: -72.52394936),  // Hampton Bays
+        "HGN": CLLocationCoordinate2D(latitude: 40.69491356, longitude: -73.64620888),  // Hempstead Gardens
+        "HEM": CLLocationCoordinate2D(latitude: 40.71329663, longitude: -73.62503239),  // Hempstead
+        "HWT": CLLocationCoordinate2D(latitude: 40.63676432, longitude: -73.70513866),  // Hewlett
+        "HVL": CLLocationCoordinate2D(latitude: 40.76717491, longitude: -73.52853322),  // Hicksville
+        "HOL": CLLocationCoordinate2D(latitude: 40.71018151, longitude: -73.76675252),  // Hollis
+        "HPA": CLLocationCoordinate2D(latitude: 40.74239046, longitude: -73.94678997),  // Hunterspoint Avenue
+        "HUN": CLLocationCoordinate2D(latitude: 40.85300971, longitude: -73.40952576),  // Huntington
+        "IWD": CLLocationCoordinate2D(latitude: 40.61228773, longitude: -73.74418354),  // Inwood
+        "IPK": CLLocationCoordinate2D(latitude: 40.60129906, longitude: -73.65474248),  // Island Park
+        "ISP": CLLocationCoordinate2D(latitude: 40.73583449, longitude: -73.20932145),  // Islip
+        "JAM": CLLocationCoordinate2D(latitude: 40.69960817, longitude: -73.80852987),  // Jamaica
+        "KGN": CLLocationCoordinate2D(latitude: 40.70964917, longitude: -73.83088807),  // Kew Gardens
+        "KPK": CLLocationCoordinate2D(latitude: 40.88366659, longitude: -73.25624757),  // Kings Park
+        "LVW": CLLocationCoordinate2D(latitude: 40.68585582, longitude: -73.65213777),  // Lakeview
+        "LTN": CLLocationCoordinate2D(latitude: 40.66848304, longitude: -73.75174687),  // Laurelton
+        "LCE": CLLocationCoordinate2D(latitude: 40.6157347, longitude: -73.73589955),   // Lawrence
+        "LHT": CLLocationCoordinate2D(latitude: 40.68826504, longitude: -73.36921149),  // Lindenhurst
+        "LNK": CLLocationCoordinate2D(latitude: 40.77504393, longitude: -73.74064662),  // Little Neck
+        "LMR": CLLocationCoordinate2D(latitude: 40.67513907, longitude: -73.76504303),  // Locust Manor
+        "LVL": CLLocationCoordinate2D(latitude: 40.87446697, longitude: -73.59830284),  // Locust Valley
+        "LBH": CLLocationCoordinate2D(latitude: 40.5901817, longitude: -73.66481822),   // Long Beach
+        "LIC": CLLocationCoordinate2D(latitude: 40.74134343, longitude: -73.95763922),  // Long Island City
+        "LYN": CLLocationCoordinate2D(latitude: 40.65605814, longitude: -73.67607083),  // Lynbrook
+        "MVN": CLLocationCoordinate2D(latitude: 40.67547844, longitude: -73.66886364),  // Malverne
+        "MHT": CLLocationCoordinate2D(latitude: 40.7967241, longitude: -73.69989909),   // Manhasset
+        "MPK": CLLocationCoordinate2D(latitude: 40.6778591, longitude: -73.45473724),   // Massapequa Park
+        "MQA": CLLocationCoordinate2D(latitude: 40.67693014, longitude: -73.46905552),  // Massapequa
+        "MSY": CLLocationCoordinate2D(latitude: 40.79898815, longitude: -72.86442272),  // Mastic-Shirley
+        "MAK": CLLocationCoordinate2D(latitude: 40.99179354, longitude: -72.53606243),  // Mattituck
+        "MFD": CLLocationCoordinate2D(latitude: 40.81739665, longitude: -72.99890946),  // Medford
+        "MAV": CLLocationCoordinate2D(latitude: 40.73516903, longitude: -73.66252148),  // Merillon Avenue
+        "MRK": CLLocationCoordinate2D(latitude: 40.6638004, longitude: -73.55062102),   // Merrick
+        "SSM": CLLocationCoordinate2D(latitude: 40.75239835, longitude: -73.84370059),  // Mets-Willets Point
+        "MIN": CLLocationCoordinate2D(latitude: 40.74034743, longitude: -73.64086293),  // Mineola
+        "MTK": CLLocationCoordinate2D(latitude: 41.04710896, longitude: -71.95388103),  // Montauk
+        "MHL": CLLocationCoordinate2D(latitude: 40.76270926, longitude: -73.81453928),  // Murray Hill LIRR
+        "NBD": CLLocationCoordinate2D(latitude: 40.72296245, longitude: -73.66269823),  // Nassau Boulevard
+        "NHP": CLLocationCoordinate2D(latitude: 40.73075708, longitude: -73.68095886),  // New Hyde Park
+        "NPT": CLLocationCoordinate2D(latitude: 40.88064972, longitude: -73.32848513),  // Northport
+        "NAV": CLLocationCoordinate2D(latitude: 40.67838785, longitude: -73.94822108),  // Nostrand Avenue
+        "ODL": CLLocationCoordinate2D(latitude: 40.74343275, longitude: -73.13243549),  // Oakdale
+        "ODE": CLLocationCoordinate2D(latitude: 40.63472102, longitude: -73.65466582),  // Oceanside
+        "OBY": CLLocationCoordinate2D(latitude: 40.87533774, longitude: -73.53403366),  // Oyster Bay
+        "PGE": CLLocationCoordinate2D(latitude: 40.76187901, longitude: -73.01574451),  // Patchogue
+        "PLN": CLLocationCoordinate2D(latitude: 40.74535851, longitude: -73.39960092),  // Pinelawn
+        "PDM": CLLocationCoordinate2D(latitude: 40.81069853, longitude: -73.69521438),  // Plandome
+        "PJN": CLLocationCoordinate2D(latitude: 40.9345531, longitude: -73.05250164),   // Port Jefferson
+        "PWS": CLLocationCoordinate2D(latitude: 40.82903533, longitude: -73.687401),    // Port Washington
+        "QVG": CLLocationCoordinate2D(latitude: 40.71745785, longitude: -73.73645989),  // Queens Village
+        "RHD": CLLocationCoordinate2D(latitude: 40.91983928, longitude: -72.66691054),  // Riverhead
+        "RVC": CLLocationCoordinate2D(latitude: 40.65831811, longitude: -73.64654935),  // Rockville Centre
+        "RON": CLLocationCoordinate2D(latitude: 40.80808613, longitude: -73.10594023),  // Ronkonkoma
+        "ROS": CLLocationCoordinate2D(latitude: 40.66594933, longitude: -73.73554816),  // Rosedale
+        "RSN": CLLocationCoordinate2D(latitude: 40.7904781, longitude: -73.64326175),   // Roslyn
+        "SVL": CLLocationCoordinate2D(latitude: 40.74035373, longitude: -73.08645531),  // Sayville
+        "SCF": CLLocationCoordinate2D(latitude: 40.85236805, longitude: -73.62541695),  // Sea Cliff
+        "SFD": CLLocationCoordinate2D(latitude: 40.67572393, longitude: -73.48656847),  // Seaford
+        "STN": CLLocationCoordinate2D(latitude: 40.85654755, longitude: -73.19803235),  // Smithtown
+        "SHN": CLLocationCoordinate2D(latitude: 40.89471874, longitude: -72.39012376),  // Southampton
+        "SHD": CLLocationCoordinate2D(latitude: 41.06632089, longitude: -72.4278803),   // Southold
+        "SPK": CLLocationCoordinate2D(latitude: 40.82131516, longitude: -72.70526225),  // Speonk
+        "SAB": CLLocationCoordinate2D(latitude: 40.69118348, longitude: -73.76550937),  // St. Albans
+        "SJM": CLLocationCoordinate2D(latitude: 40.88216931, longitude: -73.15950725),  // St. James
+        "SMR": CLLocationCoordinate2D(latitude: 40.72302771, longitude: -73.68102041),  // Stewart Manor
+        "LSBK": CLLocationCoordinate2D(latitude: 40.92032252, longitude: -73.12854943),   // Stony Brook
+        "SYT": CLLocationCoordinate2D(latitude: 40.82485746, longitude: -73.5004456),   // Syosset
+        "VSM": CLLocationCoordinate2D(latitude: 40.66151762, longitude: -73.70475875),  // Valley Stream
+        "WGH": CLLocationCoordinate2D(latitude: 40.67299016, longitude: -73.50896484),  // Wantagh
+        "WHD": CLLocationCoordinate2D(latitude: 40.70196099, longitude: -73.64164361),  // West Hempstead
+        "WBY": CLLocationCoordinate2D(latitude: 40.75345386, longitude: -73.5858661),   // Westbury
+        "WHN": CLLocationCoordinate2D(latitude: 40.83030532, longitude: -72.65032454),  // Westhampton
+        "WWD": CLLocationCoordinate2D(latitude: 40.66837227, longitude: -73.68120878),  // Westwood LIRR
+        "WMR": CLLocationCoordinate2D(latitude: 40.63133646, longitude: -73.71371544),  // Woodmere
+        "WDD": CLLocationCoordinate2D(latitude: 40.74585067, longitude: -73.90297516),  // Woodside
+        "WYD": CLLocationCoordinate2D(latitude: 40.75480101, longitude: -73.35806588),  // Wyandanch
+        "YPK": CLLocationCoordinate2D(latitude: 40.82561319, longitude: -72.91587848)   // Yaphank
     ]
     
     // Supported departure stations - Updated to match backend
@@ -751,7 +1037,17 @@ struct Stations {
         ("Orlando", "ORL"),
         ("Tampa", "TPA"),
         ("Miami", "MIA"),
-        ("Atlanta", "ATL")
+        ("Atlanta", "ATL"),
+        // LIRR hubs
+        ("Jamaica", "JAM"),
+        ("Atlantic Terminal", "LAT"),
+        ("Grand Central Madison", "GCT"),
+        ("Hicksville", "HVL"),
+        ("Ronkonkoma", "RON"),
+        ("Babylon", "BTA"),
+        ("Huntington", "HUN"),
+        ("Port Washington", "PWS"),
+        ("Long Beach", "LBH")
     ]
     
     // Popular destination stations - kept in sync with departure stations
@@ -918,7 +1214,7 @@ struct Stations {
         "FFL": ["PATCO"],  // 15-16th and Locust
 
         // Multi-system stations
-        "NY": ["NJT", "AMTRAK"],  // New York Penn Station
+        "NY": ["NJT", "AMTRAK", "LIRR"],  // New York Penn Station
         "NP": ["NJT", "AMTRAK", "PATH"],  // Newark Penn Station (PATH adjacent)
         "TR": ["NJT", "AMTRAK"],  // Trenton
         "PH": ["NJT", "AMTRAK"],  // Philadelphia 30th Street
@@ -957,6 +1253,133 @@ struct Stations {
         "ORL": ["AMTRAK"],  // Orlando
         "TPA": ["AMTRAK"],  // Tampa
         "SAV": ["AMTRAK"],  // Savannah
+
+        // LIRR stations (Long Island Rail Road)
+        "ABT": ["LIRR"],  // Albertson
+        "AGT": ["LIRR"],  // Amagansett
+        "AVL": ["LIRR"],  // Amityville
+        "LAT": ["LIRR"],  // Atlantic Terminal
+        "ADL": ["LIRR"],  // Auburndale
+        "BTA": ["LIRR"],  // Babylon
+        "BWN": ["LIRR"],  // Baldwin
+        "BSR": ["LIRR"],  // Bay Shore
+        "BSD": ["LIRR"],  // Bayside
+        "BRS": ["LIRR"],  // Bellerose
+        "BMR": ["LIRR"],  // Bellmore
+        "BPT": ["LIRR"],  // Bellport
+        "BRT": ["LIRR"],  // Belmont Park
+        "BPG": ["LIRR"],  // Bethpage
+        "BWD": ["LIRR"],  // Brentwood
+        "BHN": ["LIRR"],  // Bridgehampton
+        "BDY": ["LIRR"],  // Broadway LIRR
+        "CPL": ["LIRR"],  // Carle Place
+        "CHT": ["LIRR"],  // Cedarhurst
+        "CI": ["LIRR"],   // Central Islip
+        "CAV": ["LIRR"],  // Centre Avenue
+        "CSH": ["LIRR"],  // Cold Spring Harbor
+        "CPG": ["LIRR"],  // Copiague
+        "CLP": ["LIRR"],  // Country Life Press
+        "DPK": ["LIRR"],  // Deer Park
+        "DGL": ["LIRR"],  // Douglaston
+        "EHN": ["LIRR"],  // East Hampton
+        "ENY": ["LIRR"],  // East New York
+        "ERY": ["LIRR"],  // East Rockaway
+        "EWN": ["LIRR"],  // East Williston
+        "EMT": ["LIRR"],  // Elmont-UBS Arena
+        "FRY": ["LIRR"],  // Far Rockaway
+        "FMD": ["LIRR"],  // Farmingdale
+        "FPK": ["LIRR"],  // Floral Park
+        "FLS": ["LIRR"],  // Flushing Main Street
+        "FHL": ["LIRR"],  // Forest Hills
+        "FPT": ["LIRR"],  // Freeport
+        "GCY": ["LIRR"],  // Garden City
+        "GBN": ["LIRR"],  // Gibson
+        "GCV": ["LIRR"],  // Glen Cove
+        "GHD": ["LIRR"],  // Glen Head
+        "GST": ["LIRR"],  // Glen Street
+        "GCT": ["LIRR"],  // Grand Central Madison
+        "GNK": ["LIRR"],  // Great Neck
+        "GRV": ["LIRR"],  // Great River
+        "GWN": ["LIRR"],  // Greenlawn
+        "GPT": ["LIRR"],  // Greenport
+        "GVL": ["LIRR"],  // Greenvale
+        "HBY": ["LIRR"],  // Hampton Bays
+        "HGN": ["LIRR"],  // Hempstead Gardens
+        "HEM": ["LIRR"],  // Hempstead
+        "HWT": ["LIRR"],  // Hewlett
+        "HVL": ["LIRR"],  // Hicksville
+        "HOL": ["LIRR"],  // Hollis
+        "HPA": ["LIRR"],  // Hunterspoint Avenue
+        "HUN": ["LIRR"],  // Huntington
+        "IWD": ["LIRR"],  // Inwood
+        "IPK": ["LIRR"],  // Island Park
+        "ISP": ["LIRR"],  // Islip
+        "JAM": ["LIRR"],  // Jamaica
+        "KGN": ["LIRR"],  // Kew Gardens
+        "KPK": ["LIRR"],  // Kings Park
+        "LVW": ["LIRR"],  // Lakeview
+        "LTN": ["LIRR"],  // Laurelton
+        "LCE": ["LIRR"],  // Lawrence
+        "LHT": ["LIRR"],  // Lindenhurst
+        "LNK": ["LIRR"],  // Little Neck
+        "LMR": ["LIRR"],  // Locust Manor
+        "LVL": ["LIRR"],  // Locust Valley
+        "LBH": ["LIRR"],  // Long Beach
+        "LIC": ["LIRR"],  // Long Island City
+        "LYN": ["LIRR"],  // Lynbrook
+        "MVN": ["LIRR"],  // Malverne
+        "MHT": ["LIRR"],  // Manhasset
+        "MPK": ["LIRR"],  // Massapequa Park
+        "MQA": ["LIRR"],  // Massapequa
+        "MSY": ["LIRR"],  // Mastic-Shirley
+        "MAK": ["LIRR"],  // Mattituck
+        "MFD": ["LIRR"],  // Medford
+        "MAV": ["LIRR"],  // Merillon Avenue
+        "MRK": ["LIRR"],  // Merrick
+        "SSM": ["LIRR"],  // Mets-Willets Point
+        "MIN": ["LIRR"],  // Mineola
+        "MTK": ["LIRR"],  // Montauk
+        "MHL": ["LIRR"],  // Murray Hill LIRR
+        "NBD": ["LIRR"],  // Nassau Boulevard
+        "NHP": ["LIRR"],  // New Hyde Park
+        "NPT": ["LIRR"],  // Northport
+        "NAV": ["LIRR"],  // Nostrand Avenue
+        "ODL": ["LIRR"],  // Oakdale
+        "ODE": ["LIRR"],  // Oceanside
+        "OBY": ["LIRR"],  // Oyster Bay
+        "PGE": ["LIRR"],  // Patchogue
+        "PLN": ["LIRR"],  // Pinelawn
+        "PDM": ["LIRR"],  // Plandome
+        "PJN": ["LIRR"],  // Port Jefferson
+        "PWS": ["LIRR"],  // Port Washington
+        "QVG": ["LIRR"],  // Queens Village
+        "RHD": ["LIRR"],  // Riverhead
+        "RVC": ["LIRR"],  // Rockville Centre
+        "RON": ["LIRR"],  // Ronkonkoma
+        "ROS": ["LIRR"],  // Rosedale
+        "RSN": ["LIRR"],  // Roslyn
+        "SVL": ["LIRR"],  // Sayville
+        "SCF": ["LIRR"],  // Sea Cliff
+        "SFD": ["LIRR"],  // Seaford
+        "STN": ["LIRR"],  // Smithtown
+        "SHN": ["LIRR"],  // Southampton
+        "SHD": ["LIRR"],  // Southold
+        "SPK": ["LIRR"],  // Speonk
+        "SAB": ["LIRR"],  // St. Albans
+        "SJM": ["LIRR"],  // St. James
+        "SMR": ["LIRR"],  // Stewart Manor
+        "LSBK": ["LIRR"],   // Stony Brook
+        "SYT": ["LIRR"],  // Syosset
+        "VSM": ["LIRR"],  // Valley Stream
+        "WGH": ["LIRR"],  // Wantagh
+        "WHD": ["LIRR"],  // West Hempstead
+        "WBY": ["LIRR"],  // Westbury
+        "WHN": ["LIRR"],  // Westhampton
+        "WWD": ["LIRR"],  // Westwood LIRR
+        "WMR": ["LIRR"],  // Woodmere
+        "WDD": ["LIRR"],  // Woodside
+        "WYD": ["LIRR"],  // Wyandanch
+        "YPK": ["LIRR"],  // Yaphank
     ]
 
     /// Returns the raw system strings that serve a given station

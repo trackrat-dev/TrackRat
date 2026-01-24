@@ -91,6 +91,10 @@ class Settings(BaseSettings):
         default=True,
         description="Use database-aggregated pattern analysis for Amtrak schedules (reduces memory usage by ~99%)",
     )
+    enable_lirr: bool = Field(
+        default=False,
+        description="Enable LIRR train collection and display",
+    )
 
     # CORS Settings
     cors_allowed_origins: list[str] = Field(

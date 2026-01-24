@@ -46,23 +46,31 @@ struct TripSelectionView: View {
         return (stations: stationResults, trainNumbers: trainNumbers)
     }
     
-    // Generate potential train numbers for both NJT and Amtrak
+    // Generate potential train numbers for NJT, Amtrak, and LIRR
     private func getPotentialTrainNumbers(_ input: String) -> [String] {
         let trimmed = input.trimmingCharacters(in: .whitespaces).uppercased()
-        
-        // If input already has "A" prefix, only search for that
+
+        // If input already has "A" prefix (Amtrak), only search for that
         if trimmed.hasPrefix("A") && trimmed.count >= 3 {
             let remainder = String(trimmed.dropFirst())
             if remainder.allSatisfy(\.isNumber) {
                 return [trimmed]
             }
         }
-        
-        // If input is numeric, search for both NJT and Amtrak variants
-        if trimmed.count >= 2 && trimmed.allSatisfy(\.isNumber) {
-            return [trimmed, "A\(trimmed)"]
+
+        // If input already has "L" prefix (LIRR), only search for that
+        if trimmed.hasPrefix("L") && trimmed.count >= 3 {
+            let remainder = String(trimmed.dropFirst())
+            if remainder.allSatisfy(\.isNumber) {
+                return [trimmed]
+            }
         }
-        
+
+        // If input is numeric, search for NJT, Amtrak, and LIRR variants
+        if trimmed.count >= 2 && trimmed.allSatisfy(\.isNumber) {
+            return [trimmed, "A\(trimmed)", "L\(trimmed)"]
+        }
+
         return []
     }
     
@@ -440,11 +448,23 @@ struct TripSelectionView: View {
     
     // Helper methods for train system identification
     private func trainSystemName(for trainNumber: String) -> String {
-        return trainNumber.hasPrefix("A") ? "AMTRAK" : "NJT"
+        if trainNumber.hasPrefix("A") {
+            return "AMTRAK"
+        } else if trainNumber.hasPrefix("L") {
+            return "LIRR"
+        } else {
+            return "NJT"
+        }
     }
-    
+
     private func trainSystemColor(for trainNumber: String) -> Color {
-        return .gray
+        if trainNumber.hasPrefix("A") {
+            return Color(hex: TrainSystem.amtrak.color) ?? .gray
+        } else if trainNumber.hasPrefix("L") {
+            return Color(hex: TrainSystem.lirr.color) ?? .gray
+        } else {
+            return Color(hex: TrainSystem.njt.color) ?? .gray
+        }
     }
     
     // MARK: - Train Validation

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
+from trackrat.collectors.lirr.collector import LIRRCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.collectors.path.collector import PathCollector
@@ -36,6 +37,7 @@ class JustInTimeUpdateService:
         self._njt_collector: JourneyCollector | None = None
         self._amtrak_collector: AmtrakJourneyCollector | None = None
         self._path_collector: PathCollector | None = None
+        self._lirr_collector: LIRRCollector | None = None
 
     async def __aenter__(self) -> "JustInTimeUpdateService":
         """Enter async context."""
@@ -51,6 +53,9 @@ class JustInTimeUpdateService:
         if self._path_collector:
             await self._path_collector.close()
             self._path_collector = None
+        if self._lirr_collector:
+            await self._lirr_collector.client.close()
+            self._lirr_collector = None
         # AmtrakJourneyCollector doesn't have a close method - no cleanup needed
         self._amtrak_collector = None
 
@@ -77,9 +82,16 @@ class JustInTimeUpdateService:
             self._path_collector = PathCollector()
         return self._path_collector
 
+    @property
+    def lirr_collector(self) -> LIRRCollector:
+        """Get or create LIRR journey collector."""
+        if self._lirr_collector is None:
+            self._lirr_collector = LIRRCollector()
+        return self._lirr_collector
+
     async def get_collector_for_journey(
         self, journey: TrainJourney
-    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector:
+    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector | LIRRCollector:
         """Get the appropriate collector for a journey based on its data source.
 
         Args:
@@ -94,6 +106,8 @@ class JustInTimeUpdateService:
             return self.amtrak_collector
         elif journey.data_source == "PATH":
             return self.path_collector
+        elif journey.data_source == "LIRR":
+            return self.lirr_collector
         else:
             raise ValueError(f"Unknown data source: {journey.data_source}")
 

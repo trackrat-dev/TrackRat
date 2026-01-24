@@ -135,9 +135,14 @@ class DepartureService:
 
         # Build additional filters for hide_departed and data_sources
         # Default to all data sources if not specified
-        allowed_sources = (
-            data_sources if data_sources else ["NJT", "AMTRAK", "PATH", "PATCO"]
-        )
+        # Import settings to check LIRR feature flag
+        from trackrat.settings import get_settings
+
+        settings = get_settings()
+        default_sources = ["NJT", "AMTRAK", "PATH", "PATCO"]
+        if settings.enable_lirr:
+            default_sources.append("LIRR")
+        allowed_sources = data_sources if data_sources else default_sources
 
         departure_filters = [
             JourneyStop.scheduled_departure >= time_from,

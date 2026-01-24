@@ -6,7 +6,7 @@ import CoreLocation
 struct RouteLine: Identifiable {
     let id: String
     let name: String
-    let dataSource: String  // "NJT", "AMTRAK", "PATH", "PATCO"
+    let dataSource: String  // "NJT", "AMTRAK", "PATH", "PATCO", "LIRR"
     let stationCodes: [String]
 
     /// Returns coordinate pairs for drawing polylines between consecutive stations.
@@ -31,7 +31,7 @@ struct RouteTopology {
 
     // MARK: - All Routes
 
-    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes
+    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes
 
     // MARK: - NJ Transit Routes
 
@@ -246,6 +246,114 @@ struct RouteTopology {
             name: "PATCO Speedline",
             dataSource: "PATCO",
             stationCodes: ["LND", "ASD", "WCT", "HDF", "WMT", "CLD", "FRY", "BWY", "CTH", "FKS", "EMK", "NTL", "TWL", "FFL"]
+        )
+    ]
+
+    // MARK: - LIRR Routes
+
+    static let lirrRoutes: [RouteLine] = [
+        // Main Line (Penn Station to Jamaica - trunk for most branches)
+        RouteLine(
+            id: "lirr-main-trunk",
+            name: "Main Line (Trunk)",
+            dataSource: "LIRR",
+            stationCodes: ["NY", "WDD", "FHL", "KGN", "JAM"]
+        ),
+
+        // Babylon Branch
+        RouteLine(
+            id: "lirr-babylon",
+            name: "Babylon Branch",
+            dataSource: "LIRR",
+            stationCodes: ["JAM", "VSM", "LYN", "RVC", "BWN", "FPT", "MRK", "BMR", "WGH", "SFD", "MQA", "MPK", "AVL", "CPG", "LHT", "BTA"]
+        ),
+
+        // Hempstead Branch
+        RouteLine(
+            id: "lirr-hempstead",
+            name: "Hempstead Branch",
+            dataSource: "LIRR",
+            stationCodes: ["JAM", "QVG", "HOL", "FPK", "SMR", "NHP", "GCY", "CLP", "HGN", "WHD", "HEM"]
+        ),
+
+        // Oyster Bay Branch
+        RouteLine(
+            id: "lirr-oyster-bay",
+            name: "Oyster Bay Branch",
+            dataSource: "LIRR",
+            stationCodes: ["JAM", "MIN", "EWN", "ABT", "RSN", "GVL", "GHD", "SCF", "GST", "GCV", "LVL", "OBY"]
+        ),
+
+        // Ronkonkoma Branch
+        RouteLine(
+            id: "lirr-ronkonkoma",
+            name: "Ronkonkoma Branch",
+            dataSource: "LIRR",
+            stationCodes: ["JAM", "MIN", "CPL", "WBY", "HVL", "BPG", "FMD", "PLN", "WYD", "DPK", "BWD", "CI", "RON"]
+        ),
+
+        // Montauk Branch (main portion)
+        RouteLine(
+            id: "lirr-montauk",
+            name: "Montauk Branch",
+            dataSource: "LIRR",
+            stationCodes: ["JAM", "BSR", "ISP", "GRV", "ODL", "SVL", "PGE", "BPT", "MSY", "MFD", "YPK", "RHD", "SPK", "WHN", "HBY", "SHN", "BHN", "EHN", "AGT", "MTK"]
+        ),
+
+        // Long Beach Branch
+        RouteLine(
+            id: "lirr-long-beach",
+            name: "Long Beach Branch",
+            dataSource: "LIRR",
+            stationCodes: ["JAM", "VSM", "LYN", "ERY", "CAV", "ODE", "IPK", "LBH"]
+        ),
+
+        // Far Rockaway Branch
+        RouteLine(
+            id: "lirr-far-rockaway",
+            name: "Far Rockaway Branch",
+            dataSource: "LIRR",
+            stationCodes: ["JAM", "LMR", "SAB", "ROS", "LTN", "GBN", "HWT", "WMR", "CHT", "LCE", "IWD", "FRY"]
+        ),
+
+        // West Hempstead Branch
+        RouteLine(
+            id: "lirr-west-hempstead",
+            name: "West Hempstead Branch",
+            dataSource: "LIRR",
+            stationCodes: ["JAM", "VSM", "MVN", "LVW", "WHD"]
+        ),
+
+        // Port Washington Branch (doesn't go through Jamaica)
+        RouteLine(
+            id: "lirr-port-washington",
+            name: "Port Washington Branch",
+            dataSource: "LIRR",
+            stationCodes: ["NY", "WDD", "FLS", "BDY", "ADL", "BSD", "DGL", "LNK", "GNK", "MHT", "PDM", "PWS"]
+        ),
+
+        // Port Jefferson Branch
+        RouteLine(
+            id: "lirr-port-jefferson",
+            name: "Port Jefferson Branch",
+            dataSource: "LIRR",
+            stationCodes: ["JAM", "MIN", "HVL", "SYT", "CSH", "HUN", "GWN", "NPT", "KPK", "STN", "SJM", "BK", "PJN"]
+        ),
+
+        // Atlantic Branch (to Atlantic Terminal)
+        RouteLine(
+            id: "lirr-atlantic",
+            name: "Atlantic Branch",
+            dataSource: "LIRR",
+            stationCodes: ["LAT", "NAV", "ENY", "JAM"]
+        ),
+
+        // Grand Central Madison extension
+        RouteLine(
+            id: "lirr-grand-central",
+            name: "Grand Central Madison",
+            dataSource: "LIRR",
+            stationCodes: ["GCT", "JAM"]
         )
     ]
 

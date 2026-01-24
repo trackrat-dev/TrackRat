@@ -22,6 +22,7 @@ from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.collector import PathCollector
+from trackrat.collectors.lirr.collector import LIRRCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
@@ -110,6 +111,18 @@ class SchedulerService:
             max_instances=1,
             misfire_grace_time=120,
         )
+
+        # Schedule LIRR collection (every 4 minutes) - only if enabled
+        if self.settings.enable_lirr:
+            self.scheduler.add_job(
+                self.run_lirr_collection,
+                trigger=IntervalTrigger(minutes=4),
+                id="lirr_collection",
+                name="LIRR Collection",
+                replace_existing=True,
+                max_instances=1,
+                misfire_grace_time=120,
+            )
 
         # Schedule journey collection check (every 5 minutes)
         # This checks for trains needing updates and schedules them
@@ -225,6 +238,8 @@ class SchedulerService:
         asyncio.create_task(self.run_njt_discovery())
         asyncio.create_task(self.run_amtrak_discovery())
         asyncio.create_task(self.run_path_collection())
+        if self.settings.enable_lirr:
+            asyncio.create_task(self.run_lirr_collection())
 
         # Check and initialize GTFS feeds on startup (downloads if missing)
         asyncio.create_task(self.check_and_initialize_gtfs_feeds())
@@ -412,6 +427,55 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("path_collection_skipped_still_fresh")
+
+    async def run_lirr_collection(self) -> None:
+        """Run unified LIRR collection (discovery + journey updates)."""
+        task_id = f"lirr_collection_{now_et().isoformat()}"
+
+        async def do_lirr_collection_work() -> dict[str, Any]:
+            """The actual LIRR collection work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_lirr_collection")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Run unified LIRR collection
+                collector = LIRRCollector()
+                try:
+                    result = await collector.run()
+
+                    logger.info(
+                        "lirr_collection_completed",
+                        total_arrivals=result.get("total_arrivals", 0),
+                        discovered=result.get("discovered", 0),
+                        updated=result.get("updated", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        async with get_session() as db:
+            # 4 minute interval, use 90% = 216 seconds safe interval
+            safe_interval = calculate_safe_interval(4)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="lirr_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_lirr_collection_work,
+            )
+
+            if not executed:
+                logger.debug("lirr_collection_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
