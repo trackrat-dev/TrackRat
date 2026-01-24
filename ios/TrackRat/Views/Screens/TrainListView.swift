@@ -93,6 +93,7 @@ struct TrainListView: View {
                     .background(Color.white.opacity(0.15))
                     .cornerRadius(8)
                 }
+                .buttonStyle(.plain)
 
                 Spacer().frame(width: 8)
 

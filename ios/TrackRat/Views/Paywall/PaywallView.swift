@@ -129,6 +129,7 @@ struct PaywallView: View {
                                         .stroke(.orange.opacity(0.5), lineWidth: 1)
                                 )
                             }
+                            .buttonStyle(.plain)
                         }
                         .padding()
                     } else {
@@ -173,6 +174,7 @@ struct PaywallView: View {
                         )
                         .foregroundColor(.white)
                     }
+                    .buttonStyle(.plain)
                     .disabled(selectedProduct == nil || isPurchasing)
                     .padding(.horizontal)
 
@@ -416,6 +418,7 @@ private struct PricingOptionView: View {
                     )
             )
         }
+        .buttonStyle(.plain)
     }
 }
 

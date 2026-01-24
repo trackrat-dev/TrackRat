@@ -128,6 +128,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
+                        .buttonStyle(.plain)
 
                         // Report an Issue
                         Button {
@@ -161,6 +162,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
+                        .buttonStyle(.plain)
                         .sheet(isPresented: $showingFeedbackSheet) {
                             FeedbackSheet(
                                 screen: "my_profile",
@@ -288,7 +290,8 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
-                    
+                        .buttonStyle(.plain)
+
                         // Instagram
                         Button {
                             if let instagramURL = URL(string: "https://www.instagram.com/trackratapp/") {
@@ -323,6 +326,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
+                        .buttonStyle(.plain)
 
                     }
 
@@ -372,6 +376,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
+                        .buttonStyle(.plain)
 
                         // Amtrak Service Alerts
                         Button {
@@ -407,6 +412,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
+                        .buttonStyle(.plain)
                     }
 
                     // Settings section
@@ -473,6 +479,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
+                        .buttonStyle(.plain)
 
                         // Favorite Stations
                         Button {
@@ -506,6 +513,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
+                        .buttonStyle(.plain)
 
                         // Advanced Configuration
                         Button {
@@ -539,6 +547,7 @@ struct MyProfileView: View {
                                     .fill(.ultraThinMaterial)
                             )
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding()
@@ -745,6 +754,7 @@ struct SoftTrialProCard: View {
                                 .fill(.orange)
                         )
                 }
+                .buttonStyle(.plain)
             }
         }
         .padding()

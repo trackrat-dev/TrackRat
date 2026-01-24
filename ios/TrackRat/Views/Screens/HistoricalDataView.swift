@@ -102,6 +102,7 @@ struct HistoricalDataView: View {
                             .foregroundColor(.white)
                             .cornerRadius(TrackRatTheme.CornerRadius.sm)
                             .font(.body.bold())
+                            .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, minHeight: 400)
                         .padding()
@@ -689,6 +690,7 @@ struct CongestionDataView: View {
                             .foregroundColor(.white)
                             .cornerRadius(TrackRatTheme.CornerRadius.sm)
                             .font(.body.bold())
+                            .buttonStyle(.plain)
                         }
                         .frame(maxWidth: .infinity, minHeight: 400)
                         .padding()
