@@ -1,7 +1,7 @@
 """
 Amtrak train discovery collector for TrackRat V2.
 
-Discovers active Amtrak trains that stop at major Northeast Corridor hubs.
+Discovers active Amtrak trains that stop at major network hubs.
 """
 
 from typing import Any
@@ -14,28 +14,42 @@ from trackrat.models.api import AmtrakTrainData
 
 logger = get_logger(__name__)
 
-# Major hubs for Amtrak discovery in the Northeast Corridor and Southeast
+# Major hubs for Amtrak discovery - trains passing through any hub are tracked
 DISCOVERY_HUBS = {
+    # Eastern hubs (existing)
     "NYP",  # New York Penn Station
     "PHL",  # Philadelphia
-    "WAS",  # Washington Union Station (Amtrak code)
+    "WAS",  # Washington Union Station
     "BOS",  # Boston South Station
-    "WIL",  # Wilmington Station
-    # Southeast expansion
-    "RVR",  # Richmond Staples Mill Road - unlocks Silver routes
-    "CLT",  # Charlotte - major NC hub
+    "WIL",  # Wilmington
+    "RVR",  # Richmond Staples Mill Road
+    "CLT",  # Charlotte
+    # Midwest hubs
+    "CHI",  # Chicago Union Station - Empire Builder, Zephyr, Chief, etc.
+    "STL",  # St. Louis - Texas Eagle, Missouri River Runner
+    "MKE",  # Milwaukee - Empire Builder, Hiawatha
+    # West Coast hubs
+    "LAX",  # Los Angeles - Chief, Starlight, Sunset, Surfliner
+    "SEA",  # Seattle - Empire Builder, Coast Starlight, Cascades
+    "PDX",  # Portland - Empire Builder, Coast Starlight, Cascades
+    "EMY",  # Emeryville/Oakland - Zephyr, Starlight, Capitol Corridor
+    "SAC",  # Sacramento - Zephyr, Starlight, Capitol Corridor
+    # Southern/Southwest hubs
+    "NOL",  # New Orleans - Sunset Limited, City of New Orleans, Crescent
+    "SAS",  # San Antonio - Texas Eagle, Sunset Limited
+    "DEN",  # Denver - California Zephyr, Southwest Chief
 }
 
 
 class AmtrakDiscoveryCollector(BaseDiscoveryCollector):
-    """Discovers active Amtrak trains serving major Northeast Corridor hubs."""
+    """Discovers active Amtrak trains serving major network hubs nationwide."""
 
     def __init__(self) -> None:
         """Initialize the Amtrak discovery collector."""
         self.client = AmtrakClient()
 
     async def discover_trains(self) -> list[str]:
-        """Discover all Amtrak trains that stop at major Northeast Corridor hubs.
+        """Discover all Amtrak trains that stop at major network hubs.
 
         Returns:
             List of Amtrak train IDs (e.g., ["2150-4", "141-4"])
@@ -86,29 +100,14 @@ class AmtrakDiscoveryCollector(BaseDiscoveryCollector):
         }
 
     def _stops_at_any_hub(self, train: AmtrakTrainData) -> bool:
-        """Check if a train stops at any of the major Northeast Corridor hubs.
+        """Check if a train stops at any of the major network hubs.
 
         Args:
             train: Amtrak train data
 
         Returns:
-            True if the train stops at NYP, PHL, WAS, BOS, or WIL
+            True if the train stops at any station in DISCOVERY_HUBS
         """
         train_stations = {station.code for station in train.stations}
         return bool(train_stations.intersection(DISCOVERY_HUBS))
 
-    def _stops_at_nyp(self, train: AmtrakTrainData) -> bool:
-        """Check if a train stops at New York Penn Station.
-
-        Deprecated: Use _stops_at_any_hub() for broader coverage.
-
-        Args:
-            train: Amtrak train data
-
-        Returns:
-            True if the train has NYP as one of its stops
-        """
-        for station in train.stations:
-            if station.code == "NYP":
-                return True
-        return False

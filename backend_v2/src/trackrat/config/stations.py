@@ -257,6 +257,523 @@ STATION_NAMES: dict[str, str] = {
     "GAI": "Gainesville",
     "TOC": "Toccoa",
     "CSN": "Clemson",
+    # Nationwide Amtrak stations
+    # Discovery hubs and major junctions
+    "CHI": "Chicago Union Station",
+    "STL": "St. Louis",
+    "MKE": "Milwaukee",
+    "LAX": "Los Angeles Union Station",
+    "SEA": "Seattle King Street",
+    "PDX": "Portland Union Station",
+    "EMY": "Emeryville",
+    "SAC": "Sacramento",
+    "NOL": "New Orleans",
+    "SAS": "San Antonio",
+    "DEN": "Denver Union Station",
+    # California / Southwest corridor stations
+    "SBA": "Santa Barbara",
+    "SLO": "San Luis Obispo",
+    "SJC": "San Jose",
+    "OSD": "Oceanside",
+    "SNA": "Santa Ana",
+    "FUL": "Fullerton",
+    "OLT": "San Diego Old Town",
+    "ABQ": "Albuquerque",
+    "FLG": "Flagstaff",
+    "TUS": "Tucson",
+    "ELP": "El Paso",
+    "RNO": "Reno",
+    "TRU": "Truckee",
+    # Pacific Northwest / Empire Builder
+    "SPK": "Spokane",
+    "TAC": "Tacoma",
+    "EUG": "Eugene",
+    "SLM": "Salem",
+    "SLC": "Salt Lake City",
+    "WFH": "Whitefish",
+    "GPK": "East Glacier Park",
+    "HAV": "Havre",
+    "MSP": "St. Paul-Minneapolis",
+    # Texas / South Central
+    "DAL": "Dallas",
+    "FTW": "Fort Worth",
+    "HOS": "Houston",
+    "AUS": "Austin",
+    "LRK": "Little Rock",
+    "MEM": "Memphis",
+    # Midwest / Great Lakes
+    "KCY": "Kansas City",
+    "OKC": "Oklahoma City",
+    "OMA": "Omaha",
+    "IND": "Indianapolis",
+    "CIN": "Cincinnati",
+    "CLE": "Cleveland",
+    "TOL": "Toledo",
+    "DET": "Detroit",
+    "GRR": "Grand Rapids",
+    "PGH": "Pittsburgh",
+    # Northeast extensions
+    "ALB": "Albany-Rensselaer",
+    "SYR": "Syracuse",
+    "ROC": "Rochester",
+    "BUF": "Buffalo Depew",
+    "MTR": "Montreal",
+    "POR": "Portland ME",
+    "ESX": "Essex Junction",
+    "BTN": "Burlington VT",
+    # Virginia / Southeast inland
+    "LYH": "Lynchburg",
+    "NPN": "Newport News",
+    "WBG": "Williamsburg",
+    "CLB": "Columbia SC",
+    "BHM": "Birmingham",
+    "MOE": "Mobile",
+    # California Amtrak stations
+    "ANA": "Anaheim",
+    "ARC": "Arcata",
+    "ARN": "Auburn",
+    "BAR": "Barstow",
+    "BBK": "Burbank",
+    "BFD": "Bakersfield",
+    "BKY": "Berkeley",
+    "BUR": "Burbank",
+    "CIC": "Chico",
+    "CLM": "Claremont",
+    "CML": "Camarillo",
+    "COX": "Colfax",
+    "CPN": "Carpinteria",
+    "CWT": "Chatsworth",
+    "DAV": "Davis",
+    "DBP": "Dublin-Pleasanton",
+    "DUN": "Dunsmuir",
+    "ELK": "Elko",
+    "FFV": "Fairfield-Vacaville",
+    "FMT": "Fremont",
+    "FNO": "Fresno",
+    "GAC": "Santa Clara Great America",
+    "GDL": "Glendale",
+    "GLY": "Gilroy",
+    "GTA": "Goleta",
+    "GUA": "Guadalupe",
+    "GVB": "Grover Beach",
+    "HAY": "Hayward",
+    "HNF": "Hanford",
+    "HSU": "Arcata",
+    "IRV": "Irvine",
+    "LOD": "Lodi",
+    "LPS": "Lompoc-Surf",
+    "LVS": "Las Vegas",
+    "MCD": "Merced",
+    "MPK": "Moorpark",
+    "MRV": "Marysville",
+    "MTZ": "Martinez",
+    "MYU": "Seaside-Marina",
+    "NHL": "Santa Clarita-Newhall",
+    "NRG": "Northridge",
+    "OAC": "Oakland Coliseum/Airport",
+    "OKJ": "Oakland",
+    "ONA": "Ontario",
+    "OXN": "Oxnard",
+    "POS": "Pomona",
+    "PRB": "Paso Robles",
+    "PSN": "Palm Springs",
+    "PTC": "Petaluma",
+    "RDD": "Redding",
+    "RIC": "Richmond",
+    "RIV": "Riverside",
+    "RLN": "Rocklin",
+    "RSV": "Roseville",
+    "SCC": "Santa Clara",
+    "SFC": "San Francisco",
+    "SIM": "Simi Valley",
+    "SKN": "Stockton",
+    "SKT": "Stockton",
+    "SMN": "Santa Monica Pier",
+    "SNB": "San Bernardino",
+    "SNC": "San Juan Capistrano",
+    "SNP": "San Clemente Pier",
+    "SNS": "Salinas",
+    "SOL": "Solana Beach",
+    "SUI": "Suisun-Fairfield",
+    "VAL": "Vallejo",
+    "VEC": "Ventura",
+    "VNC": "Van Nuys",
+    "VRV": "Victorville",
+    "WNN": "Winnemucca",
+    "WTS": "Willits Calif Western Railroad Depot",
+    # Great Lakes Amtrak stations
+    "ALI": "Albion",
+    "ARB": "Ann Arbor",
+    "BAM": "Bangor",
+    "BTL": "Battle Creek",
+    "CBS": "Columbus",
+    "DER": "Dearborn",
+    "DRD": "Durand",
+    "ERI": "Erie",
+    "FLN": "Flint",
+    "GLN": "Glenview",
+    "HOM": "Holland",
+    "JXN": "Jackson",
+    "KAL": "Kalamazoo",
+    "LNS": "East Lansing",
+    "LPE": "Lapeer",
+    "MKA": "General Mitchell Intl. Airport",
+    "PNT": "Pontiac",
+    "POG": "Portage",
+    "PTH": "Port Huron",
+    "ROY": "Royal Oak",
+    "SJM": "St. Joseph-Benton Harbor",
+    "SVT": "Sturtevant",
+    "TRM": "Troy",
+    "WDL": "Wisconsin Dells",
+    # Mid-Atlantic Amtrak stations
+    "ALT": "Altoona",
+    "ARD": "Ardmore",
+    "BER": "Berlin",
+    "BNF": "Branford",
+    "BWE": "Bowie State",
+    "CLN": "Clinton",
+    "COT": "Coatesville",
+    "COV": "Connellsville",
+    "CRT": "Croton-Harmon",
+    "CUM": "Cumberland",
+    "CWH": "Cornwells Heights",
+    "DOW": "Downingtown",
+    "EDG": "Edgewood",
+    "EXT": "Exton",
+    "GNB": "Greensburg",
+    "GUI": "Guilford",
+    "HAE": "Halethorpe",
+    "HFY": "Harpers Ferry",
+    "HGD": "Huntingdon",
+    "JST": "Johnstown",
+    "LAB": "Latrobe",
+    "LEW": "Lewistown",
+    "MDS": "Madison",
+    "MID": "Middletown",
+    "MRB": "Martinsburg",
+    "MSA": "Martin Airport",
+    "MYS": "Mystic",
+    "NRK": "Newark",
+    "NRO": "New Rochelle",
+    "OTN": "Odenton",
+    "PAO": "Paoli",
+    "PAR": "Parkesburg",
+    "PHN": "North Philadelphia",
+    "POU": "Poughkeepsie",
+    "PRV": "Perryville",
+    "RHI": "Rhinecliff",
+    "RKV": "Rockville",
+    "STS": "New Haven",
+    "TYR": "Tyrone",
+    "WBL": "West Baltimore",
+    "WND": "Windsor",
+    "WSB": "Westbrook",
+    "YNY": "Yonkers",
+    # Midwest Amtrak stations
+    "AKY": "Ashland",
+    "ALC": "Alliance",
+    "ALD": "Alderson",
+    "BNL": "Bloomington-Normal",
+    "BYN": "Bryan",
+    "CDL": "Carbondale",
+    "CEN": "Centralia",
+    "CHM": "Champaign-Urbana",
+    "CHW": "Charleston",
+    "COI": "Connersville",
+    "CRF": "Crawfordsville",
+    "CRV": "Carlinville",
+    "DOA": "Dowagiac",
+    "DQN": "Du Quoin",
+    "DWT": "Dwight",
+    "DYE": "Dyer",
+    "EFG": "Effingham",
+    "EKH": "Elkhart",
+    "ELY": "Elyria",
+    "FTN": "Fulton",
+    "GLM": "Gilman",
+    "HIN": "Hinton",
+    "HMI": "Hammond-Whiting",
+    "HMW": "Homewood",
+    "HUN": "Huntington",
+    "JOL": "Joliet Gateway Center",
+    "KAN": "Kannapolis",
+    "KEE": "Kewanee",
+    "KKI": "Kankakee",
+    "LAF": "Lafayette",
+    "LAG": "La Grange",
+    "LCN": "Lincoln",
+    "MAT": "Mattoon",
+    "MAY": "Maysville",
+    "MDT": "Mendota",
+    "MNG": "Montgomery",
+    "NBN": "Newbern-Dyersburg",
+    "NBU": "New Buffalo",
+    "NLS": "Niles",
+    "NPV": "Naperville",
+    "PCT": "Princeton",
+    "PIA": "Peoria",
+    "PLO": "Plano",
+    "PON": "Pontiac",
+    "PRC": "Prince",
+    "REN": "Rensselaer",
+    "RTL": "Rantoul",
+    "SKY": "Sandusky",
+    "SMT": "Summit",
+    "SOB": "South Bend",
+    "SPI": "Springfield",
+    "SPM": "South Portsmouth",
+    "THN": "Thurmond",
+    "WSS": "White Sulphur Springs",
+    "WTI": "Waterloo",
+    # Mountain West Amtrak stations
+    "ACD": "Arcadia Valley",
+    "ADM": "Ardmore",
+    "ALN": "Alton",
+    "ALP": "Alpine",
+    "ARK": "Arkadelphia",
+    "BMT": "Beaumont",
+    "BRH": "Brookhaven",
+    "BRL": "Burlington",
+    "CBR": "Cleburne",
+    "CRN": "Creston",
+    "DDG": "Dodge City",
+    "DLK": "Detroit Lakes",
+    "DRT": "Del Rio",
+    "DVL": "Devils Lake",
+    "FAR": "Fargo",
+    "FMD": "Fort Madison",
+    "FMG": "Fort Morgan",
+    "GBB": "Galesburg",
+    "GCK": "Garden City",
+    "GFK": "Grand Forks",
+    "GLE": "Gainesville",
+    "GWD": "Greenwood",
+    "HAS": "Hastings",
+    "HAZ": "Hazlehurst",
+    "HEM": "Hermann",
+    "HLD": "Holdrege",
+    "HMD": "Hammond",
+    "HOP": "Hope",
+    "HUT": "Hutchinson",
+    "IDP": "Independence",
+    "JAN": "Jackson",
+    "JEF": "Jefferson City",
+    "KIL": "Killeen",
+    "KWD": "Kirkwood",
+    "LAJ": "La Junta",
+    "LAP": "La Plata",
+    "LBO": "Lbo",
+    "LCH": "Lake Charles",
+    "LEE": "Lee'S Summit",
+    "LFT": "Lafayette",
+    "LMR": "Lamar",
+    "LNK": "Lincoln",
+    "LRC": "Lawrence",
+    "LSE": "La Crosse",
+    "LVW": "Longview",
+    "MAC": "Macomb",
+    "MCB": "Mccomb",
+    "MCG": "Mcgregor",
+    "MCK": "Mccook",
+    "MHL": "Marshall",
+    "MIN": "Mineola",
+    "MKS": "Marks",
+    "MOT": "Minot",
+    "MTP": "Mt. Pleasant",
+    "MVN": "Malvern",
+    "NIB": "New Iberia",
+    "NOR": "Norman",
+    "OSC": "Osceola",
+    "OTM": "Ottumwa",
+    "PBF": "Poplar Bluff",
+    "PUR": "Purcell",
+    "PVL": "Pauls Valley",
+    "QCY": "Quincy",
+    "RAT": "Raton",
+    "RDW": "Red Wing",
+    "RUG": "Rugby",
+    "SCD": "St. Cloud",
+    "SCH": "Schriever",
+    "SED": "Sedalia",
+    "SHR": "Shreveport Sportran Intermodal Terminal",
+    "SMC": "San Marcos",
+    "SND": "Sanderson",
+    "SPL": "Staples",
+    "STN": "Stanley",
+    "TAY": "Taylor",
+    "TOH": "Tomah",
+    "TOP": "Topeka",
+    "TPL": "Temple",
+    "TRI": "Trinidad",
+    "TXA": "Texarkana",
+    "WAH": "Washington",
+    "WAR": "Warrensburg",
+    "WEL": "Wellington",
+    "WIC": "Wichita",
+    "WIN": "Winona",
+    "WNR": "Walnut Ridge",
+    "WTN": "Williston",
+    "YAZ": "Yazoo City",
+    # New England Amtrak stations
+    "AMS": "Amsterdam",
+    "AST": "Aldershot",
+    "BFX": "Buffalo",
+    "BLF": "Bellows Falls",
+    "BON": "Boston",
+    "BRA": "Brattleboro",
+    "BRK": "Brunswick",
+    "CBN": "Canadian Border",
+    "CNV": "Castleton",
+    "FED": "Fort Edward",
+    "FRA": "Framingham",
+    "FRE": "Freeport",
+    "FTC": "Ticonderoga",
+    "GFD": "Greenfield",
+    "GMS": "Grimsby",
+    "HHL": "Haverhill",
+    "HLK": "Holyoke",
+    "HUD": "Hudson",
+    "MBY": "Middlebury",
+    "MPR": "Montpelier-Berlin",
+    "NFL": "Niagara Falls",
+    "NFS": "Niagara Falls",
+    "NHT": "Northampton",
+    "OKL": "Oakville",
+    "ORB": "Old Orchard Beach",
+    "PIT": "Pittsfield",
+    "PLB": "Plattsburgh",
+    "POH": "Port Henry",
+    "ROM": "Rome",
+    "RPH": "Randolph",
+    "RSP": "Rouses Point",
+    "RTE": "Route 128",
+    "RUD": "Rutland",
+    "SAB": "St. Albans",
+    "SAO": "Saco",
+    "SAR": "Saratoga Springs",
+    "SCA": "St. Catherines",
+    "SDY": "Schenectady",
+    "SLQ": "St-Lambert",
+    "TWO": "Toronto",
+    "UCA": "Utica",
+    "VRN": "Ferrisburgh",
+    "WAB": "Waterbury-Stowe",
+    "WEM": "Wells",
+    "WHL": "Whitehall",
+    "WNM": "Windsor-Mt. Ascutney",
+    "WOB": "Woburn",
+    "WOR": "Worcester Union",
+    "WRJ": "White River Junction",
+    "WSP": "Westport",
+    # Pacific Northwest Amtrak stations
+    "ALY": "Albany",
+    "BEL": "Bellingham",
+    "BNG": "Bingen-White Salmon",
+    "BRO": "Browning",
+    "CMO": "Chemult",
+    "CTL": "Centralia",
+    "CUT": "Cut Bank",
+    "EDM": "Edmonds",
+    "EPH": "Ephrata",
+    "ESM": "Essex",
+    "EVR": "Everett",
+    "GGW": "Glasgow",
+    "GRA": "Granby",
+    "KEL": "Kelso-Longview",
+    "KFS": "Klamath Falls",
+    "LIB": "Libby",
+    "LWA": "Leavenworth",
+    "MAL": "Malta",
+    "MVW": "Mount Vernon",
+    "OLW": "Olympia-Lacey",
+    "ORC": "Oregon City",
+    "PRO": "Provo",
+    "PSC": "Pasco",
+    "SBY": "Shelby",
+    "SPT": "Sandpoint",
+    "STW": "Stanwood",
+    "TUK": "Tukwila",
+    "VAC": "Vancouver",
+    "VAN": "Vancouver",
+    "WEN": "Wenatchee",
+    "WGL": "West Glacier",
+    "WIH": "Wishram",
+    "WPT": "Wolf Point",
+    # South Central Amtrak stations
+    "ATN": "Anniston",
+    "BAS": "Bay St Louis",
+    "BDT": "Bradenton",
+    "BIX": "Biloxi Amtrak Sta",
+    "CAM": "Camden",
+    "DFB": "Deerfield Beach",
+    "DNK": "Denmark",
+    "GNS": "Gainesville",
+    "GUF": "Gulfport Amtrak Sta",
+    "HBG": "Hattiesburg",
+    "HOL": "Hollywood",
+    "JSP": "Jesup",
+    "LAK": "Lakeland",
+    "LAU": "Laurel",
+    "MEI": "Meridian Union",
+    "OKE": "Okeechobee",
+    "PAG": "Pascagoula",
+    "PAK": "Palatka",
+    "PIC": "Picayune",
+    "SBG": "Sebring",
+    "SDL": "Slidell",
+    "SFA": "Sanford Amtrak Auto Train",
+    "STP": "St. Petersburg",
+    "TCA": "Toccoa",
+    "TCL": "Tuscaloosa",
+    "WDO": "Waldo",
+    "WWD": "Wildwood",
+    "YEM": "Yemassee",
+    # Southeast Amtrak stations
+    "BCV": "Burke Centre",
+    "BNC": "Burlington",
+    "CLF": "Clifton Forge",
+    "CLP": "Culpeper",
+    "CYN": "Cary",
+    "DAN": "Danville",
+    "FAY": "Fayetteville",
+    "FBG": "Fredericksburg",
+    "GBO": "Goldsboro",
+    "GRO": "Greensboro",
+    "HVL": "Havelock",
+    "KNC": "Kinston",
+    "MHD": "Morehead City",
+    "QAN": "Quantico",
+    "SEB": "Seabrook",
+    "SOP": "Southern Pines",
+    "SSM": "Selma",
+    "STA": "Staunton",
+    "SWB": "Swansboro",
+    "WDB": "Woodbridge",
+    "WMN": "Wilmington",
+    # Southwest Amtrak stations
+    "BEN": "Benson",
+    "DEM": "Deming",
+    "GJT": "Grand Junction",
+    "GLP": "Gallup",
+    "GRI": "Green River",
+    "GSC": "Glenwood Springs",
+    "HER": "Helper",
+    "KNG": "Kingman",
+    "LDB": "Lordsburg",
+    "LMY": "Lamy",
+    "LSV": "Las Vegas",
+    "MRC": "Maricopa",
+    "NDL": "Needles",
+    "PHA": "Phoenix Sky Harbor Airport",
+    "PXN": "North Phoenix Metro Center Transit",
+    "SAF": "Santa Fe",
+    "WIP": "Winter Park/Fraser",
+    "WLO": "Winslow",
+    "WMH": "Williams",
+    "WPR": "Winter Park Ski Resort",
+    "WPS": "Winter Park",
+    "YUM": "Yuma",
     # PATCO Speedline stations (Philadelphia - South Jersey)
     # 3-char codes chosen to avoid conflicts with NJT, Amtrak, and PATH
     "LND": "Lindenwold",  # PATCO terminus (NJ)
@@ -393,6 +910,522 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "GAI": "GAI",  # Gainesville, GA
     "TOC": "TOC",  # Toccoa, GA
     "CSN": "CSN",  # Clemson, SC
+    # Nationwide stations (identity mappings)
+    "CHI": "CHI",  # Chicago Union Station
+    "STL": "STL",  # St. Louis
+    "MKE": "MKE",  # Milwaukee
+    "LAX": "LAX",  # Los Angeles Union Station
+    "SEA": "SEA",  # Seattle King Street
+    "PDX": "PDX",  # Portland Union Station
+    "EMY": "EMY",  # Emeryville
+    "SAC": "SAC",  # Sacramento
+    "NOL": "NOL",  # New Orleans
+    "SAS": "SAS",  # San Antonio
+    "DEN": "DEN",  # Denver Union Station
+    # California / Southwest
+    "SBA": "SBA",  # Santa Barbara
+    "SLO": "SLO",  # San Luis Obispo
+    "SJC": "SJC",  # San Jose
+    "OSD": "OSD",  # Oceanside
+    "SNA": "SNA",  # Santa Ana
+    "FUL": "FUL",  # Fullerton
+    "OLT": "OLT",  # San Diego Old Town
+    "ABQ": "ABQ",  # Albuquerque
+    "FLG": "FLG",  # Flagstaff
+    "TUS": "TUS",  # Tucson
+    "ELP": "ELP",  # El Paso
+    "RNO": "RNO",  # Reno
+    "TRU": "TRU",  # Truckee
+    # Pacific Northwest
+    "SPK": "SPK",  # Spokane
+    "TAC": "TAC",  # Tacoma
+    "EUG": "EUG",  # Eugene
+    "SLM": "SLM",  # Salem
+    "SLC": "SLC",  # Salt Lake City
+    "WFH": "WFH",  # Whitefish
+    "GPK": "GPK",  # East Glacier Park
+    "HAV": "HAV",  # Havre
+    "MSP": "MSP",  # St. Paul-Minneapolis
+    # Texas / South Central
+    "DAL": "DAL",  # Dallas
+    "FTW": "FTW",  # Fort Worth
+    "HOS": "HOS",  # Houston
+    "AUS": "AUS",  # Austin
+    "LRK": "LRK",  # Little Rock
+    "MEM": "MEM",  # Memphis
+    # Midwest / Great Lakes
+    "KCY": "KCY",  # Kansas City
+    "OKC": "OKC",  # Oklahoma City
+    "OMA": "OMA",  # Omaha
+    "IND": "IND",  # Indianapolis
+    "CIN": "CIN",  # Cincinnati
+    "CLE": "CLE",  # Cleveland
+    "TOL": "TOL",  # Toledo
+    "DET": "DET",  # Detroit
+    "GRR": "GRR",  # Grand Rapids
+    "PGH": "PGH",  # Pittsburgh
+    # Northeast extensions
+    "ALB": "ALB",  # Albany-Rensselaer
+    "SYR": "SYR",  # Syracuse
+    "ROC": "ROC",  # Rochester
+    "BUF": "BUF",  # Buffalo Depew
+    "MTR": "MTR",  # Montreal
+    "POR": "POR",  # Portland ME
+    "ESX": "ESX",  # Essex Junction
+    "BTN": "BTN",  # Burlington VT
+    # Virginia / Southeast
+    "LYH": "LYH",  # Lynchburg
+    "NPN": "NPN",  # Newport News
+    "WBG": "WBG",  # Williamsburg
+    "CLB": "CLB",  # Columbia SC
+    "BHM": "BHM",  # Birmingham
+    "MOE": "MOE",  # Mobile
+    # California
+    "ANA": "ANA",  # Anaheim
+    "ARC": "ARC",  # Arcata
+    "ARN": "ARN",  # Auburn
+    "BAR": "BAR",  # Barstow
+    "BBK": "BBK",  # Burbank
+    "BFD": "BFD",  # Bakersfield
+    "BKY": "BKY",  # Berkeley
+    "BUR": "BUR",  # Burbank
+    "CIC": "CIC",  # Chico
+    "CLM": "CLM",  # Claremont
+    "CML": "CML",  # Camarillo
+    "COX": "COX",  # Colfax
+    "CPN": "CPN",  # Carpinteria
+    "CWT": "CWT",  # Chatsworth
+    "DAV": "DAV",  # Davis
+    "DBP": "DBP",  # Dublin-Pleasanton
+    "DUN": "DUN",  # Dunsmuir
+    "ELK": "ELK",  # Elko
+    "FFV": "FFV",  # Fairfield-Vacaville
+    "FMT": "FMT",  # Fremont
+    "FNO": "FNO",  # Fresno
+    "GAC": "GAC",  # Santa Clara Great America
+    "GDL": "GDL",  # Glendale
+    "GLY": "GLY",  # Gilroy
+    "GTA": "GTA",  # Goleta
+    "GUA": "GUA",  # Guadalupe
+    "GVB": "GVB",  # Grover Beach
+    "HAY": "HAY",  # Hayward
+    "HNF": "HNF",  # Hanford
+    "HSU": "HSU",  # Arcata
+    "IRV": "IRV",  # Irvine
+    "LOD": "LOD",  # Lodi
+    "LPS": "LPS",  # Lompoc-Surf
+    "LVS": "LVS",  # Las Vegas
+    "MCD": "MCD",  # Merced
+    "MPK": "MPK",  # Moorpark
+    "MRV": "MRV",  # Marysville
+    "MTZ": "MTZ",  # Martinez
+    "MYU": "MYU",  # Seaside-Marina
+    "NHL": "NHL",  # Santa Clarita-Newhall
+    "NRG": "NRG",  # Northridge
+    "OAC": "OAC",  # Oakland Coliseum/Airport
+    "OKJ": "OKJ",  # Oakland
+    "ONA": "ONA",  # Ontario
+    "OXN": "OXN",  # Oxnard
+    "POS": "POS",  # Pomona
+    "PRB": "PRB",  # Paso Robles
+    "PSN": "PSN",  # Palm Springs
+    "PTC": "PTC",  # Petaluma
+    "RDD": "RDD",  # Redding
+    "RIC": "RIC",  # Richmond
+    "RIV": "RIV",  # Riverside
+    "RLN": "RLN",  # Rocklin
+    "RSV": "RSV",  # Roseville
+    "SCC": "SCC",  # Santa Clara
+    "SFC": "SFC",  # San Francisco
+    "SIM": "SIM",  # Simi Valley
+    "SKN": "SKN",  # Stockton
+    "SKT": "SKT",  # Stockton
+    "SMN": "SMN",  # Santa Monica Pier
+    "SNB": "SNB",  # San Bernardino
+    "SNC": "SNC",  # San Juan Capistrano
+    "SNP": "SNP",  # San Clemente Pier
+    "SNS": "SNS",  # Salinas
+    "SOL": "SOL",  # Solana Beach
+    "SUI": "SUI",  # Suisun-Fairfield
+    "VAL": "VAL",  # Vallejo
+    "VEC": "VEC",  # Ventura
+    "VNC": "VNC",  # Van Nuys
+    "VRV": "VRV",  # Victorville
+    "WNN": "WNN",  # Winnemucca
+    "WTS": "WTS",  # Willits Calif Western Railroad Depot
+    # Great Lakes
+    "ALI": "ALI",  # Albion
+    "ARB": "ARB",  # Ann Arbor
+    "BAM": "BAM",  # Bangor
+    "BTL": "BTL",  # Battle Creek
+    "CBS": "CBS",  # Columbus
+    "DER": "DER",  # Dearborn
+    "DRD": "DRD",  # Durand
+    "ERI": "ERI",  # Erie
+    "FLN": "FLN",  # Flint
+    "GLN": "GLN",  # Glenview
+    "HOM": "HOM",  # Holland
+    "JXN": "JXN",  # Jackson
+    "KAL": "KAL",  # Kalamazoo
+    "LNS": "LNS",  # East Lansing
+    "LPE": "LPE",  # Lapeer
+    "MKA": "MKA",  # General Mitchell Intl. Airport
+    "PNT": "PNT",  # Pontiac
+    "POG": "POG",  # Portage
+    "PTH": "PTH",  # Port Huron
+    "ROY": "ROY",  # Royal Oak
+    "SJM": "SJM",  # St. Joseph-Benton Harbor
+    "SVT": "SVT",  # Sturtevant
+    "TRM": "TRM",  # Troy
+    "WDL": "WDL",  # Wisconsin Dells
+    # Mid-Atlantic
+    "ALT": "ALT",  # Altoona
+    "ARD": "ARD",  # Ardmore
+    "BER": "BER",  # Berlin
+    "BNF": "BNF",  # Branford
+    "BWE": "BWE",  # Bowie State
+    "CLN": "CLN",  # Clinton
+    "COT": "COT",  # Coatesville
+    "COV": "COV",  # Connellsville
+    "CRT": "CRT",  # Croton-Harmon
+    "CUM": "CUM",  # Cumberland
+    "CWH": "CWH",  # Cornwells Heights
+    "DOW": "DOW",  # Downingtown
+    "EDG": "EDG",  # Edgewood
+    "EXT": "EXT",  # Exton
+    "GNB": "GNB",  # Greensburg
+    "GUI": "GUI",  # Guilford
+    "HAE": "HAE",  # Halethorpe
+    "HFY": "HFY",  # Harpers Ferry
+    "HGD": "HGD",  # Huntingdon
+    "JST": "JST",  # Johnstown
+    "LAB": "LAB",  # Latrobe
+    "LEW": "LEW",  # Lewistown
+    "MDS": "MDS",  # Madison
+    "MID": "MID",  # Middletown
+    "MRB": "MRB",  # Martinsburg
+    "MSA": "MSA",  # Martin Airport
+    "MYS": "MYS",  # Mystic
+    "NRK": "NRK",  # Newark
+    "NRO": "NRO",  # New Rochelle
+    "OTN": "OTN",  # Odenton
+    "PAO": "PAO",  # Paoli
+    "PAR": "PAR",  # Parkesburg
+    "PHN": "PHN",  # North Philadelphia
+    "POU": "POU",  # Poughkeepsie
+    "PRV": "PRV",  # Perryville
+    "RHI": "RHI",  # Rhinecliff
+    "RKV": "RKV",  # Rockville
+    "STS": "STS",  # New Haven
+    "TYR": "TYR",  # Tyrone
+    "WBL": "WBL",  # West Baltimore
+    "WND": "WND",  # Windsor
+    "WSB": "WSB",  # Westbrook
+    "YNY": "YNY",  # Yonkers
+    # Midwest
+    "AKY": "AKY",  # Ashland
+    "ALC": "ALC",  # Alliance
+    "ALD": "ALD",  # Alderson
+    "BNL": "BNL",  # Bloomington-Normal
+    "BYN": "BYN",  # Bryan
+    "CDL": "CDL",  # Carbondale
+    "CEN": "CEN",  # Centralia
+    "CHM": "CHM",  # Champaign-Urbana
+    "CHW": "CHW",  # Charleston
+    "COI": "COI",  # Connersville
+    "CRF": "CRF",  # Crawfordsville
+    "CRV": "CRV",  # Carlinville
+    "DOA": "DOA",  # Dowagiac
+    "DQN": "DQN",  # Du Quoin
+    "DWT": "DWT",  # Dwight
+    "DYE": "DYE",  # Dyer
+    "EFG": "EFG",  # Effingham
+    "EKH": "EKH",  # Elkhart
+    "ELY": "ELY",  # Elyria
+    "FTN": "FTN",  # Fulton
+    "GLM": "GLM",  # Gilman
+    "HIN": "HIN",  # Hinton
+    "HMI": "HMI",  # Hammond-Whiting
+    "HMW": "HMW",  # Homewood
+    "HUN": "HUN",  # Huntington
+    "JOL": "JOL",  # Joliet Gateway Center
+    "KAN": "KAN",  # Kannapolis
+    "KEE": "KEE",  # Kewanee
+    "KKI": "KKI",  # Kankakee
+    "LAF": "LAF",  # Lafayette
+    "LAG": "LAG",  # La Grange
+    "LCN": "LCN",  # Lincoln
+    "MAT": "MAT",  # Mattoon
+    "MAY": "MAY",  # Maysville
+    "MDT": "MDT",  # Mendota
+    "MNG": "MNG",  # Montgomery
+    "NBN": "NBN",  # Newbern-Dyersburg
+    "NBU": "NBU",  # New Buffalo
+    "NLS": "NLS",  # Niles
+    "NPV": "NPV",  # Naperville
+    "PCT": "PCT",  # Princeton
+    "PIA": "PIA",  # Peoria
+    "PLO": "PLO",  # Plano
+    "PON": "PON",  # Pontiac
+    "PRC": "PRC",  # Prince
+    "REN": "REN",  # Rensselaer
+    "RTL": "RTL",  # Rantoul
+    "SKY": "SKY",  # Sandusky
+    "SMT": "SMT",  # Summit
+    "SOB": "SOB",  # South Bend
+    "SPI": "SPI",  # Springfield
+    "SPM": "SPM",  # South Portsmouth
+    "THN": "THN",  # Thurmond
+    "WSS": "WSS",  # White Sulphur Springs
+    "WTI": "WTI",  # Waterloo
+    # Mountain West
+    "ACD": "ACD",  # Arcadia Valley
+    "ADM": "ADM",  # Ardmore
+    "ALN": "ALN",  # Alton
+    "ALP": "ALP",  # Alpine
+    "ARK": "ARK",  # Arkadelphia
+    "BMT": "BMT",  # Beaumont
+    "BRH": "BRH",  # Brookhaven
+    "BRL": "BRL",  # Burlington
+    "CBR": "CBR",  # Cleburne
+    "CRN": "CRN",  # Creston
+    "DDG": "DDG",  # Dodge City
+    "DLK": "DLK",  # Detroit Lakes
+    "DRT": "DRT",  # Del Rio
+    "DVL": "DVL",  # Devils Lake
+    "FAR": "FAR",  # Fargo
+    "FMD": "FMD",  # Fort Madison
+    "FMG": "FMG",  # Fort Morgan
+    "GBB": "GBB",  # Galesburg
+    "GCK": "GCK",  # Garden City
+    "GFK": "GFK",  # Grand Forks
+    "GLE": "GLE",  # Gainesville
+    "GWD": "GWD",  # Greenwood
+    "HAS": "HAS",  # Hastings
+    "HAZ": "HAZ",  # Hazlehurst
+    "HEM": "HEM",  # Hermann
+    "HLD": "HLD",  # Holdrege
+    "HMD": "HMD",  # Hammond
+    "HOP": "HOP",  # Hope
+    "HUT": "HUT",  # Hutchinson
+    "IDP": "IDP",  # Independence
+    "JAN": "JAN",  # Jackson
+    "JEF": "JEF",  # Jefferson City
+    "KIL": "KIL",  # Killeen
+    "KWD": "KWD",  # Kirkwood
+    "LAJ": "LAJ",  # La Junta
+    "LAP": "LAP",  # La Plata
+    "LBO": "LBO",  # Lbo
+    "LCH": "LCH",  # Lake Charles
+    "LEE": "LEE",  # Lee'S Summit
+    "LFT": "LFT",  # Lafayette
+    "LMR": "LMR",  # Lamar
+    "LNK": "LNK",  # Lincoln
+    "LRC": "LRC",  # Lawrence
+    "LSE": "LSE",  # La Crosse
+    "LVW": "LVW",  # Longview
+    "MAC": "MAC",  # Macomb
+    "MCB": "MCB",  # Mccomb
+    "MCG": "MCG",  # Mcgregor
+    "MCK": "MCK",  # Mccook
+    "MHL": "MHL",  # Marshall
+    "MIN": "MIN",  # Mineola
+    "MKS": "MKS",  # Marks
+    "MOT": "MOT",  # Minot
+    "MTP": "MTP",  # Mt. Pleasant
+    "MVN": "MVN",  # Malvern
+    "NIB": "NIB",  # New Iberia
+    "NOR": "NOR",  # Norman
+    "OSC": "OSC",  # Osceola
+    "OTM": "OTM",  # Ottumwa
+    "PBF": "PBF",  # Poplar Bluff
+    "PUR": "PUR",  # Purcell
+    "PVL": "PVL",  # Pauls Valley
+    "QCY": "QCY",  # Quincy
+    "RAT": "RAT",  # Raton
+    "RDW": "RDW",  # Red Wing
+    "RUG": "RUG",  # Rugby
+    "SCD": "SCD",  # St. Cloud
+    "SCH": "SCH",  # Schriever
+    "SED": "SED",  # Sedalia
+    "SHR": "SHR",  # Shreveport Sportran Intermodal Terminal
+    "SMC": "SMC",  # San Marcos
+    "SND": "SND",  # Sanderson
+    "SPL": "SPL",  # Staples
+    "STN": "STN",  # Stanley
+    "TAY": "TAY",  # Taylor
+    "TOH": "TOH",  # Tomah
+    "TOP": "TOP",  # Topeka
+    "TPL": "TPL",  # Temple
+    "TRI": "TRI",  # Trinidad
+    "TXA": "TXA",  # Texarkana
+    "WAH": "WAH",  # Washington
+    "WAR": "WAR",  # Warrensburg
+    "WEL": "WEL",  # Wellington
+    "WIC": "WIC",  # Wichita
+    "WIN": "WIN",  # Winona
+    "WNR": "WNR",  # Walnut Ridge
+    "WTN": "WTN",  # Williston
+    "YAZ": "YAZ",  # Yazoo City
+    # New England
+    "AMS": "AMS",  # Amsterdam
+    "AST": "AST",  # Aldershot
+    "BFX": "BFX",  # Buffalo
+    "BLF": "BLF",  # Bellows Falls
+    "BON": "BON",  # Boston
+    "BRA": "BRA",  # Brattleboro
+    "BRK": "BRK",  # Brunswick
+    "CBN": "CBN",  # Canadian Border
+    "CNV": "CNV",  # Castleton
+    "FED": "FED",  # Fort Edward
+    "FRA": "FRA",  # Framingham
+    "FRE": "FRE",  # Freeport
+    "FTC": "FTC",  # Ticonderoga
+    "GFD": "GFD",  # Greenfield
+    "GMS": "GMS",  # Grimsby
+    "HHL": "HHL",  # Haverhill
+    "HLK": "HLK",  # Holyoke
+    "HUD": "HUD",  # Hudson
+    "MBY": "MBY",  # Middlebury
+    "MPR": "MPR",  # Montpelier-Berlin
+    "NFL": "NFL",  # Niagara Falls
+    "NFS": "NFS",  # Niagara Falls
+    "NHT": "NHT",  # Northampton
+    "OKL": "OKL",  # Oakville
+    "ORB": "ORB",  # Old Orchard Beach
+    "PIT": "PIT",  # Pittsfield
+    "PLB": "PLB",  # Plattsburgh
+    "POH": "POH",  # Port Henry
+    "ROM": "ROM",  # Rome
+    "RPH": "RPH",  # Randolph
+    "RSP": "RSP",  # Rouses Point
+    "RTE": "RTE",  # Route 128
+    "RUD": "RUD",  # Rutland
+    "SAB": "SAB",  # St. Albans
+    "SAO": "SAO",  # Saco
+    "SAR": "SAR",  # Saratoga Springs
+    "SCA": "SCA",  # St. Catherines
+    "SDY": "SDY",  # Schenectady
+    "SLQ": "SLQ",  # St-Lambert
+    "TWO": "TWO",  # Toronto
+    "UCA": "UCA",  # Utica
+    "VRN": "VRN",  # Ferrisburgh
+    "WAB": "WAB",  # Waterbury-Stowe
+    "WEM": "WEM",  # Wells
+    "WHL": "WHL",  # Whitehall
+    "WNM": "WNM",  # Windsor-Mt. Ascutney
+    "WOB": "WOB",  # Woburn
+    "WOR": "WOR",  # Worcester Union
+    "WRJ": "WRJ",  # White River Junction
+    "WSP": "WSP",  # Westport
+    # Pacific Northwest
+    "ALY": "ALY",  # Albany
+    "BEL": "BEL",  # Bellingham
+    "BNG": "BNG",  # Bingen-White Salmon
+    "BRO": "BRO",  # Browning
+    "CMO": "CMO",  # Chemult
+    "CTL": "CTL",  # Centralia
+    "CUT": "CUT",  # Cut Bank
+    "EDM": "EDM",  # Edmonds
+    "EPH": "EPH",  # Ephrata
+    "ESM": "ESM",  # Essex
+    "EVR": "EVR",  # Everett
+    "GGW": "GGW",  # Glasgow
+    "GRA": "GRA",  # Granby
+    "KEL": "KEL",  # Kelso-Longview
+    "KFS": "KFS",  # Klamath Falls
+    "LIB": "LIB",  # Libby
+    "LWA": "LWA",  # Leavenworth
+    "MAL": "MAL",  # Malta
+    "MVW": "MVW",  # Mount Vernon
+    "OLW": "OLW",  # Olympia-Lacey
+    "ORC": "ORC",  # Oregon City
+    "PRO": "PRO",  # Provo
+    "PSC": "PSC",  # Pasco
+    "SBY": "SBY",  # Shelby
+    "SPT": "SPT",  # Sandpoint
+    "STW": "STW",  # Stanwood
+    "TUK": "TUK",  # Tukwila
+    "VAC": "VAC",  # Vancouver
+    "VAN": "VAN",  # Vancouver
+    "WEN": "WEN",  # Wenatchee
+    "WGL": "WGL",  # West Glacier
+    "WIH": "WIH",  # Wishram
+    "WPT": "WPT",  # Wolf Point
+    # South Central
+    "ATN": "ATN",  # Anniston
+    "BAS": "BAS",  # Bay St Louis
+    "BDT": "BDT",  # Bradenton
+    "BIX": "BIX",  # Biloxi Amtrak Sta
+    "CAM": "CAM",  # Camden
+    "DFB": "DFB",  # Deerfield Beach
+    "DNK": "DNK",  # Denmark
+    "GNS": "GNS",  # Gainesville
+    "GUF": "GUF",  # Gulfport Amtrak Sta
+    "HBG": "HBG",  # Hattiesburg
+    "HOL": "HOL",  # Hollywood
+    "JSP": "JSP",  # Jesup
+    "LAK": "LAK",  # Lakeland
+    "LAU": "LAU",  # Laurel
+    "MEI": "MEI",  # Meridian Union
+    "OKE": "OKE",  # Okeechobee
+    "PAG": "PAG",  # Pascagoula
+    "PAK": "PAK",  # Palatka
+    "PIC": "PIC",  # Picayune
+    "SBG": "SBG",  # Sebring
+    "SDL": "SDL",  # Slidell
+    "SFA": "SFA",  # Sanford Amtrak Auto Train
+    "STP": "STP",  # St. Petersburg
+    "TCA": "TCA",  # Toccoa
+    "TCL": "TCL",  # Tuscaloosa
+    "WDO": "WDO",  # Waldo
+    "WWD": "WWD",  # Wildwood
+    "YEM": "YEM",  # Yemassee
+    # Southeast
+    "BCV": "BCV",  # Burke Centre
+    "BNC": "BNC",  # Burlington
+    "CLF": "CLF",  # Clifton Forge
+    "CLP": "CLP",  # Culpeper
+    "CYN": "CYN",  # Cary
+    "DAN": "DAN",  # Danville
+    "FAY": "FAY",  # Fayetteville
+    "FBG": "FBG",  # Fredericksburg
+    "GBO": "GBO",  # Goldsboro
+    "GRO": "GRO",  # Greensboro
+    "HVL": "HVL",  # Havelock
+    "KNC": "KNC",  # Kinston
+    "MHD": "MHD",  # Morehead City
+    "QAN": "QAN",  # Quantico
+    "SEB": "SEB",  # Seabrook
+    "SOP": "SOP",  # Southern Pines
+    "SSM": "SSM",  # Selma
+    "STA": "STA",  # Staunton
+    "SWB": "SWB",  # Swansboro
+    "WDB": "WDB",  # Woodbridge
+    "WMN": "WMN",  # Wilmington
+    # Southwest
+    "BEN": "BEN",  # Benson
+    "DEM": "DEM",  # Deming
+    "GJT": "GJT",  # Grand Junction
+    "GLP": "GLP",  # Gallup
+    "GRI": "GRI",  # Green River
+    "GSC": "GSC",  # Glenwood Springs
+    "HER": "HER",  # Helper
+    "KNG": "KNG",  # Kingman
+    "LDB": "LDB",  # Lordsburg
+    "LMY": "LMY",  # Lamy
+    "LSV": "LSV",  # Las Vegas
+    "MRC": "MRC",  # Maricopa
+    "NDL": "NDL",  # Needles
+    "PHA": "PHA",  # Phoenix Sky Harbor Airport
+    "PXN": "PXN",  # North Phoenix Metro Center Transit
+    "SAF": "SAF",  # Santa Fe
+    "WIP": "WIP",  # Winter Park/Fraser
+    "WLO": "WLO",  # Winslow
+    "WMH": "WMH",  # Williams
+    "WPR": "WPR",  # Winter Park Ski Resort
+    "WPS": "WPS",  # Winter Park
+    "YUM": "YUM",  # Yuma
 }
 
 # Reverse mapping from internal codes to Amtrak codes (for the first match)
@@ -485,6 +1518,522 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "GAI": "GAI",  # Gainesville, GA
     "TOC": "TOC",  # Toccoa, GA
     "CSN": "CSN",  # Clemson, SC
+    # Nationwide stations (identity mappings)
+    "CHI": "CHI",  # Chicago Union Station
+    "STL": "STL",  # St. Louis
+    "MKE": "MKE",  # Milwaukee
+    "LAX": "LAX",  # Los Angeles Union Station
+    "SEA": "SEA",  # Seattle King Street
+    "PDX": "PDX",  # Portland Union Station
+    "EMY": "EMY",  # Emeryville
+    "SAC": "SAC",  # Sacramento
+    "NOL": "NOL",  # New Orleans
+    "SAS": "SAS",  # San Antonio
+    "DEN": "DEN",  # Denver Union Station
+    # California / Southwest
+    "SBA": "SBA",  # Santa Barbara
+    "SLO": "SLO",  # San Luis Obispo
+    "SJC": "SJC",  # San Jose
+    "OSD": "OSD",  # Oceanside
+    "SNA": "SNA",  # Santa Ana
+    "FUL": "FUL",  # Fullerton
+    "OLT": "OLT",  # San Diego Old Town
+    "ABQ": "ABQ",  # Albuquerque
+    "FLG": "FLG",  # Flagstaff
+    "TUS": "TUS",  # Tucson
+    "ELP": "ELP",  # El Paso
+    "RNO": "RNO",  # Reno
+    "TRU": "TRU",  # Truckee
+    # Pacific Northwest
+    "SPK": "SPK",  # Spokane
+    "TAC": "TAC",  # Tacoma
+    "EUG": "EUG",  # Eugene
+    "SLM": "SLM",  # Salem
+    "SLC": "SLC",  # Salt Lake City
+    "WFH": "WFH",  # Whitefish
+    "GPK": "GPK",  # East Glacier Park
+    "HAV": "HAV",  # Havre
+    "MSP": "MSP",  # St. Paul-Minneapolis
+    # Texas / South Central
+    "DAL": "DAL",  # Dallas
+    "FTW": "FTW",  # Fort Worth
+    "HOS": "HOS",  # Houston
+    "AUS": "AUS",  # Austin
+    "LRK": "LRK",  # Little Rock
+    "MEM": "MEM",  # Memphis
+    # Midwest / Great Lakes
+    "KCY": "KCY",  # Kansas City
+    "OKC": "OKC",  # Oklahoma City
+    "OMA": "OMA",  # Omaha
+    "IND": "IND",  # Indianapolis
+    "CIN": "CIN",  # Cincinnati
+    "CLE": "CLE",  # Cleveland
+    "TOL": "TOL",  # Toledo
+    "DET": "DET",  # Detroit
+    "GRR": "GRR",  # Grand Rapids
+    "PGH": "PGH",  # Pittsburgh
+    # Northeast extensions
+    "ALB": "ALB",  # Albany-Rensselaer
+    "SYR": "SYR",  # Syracuse
+    "ROC": "ROC",  # Rochester
+    "BUF": "BUF",  # Buffalo Depew
+    "MTR": "MTR",  # Montreal
+    "POR": "POR",  # Portland ME
+    "ESX": "ESX",  # Essex Junction
+    "BTN": "BTN",  # Burlington VT
+    # Virginia / Southeast
+    "LYH": "LYH",  # Lynchburg
+    "NPN": "NPN",  # Newport News
+    "WBG": "WBG",  # Williamsburg
+    "CLB": "CLB",  # Columbia SC
+    "BHM": "BHM",  # Birmingham
+    "MOE": "MOE",  # Mobile
+    # California
+    "ANA": "ANA",  # Anaheim
+    "ARC": "ARC",  # Arcata
+    "ARN": "ARN",  # Auburn
+    "BAR": "BAR",  # Barstow
+    "BBK": "BBK",  # Burbank
+    "BFD": "BFD",  # Bakersfield
+    "BKY": "BKY",  # Berkeley
+    "BUR": "BUR",  # Burbank
+    "CIC": "CIC",  # Chico
+    "CLM": "CLM",  # Claremont
+    "CML": "CML",  # Camarillo
+    "COX": "COX",  # Colfax
+    "CPN": "CPN",  # Carpinteria
+    "CWT": "CWT",  # Chatsworth
+    "DAV": "DAV",  # Davis
+    "DBP": "DBP",  # Dublin-Pleasanton
+    "DUN": "DUN",  # Dunsmuir
+    "ELK": "ELK",  # Elko
+    "FFV": "FFV",  # Fairfield-Vacaville
+    "FMT": "FMT",  # Fremont
+    "FNO": "FNO",  # Fresno
+    "GAC": "GAC",  # Santa Clara Great America
+    "GDL": "GDL",  # Glendale
+    "GLY": "GLY",  # Gilroy
+    "GTA": "GTA",  # Goleta
+    "GUA": "GUA",  # Guadalupe
+    "GVB": "GVB",  # Grover Beach
+    "HAY": "HAY",  # Hayward
+    "HNF": "HNF",  # Hanford
+    "HSU": "HSU",  # Arcata
+    "IRV": "IRV",  # Irvine
+    "LOD": "LOD",  # Lodi
+    "LPS": "LPS",  # Lompoc-Surf
+    "LVS": "LVS",  # Las Vegas
+    "MCD": "MCD",  # Merced
+    "MPK": "MPK",  # Moorpark
+    "MRV": "MRV",  # Marysville
+    "MTZ": "MTZ",  # Martinez
+    "MYU": "MYU",  # Seaside-Marina
+    "NHL": "NHL",  # Santa Clarita-Newhall
+    "NRG": "NRG",  # Northridge
+    "OAC": "OAC",  # Oakland Coliseum/Airport
+    "OKJ": "OKJ",  # Oakland
+    "ONA": "ONA",  # Ontario
+    "OXN": "OXN",  # Oxnard
+    "POS": "POS",  # Pomona
+    "PRB": "PRB",  # Paso Robles
+    "PSN": "PSN",  # Palm Springs
+    "PTC": "PTC",  # Petaluma
+    "RDD": "RDD",  # Redding
+    "RIC": "RIC",  # Richmond
+    "RIV": "RIV",  # Riverside
+    "RLN": "RLN",  # Rocklin
+    "RSV": "RSV",  # Roseville
+    "SCC": "SCC",  # Santa Clara
+    "SFC": "SFC",  # San Francisco
+    "SIM": "SIM",  # Simi Valley
+    "SKN": "SKN",  # Stockton
+    "SKT": "SKT",  # Stockton
+    "SMN": "SMN",  # Santa Monica Pier
+    "SNB": "SNB",  # San Bernardino
+    "SNC": "SNC",  # San Juan Capistrano
+    "SNP": "SNP",  # San Clemente Pier
+    "SNS": "SNS",  # Salinas
+    "SOL": "SOL",  # Solana Beach
+    "SUI": "SUI",  # Suisun-Fairfield
+    "VAL": "VAL",  # Vallejo
+    "VEC": "VEC",  # Ventura
+    "VNC": "VNC",  # Van Nuys
+    "VRV": "VRV",  # Victorville
+    "WNN": "WNN",  # Winnemucca
+    "WTS": "WTS",  # Willits Calif Western Railroad Depot
+    # Great Lakes
+    "ALI": "ALI",  # Albion
+    "ARB": "ARB",  # Ann Arbor
+    "BAM": "BAM",  # Bangor
+    "BTL": "BTL",  # Battle Creek
+    "CBS": "CBS",  # Columbus
+    "DER": "DER",  # Dearborn
+    "DRD": "DRD",  # Durand
+    "ERI": "ERI",  # Erie
+    "FLN": "FLN",  # Flint
+    "GLN": "GLN",  # Glenview
+    "HOM": "HOM",  # Holland
+    "JXN": "JXN",  # Jackson
+    "KAL": "KAL",  # Kalamazoo
+    "LNS": "LNS",  # East Lansing
+    "LPE": "LPE",  # Lapeer
+    "MKA": "MKA",  # General Mitchell Intl. Airport
+    "PNT": "PNT",  # Pontiac
+    "POG": "POG",  # Portage
+    "PTH": "PTH",  # Port Huron
+    "ROY": "ROY",  # Royal Oak
+    "SJM": "SJM",  # St. Joseph-Benton Harbor
+    "SVT": "SVT",  # Sturtevant
+    "TRM": "TRM",  # Troy
+    "WDL": "WDL",  # Wisconsin Dells
+    # Mid-Atlantic
+    "ALT": "ALT",  # Altoona
+    "ARD": "ARD",  # Ardmore
+    "BER": "BER",  # Berlin
+    "BNF": "BNF",  # Branford
+    "BWE": "BWE",  # Bowie State
+    "CLN": "CLN",  # Clinton
+    "COT": "COT",  # Coatesville
+    "COV": "COV",  # Connellsville
+    "CRT": "CRT",  # Croton-Harmon
+    "CUM": "CUM",  # Cumberland
+    "CWH": "CWH",  # Cornwells Heights
+    "DOW": "DOW",  # Downingtown
+    "EDG": "EDG",  # Edgewood
+    "EXT": "EXT",  # Exton
+    "GNB": "GNB",  # Greensburg
+    "GUI": "GUI",  # Guilford
+    "HAE": "HAE",  # Halethorpe
+    "HFY": "HFY",  # Harpers Ferry
+    "HGD": "HGD",  # Huntingdon
+    "JST": "JST",  # Johnstown
+    "LAB": "LAB",  # Latrobe
+    "LEW": "LEW",  # Lewistown
+    "MDS": "MDS",  # Madison
+    "MID": "MID",  # Middletown
+    "MRB": "MRB",  # Martinsburg
+    "MSA": "MSA",  # Martin Airport
+    "MYS": "MYS",  # Mystic
+    "NRK": "NRK",  # Newark
+    "NRO": "NRO",  # New Rochelle
+    "OTN": "OTN",  # Odenton
+    "PAO": "PAO",  # Paoli
+    "PAR": "PAR",  # Parkesburg
+    "PHN": "PHN",  # North Philadelphia
+    "POU": "POU",  # Poughkeepsie
+    "PRV": "PRV",  # Perryville
+    "RHI": "RHI",  # Rhinecliff
+    "RKV": "RKV",  # Rockville
+    "STS": "STS",  # New Haven
+    "TYR": "TYR",  # Tyrone
+    "WBL": "WBL",  # West Baltimore
+    "WND": "WND",  # Windsor
+    "WSB": "WSB",  # Westbrook
+    "YNY": "YNY",  # Yonkers
+    # Midwest
+    "AKY": "AKY",  # Ashland
+    "ALC": "ALC",  # Alliance
+    "ALD": "ALD",  # Alderson
+    "BNL": "BNL",  # Bloomington-Normal
+    "BYN": "BYN",  # Bryan
+    "CDL": "CDL",  # Carbondale
+    "CEN": "CEN",  # Centralia
+    "CHM": "CHM",  # Champaign-Urbana
+    "CHW": "CHW",  # Charleston
+    "COI": "COI",  # Connersville
+    "CRF": "CRF",  # Crawfordsville
+    "CRV": "CRV",  # Carlinville
+    "DOA": "DOA",  # Dowagiac
+    "DQN": "DQN",  # Du Quoin
+    "DWT": "DWT",  # Dwight
+    "DYE": "DYE",  # Dyer
+    "EFG": "EFG",  # Effingham
+    "EKH": "EKH",  # Elkhart
+    "ELY": "ELY",  # Elyria
+    "FTN": "FTN",  # Fulton
+    "GLM": "GLM",  # Gilman
+    "HIN": "HIN",  # Hinton
+    "HMI": "HMI",  # Hammond-Whiting
+    "HMW": "HMW",  # Homewood
+    "HUN": "HUN",  # Huntington
+    "JOL": "JOL",  # Joliet Gateway Center
+    "KAN": "KAN",  # Kannapolis
+    "KEE": "KEE",  # Kewanee
+    "KKI": "KKI",  # Kankakee
+    "LAF": "LAF",  # Lafayette
+    "LAG": "LAG",  # La Grange
+    "LCN": "LCN",  # Lincoln
+    "MAT": "MAT",  # Mattoon
+    "MAY": "MAY",  # Maysville
+    "MDT": "MDT",  # Mendota
+    "MNG": "MNG",  # Montgomery
+    "NBN": "NBN",  # Newbern-Dyersburg
+    "NBU": "NBU",  # New Buffalo
+    "NLS": "NLS",  # Niles
+    "NPV": "NPV",  # Naperville
+    "PCT": "PCT",  # Princeton
+    "PIA": "PIA",  # Peoria
+    "PLO": "PLO",  # Plano
+    "PON": "PON",  # Pontiac
+    "PRC": "PRC",  # Prince
+    "REN": "REN",  # Rensselaer
+    "RTL": "RTL",  # Rantoul
+    "SKY": "SKY",  # Sandusky
+    "SMT": "SMT",  # Summit
+    "SOB": "SOB",  # South Bend
+    "SPI": "SPI",  # Springfield
+    "SPM": "SPM",  # South Portsmouth
+    "THN": "THN",  # Thurmond
+    "WSS": "WSS",  # White Sulphur Springs
+    "WTI": "WTI",  # Waterloo
+    # Mountain West
+    "ACD": "ACD",  # Arcadia Valley
+    "ADM": "ADM",  # Ardmore
+    "ALN": "ALN",  # Alton
+    "ALP": "ALP",  # Alpine
+    "ARK": "ARK",  # Arkadelphia
+    "BMT": "BMT",  # Beaumont
+    "BRH": "BRH",  # Brookhaven
+    "BRL": "BRL",  # Burlington
+    "CBR": "CBR",  # Cleburne
+    "CRN": "CRN",  # Creston
+    "DDG": "DDG",  # Dodge City
+    "DLK": "DLK",  # Detroit Lakes
+    "DRT": "DRT",  # Del Rio
+    "DVL": "DVL",  # Devils Lake
+    "FAR": "FAR",  # Fargo
+    "FMD": "FMD",  # Fort Madison
+    "FMG": "FMG",  # Fort Morgan
+    "GBB": "GBB",  # Galesburg
+    "GCK": "GCK",  # Garden City
+    "GFK": "GFK",  # Grand Forks
+    "GLE": "GLE",  # Gainesville
+    "GWD": "GWD",  # Greenwood
+    "HAS": "HAS",  # Hastings
+    "HAZ": "HAZ",  # Hazlehurst
+    "HEM": "HEM",  # Hermann
+    "HLD": "HLD",  # Holdrege
+    "HMD": "HMD",  # Hammond
+    "HOP": "HOP",  # Hope
+    "HUT": "HUT",  # Hutchinson
+    "IDP": "IDP",  # Independence
+    "JAN": "JAN",  # Jackson
+    "JEF": "JEF",  # Jefferson City
+    "KIL": "KIL",  # Killeen
+    "KWD": "KWD",  # Kirkwood
+    "LAJ": "LAJ",  # La Junta
+    "LAP": "LAP",  # La Plata
+    "LBO": "LBO",  # Lbo
+    "LCH": "LCH",  # Lake Charles
+    "LEE": "LEE",  # Lee'S Summit
+    "LFT": "LFT",  # Lafayette
+    "LMR": "LMR",  # Lamar
+    "LNK": "LNK",  # Lincoln
+    "LRC": "LRC",  # Lawrence
+    "LSE": "LSE",  # La Crosse
+    "LVW": "LVW",  # Longview
+    "MAC": "MAC",  # Macomb
+    "MCB": "MCB",  # Mccomb
+    "MCG": "MCG",  # Mcgregor
+    "MCK": "MCK",  # Mccook
+    "MHL": "MHL",  # Marshall
+    "MIN": "MIN",  # Mineola
+    "MKS": "MKS",  # Marks
+    "MOT": "MOT",  # Minot
+    "MTP": "MTP",  # Mt. Pleasant
+    "MVN": "MVN",  # Malvern
+    "NIB": "NIB",  # New Iberia
+    "NOR": "NOR",  # Norman
+    "OSC": "OSC",  # Osceola
+    "OTM": "OTM",  # Ottumwa
+    "PBF": "PBF",  # Poplar Bluff
+    "PUR": "PUR",  # Purcell
+    "PVL": "PVL",  # Pauls Valley
+    "QCY": "QCY",  # Quincy
+    "RAT": "RAT",  # Raton
+    "RDW": "RDW",  # Red Wing
+    "RUG": "RUG",  # Rugby
+    "SCD": "SCD",  # St. Cloud
+    "SCH": "SCH",  # Schriever
+    "SED": "SED",  # Sedalia
+    "SHR": "SHR",  # Shreveport Sportran Intermodal Terminal
+    "SMC": "SMC",  # San Marcos
+    "SND": "SND",  # Sanderson
+    "SPL": "SPL",  # Staples
+    "STN": "STN",  # Stanley
+    "TAY": "TAY",  # Taylor
+    "TOH": "TOH",  # Tomah
+    "TOP": "TOP",  # Topeka
+    "TPL": "TPL",  # Temple
+    "TRI": "TRI",  # Trinidad
+    "TXA": "TXA",  # Texarkana
+    "WAH": "WAH",  # Washington
+    "WAR": "WAR",  # Warrensburg
+    "WEL": "WEL",  # Wellington
+    "WIC": "WIC",  # Wichita
+    "WIN": "WIN",  # Winona
+    "WNR": "WNR",  # Walnut Ridge
+    "WTN": "WTN",  # Williston
+    "YAZ": "YAZ",  # Yazoo City
+    # New England
+    "AMS": "AMS",  # Amsterdam
+    "AST": "AST",  # Aldershot
+    "BFX": "BFX",  # Buffalo
+    "BLF": "BLF",  # Bellows Falls
+    "BON": "BON",  # Boston
+    "BRA": "BRA",  # Brattleboro
+    "BRK": "BRK",  # Brunswick
+    "CBN": "CBN",  # Canadian Border
+    "CNV": "CNV",  # Castleton
+    "FED": "FED",  # Fort Edward
+    "FRA": "FRA",  # Framingham
+    "FRE": "FRE",  # Freeport
+    "FTC": "FTC",  # Ticonderoga
+    "GFD": "GFD",  # Greenfield
+    "GMS": "GMS",  # Grimsby
+    "HHL": "HHL",  # Haverhill
+    "HLK": "HLK",  # Holyoke
+    "HUD": "HUD",  # Hudson
+    "MBY": "MBY",  # Middlebury
+    "MPR": "MPR",  # Montpelier-Berlin
+    "NFL": "NFL",  # Niagara Falls
+    "NFS": "NFS",  # Niagara Falls
+    "NHT": "NHT",  # Northampton
+    "OKL": "OKL",  # Oakville
+    "ORB": "ORB",  # Old Orchard Beach
+    "PIT": "PIT",  # Pittsfield
+    "PLB": "PLB",  # Plattsburgh
+    "POH": "POH",  # Port Henry
+    "ROM": "ROM",  # Rome
+    "RPH": "RPH",  # Randolph
+    "RSP": "RSP",  # Rouses Point
+    "RTE": "RTE",  # Route 128
+    "RUD": "RUD",  # Rutland
+    "SAB": "SAB",  # St. Albans
+    "SAO": "SAO",  # Saco
+    "SAR": "SAR",  # Saratoga Springs
+    "SCA": "SCA",  # St. Catherines
+    "SDY": "SDY",  # Schenectady
+    "SLQ": "SLQ",  # St-Lambert
+    "TWO": "TWO",  # Toronto
+    "UCA": "UCA",  # Utica
+    "VRN": "VRN",  # Ferrisburgh
+    "WAB": "WAB",  # Waterbury-Stowe
+    "WEM": "WEM",  # Wells
+    "WHL": "WHL",  # Whitehall
+    "WNM": "WNM",  # Windsor-Mt. Ascutney
+    "WOB": "WOB",  # Woburn
+    "WOR": "WOR",  # Worcester Union
+    "WRJ": "WRJ",  # White River Junction
+    "WSP": "WSP",  # Westport
+    # Pacific Northwest
+    "ALY": "ALY",  # Albany
+    "BEL": "BEL",  # Bellingham
+    "BNG": "BNG",  # Bingen-White Salmon
+    "BRO": "BRO",  # Browning
+    "CMO": "CMO",  # Chemult
+    "CTL": "CTL",  # Centralia
+    "CUT": "CUT",  # Cut Bank
+    "EDM": "EDM",  # Edmonds
+    "EPH": "EPH",  # Ephrata
+    "ESM": "ESM",  # Essex
+    "EVR": "EVR",  # Everett
+    "GGW": "GGW",  # Glasgow
+    "GRA": "GRA",  # Granby
+    "KEL": "KEL",  # Kelso-Longview
+    "KFS": "KFS",  # Klamath Falls
+    "LIB": "LIB",  # Libby
+    "LWA": "LWA",  # Leavenworth
+    "MAL": "MAL",  # Malta
+    "MVW": "MVW",  # Mount Vernon
+    "OLW": "OLW",  # Olympia-Lacey
+    "ORC": "ORC",  # Oregon City
+    "PRO": "PRO",  # Provo
+    "PSC": "PSC",  # Pasco
+    "SBY": "SBY",  # Shelby
+    "SPT": "SPT",  # Sandpoint
+    "STW": "STW",  # Stanwood
+    "TUK": "TUK",  # Tukwila
+    "VAC": "VAC",  # Vancouver
+    "VAN": "VAN",  # Vancouver
+    "WEN": "WEN",  # Wenatchee
+    "WGL": "WGL",  # West Glacier
+    "WIH": "WIH",  # Wishram
+    "WPT": "WPT",  # Wolf Point
+    # South Central
+    "ATN": "ATN",  # Anniston
+    "BAS": "BAS",  # Bay St Louis
+    "BDT": "BDT",  # Bradenton
+    "BIX": "BIX",  # Biloxi Amtrak Sta
+    "CAM": "CAM",  # Camden
+    "DFB": "DFB",  # Deerfield Beach
+    "DNK": "DNK",  # Denmark
+    "GNS": "GNS",  # Gainesville
+    "GUF": "GUF",  # Gulfport Amtrak Sta
+    "HBG": "HBG",  # Hattiesburg
+    "HOL": "HOL",  # Hollywood
+    "JSP": "JSP",  # Jesup
+    "LAK": "LAK",  # Lakeland
+    "LAU": "LAU",  # Laurel
+    "MEI": "MEI",  # Meridian Union
+    "OKE": "OKE",  # Okeechobee
+    "PAG": "PAG",  # Pascagoula
+    "PAK": "PAK",  # Palatka
+    "PIC": "PIC",  # Picayune
+    "SBG": "SBG",  # Sebring
+    "SDL": "SDL",  # Slidell
+    "SFA": "SFA",  # Sanford Amtrak Auto Train
+    "STP": "STP",  # St. Petersburg
+    "TCA": "TCA",  # Toccoa
+    "TCL": "TCL",  # Tuscaloosa
+    "WDO": "WDO",  # Waldo
+    "WWD": "WWD",  # Wildwood
+    "YEM": "YEM",  # Yemassee
+    # Southeast
+    "BCV": "BCV",  # Burke Centre
+    "BNC": "BNC",  # Burlington
+    "CLF": "CLF",  # Clifton Forge
+    "CLP": "CLP",  # Culpeper
+    "CYN": "CYN",  # Cary
+    "DAN": "DAN",  # Danville
+    "FAY": "FAY",  # Fayetteville
+    "FBG": "FBG",  # Fredericksburg
+    "GBO": "GBO",  # Goldsboro
+    "GRO": "GRO",  # Greensboro
+    "HVL": "HVL",  # Havelock
+    "KNC": "KNC",  # Kinston
+    "MHD": "MHD",  # Morehead City
+    "QAN": "QAN",  # Quantico
+    "SEB": "SEB",  # Seabrook
+    "SOP": "SOP",  # Southern Pines
+    "SSM": "SSM",  # Selma
+    "STA": "STA",  # Staunton
+    "SWB": "SWB",  # Swansboro
+    "WDB": "WDB",  # Woodbridge
+    "WMN": "WMN",  # Wilmington
+    # Southwest
+    "BEN": "BEN",  # Benson
+    "DEM": "DEM",  # Deming
+    "GJT": "GJT",  # Grand Junction
+    "GLP": "GLP",  # Gallup
+    "GRI": "GRI",  # Green River
+    "GSC": "GSC",  # Glenwood Springs
+    "HER": "HER",  # Helper
+    "KNG": "KNG",  # Kingman
+    "LDB": "LDB",  # Lordsburg
+    "LMY": "LMY",  # Lamy
+    "LSV": "LSV",  # Las Vegas
+    "MRC": "MRC",  # Maricopa
+    "NDL": "NDL",  # Needles
+    "PHA": "PHA",  # Phoenix Sky Harbor Airport
+    "PXN": "PXN",  # North Phoenix Metro Center Transit
+    "SAF": "SAF",  # Santa Fe
+    "WIP": "WIP",  # Winter Park/Fraser
+    "WLO": "WLO",  # Winslow
+    "WMH": "WMH",  # Williams
+    "WPR": "WPR",  # Winter Park Ski Resort
+    "WPS": "WPS",  # Winter Park
+    "YUM": "YUM",  # Yuma
 }
 
 
@@ -1088,6 +2637,522 @@ STATION_COORDINATES = {
     # Florida Amtrak stations
     "WLD": {"lat": 29.7899, "lon": -82.1712},  # Waldo, FL
     "OCA": {"lat": 29.1871, "lon": -82.1301},  # Ocala, FL
+    # Nationwide Amtrak stations
+    "CHI": {"lat": 41.8787, "lon": -87.6394},  # Chicago Union Station
+    "STL": {"lat": 38.6242, "lon": -90.2040},  # St. Louis
+    "MKE": {"lat": 43.0345, "lon": -87.9171},  # Milwaukee
+    "LAX": {"lat": 34.0562, "lon": -118.2368},  # Los Angeles Union Station
+    "SEA": {"lat": 47.5984, "lon": -122.3302},  # Seattle King Street
+    "PDX": {"lat": 45.5287, "lon": -122.6768},  # Portland Union Station
+    "EMY": {"lat": 37.8405, "lon": -122.2916},  # Emeryville
+    "SAC": {"lat": 38.5840, "lon": -121.5007},  # Sacramento
+    "NOL": {"lat": 29.9461, "lon": -90.0783},  # New Orleans
+    "SAS": {"lat": 29.4194, "lon": -98.4781},  # San Antonio
+    "DEN": {"lat": 39.7530, "lon": -104.9999},  # Denver Union Station
+    # California / Southwest
+    "SBA": {"lat": 34.4137, "lon": -119.6857},  # Santa Barbara
+    "SLO": {"lat": 35.2730, "lon": -120.6574},  # San Luis Obispo
+    "SJC": {"lat": 37.3297, "lon": -121.9021},  # San Jose
+    "OSD": {"lat": 33.1954, "lon": -117.3803},  # Oceanside
+    "SNA": {"lat": 33.7489, "lon": -117.8664},  # Santa Ana
+    "FUL": {"lat": 33.8715, "lon": -117.9246},  # Fullerton
+    "OLT": {"lat": 32.7548, "lon": -117.1976},  # San Diego Old Town
+    "ABQ": {"lat": 35.0844, "lon": -106.6488},  # Albuquerque
+    "FLG": {"lat": 35.1981, "lon": -111.6476},  # Flagstaff
+    "TUS": {"lat": 32.2193, "lon": -110.9643},  # Tucson
+    "ELP": {"lat": 31.7590, "lon": -106.4890},  # El Paso
+    "RNO": {"lat": 39.5295, "lon": -119.7773},  # Reno
+    "TRU": {"lat": 39.3278, "lon": -120.1850},  # Truckee
+    # Pacific Northwest
+    "SPK": {"lat": 47.6533, "lon": -117.4083},  # Spokane
+    "TAC": {"lat": 47.2420, "lon": -122.4282},  # Tacoma
+    "EUG": {"lat": 44.0543, "lon": -123.0950},  # Eugene
+    "SLM": {"lat": 44.9429, "lon": -123.0353},  # Salem
+    "SLC": {"lat": 40.7774, "lon": -111.9301},  # Salt Lake City
+    "WFH": {"lat": 48.4106, "lon": -114.3375},  # Whitefish
+    "GPK": {"lat": 48.4481, "lon": -113.2176},  # East Glacier Park
+    "HAV": {"lat": 48.5528, "lon": -109.6822},  # Havre
+    "MSP": {"lat": 44.9464, "lon": -93.0854},  # St. Paul-Minneapolis
+    # Texas / South Central
+    "DAL": {"lat": 32.7789, "lon": -96.8083},  # Dallas
+    "FTW": {"lat": 32.7511, "lon": -97.3340},  # Fort Worth
+    "HOS": {"lat": 29.7689, "lon": -95.3597},  # Houston
+    "AUS": {"lat": 30.2748, "lon": -97.7268},  # Austin
+    "LRK": {"lat": 34.7345, "lon": -92.2740},  # Little Rock
+    "MEM": {"lat": 35.1352, "lon": -90.0510},  # Memphis
+    # Midwest / Great Lakes
+    "KCY": {"lat": 39.0912, "lon": -94.5556},  # Kansas City
+    "OKC": {"lat": 35.4728, "lon": -97.5153},  # Oklahoma City
+    "OMA": {"lat": 41.2535, "lon": -95.9319},  # Omaha
+    "IND": {"lat": 39.7642, "lon": -86.1637},  # Indianapolis
+    "CIN": {"lat": 39.1033, "lon": -84.5123},  # Cincinnati
+    "CLE": {"lat": 41.5159, "lon": -81.6848},  # Cleveland
+    "TOL": {"lat": 41.6529, "lon": -83.5328},  # Toledo
+    "DET": {"lat": 42.3289, "lon": -83.0521},  # Detroit
+    "GRR": {"lat": 42.9669, "lon": -85.6760},  # Grand Rapids
+    "PGH": {"lat": 40.4447, "lon": -79.9923},  # Pittsburgh
+    # Northeast extensions
+    "ALB": {"lat": 42.6418, "lon": -73.7542},  # Albany-Rensselaer
+    "SYR": {"lat": 43.0473, "lon": -76.1440},  # Syracuse
+    "ROC": {"lat": 43.1566, "lon": -77.6088},  # Rochester
+    "BUF": {"lat": 42.9038, "lon": -78.8636},  # Buffalo Depew
+    "MTR": {"lat": 45.5017, "lon": -73.5673},  # Montreal
+    "POR": {"lat": 43.6559, "lon": -70.2614},  # Portland ME
+    "ESX": {"lat": 44.4881, "lon": -73.1820},  # Essex Junction
+    "BTN": {"lat": 44.4759, "lon": -73.2121},  # Burlington VT
+    # Virginia / Southeast
+    "LYH": {"lat": 37.4083, "lon": -79.1428},  # Lynchburg
+    "NPN": {"lat": 36.9814, "lon": -76.4356},  # Newport News
+    "WBG": {"lat": 37.2710, "lon": -76.7075},  # Williamsburg
+    "CLB": {"lat": 34.0006, "lon": -81.0349},  # Columbia SC
+    "BHM": {"lat": 33.5206, "lon": -86.8344},  # Birmingham
+    "MOE": {"lat": 30.6959, "lon": -88.0411},  # Mobile
+    # California Amtrak stations
+    "ANA": {"lat": 33.8038, "lon": -117.8773},  # Anaheim
+    "ARC": {"lat": 40.8686, "lon": -124.0838},  # Arcata
+    "ARN": {"lat": 38.9036, "lon": -121.0832},  # Auburn
+    "BAR": {"lat": 34.9048, "lon": -117.0254},  # Barstow
+    "BBK": {"lat": 34.1789, "lon": -118.3118},  # Burbank
+    "BFD": {"lat": 35.3721, "lon": -119.0082},  # Bakersfield
+    "BKY": {"lat": 37.8673, "lon": -122.3007},  # Berkeley
+    "BUR": {"lat": 34.1931, "lon": -118.3538},  # Burbank
+    "CIC": {"lat": 39.7233, "lon": -121.8459},  # Chico
+    "CLM": {"lat": 34.0945, "lon": -117.7169},  # Claremont
+    "CML": {"lat": 34.2159, "lon": -119.0341},  # Camarillo
+    "COX": {"lat": 39.0992, "lon": -120.9531},  # Colfax
+    "CPN": {"lat": 34.3968, "lon": -119.5230},  # Carpinteria
+    "CWT": {"lat": 34.2532, "lon": -118.5994},  # Chatsworth
+    "DAV": {"lat": 38.5436, "lon": -121.7377},  # Davis
+    "DBP": {"lat": 37.7028, "lon": -121.8977},  # Dublin-Pleasanton
+    "DUN": {"lat": 41.2111, "lon": -122.2706},  # Dunsmuir
+    "ELK": {"lat": 40.8365, "lon": -115.7505},  # Elko
+    "FFV": {"lat": 38.2856, "lon": -121.9679},  # Fairfield-Vacaville
+    "FMT": {"lat": 37.5591, "lon": -122.0075},  # Fremont
+    "FNO": {"lat": 36.7385, "lon": -119.7829},  # Fresno
+    "GAC": {"lat": 37.4068, "lon": -121.9670},  # Santa Clara Great America
+    "GDL": {"lat": 34.1237, "lon": -118.2589},  # Glendale
+    "GLY": {"lat": 37.0040, "lon": -121.5668},  # Gilroy
+    "GTA": {"lat": 34.4377, "lon": -119.8431},  # Goleta
+    "GUA": {"lat": 34.9629, "lon": -120.5734},  # Guadalupe
+    "GVB": {"lat": 35.1213, "lon": -120.6293},  # Grover Beach
+    "HAY": {"lat": 37.6660, "lon": -122.0993},  # Hayward
+    "HNF": {"lat": 36.3261, "lon": -119.6518},  # Hanford
+    "HSU": {"lat": 40.8733, "lon": -124.0815},  # Arcata
+    "IRV": {"lat": 33.6568, "lon": -117.7337},  # Irvine
+    "LOD": {"lat": 38.1332, "lon": -121.2719},  # Lodi
+    "LPS": {"lat": 34.6827, "lon": -120.6050},  # Lompoc-Surf
+    "LVS": {"lat": 36.1645, "lon": -115.1497},  # Las Vegas
+    "MCD": {"lat": 37.3072, "lon": -120.4768},  # Merced
+    "MPK": {"lat": 34.2848, "lon": -118.8781},  # Moorpark
+    "MRV": {"lat": 39.1437, "lon": -121.5973},  # Marysville
+    "MTZ": {"lat": 38.0189, "lon": -122.1388},  # Martinez
+    "MYU": {"lat": 36.6535, "lon": -121.8014},  # Seaside-Marina
+    "NHL": {"lat": 34.3795, "lon": -118.5273},  # Santa Clarita-Newhall
+    "NRG": {"lat": 34.2307, "lon": -118.5454},  # Northridge
+    "OAC": {"lat": 37.7525, "lon": -122.1981},  # Oakland Coliseum/Airport
+    "OKJ": {"lat": 37.7939, "lon": -122.2717},  # Oakland
+    "ONA": {"lat": 34.0617, "lon": -117.6496},  # Ontario
+    "OXN": {"lat": 34.1992, "lon": -119.1760},  # Oxnard
+    "POS": {"lat": 34.0592, "lon": -117.7506},  # Pomona
+    "PRB": {"lat": 35.6227, "lon": -120.6879},  # Paso Robles
+    "PSN": {"lat": 33.8975, "lon": -116.5479},  # Palm Springs
+    "PTC": {"lat": 38.2365, "lon": -122.6358},  # Petaluma
+    "RDD": {"lat": 40.5836, "lon": -122.3934},  # Redding
+    "RIC": {"lat": 37.9368, "lon": -122.3541},  # Richmond
+    "RIV": {"lat": 33.9757, "lon": -117.3700},  # Riverside
+    "RLN": {"lat": 38.7910, "lon": -121.2373},  # Rocklin
+    "RSV": {"lat": 38.7500, "lon": -121.2863},  # Roseville
+    "SCC": {"lat": 37.3532, "lon": -121.9366},  # Santa Clara
+    "SFC": {"lat": 37.7886, "lon": -122.3989},  # San Francisco
+    "SIM": {"lat": 34.2702, "lon": -118.6952},  # Simi Valley
+    "SKN": {"lat": 37.9455, "lon": -121.2856},  # Stockton
+    "SKT": {"lat": 37.9570, "lon": -121.2790},  # Stockton
+    "SMN": {"lat": 34.0127, "lon": -118.4946},  # Santa Monica Pier
+    "SNB": {"lat": 34.1041, "lon": -117.3107},  # San Bernardino
+    "SNC": {"lat": 33.5013, "lon": -117.6638},  # San Juan Capistrano
+    "SNP": {"lat": 33.4196, "lon": -117.6197},  # San Clemente Pier
+    "SNS": {"lat": 36.6791, "lon": -121.6567},  # Salinas
+    "SOL": {"lat": 32.9929, "lon": -117.2711},  # Solana Beach
+    "SUI": {"lat": 38.2434, "lon": -122.0411},  # Suisun-Fairfield
+    "VAL": {"lat": 38.1003, "lon": -122.2592},  # Vallejo
+    "VEC": {"lat": 34.2769, "lon": -119.2999},  # Ventura
+    "VNC": {"lat": 34.2113, "lon": -118.4482},  # Van Nuys
+    "VRV": {"lat": 34.5372, "lon": -117.2930},  # Victorville
+    "WNN": {"lat": 40.9690, "lon": -117.7322},  # Winnemucca
+    "WTS": {"lat": 39.4126, "lon": -123.3510},  # Willits Calif Western Railroad Depot
+    # Great Lakes Amtrak stations
+    "ALI": {"lat": 42.2472, "lon": -84.7558},  # Albion
+    "ARB": {"lat": 42.2877, "lon": -83.7432},  # Ann Arbor
+    "BAM": {"lat": 42.3145, "lon": -86.1116},  # Bangor
+    "BTL": {"lat": 42.3185, "lon": -85.1878},  # Battle Creek
+    "CBS": {"lat": 43.3406, "lon": -89.0126},  # Columbus
+    "DER": {"lat": 42.3072, "lon": -83.2353},  # Dearborn
+    "DRD": {"lat": 42.9095, "lon": -83.9823},  # Durand
+    "ERI": {"lat": 42.1208, "lon": -80.0824},  # Erie
+    "FLN": {"lat": 43.0154, "lon": -83.6517},  # Flint
+    "GLN": {"lat": 42.0750, "lon": -87.8056},  # Glenview
+    "HOM": {"lat": 42.7911, "lon": -86.0966},  # Holland
+    "JXN": {"lat": 42.2481, "lon": -84.3997},  # Jackson
+    "KAL": {"lat": 42.2953, "lon": -85.5840},  # Kalamazoo
+    "LNS": {"lat": 42.7187, "lon": -84.4960},  # East Lansing
+    "LPE": {"lat": 43.0495, "lon": -83.3062},  # Lapeer
+    "MKA": {"lat": 42.9406, "lon": -87.9244},  # General Mitchell Intl. Airport
+    "PNT": {"lat": 42.6328, "lon": -83.2923},  # Pontiac
+    "POG": {"lat": 43.5471, "lon": -89.4676},  # Portage
+    "PTH": {"lat": 42.9604, "lon": -82.4438},  # Port Huron
+    "ROY": {"lat": 42.4884, "lon": -83.1470},  # Royal Oak
+    "SJM": {"lat": 42.1091, "lon": -86.4845},  # St. Joseph-Benton Harbor
+    "SVT": {"lat": 42.7183, "lon": -87.9063},  # Sturtevant
+    "TRM": {"lat": 42.5426, "lon": -83.1910},  # Troy
+    "WDL": {"lat": 43.6265, "lon": -89.7775},  # Wisconsin Dells
+    # Mid-Atlantic Amtrak stations
+    "ALT": {"lat": 40.5145, "lon": -78.4016},  # Altoona
+    "ARD": {"lat": 40.0083, "lon": -75.2904},  # Ardmore
+    "BER": {"lat": 41.6356, "lon": -72.7653},  # Berlin
+    "BNF": {"lat": 41.2745, "lon": -72.8172},  # Branford
+    "BWE": {"lat": 39.0178, "lon": -76.7650},  # Bowie State
+    "CLN": {"lat": 41.2795, "lon": -72.5283},  # Clinton
+    "COT": {"lat": 39.9857, "lon": -75.8209},  # Coatesville
+    "COV": {"lat": 40.0203, "lon": -79.5928},  # Connellsville
+    "CRT": {"lat": 41.1899, "lon": -73.8824},  # Croton-Harmon
+    "CUM": {"lat": 39.6506, "lon": -78.7580},  # Cumberland
+    "CWH": {"lat": 40.0717, "lon": -74.9522},  # Cornwells Heights
+    "DOW": {"lat": 40.0022, "lon": -75.7108},  # Downingtown
+    "EDG": {"lat": 39.4162, "lon": -76.2928},  # Edgewood
+    "EXT": {"lat": 40.0193, "lon": -75.6217},  # Exton
+    "GNB": {"lat": 40.3050, "lon": -79.5469},  # Greensburg
+    "GUI": {"lat": 41.2756, "lon": -72.6735},  # Guilford
+    "HAE": {"lat": 39.2372, "lon": -76.6915},  # Halethorpe
+    "HFY": {"lat": 39.3245, "lon": -77.7311},  # Harpers Ferry
+    "HGD": {"lat": 40.4837, "lon": -78.0118},  # Huntingdon
+    "JST": {"lat": 40.3297, "lon": -78.9220},  # Johnstown
+    "LAB": {"lat": 40.3174, "lon": -79.3851},  # Latrobe
+    "LEW": {"lat": 40.5883, "lon": -77.5800},  # Lewistown
+    "MDS": {"lat": 41.2836, "lon": -72.5994},  # Madison
+    "MID": {"lat": 40.1957, "lon": -76.7365},  # Middletown
+    "MRB": {"lat": 39.4587, "lon": -77.9610},  # Martinsburg
+    "MSA": {"lat": 39.3301, "lon": -76.4214},  # Martin Airport
+    "MYS": {"lat": 41.3509, "lon": -71.9631},  # Mystic
+    "NRK": {"lat": 39.6697, "lon": -75.7535},  # Newark
+    "NRO": {"lat": 40.9115, "lon": -73.7843},  # New Rochelle
+    "OTN": {"lat": 39.0871, "lon": -76.7064},  # Odenton
+    "PAO": {"lat": 40.0428, "lon": -75.4838},  # Paoli
+    "PAR": {"lat": 39.9592, "lon": -75.9221},  # Parkesburg
+    "PHN": {"lat": 39.9968, "lon": -75.1551},  # North Philadelphia
+    "POU": {"lat": 41.7071, "lon": -73.9375},  # Poughkeepsie
+    "PRV": {"lat": 39.5580, "lon": -76.0732},  # Perryville
+    "RHI": {"lat": 41.9213, "lon": -73.9513},  # Rhinecliff
+    "RKV": {"lat": 39.0845, "lon": -77.1460},  # Rockville
+    "STS": {"lat": 41.3053, "lon": -72.9221},  # New Haven
+    "TYR": {"lat": 40.6677, "lon": -78.2405},  # Tyrone
+    "WBL": {"lat": 39.2934, "lon": -76.6533},  # West Baltimore
+    "WND": {"lat": 41.8520, "lon": -72.6423},  # Windsor
+    "WSB": {"lat": 41.2888, "lon": -72.4480},  # Westbrook
+    "YNY": {"lat": 40.9356, "lon": -73.9023},  # Yonkers
+    # Midwest Amtrak stations
+    "AKY": {"lat": 38.4809, "lon": -82.6396},  # Ashland
+    "ALC": {"lat": 40.9213, "lon": -81.0929},  # Alliance
+    "ALD": {"lat": 37.7243, "lon": -80.6449},  # Alderson
+    "BNL": {"lat": 40.5090, "lon": -88.9843},  # Bloomington-Normal
+    "BYN": {"lat": 41.4803, "lon": -84.5518},  # Bryan
+    "CDL": {"lat": 37.7242, "lon": -89.2166},  # Carbondale
+    "CEN": {"lat": 38.5275, "lon": -89.1361},  # Centralia
+    "CHM": {"lat": 40.1158, "lon": -88.2414},  # Champaign-Urbana
+    "CHW": {"lat": 38.3464, "lon": -81.6385},  # Charleston
+    "COI": {"lat": 39.6460, "lon": -85.1334},  # Connersville
+    "CRF": {"lat": 40.0447, "lon": -86.8992},  # Crawfordsville
+    "CRV": {"lat": 39.2793, "lon": -89.8893},  # Carlinville
+    "DOA": {"lat": 41.9809, "lon": -86.1090},  # Dowagiac
+    "DQN": {"lat": 38.0123, "lon": -89.2403},  # Du Quoin
+    "DWT": {"lat": 41.0899, "lon": -88.4307},  # Dwight
+    "DYE": {"lat": 41.5154, "lon": -87.5181},  # Dyer
+    "EFG": {"lat": 39.1171, "lon": -88.5471},  # Effingham
+    "EKH": {"lat": 41.6807, "lon": -85.9718},  # Elkhart
+    "ELY": {"lat": 41.3700, "lon": -82.0967},  # Elyria
+    "FTN": {"lat": 36.5257, "lon": -88.8888},  # Fulton
+    "GLM": {"lat": 40.7525, "lon": -87.9981},  # Gilman
+    "HIN": {"lat": 37.6750, "lon": -80.8922},  # Hinton
+    "HMI": {"lat": 41.6912, "lon": -87.5065},  # Hammond-Whiting
+    "HMW": {"lat": 41.5624, "lon": -87.6687},  # Homewood
+    "HUN": {"lat": 38.4158, "lon": -82.4397},  # Huntington
+    "JOL": {"lat": 41.5246, "lon": -88.0787},  # Joliet Gateway Center
+    "KAN": {"lat": 35.4962, "lon": -80.6249},  # Kannapolis
+    "KEE": {"lat": 41.2458, "lon": -89.9275},  # Kewanee
+    "KKI": {"lat": 41.1193, "lon": -87.8654},  # Kankakee
+    "LAF": {"lat": 40.4193, "lon": -86.8959},  # Lafayette
+    "LAG": {"lat": 41.8156, "lon": -87.8715},  # La Grange
+    "LCN": {"lat": 40.1482, "lon": -89.3631},  # Lincoln
+    "MAT": {"lat": 39.4827, "lon": -88.3760},  # Mattoon
+    "MAY": {"lat": 38.6521, "lon": -83.7711},  # Maysville
+    "MDT": {"lat": 41.5496, "lon": -89.1179},  # Mendota
+    "MNG": {"lat": 38.1807, "lon": -81.3240},  # Montgomery
+    "NBN": {"lat": 36.1127, "lon": -89.2623},  # Newbern-Dyersburg
+    "NBU": {"lat": 41.7967, "lon": -86.7458},  # New Buffalo
+    "NLS": {"lat": 41.8374, "lon": -86.2524},  # Niles
+    "NPV": {"lat": 41.7795, "lon": -88.1455},  # Naperville
+    "PCT": {"lat": 41.3852, "lon": -89.4668},  # Princeton
+    "PIA": {"lat": 40.6894, "lon": -89.5936},  # Peoria
+    "PLO": {"lat": 41.6624, "lon": -88.5383},  # Plano
+    "PON": {"lat": 40.8787, "lon": -88.6372},  # Pontiac
+    "PRC": {"lat": 37.8566, "lon": -81.0607},  # Prince
+    "REN": {"lat": 40.9433, "lon": -87.1551},  # Rensselaer
+    "RTL": {"lat": 40.3109, "lon": -88.1591},  # Rantoul
+    "SKY": {"lat": 41.4407, "lon": -82.7179},  # Sandusky
+    "SMT": {"lat": 41.7949, "lon": -87.8097},  # Summit
+    "SOB": {"lat": 41.6784, "lon": -86.2873},  # South Bend
+    "SPI": {"lat": 39.8023, "lon": -89.6514},  # Springfield
+    "SPM": {"lat": 38.7213, "lon": -82.9638},  # South Portsmouth
+    "THN": {"lat": 37.9570, "lon": -81.0788},  # Thurmond
+    "WSS": {"lat": 37.7864, "lon": -80.3040},  # White Sulphur Springs
+    "WTI": {"lat": 41.4318, "lon": -85.0243},  # Waterloo
+    # Mountain West Amtrak stations
+    "ACD": {"lat": 37.5922, "lon": -90.6244},  # Arcadia Valley
+    "ADM": {"lat": 34.1725, "lon": -97.1255},  # Ardmore
+    "ALN": {"lat": 38.9210, "lon": -90.1573},  # Alton
+    "ALP": {"lat": 30.3573, "lon": -103.6615},  # Alpine
+    "ARK": {"lat": 34.1139, "lon": -93.0533},  # Arkadelphia
+    "BMT": {"lat": 30.0765, "lon": -94.1274},  # Beaumont
+    "BRH": {"lat": 31.5830, "lon": -90.4411},  # Brookhaven
+    "BRL": {"lat": 40.8058, "lon": -91.1020},  # Burlington
+    "CBR": {"lat": 32.3497, "lon": -97.3823},  # Cleburne
+    "CRN": {"lat": 41.0569, "lon": -94.3616},  # Creston
+    "DDG": {"lat": 37.7523, "lon": -100.0170},  # Dodge City
+    "DLK": {"lat": 46.8197, "lon": -95.8460},  # Detroit Lakes
+    "DRT": {"lat": 29.3622, "lon": -100.9027},  # Del Rio
+    "DVL": {"lat": 48.1105, "lon": -98.8614},  # Devils Lake
+    "FAR": {"lat": 46.8810, "lon": -96.7854},  # Fargo
+    "FMD": {"lat": 40.6296, "lon": -91.3135},  # Fort Madison
+    "FMG": {"lat": 40.2472, "lon": -103.8028},  # Fort Morgan
+    "GBB": {"lat": 40.9447, "lon": -90.3641},  # Galesburg
+    "GCK": {"lat": 37.9644, "lon": -100.8733},  # Garden City
+    "GFK": {"lat": 47.9175, "lon": -97.1108},  # Grand Forks
+    "GLE": {"lat": 33.6252, "lon": -97.1409},  # Gainesville
+    "GWD": {"lat": 33.5172, "lon": -90.1765},  # Greenwood
+    "HAS": {"lat": 40.5843, "lon": -98.3875},  # Hastings
+    "HAZ": {"lat": 31.8613, "lon": -90.3943},  # Hazlehurst
+    "HEM": {"lat": 38.7073, "lon": -91.4326},  # Hermann
+    "HLD": {"lat": 40.4360, "lon": -99.3701},  # Holdrege
+    "HMD": {"lat": 30.5072, "lon": -90.4622},  # Hammond
+    "HOP": {"lat": 33.6689, "lon": -93.5922},  # Hope
+    "HUT": {"lat": 38.0557, "lon": -97.9315},  # Hutchinson
+    "IDP": {"lat": 39.0869, "lon": -94.4297},  # Independence
+    "JAN": {"lat": 32.3008, "lon": -90.1909},  # Jackson
+    "JEF": {"lat": 38.5789, "lon": -92.1699},  # Jefferson City
+    "KIL": {"lat": 31.1212, "lon": -97.7286},  # Killeen
+    "KWD": {"lat": 38.5811, "lon": -90.4068},  # Kirkwood
+    "LAJ": {"lat": 37.9882, "lon": -103.5436},  # La Junta
+    "LAP": {"lat": 40.0292, "lon": -92.4934},  # La Plata
+    "LBO": {"lat": 54.7740, "lon": -101.8481},  # Lbo
+    "LCH": {"lat": 30.2381, "lon": -93.2170},  # Lake Charles
+    "LEE": {"lat": 38.9126, "lon": -94.3780},  # Lee'S Summit
+    "LFT": {"lat": 30.2265, "lon": -92.0145},  # Lafayette
+    "LMR": {"lat": 38.0896, "lon": -102.6186},  # Lamar
+    "LNK": {"lat": 40.8159, "lon": -96.7132},  # Lincoln
+    "LRC": {"lat": 38.9712, "lon": -95.2305},  # Lawrence
+    "LSE": {"lat": 43.8332, "lon": -91.2473},  # La Crosse
+    "LVW": {"lat": 32.4940, "lon": -94.7283},  # Longview
+    "MAC": {"lat": 40.4612, "lon": -90.6709},  # Macomb
+    "MCB": {"lat": 31.2445, "lon": -90.4513},  # Mccomb
+    "MCG": {"lat": 31.4434, "lon": -97.4048},  # Mcgregor
+    "MCK": {"lat": 40.1976, "lon": -100.6258},  # Mccook
+    "MHL": {"lat": 32.5515, "lon": -94.3670},  # Marshall
+    "MIN": {"lat": 32.6620, "lon": -95.4891},  # Mineola
+    "MKS": {"lat": 34.2582, "lon": -90.2723},  # Marks
+    "MOT": {"lat": 48.2361, "lon": -101.2986},  # Minot
+    "MTP": {"lat": 40.9712, "lon": -91.5508},  # Mt. Pleasant
+    "MVN": {"lat": 34.3655, "lon": -92.8140},  # Malvern
+    "NIB": {"lat": 30.0084, "lon": -91.8238},  # New Iberia
+    "NOR": {"lat": 35.2200, "lon": -97.4430},  # Norman
+    "OSC": {"lat": 41.0371, "lon": -93.7649},  # Osceola
+    "OTM": {"lat": 41.0188, "lon": -92.4149},  # Ottumwa
+    "PBF": {"lat": 36.7540, "lon": -90.3933},  # Poplar Bluff
+    "PUR": {"lat": 35.0120, "lon": -97.3574},  # Purcell
+    "PVL": {"lat": 34.7417, "lon": -97.2185},  # Pauls Valley
+    "QCY": {"lat": 39.9571, "lon": -91.3685},  # Quincy
+    "RAT": {"lat": 36.9011, "lon": -104.4379},  # Raton
+    "RDW": {"lat": 44.5662, "lon": -92.5371},  # Red Wing
+    "RUG": {"lat": 48.3698, "lon": -99.9976},  # Rugby
+    "SCD": {"lat": 45.5677, "lon": -94.1491},  # St. Cloud
+    "SCH": {"lat": 29.7467, "lon": -90.8152},  # Schriever
+    "SED": {"lat": 38.7116, "lon": -93.2287},  # Sedalia
+    "SHR": {"lat": 32.4997, "lon": -93.7567},  # Shreveport Sportran Intermodal Terminal
+    "SMC": {"lat": 29.8766, "lon": -97.9410},  # San Marcos
+    "SND": {"lat": 30.1400, "lon": -102.3987},  # Sanderson
+    "SPL": {"lat": 46.3546, "lon": -94.7953},  # Staples
+    "STN": {"lat": 48.3198, "lon": -102.3894},  # Stanley
+    "TAY": {"lat": 30.5677, "lon": -97.4078},  # Taylor
+    "TOH": {"lat": 43.9860, "lon": -90.5053},  # Tomah
+    "TOP": {"lat": 39.0514, "lon": -95.6649},  # Topeka
+    "TPL": {"lat": 31.0959, "lon": -97.3458},  # Temple
+    "TRI": {"lat": 37.1727, "lon": -104.5080},  # Trinidad
+    "TXA": {"lat": 33.4201, "lon": -94.0431},  # Texarkana
+    "WAH": {"lat": 38.5615, "lon": -91.0127},  # Washington
+    "WAR": {"lat": 38.7627, "lon": -93.7409},  # Warrensburg
+    "WEL": {"lat": 37.2749, "lon": -97.3818},  # Wellington
+    "WIC": {"lat": 37.6847, "lon": -97.3341},  # Wichita
+    "WIN": {"lat": 44.0444, "lon": -91.6401},  # Winona
+    "WNR": {"lat": 36.0677, "lon": -90.9568},  # Walnut Ridge
+    "WTN": {"lat": 48.1430, "lon": -103.6209},  # Williston
+    "YAZ": {"lat": 32.8485, "lon": -90.4152},  # Yazoo City
+    # New England Amtrak stations
+    "AMS": {"lat": 42.9537, "lon": -74.2195},  # Amsterdam
+    "AST": {"lat": 43.3134, "lon": -79.8557},  # Aldershot
+    "BFX": {"lat": 42.8784, "lon": -78.8737},  # Buffalo
+    "BLF": {"lat": 43.1365, "lon": -72.4446},  # Bellows Falls
+    "BON": {"lat": 42.3662, "lon": -71.0611},  # Boston
+    "BRA": {"lat": 42.8508, "lon": -72.5565},  # Brattleboro
+    "BRK": {"lat": 43.9114, "lon": -69.9655},  # Brunswick
+    "CBN": {"lat": 43.1092, "lon": -79.0584},  # Canadian Border
+    "CNV": {"lat": 43.6134, "lon": -73.1713},  # Castleton
+    "FED": {"lat": 43.2696, "lon": -73.5806},  # Fort Edward
+    "FRA": {"lat": 42.2760, "lon": -71.4200},  # Framingham
+    "FRE": {"lat": 43.8550, "lon": -70.1024},  # Freeport
+    "FTC": {"lat": 43.8538, "lon": -73.3897},  # Ticonderoga
+    "GFD": {"lat": 42.5855, "lon": -72.6008},  # Greenfield
+    "GMS": {"lat": 43.1959, "lon": -79.5579},  # Grimsby
+    "HHL": {"lat": 42.7733, "lon": -71.0864},  # Haverhill
+    "HLK": {"lat": 42.2042, "lon": -72.6023},  # Holyoke
+    "HUD": {"lat": 42.2539, "lon": -73.7977},  # Hudson
+    "MBY": {"lat": 44.0174, "lon": -73.1698},  # Middlebury
+    "MPR": {"lat": 44.2557, "lon": -72.6064},  # Montpelier-Berlin
+    "NFL": {"lat": 43.1099, "lon": -79.0553},  # Niagara Falls
+    "NFS": {"lat": 43.1087, "lon": -79.0633},  # Niagara Falls
+    "NHT": {"lat": 42.3189, "lon": -72.6264},  # Northampton
+    "OKL": {"lat": 43.4554, "lon": -79.6824},  # Oakville
+    "ORB": {"lat": 43.5143, "lon": -70.3762},  # Old Orchard Beach
+    "PIT": {"lat": 42.4516, "lon": -73.2538},  # Pittsfield
+    "PLB": {"lat": 44.6967, "lon": -73.4463},  # Plattsburgh
+    "POH": {"lat": 44.0423, "lon": -73.4588},  # Port Henry
+    "ROM": {"lat": 43.1994, "lon": -75.4500},  # Rome
+    "RPH": {"lat": 43.9224, "lon": -72.6655},  # Randolph
+    "RSP": {"lat": 44.9949, "lon": -73.3711},  # Rouses Point
+    "RTE": {"lat": 42.2102, "lon": -71.1479},  # Route 128
+    "RUD": {"lat": 43.6058, "lon": -72.9815},  # Rutland
+    "SAB": {"lat": 44.8124, "lon": -73.0862},  # St. Albans
+    "SAO": {"lat": 43.4962, "lon": -70.4491},  # Saco
+    "SAR": {"lat": 43.0828, "lon": -73.8100},  # Saratoga Springs
+    "SCA": {"lat": 43.1478, "lon": -79.2560},  # St. Catherines
+    "SDY": {"lat": 42.8147, "lon": -73.9429},  # Schenectady
+    "SLQ": {"lat": 45.4989, "lon": -73.5073},  # St-Lambert
+    "TWO": {"lat": 43.6454, "lon": -79.3808},  # Toronto
+    "UCA": {"lat": 43.1039, "lon": -75.2234},  # Utica
+    "VRN": {"lat": 44.1809, "lon": -73.2488},  # Ferrisburgh
+    "WAB": {"lat": 44.3350, "lon": -72.7518},  # Waterbury-Stowe
+    "WEM": {"lat": 43.3208, "lon": -70.6122},  # Wells
+    "WHL": {"lat": 43.5547, "lon": -73.4032},  # Whitehall
+    "WNM": {"lat": 43.4799, "lon": -72.3850},  # Windsor-Mt. Ascutney
+    "WOB": {"lat": 42.5174, "lon": -71.1438},  # Woburn
+    "WOR": {"lat": 42.2615, "lon": -71.7948},  # Worcester Union
+    "WRJ": {"lat": 43.6478, "lon": -72.3173},  # White River Junction
+    "WSP": {"lat": 44.1873, "lon": -73.4518},  # Westport
+    # Pacific Northwest Amtrak stations
+    "ALY": {"lat": 44.6305, "lon": -123.1028},  # Albany
+    "BEL": {"lat": 48.7203, "lon": -122.5113},  # Bellingham
+    "BNG": {"lat": 45.7150, "lon": -121.4687},  # Bingen-White Salmon
+    "BRO": {"lat": 48.5341, "lon": -113.0132},  # Browning
+    "CMO": {"lat": 43.2168, "lon": -121.7816},  # Chemult
+    "CTL": {"lat": 46.7175, "lon": -122.9531},  # Centralia
+    "CUT": {"lat": 48.6384, "lon": -112.3316},  # Cut Bank
+    "EDM": {"lat": 47.8111, "lon": -122.3841},  # Edmonds
+    "EPH": {"lat": 47.3209, "lon": -119.5493},  # Ephrata
+    "ESM": {"lat": 48.2755, "lon": -113.6109},  # Essex
+    "EVR": {"lat": 47.9754, "lon": -122.1979},  # Everett
+    "GGW": {"lat": 48.1949, "lon": -106.6362},  # Glasgow
+    "GRA": {"lat": 40.0842, "lon": -105.9355},  # Granby
+    "KEL": {"lat": 46.1423, "lon": -122.9130},  # Kelso-Longview
+    "KFS": {"lat": 42.2255, "lon": -121.7720},  # Klamath Falls
+    "LIB": {"lat": 48.3948, "lon": -115.5489},  # Libby
+    "LWA": {"lat": 47.6065, "lon": -120.6440},  # Leavenworth
+    "MAL": {"lat": 48.3605, "lon": -107.8722},  # Malta
+    "MVW": {"lat": 48.4185, "lon": -122.3347},  # Mount Vernon
+    "OLW": {"lat": 46.9913, "lon": -122.7941},  # Olympia-Lacey
+    "ORC": {"lat": 45.3661, "lon": -122.5959},  # Oregon City
+    "PRO": {"lat": 40.2260, "lon": -111.6640},  # Provo
+    "PSC": {"lat": 46.2370, "lon": -119.0877},  # Pasco
+    "SBY": {"lat": 48.5067, "lon": -111.8566},  # Shelby
+    "SPT": {"lat": 48.2762, "lon": -116.5456},  # Sandpoint
+    "STW": {"lat": 48.2426, "lon": -122.3499},  # Stanwood
+    "TUK": {"lat": 47.4611, "lon": -122.2403},  # Tukwila
+    "VAC": {"lat": 49.2738, "lon": -123.0983},  # Vancouver
+    "VAN": {"lat": 45.6289, "lon": -122.6865},  # Vancouver
+    "WEN": {"lat": 47.4216, "lon": -120.3066},  # Wenatchee
+    "WGL": {"lat": 48.4962, "lon": -113.9792},  # West Glacier
+    "WIH": {"lat": 45.6577, "lon": -120.9661},  # Wishram
+    "WPT": {"lat": 48.0917, "lon": -105.6427},  # Wolf Point
+    # South Central Amtrak stations
+    "ATN": {"lat": 33.6491, "lon": -85.8321},  # Anniston
+    "BAS": {"lat": 30.3087, "lon": -89.3340},  # Bay St Louis
+    "BDT": {"lat": 27.5285, "lon": -82.5123},  # Bradenton
+    "BIX": {"lat": 30.3991, "lon": -88.8916},  # Biloxi Amtrak Sta
+    "CAM": {"lat": 34.2482, "lon": -80.6252},  # Camden
+    "DFB": {"lat": 26.3171, "lon": -80.1221},  # Deerfield Beach
+    "DNK": {"lat": 33.3262, "lon": -81.1436},  # Denmark
+    "GNS": {"lat": 34.2889, "lon": -83.8197},  # Gainesville
+    "GUF": {"lat": 30.3690, "lon": -89.0948},  # Gulfport Amtrak Sta
+    "HBG": {"lat": 31.3269, "lon": -89.2865},  # Hattiesburg
+    "HOL": {"lat": 26.0116, "lon": -80.1679},  # Hollywood
+    "JSP": {"lat": 31.6056, "lon": -81.8822},  # Jesup
+    "LAK": {"lat": 28.0456, "lon": -81.9519},  # Lakeland
+    "LAU": {"lat": 31.6922, "lon": -89.1279},  # Laurel
+    "MEI": {"lat": 32.3642, "lon": -88.6966},  # Meridian Union
+    "OKE": {"lat": 27.2519, "lon": -80.8308},  # Okeechobee
+    "PAG": {"lat": 30.3678, "lon": -88.5595},  # Pascagoula
+    "PAK": {"lat": 29.6497, "lon": -81.6405},  # Palatka
+    "PIC": {"lat": 30.5246, "lon": -89.6803},  # Picayune
+    "SBG": {"lat": 27.4966, "lon": -81.4342},  # Sebring
+    "SDL": {"lat": 30.2784, "lon": -89.7826},  # Slidell
+    "SFA": {"lat": 28.8085, "lon": -81.2913},  # Sanford Amtrak Auto Train
+    "STP": {"lat": 27.8430, "lon": -82.6444},  # St. Petersburg
+    "TCA": {"lat": 34.5785, "lon": -83.3315},  # Toccoa
+    "TCL": {"lat": 33.1932, "lon": -87.5602},  # Tuscaloosa
+    "WDO": {"lat": 29.7905, "lon": -82.1667},  # Waldo
+    "WWD": {"lat": 28.8662, "lon": -82.0395},  # Wildwood
+    "YEM": {"lat": 32.6883, "lon": -80.8469},  # Yemassee
+    # Southeast Amtrak stations
+    "BCV": {"lat": 38.7973, "lon": -77.2988},  # Burke Centre
+    "BNC": {"lat": 36.0942, "lon": -79.4345},  # Burlington
+    "CLF": {"lat": 37.8145, "lon": -79.8274},  # Clifton Forge
+    "CLP": {"lat": 38.4724, "lon": -77.9934},  # Culpeper
+    "CYN": {"lat": 35.7883, "lon": -78.7822},  # Cary
+    "DAN": {"lat": 36.5841, "lon": -79.3840},  # Danville
+    "FAY": {"lat": 35.0550, "lon": -78.8848},  # Fayetteville
+    "FBG": {"lat": 38.2984, "lon": -77.4572},  # Fredericksburg
+    "GBO": {"lat": 35.3857, "lon": -78.0033},  # Goldsboro
+    "GRO": {"lat": 36.0698, "lon": -79.7871},  # Greensboro
+    "HVL": {"lat": 34.8912, "lon": -76.9261},  # Havelock
+    "KNC": {"lat": 35.2437, "lon": -77.5845},  # Kinston
+    "MHD": {"lat": 34.7214, "lon": -76.7157},  # Morehead City
+    "QAN": {"lat": 38.5219, "lon": -77.2930},  # Quantico
+    "SEB": {"lat": 38.9727, "lon": -76.8436},  # Seabrook
+    "SOP": {"lat": 35.1751, "lon": -79.3903},  # Southern Pines
+    "SSM": {"lat": 35.5328, "lon": -78.2801},  # Selma
+    "STA": {"lat": 38.1476, "lon": -79.0718},  # Staunton
+    "SWB": {"lat": 34.6971, "lon": -77.1396},  # Swansboro
+    "WDB": {"lat": 38.6589, "lon": -77.2479},  # Woodbridge
+    "WMN": {"lat": 34.2512, "lon": -77.8749},  # Wilmington
+    # Southwest Amtrak stations
+    "BEN": {"lat": 31.9688, "lon": -110.2969},  # Benson
+    "DEM": {"lat": 32.2718, "lon": -107.7543},  # Deming
+    "GJT": {"lat": 39.0644, "lon": -108.5699},  # Grand Junction
+    "GLP": {"lat": 35.5292, "lon": -108.7405},  # Gallup
+    "GRI": {"lat": 38.9920, "lon": -110.1652},  # Green River
+    "GSC": {"lat": 39.5479, "lon": -107.3232},  # Glenwood Springs
+    "HER": {"lat": 39.6840, "lon": -110.8539},  # Helper
+    "KNG": {"lat": 35.1883, "lon": -114.0528},  # Kingman
+    "LDB": {"lat": 32.3501, "lon": -108.7070},  # Lordsburg
+    "LMY": {"lat": 35.4810, "lon": -105.8800},  # Lamy
+    "LSV": {"lat": 35.5934, "lon": -105.2128},  # Las Vegas
+    "MRC": {"lat": 33.0563, "lon": -112.0471},  # Maricopa
+    "NDL": {"lat": 34.8406, "lon": -114.6062},  # Needles
+    "PHA": {"lat": 33.4364, "lon": -112.0130},  # Phoenix Sky Harbor Airport
+    "PXN": {"lat": 33.6395, "lon": -112.1192},  # North Phoenix Metro Center Transit
+    "SAF": {"lat": 35.6843, "lon": -105.9466},  # Santa Fe
+    "WIP": {"lat": 39.9476, "lon": -105.8174},  # Winter Park/Fraser
+    "WLO": {"lat": 35.0217, "lon": -110.6950},  # Winslow
+    "WMH": {"lat": 35.2511, "lon": -112.1981},  # Williams
+    "WPR": {"lat": 39.8876, "lon": -105.7632},  # Winter Park Ski Resort
+    "WPS": {"lat": 39.8837, "lon": -105.7618},  # Winter Park
+    "YUM": {"lat": 32.7231, "lon": -114.6156},  # Yuma
 }
 
 
