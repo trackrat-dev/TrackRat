@@ -59,10 +59,12 @@ struct TrainListView: View {
                     Text(destination)
                         .font(.headline)
                         .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
                     if !departureName.isEmpty {
                         Text("from \(departureName)")
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.8))
+                            .multilineTextAlignment(.center)
                     }
                 }
 
