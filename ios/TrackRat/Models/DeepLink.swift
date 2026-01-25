@@ -128,14 +128,14 @@ struct DeepLink {
         }
         
         if let fromCode = fromStationCode,
-           let fromName = Stations.stationCodes.first(where: { $0.value == fromCode })?.key {
+           let fromName = Stations.stationName(forCode: fromCode) {
             text += " from \(Stations.displayName(for: fromName))"
         }
-        
+
         if let destName = destinationName {
             text += " to \(destName)"
         } else if let toCode = toStationCode,
-                  let toName = Stations.stationCodes.first(where: { $0.value == toCode })?.key {
+                  let toName = Stations.stationName(forCode: toCode) {
             text += " to \(Stations.displayName(for: toName))"
         }
         

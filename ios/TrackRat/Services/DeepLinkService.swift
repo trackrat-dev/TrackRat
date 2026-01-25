@@ -30,16 +30,16 @@ class DeepLinkService: ObservableObject {
         if let fromCode = deepLink.fromStationCode {
             appState.departureStationCode = fromCode
             // Find the station name for the code
-            if let stationName = Stations.stationCodes.first(where: { $0.value == fromCode })?.key {
+            if let stationName = Stations.stationName(forCode: fromCode) {
                 appState.selectedDeparture = stationName
                 print("🚉 Set departure: \(stationName) (\(fromCode))")
             }
         }
-        
+
         if let toCode = deepLink.toStationCode {
             appState.destinationStationCode = toCode
             // Find the station name for the code
-            if let stationName = Stations.stationCodes.first(where: { $0.value == toCode })?.key {
+            if let stationName = Stations.stationName(forCode: toCode) {
                 appState.selectedDestination = stationName
                 print("🎯 Set destination: \(stationName) (\(toCode))")
             }
@@ -85,13 +85,9 @@ class DeepLinkService: ObservableObject {
     func extractTrainInfo(from url: URL) -> (trainId: String, from: String?, to: String?)? {
         guard let deepLink = DeepLink(url: url) else { return nil }
         
-        let fromName = deepLink.fromStationCode.flatMap { code in
-            Stations.stationCodes.first(where: { $0.value == code })?.key
-        }
-        
-        let toName = deepLink.toStationCode.flatMap { code in
-            Stations.stationCodes.first(where: { $0.value == code })?.key
-        }
+        let fromName = deepLink.fromStationCode.flatMap { Stations.stationName(forCode: $0) }
+
+        let toName = deepLink.toStationCode.flatMap { Stations.stationName(forCode: $0) }
         
         return (deepLink.trainId, fromName, toName)
     }

@@ -2000,11 +2000,23 @@ struct Stations {
     static func getCoordinates(for code: String) -> CLLocationCoordinate2D? {
         return stationCoordinates[code]
     }
-    
+
+    /// Reverse lookup dictionary: code → canonical station name.
+    /// Automatically strips " Alt" suffix from alternate station entries.
+    /// This provides O(1) lookup and ensures users never see "Alt" in station names.
+    static let stationCodeToName: [String: String] = {
+        var result: [String: String] = [:]
+        for (name, code) in stationCodes {
+            let canonicalName = name.hasSuffix(" Alt") ? String(name.dropLast(4)) : name
+            result[code] = canonicalName
+        }
+        return result
+    }()
+
     /// Returns the full station name for a given station code.
     /// Example: stationName(forCode: "NY") returns "New York Penn Station"
     static func stationName(forCode code: String) -> String? {
-        return stationCodes.first(where: { $0.value == code })?.key
+        return stationCodeToName[code]
     }
 
     /// Smart display name that handles both station codes and station names.
