@@ -24,8 +24,8 @@ from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
 
-# Fixed time window for summaries (90 minutes as per requirements)
-SUMMARY_TIME_WINDOW_MINUTES = 90
+# Time window for summaries (2 hours to capture long-haul Amtrak trains)
+SUMMARY_TIME_WINDOW_MINUTES = 120
 
 # Delay thresholds for categorization (in minutes)
 ON_TIME_THRESHOLD_MINUTES = 5

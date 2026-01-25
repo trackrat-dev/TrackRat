@@ -480,11 +480,11 @@ async def get_segment_train_details(
 ) -> SegmentTrainDetailsResponse:
     """Get detailed train records for a specific route segment using on-the-fly calculation."""
 
-    # Default time window to 1 hours ago if not specified
+    # Default time window to 2 hours ago (longer window for Amtrak long-haul trains)
     if not end_time:
         end_time = now_et()
     if not start_time:
-        start_time = end_time - timedelta(hours=1)
+        start_time = end_time - timedelta(hours=2)
 
     # Ensure timezone awareness
     start_time = ensure_timezone_aware(start_time)
@@ -501,32 +501,45 @@ async def get_segment_train_details(
         status=status,
     )
 
-    # Query journeys that include both stations and are within time window
-    stmt = (
-        select(TrainJourney)
-        .join(
-            JourneyStop,
-            and_(
-                JourneyStop.journey_id == TrainJourney.id,
-                JourneyStop.station_code.in_([from_station, to_station]),
-            ),
-        )
-        .where(
-            and_(
-                TrainJourney.scheduled_departure >= start_time,
-                TrainJourney.scheduled_departure <= end_time,
-                # TrainJourney.has_complete_journey == True,
+    # Query journeys where the train passes through from_station within the time window
+    # and continues to to_station (with higher stop_sequence)
+    from_stop = aliased(JourneyStop, name="from_stop")
+    to_stop = aliased(JourneyStop, name="to_stop")
+
+    # Build base conditions
+    conditions = [
+        # Filter by when the train departs from_station (not journey origin)
+        from_stop.scheduled_departure >= start_time,
+        from_stop.scheduled_departure <= end_time,
+        # Verify to_station exists with higher stop_sequence
+        exists(
+            select(to_stop.id).where(
+                and_(
+                    to_stop.journey_id == TrainJourney.id,
+                    to_stop.station_code == to_station,
+                    to_stop.stop_sequence > from_stop.stop_sequence,
+                )
             )
-        )
-        .group_by(TrainJourney.id)
-        .having(func.count(distinct(JourneyStop.station_code)) == 2)
-        .options(selectinload(TrainJourney.stops))
-        .order_by(TrainJourney.last_updated_at.desc())
-    )
+        ),
+    ]
 
     # Apply data source filter if specified
     if data_source:
-        stmt = stmt.where(TrainJourney.data_source == data_source)
+        conditions.append(TrainJourney.data_source == data_source)
+
+    stmt = (
+        select(TrainJourney)
+        .join(
+            from_stop,
+            and_(
+                from_stop.journey_id == TrainJourney.id,
+                from_stop.station_code == from_station,
+            ),
+        )
+        .where(and_(*conditions))
+        .options(selectinload(TrainJourney.stops))
+        .order_by(from_stop.scheduled_departure.desc())
+    )
 
     result = await db.execute(stmt)
     journeys = list(result.scalars().all())
