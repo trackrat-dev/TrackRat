@@ -132,3 +132,11 @@ resource "google_project_iam_member" "cloudbuild_monitoring" {
   role    = "roles/monitoring.admin"
   member  = "serviceAccount:trackrat-staging@trackrat-v2.iam.gserviceaccount.com"
 }
+
+# Cloud Build also needs logging.configWriter to create log-based metrics
+# (google_logging_metric resources in metrics.tf).
+resource "google_project_iam_member" "cloudbuild_logging" {
+  project = var.project_id
+  role    = "roles/logging.configWriter"
+  member  = "serviceAccount:trackrat-staging@trackrat-v2.iam.gserviceaccount.com"
+}
