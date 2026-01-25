@@ -19,7 +19,6 @@ from trackrat.services.summary import (
     DELAY_CATEGORY_SLIGHT_DELAY,
     ON_TIME_THRESHOLD_MINUTES,
     SLIGHT_DELAY_THRESHOLD_MINUTES,
-    SUMMARY_TIME_WINDOW_MINUTES,
     LineStats,
     OperationsSummary,
     SummaryMetrics,
@@ -291,7 +290,7 @@ class TestSummaryService:
         assert summary.scope == "route"
         # With no data, show informative message so users know service status
         assert summary.headline == ""
-        assert summary.body == f"No trains travelled your route in the past {SUMMARY_TIME_WINDOW_MINUTES} minutes."
+        assert summary.body == "No trains travelled your route in the past 2 hours."
         assert summary.metrics is None
 
     def test_generate_route_summary_all_cancelled(self, summary_service):

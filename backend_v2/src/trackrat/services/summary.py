@@ -960,7 +960,7 @@ class SummaryService:
         if not journeys:
             return OperationsSummary(
                 headline="",
-                body=f"No trains travelled your route in the past {SUMMARY_TIME_WINDOW_MINUTES} minutes.",
+                body="No trains travelled your route in the past 2 hours.",
                 scope="route",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
@@ -1001,7 +1001,7 @@ class SummaryService:
             )
             return OperationsSummary(
                 headline=f"{total_cancellations} {cancel_word}",
-                body=f"All scheduled trains were cancelled in the past {SUMMARY_TIME_WINDOW_MINUTES} minutes.",
+                body="All scheduled trains were cancelled in the past 2 hours.",
                 scope="route",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
