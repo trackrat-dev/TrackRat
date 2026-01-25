@@ -89,7 +89,7 @@ struct TrainDistributionChart: View {
         Button {
             onTrainTap(train.trainId)
         } label: {
-            Text(train.trainId)
+            Text(displayLabel(for: train.trainId))
                 .font(.caption2)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
@@ -100,6 +100,14 @@ struct TrainDistributionChart: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+
+    /// Returns a short display label for a train ID.
+    /// PATH/PATCO synthetic IDs (e.g., "PATH_PHO_33rd_1737900000") show just the prefix.
+    private func displayLabel(for trainId: String) -> String {
+        if trainId.hasPrefix("PATH_") { return "PATH" }
+        if trainId.hasPrefix("PATCO_") { return "PATCO" }
+        return trainId
     }
 }
 
