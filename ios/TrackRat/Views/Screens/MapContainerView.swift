@@ -338,14 +338,18 @@ struct MapContainerView: View {
                 appState.selectedRoute = nil
             }
         }
-        // Disabled automatic map animation when selecting routes
-        // This was causing distracting map redraws during origin/destination selection
-        // The map will stay at the default home/work view until the user views train details
-        // .onChange(of: appState.selectedRoute) { oldRoute, newRoute in
-        //     if let route = newRoute {
-        //         animateMapToRoute(route, targetSheetDetent: selectedDetent)
-        //     }
-        // }
+        // Animate map when user selects departure station
+        .onChange(of: appState.departureStationCode) { _, newCode in
+            if let code = newCode {
+                animateMapToStation(code, targetSheetDetent: selectedDetent)
+            }
+        }
+        // Animate map to show route when user selects destination
+        .onChange(of: appState.selectedRoute) { _, newRoute in
+            if let route = newRoute {
+                animateMapToRoute(route, targetSheetDetent: selectedDetent)
+            }
+        }
         .onChange(of: appState.navigationPath) { _, newPath in
             // Handle navigation-based map mode switching, but don't block UI
             // Use async dispatch to prevent navigation lag

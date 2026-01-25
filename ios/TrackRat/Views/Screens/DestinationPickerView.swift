@@ -198,6 +198,18 @@ struct DestinationPickerView: View {
         appState.selectedDestination = destination
         appState.destinationStationCode = Stations.getStationCode(destination)
 
+        // Set route so map animates to show departure → destination
+        if let departureCode = appState.departureStationCode,
+           let departureName = appState.selectedDeparture,
+           let destinationCode = appState.destinationStationCode {
+            appState.selectedRoute = TripPair(
+                departureCode: departureCode,
+                departureName: departureName,
+                destinationCode: destinationCode,
+                destinationName: destination
+            )
+        }
+
         // Use pendingNavigation to expand sheet FIRST, then navigate
         appState.pendingNavigation = .trainList(destination: destination, departureStationCode: appState.departureStationCode ?? "NY")
 
