@@ -81,14 +81,15 @@ class JustInTimeUpdateService:
 
     async def get_collector_for_journey(
         self, journey: TrainJourney
-    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector:
+    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector | None:
         """Get the appropriate collector for a journey based on its data source.
 
         Args:
             journey: The train journey
 
         Returns:
-            The appropriate collector for the journey's data source
+            The appropriate collector for the journey's data source,
+            or None for schedule-only sources (PATCO) that don't support JIT refresh
         """
         if journey.data_source == "NJT":
             return self.njt_collector
@@ -96,6 +97,9 @@ class JustInTimeUpdateService:
             return self.amtrak_collector
         elif journey.data_source == "PATH":
             return self.path_collector
+        elif journey.data_source == "PATCO":
+            # PATCO is schedule-only (GTFS static), no real-time API available
+            return None
         else:
             raise ValueError(f"Unknown data source: {journey.data_source}")
 
@@ -175,25 +179,37 @@ class JustInTimeUpdateService:
             try:
                 # Wrap refresh in retry logic to handle deadlocks
                 # After rollback, we must re-query the journey since ORM objects are detached
-                async def do_refresh() -> TrainJourney:
+                async def do_refresh() -> TrainJourney | None:
                     # Re-query journey to get fresh state after potential rollback
                     fresh_journey = await session.scalar(stmt)
                     if not fresh_journey:
                         raise ValueError(f"Journey {train_id} disappeared during refresh")
                     collector = await self.get_collector_for_journey(fresh_journey)
+                    if collector is None:
+                        # Schedule-only source (e.g., PATCO) - no JIT refresh available
+                        return None
                     await collector.collect_journey_details(session, fresh_journey)
                     return fresh_journey
 
                 refreshed = await retry_on_deadlock(session, do_refresh)
 
-                logger.info(
-                    "journey_data_refreshed",
-                    train_id=train_id,
-                    data_source=refreshed.data_source,
-                    stops_count=refreshed.stops_count,
-                    is_completed=refreshed.is_completed,
-                )
-                journey = refreshed
+                if refreshed is None:
+                    # Schedule-only source - no JIT refresh available
+                    logger.debug(
+                        "jit_refresh_not_available",
+                        train_id=train_id,
+                        data_source=journey.data_source,
+                        reason="schedule-only data source",
+                    )
+                else:
+                    logger.info(
+                        "journey_data_refreshed",
+                        train_id=train_id,
+                        data_source=refreshed.data_source,
+                        stops_count=refreshed.stops_count,
+                        is_completed=refreshed.is_completed,
+                    )
+                    journey = refreshed
 
             except Exception as e:
                 logger.error(
@@ -320,6 +336,15 @@ class JustInTimeUpdateService:
             if not fresh_journey:
                 raise ValueError(f"Journey {journey_id} not found during refresh")
             collector = await self.get_collector_for_journey(fresh_journey)
+            if collector is None:
+                # Schedule-only source (e.g., PATCO) - no JIT refresh available
+                logger.debug(
+                    "jit_refresh_not_available",
+                    train_id=fresh_journey.train_id,
+                    data_source=fresh_journey.data_source,
+                    reason="schedule-only data source",
+                )
+                return
             await collector.collect_journey_details(session, fresh_journey)
 
         try:

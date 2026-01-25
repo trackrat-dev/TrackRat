@@ -754,13 +754,27 @@ class PathCollector:
                     matching = arrivals_by_headsign_color.get(journey_headsign, [])
 
                 stops = await self._get_journey_stops(session, journey)
-                await self._update_stops_from_arrivals(
+                had_matching_arrivals = await self._update_stops_from_arrivals(
                     session, journey, stops, matching
                 )
 
                 journey.last_updated_at = now_et()
                 journey.update_count = (journey.update_count or 0) + 1
-                journey.api_error_count = 0
+
+                if had_matching_arrivals:
+                    # Train is still visible in API - reset error count
+                    journey.api_error_count = 0
+                else:
+                    # No arrivals matched - train may have disappeared from API
+                    # Increment error count to track consecutive misses
+                    journey.api_error_count = (journey.api_error_count or 0) + 1
+                    if journey.api_error_count >= 2:
+                        journey.is_expired = True
+                        logger.info(
+                            "path_journey_expired_no_arrivals",
+                            train_id=journey.train_id,
+                            error_count=journey.api_error_count,
+                        )
 
                 if journey.is_completed:
                     completed += 1
@@ -924,7 +938,7 @@ class PathCollector:
         journey: TrainJourney,
         stops: list[JourneyStop],
         arrivals: list[PathArrival],
-    ) -> None:
+    ) -> bool:
         """Match arrivals to stops and update actual times.
 
         Args:
@@ -932,9 +946,13 @@ class PathCollector:
             journey: Journey being updated
             stops: List of journey stops
             arrivals: List of matching arrivals from API
+
+        Returns:
+            True if any arrivals matched stops, False otherwise.
+            Used to determine if train is still visible in API.
         """
         if not stops:
-            return
+            return False
 
         now = now_et()
 
@@ -944,6 +962,7 @@ class PathCollector:
             arrivals_by_station[arrival.station_code].append(arrival)
 
         max_departed_sequence = 0
+        matched_arrival_count = 0
 
         for stop in stops:
             station_code = stop.station_code or ""
@@ -951,6 +970,7 @@ class PathCollector:
             matched_arrival = self._find_best_matching_arrival(stop, station_arrivals)
 
             if matched_arrival:
+                matched_arrival_count += 1
                 stop.actual_arrival = matched_arrival.arrival_time
                 stop.updated_arrival = matched_arrival.arrival_time
 
@@ -1070,6 +1090,9 @@ class PathCollector:
 
         if journey.is_completed:
             await transit_analyzer.analyze_journey(session, journey)
+
+        # Return whether any arrivals matched - used to detect train disappearance
+        return matched_arrival_count > 0
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney

@@ -106,10 +106,12 @@ class CongestionAnalyzer:
         )
 
         # Load journeys with minimal data - we'll get current positions separately
-        # Only load non-cancelled journeys that are actually moving
+        # Only load active journeys (not cancelled, expired, or completed)
         conditions = [
             TrainJourney.last_updated_at >= cutoff_time,
-            TrainJourney.is_cancelled.is_not(True),  # Skip cancelled trains
+            TrainJourney.is_cancelled.is_not(True),
+            TrainJourney.is_expired.is_not(True),
+            TrainJourney.is_completed.is_not(True),
         ]
 
         # Add data_source filter if specified

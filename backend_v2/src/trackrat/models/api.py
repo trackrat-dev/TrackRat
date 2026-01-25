@@ -142,6 +142,9 @@ class TrainDeparture(BaseModel):
     is_cancelled: bool = Field(
         default=False, description="Whether the train is cancelled"
     )
+    is_expired: bool = Field(
+        default=False, description="Train no longer in real-time feed"
+    )
     # Progress and prediction fields
     progress: JourneyProgress | None = None
     predicted_arrival: datetime | None = None
