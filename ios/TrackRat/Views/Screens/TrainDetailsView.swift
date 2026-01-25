@@ -132,8 +132,8 @@ struct TrainDetailsView: View {
                             )
                         }
                         .padding()
-                        // Force view update by using a composite ID that includes changing data
-                        .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)-\(viewModel.stopStatesHash)")
+                        // Force view recreation when train identity or status changes
+                        .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)")
                     }
                 } // VStack
             }
@@ -868,13 +868,7 @@ class TrainDetailsViewModel: ObservableObject {
     @Published var journeyProgressPercentage: Int = 0
     @Published var journeyStopsCompleted: Int = 0
     @Published var journeyTotalStops: Int = 0
-    
-    /// Hash of stop departure states for SwiftUI view update detection
-    var stopStatesHash: String {
-        let departedStates = displayableTrainStops.map { $0.hasDepartedStation }
-        return String(departedStates.hashValue)
-    }
-    
+
     private func updateComputedProperties() {
         updateDisplayableTrainStops()
         updateJourneyProgress()
