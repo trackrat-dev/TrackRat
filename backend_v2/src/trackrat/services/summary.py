@@ -349,7 +349,7 @@ class SummaryService:
     ) -> list[TrainJourney]:
         """
         Get journeys from similar trains (same route + carrier) that departed
-        from the origin station in the past 90 minutes.
+        from the origin station within the configured time window.
         """
         current_time = now_et()
         today = current_time.date()
@@ -439,7 +439,7 @@ class SummaryService:
     ) -> OperationsSummary:
         """
         Generate a train-specific operations summary combining:
-        1. Similar trains' performance (same route + carrier) from past 90 minutes
+        1. Similar trains' performance (same route + carrier) from the configured time window
         2. This specific train's historical performance
 
         Args:
@@ -960,7 +960,7 @@ class SummaryService:
         if not journeys:
             return OperationsSummary(
                 headline="",
-                body="No trains travelled your route in the past 90 minutes.",
+                body=f"No trains travelled your route in the past {SUMMARY_TIME_WINDOW_MINUTES} minutes.",
                 scope="route",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
@@ -1001,7 +1001,7 @@ class SummaryService:
             )
             return OperationsSummary(
                 headline=f"{total_cancellations} {cancel_word}",
-                body="All scheduled trains were cancelled in the past 90 minutes.",
+                body=f"All scheduled trains were cancelled in the past {SUMMARY_TIME_WINDOW_MINUTES} minutes.",
                 scope="route",
                 time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
                 data_freshness_seconds=0,
@@ -1228,7 +1228,7 @@ class SummaryService:
         """
         current_time = now_et()
 
-        # Calculate departure stats for similar trains (past 90 minutes)
+        # Calculate departure stats for similar trains (configured time window)
         if from_station and similar_journeys:
             similar_dep_stats = self._calculate_departure_stats(
                 similar_journeys, from_station, current_time=current_time
