@@ -176,7 +176,7 @@ struct WaitingLocationCard: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(spacing: 12) {
                     Text(locationInfo.title)
@@ -219,8 +219,6 @@ struct WaitingLocationCard: View {
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(Color.white.opacity(0.2), lineWidth: 1)
             )
-
-            Spacer()
         }
         .padding()
     }
