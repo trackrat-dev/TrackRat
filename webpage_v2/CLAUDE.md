@@ -122,7 +122,7 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   └── stations.ts     # Static station list (~144 stations)
+│   │   └── stations.ts     # Static station list (250+ stations)
 │   ├── types/
 │   │   └── index.ts        # TypeScript interfaces
 │   └── utils/

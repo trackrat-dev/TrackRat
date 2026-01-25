@@ -49,7 +49,8 @@ TrackRat iOS is a comprehensive SwiftUI app for tracking train departures from m
 - Origin station selection for departures
 - Primary stations: NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark
 - Additional Southeast Amtrak stations: Charlotte, Raleigh, Atlanta, Miami, Jacksonville, Tampa, Orlando, and more
-- Total station coverage: ~144 stations (up from ~100)
+- PATH: 13 stations, PATCO: 14 stations, Keystone: 8 Pennsylvania stations
+- Total station coverage: 250+ stations across all transit systems
 - Glassmorphism cards with owl background
 - Navigates to destination picker after selection
 
@@ -691,6 +692,9 @@ Premium features with StoreKit 2 integration:
 - **ProFeatureLockView**: Paywall prompt for premium features
 - **Congestion Map Access**: Pro-only network congestion visualization
 - **StoreKit 2**: Modern subscription purchase and management
+- **Monthly-Only Pricing**: $3.99/month (configured in App Store Connect)
+- **24-Hour Soft Trial**: New users automatically get Pro access for 24 hours
+- **Debug Override**: `debugOverrideEnabled` defaults to `true` - all users currently get Pro features for free during soft launch. Set to `false` in SubscriptionService.swift to enable actual paywall.
 
 #### Map Layer Controls
 Toggleable map visualization options:

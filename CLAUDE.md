@@ -221,13 +221,31 @@ terraform apply -var="environment=production"
 ## Common API Endpoints
 
 ```
+# Train Operations
 /api/v2/trains/departures          # List departures for route
 /api/v2/trains/{train_id}          # Train details with all stops
+/api/v2/trains/{train_id}/history  # Historical train performance
+
+# Route Analytics
 /api/v2/routes/congestion          # Network congestion data (iOS only)
+/api/v2/routes/history             # Historical route performance
+/api/v2/routes/summary             # Natural language operations summary
+/api/v2/routes/segments/{from}/{to}/trains  # Segment train details
+
+# ML Predictions
 /api/v2/predictions/track          # ML platform predictions (Web, iOS)
 /api/v2/predictions/delay          # Delay/cancellation forecasts (iOS)
+/api/v2/predictions/supported-stations  # Stations with ML predictions
+
+# System Operations
 /api/v2/live-activities/register   # iOS Live Activity registration
+/api/v2/validation/status          # Validation system status
+/api/v2/validation/results/{route}/{source}  # Route validation details
 /health                            # Health check
+/health/live                       # Kubernetes liveness probe
+/health/ready                      # Kubernetes readiness probe
+/scheduler/status                  # APScheduler job status
+/metrics                           # Prometheus metrics
 ```
 
 **API Environments:**
