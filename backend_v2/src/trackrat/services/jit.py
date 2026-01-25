@@ -79,14 +79,15 @@ class JustInTimeUpdateService:
 
     async def get_collector_for_journey(
         self, journey: TrainJourney
-    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector:
+    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector | None:
         """Get the appropriate collector for a journey based on its data source.
 
         Args:
             journey: The train journey
 
         Returns:
-            The appropriate collector for the journey's data source
+            The appropriate collector for the journey's data source,
+            or None for schedule-only sources (PATCO) that don't support JIT refresh
         """
         if journey.data_source == "NJT":
             return self.njt_collector
@@ -94,6 +95,9 @@ class JustInTimeUpdateService:
             return self.amtrak_collector
         elif journey.data_source == "PATH":
             return self.path_collector
+        elif journey.data_source == "PATCO":
+            # PATCO is schedule-only (GTFS static), no real-time API available
+            return None
         else:
             raise ValueError(f"Unknown data source: {journey.data_source}")
 
@@ -176,16 +180,25 @@ class JustInTimeUpdateService:
                 # Get appropriate collector for this journey
                 collector = await self.get_collector_for_journey(journey)
 
-                # Use collector to update journey
-                await collector.collect_journey_details(session, journey)
+                if collector is None:
+                    # Schedule-only source (e.g., PATCO) - no JIT refresh available
+                    logger.debug(
+                        "jit_refresh_not_available",
+                        train_id=train_id,
+                        data_source=journey.data_source,
+                        reason="schedule-only data source",
+                    )
+                else:
+                    # Use collector to update journey
+                    await collector.collect_journey_details(session, journey)
 
-                logger.info(
-                    "journey_data_refreshed",
-                    train_id=train_id,
-                    data_source=journey.data_source,
-                    stops_count=journey.stops_count,
-                    is_completed=journey.is_completed,
-                )
+                    logger.info(
+                        "journey_data_refreshed",
+                        train_id=train_id,
+                        data_source=journey.data_source,
+                        stops_count=journey.stops_count,
+                        is_completed=journey.is_completed,
+                    )
 
             except Exception as e:
                 logger.error(
@@ -306,6 +319,15 @@ class JustInTimeUpdateService:
         """
         try:
             collector = await self.get_collector_for_journey(journey)
+            if collector is None:
+                # Schedule-only source (e.g., PATCO) - no JIT refresh available
+                logger.debug(
+                    "jit_refresh_not_available",
+                    train_id=journey.train_id,
+                    data_source=journey.data_source,
+                    reason="schedule-only data source",
+                )
+                return
             await collector.collect_journey_details(session, journey)
         except Exception as e:
             logger.error(

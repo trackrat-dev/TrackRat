@@ -206,3 +206,96 @@ class SimpleAPNSService:
                 "apns_exception", push_token=push_token[:10] + "...", error=str(e)
             )
             return False
+
+    async def send_live_activity_end(
+        self,
+        push_token: str,
+        content_state: dict[str, Any],
+        dismissal_date: int | None = None,
+    ) -> bool:
+        """
+        Send a Live Activity end event to iOS device.
+
+        This tells iOS to end the Live Activity and remove it from the Lock Screen.
+
+        Args:
+            push_token: The Live Activity push token
+            content_state: Final content-state to show before dismissal
+            dismissal_date: Unix timestamp for when to remove from Lock Screen.
+                           If None, uses current time + 4 hours (keeps on Lock Screen briefly).
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_configured:
+            logger.warning("apns_end_skipped", reason="Not configured")
+            return False
+
+        # Default: dismiss from Lock Screen after 4 hours
+        if dismissal_date is None:
+            dismissal_date = int(time.time()) + (4 * 60 * 60)
+
+        # Build Live Activity end payload
+        payload = {
+            "aps": {
+                "timestamp": int(time.time()),
+                "event": "end",
+                "dismissal-date": dismissal_date,
+                "content-state": content_state,
+            }
+        }
+
+        logger.info(
+            "apns_sending_end",
+            push_token=push_token[:10] + "...",
+            dismissal_date=dismissal_date,
+            content_state_keys=list(content_state.keys()),
+        )
+
+        # APNS headers
+        headers = {
+            "authorization": f"bearer {self._get_jwt_token()}",
+            "apns-topic": f"{self.bundle_id}.push-type.liveactivity",
+            "apns-push-type": "liveactivity",
+            "apns-priority": "10",
+            "content-type": "application/json",
+        }
+
+        url = f"{self.base_url}/3/device/{push_token}"
+
+        try:
+            async with httpx.AsyncClient(
+                http2=True,
+                timeout=httpx.Timeout(10.0),
+            ) as client:
+                response = await client.post(url, json=payload, headers=headers)
+
+                if response.status_code == 200:
+                    logger.info(
+                        "apns_end_sent",
+                        push_token=push_token[:10] + "...",
+                        status_code=response.status_code,
+                    )
+                    return True
+
+                if response.status_code == 410:
+                    logger.warning(
+                        "apns_token_invalid",
+                        push_token=push_token[:10] + "...",
+                        status_code=410,
+                    )
+                    return False
+
+                logger.error(
+                    "apns_end_error",
+                    push_token=push_token[:10] + "...",
+                    status_code=response.status_code,
+                    response=response.text,
+                )
+                return False
+
+        except Exception as e:
+            logger.exception(
+                "apns_end_exception", push_token=push_token[:10] + "...", error=str(e)
+            )
+            return False

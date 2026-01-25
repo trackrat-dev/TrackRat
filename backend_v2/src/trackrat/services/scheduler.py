@@ -2382,6 +2382,61 @@ class SchedulerService:
                         )
                         continue
 
+                    # Check if journey is expired, completed, or cancelled
+                    # If so, send end events to all Live Activities tracking this train
+                    should_end = (
+                        journey.is_expired
+                        or journey.is_completed
+                        or journey.is_cancelled
+                    )
+
+                    if should_end:
+                        end_reason = (
+                            "expired"
+                            if journey.is_expired
+                            else "completed"
+                            if journey.is_completed
+                            else "cancelled"
+                        )
+
+                        logger.info(
+                            "live_activity_ending",
+                            train_number=train_number,
+                            reason=end_reason,
+                            tokens_count=len(tokens),
+                        )
+
+                        # Send end event to each token
+                        for token in tokens:
+                            try:
+                                # Calculate final content state
+                                final_content_state = (
+                                    self._calculate_live_activity_content_state(
+                                        journey, token, session
+                                    )
+                                )
+                                # Add end reason to content state
+                                final_content_state["endReason"] = end_reason
+
+                                if self.apns_service:
+                                    await self.apns_service.send_live_activity_end(
+                                        token.push_token, final_content_state
+                                    )
+
+                                # Mark token as inactive since Live Activity is ending
+                                token.is_active = False
+                                session.commit()
+
+                            except Exception as e:
+                                logger.error(
+                                    "live_activity_end_failed",
+                                    train_number=train_number,
+                                    error=str(e),
+                                    error_type=type(e).__name__,
+                                )
+
+                        continue  # Skip normal update processing
+
                     # Check if journey data is stale (>60 seconds old)
                     if journey.last_updated_at is None or self._is_stale(
                         ensure_timezone_aware(journey.last_updated_at)

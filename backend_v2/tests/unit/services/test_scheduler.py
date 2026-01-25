@@ -288,6 +288,7 @@ class TestSchedulerService:
                         observation_type="OBSERVED",
                         is_cancelled=False,
                         is_completed=False,
+                        is_expired=False,
                         last_updated_at=datetime.now(UTC),
                         stops=[],
                     )

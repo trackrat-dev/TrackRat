@@ -145,6 +145,10 @@ class DepartureService:
             journey_date_filter,
             # Filter by selected data sources
             TrainJourney.data_source.in_(allowed_sources),
+            # Filter out expired trains (no longer in real-time feed)
+            TrainJourney.is_expired.is_not(True),
+            # Filter out completed trains (journey finished)
+            TrainJourney.is_completed.is_not(True),
         ]
 
         # PERFORMANCE: Filter out trains that have already departed from origin station
@@ -276,6 +280,7 @@ class DepartureService:
                 data_source=journey.data_source,
                 observation_type=get_effective_observation_type(journey),
                 is_cancelled=journey.is_cancelled,
+                is_expired=journey.is_expired or False,
             )
             departures.append(departure)
 
