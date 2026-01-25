@@ -2442,6 +2442,17 @@ STATION_COORDINATES = {
     "ED": {"lat": 40.5177, "lon": -74.4075},  # Edison
     "HL": {"lat": 40.1992, "lon": -74.6877},  # Hamilton
     "NZ": {"lat": 40.6968, "lon": -74.1733},  # North Elizabeth
+    # Atlantic City Line
+    "AC": {"lat": 39.3644, "lon": -74.4414},  # Atlantic City Rail Terminal
+    "AB": {"lat": 39.4273, "lon": -74.4968},  # Absecon
+    "EH": {"lat": 39.5221, "lon": -74.6482},  # Egg Harbor City
+    "HN": {"lat": 39.6380, "lon": -74.8039},  # Hammonton
+    "AO": {"lat": 39.7854, "lon": -74.8887},  # Atco
+    "LW": {"lat": 39.8340, "lon": -74.9995},  # Lindenwold (NJT)
+    "CY": {"lat": 39.9319, "lon": -74.9722},  # Cherry Hill
+    "PN": {"lat": 39.9707, "lon": -75.0565},  # Pennsauken
+    "NF": {"lat": 39.9984, "lon": -75.1560},  # North Philadelphia
+    "PR": {"lat": 40.3448, "lon": -74.6552},  # Princeton (shuttle station)
     # Raritan Valley Line
     "RA": {"lat": 40.5682, "lon": -74.6290},  # Raritan
     "BK": {"lat": 40.5582, "lon": -74.5397},  # Bound Brook
