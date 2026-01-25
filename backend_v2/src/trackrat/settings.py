@@ -95,7 +95,6 @@ class Settings(BaseSettings):
     # CORS Settings
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [
-            "https://andytubeee.github.io",
             "http://localhost:3000",
             "http://localhost:5173",
         ],
