@@ -110,4 +110,3 @@ class AmtrakDiscoveryCollector(BaseDiscoveryCollector):
         """
         train_stations = {station.code for station in train.stations}
         return bool(train_stations.intersection(DISCOVERY_HUBS))
-
