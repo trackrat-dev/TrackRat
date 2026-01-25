@@ -115,9 +115,7 @@ class TestRetryOnDeadlock:
             raise Exception("deadlock detected - persistent")
 
         with pytest.raises(Exception, match="deadlock detected - persistent"):
-            await retry_on_deadlock(
-                session, operation, max_attempts=3, base_delay=0.01
-            )
+            await retry_on_deadlock(session, operation, max_attempts=3, base_delay=0.01)
 
         assert call_count == 3
         assert session.rollback.call_count == 2  # Rollback happens before each retry
@@ -151,9 +149,7 @@ class TestRetryOnDeadlock:
                 raise Exception("deadlock detected")
             return "success"
 
-        await retry_on_deadlock(
-            session, operation, max_attempts=3, base_delay=0.05
-        )
+        await retry_on_deadlock(session, operation, max_attempts=3, base_delay=0.05)
 
         assert len(timestamps) == 3
         # First retry should wait ~0.05s, second ~0.1s

@@ -183,7 +183,9 @@ class JustInTimeUpdateService:
                     # Re-query journey to get fresh state after potential rollback
                     fresh_journey = await session.scalar(stmt)
                     if not fresh_journey:
-                        raise ValueError(f"Journey {train_id} disappeared during refresh")
+                        raise ValueError(
+                            f"Journey {train_id} disappeared during refresh"
+                        )
                     collector = await self.get_collector_for_journey(fresh_journey)
                     if collector is None:
                         # Schedule-only source (e.g., PATCO) - no JIT refresh available

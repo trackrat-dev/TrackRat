@@ -135,9 +135,7 @@ class TestDepartureFiltering:
                     return_value=self._mock_train_position(),
                 ):
                     # Patch GTFS service to avoid merge complications
-                    with patch(
-                        "trackrat.services.gtfs.GTFSService"
-                    ) as mock_gtfs_class:
+                    with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
                         mock_gtfs = AsyncMock()
                         mock_gtfs.get_scheduled_departures = AsyncMock(
                             return_value=Mock(departures=[])
@@ -187,9 +185,7 @@ class TestDepartureFiltering:
                     "_calculate_train_position",
                     return_value=self._mock_train_position(),
                 ):
-                    with patch(
-                        "trackrat.services.gtfs.GTFSService"
-                    ) as mock_gtfs_class:
+                    with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
                         mock_gtfs = AsyncMock()
                         mock_gtfs.get_scheduled_departures = AsyncMock(
                             return_value=Mock(departures=[])
@@ -242,9 +238,7 @@ class TestDepartureFiltering:
                     "_calculate_train_position",
                     return_value=self._mock_train_position(),
                 ):
-                    with patch(
-                        "trackrat.services.gtfs.GTFSService"
-                    ) as mock_gtfs_class:
+                    with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
                         mock_gtfs = AsyncMock()
                         mock_gtfs.get_scheduled_departures = AsyncMock(
                             return_value=Mock(departures=[])
@@ -263,9 +257,7 @@ class TestDepartureFiltering:
         assert train_ids == {"1234", "5678"}
 
         # Verify cancelled flag is set correctly
-        cancelled_departure = next(
-            d for d in result.departures if d.train_id == "5678"
-        )
+        cancelled_departure = next(d for d in result.departures if d.train_id == "5678")
         assert cancelled_departure.is_cancelled is True
 
     @pytest.mark.asyncio
@@ -298,9 +290,7 @@ class TestDepartureFiltering:
                     "_calculate_train_position",
                     return_value=self._mock_train_position(),
                 ):
-                    with patch(
-                        "trackrat.services.gtfs.GTFSService"
-                    ) as mock_gtfs_class:
+                    with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
                         mock_gtfs = AsyncMock()
                         mock_gtfs.get_scheduled_departures = AsyncMock(
                             return_value=Mock(departures=[])
@@ -348,9 +338,7 @@ class TestDepartureFiltering:
                     "_calculate_train_position",
                     return_value=self._mock_train_position(),
                 ):
-                    with patch(
-                        "trackrat.services.gtfs.GTFSService"
-                    ) as mock_gtfs_class:
+                    with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
                         mock_gtfs = AsyncMock()
                         mock_gtfs.get_scheduled_departures = AsyncMock(
                             return_value=Mock(departures=[])
