@@ -263,6 +263,7 @@ struct AdvancedConfigurationView: View {
                     .fill(isTestingConnection ? .gray : .orange)
             )
         }
+        .buttonStyle(.plain)
         .disabled(isTestingConnection)
     }
     
@@ -389,6 +390,7 @@ struct AdvancedConfigurationView: View {
                             )
                     )
                 }
+                .buttonStyle(.plain)
 
                 // Reset Feedback Cooldowns
                 Button {
@@ -417,6 +419,7 @@ struct AdvancedConfigurationView: View {
                             )
                     )
                 }
+                .buttonStyle(.plain)
 
                 // Clear Trip History
                 Button {
@@ -445,6 +448,7 @@ struct AdvancedConfigurationView: View {
                             )
                     )
                 }
+                .buttonStyle(.plain)
             }
         }
         .padding()
@@ -560,6 +564,7 @@ struct ServerEnvironmentRow: View {
                     )
             )
         }
+        .buttonStyle(.plain)
     }
 }
 

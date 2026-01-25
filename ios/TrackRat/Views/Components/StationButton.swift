@@ -26,6 +26,7 @@ struct StationButton: View {
             .background(TrackRatTheme.Colors.surfaceCard)
             .cornerRadius(TrackRatTheme.CornerRadius.md)
         }
+        .buttonStyle(.plain)
     }
 }
 

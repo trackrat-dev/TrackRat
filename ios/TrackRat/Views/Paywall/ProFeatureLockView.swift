@@ -61,6 +61,7 @@ struct ProFeatureLockView: View {
                     )
             )
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -91,6 +92,7 @@ struct ProBadgeLock: View {
                     )
             )
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -160,6 +162,7 @@ struct UpgradePromptCard: View {
                     )
             )
         }
+        .buttonStyle(.plain)
     }
 }
 

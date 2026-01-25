@@ -80,6 +80,7 @@ struct OnboardingView: View {
                         .frame(minWidth: 160)
                         .background(Color.orange)
                         .cornerRadius(TrackRatTheme.CornerRadius.md)
+                        .buttonStyle(.plain)
                         .disabled(isCompletingOnboarding)
                     }
                     .padding(.horizontal, 20)
