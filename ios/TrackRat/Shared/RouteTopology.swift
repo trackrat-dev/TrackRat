@@ -182,6 +182,103 @@ struct RouteTopology {
             name: "Silver Meteor (Miami)",
             dataSource: "AMTRAK",
             stationCodes: ["JAX", "PAL", "DLD", "SAN", "WPK", "ORL", "KIS", "WPB", "DLB", "FTL", "HLW", "MIA"]
+        ),
+
+        // Nationwide long-distance routes
+        // California Zephyr (Chicago - Emeryville)
+        RouteLine(
+            id: "amtrak-zephyr",
+            name: "California Zephyr",
+            dataSource: "AMTRAK",
+            stationCodes: ["CHI", "OMA", "DEN", "SLC", "RNO", "TRU", "SAC", "EMY"]
+        ),
+
+        // Southwest Chief (Chicago - Los Angeles)
+        RouteLine(
+            id: "amtrak-chief",
+            name: "Southwest Chief",
+            dataSource: "AMTRAK",
+            stationCodes: ["CHI", "KCY", "ABQ", "FLG", "LAX"]
+        ),
+
+        // Empire Builder (Chicago - Seattle/Portland)
+        RouteLine(
+            id: "amtrak-empire-builder",
+            name: "Empire Builder",
+            dataSource: "AMTRAK",
+            stationCodes: ["CHI", "MKE", "MSP", "HAV", "GPK", "WFH", "SPK", "SEA"]
+        ),
+
+        // Coast Starlight (Seattle - Los Angeles)
+        RouteLine(
+            id: "amtrak-starlight",
+            name: "Coast Starlight",
+            dataSource: "AMTRAK",
+            stationCodes: ["SEA", "TAC", "PDX", "SLM", "EUG", "SAC", "EMY", "SJC", "SLO", "SBA", "LAX"]
+        ),
+
+        // Sunset Limited (New Orleans - Los Angeles)
+        RouteLine(
+            id: "amtrak-sunset",
+            name: "Sunset Limited",
+            dataSource: "AMTRAK",
+            stationCodes: ["NOL", "HOS", "SAS", "ELP", "TUS", "LAX"]
+        ),
+
+        // Texas Eagle (Chicago - San Antonio/Los Angeles)
+        RouteLine(
+            id: "amtrak-texas-eagle",
+            name: "Texas Eagle",
+            dataSource: "AMTRAK",
+            stationCodes: ["CHI", "STL", "LRK", "DAL", "FTW", "AUS", "SAS"]
+        ),
+
+        // City of New Orleans (Chicago - New Orleans)
+        RouteLine(
+            id: "amtrak-city-nola",
+            name: "City of New Orleans",
+            dataSource: "AMTRAK",
+            stationCodes: ["CHI", "MEM", "NOL"]
+        ),
+
+        // Capitol Limited (Chicago - Washington)
+        RouteLine(
+            id: "amtrak-capitol",
+            name: "Capitol Limited",
+            dataSource: "AMTRAK",
+            stationCodes: ["CHI", "TOL", "CLE", "PGH", "WS"]
+        ),
+
+        // Lake Shore Limited (Chicago - New York/Boston)
+        RouteLine(
+            id: "amtrak-lakeshore",
+            name: "Lake Shore Limited",
+            dataSource: "AMTRAK",
+            stationCodes: ["CHI", "TOL", "CLE", "BUF", "ALB", "NY"]
+        ),
+
+        // Pacific Surfliner (San Diego - San Luis Obispo)
+        RouteLine(
+            id: "amtrak-surfliner",
+            name: "Pacific Surfliner",
+            dataSource: "AMTRAK",
+            stationCodes: ["OLT", "OSD", "SNA", "FUL", "LAX", "SBA", "SLO"]
+        ),
+
+        // Cascades (Eugene - Seattle - Vancouver)
+        RouteLine(
+            id: "amtrak-cascades",
+            name: "Cascades",
+            dataSource: "AMTRAK",
+            stationCodes: ["EUG", "SLM", "PDX", "TAC", "SEA"]
+        ),
+
+        // Empire Service (New York - Albany - Buffalo)
+        RouteLine(
+            id: "amtrak-empire-service",
+            name: "Empire Service",
+            dataSource: "AMTRAK",
+            stationCodes: ["NY", "ALB", "SYR", "ROC", "BUF"]
         )
     ]
 

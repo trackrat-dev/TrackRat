@@ -109,7 +109,105 @@ struct Stations {
         "Savannah", "Atlanta", "Jesup", "Gainesville GA", "Toccoa",
         "Jacksonville", "Miami", "Orlando", "Tampa", "Fort Lauderdale", "West Palm Beach",
         "Kissimmee", "Lakeland", "Winter Park FL", "DeLand", "Sanford FL", "Hollywood FL",
-        "Delray Beach", "Waldo", "Ocala", "Winter Haven", "Palatka", "Thurmond"
+        "Delray Beach", "Waldo", "Ocala", "Winter Haven", "Palatka", "Thurmond",
+
+        // Nationwide Amtrak Stations
+        // Major hubs and junctions
+        "Chicago Union Station", "St. Louis", "Milwaukee",
+        "Los Angeles Union Station", "Seattle King Street", "Portland Union Station",
+        "Emeryville", "Sacramento", "New Orleans", "San Antonio", "Denver Union Station",
+        // California / Southwest
+        "Santa Barbara", "San Luis Obispo", "San Jose", "Oceanside", "Santa Ana",
+        "Fullerton", "San Diego Old Town", "Albuquerque", "Flagstaff", "Tucson",
+        "El Paso", "Reno", "Truckee",
+        // Pacific Northwest
+        "Spokane", "Tacoma", "Eugene", "Salem OR", "Salt Lake City",
+        "Whitefish", "East Glacier Park", "Havre", "St. Paul-Minneapolis",
+        // Texas / South Central
+        "Dallas", "Fort Worth", "Houston", "Austin", "Little Rock", "Memphis",
+        // Midwest / Great Lakes
+        "Kansas City", "Oklahoma City", "Omaha", "Indianapolis", "Cincinnati",
+        "Cleveland", "Toledo", "Detroit", "Grand Rapids", "Pittsburgh",
+        // Northeast extensions
+        "Albany-Rensselaer", "Syracuse", "Rochester", "Buffalo Depew", "Montreal",
+        "Portland ME", "Essex Junction", "Burlington VT",
+        // Virginia / Southeast
+        "Lynchburg", "Newport News", "Williamsburg VA", "Columbia SC", "Birmingham", "Mobile",
+
+        // Additional Amtrak stations (nationwide expansion)
+        "Anaheim", "Arcata", "Auburn", "Barstow", "Burbank", "Bakersfield",
+        "Berkeley", "Burbank", "Chico", "Claremont", "Camarillo", "Colfax",
+        "Carpinteria", "Chatsworth", "Davis", "Dublin-Pleasanton", "Dunsmuir", "Elko",
+        "Fairfield-Vacaville", "Fremont", "Fresno", "Santa Clara Great America", "Glendale", "Gilroy",
+        "Goleta", "Guadalupe", "Grover Beach", "Hayward", "Hanford", "Arcata",
+        "Irvine", "Lodi", "Lompoc-Surf", "Las Vegas", "Merced", "Moorpark",
+        "Marysville", "Martinez", "Seaside-Marina", "Santa Clarita-Newhall", "Northridge", "Oakland Coliseum/Airport",
+        "Oakland", "Ontario", "Oxnard", "Pomona", "Paso Robles", "Palm Springs",
+        "Petaluma", "Redding", "Richmond", "Riverside", "Rocklin", "Roseville",
+        "Santa Clara", "San Francisco", "Simi Valley", "Stockton", "Stockton", "Santa Monica Pier",
+        "San Bernardino", "San Juan Capistrano", "San Clemente Pier", "Salinas", "Solana Beach", "Suisun-Fairfield",
+        "Vallejo", "Ventura", "Van Nuys", "Victorville", "Winnemucca", "Willits Calif Western Railroad Depot",
+        "Albion", "Ann Arbor", "Bangor", "Battle Creek", "Columbus", "Dearborn",
+        "Durand", "Erie", "Flint", "Glenview", "Holland", "Jackson",
+        "Kalamazoo", "East Lansing", "Lapeer", "General Mitchell Intl. Airport", "Pontiac", "Portage",
+        "Port Huron", "Royal Oak", "St. Joseph-Benton Harbor", "Sturtevant", "Troy", "Wisconsin Dells",
+        "Altoona", "Ardmore", "Berlin", "Branford", "Bowie State", "Clinton",
+        "Coatesville", "Connellsville", "Croton-Harmon", "Cumberland", "Cornwells Heights", "Downingtown",
+        "Edgewood", "Exton", "Greensburg", "Guilford", "Halethorpe", "Harpers Ferry",
+        "Huntingdon", "Johnstown", "Latrobe", "Lewistown", "Madison", "Middletown",
+        "Martinsburg", "Martin Airport", "Mystic", "Newark", "New Rochelle", "Odenton",
+        "Paoli", "Parkesburg", "North Philadelphia", "Poughkeepsie", "Perryville", "Rhinecliff",
+        "Rockville", "New Haven", "Tyrone", "West Baltimore", "Windsor", "Westbrook",
+        "Yonkers", "Ashland", "Alliance", "Alderson", "Bloomington-Normal", "Bryan",
+        "Carbondale", "Centralia", "Champaign-Urbana", "Charleston", "Connersville", "Crawfordsville",
+        "Carlinville", "Dowagiac", "Du Quoin", "Dwight", "Dyer", "Effingham",
+        "Elkhart", "Elyria", "Fulton", "Gilman", "Hinton", "Hammond-Whiting",
+        "Homewood", "Huntington", "Joliet Gateway Center", "Kannapolis", "Kewanee", "Kankakee",
+        "Lafayette", "La Grange", "Lincoln", "Mattoon", "Maysville", "Mendota",
+        "Montgomery", "Newbern-Dyersburg", "New Buffalo", "Niles", "Naperville", "Princeton",
+        "Peoria", "Plano", "Pontiac", "Prince", "Rensselaer", "Rantoul",
+        "Sandusky", "Summit", "South Bend", "Springfield", "South Portsmouth", "Thurmond",
+        "White Sulphur Springs", "Waterloo", "Arcadia Valley", "Ardmore", "Alton", "Alpine",
+        "Arkadelphia", "Beaumont", "Brookhaven", "Burlington", "Cleburne", "Creston",
+        "Dodge City", "Detroit Lakes", "Del Rio", "Devils Lake", "Fargo", "Fort Madison",
+        "Fort Morgan", "Galesburg", "Garden City", "Grand Forks", "Gainesville", "Greenwood",
+        "Hastings", "Hazlehurst", "Hermann", "Holdrege", "Hammond", "Hope",
+        "Hutchinson", "Independence", "Jackson", "Jefferson City", "Killeen", "Kirkwood",
+        "La Junta", "La Plata", "Lbo", "Lake Charles", "Lee'S Summit", "Lafayette",
+        "Lamar", "Lincoln", "Lawrence", "La Crosse", "Longview", "Macomb",
+        "Mccomb", "Mcgregor", "Mccook", "Marshall", "Mineola", "Marks",
+        "Minot", "Mt. Pleasant", "Malvern", "New Iberia", "Norman", "Osceola",
+        "Ottumwa", "Poplar Bluff", "Purcell", "Pauls Valley", "Quincy", "Raton",
+        "Red Wing", "Rugby", "St. Cloud", "Schriever", "Sedalia", "Shreveport Sportran Intermodal Terminal",
+        "San Marcos", "Sanderson", "Staples", "Stanley", "Taylor", "Tomah",
+        "Topeka", "Temple", "Trinidad", "Texarkana", "Washington", "Warrensburg",
+        "Wellington", "Wichita", "Winona", "Walnut Ridge", "Williston", "Yazoo City",
+        "Amsterdam", "Aldershot", "Buffalo", "Bellows Falls", "Boston", "Brattleboro",
+        "Brunswick", "Canadian Border", "Castleton", "Fort Edward", "Framingham", "Freeport",
+        "Ticonderoga", "Greenfield", "Grimsby", "Haverhill", "Holyoke", "Hudson",
+        "Middlebury", "Montpelier-Berlin", "Niagara Falls", "Niagara Falls", "Northampton", "Oakville",
+        "Old Orchard Beach", "Pittsfield", "Plattsburgh", "Port Henry", "Rome", "Randolph",
+        "Rouses Point", "Route 128", "Rutland", "St. Albans", "Saco", "Saratoga Springs",
+        "St. Catherines", "Schenectady", "St-Lambert", "Toronto", "Utica", "Ferrisburgh",
+        "Waterbury-Stowe", "Wells", "Whitehall", "Windsor-Mt. Ascutney", "Woburn", "Worcester Union",
+        "White River Junction", "Westport", "Albany", "Bellingham", "Bingen-White Salmon", "Browning",
+        "Chemult", "Centralia", "Cut Bank", "Edmonds", "Ephrata", "Essex",
+        "Everett", "Glasgow", "Granby", "Kelso-Longview", "Klamath Falls", "Libby",
+        "Leavenworth", "Malta", "Mount Vernon", "Olympia-Lacey", "Oregon City", "Provo",
+        "Pasco", "Shelby", "Sandpoint", "Stanwood", "Tukwila", "Vancouver",
+        "Vancouver", "Wenatchee", "West Glacier", "Wishram", "Wolf Point", "Anniston",
+        "Bay St Louis", "Bradenton", "Biloxi Amtrak Sta", "Camden", "Deerfield Beach", "Denmark",
+        "Gainesville", "Gulfport Amtrak Sta", "Hattiesburg", "Hollywood", "Jesup", "Lakeland",
+        "Laurel", "Meridian Union", "Okeechobee", "Pascagoula", "Palatka", "Picayune",
+        "Sebring", "Slidell", "Sanford Amtrak Auto Train", "St. Petersburg", "Toccoa", "Tuscaloosa",
+        "Waldo", "Wildwood", "Yemassee", "Burke Centre", "Burlington", "Clifton Forge",
+        "Culpeper", "Cary", "Danville", "Fayetteville", "Fredericksburg", "Goldsboro",
+        "Greensboro", "Havelock", "Kinston", "Morehead City", "Quantico", "Seabrook",
+        "Southern Pines", "Selma", "Staunton", "Swansboro", "Woodbridge", "Wilmington",
+        "Benson", "Deming", "Grand Junction", "Gallup", "Green River", "Glenwood Springs",
+        "Helper", "Kingman", "Lordsburg", "Lamy", "Las Vegas", "Maricopa",
+        "Needles", "Phoenix Sky Harbor Airport", "North Phoenix Metro Center Transit", "Santa Fe", "Winter Park/Fraser", "Winslow",
+        "Williams", "Winter Park Ski Resort", "Winter Park", "Yuma"
     ].sorted()
     
     // Station name to code mapping - Updated to match backend STATION_CODES.txt
@@ -398,7 +496,534 @@ struct Stations {
         "Ocala": "OCA",
         "Winter Haven": "WTH",
         "Palatka": "PAL",
-        "Thurmond": "THU"
+        "Thurmond": "THU",
+        // Nationwide Amtrak stations
+        "Chicago Union Station": "CHI",
+        "St. Louis": "STL",
+        "Milwaukee": "MKE",
+        "Los Angeles Union Station": "LAX",
+        "Seattle King Street": "SEA",
+        "Portland Union Station": "PDX",
+        "Emeryville": "EMY",
+        "Sacramento": "SAC",
+        "New Orleans": "NOL",
+        "San Antonio": "SAS",
+        "Denver Union Station": "DEN",
+        // California / Southwest
+        "Santa Barbara": "SBA",
+        "San Luis Obispo": "SLO",
+        "San Jose": "SJC",
+        "Oceanside": "OSD",
+        "Santa Ana": "SNA",
+        "Fullerton": "FUL",
+        "San Diego Old Town": "OLT",
+        "Albuquerque": "ABQ",
+        "Flagstaff": "FLG",
+        "Tucson": "TUS",
+        "El Paso": "ELP",
+        "Reno": "RNO",
+        "Truckee": "TRU",
+        // Pacific Northwest
+        "Spokane": "SPK",
+        "Tacoma": "TAC",
+        "Eugene": "EUG",
+        "Salem OR": "SLM",
+        "Salt Lake City": "SLC",
+        "Whitefish": "WFH",
+        "East Glacier Park": "GPK",
+        "Havre": "HAV",
+        "St. Paul-Minneapolis": "MSP",
+        // Texas / South Central
+        "Dallas": "DAL",
+        "Fort Worth": "FTW",
+        "Houston": "HOS",
+        "Austin": "AUS",
+        "Little Rock": "LRK",
+        "Memphis": "MEM",
+        // Midwest / Great Lakes
+        "Kansas City": "KCY",
+        "Oklahoma City": "OKC",
+        "Omaha": "OMA",
+        "Indianapolis": "IND",
+        "Cincinnati": "CIN",
+        "Cleveland": "CLE",
+        "Toledo": "TOL",
+        "Detroit": "DET",
+        "Grand Rapids": "GRR",
+        "Pittsburgh": "PGH",
+        // Northeast extensions
+        "Albany-Rensselaer": "ALB",
+        "Syracuse": "SYR",
+        "Rochester": "ROC",
+        "Buffalo Depew": "BUF",
+        "Montreal": "MTR",
+        "Portland ME": "POR",
+        "Essex Junction": "ESX",
+        "Burlington VT": "BTN",
+        // Virginia / Southeast
+        "Lynchburg": "LYH",
+        "Newport News": "NPN",
+        "Williamsburg VA": "WBG",
+        "Columbia SC": "CLB",
+        "Birmingham": "BHM",
+        "Mobile": "MOE",
+
+        // California
+        "Anaheim": "ANA",
+        "Arcata": "ARC",
+        "Auburn": "ARN",
+        "Barstow": "BAR",
+        "Burbank": "BBK",
+        "Bakersfield": "BFD",
+        "Berkeley": "BKY",
+        "Burbank": "BUR",
+        "Chico": "CIC",
+        "Claremont": "CLM",
+        "Camarillo": "CML",
+        "Colfax": "COX",
+        "Carpinteria": "CPN",
+        "Chatsworth": "CWT",
+        "Davis": "DAV",
+        "Dublin-Pleasanton": "DBP",
+        "Dunsmuir": "DUN",
+        "Elko": "ELK",
+        "Fairfield-Vacaville": "FFV",
+        "Fremont": "FMT",
+        "Fresno": "FNO",
+        "Santa Clara Great America": "GAC",
+        "Glendale": "GDL",
+        "Gilroy": "GLY",
+        "Goleta": "GTA",
+        "Guadalupe": "GUA",
+        "Grover Beach": "GVB",
+        "Hayward": "HAY",
+        "Hanford": "HNF",
+        "Arcata": "HSU",
+        "Irvine": "IRV",
+        "Lodi": "LOD",
+        "Lompoc-Surf": "LPS",
+        "Las Vegas": "LVS",
+        "Merced": "MCD",
+        "Moorpark": "MPK",
+        "Marysville": "MRV",
+        "Martinez": "MTZ",
+        "Seaside-Marina": "MYU",
+        "Santa Clarita-Newhall": "NHL",
+        "Northridge": "NRG",
+        "Oakland Coliseum/Airport": "OAC",
+        "Oakland": "OKJ",
+        "Ontario": "ONA",
+        "Oxnard": "OXN",
+        "Pomona": "POS",
+        "Paso Robles": "PRB",
+        "Palm Springs": "PSN",
+        "Petaluma": "PTC",
+        "Redding": "RDD",
+        "Richmond": "RIC",
+        "Riverside": "RIV",
+        "Rocklin": "RLN",
+        "Roseville": "RSV",
+        "Santa Clara": "SCC",
+        "San Francisco": "SFC",
+        "Simi Valley": "SIM",
+        "Stockton": "SKN",
+        "Stockton": "SKT",
+        "Santa Monica Pier": "SMN",
+        "San Bernardino": "SNB",
+        "San Juan Capistrano": "SNC",
+        "San Clemente Pier": "SNP",
+        "Salinas": "SNS",
+        "Solana Beach": "SOL",
+        "Suisun-Fairfield": "SUI",
+        "Vallejo": "VAL",
+        "Ventura": "VEC",
+        "Van Nuys": "VNC",
+        "Victorville": "VRV",
+        "Winnemucca": "WNN",
+        "Willits Calif Western Railroad Depot": "WTS",
+
+        // Great Lakes
+        "Albion": "ALI",
+        "Ann Arbor": "ARB",
+        "Bangor": "BAM",
+        "Battle Creek": "BTL",
+        "Columbus": "CBS",
+        "Dearborn": "DER",
+        "Durand": "DRD",
+        "Erie": "ERI",
+        "Flint": "FLN",
+        "Glenview": "GLN",
+        "Holland": "HOM",
+        "Jackson": "JXN",
+        "Kalamazoo": "KAL",
+        "East Lansing": "LNS",
+        "Lapeer": "LPE",
+        "General Mitchell Intl. Airport": "MKA",
+        "Pontiac": "PNT",
+        "Portage": "POG",
+        "Port Huron": "PTH",
+        "Royal Oak": "ROY",
+        "St. Joseph-Benton Harbor": "SJM",
+        "Sturtevant": "SVT",
+        "Troy": "TRM",
+        "Wisconsin Dells": "WDL",
+
+        // Mid-Atlantic
+        "Altoona": "ALT",
+        "Ardmore": "ARD",
+        "Berlin": "BER",
+        "Branford": "BNF",
+        "Bowie State": "BWE",
+        "Clinton": "CLN",
+        "Coatesville": "COT",
+        "Connellsville": "COV",
+        "Croton-Harmon": "CRT",
+        "Cumberland": "CUM",
+        "Cornwells Heights": "CWH",
+        "Downingtown": "DOW",
+        "Edgewood": "EDG",
+        "Exton": "EXT",
+        "Greensburg": "GNB",
+        "Guilford": "GUI",
+        "Halethorpe": "HAE",
+        "Harpers Ferry": "HFY",
+        "Huntingdon": "HGD",
+        "Johnstown": "JST",
+        "Latrobe": "LAB",
+        "Lewistown": "LEW",
+        "Madison": "MDS",
+        "Middletown": "MID",
+        "Martinsburg": "MRB",
+        "Martin Airport": "MSA",
+        "Mystic": "MYS",
+        "Newark": "NRK",
+        "New Rochelle": "NRO",
+        "Odenton": "OTN",
+        "Paoli": "PAO",
+        "Parkesburg": "PAR",
+        "North Philadelphia": "PHN",
+        "Poughkeepsie": "POU",
+        "Perryville": "PRV",
+        "Rhinecliff": "RHI",
+        "Rockville": "RKV",
+        "New Haven": "STS",
+        "Tyrone": "TYR",
+        "West Baltimore": "WBL",
+        "Windsor": "WND",
+        "Westbrook": "WSB",
+        "Yonkers": "YNY",
+
+        // Midwest
+        "Ashland": "AKY",
+        "Alliance": "ALC",
+        "Alderson": "ALD",
+        "Bloomington-Normal": "BNL",
+        "Bryan": "BYN",
+        "Carbondale": "CDL",
+        "Centralia": "CEN",
+        "Champaign-Urbana": "CHM",
+        "Charleston": "CHW",
+        "Connersville": "COI",
+        "Crawfordsville": "CRF",
+        "Carlinville": "CRV",
+        "Dowagiac": "DOA",
+        "Du Quoin": "DQN",
+        "Dwight": "DWT",
+        "Dyer": "DYE",
+        "Effingham": "EFG",
+        "Elkhart": "EKH",
+        "Elyria": "ELY",
+        "Fulton": "FTN",
+        "Gilman": "GLM",
+        "Hinton": "HIN",
+        "Hammond-Whiting": "HMI",
+        "Homewood": "HMW",
+        "Huntington": "HUN",
+        "Joliet Gateway Center": "JOL",
+        "Kannapolis": "KAN",
+        "Kewanee": "KEE",
+        "Kankakee": "KKI",
+        "Lafayette": "LAF",
+        "La Grange": "LAG",
+        "Lincoln": "LCN",
+        "Mattoon": "MAT",
+        "Maysville": "MAY",
+        "Mendota": "MDT",
+        "Montgomery": "MNG",
+        "Newbern-Dyersburg": "NBN",
+        "New Buffalo": "NBU",
+        "Niles": "NLS",
+        "Naperville": "NPV",
+        "Princeton": "PCT",
+        "Peoria": "PIA",
+        "Plano": "PLO",
+        "Pontiac": "PON",
+        "Prince": "PRC",
+        "Rensselaer": "REN",
+        "Rantoul": "RTL",
+        "Sandusky": "SKY",
+        "Summit": "SMT",
+        "South Bend": "SOB",
+        "Springfield": "SPI",
+        "South Portsmouth": "SPM",
+        "Thurmond": "THN",
+        "White Sulphur Springs": "WSS",
+        "Waterloo": "WTI",
+
+        // Mountain West
+        "Arcadia Valley": "ACD",
+        "Ardmore": "ADM",
+        "Alton": "ALN",
+        "Alpine": "ALP",
+        "Arkadelphia": "ARK",
+        "Beaumont": "BMT",
+        "Brookhaven": "BRH",
+        "Burlington": "BRL",
+        "Cleburne": "CBR",
+        "Creston": "CRN",
+        "Dodge City": "DDG",
+        "Detroit Lakes": "DLK",
+        "Del Rio": "DRT",
+        "Devils Lake": "DVL",
+        "Fargo": "FAR",
+        "Fort Madison": "FMD",
+        "Fort Morgan": "FMG",
+        "Galesburg": "GBB",
+        "Garden City": "GCK",
+        "Grand Forks": "GFK",
+        "Gainesville": "GLE",
+        "Greenwood": "GWD",
+        "Hastings": "HAS",
+        "Hazlehurst": "HAZ",
+        "Hermann": "HEM",
+        "Holdrege": "HLD",
+        "Hammond": "HMD",
+        "Hope": "HOP",
+        "Hutchinson": "HUT",
+        "Independence": "IDP",
+        "Jackson": "JAN",
+        "Jefferson City": "JEF",
+        "Killeen": "KIL",
+        "Kirkwood": "KWD",
+        "La Junta": "LAJ",
+        "La Plata": "LAP",
+        "Lbo": "LBO",
+        "Lake Charles": "LCH",
+        "Lee'S Summit": "LEE",
+        "Lafayette": "LFT",
+        "Lamar": "LMR",
+        "Lincoln": "LNK",
+        "Lawrence": "LRC",
+        "La Crosse": "LSE",
+        "Longview": "LVW",
+        "Macomb": "MAC",
+        "Mccomb": "MCB",
+        "Mcgregor": "MCG",
+        "Mccook": "MCK",
+        "Marshall": "MHL",
+        "Mineola": "MIN",
+        "Marks": "MKS",
+        "Minot": "MOT",
+        "Mt. Pleasant": "MTP",
+        "Malvern": "MVN",
+        "New Iberia": "NIB",
+        "Norman": "NOR",
+        "Osceola": "OSC",
+        "Ottumwa": "OTM",
+        "Poplar Bluff": "PBF",
+        "Purcell": "PUR",
+        "Pauls Valley": "PVL",
+        "Quincy": "QCY",
+        "Raton": "RAT",
+        "Red Wing": "RDW",
+        "Rugby": "RUG",
+        "St. Cloud": "SCD",
+        "Schriever": "SCH",
+        "Sedalia": "SED",
+        "Shreveport Sportran Intermodal Terminal": "SHR",
+        "San Marcos": "SMC",
+        "Sanderson": "SND",
+        "Staples": "SPL",
+        "Stanley": "STN",
+        "Taylor": "TAY",
+        "Tomah": "TOH",
+        "Topeka": "TOP",
+        "Temple": "TPL",
+        "Trinidad": "TRI",
+        "Texarkana": "TXA",
+        "Washington": "WAH",
+        "Warrensburg": "WAR",
+        "Wellington": "WEL",
+        "Wichita": "WIC",
+        "Winona": "WIN",
+        "Walnut Ridge": "WNR",
+        "Williston": "WTN",
+        "Yazoo City": "YAZ",
+
+        // New England
+        "Amsterdam": "AMS",
+        "Aldershot": "AST",
+        "Buffalo": "BFX",
+        "Bellows Falls": "BLF",
+        "Boston": "BON",
+        "Brattleboro": "BRA",
+        "Brunswick": "BRK",
+        "Canadian Border": "CBN",
+        "Castleton": "CNV",
+        "Fort Edward": "FED",
+        "Framingham": "FRA",
+        "Freeport": "FRE",
+        "Ticonderoga": "FTC",
+        "Greenfield": "GFD",
+        "Grimsby": "GMS",
+        "Haverhill": "HHL",
+        "Holyoke": "HLK",
+        "Hudson": "HUD",
+        "Middlebury": "MBY",
+        "Montpelier-Berlin": "MPR",
+        "Niagara Falls": "NFL",
+        "Niagara Falls": "NFS",
+        "Northampton": "NHT",
+        "Oakville": "OKL",
+        "Old Orchard Beach": "ORB",
+        "Pittsfield": "PIT",
+        "Plattsburgh": "PLB",
+        "Port Henry": "POH",
+        "Rome": "ROM",
+        "Randolph": "RPH",
+        "Rouses Point": "RSP",
+        "Route 128": "RTE",
+        "Rutland": "RUD",
+        "St. Albans": "SAB",
+        "Saco": "SAO",
+        "Saratoga Springs": "SAR",
+        "St. Catherines": "SCA",
+        "Schenectady": "SDY",
+        "St-Lambert": "SLQ",
+        "Toronto": "TWO",
+        "Utica": "UCA",
+        "Ferrisburgh": "VRN",
+        "Waterbury-Stowe": "WAB",
+        "Wells": "WEM",
+        "Whitehall": "WHL",
+        "Windsor-Mt. Ascutney": "WNM",
+        "Woburn": "WOB",
+        "Worcester Union": "WOR",
+        "White River Junction": "WRJ",
+        "Westport": "WSP",
+
+        // Pacific Northwest
+        "Albany": "ALY",
+        "Bellingham": "BEL",
+        "Bingen-White Salmon": "BNG",
+        "Browning": "BRO",
+        "Chemult": "CMO",
+        "Centralia": "CTL",
+        "Cut Bank": "CUT",
+        "Edmonds": "EDM",
+        "Ephrata": "EPH",
+        "Essex": "ESM",
+        "Everett": "EVR",
+        "Glasgow": "GGW",
+        "Granby": "GRA",
+        "Kelso-Longview": "KEL",
+        "Klamath Falls": "KFS",
+        "Libby": "LIB",
+        "Leavenworth": "LWA",
+        "Malta": "MAL",
+        "Mount Vernon": "MVW",
+        "Olympia-Lacey": "OLW",
+        "Oregon City": "ORC",
+        "Provo": "PRO",
+        "Pasco": "PSC",
+        "Shelby": "SBY",
+        "Sandpoint": "SPT",
+        "Stanwood": "STW",
+        "Tukwila": "TUK",
+        "Vancouver": "VAC",
+        "Vancouver": "VAN",
+        "Wenatchee": "WEN",
+        "West Glacier": "WGL",
+        "Wishram": "WIH",
+        "Wolf Point": "WPT",
+
+        // South Central
+        "Anniston": "ATN",
+        "Bay St Louis": "BAS",
+        "Bradenton": "BDT",
+        "Biloxi Amtrak Sta": "BIX",
+        "Camden": "CAM",
+        "Deerfield Beach": "DFB",
+        "Denmark": "DNK",
+        "Gainesville": "GNS",
+        "Gulfport Amtrak Sta": "GUF",
+        "Hattiesburg": "HBG",
+        "Hollywood": "HOL",
+        "Jesup": "JSP",
+        "Lakeland": "LAK",
+        "Laurel": "LAU",
+        "Meridian Union": "MEI",
+        "Okeechobee": "OKE",
+        "Pascagoula": "PAG",
+        "Palatka": "PAK",
+        "Picayune": "PIC",
+        "Sebring": "SBG",
+        "Slidell": "SDL",
+        "Sanford Amtrak Auto Train": "SFA",
+        "St. Petersburg": "STP",
+        "Toccoa": "TCA",
+        "Tuscaloosa": "TCL",
+        "Waldo": "WDO",
+        "Wildwood": "WWD",
+        "Yemassee": "YEM",
+
+        // Southeast
+        "Burke Centre": "BCV",
+        "Burlington": "BNC",
+        "Clifton Forge": "CLF",
+        "Culpeper": "CLP",
+        "Cary": "CYN",
+        "Danville": "DAN",
+        "Fayetteville": "FAY",
+        "Fredericksburg": "FBG",
+        "Goldsboro": "GBO",
+        "Greensboro": "GRO",
+        "Havelock": "HVL",
+        "Kinston": "KNC",
+        "Morehead City": "MHD",
+        "Quantico": "QAN",
+        "Seabrook": "SEB",
+        "Southern Pines": "SOP",
+        "Selma": "SSM",
+        "Staunton": "STA",
+        "Swansboro": "SWB",
+        "Woodbridge": "WDB",
+        "Wilmington": "WMN",
+
+        // Southwest
+        "Benson": "BEN",
+        "Deming": "DEM",
+        "Grand Junction": "GJT",
+        "Gallup": "GLP",
+        "Green River": "GRI",
+        "Glenwood Springs": "GSC",
+        "Helper": "HER",
+        "Kingman": "KNG",
+        "Lordsburg": "LDB",
+        "Lamy": "LMY",
+        "Las Vegas": "LSV",
+        "Maricopa": "MRC",
+        "Needles": "NDL",
+        "Phoenix Sky Harbor Airport": "PHA",
+        "North Phoenix Metro Center Transit": "PXN",
+        "Santa Fe": "SAF",
+        "Winter Park/Fraser": "WIP",
+        "Winslow": "WLO",
+        "Williams": "WMH",
+        "Winter Park Ski Resort": "WPR",
+        "Winter Park": "WPS",
+        "Yuma": "YUM",
+
     ]
     
     // Station coordinates for mapping - synced with backend_v2/src/trackrat/config/stations.py
@@ -713,7 +1338,535 @@ struct Stations {
         "JES": CLLocationCoordinate2D(latitude: 31.6036, longitude: -81.8854),                     // Jesup, GA
         "PAL": CLLocationCoordinate2D(latitude: 29.6486, longitude: -81.6376),                     // Palatka, FL
         "SAN": CLLocationCoordinate2D(latitude: 28.8122, longitude: -81.3130),                     // Sanford, FL
-        "HLW": CLLocationCoordinate2D(latitude: 26.0112, longitude: -80.1495)                      // Hollywood, FL
+        "HLW": CLLocationCoordinate2D(latitude: 26.0112, longitude: -80.1495),                     // Hollywood, FL
+
+        // Nationwide Amtrak stations
+        "CHI": CLLocationCoordinate2D(latitude: 41.8787, longitude: -87.6394),  // Chicago Union Station
+        "STL": CLLocationCoordinate2D(latitude: 38.6242, longitude: -90.2040),  // St. Louis
+        "MKE": CLLocationCoordinate2D(latitude: 43.0345, longitude: -87.9171),  // Milwaukee
+        "LAX": CLLocationCoordinate2D(latitude: 34.0562, longitude: -118.2368), // Los Angeles Union Station
+        "SEA": CLLocationCoordinate2D(latitude: 47.5984, longitude: -122.3302), // Seattle King Street
+        "PDX": CLLocationCoordinate2D(latitude: 45.5287, longitude: -122.6768), // Portland Union Station
+        "EMY": CLLocationCoordinate2D(latitude: 37.8405, longitude: -122.2916), // Emeryville
+        "SAC": CLLocationCoordinate2D(latitude: 38.5840, longitude: -121.5007), // Sacramento
+        "NOL": CLLocationCoordinate2D(latitude: 29.9461, longitude: -90.0783),  // New Orleans
+        "SAS": CLLocationCoordinate2D(latitude: 29.4194, longitude: -98.4781),  // San Antonio
+        "DEN": CLLocationCoordinate2D(latitude: 39.7530, longitude: -104.9999), // Denver Union Station
+        // California / Southwest
+        "SBA": CLLocationCoordinate2D(latitude: 34.4137, longitude: -119.6857), // Santa Barbara
+        "SLO": CLLocationCoordinate2D(latitude: 35.2730, longitude: -120.6574), // San Luis Obispo
+        "SJC": CLLocationCoordinate2D(latitude: 37.3297, longitude: -121.9021), // San Jose
+        "OSD": CLLocationCoordinate2D(latitude: 33.1954, longitude: -117.3803), // Oceanside
+        "SNA": CLLocationCoordinate2D(latitude: 33.7489, longitude: -117.8664), // Santa Ana
+        "FUL": CLLocationCoordinate2D(latitude: 33.8715, longitude: -117.9246), // Fullerton
+        "OLT": CLLocationCoordinate2D(latitude: 32.7548, longitude: -117.1976), // San Diego Old Town
+        "ABQ": CLLocationCoordinate2D(latitude: 35.0844, longitude: -106.6488), // Albuquerque
+        "FLG": CLLocationCoordinate2D(latitude: 35.1981, longitude: -111.6476), // Flagstaff
+        "TUS": CLLocationCoordinate2D(latitude: 32.2193, longitude: -110.9643), // Tucson
+        "ELP": CLLocationCoordinate2D(latitude: 31.7590, longitude: -106.4890), // El Paso
+        "RNO": CLLocationCoordinate2D(latitude: 39.5295, longitude: -119.7773), // Reno
+        "TRU": CLLocationCoordinate2D(latitude: 39.3278, longitude: -120.1850), // Truckee
+        // Pacific Northwest
+        "SPK": CLLocationCoordinate2D(latitude: 47.6533, longitude: -117.4083), // Spokane
+        "TAC": CLLocationCoordinate2D(latitude: 47.2420, longitude: -122.4282), // Tacoma
+        "EUG": CLLocationCoordinate2D(latitude: 44.0543, longitude: -123.0950), // Eugene
+        "SLM": CLLocationCoordinate2D(latitude: 44.9429, longitude: -123.0353), // Salem
+        "SLC": CLLocationCoordinate2D(latitude: 40.7774, longitude: -111.9301), // Salt Lake City
+        "WFH": CLLocationCoordinate2D(latitude: 48.4106, longitude: -114.3375), // Whitefish
+        "GPK": CLLocationCoordinate2D(latitude: 48.4481, longitude: -113.2176), // East Glacier Park
+        "HAV": CLLocationCoordinate2D(latitude: 48.5528, longitude: -109.6822), // Havre
+        "MSP": CLLocationCoordinate2D(latitude: 44.9464, longitude: -93.0854),  // St. Paul-Minneapolis
+        // Texas / South Central
+        "DAL": CLLocationCoordinate2D(latitude: 32.7789, longitude: -96.8083),  // Dallas
+        "FTW": CLLocationCoordinate2D(latitude: 32.7511, longitude: -97.3340),  // Fort Worth
+        "HOS": CLLocationCoordinate2D(latitude: 29.7689, longitude: -95.3597),  // Houston
+        "AUS": CLLocationCoordinate2D(latitude: 30.2748, longitude: -97.7268),  // Austin
+        "LRK": CLLocationCoordinate2D(latitude: 34.7345, longitude: -92.2740),  // Little Rock
+        "MEM": CLLocationCoordinate2D(latitude: 35.1352, longitude: -90.0510),  // Memphis
+        // Midwest / Great Lakes
+        "KCY": CLLocationCoordinate2D(latitude: 39.0912, longitude: -94.5556),  // Kansas City
+        "OKC": CLLocationCoordinate2D(latitude: 35.4728, longitude: -97.5153),  // Oklahoma City
+        "OMA": CLLocationCoordinate2D(latitude: 41.2535, longitude: -95.9319),  // Omaha
+        "IND": CLLocationCoordinate2D(latitude: 39.7642, longitude: -86.1637),  // Indianapolis
+        "CIN": CLLocationCoordinate2D(latitude: 39.1033, longitude: -84.5123),  // Cincinnati
+        "CLE": CLLocationCoordinate2D(latitude: 41.5159, longitude: -81.6848),  // Cleveland
+        "TOL": CLLocationCoordinate2D(latitude: 41.6529, longitude: -83.5328),  // Toledo
+        "DET": CLLocationCoordinate2D(latitude: 42.3289, longitude: -83.0521),  // Detroit
+        "GRR": CLLocationCoordinate2D(latitude: 42.9669, longitude: -85.6760),  // Grand Rapids
+        "PGH": CLLocationCoordinate2D(latitude: 40.4447, longitude: -79.9923),  // Pittsburgh
+        // Northeast extensions
+        "ALB": CLLocationCoordinate2D(latitude: 42.6418, longitude: -73.7542),  // Albany-Rensselaer
+        "SYR": CLLocationCoordinate2D(latitude: 43.0473, longitude: -76.1440),  // Syracuse
+        "ROC": CLLocationCoordinate2D(latitude: 43.1566, longitude: -77.6088),  // Rochester
+        "BUF": CLLocationCoordinate2D(latitude: 42.9038, longitude: -78.8636),  // Buffalo Depew
+        "MTR": CLLocationCoordinate2D(latitude: 45.5017, longitude: -73.5673),  // Montreal
+        "POR": CLLocationCoordinate2D(latitude: 43.6559, longitude: -70.2614),  // Portland ME
+        "ESX": CLLocationCoordinate2D(latitude: 44.4881, longitude: -73.1820),  // Essex Junction
+        "BTN": CLLocationCoordinate2D(latitude: 44.4759, longitude: -73.2121),  // Burlington VT
+        // Virginia / Southeast
+        "LYH": CLLocationCoordinate2D(latitude: 37.4083, longitude: -79.1428),  // Lynchburg
+        "NPN": CLLocationCoordinate2D(latitude: 36.9814, longitude: -76.4356),  // Newport News
+        "WBG": CLLocationCoordinate2D(latitude: 37.2710, longitude: -76.7075),  // Williamsburg
+        "CLB": CLLocationCoordinate2D(latitude: 34.0006, longitude: -81.0349),  // Columbia SC
+        "BHM": CLLocationCoordinate2D(latitude: 33.5206, longitude: -86.8344),  // Birmingham
+        "MOE": CLLocationCoordinate2D(latitude: 30.6959, longitude: -88.0411),  // Mobile
+
+        // California
+        "ANA": CLLocationCoordinate2D(latitude: 33.8038, longitude: -117.8773),  // Anaheim
+        "ARC": CLLocationCoordinate2D(latitude: 40.8686, longitude: -124.0838),  // Arcata
+        "ARN": CLLocationCoordinate2D(latitude: 38.9036, longitude: -121.0832),  // Auburn
+        "BAR": CLLocationCoordinate2D(latitude: 34.9048, longitude: -117.0254),  // Barstow
+        "BBK": CLLocationCoordinate2D(latitude: 34.1789, longitude: -118.3118),  // Burbank
+        "BFD": CLLocationCoordinate2D(latitude: 35.3721, longitude: -119.0082),  // Bakersfield
+        "BKY": CLLocationCoordinate2D(latitude: 37.8673, longitude: -122.3007),  // Berkeley
+        "BUR": CLLocationCoordinate2D(latitude: 34.1931, longitude: -118.3538),  // Burbank
+        "CIC": CLLocationCoordinate2D(latitude: 39.7233, longitude: -121.8459),  // Chico
+        "CLM": CLLocationCoordinate2D(latitude: 34.0945, longitude: -117.7169),  // Claremont
+        "CML": CLLocationCoordinate2D(latitude: 34.2159, longitude: -119.0341),  // Camarillo
+        "COX": CLLocationCoordinate2D(latitude: 39.0992, longitude: -120.9531),  // Colfax
+        "CPN": CLLocationCoordinate2D(latitude: 34.3968, longitude: -119.5230),  // Carpinteria
+        "CWT": CLLocationCoordinate2D(latitude: 34.2532, longitude: -118.5994),  // Chatsworth
+        "DAV": CLLocationCoordinate2D(latitude: 38.5436, longitude: -121.7377),  // Davis
+        "DBP": CLLocationCoordinate2D(latitude: 37.7028, longitude: -121.8977),  // Dublin-Pleasanton
+        "DUN": CLLocationCoordinate2D(latitude: 41.2111, longitude: -122.2706),  // Dunsmuir
+        "ELK": CLLocationCoordinate2D(latitude: 40.8365, longitude: -115.7505),  // Elko
+        "FFV": CLLocationCoordinate2D(latitude: 38.2856, longitude: -121.9679),  // Fairfield-Vacaville
+        "FMT": CLLocationCoordinate2D(latitude: 37.5591, longitude: -122.0075),  // Fremont
+        "FNO": CLLocationCoordinate2D(latitude: 36.7385, longitude: -119.7829),  // Fresno
+        "GAC": CLLocationCoordinate2D(latitude: 37.4068, longitude: -121.9670),  // Santa Clara Great America
+        "GDL": CLLocationCoordinate2D(latitude: 34.1237, longitude: -118.2589),  // Glendale
+        "GLY": CLLocationCoordinate2D(latitude: 37.0040, longitude: -121.5668),  // Gilroy
+        "GTA": CLLocationCoordinate2D(latitude: 34.4377, longitude: -119.8431),  // Goleta
+        "GUA": CLLocationCoordinate2D(latitude: 34.9629, longitude: -120.5734),  // Guadalupe
+        "GVB": CLLocationCoordinate2D(latitude: 35.1213, longitude: -120.6293),  // Grover Beach
+        "HAY": CLLocationCoordinate2D(latitude: 37.6660, longitude: -122.0993),  // Hayward
+        "HNF": CLLocationCoordinate2D(latitude: 36.3261, longitude: -119.6518),  // Hanford
+        "HSU": CLLocationCoordinate2D(latitude: 40.8733, longitude: -124.0815),  // Arcata
+        "IRV": CLLocationCoordinate2D(latitude: 33.6568, longitude: -117.7337),  // Irvine
+        "LOD": CLLocationCoordinate2D(latitude: 38.1332, longitude: -121.2719),  // Lodi
+        "LPS": CLLocationCoordinate2D(latitude: 34.6827, longitude: -120.6050),  // Lompoc-Surf
+        "LVS": CLLocationCoordinate2D(latitude: 36.1645, longitude: -115.1497),  // Las Vegas
+        "MCD": CLLocationCoordinate2D(latitude: 37.3072, longitude: -120.4768),  // Merced
+        "MPK": CLLocationCoordinate2D(latitude: 34.2848, longitude: -118.8781),  // Moorpark
+        "MRV": CLLocationCoordinate2D(latitude: 39.1437, longitude: -121.5973),  // Marysville
+        "MTZ": CLLocationCoordinate2D(latitude: 38.0189, longitude: -122.1388),  // Martinez
+        "MYU": CLLocationCoordinate2D(latitude: 36.6535, longitude: -121.8014),  // Seaside-Marina
+        "NHL": CLLocationCoordinate2D(latitude: 34.3795, longitude: -118.5273),  // Santa Clarita-Newhall
+        "NRG": CLLocationCoordinate2D(latitude: 34.2307, longitude: -118.5454),  // Northridge
+        "OAC": CLLocationCoordinate2D(latitude: 37.7525, longitude: -122.1981),  // Oakland Coliseum/Airport
+        "OKJ": CLLocationCoordinate2D(latitude: 37.7939, longitude: -122.2717),  // Oakland
+        "ONA": CLLocationCoordinate2D(latitude: 34.0617, longitude: -117.6496),  // Ontario
+        "OXN": CLLocationCoordinate2D(latitude: 34.1992, longitude: -119.1760),  // Oxnard
+        "POS": CLLocationCoordinate2D(latitude: 34.0592, longitude: -117.7506),  // Pomona
+        "PRB": CLLocationCoordinate2D(latitude: 35.6227, longitude: -120.6879),  // Paso Robles
+        "PSN": CLLocationCoordinate2D(latitude: 33.8975, longitude: -116.5479),  // Palm Springs
+        "PTC": CLLocationCoordinate2D(latitude: 38.2365, longitude: -122.6358),  // Petaluma
+        "RDD": CLLocationCoordinate2D(latitude: 40.5836, longitude: -122.3934),  // Redding
+        "RIC": CLLocationCoordinate2D(latitude: 37.9368, longitude: -122.3541),  // Richmond
+        "RIV": CLLocationCoordinate2D(latitude: 33.9757, longitude: -117.3700),  // Riverside
+        "RLN": CLLocationCoordinate2D(latitude: 38.7910, longitude: -121.2373),  // Rocklin
+        "RSV": CLLocationCoordinate2D(latitude: 38.7500, longitude: -121.2863),  // Roseville
+        "SCC": CLLocationCoordinate2D(latitude: 37.3532, longitude: -121.9366),  // Santa Clara
+        "SFC": CLLocationCoordinate2D(latitude: 37.7886, longitude: -122.3989),  // San Francisco
+        "SIM": CLLocationCoordinate2D(latitude: 34.2702, longitude: -118.6952),  // Simi Valley
+        "SKN": CLLocationCoordinate2D(latitude: 37.9455, longitude: -121.2856),  // Stockton
+        "SKT": CLLocationCoordinate2D(latitude: 37.9570, longitude: -121.2790),  // Stockton
+        "SMN": CLLocationCoordinate2D(latitude: 34.0127, longitude: -118.4946),  // Santa Monica Pier
+        "SNB": CLLocationCoordinate2D(latitude: 34.1041, longitude: -117.3107),  // San Bernardino
+        "SNC": CLLocationCoordinate2D(latitude: 33.5013, longitude: -117.6638),  // San Juan Capistrano
+        "SNP": CLLocationCoordinate2D(latitude: 33.4196, longitude: -117.6197),  // San Clemente Pier
+        "SNS": CLLocationCoordinate2D(latitude: 36.6791, longitude: -121.6567),  // Salinas
+        "SOL": CLLocationCoordinate2D(latitude: 32.9929, longitude: -117.2711),  // Solana Beach
+        "SUI": CLLocationCoordinate2D(latitude: 38.2434, longitude: -122.0411),  // Suisun-Fairfield
+        "VAL": CLLocationCoordinate2D(latitude: 38.1003, longitude: -122.2592),  // Vallejo
+        "VEC": CLLocationCoordinate2D(latitude: 34.2769, longitude: -119.2999),  // Ventura
+        "VNC": CLLocationCoordinate2D(latitude: 34.2113, longitude: -118.4482),  // Van Nuys
+        "VRV": CLLocationCoordinate2D(latitude: 34.5372, longitude: -117.2930),  // Victorville
+        "WNN": CLLocationCoordinate2D(latitude: 40.9690, longitude: -117.7322),  // Winnemucca
+        "WTS": CLLocationCoordinate2D(latitude: 39.4126, longitude: -123.3510),  // Willits Calif Western Railroad Depot
+
+        // Great Lakes
+        "ALI": CLLocationCoordinate2D(latitude: 42.2472, longitude: -84.7558),  // Albion
+        "ARB": CLLocationCoordinate2D(latitude: 42.2877, longitude: -83.7432),  // Ann Arbor
+        "BAM": CLLocationCoordinate2D(latitude: 42.3145, longitude: -86.1116),  // Bangor
+        "BTL": CLLocationCoordinate2D(latitude: 42.3185, longitude: -85.1878),  // Battle Creek
+        "CBS": CLLocationCoordinate2D(latitude: 43.3406, longitude: -89.0126),  // Columbus
+        "DER": CLLocationCoordinate2D(latitude: 42.3072, longitude: -83.2353),  // Dearborn
+        "DRD": CLLocationCoordinate2D(latitude: 42.9095, longitude: -83.9823),  // Durand
+        "ERI": CLLocationCoordinate2D(latitude: 42.1208, longitude: -80.0824),  // Erie
+        "FLN": CLLocationCoordinate2D(latitude: 43.0154, longitude: -83.6517),  // Flint
+        "GLN": CLLocationCoordinate2D(latitude: 42.0750, longitude: -87.8056),  // Glenview
+        "HOM": CLLocationCoordinate2D(latitude: 42.7911, longitude: -86.0966),  // Holland
+        "JXN": CLLocationCoordinate2D(latitude: 42.2481, longitude: -84.3997),  // Jackson
+        "KAL": CLLocationCoordinate2D(latitude: 42.2953, longitude: -85.5840),  // Kalamazoo
+        "LNS": CLLocationCoordinate2D(latitude: 42.7187, longitude: -84.4960),  // East Lansing
+        "LPE": CLLocationCoordinate2D(latitude: 43.0495, longitude: -83.3062),  // Lapeer
+        "MKA": CLLocationCoordinate2D(latitude: 42.9406, longitude: -87.9244),  // General Mitchell Intl. Airport
+        "PNT": CLLocationCoordinate2D(latitude: 42.6328, longitude: -83.2923),  // Pontiac
+        "POG": CLLocationCoordinate2D(latitude: 43.5471, longitude: -89.4676),  // Portage
+        "PTH": CLLocationCoordinate2D(latitude: 42.9604, longitude: -82.4438),  // Port Huron
+        "ROY": CLLocationCoordinate2D(latitude: 42.4884, longitude: -83.1470),  // Royal Oak
+        "SJM": CLLocationCoordinate2D(latitude: 42.1091, longitude: -86.4845),  // St. Joseph-Benton Harbor
+        "SVT": CLLocationCoordinate2D(latitude: 42.7183, longitude: -87.9063),  // Sturtevant
+        "TRM": CLLocationCoordinate2D(latitude: 42.5426, longitude: -83.1910),  // Troy
+        "WDL": CLLocationCoordinate2D(latitude: 43.6265, longitude: -89.7775),  // Wisconsin Dells
+
+        // Mid-Atlantic
+        "ALT": CLLocationCoordinate2D(latitude: 40.5145, longitude: -78.4016),  // Altoona
+        "ARD": CLLocationCoordinate2D(latitude: 40.0083, longitude: -75.2904),  // Ardmore
+        "BER": CLLocationCoordinate2D(latitude: 41.6356, longitude: -72.7653),  // Berlin
+        "BNF": CLLocationCoordinate2D(latitude: 41.2745, longitude: -72.8172),  // Branford
+        "BWE": CLLocationCoordinate2D(latitude: 39.0178, longitude: -76.7650),  // Bowie State
+        "CLN": CLLocationCoordinate2D(latitude: 41.2795, longitude: -72.5283),  // Clinton
+        "COT": CLLocationCoordinate2D(latitude: 39.9857, longitude: -75.8209),  // Coatesville
+        "COV": CLLocationCoordinate2D(latitude: 40.0203, longitude: -79.5928),  // Connellsville
+        "CRT": CLLocationCoordinate2D(latitude: 41.1899, longitude: -73.8824),  // Croton-Harmon
+        "CUM": CLLocationCoordinate2D(latitude: 39.6506, longitude: -78.7580),  // Cumberland
+        "CWH": CLLocationCoordinate2D(latitude: 40.0717, longitude: -74.9522),  // Cornwells Heights
+        "DOW": CLLocationCoordinate2D(latitude: 40.0022, longitude: -75.7108),  // Downingtown
+        "EDG": CLLocationCoordinate2D(latitude: 39.4162, longitude: -76.2928),  // Edgewood
+        "EXT": CLLocationCoordinate2D(latitude: 40.0193, longitude: -75.6217),  // Exton
+        "GNB": CLLocationCoordinate2D(latitude: 40.3050, longitude: -79.5469),  // Greensburg
+        "GUI": CLLocationCoordinate2D(latitude: 41.2756, longitude: -72.6735),  // Guilford
+        "HAE": CLLocationCoordinate2D(latitude: 39.2372, longitude: -76.6915),  // Halethorpe
+        "HFY": CLLocationCoordinate2D(latitude: 39.3245, longitude: -77.7311),  // Harpers Ferry
+        "HGD": CLLocationCoordinate2D(latitude: 40.4837, longitude: -78.0118),  // Huntingdon
+        "JST": CLLocationCoordinate2D(latitude: 40.3297, longitude: -78.9220),  // Johnstown
+        "LAB": CLLocationCoordinate2D(latitude: 40.3174, longitude: -79.3851),  // Latrobe
+        "LEW": CLLocationCoordinate2D(latitude: 40.5883, longitude: -77.5800),  // Lewistown
+        "MDS": CLLocationCoordinate2D(latitude: 41.2836, longitude: -72.5994),  // Madison
+        "MID": CLLocationCoordinate2D(latitude: 40.1957, longitude: -76.7365),  // Middletown
+        "MRB": CLLocationCoordinate2D(latitude: 39.4587, longitude: -77.9610),  // Martinsburg
+        "MSA": CLLocationCoordinate2D(latitude: 39.3301, longitude: -76.4214),  // Martin Airport
+        "MYS": CLLocationCoordinate2D(latitude: 41.3509, longitude: -71.9631),  // Mystic
+        "NRK": CLLocationCoordinate2D(latitude: 39.6697, longitude: -75.7535),  // Newark
+        "NRO": CLLocationCoordinate2D(latitude: 40.9115, longitude: -73.7843),  // New Rochelle
+        "OTN": CLLocationCoordinate2D(latitude: 39.0871, longitude: -76.7064),  // Odenton
+        "PAO": CLLocationCoordinate2D(latitude: 40.0428, longitude: -75.4838),  // Paoli
+        "PAR": CLLocationCoordinate2D(latitude: 39.9592, longitude: -75.9221),  // Parkesburg
+        "PHN": CLLocationCoordinate2D(latitude: 39.9968, longitude: -75.1551),  // North Philadelphia
+        "POU": CLLocationCoordinate2D(latitude: 41.7071, longitude: -73.9375),  // Poughkeepsie
+        "PRV": CLLocationCoordinate2D(latitude: 39.5580, longitude: -76.0732),  // Perryville
+        "RHI": CLLocationCoordinate2D(latitude: 41.9213, longitude: -73.9513),  // Rhinecliff
+        "RKV": CLLocationCoordinate2D(latitude: 39.0845, longitude: -77.1460),  // Rockville
+        "STS": CLLocationCoordinate2D(latitude: 41.3053, longitude: -72.9221),  // New Haven
+        "TYR": CLLocationCoordinate2D(latitude: 40.6677, longitude: -78.2405),  // Tyrone
+        "WBL": CLLocationCoordinate2D(latitude: 39.2934, longitude: -76.6533),  // West Baltimore
+        "WND": CLLocationCoordinate2D(latitude: 41.8520, longitude: -72.6423),  // Windsor
+        "WSB": CLLocationCoordinate2D(latitude: 41.2888, longitude: -72.4480),  // Westbrook
+        "YNY": CLLocationCoordinate2D(latitude: 40.9356, longitude: -73.9023),  // Yonkers
+
+        // Midwest
+        "AKY": CLLocationCoordinate2D(latitude: 38.4809, longitude: -82.6396),  // Ashland
+        "ALC": CLLocationCoordinate2D(latitude: 40.9213, longitude: -81.0929),  // Alliance
+        "ALD": CLLocationCoordinate2D(latitude: 37.7243, longitude: -80.6449),  // Alderson
+        "BNL": CLLocationCoordinate2D(latitude: 40.5090, longitude: -88.9843),  // Bloomington-Normal
+        "BYN": CLLocationCoordinate2D(latitude: 41.4803, longitude: -84.5518),  // Bryan
+        "CDL": CLLocationCoordinate2D(latitude: 37.7242, longitude: -89.2166),  // Carbondale
+        "CEN": CLLocationCoordinate2D(latitude: 38.5275, longitude: -89.1361),  // Centralia
+        "CHM": CLLocationCoordinate2D(latitude: 40.1158, longitude: -88.2414),  // Champaign-Urbana
+        "CHW": CLLocationCoordinate2D(latitude: 38.3464, longitude: -81.6385),  // Charleston
+        "COI": CLLocationCoordinate2D(latitude: 39.6460, longitude: -85.1334),  // Connersville
+        "CRF": CLLocationCoordinate2D(latitude: 40.0447, longitude: -86.8992),  // Crawfordsville
+        "CRV": CLLocationCoordinate2D(latitude: 39.2793, longitude: -89.8893),  // Carlinville
+        "DOA": CLLocationCoordinate2D(latitude: 41.9809, longitude: -86.1090),  // Dowagiac
+        "DQN": CLLocationCoordinate2D(latitude: 38.0123, longitude: -89.2403),  // Du Quoin
+        "DWT": CLLocationCoordinate2D(latitude: 41.0899, longitude: -88.4307),  // Dwight
+        "DYE": CLLocationCoordinate2D(latitude: 41.5154, longitude: -87.5181),  // Dyer
+        "EFG": CLLocationCoordinate2D(latitude: 39.1171, longitude: -88.5471),  // Effingham
+        "EKH": CLLocationCoordinate2D(latitude: 41.6807, longitude: -85.9718),  // Elkhart
+        "ELY": CLLocationCoordinate2D(latitude: 41.3700, longitude: -82.0967),  // Elyria
+        "FTN": CLLocationCoordinate2D(latitude: 36.5257, longitude: -88.8888),  // Fulton
+        "GLM": CLLocationCoordinate2D(latitude: 40.7525, longitude: -87.9981),  // Gilman
+        "HIN": CLLocationCoordinate2D(latitude: 37.6750, longitude: -80.8922),  // Hinton
+        "HMI": CLLocationCoordinate2D(latitude: 41.6912, longitude: -87.5065),  // Hammond-Whiting
+        "HMW": CLLocationCoordinate2D(latitude: 41.5624, longitude: -87.6687),  // Homewood
+        "HUN": CLLocationCoordinate2D(latitude: 38.4158, longitude: -82.4397),  // Huntington
+        "JOL": CLLocationCoordinate2D(latitude: 41.5246, longitude: -88.0787),  // Joliet Gateway Center
+        "KAN": CLLocationCoordinate2D(latitude: 35.4962, longitude: -80.6249),  // Kannapolis
+        "KEE": CLLocationCoordinate2D(latitude: 41.2458, longitude: -89.9275),  // Kewanee
+        "KKI": CLLocationCoordinate2D(latitude: 41.1193, longitude: -87.8654),  // Kankakee
+        "LAF": CLLocationCoordinate2D(latitude: 40.4193, longitude: -86.8959),  // Lafayette
+        "LAG": CLLocationCoordinate2D(latitude: 41.8156, longitude: -87.8715),  // La Grange
+        "LCN": CLLocationCoordinate2D(latitude: 40.1482, longitude: -89.3631),  // Lincoln
+        "MAT": CLLocationCoordinate2D(latitude: 39.4827, longitude: -88.3760),  // Mattoon
+        "MAY": CLLocationCoordinate2D(latitude: 38.6521, longitude: -83.7711),  // Maysville
+        "MDT": CLLocationCoordinate2D(latitude: 41.5496, longitude: -89.1179),  // Mendota
+        "MNG": CLLocationCoordinate2D(latitude: 38.1807, longitude: -81.3240),  // Montgomery
+        "NBN": CLLocationCoordinate2D(latitude: 36.1127, longitude: -89.2623),  // Newbern-Dyersburg
+        "NBU": CLLocationCoordinate2D(latitude: 41.7967, longitude: -86.7458),  // New Buffalo
+        "NLS": CLLocationCoordinate2D(latitude: 41.8374, longitude: -86.2524),  // Niles
+        "NPV": CLLocationCoordinate2D(latitude: 41.7795, longitude: -88.1455),  // Naperville
+        "PCT": CLLocationCoordinate2D(latitude: 41.3852, longitude: -89.4668),  // Princeton
+        "PIA": CLLocationCoordinate2D(latitude: 40.6894, longitude: -89.5936),  // Peoria
+        "PLO": CLLocationCoordinate2D(latitude: 41.6624, longitude: -88.5383),  // Plano
+        "PON": CLLocationCoordinate2D(latitude: 40.8787, longitude: -88.6372),  // Pontiac
+        "PRC": CLLocationCoordinate2D(latitude: 37.8566, longitude: -81.0607),  // Prince
+        "REN": CLLocationCoordinate2D(latitude: 40.9433, longitude: -87.1551),  // Rensselaer
+        "RTL": CLLocationCoordinate2D(latitude: 40.3109, longitude: -88.1591),  // Rantoul
+        "SKY": CLLocationCoordinate2D(latitude: 41.4407, longitude: -82.7179),  // Sandusky
+        "SMT": CLLocationCoordinate2D(latitude: 41.7949, longitude: -87.8097),  // Summit
+        "SOB": CLLocationCoordinate2D(latitude: 41.6784, longitude: -86.2873),  // South Bend
+        "SPI": CLLocationCoordinate2D(latitude: 39.8023, longitude: -89.6514),  // Springfield
+        "SPM": CLLocationCoordinate2D(latitude: 38.7213, longitude: -82.9638),  // South Portsmouth
+        "THN": CLLocationCoordinate2D(latitude: 37.9570, longitude: -81.0788),  // Thurmond
+        "WSS": CLLocationCoordinate2D(latitude: 37.7864, longitude: -80.3040),  // White Sulphur Springs
+        "WTI": CLLocationCoordinate2D(latitude: 41.4318, longitude: -85.0243),  // Waterloo
+
+        // Mountain West
+        "ACD": CLLocationCoordinate2D(latitude: 37.5922, longitude: -90.6244),  // Arcadia Valley
+        "ADM": CLLocationCoordinate2D(latitude: 34.1725, longitude: -97.1255),  // Ardmore
+        "ALN": CLLocationCoordinate2D(latitude: 38.9210, longitude: -90.1573),  // Alton
+        "ALP": CLLocationCoordinate2D(latitude: 30.3573, longitude: -103.6615),  // Alpine
+        "ARK": CLLocationCoordinate2D(latitude: 34.1139, longitude: -93.0533),  // Arkadelphia
+        "BMT": CLLocationCoordinate2D(latitude: 30.0765, longitude: -94.1274),  // Beaumont
+        "BRH": CLLocationCoordinate2D(latitude: 31.5830, longitude: -90.4411),  // Brookhaven
+        "BRL": CLLocationCoordinate2D(latitude: 40.8058, longitude: -91.1020),  // Burlington
+        "CBR": CLLocationCoordinate2D(latitude: 32.3497, longitude: -97.3823),  // Cleburne
+        "CRN": CLLocationCoordinate2D(latitude: 41.0569, longitude: -94.3616),  // Creston
+        "DDG": CLLocationCoordinate2D(latitude: 37.7523, longitude: -100.0170),  // Dodge City
+        "DLK": CLLocationCoordinate2D(latitude: 46.8197, longitude: -95.8460),  // Detroit Lakes
+        "DRT": CLLocationCoordinate2D(latitude: 29.3622, longitude: -100.9027),  // Del Rio
+        "DVL": CLLocationCoordinate2D(latitude: 48.1105, longitude: -98.8614),  // Devils Lake
+        "FAR": CLLocationCoordinate2D(latitude: 46.8810, longitude: -96.7854),  // Fargo
+        "FMD": CLLocationCoordinate2D(latitude: 40.6296, longitude: -91.3135),  // Fort Madison
+        "FMG": CLLocationCoordinate2D(latitude: 40.2472, longitude: -103.8028),  // Fort Morgan
+        "GBB": CLLocationCoordinate2D(latitude: 40.9447, longitude: -90.3641),  // Galesburg
+        "GCK": CLLocationCoordinate2D(latitude: 37.9644, longitude: -100.8733),  // Garden City
+        "GFK": CLLocationCoordinate2D(latitude: 47.9175, longitude: -97.1108),  // Grand Forks
+        "GLE": CLLocationCoordinate2D(latitude: 33.6252, longitude: -97.1409),  // Gainesville
+        "GWD": CLLocationCoordinate2D(latitude: 33.5172, longitude: -90.1765),  // Greenwood
+        "HAS": CLLocationCoordinate2D(latitude: 40.5843, longitude: -98.3875),  // Hastings
+        "HAZ": CLLocationCoordinate2D(latitude: 31.8613, longitude: -90.3943),  // Hazlehurst
+        "HEM": CLLocationCoordinate2D(latitude: 38.7073, longitude: -91.4326),  // Hermann
+        "HLD": CLLocationCoordinate2D(latitude: 40.4360, longitude: -99.3701),  // Holdrege
+        "HMD": CLLocationCoordinate2D(latitude: 30.5072, longitude: -90.4622),  // Hammond
+        "HOP": CLLocationCoordinate2D(latitude: 33.6689, longitude: -93.5922),  // Hope
+        "HUT": CLLocationCoordinate2D(latitude: 38.0557, longitude: -97.9315),  // Hutchinson
+        "IDP": CLLocationCoordinate2D(latitude: 39.0869, longitude: -94.4297),  // Independence
+        "JAN": CLLocationCoordinate2D(latitude: 32.3008, longitude: -90.1909),  // Jackson
+        "JEF": CLLocationCoordinate2D(latitude: 38.5789, longitude: -92.1699),  // Jefferson City
+        "KIL": CLLocationCoordinate2D(latitude: 31.1212, longitude: -97.7286),  // Killeen
+        "KWD": CLLocationCoordinate2D(latitude: 38.5811, longitude: -90.4068),  // Kirkwood
+        "LAJ": CLLocationCoordinate2D(latitude: 37.9882, longitude: -103.5436),  // La Junta
+        "LAP": CLLocationCoordinate2D(latitude: 40.0292, longitude: -92.4934),  // La Plata
+        "LBO": CLLocationCoordinate2D(latitude: 54.7740, longitude: -101.8481),  // Lbo
+        "LCH": CLLocationCoordinate2D(latitude: 30.2381, longitude: -93.2170),  // Lake Charles
+        "LEE": CLLocationCoordinate2D(latitude: 38.9126, longitude: -94.3780),  // Lee'S Summit
+        "LFT": CLLocationCoordinate2D(latitude: 30.2265, longitude: -92.0145),  // Lafayette
+        "LMR": CLLocationCoordinate2D(latitude: 38.0896, longitude: -102.6186),  // Lamar
+        "LNK": CLLocationCoordinate2D(latitude: 40.8159, longitude: -96.7132),  // Lincoln
+        "LRC": CLLocationCoordinate2D(latitude: 38.9712, longitude: -95.2305),  // Lawrence
+        "LSE": CLLocationCoordinate2D(latitude: 43.8332, longitude: -91.2473),  // La Crosse
+        "LVW": CLLocationCoordinate2D(latitude: 32.4940, longitude: -94.7283),  // Longview
+        "MAC": CLLocationCoordinate2D(latitude: 40.4612, longitude: -90.6709),  // Macomb
+        "MCB": CLLocationCoordinate2D(latitude: 31.2445, longitude: -90.4513),  // Mccomb
+        "MCG": CLLocationCoordinate2D(latitude: 31.4434, longitude: -97.4048),  // Mcgregor
+        "MCK": CLLocationCoordinate2D(latitude: 40.1976, longitude: -100.6258),  // Mccook
+        "MHL": CLLocationCoordinate2D(latitude: 32.5515, longitude: -94.3670),  // Marshall
+        "MIN": CLLocationCoordinate2D(latitude: 32.6620, longitude: -95.4891),  // Mineola
+        "MKS": CLLocationCoordinate2D(latitude: 34.2582, longitude: -90.2723),  // Marks
+        "MOT": CLLocationCoordinate2D(latitude: 48.2361, longitude: -101.2986),  // Minot
+        "MTP": CLLocationCoordinate2D(latitude: 40.9712, longitude: -91.5508),  // Mt. Pleasant
+        "MVN": CLLocationCoordinate2D(latitude: 34.3655, longitude: -92.8140),  // Malvern
+        "NIB": CLLocationCoordinate2D(latitude: 30.0084, longitude: -91.8238),  // New Iberia
+        "NOR": CLLocationCoordinate2D(latitude: 35.2200, longitude: -97.4430),  // Norman
+        "OSC": CLLocationCoordinate2D(latitude: 41.0371, longitude: -93.7649),  // Osceola
+        "OTM": CLLocationCoordinate2D(latitude: 41.0188, longitude: -92.4149),  // Ottumwa
+        "PBF": CLLocationCoordinate2D(latitude: 36.7540, longitude: -90.3933),  // Poplar Bluff
+        "PUR": CLLocationCoordinate2D(latitude: 35.0120, longitude: -97.3574),  // Purcell
+        "PVL": CLLocationCoordinate2D(latitude: 34.7417, longitude: -97.2185),  // Pauls Valley
+        "QCY": CLLocationCoordinate2D(latitude: 39.9571, longitude: -91.3685),  // Quincy
+        "RAT": CLLocationCoordinate2D(latitude: 36.9011, longitude: -104.4379),  // Raton
+        "RDW": CLLocationCoordinate2D(latitude: 44.5662, longitude: -92.5371),  // Red Wing
+        "RUG": CLLocationCoordinate2D(latitude: 48.3698, longitude: -99.9976),  // Rugby
+        "SCD": CLLocationCoordinate2D(latitude: 45.5677, longitude: -94.1491),  // St. Cloud
+        "SCH": CLLocationCoordinate2D(latitude: 29.7467, longitude: -90.8152),  // Schriever
+        "SED": CLLocationCoordinate2D(latitude: 38.7116, longitude: -93.2287),  // Sedalia
+        "SHR": CLLocationCoordinate2D(latitude: 32.4997, longitude: -93.7567),  // Shreveport Sportran Intermodal Terminal
+        "SMC": CLLocationCoordinate2D(latitude: 29.8766, longitude: -97.9410),  // San Marcos
+        "SND": CLLocationCoordinate2D(latitude: 30.1400, longitude: -102.3987),  // Sanderson
+        "SPL": CLLocationCoordinate2D(latitude: 46.3546, longitude: -94.7953),  // Staples
+        "STN": CLLocationCoordinate2D(latitude: 48.3198, longitude: -102.3894),  // Stanley
+        "TAY": CLLocationCoordinate2D(latitude: 30.5677, longitude: -97.4078),  // Taylor
+        "TOH": CLLocationCoordinate2D(latitude: 43.9860, longitude: -90.5053),  // Tomah
+        "TOP": CLLocationCoordinate2D(latitude: 39.0514, longitude: -95.6649),  // Topeka
+        "TPL": CLLocationCoordinate2D(latitude: 31.0959, longitude: -97.3458),  // Temple
+        "TRI": CLLocationCoordinate2D(latitude: 37.1727, longitude: -104.5080),  // Trinidad
+        "TXA": CLLocationCoordinate2D(latitude: 33.4201, longitude: -94.0431),  // Texarkana
+        "WAH": CLLocationCoordinate2D(latitude: 38.5615, longitude: -91.0127),  // Washington
+        "WAR": CLLocationCoordinate2D(latitude: 38.7627, longitude: -93.7409),  // Warrensburg
+        "WEL": CLLocationCoordinate2D(latitude: 37.2749, longitude: -97.3818),  // Wellington
+        "WIC": CLLocationCoordinate2D(latitude: 37.6847, longitude: -97.3341),  // Wichita
+        "WIN": CLLocationCoordinate2D(latitude: 44.0444, longitude: -91.6401),  // Winona
+        "WNR": CLLocationCoordinate2D(latitude: 36.0677, longitude: -90.9568),  // Walnut Ridge
+        "WTN": CLLocationCoordinate2D(latitude: 48.1430, longitude: -103.6209),  // Williston
+        "YAZ": CLLocationCoordinate2D(latitude: 32.8485, longitude: -90.4152),  // Yazoo City
+
+        // New England
+        "AMS": CLLocationCoordinate2D(latitude: 42.9537, longitude: -74.2195),  // Amsterdam
+        "AST": CLLocationCoordinate2D(latitude: 43.3134, longitude: -79.8557),  // Aldershot
+        "BFX": CLLocationCoordinate2D(latitude: 42.8784, longitude: -78.8737),  // Buffalo
+        "BLF": CLLocationCoordinate2D(latitude: 43.1365, longitude: -72.4446),  // Bellows Falls
+        "BON": CLLocationCoordinate2D(latitude: 42.3662, longitude: -71.0611),  // Boston
+        "BRA": CLLocationCoordinate2D(latitude: 42.8508, longitude: -72.5565),  // Brattleboro
+        "BRK": CLLocationCoordinate2D(latitude: 43.9114, longitude: -69.9655),  // Brunswick
+        "CBN": CLLocationCoordinate2D(latitude: 43.1092, longitude: -79.0584),  // Canadian Border
+        "CNV": CLLocationCoordinate2D(latitude: 43.6134, longitude: -73.1713),  // Castleton
+        "FED": CLLocationCoordinate2D(latitude: 43.2696, longitude: -73.5806),  // Fort Edward
+        "FRA": CLLocationCoordinate2D(latitude: 42.2760, longitude: -71.4200),  // Framingham
+        "FRE": CLLocationCoordinate2D(latitude: 43.8550, longitude: -70.1024),  // Freeport
+        "FTC": CLLocationCoordinate2D(latitude: 43.8538, longitude: -73.3897),  // Ticonderoga
+        "GFD": CLLocationCoordinate2D(latitude: 42.5855, longitude: -72.6008),  // Greenfield
+        "GMS": CLLocationCoordinate2D(latitude: 43.1959, longitude: -79.5579),  // Grimsby
+        "HHL": CLLocationCoordinate2D(latitude: 42.7733, longitude: -71.0864),  // Haverhill
+        "HLK": CLLocationCoordinate2D(latitude: 42.2042, longitude: -72.6023),  // Holyoke
+        "HUD": CLLocationCoordinate2D(latitude: 42.2539, longitude: -73.7977),  // Hudson
+        "MBY": CLLocationCoordinate2D(latitude: 44.0174, longitude: -73.1698),  // Middlebury
+        "MPR": CLLocationCoordinate2D(latitude: 44.2557, longitude: -72.6064),  // Montpelier-Berlin
+        "NFL": CLLocationCoordinate2D(latitude: 43.1099, longitude: -79.0553),  // Niagara Falls
+        "NFS": CLLocationCoordinate2D(latitude: 43.1087, longitude: -79.0633),  // Niagara Falls
+        "NHT": CLLocationCoordinate2D(latitude: 42.3189, longitude: -72.6264),  // Northampton
+        "OKL": CLLocationCoordinate2D(latitude: 43.4554, longitude: -79.6824),  // Oakville
+        "ORB": CLLocationCoordinate2D(latitude: 43.5143, longitude: -70.3762),  // Old Orchard Beach
+        "PIT": CLLocationCoordinate2D(latitude: 42.4516, longitude: -73.2538),  // Pittsfield
+        "PLB": CLLocationCoordinate2D(latitude: 44.6967, longitude: -73.4463),  // Plattsburgh
+        "POH": CLLocationCoordinate2D(latitude: 44.0423, longitude: -73.4588),  // Port Henry
+        "ROM": CLLocationCoordinate2D(latitude: 43.1994, longitude: -75.4500),  // Rome
+        "RPH": CLLocationCoordinate2D(latitude: 43.9224, longitude: -72.6655),  // Randolph
+        "RSP": CLLocationCoordinate2D(latitude: 44.9949, longitude: -73.3711),  // Rouses Point
+        "RTE": CLLocationCoordinate2D(latitude: 42.2102, longitude: -71.1479),  // Route 128
+        "RUD": CLLocationCoordinate2D(latitude: 43.6058, longitude: -72.9815),  // Rutland
+        "SAB": CLLocationCoordinate2D(latitude: 44.8124, longitude: -73.0862),  // St. Albans
+        "SAO": CLLocationCoordinate2D(latitude: 43.4962, longitude: -70.4491),  // Saco
+        "SAR": CLLocationCoordinate2D(latitude: 43.0828, longitude: -73.8100),  // Saratoga Springs
+        "SCA": CLLocationCoordinate2D(latitude: 43.1478, longitude: -79.2560),  // St. Catherines
+        "SDY": CLLocationCoordinate2D(latitude: 42.8147, longitude: -73.9429),  // Schenectady
+        "SLQ": CLLocationCoordinate2D(latitude: 45.4989, longitude: -73.5073),  // St-Lambert
+        "TWO": CLLocationCoordinate2D(latitude: 43.6454, longitude: -79.3808),  // Toronto
+        "UCA": CLLocationCoordinate2D(latitude: 43.1039, longitude: -75.2234),  // Utica
+        "VRN": CLLocationCoordinate2D(latitude: 44.1809, longitude: -73.2488),  // Ferrisburgh
+        "WAB": CLLocationCoordinate2D(latitude: 44.3350, longitude: -72.7518),  // Waterbury-Stowe
+        "WEM": CLLocationCoordinate2D(latitude: 43.3208, longitude: -70.6122),  // Wells
+        "WHL": CLLocationCoordinate2D(latitude: 43.5547, longitude: -73.4032),  // Whitehall
+        "WNM": CLLocationCoordinate2D(latitude: 43.4799, longitude: -72.3850),  // Windsor-Mt. Ascutney
+        "WOB": CLLocationCoordinate2D(latitude: 42.5174, longitude: -71.1438),  // Woburn
+        "WOR": CLLocationCoordinate2D(latitude: 42.2615, longitude: -71.7948),  // Worcester Union
+        "WRJ": CLLocationCoordinate2D(latitude: 43.6478, longitude: -72.3173),  // White River Junction
+        "WSP": CLLocationCoordinate2D(latitude: 44.1873, longitude: -73.4518),  // Westport
+
+        // Pacific Northwest
+        "ALY": CLLocationCoordinate2D(latitude: 44.6305, longitude: -123.1028),  // Albany
+        "BEL": CLLocationCoordinate2D(latitude: 48.7203, longitude: -122.5113),  // Bellingham
+        "BNG": CLLocationCoordinate2D(latitude: 45.7150, longitude: -121.4687),  // Bingen-White Salmon
+        "BRO": CLLocationCoordinate2D(latitude: 48.5341, longitude: -113.0132),  // Browning
+        "CMO": CLLocationCoordinate2D(latitude: 43.2168, longitude: -121.7816),  // Chemult
+        "CTL": CLLocationCoordinate2D(latitude: 46.7175, longitude: -122.9531),  // Centralia
+        "CUT": CLLocationCoordinate2D(latitude: 48.6384, longitude: -112.3316),  // Cut Bank
+        "EDM": CLLocationCoordinate2D(latitude: 47.8111, longitude: -122.3841),  // Edmonds
+        "EPH": CLLocationCoordinate2D(latitude: 47.3209, longitude: -119.5493),  // Ephrata
+        "ESM": CLLocationCoordinate2D(latitude: 48.2755, longitude: -113.6109),  // Essex
+        "EVR": CLLocationCoordinate2D(latitude: 47.9754, longitude: -122.1979),  // Everett
+        "GGW": CLLocationCoordinate2D(latitude: 48.1949, longitude: -106.6362),  // Glasgow
+        "GRA": CLLocationCoordinate2D(latitude: 40.0842, longitude: -105.9355),  // Granby
+        "KEL": CLLocationCoordinate2D(latitude: 46.1423, longitude: -122.9130),  // Kelso-Longview
+        "KFS": CLLocationCoordinate2D(latitude: 42.2255, longitude: -121.7720),  // Klamath Falls
+        "LIB": CLLocationCoordinate2D(latitude: 48.3948, longitude: -115.5489),  // Libby
+        "LWA": CLLocationCoordinate2D(latitude: 47.6065, longitude: -120.6440),  // Leavenworth
+        "MAL": CLLocationCoordinate2D(latitude: 48.3605, longitude: -107.8722),  // Malta
+        "MVW": CLLocationCoordinate2D(latitude: 48.4185, longitude: -122.3347),  // Mount Vernon
+        "OLW": CLLocationCoordinate2D(latitude: 46.9913, longitude: -122.7941),  // Olympia-Lacey
+        "ORC": CLLocationCoordinate2D(latitude: 45.3661, longitude: -122.5959),  // Oregon City
+        "PRO": CLLocationCoordinate2D(latitude: 40.2260, longitude: -111.6640),  // Provo
+        "PSC": CLLocationCoordinate2D(latitude: 46.2370, longitude: -119.0877),  // Pasco
+        "SBY": CLLocationCoordinate2D(latitude: 48.5067, longitude: -111.8566),  // Shelby
+        "SPT": CLLocationCoordinate2D(latitude: 48.2762, longitude: -116.5456),  // Sandpoint
+        "STW": CLLocationCoordinate2D(latitude: 48.2426, longitude: -122.3499),  // Stanwood
+        "TUK": CLLocationCoordinate2D(latitude: 47.4611, longitude: -122.2403),  // Tukwila
+        "VAC": CLLocationCoordinate2D(latitude: 49.2738, longitude: -123.0983),  // Vancouver
+        "VAN": CLLocationCoordinate2D(latitude: 45.6289, longitude: -122.6865),  // Vancouver
+        "WEN": CLLocationCoordinate2D(latitude: 47.4216, longitude: -120.3066),  // Wenatchee
+        "WGL": CLLocationCoordinate2D(latitude: 48.4962, longitude: -113.9792),  // West Glacier
+        "WIH": CLLocationCoordinate2D(latitude: 45.6577, longitude: -120.9661),  // Wishram
+        "WPT": CLLocationCoordinate2D(latitude: 48.0917, longitude: -105.6427),  // Wolf Point
+
+        // South Central
+        "ATN": CLLocationCoordinate2D(latitude: 33.6491, longitude: -85.8321),  // Anniston
+        "BAS": CLLocationCoordinate2D(latitude: 30.3087, longitude: -89.3340),  // Bay St Louis
+        "BDT": CLLocationCoordinate2D(latitude: 27.5285, longitude: -82.5123),  // Bradenton
+        "BIX": CLLocationCoordinate2D(latitude: 30.3991, longitude: -88.8916),  // Biloxi Amtrak Sta
+        "CAM": CLLocationCoordinate2D(latitude: 34.2482, longitude: -80.6252),  // Camden
+        "DFB": CLLocationCoordinate2D(latitude: 26.3171, longitude: -80.1221),  // Deerfield Beach
+        "DNK": CLLocationCoordinate2D(latitude: 33.3262, longitude: -81.1436),  // Denmark
+        "GNS": CLLocationCoordinate2D(latitude: 34.2889, longitude: -83.8197),  // Gainesville
+        "GUF": CLLocationCoordinate2D(latitude: 30.3690, longitude: -89.0948),  // Gulfport Amtrak Sta
+        "HBG": CLLocationCoordinate2D(latitude: 31.3269, longitude: -89.2865),  // Hattiesburg
+        "HOL": CLLocationCoordinate2D(latitude: 26.0116, longitude: -80.1679),  // Hollywood
+        "JSP": CLLocationCoordinate2D(latitude: 31.6056, longitude: -81.8822),  // Jesup
+        "LAK": CLLocationCoordinate2D(latitude: 28.0456, longitude: -81.9519),  // Lakeland
+        "LAU": CLLocationCoordinate2D(latitude: 31.6922, longitude: -89.1279),  // Laurel
+        "MEI": CLLocationCoordinate2D(latitude: 32.3642, longitude: -88.6966),  // Meridian Union
+        "OKE": CLLocationCoordinate2D(latitude: 27.2519, longitude: -80.8308),  // Okeechobee
+        "PAG": CLLocationCoordinate2D(latitude: 30.3678, longitude: -88.5595),  // Pascagoula
+        "PAK": CLLocationCoordinate2D(latitude: 29.6497, longitude: -81.6405),  // Palatka
+        "PIC": CLLocationCoordinate2D(latitude: 30.5246, longitude: -89.6803),  // Picayune
+        "SBG": CLLocationCoordinate2D(latitude: 27.4966, longitude: -81.4342),  // Sebring
+        "SDL": CLLocationCoordinate2D(latitude: 30.2784, longitude: -89.7826),  // Slidell
+        "SFA": CLLocationCoordinate2D(latitude: 28.8085, longitude: -81.2913),  // Sanford Amtrak Auto Train
+        "STP": CLLocationCoordinate2D(latitude: 27.8430, longitude: -82.6444),  // St. Petersburg
+        "TCA": CLLocationCoordinate2D(latitude: 34.5785, longitude: -83.3315),  // Toccoa
+        "TCL": CLLocationCoordinate2D(latitude: 33.1932, longitude: -87.5602),  // Tuscaloosa
+        "WDO": CLLocationCoordinate2D(latitude: 29.7905, longitude: -82.1667),  // Waldo
+        "WWD": CLLocationCoordinate2D(latitude: 28.8662, longitude: -82.0395),  // Wildwood
+        "YEM": CLLocationCoordinate2D(latitude: 32.6883, longitude: -80.8469),  // Yemassee
+
+        // Southeast
+        "BCV": CLLocationCoordinate2D(latitude: 38.7973, longitude: -77.2988),  // Burke Centre
+        "BNC": CLLocationCoordinate2D(latitude: 36.0942, longitude: -79.4345),  // Burlington
+        "CLF": CLLocationCoordinate2D(latitude: 37.8145, longitude: -79.8274),  // Clifton Forge
+        "CLP": CLLocationCoordinate2D(latitude: 38.4724, longitude: -77.9934),  // Culpeper
+        "CYN": CLLocationCoordinate2D(latitude: 35.7883, longitude: -78.7822),  // Cary
+        "DAN": CLLocationCoordinate2D(latitude: 36.5841, longitude: -79.3840),  // Danville
+        "FAY": CLLocationCoordinate2D(latitude: 35.0550, longitude: -78.8848),  // Fayetteville
+        "FBG": CLLocationCoordinate2D(latitude: 38.2984, longitude: -77.4572),  // Fredericksburg
+        "GBO": CLLocationCoordinate2D(latitude: 35.3857, longitude: -78.0033),  // Goldsboro
+        "GRO": CLLocationCoordinate2D(latitude: 36.0698, longitude: -79.7871),  // Greensboro
+        "HVL": CLLocationCoordinate2D(latitude: 34.8912, longitude: -76.9261),  // Havelock
+        "KNC": CLLocationCoordinate2D(latitude: 35.2437, longitude: -77.5845),  // Kinston
+        "MHD": CLLocationCoordinate2D(latitude: 34.7214, longitude: -76.7157),  // Morehead City
+        "QAN": CLLocationCoordinate2D(latitude: 38.5219, longitude: -77.2930),  // Quantico
+        "SEB": CLLocationCoordinate2D(latitude: 38.9727, longitude: -76.8436),  // Seabrook
+        "SOP": CLLocationCoordinate2D(latitude: 35.1751, longitude: -79.3903),  // Southern Pines
+        "SSM": CLLocationCoordinate2D(latitude: 35.5328, longitude: -78.2801),  // Selma
+        "STA": CLLocationCoordinate2D(latitude: 38.1476, longitude: -79.0718),  // Staunton
+        "SWB": CLLocationCoordinate2D(latitude: 34.6971, longitude: -77.1396),  // Swansboro
+        "WDB": CLLocationCoordinate2D(latitude: 38.6589, longitude: -77.2479),  // Woodbridge
+        "WMN": CLLocationCoordinate2D(latitude: 34.2512, longitude: -77.8749),  // Wilmington
+
+        // Southwest
+        "BEN": CLLocationCoordinate2D(latitude: 31.9688, longitude: -110.2969),  // Benson
+        "DEM": CLLocationCoordinate2D(latitude: 32.2718, longitude: -107.7543),  // Deming
+        "GJT": CLLocationCoordinate2D(latitude: 39.0644, longitude: -108.5699),  // Grand Junction
+        "GLP": CLLocationCoordinate2D(latitude: 35.5292, longitude: -108.7405),  // Gallup
+        "GRI": CLLocationCoordinate2D(latitude: 38.9920, longitude: -110.1652),  // Green River
+        "GSC": CLLocationCoordinate2D(latitude: 39.5479, longitude: -107.3232),  // Glenwood Springs
+        "HER": CLLocationCoordinate2D(latitude: 39.6840, longitude: -110.8539),  // Helper
+        "KNG": CLLocationCoordinate2D(latitude: 35.1883, longitude: -114.0528),  // Kingman
+        "LDB": CLLocationCoordinate2D(latitude: 32.3501, longitude: -108.7070),  // Lordsburg
+        "LMY": CLLocationCoordinate2D(latitude: 35.4810, longitude: -105.8800),  // Lamy
+        "LSV": CLLocationCoordinate2D(latitude: 35.5934, longitude: -105.2128),  // Las Vegas
+        "MRC": CLLocationCoordinate2D(latitude: 33.0563, longitude: -112.0471),  // Maricopa
+        "NDL": CLLocationCoordinate2D(latitude: 34.8406, longitude: -114.6062),  // Needles
+        "PHA": CLLocationCoordinate2D(latitude: 33.4364, longitude: -112.0130),  // Phoenix Sky Harbor Airport
+        "PXN": CLLocationCoordinate2D(latitude: 33.6395, longitude: -112.1192),  // North Phoenix Metro Center Transit
+        "SAF": CLLocationCoordinate2D(latitude: 35.6843, longitude: -105.9466),  // Santa Fe
+        "WIP": CLLocationCoordinate2D(latitude: 39.9476, longitude: -105.8174),  // Winter Park/Fraser
+        "WLO": CLLocationCoordinate2D(latitude: 35.0217, longitude: -110.6950),  // Winslow
+        "WMH": CLLocationCoordinate2D(latitude: 35.2511, longitude: -112.1981),  // Williams
+        "WPR": CLLocationCoordinate2D(latitude: 39.8876, longitude: -105.7632),  // Winter Park Ski Resort
+        "WPS": CLLocationCoordinate2D(latitude: 39.8837, longitude: -105.7618),  // Winter Park
+        "YUM": CLLocationCoordinate2D(latitude: 32.7231, longitude: -114.6156),  // Yuma
+
     ]
     
     // Supported departure stations - Updated to match backend

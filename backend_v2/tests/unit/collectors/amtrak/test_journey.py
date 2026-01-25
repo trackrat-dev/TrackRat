@@ -393,8 +393,8 @@ class TestAmtrakJourneyCollector:
             train_num="2150",
             stations=[
                 create_amtrak_station_data(
-                    code="ALB",  # Albany - not tracked
-                    name="Albany",
+                    code="XYZ",  # Non-existent station code - not tracked
+                    name="Fake Station",
                     sch_dep="2025-07-05T14:30:00-05:00",
                     status="Departed",
                 )
