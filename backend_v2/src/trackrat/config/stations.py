@@ -620,7 +620,7 @@ STATION_NAMES: dict[str, str] = {
     "AST": "Aldershot",
     "BFX": "Buffalo",
     "BLF": "Bellows Falls",
-    "BON": "Boston",
+    "BON": "Boston North",
     "BRA": "Brattleboro",
     "BRK": "Brunswick",
     "CBN": "Canadian Border",
@@ -1272,7 +1272,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "AST": "AST",  # Aldershot
     "BFX": "BFX",  # Buffalo
     "BLF": "BLF",  # Bellows Falls
-    "BON": "BON",  # Boston
+    "BON": "BON",  # Boston North
     "BRA": "BRA",  # Brattleboro
     "BRK": "BRK",  # Brunswick
     "CBN": "CBN",  # Canadian Border
@@ -1880,7 +1880,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "AST": "AST",  # Aldershot
     "BFX": "BFX",  # Buffalo
     "BLF": "BLF",  # Bellows Falls
-    "BON": "BON",  # Boston
+    "BON": "BON",  # Boston North
     "BRA": "BRA",  # Brattleboro
     "BRK": "BRK",  # Brunswick
     "CBN": "CBN",  # Canadian Border
@@ -3010,7 +3010,7 @@ STATION_COORDINATES = {
     "AST": {"lat": 43.3134, "lon": -79.8557},  # Aldershot
     "BFX": {"lat": 42.8784, "lon": -78.8737},  # Buffalo
     "BLF": {"lat": 43.1365, "lon": -72.4446},  # Bellows Falls
-    "BON": {"lat": 42.3662, "lon": -71.0611},  # Boston
+    "BON": {"lat": 42.3662, "lon": -71.0611},  # Boston North
     "BRA": {"lat": 42.8508, "lon": -72.5565},  # Brattleboro
     "BRK": {"lat": 43.9114, "lon": -69.9655},  # Brunswick
     "CBN": {"lat": 43.1092, "lon": -79.0584},  # Canadian Border
