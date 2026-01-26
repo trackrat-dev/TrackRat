@@ -60,12 +60,14 @@ struct TrainListView: View {
                     Text(destination)
                         .font(.headline)
                         .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                     if !departureName.isEmpty {
                         Text("from \(departureName)")
                             .font(.caption2)
                             .foregroundColor(.white.opacity(0.8))
-                            .multilineTextAlignment(.center)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
                 }
 
@@ -79,26 +81,20 @@ struct TrainListView: View {
                         showingPaywall = true
                     }
                 } label: {
-                    HStack(spacing: 4) {
+                    ZStack {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 16))
                         if !subscriptionService.isPro {
                             Image(systemName: "lock.fill")
-                                .font(.system(size: 10))
+                                .font(.system(size: 8))
                                 .foregroundColor(.orange)
+                                .offset(x: 8, y: -8)
                         }
-                        Image(systemName: "calendar")
-                            .font(.system(size: 14))
-                        Text(isFutureDate ? selectedDate.formatted(.dateTime.weekday(.abbreviated)) : "Today")
-                            .font(.subheadline)
                     }
                     .foregroundColor(.white.opacity(0.8))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.15))
-                    .cornerRadius(8)
+                    .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
-
-                Spacer().frame(width: 8)
 
                 // Close button
                 Button("Close") {
@@ -388,6 +384,7 @@ struct TrainCard: View {
                         .font(.headline)
                         .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white : .black))
                         .strikethrough(isCancelled)
+                        .lineLimit(1)
 
                     if isExpress {
                         Image(systemName: "bolt.fill")
@@ -423,6 +420,7 @@ struct TrainCard: View {
                             .foregroundColor(isBoardingAtOrigin ? .white : .orange)
                     }
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
 
             // Show cancellation, departed, or scheduled-only status

@@ -19,12 +19,17 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
                 Text(title)
                     .font(.headline)
                     .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
             }
+            .padding(.horizontal, 60)
 
             // Leading and trailing content
             HStack {
