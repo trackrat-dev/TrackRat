@@ -177,6 +177,7 @@ struct OnboardingView: View {
                 .frame(minWidth: 160)
                 .background(Color.orange)
                 .cornerRadius(TrackRatTheme.CornerRadius.md)
+                .buttonStyle(.plain)
 
                 Text("Change later in Map → Layers")
                     .font(.caption)
@@ -260,6 +261,7 @@ struct OnboardingView: View {
                             .background(TrackRatTheme.Colors.surfaceCard)
                             .cornerRadius(TrackRatTheme.CornerRadius.sm)
                         }
+                        .buttonStyle(.plain)
                     } else {
                         ForEach(otherFavorites, id: \.code) { station in
                             HStack {
@@ -272,6 +274,7 @@ struct OnboardingView: View {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundColor(.gray)
                                 }
+                                .buttonStyle(.plain)
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -295,6 +298,7 @@ struct OnboardingView: View {
                                 .background(TrackRatTheme.Colors.surfaceCard)
                                 .cornerRadius(TrackRatTheme.CornerRadius.sm)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -302,7 +306,7 @@ struct OnboardingView: View {
                 .background(Material.ultraThin)
                 .cornerRadius(TrackRatTheme.CornerRadius.md)
             }
-            
+
             Spacer()
         }
         .padding(.horizontal, 20)
@@ -555,6 +559,7 @@ struct StationSelectionCard: View {
             .background(Material.ultraThin)
             .cornerRadius(TrackRatTheme.CornerRadius.md)
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -599,6 +604,7 @@ struct SystemSelectionCard: View {
                     .stroke(isSelected ? Color.orange.opacity(0.5) : Color.clear, lineWidth: 1)
             )
         }
+        .buttonStyle(.plain)
     }
 }
 
