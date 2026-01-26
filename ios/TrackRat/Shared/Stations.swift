@@ -92,7 +92,7 @@ struct Stations {
         "Boston South", "Boston Back Bay", "Providence", "Kingston", "Westerly",
         "New London", "Old Saybrook", "New Haven", "Bridgeport", "Stamford",
         "Baltimore Station", "BWI Thurgood Marshall Airport",
-        "Washington Union Station", "Wilmington Station",
+        "Washington Union Station", "Wilmington DE",
         
         // Additional Amtrak Stations
         "Hartford", "Meriden", "Wallingford", "Windsor Locks", "Springfield MA",
@@ -203,7 +203,7 @@ struct Stations {
         "Wildwood", "Yemassee", "Burke Centre", "Burlington NC", "Clifton Forge",
         "Culpeper", "Danville", "Fayetteville", "Fredericksburg", "Goldsboro",
         "Havelock", "Kinston", "Morehead City", "Quantico", "Seabrook",
-        "Selma", "Staunton", "Swansboro", "Woodbridge VA", "Wilmington",
+        "Selma", "Staunton", "Swansboro", "Woodbridge VA", "Wilmington NC",
         "Benson", "Deming", "Grand Junction", "Gallup", "Green River", "Glenwood Springs",
         "Helper", "Kingman", "Lordsburg", "Lamy", "Las Vegas NM", "Maricopa",
         "Needles", "Phoenix Sky Harbor Airport", "North Phoenix Metro Center Transit", "Santa Fe", "Winter Park/Fraser", "Winslow",
@@ -436,7 +436,7 @@ struct Stations {
         "Baltimore Station": "BL",
         "Washington Union Station": "WS",
         "BWI Thurgood Marshall Airport": "BA",
-        "Wilmington Station": "WI",
+        "Wilmington DE": "WI",
         "New Carrollton": "NCR",
         "Aberdeen": "ABE",
         "Alexandria": "ALX",
@@ -994,7 +994,7 @@ struct Stations {
         "Staunton": "STA",
         "Swansboro": "SWB",
         "Woodbridge VA": "WDB",
-        "Wilmington": "WMN",
+        "Wilmington NC": "WMN",
 
         // Southwest
         "Benson": "BEN",
@@ -1893,7 +1893,7 @@ struct Stations {
         ("Dunellen", "DN"),
         ("Raritan", "RA"),
         ("Philadelphia", "PH"),
-        ("Wilmington Station", "WI"),
+        ("Wilmington DE", "WI"),
         // Mid-Atlantic
         ("Baltimore Station", "BL"),
         ("Washington Union Station", "WS"),
