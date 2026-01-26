@@ -190,6 +190,7 @@ struct MapContainerView: View {
                                 }
                             }
                     }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 30)
@@ -783,6 +784,7 @@ struct CongestionMapControlsView: View {
                                 .fill(.ultraThinMaterial)
                         )
                 }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal)
             
@@ -822,6 +824,7 @@ struct CongestionMapControlsView: View {
                             .fill(Color.orange)
                     )
             }
+            .buttonStyle(.plain)
             .padding(.horizontal)
             .padding(.bottom)
         }
