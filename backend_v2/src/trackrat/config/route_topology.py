@@ -25,16 +25,28 @@ class Route:
     line_codes: frozenset[str]  # Valid line_code values for this route
     stations: tuple[str, ...]  # Ordered station codes
 
+    def __post_init__(self) -> None:
+        # Cache station set for O(1) membership tests
+        # Use object.__setattr__ since dataclass is frozen
+        object.__setattr__(self, "_station_set", frozenset(self.stations))
+
+    _station_set: frozenset[str] = frozenset()  # Populated in __post_init__
+
     def contains_segment(self, from_station: str, to_station: str) -> bool:
-        """Check if both stations exist on this route."""
-        return from_station in self.stations and to_station in self.stations
+        """Check if both stations exist on this route. O(1) lookup."""
+        return from_station in self._station_set and to_station in self._station_set
 
     def get_intermediate_stations(
         self, from_station: str, to_station: str
     ) -> list[str] | None:
         """
         Get ordered stations between from and to (inclusive).
-        Returns None if segment not on this route.
+
+        Note: Returns stations in the direction specified (from -> to).
+        If from_station comes after to_station on the route, returns
+        the reversed sequence.
+
+        Returns None if either station is not on this route.
         """
         try:
             from_idx = self.stations.index(from_station)
@@ -129,7 +141,7 @@ NJT_MORRIS_ESSEX_MORRISTOWN = Route(
     id="njt-me-morristown",
     name="Morris & Essex (Morristown)",
     data_source="NJT",
-    line_codes=frozenset({"ME", "MO"}),
+    line_codes=frozenset({"ME"}),  # Morris & Essex uses "ME"
     stations=(
         "HB",
         "SE",
@@ -215,7 +227,7 @@ NJT_MONTCLAIR_BOONTON = Route(
     id="njt-mobo",
     name="Montclair-Boonton Line",
     data_source="NJT",
-    line_codes=frozenset({"MO", "MB"}),
+    line_codes=frozenset({"MO"}),  # Montclair-Boonton uses "MO"
     stations=(
         "HB",
         "SE",
