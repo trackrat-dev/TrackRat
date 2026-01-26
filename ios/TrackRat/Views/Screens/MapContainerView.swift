@@ -850,85 +850,94 @@ struct MapLayerControlsView: View {
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var showingPaywall = false
 
+    // Max height: 35% of screen leaves room for top UI and bottom sheet
+    private var maxMenuHeight: CGFloat {
+        UIScreen.main.bounds.height * 0.35
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Congestion toggle (tri-state: Off -> Summary -> Trains) - Pro only
-            MapLayerToggleButton(
-                label: "Congestion",
-                icon: "train.side.front.car",
-                isOn: viewModel.showCongestion != .off,
-                detail: viewModel.showCongestion.rawValue,
-                isPro: subscriptionService.isPro,
-                showProBadge: viewModel.showCongestion == .off
-            ) {
-                if subscriptionService.isPro {
-                    let wasOff = viewModel.showCongestion == .off
-                    viewModel.cycleCongestionMode()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 10) {
+                // Congestion toggle (tri-state: Off -> Summary -> Trains) - Pro only
+                MapLayerToggleButton(
+                    label: "Congestion",
+                    icon: "train.side.front.car",
+                    isOn: viewModel.showCongestion != .off,
+                    detail: viewModel.showCongestion.rawValue,
+                    isPro: subscriptionService.isPro,
+                    showProBadge: viewModel.showCongestion == .off
+                ) {
+                    if subscriptionService.isPro {
+                        let wasOff = viewModel.showCongestion == .off
+                        viewModel.cycleCongestionMode()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
-                    // Reload congestion data when turning on (from off state)
-                    if wasOff && viewModel.showCongestion != .off {
-                        Task {
-                            await viewModel.fetchCongestionData()
+                        // Reload congestion data when turning on (from off state)
+                        if wasOff && viewModel.showCongestion != .off {
+                            Task {
+                                await viewModel.fetchCongestionData()
+                            }
                         }
+                    } else {
+                        // Non-Pro user trying to enable congestion - show paywall
+                        showingPaywall = true
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     }
-                } else {
-                    // Non-Pro user trying to enable congestion - show paywall
-                    showingPaywall = true
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+
+                // Routes toggle
+                MapLayerToggleButton(
+                    label: "Routes",
+                    icon: "point.topleft.down.to.point.bottomright.curvepath",
+                    isOn: viewModel.showRoutes,
+                    detail: viewModel.showRoutes ? "On" : "Off",
+                    isPro: true,
+                    showProBadge: false
+                ) {
+                    viewModel.showRoutes.toggle()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+
+                // Stations toggle
+                MapLayerToggleButton(
+                    label: "Stations",
+                    icon: "mappin.circle.fill",
+                    isOn: viewModel.showStations,
+                    detail: viewModel.showStations ? "On" : "Off",
+                    isPro: true,
+                    showProBadge: false
+                ) {
+                    viewModel.showStations.toggle()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+
+                Divider()
+                    .background(Color.white.opacity(0.2))
+
+                // Train Systems section (only shows enabled systems)
+                if appState.enabledSystems.count > 1 {
+                    Text("Train Systems")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
+
+                    ForEach(Array(appState.enabledSystems).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { system in
+                        SystemToggleRow(
+                            system: system,
+                            isSelected: appState.isSystemSelected(system),
+                            action: {
+                                appState.toggleSystem(system)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        )
+                    }
                 }
             }
-
-            // Routes toggle
-            MapLayerToggleButton(
-                label: "Routes",
-                icon: "point.topleft.down.to.point.bottomright.curvepath",
-                isOn: viewModel.showRoutes,
-                detail: viewModel.showRoutes ? "On" : "Off",
-                isPro: true,
-                showProBadge: false
-            ) {
-                viewModel.showRoutes.toggle()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }
-
-            // Stations toggle
-            MapLayerToggleButton(
-                label: "Stations",
-                icon: "mappin.circle.fill",
-                isOn: viewModel.showStations,
-                detail: viewModel.showStations ? "On" : "Off",
-                isPro: true,
-                showProBadge: false
-            ) {
-                viewModel.showStations.toggle()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }
-
-            Divider()
-                .background(Color.white.opacity(0.2))
-
-            // Train Systems section (only shows enabled systems)
-            if appState.enabledSystems.count > 1 {
-                Text("Train Systems")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
-                    .padding(.top, 4)
-
-                ForEach(Array(appState.enabledSystems).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { system in
-                    SystemToggleRow(
-                        system: system,
-                        isSelected: appState.isSystemSelected(system),
-                        action: {
-                            appState.toggleSystem(system)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                    )
-                }
-            }
+            .padding(12)
         }
-        .padding(12)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: maxMenuHeight)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(.ultraThinMaterial)
