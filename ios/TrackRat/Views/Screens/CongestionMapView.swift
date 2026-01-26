@@ -888,14 +888,16 @@ struct SystemCongestionMapView: UIViewRepresentable {
         let desiredAggregatedState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
         let desiredIndividualState = Set(individualSegments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: String($0.congestionFactor)) })
 
-        // Check if anything changed (congestion, routes, or stations)
+        // Check if anything changed (congestion, routes, stations, or systems)
         let congestionChanged = desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
                                desiredIndividualState != context.coordinator.currentIndividualOverlayState
         let routesChanged = showRoutes != context.coordinator.routesVisible
-        let stationsChanged = !stations.isEmpty || !mapView.annotations.filter { !($0 is MKUserLocation) }.isEmpty
+        let desiredStationCodes = Set(stations.map { $0.code })
+        let stationsChanged = desiredStationCodes != context.coordinator.currentStationCodes
+        let systemsChanged = selectedSystems != context.coordinator.currentSelectedSystems
 
         // Early exit if nothing changed
-        guard congestionChanged || routesChanged || stationsChanged else {
+        guard congestionChanged || routesChanged || stationsChanged || systemsChanged else {
             return
         }
 
@@ -996,7 +998,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
         }
 
         // Handle route topology overlays
-        let systemsChanged = selectedSystems != context.coordinator.currentSelectedSystems
         let routesVisibilityChanged = showRoutes != context.coordinator.routesVisible
 
         if routesVisibilityChanged || (showRoutes && systemsChanged) {
@@ -1031,12 +1032,11 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 context.coordinator.routeTopologyOverlays = newRouteOverlays
             }
             context.coordinator.routesVisible = showRoutes
-            context.coordinator.currentSelectedSystems = selectedSystems
         }
 
-        // Handle station annotations
-        mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
-        if !stations.isEmpty {
+        // Handle station annotations (update if stations or systems changed)
+        if stationsChanged || systemsChanged {
+            mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
             for station in stations {
                 let annotation = SystemStationAnnotation()
                 annotation.coordinate = station.coordinate
@@ -1045,6 +1045,8 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 annotation.station = station
                 mapView.addAnnotation(annotation)
             }
+            context.coordinator.currentStationCodes = desiredStationCodes
+            context.coordinator.currentSelectedSystems = selectedSystems
         }
 
         // Update state
@@ -1083,6 +1085,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
         var routeTopologyOverlays: [RouteTopologyPolyline] = []
         var routesVisible: Bool = false
         var currentSelectedSystems: Set<TrainSystem> = .all
+
+        // Station annotation state
+        var currentStationCodes: Set<String> = []
 
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {

@@ -2051,87 +2051,39 @@ struct Stations {
 
     // MARK: - Station to Train System Mapping
 
-    /// Maps station codes to the train systems that serve them (as raw strings for cross-target compatibility)
-    /// Used to filter stations based on user's selected train systems
-    /// Keys: "NJT", "AMTRAK", "PATH", "PATCO"
-    static let stationSystemStrings: [String: Set<String>] = [
-        // PATH stations (PATH only)
-        "PNK": ["PATH"],   // Newark PATH
-        "PHR": ["PATH"],   // Harrison PATH
-        "PJS": ["PATH"],   // Journal Square
-        "PGR": ["PATH"],   // Grove Street
-        "PEX": ["PATH"],   // Exchange Place
-        "PNP": ["PATH"],   // Newport
-        "PHO": ["PATH"],   // Hoboken PATH
-        "PCH": ["PATH"],   // Christopher Street
-        "P9S": ["PATH"],   // 9th Street
-        "P14": ["PATH"],   // 14th Street
-        "P23": ["PATH"],   // 23rd Street
-        "P33": ["PATH"],   // 33rd Street
-        "PWC": ["PATH"],   // World Trade Center
-
-        // PATCO stations (PATCO only)
-        "LND": ["PATCO"],  // Lindenwold
-        "ASD": ["PATCO"],  // Ashland
-        "WCT": ["PATCO"],  // Woodcrest
-        "HDF": ["PATCO"],  // Haddonfield
-        "WMT": ["PATCO"],  // Westmont
-        "CLD": ["PATCO"],  // Collingswood
-        "FRY": ["PATCO"],  // Ferry Avenue
-        "BWY": ["PATCO"],  // Broadway PATCO
-        "CTH": ["PATCO"],  // City Hall PATCO
-        "FKS": ["PATCO"],  // Franklin Square
-        "EMK": ["PATCO"],  // 8th and Market
-        "NTL": ["PATCO"],  // 9-10th and Locust
-        "TWL": ["PATCO"],  // 12-13th and Locust
-        "FFL": ["PATCO"],  // 15-16th and Locust
-
-        // Multi-system stations
-        "NY": ["NJT", "AMTRAK"],  // New York Penn Station
+    /// Special overrides for stations that need manual mapping beyond what RouteTopology provides.
+    /// Most stations are automatically derived from RouteTopology - only add overrides here for:
+    /// - Stations with adjacent systems (e.g., NP has PATH adjacency)
+    /// - Stations that need different mapping than their route membership implies
+    private static let stationSystemOverrides: [String: Set<String>] = [
         "NP": ["NJT", "AMTRAK", "PATH"],  // Newark Penn Station (PATH adjacent)
-        "TR": ["NJT", "AMTRAK"],  // Trenton
-        "PH": ["NJT", "AMTRAK"],  // Philadelphia 30th Street
-        "WI": ["AMTRAK"],  // Wilmington
-        "BA": ["AMTRAK"],  // BWI Airport
-        "BL": ["AMTRAK"],  // Baltimore Penn
-        "WS": ["AMTRAK"],  // Washington Union
-
-        // Amtrak-only stations
-        "BOS": ["AMTRAK"],  // Boston South
-        "BBY": ["AMTRAK"],  // Boston Back Bay
-        "PVD": ["AMTRAK"],  // Providence
-        "NHV": ["AMTRAK"],  // New Haven
-        "BRP": ["AMTRAK"],  // Bridgeport
-        "STM": ["AMTRAK"],  // Stamford
-        "HFD": ["AMTRAK"],  // Hartford
-        "SPG": ["AMTRAK"],  // Springfield
-        "HAR": ["AMTRAK"],  // Harrisburg
-        "LNC": ["AMTRAK"],  // Lancaster
-
-        // Keystone stations (Amtrak)
-        "PAO": ["AMTRAK"],  // Paoli
-        "EXT": ["AMTRAK"],  // Exton
-        "DOW": ["AMTRAK"],  // Downingtown
-        "COT": ["AMTRAK"],  // Coatesville
-        "PKB": ["AMTRAK"],  // Parkesburg
-        "ELT": ["AMTRAK"],  // Elizabethtown
-        "MJY": ["AMTRAK"],  // Mount Joy
-
-        // Southeast Amtrak stations
-        "CLT": ["AMTRAK"],  // Charlotte
-        "RGH": ["AMTRAK"],  // Raleigh
-        "ATL": ["AMTRAK"],  // Atlanta
-        "JAX": ["AMTRAK"],  // Jacksonville
-        "MIA": ["AMTRAK"],  // Miami
-        "ORL": ["AMTRAK"],  // Orlando
-        "TPA": ["AMTRAK"],  // Tampa
-        "SAV": ["AMTRAK"],  // Savannah
     ]
 
-    /// Returns the raw system strings that serve a given station
-    /// Defaults to NJT + Amtrak if not explicitly mapped (most NJT commuter stations)
+    /// Cached mapping of station codes to their systems, derived from RouteTopology.
+    /// Computed once on first access for performance.
+    private static let derivedStationSystems: [String: Set<String>] = {
+        var mapping: [String: Set<String>] = [:]
+        for route in RouteTopology.allRoutes {
+            for code in route.stationCodes {
+                mapping[code, default: []].insert(route.dataSource)
+            }
+        }
+        return mapping
+    }()
+
+    /// Returns the raw system strings that serve a given station.
+    /// Priority: 1) Explicit overrides, 2) Derived from RouteTopology, 3) Default to NJT
     static func systemStringsForStation(_ code: String) -> Set<String> {
-        return stationSystemStrings[code] ?? ["NJT", "AMTRAK"]
+        // Check explicit overrides first (for special cases like PATH adjacency)
+        if let override = stationSystemOverrides[code] {
+            return override
+        }
+        // Use RouteTopology-derived mapping
+        if let derived = derivedStationSystems[code] {
+            return derived
+        }
+        // Default for stations not in any route (shouldn't happen, but safe fallback)
+        return ["NJT"]
     }
 
     /// Check if a station should be visible based on selected system strings
