@@ -182,7 +182,7 @@ struct Stations {
         "San Marcos", "Sanderson", "Staples", "Stanley", "Taylor", "Tomah",
         "Topeka", "Temple", "Trinidad", "Texarkana", "Washington", "Warrensburg",
         "Wellington", "Wichita", "Winona", "Walnut Ridge", "Williston", "Yazoo City",
-        "Amsterdam", "Aldershot", "Buffalo", "Bellows Falls", "Boston", "Brattleboro",
+        "Amsterdam", "Aldershot", "Buffalo", "Bellows Falls", "Boston North", "Brattleboro",
         "Brunswick", "Canadian Border", "Castleton", "Fort Edward", "Framingham", "Freeport",
         "Ticonderoga", "Greenfield", "Grimsby", "Haverhill", "Holyoke", "Hudson",
         "Middlebury", "Montpelier-Berlin", "Niagara Falls NY", "Niagara Falls ON", "Northampton", "Oakville",
@@ -861,7 +861,7 @@ struct Stations {
         "Aldershot": "AST",
         "Buffalo": "BFX",
         "Bellows Falls": "BLF",
-        "Boston": "BON",
+        "Boston North": "BON",
         "Brattleboro": "BRA",
         "Brunswick": "BRK",
         "Canadian Border": "CBN",
@@ -1712,7 +1712,7 @@ struct Stations {
         "AST": CLLocationCoordinate2D(latitude: 43.3134, longitude: -79.8557),  // Aldershot
         "BFX": CLLocationCoordinate2D(latitude: 42.8784, longitude: -78.8737),  // Buffalo
         "BLF": CLLocationCoordinate2D(latitude: 43.1365, longitude: -72.4446),  // Bellows Falls
-        "BON": CLLocationCoordinate2D(latitude: 42.3662, longitude: -71.0611),  // Boston
+        "BON": CLLocationCoordinate2D(latitude: 42.3662, longitude: -71.0611),  // Boston North
         "BRA": CLLocationCoordinate2D(latitude: 42.8508, longitude: -72.5565),  // Brattleboro
         "BRK": CLLocationCoordinate2D(latitude: 43.9114, longitude: -69.9655),  // Brunswick
         "CBN": CLLocationCoordinate2D(latitude: 43.1092, longitude: -79.0584),  // Canadian Border
