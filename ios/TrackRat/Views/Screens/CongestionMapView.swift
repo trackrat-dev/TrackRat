@@ -976,15 +976,42 @@ struct SystemCongestionMapView: UIViewRepresentable {
         let desiredAggregatedState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
         let desiredIndividualState = Set(individualSegments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: String($0.congestionFactor)) })
 
-        // Check if anything changed (congestion, routes, or stations)
+        // Check if anything changed (congestion, routes, stations, or highlight mode)
         let congestionChanged = desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
                                desiredIndividualState != context.coordinator.currentIndividualOverlayState
         let routesChanged = showRoutes != context.coordinator.routesVisible
         let stationsChanged = !stations.isEmpty || !mapView.annotations.filter { !($0 is MKUserLocation) }.isEmpty
+        let highlightModeChanged = highlightMode != context.coordinator.highlightMode
 
         // Early exit if nothing changed
-        guard congestionChanged || routesChanged || stationsChanged else {
+        guard congestionChanged || routesChanged || stationsChanged || highlightModeChanged else {
             return
+        }
+
+        // If highlight mode changed, update existing overlay renderers
+        if highlightModeChanged {
+            context.coordinator.highlightMode = highlightMode
+            // Update aggregated segment colors
+            for (_, overlay) in context.coordinator.aggregatedOverlayMap {
+                if let renderer = mapView.renderer(for: overlay) as? MKPolylineRenderer,
+                   let segment = overlay.segment {
+                    if segment.cancellationRate > 0 {
+                        // Keep cancelled segments red with dashes
+                        renderer.strokeColor = UIColor.systemRed
+                    } else {
+                        renderer.strokeColor = context.coordinator.getColorForSegmentPublic(segment)
+                        renderer.lineWidth = context.coordinator.getSegmentLineWidthPublic(segment)
+                    }
+                }
+            }
+            // Update individual segment colors
+            for (_, overlay) in context.coordinator.individualOverlayMap {
+                if let renderer = mapView.renderer(for: overlay) as? MKPolylineRenderer,
+                   let segment = overlay.individualSegment,
+                   !segment.isCancelled {
+                    renderer.strokeColor = context.coordinator.getColorForIndividualSegmentPublic(segment)
+                }
+            }
         }
 
         // Diff aggregated overlays
@@ -1336,6 +1363,11 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
+        /// Public accessor for getColorForSegment (used by updateUIView for mode changes)
+        func getColorForSegmentPublic(_ segment: CongestionSegment) -> UIColor {
+            getColorForSegment(segment)
+        }
+
         /// Get color for individual segment based on highlight mode
         private func getColorForIndividualSegment(_ segment: IndividualJourneySegment) -> UIColor {
             // Individual segments don't have frequency data, so always use congestion coloring
@@ -1351,13 +1383,18 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
+        /// Public accessor for getColorForIndividualSegment (used by updateUIView for mode changes)
+        func getColorForIndividualSegmentPublic(_ segment: IndividualJourneySegment) -> UIColor {
+            getColorForIndividualSegment(segment)
+        }
+
         /// Get line width for segment based on highlight mode
         private func getSegmentLineWidth(_ segment: CongestionSegment) -> CGFloat {
             switch highlightMode {
             case .off:
                 return 0
             case .health:
-                // Use frequency factor for line width (thicker = healthier)
+                // Use frequency factor for line width (thicker = worse service)
                 guard let factor = segment.frequencyFactor else { return 5 }
                 if factor >= 0.9 { return 5 }
                 else if factor >= 0.7 { return 7 }
@@ -1366,6 +1403,11 @@ struct SystemCongestionMapView: UIViewRepresentable {
             case .delays:
                 return getCongestionLineWidth(segment.congestionFactor)
             }
+        }
+
+        /// Public accessor for getSegmentLineWidth (used by updateUIView for mode changes)
+        func getSegmentLineWidthPublic(_ segment: CongestionSegment) -> CGFloat {
+            getSegmentLineWidth(segment)
         }
 
         private func getRecencyBasedAlpha(for departureTime: Date) -> CGFloat {
