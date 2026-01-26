@@ -215,11 +215,11 @@ struct PaywallView: View {
 
                     // Terms and Privacy links
                     HStack(spacing: 16) {
-                        Link("Terms of Use", destination: URL(string: "https://trackrat.net/terms")!)
+                        Link("Terms of Use", destination: URL(string: "https://trackrat.net/terms.txt")!)
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.5))
 
-                        Link("Privacy Policy", destination: URL(string: "https://trackrat.net/privacy")!)
+                        Link("Privacy Policy", destination: URL(string: "https://trackrat.net/privacy.txt")!)
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.5))
                     }

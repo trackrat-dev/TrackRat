@@ -1,28 +1,61 @@
 Privacy Policy
 
-Last Updated: August 18, 2025
+Last Updated: January 25, 2026
+
+TrackRat is a transit tracking app for NJ Transit, Amtrak, PATH, and PATCO trains.
 
 1. Information We Collect
-We do not collect, store, or retain any personal information or data submitted through this service.
 
-2. How We Use Information
-We do not use, analyze, or process any user data. All information submitted is handled temporarily for service functionality only and is immediately discarded.
+Local Data (stored on your device only):
+- Favorite stations
+- Recent trip history
+- App preferences
 
-3. Data Storage and Retention
-We maintain a strict no-data-retention policy. No user data is stored, logged, or retained in any form.
+Server Data (sent to our servers):
+- Push notification tokens for Live Activity updates
+- Anonymous usage data for service improvement
 
-4. Third-Party Services
-We do not share any information with third parties as we do not collect or retain any data.
+We do not collect names, email addresses, or other personally identifiable information through the app.
 
-5. Cookies and Tracking
-We do not use cookies, tracking pixels, or any other tracking technologies.
+2. Subscriptions and Payments
 
-6. Security
-While we do not store data, we implement appropriate security measures to protect information during temporary processing.
+All subscription purchases are processed by Apple through the App Store. We do not receive or store your payment information. Apple's privacy policy governs payment data: https://www.apple.com/legal/privacy/
 
-7. Changes to This Policy
-We may update this privacy policy from time to time. Any changes will be posted on this page.
+3. How We Use Information
 
-8. Contact Us
-If you have any questions about this privacy policy, please contact us at:
-trackrat@andymartin.cc
+- Push tokens: To send real-time train updates to your Live Activities
+- Anonymous usage: To improve service reliability and performance
+
+4. Data Storage and Retention
+
+- Local data remains on your device until you delete the app
+- Push tokens are retained only while you have active Live Activities
+- Anonymous usage data is retained for up to 90 days
+
+5. Third-Party Services
+
+- Apple: Payment processing and push notifications
+- We do not sell or share your data with advertisers
+
+6. Your Rights
+
+You can:
+- Delete local data by removing the app
+- Disable push notifications in iOS Settings
+- Cancel subscriptions via Settings > Apple ID > Subscriptions
+
+7. Cookies and Tracking
+
+The app does not use cookies or cross-app tracking technologies.
+
+8. Security
+
+We use industry-standard encryption (HTTPS) for all server communications.
+
+9. Changes to This Policy
+
+We may update this policy from time to time. Changes will be posted here.
+
+10. Contact Us
+
+Questions about this privacy policy: trackrat@andymartin.cc
