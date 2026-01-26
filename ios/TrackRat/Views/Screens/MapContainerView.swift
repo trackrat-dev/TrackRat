@@ -853,9 +853,14 @@ struct MapLayerControlsView: View {
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var showingPaywall = false
 
-    // Max height: 35% of screen leaves room for top UI and bottom sheet
+    // Max height: available space above the bottom sheet (50% of screen),
+    // minus top UI elements (~90pt) and safety margin
     private var maxMenuHeight: CGFloat {
-        UIScreen.main.bounds.height * 0.35
+        let screenHeight = UIScreen.main.bounds.height
+        let bottomSheetHeight = screenHeight * 0.5
+        let topOffset: CGFloat = 90  // Safe area + padding + button + spacing
+        let margin: CGFloat = 40
+        return screenHeight - bottomSheetHeight - topOffset - margin
     }
 
     var body: some View {
