@@ -630,6 +630,14 @@ AMTRAK_EMPIRE_SERVICE = Route(
 # REGISTRY
 # =============================================================================
 
+# Route order matters for segment expansion when line_code is not provided.
+# When a segment exists on multiple routes (e.g., NY-SE on NEC and NJCL),
+# the first matching route in ALL_ROUTES is used for expansion. This is safe
+# because overlapping segments share the same intermediate stations.
+#
+# If future routes have different intermediate stations for the same physical
+# segment, pass line_code to get_canonical_segments() for correct expansion.
+
 ALL_ROUTES: tuple[Route, ...] = (
     # NJT
     NJT_NORTHEAST_CORRIDOR,

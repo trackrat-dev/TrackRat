@@ -173,8 +173,12 @@ class TestNormalizeAggregatedSegments:
         assert ("PJS", "PGR") in segments_by_key
         assert ("PGR", "PNP") in segments_by_key
 
-    def test_cancellation_only_segment(self):
-        """Test handling of segments with only cancellation data."""
+    def test_cancellation_only_segment_filtered(self):
+        """Test that segments with only cancellation data are filtered out.
+
+        Cancellation-only segments have 0-minute transit times which are
+        meaningless for congestion visualization, so they're excluded.
+        """
         raw = [
             SegmentCongestion(
                 from_station="NY",
@@ -192,9 +196,8 @@ class TestNormalizeAggregatedSegments:
         ]
         result = normalize_aggregated_segments(raw)
 
-        assert len(result) == 1
-        assert result[0].cancellation_count == 5
-        assert result[0].sample_count == 0
+        # Cancellation-only segments are filtered out
+        assert len(result) == 0
 
 
 class TestNormalizeIndividualSegments:

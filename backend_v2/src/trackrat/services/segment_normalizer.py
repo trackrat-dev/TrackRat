@@ -156,7 +156,16 @@ def normalize_aggregated_segments(
             output_count=len(result),
         )
 
-    return result
+    # Filter out segments with no actual transit data (cancellation-only)
+    # These have 0-minute transit times which are meaningless for visualization
+    filtered_result = [s for s in result if s.sample_count > 0]
+    if len(filtered_result) < len(result):
+        logger.debug(
+            "filtered_cancellation_only_segments",
+            filtered_count=len(result) - len(filtered_result),
+        )
+
+    return filtered_result
 
 
 def normalize_individual_segments(
