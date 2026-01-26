@@ -546,6 +546,12 @@ class SegmentCongestion(BaseModel):
     current_average_minutes: float = Field(..., ge=0.0)
     cancellation_count: int = Field(default=0, ge=0)
     cancellation_rate: float = Field(default=0.0, ge=0.0, le=100.0)
+    # Frequency/health metrics (train count vs baseline)
+    # None for schedule-only data sources (e.g., PATCO)
+    train_count: int | None = Field(default=None, ge=0)
+    baseline_train_count: float | None = Field(default=None, ge=0.0)
+    frequency_factor: float | None = Field(default=None, ge=0.0)
+    frequency_level: Literal["healthy", "moderate", "reduced", "severe"] | None = None
 
 
 class CongestionMapResponse(BaseModel):

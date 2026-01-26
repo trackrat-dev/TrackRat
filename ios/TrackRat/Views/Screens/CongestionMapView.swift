@@ -18,7 +18,7 @@ struct CongestionMapView: View {
         ZStack {
             // Map
             // Note: segments/individualSegments arrays are controlled by applyDisplayModeFilter()
-            // which sets them based on showCongestion mode - no need for ternary checks here
+            // which sets them based on highlightMode - no need for ternary checks here
             SystemCongestionMapView(
                 region: $region,
                 segments: viewModel.segments,
@@ -26,6 +26,7 @@ struct CongestionMapView: View {
                 stations: viewModel.showStations ? (viewModel.showRoutes ? viewModel.routeStations : viewModel.stations) : [],
                 showRoutes: viewModel.showRoutes,
                 selectedSystems: appState.selectedSystems,
+                highlightMode: viewModel.highlightMode,
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -120,9 +121,9 @@ struct CongestionMapView: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
 
-                    // Congestion Legend (only when congestion is visible)
-                    if viewModel.showCongestion != .off {
-                        congestionLegendView
+                    // Segment Legend (only when highlighting is visible)
+                    if viewModel.highlightMode != .off {
+                        segmentLegendView
                     }
                 }
                 .padding()
@@ -163,7 +164,7 @@ struct CongestionMapView: View {
 
     private var headerSubtitle: String {
         var parts: [String] = []
-        if viewModel.showCongestion != .off && !viewModel.segments.isEmpty {
+        if viewModel.highlightMode != .off && !viewModel.segments.isEmpty {
             parts.append("\(viewModel.segments.count) segments")
         }
         if viewModel.showRoutes {
@@ -189,22 +190,35 @@ struct CongestionMapView: View {
                 .font(.headline)
                 .fontWeight(.semibold)
 
-            // Congestion toggle (tri-state)
+            // Segment highlight mode toggle (Off → Health → Delays → Off)
             LayerToggleButton(
-                label: "Congestion",
-                icon: "train.side.front.car",
-                isOn: viewModel.showCongestion != .off,
-                detail: viewModel.showCongestion.rawValue
+                label: "Segments",
+                icon: viewModel.highlightMode.icon,
+                isOn: viewModel.highlightMode != .off,
+                detail: viewModel.highlightMode.displayName
             ) {
-                let wasOff = viewModel.showCongestion == .off
-                viewModel.cycleCongestionMode()
+                let wasOff = viewModel.highlightMode == .off
+                viewModel.cycleHighlightMode()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
                 // Reload congestion data when turning on (from off state)
-                if wasOff && viewModel.showCongestion != .off {
+                if wasOff && viewModel.highlightMode != .off {
                     Task {
                         await viewModel.fetchCongestionData()
                     }
+                }
+            }
+
+            // Detail mode toggle (Summary vs Trains) - only show when segments are visible
+            if viewModel.highlightMode != .off {
+                LayerToggleButton(
+                    label: "Detail",
+                    icon: viewModel.detailMode.iconName,
+                    isOn: viewModel.detailMode == .trains,
+                    detail: viewModel.detailMode.rawValue
+                ) {
+                    viewModel.cycleDetailMode()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }
 
@@ -257,44 +271,80 @@ struct CongestionMapView: View {
         .fixedSize(horizontal: true, vertical: false)
     }
 
-    // MARK: - Congestion Legend View
+    // MARK: - Segment Legend View
 
-    private var congestionLegendView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Congestion Levels")
-                .trackRatSectionHeader()
+    @ViewBuilder
+    private var segmentLegendView: some View {
+        switch viewModel.highlightMode {
+        case .off:
+            EmptyView()
 
-            HStack(spacing: 16) {
-                LegendItem(color: .green, label: "Normal")
-                LegendItem(color: .yellow, label: "Moderate")
-                LegendItem(color: .orange, label: "Heavy")
-                LegendItem(color: .red, label: "Severe")
-            }
+        case .health:
+            // Health/Frequency legend (higher is better)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Service Health")
+                    .trackRatSectionHeader()
 
-            // Cancellation legend
-            HStack(spacing: 4) {
-                Rectangle()
-                    .fill(.red)
-                    .frame(width: 20, height: 2)
-                    .overlay(
-                        HStack(spacing: 2) {
-                            ForEach(0..<4, id: \.self) { _ in
-                                Rectangle()
-                                    .fill(.black)
-                                    .frame(width: 2, height: 2)
-                            }
-                        }
-                    )
-                Text("High Cancellations")
+                HStack(spacing: 16) {
+                    LegendItem(color: .green, label: "Healthy")
+                    LegendItem(color: .yellow, label: "Moderate")
+                    LegendItem(color: .orange, label: "Reduced")
+                    LegendItem(color: .red, label: "Severe")
+                }
+
+                Text("Train count vs typical for this time")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+
+        case .delays:
+            // Congestion/Delays legend (lower is better)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Delay Levels")
+                    .trackRatSectionHeader()
+
+                HStack(spacing: 16) {
+                    LegendItem(color: .green, label: "Normal")
+                    LegendItem(color: .yellow, label: "Moderate")
+                    LegendItem(color: .orange, label: "Heavy")
+                    LegendItem(color: .red, label: "Severe")
+                }
+
+                // Cancellation legend
+                HStack(spacing: 4) {
+                    Rectangle()
+                        .fill(.red)
+                        .frame(width: 20, height: 2)
+                        .overlay(
+                            HStack(spacing: 2) {
+                                ForEach(0..<4, id: \.self) { _ in
+                                    Rectangle()
+                                        .fill(.black)
+                                        .frame(width: 2, height: 2)
+                                }
+                            }
+                        )
+                    Text("High Cancellations")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
+    }
+
+    // Legacy alias for compatibility
+    private var congestionLegendView: some View {
+        segmentLegendView
     }
 }
 
@@ -398,12 +448,33 @@ enum CongestionMode: String, CaseIterable {
     }
 }
 
+/// Display mode for individual vs aggregated segments (when highlighting is on)
+enum SegmentDetailMode: String, CaseIterable {
+    case summary = "Summary"
+    case trains = "Trains"
+
+    var next: SegmentDetailMode {
+        switch self {
+        case .summary: return .trains
+        case .trains: return .summary
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .summary: return "chart.bar.fill"
+        case .trains: return "train.side.front.car"
+        }
+    }
+}
+
 @MainActor
 class CongestionMapViewModel: ObservableObject {
     // MARK: - Layer Visibility
-    // Note: Congestion defaults to Off since it's a Pro feature
+    // Note: Segment highlighting defaults to Off since it's a Pro feature
     // Pro users will have it enabled via MapLayerControlsView.onAppear
-    @Published var showCongestion: CongestionMode = .off
+    @Published var highlightMode: SegmentHighlightMode = .off
+    @Published var detailMode: SegmentDetailMode = .summary  // Summary vs individual trains
     @Published var showRoutes: Bool = true
     @Published var showStations: Bool = false  // Default: Off
 
@@ -530,12 +601,12 @@ class CongestionMapViewModel: ObservableObject {
         error = nil
         
         do {
-            // Determine maxPerSegment based on congestion mode
+            // Determine maxPerSegment based on detail mode (fetch individual trains only if showing)
             let maxPerSegment: Int
-            switch showCongestion {
-            case .off, .aggregated:
+            switch detailMode {
+            case .summary:
                 maxPerSegment = 0
-            case .individual:
+            case .trains:
                 maxPerSegment = 100
             }
             
@@ -635,11 +706,24 @@ class CongestionMapViewModel: ObservableObject {
     }
     
     /// Cycles the congestion mode (off -> aggregated -> individual -> off)
-    func cycleCongestionMode() {
-        showCongestion = showCongestion.next()
-        print("🚦 Congestion mode changed to: \(showCongestion.rawValue)")
+    /// Cycle through highlight modes: Off → Health → Delays → Off
+    func cycleHighlightMode() {
+        highlightMode = highlightMode.next
+        print("🚦 Highlight mode changed to: \(highlightMode.displayName)")
         // Defer filter application to let UI animations complete
         applyDisplayModeFilterDeferred()
+    }
+
+    /// Toggle between Summary and Trains detail modes
+    func cycleDetailMode() {
+        detailMode = detailMode.next
+        print("🚦 Detail mode changed to: \(detailMode.rawValue)")
+        applyDisplayModeFilterDeferred()
+    }
+
+    // Legacy method for compatibility
+    func cycleCongestionMode() {
+        cycleHighlightMode()
     }
 
     /// Applies display mode filter with a delay to prevent UI lag during button animations
@@ -664,27 +748,30 @@ class CongestionMapViewModel: ObservableObject {
         let filteredAggregated = selectedRoute != nil ? filterSegmentsForRoute(systemFilteredAggregated) : systemFilteredAggregated
         let filteredIndividual = selectedRoute != nil ? filterIndividualSegmentsForRoute(systemFilteredIndividual) : systemFilteredIndividual
 
-        switch showCongestion {
-        case .off:
-            // Hide congestion data
+        // Apply highlight mode
+        if highlightMode == .off {
+            // Hide all segment data
             segments = []
             individualSegments = []
             stations = systemFilteredStations
-            print("🚦 Congestion hidden")
+            print("🚦 Segments hidden")
+        } else {
+            // Show segments based on detail mode
+            switch detailMode {
+            case .summary:
+                // Show aggregated segments only
+                segments = filteredAggregated
+                individualSegments = []
+                stations = systemFilteredStations
+                print("🚦 Applied summary filter: \(segments.count) aggregated segments, mode: \(highlightMode.displayName)")
 
-        case .aggregated:
-            // Show aggregated segments only
-            segments = filteredAggregated
-            individualSegments = []
-            stations = systemFilteredStations
-            print("🚦 Applied aggregated filter: \(segments.count) aggregated segments")
-
-        case .individual:
-            // Show individual journey segments
-            segments = filteredAggregated // Keep aggregated for reference (dimmed)
-            individualSegments = filteredIndividual
-            stations = systemFilteredStations
-            print("🚦 Applied individual filter: \(individualSegments.count) individual segments")
+            case .trains:
+                // Show individual journey segments
+                segments = filteredAggregated // Keep aggregated for reference (dimmed)
+                individualSegments = filteredIndividual
+                stations = systemFilteredStations
+                print("🚦 Applied trains filter: \(individualSegments.count) individual segments, mode: \(highlightMode.displayName)")
+            }
         }
     }
     
@@ -855,6 +942,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
     let stations: [MapStation]
     let showRoutes: Bool
     let selectedSystems: Set<TrainSystem>
+    let highlightMode: SegmentHighlightMode
     let onSegmentTap: (CongestionSegment) -> Void
     let onIndividualSegmentTap: ((IndividualJourneySegment) -> Void)?
 
@@ -1048,12 +1136,13 @@ struct SystemCongestionMapView: UIViewRepresentable {
         // Update state
         context.coordinator.currentAggregatedOverlayState = desiredAggregatedState
         context.coordinator.currentIndividualOverlayState = desiredIndividualState
-        
-        // Update coordinator with current segments for tap handling
+
+        // Update coordinator with current segments and highlight mode for rendering
         context.coordinator.segments = segments
         context.coordinator.individualSegments = individualSegments
         context.coordinator.onSegmentTap = onSegmentTap
         context.coordinator.onIndividualSegmentTap = onIndividualSegmentTap ?? { _ in }
+        context.coordinator.highlightMode = highlightMode
     }
     
     
@@ -1071,6 +1160,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         var individualSegments: [IndividualJourneySegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
         var onIndividualSegmentTap: (IndividualJourneySegment) -> Void = { _ in }
+        var highlightMode: SegmentHighlightMode = .delays
 
         var currentAggregatedOverlayState: Set<OverlayIdentity> = []
         var aggregatedOverlayMap: [String: SystemCongestionPolyline] = [:]
@@ -1087,7 +1177,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
             // Handle individual journey polylines
             if let polyline = overlay as? IndividualJourneyPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                
+
                 if let segment = polyline.individualSegment {
                     // Check if this individual train is cancelled - make it stand out
                     if segment.isCancelled {
@@ -1096,25 +1186,26 @@ struct SystemCongestionMapView: UIViewRepresentable {
                         renderer.lineDashPattern = [3, 3]
                         renderer.alpha = 0.9 // Keep cancelled trains highly visible
                     } else {
-                        renderer.strokeColor = getUIColor(for: segment.congestionFactor)
+                        // Use highlight mode to determine color
+                        renderer.strokeColor = getColorForIndividualSegment(segment)
                         renderer.lineWidth = 3.0 // Thinner for individual journeys
-                        
+
                         // Calculate opacity based on recency of departure
                         renderer.alpha = getRecencyBasedAlpha(for: segment.actualDeparture)
-                        
+
                         // Add slight variation based on offset index for visual distinction
                         let alphaMod = CGFloat(polyline.offsetIndex % 3) * 0.05 // Reduced from 0.1 to preserve recency effect
                         renderer.alpha = max(0.3, renderer.alpha - alphaMod)
                     }
                 }
-                
+
                 return renderer
             }
-            
+
             // Handle aggregated segment polylines
             if let polyline = overlay as? SystemCongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                
+
                 if let segment = polyline.segment {
                     // Check if this segment has cancellations - treat as severe + dashed
                     if segment.cancellationRate > 0 {
@@ -1122,8 +1213,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
                         renderer.lineWidth = 11 // Same as severe congestion
                         renderer.lineDashPattern = [3, 3]
                     } else {
-                        renderer.strokeColor = getUIColor(for: segment.congestionFactor)
-                        renderer.lineWidth = getCongestionLineWidth(segment.congestionFactor)
+                        // Use highlight mode to determine color
+                        renderer.strokeColor = getColorForSegment(segment)
+                        renderer.lineWidth = getSegmentLineWidth(segment)
                         // Add dashed pattern for other types of cancellations
                         if let dashPattern = segment.dashPattern {
                             renderer.lineDashPattern = dashPattern
@@ -1134,7 +1226,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     renderer.strokeColor = UIColor.gray
                     renderer.alpha = polyline.isDimmed ? 0.3 : 0.8
                 }
-                
+
                 return renderer
             }
 
@@ -1215,7 +1307,67 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 return UIColor.systemRed
             }
         }
-        
+
+        /// Get color for frequency factor (higher is better)
+        private func getFrequencyUIColor(for frequencyFactor: Double?) -> UIColor {
+            guard let factor = frequencyFactor else {
+                return UIColor.systemGray  // No frequency data available
+            }
+            if factor >= 0.9 {
+                return UIColor.systemGreen   // Healthy: ≥90% of baseline
+            } else if factor >= 0.7 {
+                return UIColor.systemYellow  // Moderate: 70-90%
+            } else if factor >= 0.5 {
+                return UIColor.systemOrange  // Reduced: 50-70%
+            } else {
+                return UIColor.systemRed     // Severe: <50%
+            }
+        }
+
+        /// Get color for aggregated segment based on highlight mode
+        private func getColorForSegment(_ segment: CongestionSegment) -> UIColor {
+            switch highlightMode {
+            case .off:
+                return UIColor.clear
+            case .health:
+                return getFrequencyUIColor(for: segment.frequencyFactor)
+            case .delays:
+                return getUIColor(for: segment.congestionFactor)
+            }
+        }
+
+        /// Get color for individual segment based on highlight mode
+        private func getColorForIndividualSegment(_ segment: IndividualJourneySegment) -> UIColor {
+            // Individual segments don't have frequency data, so always use congestion coloring
+            // In health mode, use a muted color since we can't show per-train frequency
+            switch highlightMode {
+            case .off:
+                return UIColor.clear
+            case .health:
+                // For individual trains in health mode, use gray since we don't have per-train frequency
+                return UIColor.systemGray
+            case .delays:
+                return getUIColor(for: segment.congestionFactor)
+            }
+        }
+
+        /// Get line width for segment based on highlight mode
+        private func getSegmentLineWidth(_ segment: CongestionSegment) -> CGFloat {
+            switch highlightMode {
+            case .off:
+                return 0
+            case .health:
+                // Use frequency factor for line width (thicker = healthier)
+                guard let factor = segment.frequencyFactor else { return 5 }
+                if factor >= 0.9 { return 5 }
+                else if factor >= 0.7 { return 7 }
+                else if factor >= 0.5 { return 9 }
+                else { return 11 }
+            case .delays:
+                return getCongestionLineWidth(segment.congestionFactor)
+            }
+        }
+
         private func getRecencyBasedAlpha(for departureTime: Date) -> CGFloat {
             let now = Date()
             let timeSinceDeparture = now.timeIntervalSince(departureTime)

@@ -160,6 +160,34 @@ class TestCongestionAnalyzer:
         assert 1.75 > 1.5  # Severe
         assert 2.0 > 1.5  # Severe
 
+    def test_frequency_level_thresholds(self):
+        """Test frequency level thresholds (higher factor = better service)."""
+        from trackrat.services.congestion import get_frequency_level
+
+        # Frequency levels are inverted from congestion:
+        # Healthy: factor >= 0.9 (at least 90% of baseline trains)
+        # Moderate: 0.7 <= factor < 0.9 (70-90% of baseline)
+        # Reduced: 0.5 <= factor < 0.7 (50-70% of baseline)
+        # Severe: factor < 0.5 (less than 50% of baseline)
+
+        # Test healthy range
+        assert get_frequency_level(1.0) == "healthy"  # 100% of baseline
+        assert get_frequency_level(0.95) == "healthy"  # 95% of baseline
+        assert get_frequency_level(0.9) == "healthy"  # 90% boundary
+
+        # Test moderate range
+        assert get_frequency_level(0.85) == "moderate"  # 85%
+        assert get_frequency_level(0.7) == "moderate"  # 70% boundary
+
+        # Test reduced range
+        assert get_frequency_level(0.65) == "reduced"  # 65%
+        assert get_frequency_level(0.5) == "reduced"  # 50% boundary
+
+        # Test severe range
+        assert get_frequency_level(0.45) == "severe"  # 45%
+        assert get_frequency_level(0.3) == "severe"  # 30%
+        assert get_frequency_level(0.0) == "severe"  # No trains
+
     def test_calculate_segments_from_journeys(
         self, congestion_analyzer, sample_journeys
     ):
@@ -415,6 +443,10 @@ class TestCongestionAnalyzer:
         mock_row.recent_avg = 19.0
         mock_row.current_avg_minutes = 19.0
         mock_row.median_actual = 17.0
+        # Frequency fields
+        mock_row.train_count = 25
+        mock_row.baseline_train_count = 30.0
+        mock_row.frequency_factor = 0.83  # 25/30
 
         mock_result = Mock()
         mock_result.fetchall.return_value = [mock_row]
@@ -440,6 +472,11 @@ class TestCongestionAnalyzer:
         assert segment.congestion_level == "heavy"
         assert segment.cancellation_count == 2
         assert segment.cancellation_rate == pytest.approx(7.4, rel=0.01)  # 7.4%
+        # Verify frequency fields
+        assert segment.train_count == 25
+        assert segment.baseline_train_count == 30.0
+        assert segment.frequency_factor == pytest.approx(0.83, rel=0.01)
+        assert segment.frequency_level == "moderate"  # 0.83 is between 0.7 and 0.9
 
     @pytest.mark.asyncio
     async def test_get_individual_segments_optimized(

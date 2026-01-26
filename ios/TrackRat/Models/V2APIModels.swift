@@ -560,7 +560,12 @@ struct CongestionSegment: Codable, Identifiable {
     let sampleCount: Int
     let cancellationCount: Int
     let cancellationRate: Double
-    
+    // Frequency/health metrics (nil for schedule-only sources like PATCO)
+    let trainCount: Int?
+    let baselineTrainCount: Double?
+    let frequencyFactor: Double?
+    let frequencyLevel: String?
+
     enum CodingKeys: String, CodingKey {
         case fromStation = "from_station"
         case toStation = "to_station"
@@ -575,6 +580,10 @@ struct CongestionSegment: Codable, Identifiable {
         case sampleCount = "sample_count"
         case cancellationCount = "cancellation_count"
         case cancellationRate = "cancellation_rate"
+        case trainCount = "train_count"
+        case baselineTrainCount = "baseline_train_count"
+        case frequencyFactor = "frequency_factor"
+        case frequencyLevel = "frequency_level"
     }
     
     // Identifiable
@@ -628,7 +637,7 @@ struct CongestionSegment: Codable, Identifiable {
     
     var dashPattern: [NSNumber]? {
         guard shouldShowDashedLine else { return nil }
-        
+
         if cancellationRate > 20 {
             return [2, 2]  // Short dashes for high cancellation
         } else if cancellationRate > 10 {
@@ -637,7 +646,79 @@ struct CongestionSegment: Codable, Identifiable {
             return [8, 4]  // Long dashes
         }
     }
+
+    // MARK: - Frequency/Health Display Properties
+
+    /// Whether this segment has frequency data (real-time sources only)
+    var hasFrequencyData: Bool {
+        frequencyFactor != nil && baselineTrainCount != nil
+    }
+
+    /// Color for frequency/health visualization (higher is better)
+    var frequencyDisplayColor: Color {
+        guard let factor = frequencyFactor else { return .gray }
+        if factor >= 0.9 {
+            return .green    // Healthy: ≥90% of baseline
+        } else if factor >= 0.7 {
+            return .yellow   // Moderate: 70-90% of baseline
+        } else if factor >= 0.5 {
+            return .orange   // Reduced: 50-70% of baseline
+        } else {
+            return .red      // Severe: <50% of baseline
+        }
+    }
+
+    /// Display text for frequency level
+    var displayFrequencyLevel: String {
+        guard let level = frequencyLevel else { return "No data" }
+        switch level {
+        case "healthy": return "Healthy service"
+        case "moderate": return "Moderate service"
+        case "reduced": return "Reduced service"
+        case "severe": return "Severe disruption"
+        default: return level.capitalized
+        }
+    }
+
+    /// Percentage of baseline service running
+    var frequencyPercentage: Int? {
+        guard let factor = frequencyFactor else { return nil }
+        return Int((factor * 100).rounded())
+    }
 }
+
+// MARK: - Segment Highlight Mode
+
+/// Display mode for map segment highlighting
+enum SegmentHighlightMode: String, CaseIterable {
+    case off = "off"
+    case health = "health"        // Train frequency vs baseline (new)
+    case delays = "delays"        // Congestion/transit time (existing)
+
+    var displayName: String {
+        switch self {
+        case .off: return "Off"
+        case .health: return "Health"
+        case .delays: return "Delays"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .off: return "eye.slash"
+        case .health: return "heart.fill"
+        case .delays: return "clock.arrow.2.circlepath"
+        }
+    }
+
+    /// Cycle to next mode: Off → Health → Delays → Off
+    var next: SegmentHighlightMode {
+        switch self {
+        case .off: return .health
+        case .health: return .delays
+        case .delays: return .off
+        }
+    }
 
 struct StationCoordinates: Codable {
     let lat: Double
