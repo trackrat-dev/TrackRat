@@ -40,6 +40,7 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
                             .foregroundColor(.white)
                             .frame(width: 44, height: 44)
                     }
+                    .buttonStyle(.plain)
                 }
 
                 Spacer()
@@ -57,6 +58,7 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
                             .foregroundColor(.white)
                             .frame(width: 44, height: 44)
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }

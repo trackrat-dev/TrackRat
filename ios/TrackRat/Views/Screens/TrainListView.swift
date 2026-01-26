@@ -51,6 +51,7 @@ struct TrainListView: View {
                         .foregroundColor(.white)
                         .frame(width: 44, height: 44)
                 }
+                .buttonStyle(.plain)
 
                 Spacer()
 
@@ -103,6 +104,7 @@ struct TrainListView: View {
                 Button("Close") {
                     appState.navigationPath = NavigationPath()
                 }
+                .buttonStyle(.plain)
                 .foregroundColor(.white)
                 .font(.body)
                 .frame(height: 44)

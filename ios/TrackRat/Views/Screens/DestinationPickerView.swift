@@ -57,7 +57,7 @@ struct DestinationPickerView: View {
                                 if !appState.navigationPath.isEmpty {
                                     appState.navigationPath.removeLast()
                                 }
-                                
+
                                 // Clear destination selection but keep origin
                                 appState.selectedDestination = nil
                                 appState.destinationStationCode = nil
@@ -76,6 +76,7 @@ struct DestinationPickerView: View {
                                             )
                                     )
                             }
+                            .buttonStyle(.plain)
                             
                             // Search field
                             HStack {
