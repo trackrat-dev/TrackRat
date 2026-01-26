@@ -98,6 +98,7 @@ struct TripSelectionView: View {
                                         )
                                 )
                         }
+                        .buttonStyle(.plain)
                         .padding(.horizontal)
                         .padding(.top, 20)
                         .padding(.bottom, 8)
@@ -163,6 +164,7 @@ struct TripSelectionView: View {
                                 .font(.system(size: 24))
                                 .foregroundColor(.white.opacity(0.8))
                         }
+                        .buttonStyle(.plain)
                         .padding(.leading, 8)
                     }
                     .padding(.horizontal, 12)
@@ -392,6 +394,7 @@ struct TripSelectionView: View {
                     )
             )
         }
+        .buttonStyle(.plain)
         .disabled(state != .found)
         .padding(.horizontal)
     }
