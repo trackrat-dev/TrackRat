@@ -427,19 +427,25 @@ class TestCongestionAnalyzer:
                 mock_db, time_window_hours=3
             )
 
-        assert len(results) == 1
-        segment = results[0]
+        # NY->NP is expanded to NY->SE and SE->NP by segment normalization
+        # (since SE is an intermediate station on the NEC line)
+        assert len(results) == 2
 
-        assert segment.from_station == "NY"
-        assert segment.to_station == "NP"
-        assert segment.data_source == "NJT"
-        assert segment.sample_count == 25
-        assert segment.avg_transit_minutes == 19.0
-        assert segment.baseline_minutes == 15.0
-        assert segment.congestion_factor == pytest.approx(1.27, rel=0.01)
-        assert segment.congestion_level == "heavy"
-        assert segment.cancellation_count == 2
-        assert segment.cancellation_rate == pytest.approx(7.4, rel=0.01)  # 7.4%
+        # Find the segments by their from/to stations
+        segments_by_key = {(s.from_station, s.to_station): s for s in results}
+        assert ("NY", "SE") in segments_by_key
+        assert ("SE", "NP") in segments_by_key
+
+        # Both segments inherit the aggregated stats
+        for segment in results:
+            assert segment.data_source == "NJT"
+            assert segment.sample_count == 25
+            assert segment.avg_transit_minutes == 19.0
+            assert segment.baseline_minutes == 15.0
+            assert segment.congestion_factor == pytest.approx(1.27, rel=0.01)
+            assert segment.congestion_level == "heavy"
+            assert segment.cancellation_count == 2
+            assert segment.cancellation_rate == pytest.approx(7.4, rel=0.01)  # 7.4%
 
     @pytest.mark.asyncio
     async def test_get_individual_segments_optimized(
@@ -471,16 +477,20 @@ class TestCongestionAnalyzer:
             mock_db, time_window_hours=3, max_per_segment=10
         )
 
-        assert len(segments) == 1
-        segment = segments[0]
+        # NY->NP is expanded to NY->SE and SE->NP by segment normalization
+        assert len(segments) == 2
 
-        # Verify segment object attributes
-        assert segment.train_id == "1234"
-        assert segment.from_station == "NY"
-        assert segment.to_station == "NP"
-        assert segment.actual_minutes == 15.0
-        assert segment.delay_minutes == 0.0
-        assert segment.congestion_factor == 1.0
+        # Find the segments by their from/to stations
+        segments_by_key = {(s.from_station, s.to_station): s for s in segments}
+        assert ("NY", "SE") in segments_by_key
+        assert ("SE", "NP") in segments_by_key
+
+        # Both segments inherit the original segment's timing data
+        for segment in segments:
+            assert segment.train_id == "1234"
+            assert segment.actual_minutes == 15.0
+            assert segment.delay_minutes == 0.0
+            assert segment.congestion_factor == 1.0
 
     def test_cache_expiration(self, congestion_analyzer):
         """Test that cache expires after TTL."""
