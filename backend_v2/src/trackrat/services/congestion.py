@@ -105,10 +105,16 @@ class CongestionAnalyzer:
             db, time_window_hours, data_source
         )
 
+        # For journey loading (train positions), use a longer window for Amtrak
+        # to catch delayed trains that may have stale last_updated_at timestamps
+        journey_cutoff_time = cutoff_time
+        if data_source == "AMTRAK":
+            journey_cutoff_time = now_et() - timedelta(hours=max(time_window_hours, 4))
+
         # Load journeys with minimal data - we'll get current positions separately
         # Only load active journeys (not cancelled, expired, or completed)
         conditions = [
-            TrainJourney.last_updated_at >= cutoff_time,
+            TrainJourney.last_updated_at >= journey_cutoff_time,
             TrainJourney.is_cancelled.is_not(True),
             TrainJourney.is_expired.is_not(True),
             TrainJourney.is_completed.is_not(True),
@@ -410,8 +416,8 @@ class CongestionAnalyzer:
             WHERE
                 -- Consecutive stops only
                 js2.stop_sequence = js1.stop_sequence + 1
-                -- Within time window
-                AND tj.last_updated_at >= :cutoff_time
+                -- Within time window (based on when segment was actually traversed)
+                AND COALESCE(js1.actual_departure, js1.scheduled_departure) >= :cutoff_time
                 -- Data source filter (if specified)
                 AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                 -- Valid stations
@@ -619,8 +625,8 @@ class CongestionAnalyzer:
                 WHERE
                     -- Consecutive stops only
                     js2.stop_sequence = js1.stop_sequence + 1
-                    -- Within time window
-                    AND tj.last_updated_at >= :cutoff_time
+                    -- Within time window (based on when segment was actually traversed)
+                    AND COALESCE(js1.actual_departure, js1.scheduled_departure) >= :cutoff_time
                     -- Data source filter (if specified)
                     AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                     -- Active journeys only (cancelled trains handled separately)
@@ -710,8 +716,8 @@ class CongestionAnalyzer:
                 WHERE
                     -- Consecutive stops only
                     js2.stop_sequence = js1.stop_sequence + 1
-                    -- Within time window
-                    AND tj.last_updated_at >= :cutoff_time
+                    -- Within time window (based on when segment was actually traversed)
+                    AND COALESCE(js1.actual_departure, js1.scheduled_departure) >= :cutoff_time
                     -- Data source filter (if specified)
                     AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                     -- Active journeys only

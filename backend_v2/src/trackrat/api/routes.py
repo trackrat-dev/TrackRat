@@ -328,10 +328,15 @@ async def get_route_congestion(
                 )
 
     # Cache miss or force refresh - compute the response
+    # Use minimum 2-hour window for Amtrak due to lower train frequency
+    effective_time_window = time_window_hours
+    if data_source == "AMTRAK" and time_window_hours < 2:
+        effective_time_window = 2
+
     analyzer = CongestionAnalyzer()
     aggregated_segments, journeys, individual_segments = (
         await analyzer.get_network_congestion_with_trains(
-            db, time_window_hours, max_per_segment, data_source
+            db, effective_time_window, max_per_segment, data_source
         )
     )
 
