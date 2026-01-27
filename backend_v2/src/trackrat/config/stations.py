@@ -3202,6 +3202,97 @@ DISCOVERY_STATIONS = [
 
 
 # =============================================================================
+# Amtrak Northeast Corridor + Silver Service Stations
+# =============================================================================
+# Stations on the NEC (Boston-Washington) and Silver Service (Washington-Florida)
+# Used to filter Amtrak congestion data to only include this corridor
+NEC_SILVER_CORRIDOR_STATIONS: frozenset[str] = frozenset(
+    {
+        # NEC Core: Boston - New York (13)
+        "BOS",  # Boston South Station
+        "BBY",  # Boston Back Bay
+        "RTE",  # Route 128
+        "PVD",  # Providence
+        "KIN",  # Kingston (RI)
+        "WLY",  # Westerly
+        "MYS",  # Mystic
+        "NLC",  # New London
+        "OSB",  # Old Saybrook
+        "NHV",  # New Haven
+        "STM",  # Stamford
+        "NRO",  # New Rochelle
+        "NY",  # New York Penn Station
+        # NEC Core: New York - Philadelphia (8)
+        "NP",  # Newark Penn Station
+        "MP",  # Metropark
+        "NB",  # New Brunswick
+        "PJ",  # Princeton Junction
+        "TR",  # Trenton
+        "CWH",  # Cornwells Heights
+        "PHN",  # North Philadelphia
+        "PH",  # Philadelphia 30th Street
+        # NEC Core: Philadelphia - Washington (7)
+        "WI",  # Wilmington Station
+        "NRK",  # Newark (DE)
+        "ABE",  # Aberdeen
+        "BL",  # Baltimore Penn Station
+        "BA",  # BWI Thurgood Marshall Airport
+        "NCR",  # New Carrollton
+        "WS",  # Washington Union Station
+        # Virginia: Washington - Richmond (6)
+        "ALX",  # Alexandria
+        "WDB",  # Woodbridge
+        "QAN",  # Quantico
+        "FBG",  # Fredericksburg
+        "RVR",  # Richmond Staples Mill Road
+        "PTB",  # Petersburg
+        # North Carolina - Silver Meteor coastal route (4)
+        "RMT",  # Rocky Mount
+        "WLN",  # Wilson
+        "SSM",  # Selma
+        "FAY",  # Fayetteville
+        # North Carolina - Silver Star inland route (4)
+        "RGH",  # Raleigh
+        "CYN",  # Cary
+        "SOP",  # Southern Pines
+        "HAM",  # Hamlet
+        # South Carolina (6)
+        "FLO",  # Florence
+        "KTR",  # Kingstree
+        "CHS",  # Charleston
+        "YEM",  # Yemassee
+        "CAM",  # Camden
+        "CLB",  # Columbia SC
+        # Georgia (3)
+        "DNK",  # Denmark
+        "SAV",  # Savannah
+        "JSP",  # Jesup
+        # Florida - North (6)
+        "JAX",  # Jacksonville
+        "PAK",  # Palatka
+        "DLD",  # DeLand
+        "WPK",  # Winter Park
+        "ORL",  # Orlando
+        "KIS",  # Kissimmee
+        # Florida - Tampa branch (Silver Star) (4)
+        "WTH",  # Winter Haven
+        "LAK",  # Lakeland
+        "LKL",  # Lakeland (alternate code)
+        "TPA",  # Tampa
+        # Florida - Miami branch (Silver Meteor) (8)
+        "SBG",  # Sebring
+        "OKE",  # Okeechobee
+        "WPB",  # West Palm Beach
+        "DLB",  # Delray Beach
+        "DFB",  # Deerfield Beach
+        "FTL",  # Fort Lauderdale
+        "HOL",  # Hollywood
+        "MIA",  # Miami
+    }
+)
+
+
+# =============================================================================
 # GTFS Station Mapping
 # =============================================================================
 
