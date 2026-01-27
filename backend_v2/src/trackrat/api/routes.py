@@ -14,7 +14,7 @@ from sqlalchemy.orm import aliased, selectinload
 from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
-from trackrat.config.stations import get_station_name
+from trackrat.config.stations import NEC_SILVER_CORRIDOR_STATIONS, get_station_name
 from trackrat.db.engine import get_db
 from trackrat.models.api import (
     AggregateStats,
@@ -334,6 +334,45 @@ async def get_route_congestion(
             db, time_window_hours, max_per_segment, data_source
         )
     )
+
+    # Filter Amtrak data to only include NEC + Silver Service corridor stations
+    # This excludes trains on other Amtrak routes (California Zephyr, Empire Builder, etc.)
+    if data_source == "AMTRAK":
+        # Filter aggregated segments: both stations must be on the corridor
+        aggregated_segments = [
+            s
+            for s in aggregated_segments
+            if s.from_station in NEC_SILVER_CORRIDOR_STATIONS
+            and s.to_station in NEC_SILVER_CORRIDOR_STATIONS
+        ]
+
+        # Filter individual segments: both stations must be on the corridor
+        individual_segments = [
+            s
+            for s in individual_segments
+            if s.from_station in NEC_SILVER_CORRIDOR_STATIONS
+            and s.to_station in NEC_SILVER_CORRIDOR_STATIONS
+        ]
+
+        # Filter journeys: keep only trains with stops on the corridor
+        # A train is on the corridor if its current position involves corridor stations
+        def journey_on_corridor(journey: TrainJourney) -> bool:
+            if not journey.stops:
+                return False
+            # Check if any stop is on the corridor
+            for stop in journey.stops:
+                if stop.station_code in NEC_SILVER_CORRIDOR_STATIONS:
+                    return True
+            return False
+
+        journeys = [j for j in journeys if journey_on_corridor(j)]
+
+        logger.debug(
+            "amtrak_corridor_filter_applied",
+            aggregated_segments=len(aggregated_segments),
+            individual_segments=len(individual_segments),
+            journeys=len(journeys),
+        )
 
     # Extract train positions from journeys
     departure_service = DepartureService()
