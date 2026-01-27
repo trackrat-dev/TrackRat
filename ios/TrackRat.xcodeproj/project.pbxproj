@@ -68,7 +68,6 @@
 		A18D98D82F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */; };
 		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
-		A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */; };
 		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
 		A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */; };
 		A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */; };
@@ -214,7 +213,6 @@
 		A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DateSelectorSheet.swift; path = TrackRat/Views/Components/DateSelectorSheet.swift; sourceTree = "<group>"; };
 		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
-		A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityDebugView.swift; path = Views/Components/LiveActivityDebugView.swift; sourceTree = "<group>"; };
 		A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveTripsSection.swift; path = Views/Components/ActiveTripsSection.swift; sourceTree = "<group>"; };
 		A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityServiceTests.swift; path = TrackRatTests/Services/LiveActivityServiceTests.swift; sourceTree = "<group>"; };
 		A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RatSenseServiceTests.swift; path = TrackRatTests/Services/RatSenseServiceTests.swift; sourceTree = "<group>"; };
@@ -369,7 +367,6 @@
 				A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */,
 				A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */,
 				A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */,
-				A18E54432DEB8A0000AB2B74 /* LiveActivityDebugView.swift */,
 				A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */,
 				A17329632E54A8A2006BF187 /* OnboardingView.swift */,
 				A17329682E54D46E006BF187 /* intro_animation.mp4 */,
@@ -650,7 +647,6 @@
 				A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */,
 				A19E912D2E3F8E4A0011F777 /* LegacyBottomSheetView.swift in Sources */,
 				A12C314B2F1DA64A00CAF76D /* SubscriptionService.swift in Sources */,
-				A18E54442DEB8A0000AB2B74 /* LiveActivityDebugView.swift in Sources */,
 				A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */,
 				A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */,
 				A12C31442F1DA62600CAF76D /* ProFeatureLockView.swift in Sources */,
