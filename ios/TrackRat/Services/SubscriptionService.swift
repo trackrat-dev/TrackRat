@@ -178,10 +178,10 @@ final class SubscriptionService: ObservableObject {
 
     private init() {
         // Load debug override state
-        // Default to true (premium mode enabled) - all users get Pro features
+        // Default to false - users see normal IAP flow
         if userDefaults.object(forKey: debugOverrideKey) == nil {
-            self.debugOverrideEnabled = true
-            userDefaults.set(true, forKey: debugOverrideKey)
+            self.debugOverrideEnabled = false
+            userDefaults.set(false, forKey: debugOverrideKey)
         } else {
             self.debugOverrideEnabled = userDefaults.bool(forKey: debugOverrideKey)
         }
