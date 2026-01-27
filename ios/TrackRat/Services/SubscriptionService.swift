@@ -177,14 +177,8 @@ final class SubscriptionService: ObservableObject {
     // MARK: - Initialization
 
     private init() {
-        // Load debug override state
-        // Default to false - users see normal IAP flow
-        if userDefaults.object(forKey: debugOverrideKey) == nil {
-            self.debugOverrideEnabled = false
-            userDefaults.set(false, forKey: debugOverrideKey)
-        } else {
-            self.debugOverrideEnabled = userDefaults.bool(forKey: debugOverrideKey)
-        }
+        // Always start with debug override off; user can toggle during session
+        self.debugOverrideEnabled = false
 
         // Load soft trial start date from UserDefaults
         if let storedDate = userDefaults.object(forKey: softTrialStartDateKey) as? Date {
