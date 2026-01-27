@@ -661,7 +661,7 @@ struct ProUserCard: View {
                             .foregroundColor(.white.opacity(0.6))
                     }
                     #if DEBUG
-                    else if subscriptionService.debugOverrideEnabled {
+                    if subscriptionService.debugOverrideEnabled {
                         Text("Debug mode enabled")
                             .font(.caption)
                             .foregroundColor(.orange.opacity(0.8))
