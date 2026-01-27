@@ -338,6 +338,20 @@ async def get_route_congestion(
         )
     )
 
+    # Filter out segments containing "SAN" station code - collision between
+    # San Diego Santa Fe Depot (Pacific Surfliner) and Sanford, FL (Silver Service)
+    # causes cross-country lines on the map. TODO: Proper disambiguation in Amtrak collector.
+    aggregated_segments = [
+        s
+        for s in aggregated_segments
+        if s.from_station != "SAN" and s.to_station != "SAN"
+    ]
+    individual_segments = [
+        s
+        for s in individual_segments
+        if s.from_station != "SAN" and s.to_station != "SAN"
+    ]
+
     # Extract train positions from journeys
     departure_service = DepartureService()
     train_positions = []
