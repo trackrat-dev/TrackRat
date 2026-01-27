@@ -3,26 +3,22 @@ import SwiftUI
 struct AdvancedConfigurationView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
-    @ObservedObject private var journeyFeedbackService = JourneyFeedbackService.shared
-    @State private var selectedEnvironment: ServerEnvironment
-    @State private var healthCheckResult: HealthCheckResult?
-    @State private var isTestingConnection = false
     @State private var showClearHistoryConfirmation = false
     @State private var resetDataSuccessMessage: String?
 
     private let storageService = StorageService()
-    
-    init() {
-        let storage = StorageService()
-        _selectedEnvironment = State(initialValue: storage.loadServerEnvironment())
-    }
-    
-    var body: some View {
-        let serverEnvironmentSection = createServerEnvironmentSection()
-        let healthCheckSection = createHealthCheckSection()
 
-        return VStack(spacing: 0) {
+    // MARK: - Debug-only state
+    #if DEBUG
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
+    @ObservedObject private var journeyFeedbackService = JourneyFeedbackService.shared
+    @State private var selectedEnvironment: ServerEnvironment = StorageService().loadServerEnvironment()
+    @State private var healthCheckResult: HealthCheckResult?
+    @State private var isTestingConnection = false
+    #endif
+
+    var body: some View {
+        VStack(spacing: 0) {
             TrackRatNavigationHeader(
                 title: "Advanced Configuration",
                 showBackButton: false,
@@ -32,19 +28,19 @@ struct AdvancedConfigurationView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     createTrainSystemsSection()
+                    #if DEBUG
                     createSubscriptionDebugSection()
-                    serverEnvironmentSection
-                    healthCheckSection
-                    createResetDataSection()
+                    createServerEnvironmentSection()
+                    createHealthCheckSection()
+                    createDebugToolsSection()
+                    #endif
+                    createDataManagementSection()
                 }
                 .padding()
                 .padding(.bottom, 40)
             }
         }
         .navigationBarHidden(true)
-        .onAppear {
-            selectedEnvironment = storageService.loadServerEnvironment()
-        }
         .alert("Clear Trip History", isPresented: $showClearHistoryConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Clear", role: .destructive) {
@@ -114,6 +110,8 @@ struct AdvancedConfigurationView: View {
         )
     }
 
+    // MARK: - Debug-only Sections
+    #if DEBUG
     @ViewBuilder
     private func createSubscriptionDebugSection() -> some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -351,14 +349,14 @@ struct AdvancedConfigurationView: View {
     }
 
     @ViewBuilder
-    private func createResetDataSection() -> some View {
+    private func createDebugToolsSection() -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Reset Data")
+            Text("Debug Tools")
                 .font(.headline)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
 
-            Text("Debug tools for testing feedback prompts and clearing stored data.")
+            Text("Development tools for testing feedback prompts.")
                 .font(.caption)
                 .foregroundColor(.white.opacity(0.7))
 
@@ -420,35 +418,6 @@ struct AdvancedConfigurationView: View {
                     )
                 }
                 .buttonStyle(.plain)
-
-                // Clear Trip History
-                Button {
-                    showClearHistoryConfirmation = true
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Clear Trip History")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            Text("Removes all recorded trips and statistics")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.6))
-                        }
-                        Spacer()
-                        Image(systemName: "trash")
-                            .foregroundColor(.red)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.red.opacity(0.1))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(.red.opacity(0.3), lineWidth: 1)
-                            )
-                    )
-                }
-                .buttonStyle(.plain)
             }
         }
         .padding()
@@ -473,27 +442,12 @@ struct AdvancedConfigurationView: View {
         showSuccessMessage("Cooldowns reset")
     }
 
-    private func clearTripHistory() {
-        storageService.clearCompletedTrips()
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        showSuccessMessage("Trip history cleared")
-    }
-
-    private func showSuccessMessage(_ message: String) {
-        resetDataSuccessMessage = message
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            resetDataSuccessMessage = nil
-        }
-    }
-
     private func saveConfiguration() {
         storageService.saveServerEnvironment(selectedEnvironment)
         APIService.shared.updateServerEnvironment(selectedEnvironment)
-
-        // Haptic feedback
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
-    
+
     private func testConnection() {
         isTestingConnection = true
         healthCheckResult = nil
@@ -507,7 +461,6 @@ struct AdvancedConfigurationView: View {
                     isTestingConnection = false
                 }
 
-                // Haptic feedback
                 if result.success {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 } else {
@@ -516,10 +469,78 @@ struct AdvancedConfigurationView: View {
             }
         }
     }
+    #endif
 
+    // MARK: - Data Management Section (all builds)
+    @ViewBuilder
+    private func createDataManagementSection() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Data Management")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+
+            Text("Manage your stored data.")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+
+            // Clear Trip History
+            Button {
+                showClearHistoryConfirmation = true
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Clear Trip History")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        Text("Removes all recorded trips and statistics")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    Spacer()
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.red.opacity(0.1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(.red.opacity(0.3), lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+
+    private func clearTripHistory() {
+        storageService.clearCompletedTrips()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        showSuccessMessage("Trip history cleared")
+    }
+
+    private func showSuccessMessage(_ message: String) {
+        resetDataSuccessMessage = message
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            resetDataSuccessMessage = nil
+        }
+    }
 }
 
 
+// MARK: - Debug-only Components
+#if DEBUG
 struct ServerEnvironmentRow: View {
     let environment: ServerEnvironment
     let isSelected: Bool
@@ -567,6 +588,7 @@ struct ServerEnvironmentRow: View {
         .buttonStyle(.plain)
     }
 }
+#endif
 
 struct TrainSystemToggleRow: View {
     let system: TrainSystem

@@ -659,11 +659,14 @@ struct ProUserCard: View {
                         Text(expirationText)
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.6))
-                    } else if subscriptionService.debugOverrideEnabled {
+                    }
+                    #if DEBUG
+                    else if subscriptionService.debugOverrideEnabled {
                         Text("Debug mode enabled")
                             .font(.caption)
                             .foregroundColor(.orange.opacity(0.8))
                     }
+                    #endif
                 }
 
                 Spacer()
