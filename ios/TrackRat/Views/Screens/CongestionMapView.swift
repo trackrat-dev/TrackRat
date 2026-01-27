@@ -561,22 +561,6 @@ class CongestionMapViewModel: ObservableObject {
                 }
             }
 
-            // Debug: Breakdown by data source
-            let sourceBreakdown = Dictionary(grouping: response.aggregatedSegments, by: { $0.dataSource })
-                .mapValues { $0.count }
-            print("🚦 Breakdown by data source: \(sourceBreakdown)")
-
-            // Debug: Check for station codes missing coordinates
-            let allStationCodes = Set(
-                response.aggregatedSegments.flatMap { [$0.fromStation, $0.toStation] }
-            )
-            let missingCoords = allStationCodes.filter { Stations.getCoordinates(for: $0) == nil }
-            if !missingCoords.isEmpty {
-                print("🚦 ⚠️ DIAGNOSTIC: \(missingCoords.count) station codes have NO coordinates: \(missingCoords.sorted().joined(separator: ", "))")
-            } else {
-                print("🚦 ✅ DIAGNOSTIC: All \(allStationCodes.count) station codes have coordinates")
-            }
-
             // OPTIMIZATION: Process station data in background to avoid blocking UI
             // This moves the heavy coordinate lookups off the main thread
             let processedData = await Task.detached(priority: .userInitiated) {
@@ -595,8 +579,6 @@ class CongestionMapViewModel: ObservableObject {
                             name: segment.fromStationDisplayName,
                             coordinate: coords
                         )
-                    } else {
-                        print("🚦 ⚠️ AGGREGATED: No coordinates for from_station: \(segment.fromStation) (\(segment.dataSource): \(segment.fromStation)→\(segment.toStation))")
                     }
                     if let coords = Stations.getCoordinates(for: segment.toStation) {
                         stationMap[segment.toStation] = MapStation(
@@ -604,8 +586,6 @@ class CongestionMapViewModel: ObservableObject {
                             name: segment.toStationDisplayName,
                             coordinate: coords
                         )
-                    } else {
-                        print("🚦 ⚠️ AGGREGATED: No coordinates for to_station: \(segment.toStation) (\(segment.dataSource): \(segment.fromStation)→\(segment.toStation))")
                     }
                 }
 
@@ -675,26 +655,10 @@ class CongestionMapViewModel: ObservableObject {
         // Get raw values of selected systems for filtering
         let selectedSystemStrings = selectedSystems.asRawStrings
 
-        // Debug: Log filter inputs
-        print("🚦 FILTER: Selected systems: \(selectedSystemStrings.sorted().joined(separator: ", "))")
-        let beforeFilterBreakdown = Dictionary(grouping: allAggregatedSegments, by: { $0.dataSource })
-            .mapValues { $0.count }
-        print("🚦 FILTER: Before filter (\(allAggregatedSegments.count) total): \(beforeFilterBreakdown)")
-
         // First filter by selected systems
         let systemFilteredAggregated = allAggregatedSegments.filter { selectedSystemStrings.contains($0.dataSource) }
         let systemFilteredIndividual = allIndividualSegments.filter { selectedSystemStrings.contains($0.dataSource) }
         let systemFilteredStations = allStations.filter { Stations.isStationVisible($0.code, withSystems: selectedSystems) }
-
-        // Debug: Log what was filtered out
-        let droppedCount = allAggregatedSegments.count - systemFilteredAggregated.count
-        if droppedCount > 0 {
-            let droppedSources = Set(allAggregatedSegments.map { $0.dataSource }).subtracting(selectedSystemStrings)
-            print("🚦 FILTER: Dropped \(droppedCount) segments (unselected sources: \(droppedSources.sorted().joined(separator: ", ")))")
-        }
-        let afterFilterBreakdown = Dictionary(grouping: systemFilteredAggregated, by: { $0.dataSource })
-            .mapValues { $0.count }
-        print("🚦 FILTER: After system filter (\(systemFilteredAggregated.count) total): \(afterFilterBreakdown)")
 
         // Then apply route filter if we have one
         let filteredAggregated = selectedRoute != nil ? filterSegmentsForRoute(systemFilteredAggregated) : systemFilteredAggregated
@@ -969,8 +933,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
             let sortedSegments = segmentsToAdd.sorted { $0.congestionFactor < $1.congestionFactor }
 
             var newOverlays: [SystemCongestionPolyline] = []
-            var skippedSegments: [(from: String, to: String, dataSource: String)] = []
-
             for segment in sortedSegments {
                 if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
                    let toCoords = Stations.getCoordinates(for: segment.toStation) {
@@ -982,25 +944,8 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     polyline.isDimmed = !individualSegments.isEmpty
                     newOverlays.append(polyline)
                     context.coordinator.aggregatedOverlayMap[segment.id] = polyline
-                } else {
-                    skippedSegments.append((segment.fromStation, segment.toStation, segment.dataSource))
                 }
             }
-
-            // Debug: Log skipped segments due to missing coordinates
-            if !skippedSegments.isEmpty {
-                print("🚦 ⚠️ RENDER: Skipped \(skippedSegments.count) segments due to missing coordinates:")
-                for (from, to, source) in skippedSegments.prefix(10) {
-                    let fromStatus = Stations.getCoordinates(for: from) == nil ? "❌" : "✓"
-                    let toStatus = Stations.getCoordinates(for: to) == nil ? "❌" : "✓"
-                    print("   \(source): \(from)[\(fromStatus)] → \(to)[\(toStatus)]")
-                }
-                if skippedSegments.count > 10 {
-                    print("   ... and \(skippedSegments.count - 10) more")
-                }
-            }
-            print("🚦 RENDER: Created \(newOverlays.count) overlays from \(sortedSegments.count) segments")
-
             if !newOverlays.isEmpty {
                 mapView.addOverlays(newOverlays)
             }
