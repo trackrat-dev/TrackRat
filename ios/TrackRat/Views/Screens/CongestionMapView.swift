@@ -404,7 +404,7 @@ class CongestionMapViewModel: ObservableObject {
     // Note: Congestion defaults to Off since it's a Pro feature
     // Pro users will have it enabled via MapLayerControlsView.onAppear
     @Published var showCongestion: CongestionMode = .off
-    @Published var showRoutes: Bool = true
+    @Published var showRoutes: Bool = false  // Default: Off (hidden from layers menu)
     @Published var showStations: Bool = false  // Default: Off
 
     // MARK: - Data

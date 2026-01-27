@@ -893,19 +893,6 @@ struct MapLayerControlsView: View {
                     }
                 }
 
-                // Routes toggle
-                MapLayerToggleButton(
-                    label: "Routes",
-                    icon: "point.topleft.down.to.point.bottomright.curvepath",
-                    isOn: viewModel.showRoutes,
-                    detail: viewModel.showRoutes ? "On" : "Off",
-                    isPro: true,
-                    showProBadge: false
-                ) {
-                    viewModel.showRoutes.toggle()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-
                 // Stations toggle
                 MapLayerToggleButton(
                     label: "Stations",
