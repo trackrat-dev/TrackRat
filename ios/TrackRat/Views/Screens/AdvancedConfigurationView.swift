@@ -8,14 +8,22 @@ struct AdvancedConfigurationView: View {
 
     private let storageService = StorageService()
 
-    // MARK: - Debug-only state
-    #if DEBUG
+    // MARK: - Debug/TestFlight state
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     @ObservedObject private var journeyFeedbackService = JourneyFeedbackService.shared
     @State private var selectedEnvironment: ServerEnvironment = StorageService().loadServerEnvironment()
     @State private var healthCheckResult: HealthCheckResult?
     @State private var isTestingConnection = false
-    #endif
+
+    /// Shows debug sections in DEBUG builds or TestFlight (but not App Store releases)
+    private var showDebugSections: Bool {
+        #if DEBUG
+        return true
+        #else
+        guard let url = Bundle.main.appStoreReceiptURL else { return false }
+        return url.lastPathComponent == "sandboxReceipt"
+        #endif
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,12 +36,12 @@ struct AdvancedConfigurationView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     createTrainSystemsSection()
-                    #if DEBUG
-                    createSubscriptionDebugSection()
-                    createServerEnvironmentSection()
-                    createHealthCheckSection()
-                    createDebugToolsSection()
-                    #endif
+                    if showDebugSections {
+                        createSubscriptionDebugSection()
+                        createServerEnvironmentSection()
+                        createHealthCheckSection()
+                        createDebugToolsSection()
+                    }
                     createDataManagementSection()
                 }
                 .padding()
@@ -110,8 +118,7 @@ struct AdvancedConfigurationView: View {
         )
     }
 
-    // MARK: - Debug-only Sections
-    #if DEBUG
+    // MARK: - Debug/TestFlight Sections
     @ViewBuilder
     private func createSubscriptionDebugSection() -> some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -469,7 +476,6 @@ struct AdvancedConfigurationView: View {
             }
         }
     }
-    #endif
 
     // MARK: - Data Management Section (all builds)
     @ViewBuilder
@@ -539,8 +545,7 @@ struct AdvancedConfigurationView: View {
 }
 
 
-// MARK: - Debug-only Components
-#if DEBUG
+// MARK: - Debug/TestFlight Components
 struct ServerEnvironmentRow: View {
     let environment: ServerEnvironment
     let isSelected: Bool
@@ -588,7 +593,6 @@ struct ServerEnvironmentRow: View {
         .buttonStyle(.plain)
     }
 }
-#endif
 
 struct TrainSystemToggleRow: View {
     let system: TrainSystem
