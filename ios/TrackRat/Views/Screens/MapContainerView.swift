@@ -325,13 +325,8 @@ struct MapContainerView: View {
             // Always ensure we start with overall congestion view (but preserve activeTrainRoute)
             appState.mapDisplayMode = .overallCongestion
 
-            // Set default congestion mode based on subscription status
-            // Pro users: show congestion on, non-Pro: keep Off (congestion is Pro-only)
-            if SubscriptionService.shared.isPro {
-                mapViewModel.showCongestion = .aggregated
-            } else {
-                mapViewModel.showCongestion = .off
-            }
+            // Show congestion lines for all users
+            mapViewModel.showCongestion = .aggregated
 
             // IMPORTANT: Don't clear selectedRoute if we're navigating within the app
             // Only clear it if we're at the root (no navigation path)
@@ -850,8 +845,6 @@ struct CongestionMapControlsView: View {
 struct MapLayerControlsView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var viewModel: CongestionMapViewModel
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
-    @State private var showingPaywall = false
 
     // Max height: available space above the bottom sheet (50% of screen),
     // minus top UI elements (~90pt) and safety margin
@@ -866,30 +859,24 @@ struct MapLayerControlsView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 10) {
-                // Congestion toggle (tri-state: Off -> Summary -> Trains) - Pro only
+                // Congestion toggle (tri-state: Off -> On -> Trains)
                 MapLayerToggleButton(
                     label: "Congestion",
                     icon: "train.side.front.car",
                     isOn: viewModel.showCongestion != .off,
                     detail: viewModel.showCongestion.rawValue,
-                    isPro: subscriptionService.isPro,
-                    showProBadge: viewModel.showCongestion == .off
+                    isPro: true,
+                    showProBadge: false
                 ) {
-                    if subscriptionService.isPro {
-                        let wasOff = viewModel.showCongestion == .off
-                        viewModel.cycleCongestionMode()
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    let wasOff = viewModel.showCongestion == .off
+                    viewModel.cycleCongestionMode()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
-                        // Reload congestion data when turning on (from off state)
-                        if wasOff && viewModel.showCongestion != .off {
-                            Task {
-                                await viewModel.fetchCongestionData()
-                            }
+                    // Reload congestion data when turning on (from off state)
+                    if wasOff && viewModel.showCongestion != .off {
+                        Task {
+                            await viewModel.fetchCongestionData()
                         }
-                    } else {
-                        // Non-Pro user trying to enable congestion - show paywall
-                        showingPaywall = true
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     }
                 }
 
@@ -938,14 +925,6 @@ struct MapLayerControlsView: View {
                 .fill(.ultraThinMaterial)
         )
         .fixedSize(horizontal: true, vertical: false)
-        .onAppear {
-            // Ensure non-Pro users can't have congestion enabled
-            // (handles edge case if subscription lapses while app is running)
-            if !subscriptionService.isPro && viewModel.showCongestion != .off {
-                viewModel.showCongestion = .off
-            }
-        }
-        .paywallSheet(isPresented: $showingPaywall, context: .congestionMap)
     }
 }
 
