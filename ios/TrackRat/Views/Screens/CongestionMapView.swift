@@ -154,9 +154,17 @@ struct CongestionMapView: View {
         .onChange(of: appState.selectedSystems) { _, newSystems in
             viewModel.setSelectedSystems(newSystems)
         }
+        .onChange(of: appState.mapHighlightMode) { _, newMode in
+            viewModel.highlightMode = newMode
+        }
+        .onChange(of: appState.showMapStations) { _, newValue in
+            viewModel.showStations = newValue
+        }
         .onAppear {
-            // Sync selected systems on appear
+            // Sync AppState settings to ViewModel on appear
             viewModel.setSelectedSystems(appState.selectedSystems)
+            viewModel.highlightMode = appState.mapHighlightMode
+            viewModel.showStations = appState.showMapStations
         }
     }
 
@@ -471,8 +479,7 @@ enum SegmentDetailMode: String, CaseIterable {
 @MainActor
 class CongestionMapViewModel: ObservableObject {
     // MARK: - Layer Visibility
-    // Note: Segment highlighting defaults to Off since it's a Pro feature
-    // Pro users will have it enabled via MapLayerControlsView.onAppear
+    // Note: These are synced from AppState on view appear via onChange handlers
     @Published var highlightMode: SegmentHighlightMode = .off
     @Published var detailMode: SegmentDetailMode = .summary  // Summary vs individual trains
     @Published var showRoutes: Bool = false  // Default: Off

@@ -330,6 +330,9 @@ struct MyProfileView: View {
 
                     }
 
+                    // Map Display section
+                    MapDisplaySection()
+
                     // Service Alerts section
                     VStack(spacing: 16) {
                         // Section header
@@ -992,6 +995,158 @@ struct TripRowView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
+    }
+}
+
+// MARK: - Map Display Section
+
+struct MapDisplaySection: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        VStack(spacing: 16) {
+            // Section header
+            HStack {
+                Text("Map Display")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                Spacer()
+            }
+            .padding(.horizontal)
+
+            // Status Mode
+            Button {
+                appState.cycleMapHighlightMode()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: appState.mapHighlightMode.icon)
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Status Mode")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+
+                        Text(appState.mapHighlightMode.displayName)
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Stations Toggle
+            Button {
+                appState.showMapStations.toggle()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Show Stations")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $appState.showMapStations)
+                        .labelsHidden()
+                        .tint(.orange)
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Train Systems
+            VStack(spacing: 0) {
+                ForEach(TrainSystem.allCases, id: \.self) { system in
+                    TrainSystemRow(
+                        system: system,
+                        isSelected: appState.isSystemSelected(system),
+                        isLast: system == TrainSystem.allCases.last
+                    ) {
+                        appState.toggleSystem(system)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+        }
+    }
+}
+
+// MARK: - Train System Row
+
+private struct TrainSystemRow: View {
+    let system: TrainSystem
+    let isSelected: Bool
+    let isLast: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 0) {
+                HStack(spacing: 16) {
+                    Image(systemName: system.icon)
+                        .font(.title2)
+                        .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
+                        .frame(width: 24, height: 24)
+
+                    Text(system.displayName)
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+
+                    Spacer()
+
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
+                }
+                .padding()
+
+                if !isLast {
+                    Divider()
+                        .background(Color.white.opacity(0.1))
+                        .padding(.leading, 56)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

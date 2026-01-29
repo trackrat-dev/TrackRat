@@ -57,7 +57,6 @@ struct MapContainerView: View {
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
-    @State private var showingLayers = false  // Layer controls visibility
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @ObservedObject private var ratSenseService = RatSenseService.shared
     @ObservedObject private var feedbackService = JourneyFeedbackService.shared
@@ -148,63 +147,19 @@ struct MapContainerView: View {
             )
             .ignoresSafeArea()
 
-            // Tap-to-dismiss overlay for layers menu
-            if showingLayers {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showingLayers = false
-                        }
-                    }
-            }
-
             // Operations summary pill (network scope) - positioned at top
             // Shows network summary + route summary when RatSense has a prediction
             VStack {
-                HStack(alignment: .top) {
-                    if mapViewModel.highlightMode != .off {
+                if mapViewModel.highlightMode != .off {
+                    HStack {
                         OperationsSummaryView(
                             scope: .network,
                             ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
                         )
-                    }
-
-                    Spacer()
-
-                    // Layers button
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showingLayers.toggle()
-                        }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        Image(systemName: "square.3.layers.3d")
-                            .font(.title2)
-                            .foregroundColor(showingLayers ? .white : .orange)
-                            .padding(10)
-                            .background {
-                                if showingLayers {
-                                    Circle().fill(Color.orange)
-                                } else {
-                                    Circle().fill(.ultraThinMaterial)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 30)
-
-                // Layer controls (collapsible, right-aligned below button)
-                if showingLayers {
-                    HStack {
                         Spacer()
-                        MapLayerControlsView(viewModel: mapViewModel)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .padding(.top, 30)
                 }
 
                 Spacer()
@@ -269,11 +224,19 @@ struct MapContainerView: View {
             }
         }
         .onAppear {
-            // Sync selected systems on appear
+            // Sync AppState settings to ViewModel on appear
             mapViewModel.setSelectedSystems(appState.selectedSystems)
+            mapViewModel.highlightMode = appState.mapHighlightMode
+            mapViewModel.showStations = appState.showMapStations
         }
         .onChange(of: appState.selectedSystems) { _, newSystems in
             mapViewModel.setSelectedSystems(newSystems)
+        }
+        .onChange(of: appState.mapHighlightMode) { _, newMode in
+            mapViewModel.highlightMode = newMode
+        }
+        .onChange(of: appState.showMapStations) { _, newValue in
+            mapViewModel.showStations = newValue
         }
         .onChange(of: appState.deepLinkTrainNumber) { _, trainNumber in
             // Handle deep link navigation when train number is set
@@ -839,179 +802,6 @@ struct CongestionMapControlsView: View {
                 }
             )
         }
-    }
-}
-
-
-// MARK: - Map Layer Controls View
-struct MapLayerControlsView: View {
-    @EnvironmentObject private var appState: AppState
-    @ObservedObject var viewModel: CongestionMapViewModel
-
-    // Max height: available space above the bottom sheet (50% of screen),
-    // minus top UI elements (~90pt) and safety margin
-    private var maxMenuHeight: CGFloat {
-        let screenHeight = UIScreen.main.bounds.height
-        let bottomSheetHeight = screenHeight * 0.5
-        let topOffset: CGFloat = 90  // Safe area + padding + button + spacing
-        let margin: CGFloat = 40
-        return screenHeight - bottomSheetHeight - topOffset - margin
-    }
-
-    var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 10) {
-                // Segment highlight toggle (Off → Health → Delays → Off)
-                MapLayerToggleButton(
-                    label: "Segments",
-                    icon: viewModel.highlightMode.icon,
-                    isOn: viewModel.highlightMode != .off,
-                    detail: viewModel.highlightMode.displayName,
-                    isPro: true,
-                    showProBadge: false
-                ) {
-                    let wasOff = viewModel.highlightMode == .off
-                    viewModel.cycleHighlightMode()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
-                    // Reload congestion data when turning on (from off state)
-                    if wasOff && viewModel.highlightMode != .off {
-                        Task {
-                            await viewModel.fetchCongestionData()
-                        }
-                    }
-                }
-
-                // Stations toggle
-                MapLayerToggleButton(
-                    label: "Stations",
-                    icon: "mappin.circle.fill",
-                    isOn: viewModel.showStations,
-                    detail: viewModel.showStations ? "On" : "Off",
-                    isPro: true,
-                    showProBadge: false
-                ) {
-                    viewModel.showStations.toggle()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-
-                Divider()
-                    .background(Color.white.opacity(0.2))
-
-                // Train Systems section (only shows enabled systems)
-                if appState.enabledSystems.count > 1 {
-                    Text("Train Systems")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
-
-                    ForEach(Array(appState.enabledSystems).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { system in
-                        SystemToggleRow(
-                            system: system,
-                            isSelected: appState.isSystemSelected(system),
-                            action: {
-                                appState.toggleSystem(system)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        )
-                    }
-                }
-            }
-            .padding(12)
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .frame(maxHeight: maxMenuHeight)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-        .fixedSize(horizontal: true, vertical: false)
-    }
-}
-
-// MARK: - System Toggle Row
-private struct SystemToggleRow: View {
-    let system: TrainSystem
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: system.icon)
-                    .font(.subheadline)
-                    .foregroundColor(isSelected ? .orange : .secondary)
-                    .frame(width: 20)
-
-                Text(system.displayName)
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.subheadline)
-                    .foregroundColor(isSelected ? .orange : .secondary.opacity(0.5))
-            }
-            .padding(.vertical, 2)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Map Layer Toggle Button
-private struct MapLayerToggleButton: View {
-    let label: String
-    let icon: String
-    let isOn: Bool
-    let detail: String
-    var isPro: Bool = true
-    var showProBadge: Bool = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.body)
-                    .foregroundColor(isOn ? .orange : .secondary)
-                    .frame(width: 20)
-
-                Text(label)
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-
-                // Show PRO badge for locked features
-                if showProBadge && !isPro {
-                    HStack(spacing: 2) {
-                        Image(systemName: "lock.fill")
-                            .font(.caption2)
-                        Text("PRO")
-                            .font(.caption2.bold())
-                    }
-                    .foregroundColor(.orange)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule()
-                            .fill(.orange.opacity(0.15))
-                    )
-                } else {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundColor(isOn ? .orange : .secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule()
-                                .fill(isOn ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
-                        )
-                }
-            }
-            .padding(.trailing, 24)
-            .contentShape(Rectangle())
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
     }
 }
 
