@@ -1,0 +1,53 @@
+"""
+Shared types for congestion analysis.
+
+Separated from congestion.py to avoid circular imports with segment_normalizer.py.
+"""
+
+# Congestion level thresholds (factor = current_avg / baseline)
+CONGESTION_THRESHOLD_NORMAL = 1.1  # <= 10% slower than baseline
+CONGESTION_THRESHOLD_MODERATE = 1.25  # <= 25% slower than baseline
+CONGESTION_THRESHOLD_HEAVY = 1.5  # <= 50% slower than baseline
+# Above 1.5 = severe
+
+
+def get_congestion_level(congestion_factor: float) -> str:
+    """Determine congestion level from a congestion factor."""
+    if congestion_factor <= CONGESTION_THRESHOLD_NORMAL:
+        return "normal"
+    elif congestion_factor <= CONGESTION_THRESHOLD_MODERATE:
+        return "moderate"
+    elif congestion_factor <= CONGESTION_THRESHOLD_HEAVY:
+        return "heavy"
+    else:
+        return "severe"
+
+
+class SegmentCongestion:
+    """Congestion data for a route segment."""
+
+    def __init__(
+        self,
+        from_station: str,
+        to_station: str,
+        data_source: str,
+        congestion_factor: float,
+        congestion_level: str,
+        avg_transit_minutes: float,
+        baseline_minutes: float,
+        sample_count: int,
+        average_delay_minutes: float,
+        cancellation_count: int = 0,
+        cancellation_rate: float = 0.0,
+    ):
+        self.from_station = from_station
+        self.to_station = to_station
+        self.data_source = data_source
+        self.congestion_factor = congestion_factor
+        self.congestion_level = congestion_level
+        self.avg_transit_minutes = avg_transit_minutes
+        self.baseline_minutes = baseline_minutes
+        self.sample_count = sample_count
+        self.average_delay_minutes = average_delay_minutes
+        self.cancellation_count = cancellation_count
+        self.cancellation_rate = cancellation_rate
