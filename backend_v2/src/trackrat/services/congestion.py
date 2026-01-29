@@ -562,12 +562,8 @@ class CongestionAnalyzer:
                     if row.frequency_factor is not None:
                         frequency_factor = float(row.frequency_factor)
                         frequency_level = get_frequency_level(frequency_factor)
-                else:
-                    # No historical baseline available - assume normal service
-                    # This prevents showing gray everywhere when segment_transit_times
-                    # table lacks historical data for the current hour/day pattern
-                    frequency_factor = 1.0
-                    frequency_level = "healthy"
+                # When no historical baseline exists, frequency_factor stays None
+                # and iOS will show gray to indicate "no data available"
 
             congestion_results.append(
                 SegmentCongestion(

@@ -159,8 +159,8 @@ def normalize_aggregated_segments(
                 frequency_factor = train_count / baseline_train_count
                 frequency_level = get_frequency_level(frequency_factor)
         elif freq_factors:
-            # No baseline available but we have frequency factors (from fallback)
-            # Use average of the contributing segment factors
+            # No baseline available but source segments have frequency factors
+            # (possible when merging segments with different data availability)
             frequency_factor = sum(freq_factors) / len(freq_factors)
             frequency_level = get_frequency_level(frequency_factor)
 
