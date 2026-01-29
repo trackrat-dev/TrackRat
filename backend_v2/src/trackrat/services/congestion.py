@@ -27,14 +27,45 @@ from trackrat.utils.time import ensure_timezone_aware, now_et
 logger = get_logger(__name__)
 
 
+# Frequency/health level thresholds (factor = train_count / baseline)
+# Higher is better - measures service reliability
+FREQ_THRESHOLD_HEALTHY = 0.9  # >= 90% of baseline trains
+FREQ_THRESHOLD_MODERATE = 0.7  # >= 70% of baseline trains
+FREQ_THRESHOLD_REDUCED = 0.5  # >= 50% of baseline trains
+# Below 0.5 = severe
+
+# Data sources with real-time data (frequency metrics are meaningful)
+REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH"}
+
+
+def get_frequency_level(frequency_factor: float) -> str:
+    """Determine frequency/health level from a frequency factor.
+
+    Higher is better: 1.0 means running at baseline, <1.0 means fewer trains.
+    """
+    if frequency_factor >= FREQ_THRESHOLD_HEALTHY:
+        return "healthy"
+    elif frequency_factor >= FREQ_THRESHOLD_MODERATE:
+        return "moderate"
+    elif frequency_factor >= FREQ_THRESHOLD_REDUCED:
+        return "reduced"
+    else:
+        return "severe"
+
+
 # Re-export for backward compatibility
 __all__ = [
     "SegmentCongestion",
     "get_congestion_level",
+    "get_frequency_level",
     "CongestionAnalyzer",
     "CONGESTION_THRESHOLD_NORMAL",
     "CONGESTION_THRESHOLD_MODERATE",
     "CONGESTION_THRESHOLD_HEAVY",
+    "FREQ_THRESHOLD_HEALTHY",
+    "FREQ_THRESHOLD_MODERATE",
+    "FREQ_THRESHOLD_REDUCED",
+    "REALTIME_SOURCES",
 ]
 
 
@@ -373,7 +404,10 @@ class CongestionAnalyzer:
                     ELSE NULL
                 END as scheduled_minutes,
                 -- Track when this segment departed for recency sorting
-                COALESCE(js1.actual_departure, js1.scheduled_departure) as departure_time
+                COALESCE(js1.actual_departure, js1.scheduled_departure) as departure_time,
+                -- Context for frequency baseline comparison
+                EXTRACT(HOUR FROM COALESCE(js1.actual_departure, js1.scheduled_departure)) as hour_of_day,
+                EXTRACT(DOW FROM COALESCE(js1.actual_departure, js1.scheduled_departure)) as day_of_week
             FROM train_journeys tj
             JOIN journey_stops js1 ON js1.journey_id = tj.id
             JOIN journey_stops js2 ON js2.journey_id = tj.id
@@ -424,33 +458,73 @@ class CongestionAnalyzer:
                     WHERE NOT is_cancelled
                     AND actual_minutes > 0
                     AND departure_time >= max_departure_time - INTERVAL '1 hour'
-                ) as recent_avg
+                ) as recent_avg,
+                -- Train count for frequency calculation (non-cancelled trains)
+                COUNT(DISTINCT journey_id) FILTER (WHERE NOT is_cancelled) as train_count
             FROM segment_with_recency
             GROUP BY from_station, to_station, data_source
+        ),
+        -- Historical baseline for frequency: average train count per time window
+        -- for same hour of day and weekday/weekend pattern over past 30 days
+        historical_baseline AS (
+            SELECT
+                stt.from_station_code as from_station,
+                stt.to_station_code as to_station,
+                stt.data_source,
+                -- Average trains per time window for this hour/day pattern
+                -- Multiply by time_window_hours to scale from hourly rate
+                (COUNT(*)::float / 30.0) * :time_window_hours as baseline_train_count
+            FROM segment_transit_times stt
+            WHERE stt.departure_time >= NOW() - INTERVAL '30 days'
+              AND stt.hour_of_day = EXTRACT(HOUR FROM NOW())
+              -- Match weekday (Mon-Fri: 1-5) vs weekend (Sat-Sun: 0, 6)
+              AND (
+                  (EXTRACT(DOW FROM NOW()) IN (0, 6) AND stt.day_of_week IN (0, 6))
+                  OR (EXTRACT(DOW FROM NOW()) NOT IN (0, 6) AND stt.day_of_week NOT IN (0, 6))
+              )
+              AND (CAST(:data_source AS TEXT) IS NULL OR stt.data_source = CAST(:data_source AS TEXT))
+            GROUP BY stt.from_station_code, stt.to_station_code, stt.data_source
         )
         SELECT
-            from_station,
-            to_station,
-            data_source,
-            active_count,
-            cancelled_count,
-            avg_actual,
-            avg_scheduled,
-            median_actual,
-            recent_avg,
+            sa.from_station,
+            sa.to_station,
+            sa.data_source,
+            sa.active_count,
+            sa.cancelled_count,
+            sa.avg_actual,
+            sa.avg_scheduled,
+            sa.median_actual,
+            sa.recent_avg,
             -- Calculate baseline (scheduled avg if available, else median actual)
-            COALESCE(avg_scheduled, median_actual) as baseline_minutes,
+            COALESCE(sa.avg_scheduled, sa.median_actual) as baseline_minutes,
             -- Use recent average if available, otherwise overall average
-            COALESCE(recent_avg, avg_actual) as current_avg_minutes
-        FROM segment_aggregates
-        WHERE (active_count + cancelled_count) >= 2  -- Need at least 2 journeys
+            COALESCE(sa.recent_avg, sa.avg_actual) as current_avg_minutes,
+            -- Frequency metrics
+            sa.train_count,
+            hb.baseline_train_count,
+            CASE
+                WHEN hb.baseline_train_count > 0 AND hb.baseline_train_count IS NOT NULL
+                THEN sa.train_count::float / hb.baseline_train_count
+                ELSE NULL
+            END as frequency_factor
+        FROM segment_aggregates sa
+        LEFT JOIN historical_baseline hb
+            ON sa.from_station = hb.from_station
+            AND sa.to_station = hb.to_station
+            AND sa.data_source = hb.data_source
+        WHERE (sa.active_count + sa.cancelled_count) >= 2  -- Need at least 2 journeys
         """
         )
 
         # Execute query with performance logging
         query_start = now_et()
         result = await db.execute(
-            query, {"cutoff_time": cutoff_time, "data_source": data_source}
+            query,
+            {
+                "cutoff_time": cutoff_time,
+                "data_source": data_source,
+                "time_window_hours": time_window_hours,
+            },
         )
         rows = result.fetchall()
         query_duration_ms = (now_et() - query_start).total_seconds() * 1000
@@ -493,6 +567,20 @@ class CongestionAnalyzer:
             # Calculate average delay
             average_delay = current_avg - baseline
 
+            # Calculate frequency metrics (only for real-time sources)
+            train_count: int | None = None
+            baseline_train_count: float | None = None
+            frequency_factor: float | None = None
+            frequency_level: str | None = None
+
+            if row.data_source in REALTIME_SOURCES:
+                train_count = int(row.train_count) if row.train_count else 0
+                if row.baseline_train_count is not None and row.baseline_train_count > 0:
+                    baseline_train_count = float(row.baseline_train_count)
+                    if row.frequency_factor is not None:
+                        frequency_factor = float(row.frequency_factor)
+                        frequency_level = get_frequency_level(frequency_factor)
+
             congestion_results.append(
                 SegmentCongestion(
                     from_station=row.from_station,
@@ -506,6 +594,10 @@ class CongestionAnalyzer:
                     average_delay_minutes=average_delay,
                     cancellation_count=row.cancelled_count,
                     cancellation_rate=cancellation_rate,
+                    train_count=train_count,
+                    baseline_train_count=baseline_train_count,
+                    frequency_factor=frequency_factor,
+                    frequency_level=frequency_level,
                 )
             )
 

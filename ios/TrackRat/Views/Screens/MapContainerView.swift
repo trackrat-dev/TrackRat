@@ -128,7 +128,7 @@ struct MapContainerView: View {
         ZStack {
             // Always show the map, just without congestion data when loading
             // Note: segments/individualSegments arrays are controlled by applyDisplayModeFilter()
-            // which sets them based on showCongestion mode - no need for ternary checks here
+            // which sets them based on highlightMode - no need for ternary checks here
             SystemCongestionMapView(
                 region: $mapRegionVM.mapRegion,
                 segments: mapViewModel.segments,
@@ -136,6 +136,7 @@ struct MapContainerView: View {
                 stations: mapViewModel.showStations ? mapViewModel.routeStations : [],
                 showRoutes: mapViewModel.showRoutes,
                 selectedSystems: appState.selectedSystems,
+                highlightMode: mapViewModel.highlightMode,
                 onSegmentTap: { segment in
                     selectedSegment = segment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -162,7 +163,7 @@ struct MapContainerView: View {
             // Shows network summary + route summary when RatSense has a prediction
             VStack {
                 HStack(alignment: .top) {
-                    if mapViewModel.showCongestion != .off {
+                    if mapViewModel.highlightMode != .off {
                         OperationsSummaryView(
                             scope: .network,
                             ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
@@ -325,8 +326,14 @@ struct MapContainerView: View {
             // Always ensure we start with overall congestion view (but preserve activeTrainRoute)
             appState.mapDisplayMode = .overallCongestion
 
-            // Show congestion lines for all users
-            mapViewModel.showCongestion = .aggregated
+            // Set default highlight mode based on subscription status
+            // Pro users: show Delays with Trains detail, non-Pro: keep Off (Pro-only feature)
+            if SubscriptionService.shared.isPro {
+                mapViewModel.highlightMode = .delays
+                mapViewModel.detailMode = .trains
+            } else {
+                mapViewModel.highlightMode = .off
+            }
 
             // IMPORTANT: Don't clear selectedRoute if we're navigating within the app
             // Only clear it if we're at the root (no navigation path)
@@ -845,6 +852,8 @@ struct CongestionMapControlsView: View {
 struct MapLayerControlsView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var viewModel: CongestionMapViewModel
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
+    @State private var showingPaywall = false
 
     // Max height: available space above the bottom sheet (50% of screen),
     // minus top UI elements (~90pt) and safety margin
@@ -859,25 +868,59 @@ struct MapLayerControlsView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 10) {
-                // Congestion toggle (tri-state: Off -> On -> Trains)
+                // Segment highlight toggle (Off → Health → Delays → Off) - Pro only
                 MapLayerToggleButton(
-                    label: "Congestion",
-                    icon: "train.side.front.car",
-                    isOn: viewModel.showCongestion != .off,
-                    detail: viewModel.showCongestion.rawValue,
+                    label: "Segments",
+                    icon: viewModel.highlightMode.icon,
+                    isOn: viewModel.highlightMode != .off,
+                    detail: viewModel.highlightMode.displayName,
+                    isPro: subscriptionService.isPro,
+                    showProBadge: viewModel.highlightMode == .off && !subscriptionService.isPro
+                ) {
+                    if subscriptionService.isPro {
+                        let wasOff = viewModel.highlightMode == .off
+                        viewModel.cycleHighlightMode()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+                        // Reload congestion data when turning on (from off state)
+                        if wasOff && viewModel.highlightMode != .off {
+                            Task {
+                                await viewModel.fetchCongestionData()
+                            }
+                        }
+                    } else {
+                        // Non-Pro user trying to enable segments - show paywall
+                        showingPaywall = true
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }
+                }
+
+                // Detail mode toggle (Summary vs Trains) - only show when segments are visible
+                if subscriptionService.isPro && viewModel.highlightMode != .off {
+                    MapLayerToggleButton(
+                        label: "Detail",
+                        icon: viewModel.detailMode.iconName,
+                        isOn: viewModel.detailMode == .trains,
+                        detail: viewModel.detailMode.rawValue,
+                        isPro: true,
+                        showProBadge: false
+                    ) {
+                        viewModel.cycleDetailMode()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+
+                // Routes toggle
+                MapLayerToggleButton(
+                    label: "Routes",
+                    icon: "point.topleft.down.to.point.bottomright.curvepath",
+                    isOn: viewModel.showRoutes,
+                    detail: viewModel.showRoutes ? "On" : "Off",
                     isPro: true,
                     showProBadge: false
                 ) {
-                    let wasOff = viewModel.showCongestion == .off
-                    viewModel.cycleCongestionMode()
+                    viewModel.showRoutes.toggle()
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
-                    // Reload congestion data when turning on (from off state)
-                    if wasOff && viewModel.showCongestion != .off {
-                        Task {
-                            await viewModel.fetchCongestionData()
-                        }
-                    }
                 }
 
                 // Stations toggle
@@ -925,6 +968,14 @@ struct MapLayerControlsView: View {
                 .fill(.ultraThinMaterial)
         )
         .fixedSize(horizontal: true, vertical: false)
+        .onAppear {
+            // Ensure non-Pro users can't have segment highlighting enabled
+            // (handles edge case if subscription lapses while app is running)
+            if !subscriptionService.isPro && viewModel.highlightMode != .off {
+                viewModel.highlightMode = .off
+            }
+        }
+        .paywallSheet(isPresented: $showingPaywall, context: .congestionMap)
     }
 }
 

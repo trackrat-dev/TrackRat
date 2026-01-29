@@ -39,6 +39,11 @@ class SegmentCongestion:
         average_delay_minutes: float,
         cancellation_count: int = 0,
         cancellation_rate: float = 0.0,
+        # Frequency/health metrics
+        train_count: int | None = None,
+        baseline_train_count: float | None = None,
+        frequency_factor: float | None = None,
+        frequency_level: str | None = None,
     ):
         self.from_station = from_station
         self.to_station = to_station
@@ -51,3 +56,8 @@ class SegmentCongestion:
         self.average_delay_minutes = average_delay_minutes
         self.cancellation_count = cancellation_count
         self.cancellation_rate = cancellation_rate
+        # Frequency/health metrics (None for schedule-only sources)
+        self.train_count = train_count
+        self.baseline_train_count = baseline_train_count
+        self.frequency_factor = frequency_factor
+        self.frequency_level = frequency_level

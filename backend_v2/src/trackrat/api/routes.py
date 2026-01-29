@@ -404,6 +404,11 @@ async def get_route_congestion(
             current_average_minutes=segment.avg_transit_minutes,
             cancellation_count=segment.cancellation_count,
             cancellation_rate=segment.cancellation_rate,
+            # Frequency/health metrics
+            train_count=segment.train_count,
+            baseline_train_count=segment.baseline_train_count,
+            frequency_factor=segment.frequency_factor,
+            frequency_level=segment.frequency_level,
         )
         aggregated_api_segments.append(segment_model)
 
