@@ -1331,9 +1331,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
             } else if factor < 1.25 {
                 return 7
             } else if factor < 2.0 {
-                return 9
+                return 8
             } else {
-                return 11
+                return 9
             }
         }
         
@@ -1412,8 +1412,8 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 guard let factor = segment.frequencyFactor else { return 5 }
                 if factor >= 0.9 { return 5 }
                 else if factor >= 0.7 { return 7 }
-                else if factor >= 0.5 { return 9 }
-                else { return 11 }
+                else if factor >= 0.5 { return 8 }
+                else { return 9 }
             case .delays:
                 return getCongestionLineWidth(segment.congestionFactor)
             }
