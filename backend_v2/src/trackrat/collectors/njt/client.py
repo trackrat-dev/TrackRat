@@ -191,6 +191,51 @@ class NJTransitClient:
 
         return response
 
+    @track_api_call(api_name="njtransit", endpoint="departure_vision_data")
+    async def get_departure_vision_data(self, station_code: str) -> dict[str, Any]:
+        """Get departure vision data including station messages/alerts.
+
+        This endpoint includes STATIONMSGS with service alerts and cancellation
+        announcements. Used to detect cancelled trains before they disappear
+        from the regular schedule endpoints.
+
+        Args:
+            station_code: Two-character station code (e.g., "NY")
+
+        Returns:
+            Response dict with STATION containing ITEMS and STATIONMSGS
+        """
+        logger.info(
+            "API QUERY: getting departure vision data with station messages",
+            station_code=station_code,
+        )
+
+        response = await self._make_request(
+            "TrainData/getDepartureVisionData", {"station": station_code}
+        )
+
+        # Handle None/empty response
+        if response is None:
+            logger.debug(
+                "departure_vision_empty_response",
+                station_code=station_code,
+            )
+            return {"STATION": {"ITEMS": [], "STATIONMSGS": []}}
+
+        # Extract STATION data, ensuring expected structure
+        station_data = response.get("STATION", {})
+        if not isinstance(station_data, dict):
+            station_data = {"ITEMS": [], "STATIONMSGS": []}
+
+        logger.debug(
+            "departure_vision_response",
+            station_code=station_code,
+            items_count=len(station_data.get("ITEMS") or []),
+            messages_count=len(station_data.get("STATIONMSGS") or []),
+        )
+
+        return response
+
     @track_api_call(api_name="njtransit", endpoint="train_stop_list")
     async def get_train_stop_list(self, train_id: str) -> NJTransitTrainData:
         """Get detailed stop list for a specific train.

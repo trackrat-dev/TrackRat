@@ -142,6 +142,9 @@ class TrainDeparture(BaseModel):
     is_cancelled: bool = Field(
         default=False, description="Whether the train is cancelled"
     )
+    cancellation_reason: str | None = Field(
+        default=None, description="Reason for cancellation if train is cancelled"
+    )
     is_expired: bool = Field(
         default=False, description="Train no longer in real-time feed"
     )
@@ -249,6 +252,9 @@ class TrainDetails(BaseModel):
     raw_train_state: str | None = None
     is_cancelled: bool = Field(
         default=False, description="Whether the train is cancelled"
+    )
+    cancellation_reason: str | None = Field(
+        default=None, description="Reason for cancellation if train is cancelled"
     )
     is_completed: bool = Field(
         default=False, description="Whether the train has completed its journey"

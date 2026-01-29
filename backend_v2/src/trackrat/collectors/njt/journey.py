@@ -1718,10 +1718,11 @@ class JourneyCollector(BaseJourneyCollector):
         if not stops_data:
             return
 
-        # Check if cancelled
+        # Check if cancelled (all stops show "Cancelled" status)
+        # Note: Don't set is_completed=True for cancelled trains - they should
+        # remain visible in departures with is_cancelled=True
         if all(stop.STOP_STATUS == "Cancelled" for stop in stops_data):
             journey.is_cancelled = True
-            journey.is_completed = True
             return
 
         # Check if all stops have been departed

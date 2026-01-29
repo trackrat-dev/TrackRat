@@ -117,6 +117,7 @@ struct LiveActivityControls: View {
             dataFreshness: nil,
             observationType: nil,
             isCancelled: false,
+            cancellationReason: nil,
             isCompleted: false,
             dataSource: "NJT"
         ),

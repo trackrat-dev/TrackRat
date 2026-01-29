@@ -281,6 +281,7 @@ class DepartureService:
                 data_source=journey.data_source,
                 observation_type=get_effective_observation_type(journey),
                 is_cancelled=journey.is_cancelled,
+                cancellation_reason=journey.cancellation_reason,
                 is_expired=journey.is_expired or False,
             )
             departures.append(departure)

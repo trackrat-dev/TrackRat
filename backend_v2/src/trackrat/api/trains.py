@@ -356,6 +356,7 @@ async def get_train_details(
         observation_type=get_effective_observation_type(journey),
         raw_train_state="Active" if journey.data_source == "AMTRAK" else None,
         is_cancelled=journey.is_cancelled,
+        cancellation_reason=journey.cancellation_reason,
         is_completed=journey.is_completed,
         progress=progress,
         predicted_arrival=predicted_arrival,

@@ -35,6 +35,7 @@ struct TrainV2: Identifiable, Codable {
     let dataFreshness: DataFreshness?
     let observationType: String?
     let isCancelled: Bool
+    let cancellationReason: String?
     let isCompleted: Bool
     let dataSource: String
 
@@ -52,6 +53,7 @@ struct TrainV2: Identifiable, Codable {
         case dataFreshness = "data_freshness"
         case observationType = "observation_type"
         case isCancelled = "is_cancelled"
+        case cancellationReason = "cancellation_reason"
         case isCompleted = "is_completed"
         case dataSource = "data_source"
         case stops

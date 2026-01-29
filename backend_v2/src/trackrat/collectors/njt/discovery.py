@@ -2,15 +2,20 @@
 Train discovery collector for TrackRat V2.
 
 Discovers active trains by polling station departure boards.
+Also detects cancellations from NJT station alerts.
 """
 
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.base import BaseDiscoveryCollector
+from trackrat.collectors.njt.cancellation_parser import (
+    CancellationAlert,
+    parse_cancellation_alerts,
+)
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.config.stations import DISCOVERY_STATIONS
 from trackrat.db.engine import get_session
@@ -79,6 +84,9 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         """
         logger.info("discovery.njt.started", stations=DISCOVERY_STATIONS)
 
+        # Check for cancellation alerts first (one API call to NY Penn)
+        cancelled_trains = await self.check_for_cancellations(session)
+
         total_discovered = 0
         total_new = 0
         station_results = {}
@@ -94,14 +102,107 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
             total_discovered=total_discovered,
             total_new=total_new,
             stations_processed=len(DISCOVERY_STATIONS),
+            cancelled_trains=len(cancelled_trains),
         )
 
         return {
             "stations_processed": len(DISCOVERY_STATIONS),
             "total_discovered": total_discovered,
             "total_new": total_new,
+            "cancelled_trains": cancelled_trains,
             "station_results": station_results,
         }
+
+    async def check_for_cancellations(self, session: AsyncSession) -> list[str]:
+        """Check NY Penn station alerts for train cancellations.
+
+        NY Penn's STATIONMSGS contains alerts for all NJT lines, so we only
+        need to check one station to detect cancellations system-wide.
+
+        Args:
+            session: Database session
+
+        Returns:
+            List of train IDs that were marked as cancelled
+        """
+        try:
+            # Fetch departure vision data which includes STATIONMSGS
+            response = await self.njt_client.get_departure_vision_data("NY")
+            station_data = response.get("STATION", {})
+            messages = station_data.get("STATIONMSGS", [])
+
+            if not messages:
+                return []
+
+            # Parse cancellation alerts from messages
+            alerts = parse_cancellation_alerts(messages)
+
+            if not alerts:
+                return []
+
+            logger.info(
+                "cancellation_alerts_found",
+                count=len(alerts),
+                train_ids=[a.train_id for a in alerts],
+            )
+
+            # Mark affected journeys as cancelled
+            marked_trains = await self._mark_cancelled_journeys(session, alerts)
+
+            return marked_trains
+
+        except Exception as e:
+            # Don't let cancellation check failures break discovery
+            logger.error(
+                "cancellation_check_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return []
+
+    async def _mark_cancelled_journeys(
+        self, session: AsyncSession, alerts: list[CancellationAlert]
+    ) -> list[str]:
+        """Mark journeys as cancelled based on alerts.
+
+        Args:
+            session: Database session
+            alerts: List of parsed cancellation alerts
+
+        Returns:
+            List of train IDs that were marked as cancelled
+        """
+        marked_trains = []
+        today = now_et().date()
+
+        for alert in alerts:
+            # Find matching journey for today
+            journey = await session.scalar(
+                select(TrainJourney).where(
+                    TrainJourney.train_id == alert.train_id,
+                    TrainJourney.journey_date == today,
+                    TrainJourney.data_source == "NJT",
+                )
+            )
+
+            if journey and not journey.is_cancelled:
+                # Mark existing journey as cancelled
+                journey.is_cancelled = True
+                journey.cancellation_reason = alert.reason
+                journey.last_updated_at = now_et()
+                marked_trains.append(alert.train_id)
+
+                logger.info(
+                    "journey_marked_cancelled_from_alert",
+                    train_id=alert.train_id,
+                    reason=alert.reason,
+                    alternative=alert.alternative_train_id,
+                )
+
+        if marked_trains:
+            await session.commit()
+
+        return marked_trains
 
     async def discover_station_trains(
         self, session: AsyncSession, station_code: str

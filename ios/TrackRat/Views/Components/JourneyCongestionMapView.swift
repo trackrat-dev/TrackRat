@@ -1403,6 +1403,7 @@ private struct SegmentTimeDetailRow: View {
             dataFreshness: nil,
             observationType: nil,
             isCancelled: false,
+            cancellationReason: nil,
             isCompleted: false,
             dataSource: "NJT",
             stops: []

@@ -923,6 +923,7 @@ final class APIService: ObservableObject {
             ),
             observationType: departure.observationType,
             isCancelled: departure.isCancelled,
+            cancellationReason: departure.cancellationReason,
             isCompleted: false, // Departures are never completed at search time
             dataSource: departure.dataSource,
             stops: nil
@@ -1025,6 +1026,7 @@ final class APIService: ObservableObject {
             ),
             observationType: details.observationType,
             isCancelled: details.isCancelled,
+            cancellationReason: details.cancellationReason,
             isCompleted: details.isCompleted,
             dataSource: details.dataSource,
             stops: stops

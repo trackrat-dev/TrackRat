@@ -60,6 +60,7 @@ class TrainJourney(Base):
     has_complete_journey = Column(Boolean, default=False, nullable=False)
     stops_count = Column(Integer)
     is_cancelled = Column(Boolean, default=False, nullable=False)
+    cancellation_reason = Column(String(255), nullable=True)
     is_completed = Column(Boolean, default=False, nullable=False)
 
     # API error tracking

@@ -580,6 +580,7 @@ class HistoricalDataViewModel: ObservableObject {
         dataFreshness: nil,
         observationType: nil,
         isCancelled: false,
+        cancellationReason: nil,
         isCompleted: false,
         dataSource: "NJT",
         stops: nil
