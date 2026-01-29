@@ -7,6 +7,7 @@ API response.
 
 import re
 from dataclasses import dataclass
+from typing import Any
 
 from structlog import get_logger
 
@@ -34,20 +35,18 @@ _CANCELLATION_PATTERN = re.compile(
     r"train\s*#?(\d+)"  # Group 1: Train ID (required)
     r".*?"  # Skip intervening text
     r"(?:is|has been)\s+cancell?ed"  # Cancellation phrase (required)
-    r"(?:\s+due\s+to\s+([^.]+))?"  # Group 2: Optional reason
-    , re.IGNORECASE | re.DOTALL
+    r"(?:\s+due\s+to\s+([^.]+))?",  # Group 2: Optional reason
+    re.IGNORECASE | re.DOTALL,
 )
 
 # Separate pattern to extract scheduled time (e.g., "the 7:43 PM departure")
 _TIME_PATTERN = re.compile(
-    r"the\s+(\d{1,2}:\d{2}\s*(?:AM|PM))\s+departure",
-    re.IGNORECASE
+    r"the\s+(\d{1,2}:\d{2}\s*(?:AM|PM))\s+departure", re.IGNORECASE
 )
 
 # Pattern to extract alternative train suggestion
 _ALTERNATIVE_PATTERN = re.compile(
-    r"(?:please\s+)?take\s+train\s*#?(\d+)",
-    re.IGNORECASE
+    r"(?:please\s+)?take\s+train\s*#?(\d+)", re.IGNORECASE
 )
 
 # Line name to code mapping
@@ -70,7 +69,9 @@ _LINE_NAME_TO_CODE = {
 }
 
 
-def parse_cancellation_alerts(station_messages: list[dict]) -> list[CancellationAlert]:
+def parse_cancellation_alerts(
+    station_messages: list[dict[str, Any]]
+) -> list[CancellationAlert]:
     """Parse STATIONMSGS array for cancellation alerts.
 
     Args:
@@ -110,14 +111,16 @@ def parse_cancellation_alerts(station_messages: list[dict]) -> list[Cancellation
             alt_match = _ALTERNATIVE_PATTERN.search(msg_text)
             alternative = alt_match.group(1) if alt_match else None
 
-            alerts.append(CancellationAlert(
-                train_id=train_id,
-                line_code=line_code,
-                scheduled_time=scheduled_time,
-                reason=reason,
-                alternative_train_id=alternative,
-                raw_message=msg_text,
-            ))
+            alerts.append(
+                CancellationAlert(
+                    train_id=train_id,
+                    line_code=line_code,
+                    scheduled_time=scheduled_time,
+                    reason=reason,
+                    alternative_train_id=alternative,
+                    raw_message=msg_text,
+                )
+            )
 
             logger.debug(
                 "parsed_cancellation_alert",

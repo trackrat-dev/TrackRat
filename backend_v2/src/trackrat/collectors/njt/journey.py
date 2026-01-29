@@ -577,6 +577,9 @@ class JourneyCollector(BaseJourneyCollector):
 
                 # Allow 10 minute tolerance for schedule adjustments
                 if time_diff > 600:
+                    # time_diff > 600 implies stored_departure is not None (otherwise time_diff would be 0)
+                    assert stored_departure is not None
+
                     # Before rejecting, check if stored origin appears as an intermediate stop
                     # This happens when discovery finds a train at an intermediate station
                     stored_origin_found_in_stops = False
@@ -1065,9 +1068,7 @@ class JourneyCollector(BaseJourneyCollector):
         # Second pass: Process each stop
         for sequence, stop_data in enumerate(stops_data):
             # Parse raw time fields from NJT API
-            time_field = (
-                parse_njt_time(stop_data.TIME) if stop_data.TIME else None
-            )
+            time_field = parse_njt_time(stop_data.TIME) if stop_data.TIME else None
             dep_time_field = (
                 parse_njt_time(stop_data.DEP_TIME) if stop_data.DEP_TIME else None
             )
@@ -1132,7 +1133,10 @@ class JourneyCollector(BaseJourneyCollector):
                         is_origin=is_origin,
                     )
 
-                if stop.scheduled_departure is None and normalized["scheduled_departure"]:
+                if (
+                    stop.scheduled_departure is None
+                    and normalized["scheduled_departure"]
+                ):
                     stop.scheduled_departure = normalized["scheduled_departure"]
                     logger.info(
                         "recovered_missing_scheduled_departure",
