@@ -64,6 +64,7 @@ struct MyProfileView: View {
                         .foregroundColor(.white)
                         .frame(width: 44, height: 44)
                 }
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
@@ -246,6 +247,13 @@ struct MyProfileView: View {
                     // }
                     
                     // Settings section
+                    SettingsSection(
+                        subscriptionService: subscriptionService,
+                        navigationPath: $navigationPath,
+                        showingPaywall: $showingPaywall
+                    )
+
+                    // Community section
                     VStack(spacing: 16) {
                         // Section header
                         HStack {
@@ -256,7 +264,8 @@ struct MyProfileView: View {
                             Spacer()
                         }
                         .padding(.horizontal)
-                         // Follow our YouTube Channel
+
+                        // YouTube Channel
                         Button {
                             if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-App/shorts") {
                                 openURL(youtubeURL)
@@ -268,7 +277,7 @@ struct MyProfileView: View {
                                     .font(.title2)
                                     .foregroundColor(.orange)
                                     .frame(width: 24, height: 24)
-                                
+
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("YouTube Channel")
                                         .font(.headline)
@@ -276,9 +285,9 @@ struct MyProfileView: View {
                                         .foregroundColor(.white)
                                         .multilineTextAlignment(.leading)
                                 }
-                                
+
                                 Spacer()
-                                
+
                                 Image(systemName: "arrow.up.right")
                                     .font(.caption)
                                     .foregroundColor(.white.opacity(0.5))
@@ -316,230 +325,6 @@ struct MyProfileView: View {
                                 Spacer()
 
                                 Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                    }
-
-                    // Map Display section
-                    MapDisplaySection()
-
-                    // Service Alerts section
-                    VStack(spacing: 16) {
-                        // Section header
-                        HStack {
-                            Text("Service Alerts")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-
-                        // NJ Transit Advisories
-                        Button {
-                            if let url = URL(string: "https://www.njtransit.com/travel-alerts-to") {
-                                openURL(url)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("NJ Transit Advisories")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        // Amtrak Service Alerts
-                        Button {
-                            if let url = URL(string: "https://www.amtrak.com/service-alerts-and-notices") {
-                                openURL(url)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Amtrak Service Alerts")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // Settings section
-                    VStack(spacing: 16) {
-                        // Section header
-                        HStack {
-                            Text("Settings")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-
-                        // Trip Statistics
-                        Button {
-                            if subscriptionService.isPro {
-                                navigationPath.append(ProfileDestination.tripHistory)
-                            } else {
-                                showingPaywall = true
-                            }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "chart.bar.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Trip History (beta)")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                if !subscriptionService.isPro {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "lock.fill")
-                                            .font(.caption2)
-                                        Text("PRO")
-                                            .font(.caption2.bold())
-                                    }
-                                    .foregroundColor(.orange)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(
-                                        Capsule()
-                                            .fill(.orange.opacity(0.2))
-                                    )
-                                } else {
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.5))
-                                }
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        // Favorite Stations
-                        Button {
-                            navigationPath.append(ProfileDestination.favoriteStations)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "heart.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Edit Favorite Stations")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        // Advanced Configuration
-                        Button {
-                            navigationPath.append(ProfileDestination.advancedConfiguration)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "gearshape.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Advanced Configuration")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
                                     .font(.caption)
                                     .foregroundColor(.white.opacity(0.5))
                             }
@@ -596,6 +381,241 @@ struct MyProfileView: View {
         }
     }
 }
+
+// MARK: - Settings Section
+
+struct SettingsSection: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var subscriptionService: SubscriptionService
+    @Binding var navigationPath: NavigationPath
+    @Binding var showingPaywall: Bool
+
+    var body: some View {
+        VStack(spacing: 16) {
+            // Section header
+            HStack {
+                Text("Settings")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                Spacer()
+            }
+            .padding(.horizontal)
+
+            // Health Indicator
+            Button {
+                appState.cycleMapHighlightMode()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: appState.mapHighlightMode.icon)
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Health Indicator")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+
+                        Text(appState.mapHighlightMode.displayName)
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Stations Toggle
+            Button {
+                appState.showMapStations.toggle()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Show Stations")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $appState.showMapStations)
+                        .labelsHidden()
+                        .tint(.orange)
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Train Systems
+            VStack(spacing: 0) {
+                ForEach(TrainSystem.allCases, id: \.self) { system in
+                    TrainSystemRow(
+                        system: system,
+                        isSelected: appState.isSystemSelected(system),
+                        isLast: system == TrainSystem.allCases.last
+                    ) {
+                        appState.toggleSystem(system)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+
+            // Trip History
+            Button {
+                if subscriptionService.isPro {
+                    navigationPath.append(ProfileDestination.tripHistory)
+                } else {
+                    showingPaywall = true
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Trip History (beta)")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    if !subscriptionService.isPro {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.caption2)
+                            Text("PRO")
+                                .font(.caption2.bold())
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(.orange.opacity(0.2))
+                        )
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Favorite Stations
+            Button {
+                navigationPath.append(ProfileDestination.favoriteStations)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "heart.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Edit Favorite Stations")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Advanced Configuration
+            Button {
+                navigationPath.append(ProfileDestination.advancedConfiguration)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Advanced Configuration")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
 }
 
 // MARK: - Subscription Status Section
@@ -618,7 +638,7 @@ struct SubscriptionStatusSection: View {
         } else {
             // Not subscribed, no soft trial - show upgrade prompt
             UpgradePromptCard(
-                subtext: "Support continued development while getting Live Activities, track predictions, delay forecasts, and more",
+                subtext: "Support continued development and get Live Activities, track predictions, delay forecasts, and more!",
                 showingPaywall: $showingPaywall
             )
         }
@@ -995,117 +1015,6 @@ struct TripRowView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-    }
-}
-
-// MARK: - Map Display Section
-
-struct MapDisplaySection: View {
-    @EnvironmentObject private var appState: AppState
-
-    var body: some View {
-        VStack(spacing: 16) {
-            // Section header
-            HStack {
-                Text("Map Display")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                Spacer()
-            }
-            .padding(.horizontal)
-
-            // Status Mode
-            Button {
-                appState.cycleMapHighlightMode()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: appState.mapHighlightMode.icon)
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Status Mode")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-
-                        Text(appState.mapHighlightMode.displayName)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Stations Toggle
-            Button {
-                appState.showMapStations.toggle()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Show Stations")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $appState.showMapStations)
-                        .labelsHidden()
-                        .tint(.orange)
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Train Systems
-            VStack(spacing: 0) {
-                ForEach(TrainSystem.allCases, id: \.self) { system in
-                    TrainSystemRow(
-                        system: system,
-                        isSelected: appState.isSystemSelected(system),
-                        isLast: system == TrainSystem.allCases.last
-                    ) {
-                        appState.toggleSystem(system)
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-            )
-        }
     }
 }
 

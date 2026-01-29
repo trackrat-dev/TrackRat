@@ -102,7 +102,7 @@ struct PaywallView: View {
                     .padding(.horizontal)
 
                     // Development transparency note
-                    Text("TrackRat is a work in progress. Your subscription directly funds bug fixes and new features.")
+                    Text("TrackRat is a work in progress. Your subscription supports bug fixes and new features.")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.6))
                         .multilineTextAlignment(.center)
@@ -463,7 +463,7 @@ private struct PurchaseSuccessOverlay: View {
                         .font(.title.bold())
                         .foregroundColor(.white)
 
-                    Text("Your subscription directly funds development")
+                    Text("Reach out if you have ideas for new features")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
                 }

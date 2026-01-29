@@ -696,14 +696,14 @@ struct CongestionSegment: Codable, Identifiable {
 /// Display mode for map segment highlighting
 enum SegmentHighlightMode: String, CaseIterable {
     case off = "off"
-    case health = "health"        // Train frequency vs baseline (new)
-    case delays = "delays"        // Congestion/transit time (existing)
+    case health = "health"        // Train frequency vs baseline
+    case delays = "delays"        // Congestion/transit time
 
     var displayName: String {
         switch self {
         case .off: return "Off"
-        case .health: return "Health"
-        case .delays: return "Delays"
+        case .health: return "Train frequency"
+        case .delays: return "Congestion delays"
         }
     }
 
@@ -715,12 +715,12 @@ enum SegmentHighlightMode: String, CaseIterable {
         }
     }
 
-    /// Cycle to next mode: Off → Health → Delays → Off
+    /// Cycle to next mode: Delays → Health → Off → Delays
     var next: SegmentHighlightMode {
         switch self {
-        case .off: return .health
-        case .health: return .delays
-        case .delays: return .off
+        case .delays: return .health
+        case .health: return .off
+        case .off: return .delays
         }
     }
 }
