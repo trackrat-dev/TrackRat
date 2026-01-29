@@ -326,9 +326,9 @@ struct MapContainerView: View {
             // Always ensure we start with overall congestion view (but preserve activeTrainRoute)
             appState.mapDisplayMode = .overallCongestion
 
-            // Show segment lines for all users (delays mode with trains detail)
+            // Show segment lines for all users (delays mode with summary)
             mapViewModel.highlightMode = .delays
-            mapViewModel.detailMode = .trains
+            mapViewModel.detailMode = .summary
 
             // IMPORTANT: Don't clear selectedRoute if we're navigating within the app
             // Only clear it if we're at the root (no navigation path)
@@ -880,34 +880,6 @@ struct MapLayerControlsView: View {
                             await viewModel.fetchCongestionData()
                         }
                     }
-                }
-
-                // Detail mode toggle (Summary vs Trains) - only show when segments are visible
-                if viewModel.highlightMode != .off {
-                    MapLayerToggleButton(
-                        label: "Detail",
-                        icon: viewModel.detailMode.iconName,
-                        isOn: viewModel.detailMode == .trains,
-                        detail: viewModel.detailMode.rawValue,
-                        isPro: true,
-                        showProBadge: false
-                    ) {
-                        viewModel.cycleDetailMode()
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                }
-
-                // Routes toggle
-                MapLayerToggleButton(
-                    label: "Routes",
-                    icon: "point.topleft.down.to.point.bottomright.curvepath",
-                    isOn: viewModel.showRoutes,
-                    detail: viewModel.showRoutes ? "On" : "Off",
-                    isPro: true,
-                    showProBadge: false
-                ) {
-                    viewModel.showRoutes.toggle()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
 
                 // Stations toggle
