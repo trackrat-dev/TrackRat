@@ -42,15 +42,16 @@ struct OperationsSummaryView: View {
 
     /// Combined display text: network summary or route summary (Pro only)
     private var combinedBodyText: String? {
+        // Congestion summary overlay is a Pro feature
+        guard SubscriptionService.shared.isPro else { return nil }
+
         guard let summary = summary, !summary.body.isEmpty else { return nil }
 
-        // "On your route" is a Pro feature - only show route-specific summary for Pro users
-        if SubscriptionService.shared.isPro,
-           let routeSummary = routeSummary, !routeSummary.body.isEmpty {
+        // Show route-specific summary if available
+        if let routeSummary = routeSummary, !routeSummary.body.isEmpty {
             return "On your route: \(routeSummary.body)"
         }
 
-        // No route summary (or not Pro) - show network body only
         return summary.body
     }
 
@@ -105,6 +106,12 @@ struct OperationsSummaryView: View {
     }
 
     private func fetchSummaries() async {
+        // Skip API calls for non-Pro users - view won't display anyway
+        guard SubscriptionService.shared.isPro else {
+            isLoading = false
+            return
+        }
+
         isLoading = true
         hasError = false
 
@@ -120,9 +127,8 @@ struct OperationsSummaryView: View {
             )
             summary = result
 
-            // If Pro user with RatSense route and network scope, also fetch route summary
-            // (route summary is a Pro feature - skip the API call for non-Pro users)
-            if SubscriptionService.shared.isPro, scope == .network, let route = ratSenseRoute {
+            // If RatSense route and network scope, also fetch route summary
+            if scope == .network, let route = ratSenseRoute {
                 do {
                     let routeResult = try await APIService.shared.fetchOperationsSummary(
                         scope: .route,
