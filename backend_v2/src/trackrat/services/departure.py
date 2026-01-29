@@ -989,7 +989,9 @@ class DepartureService:
         Returns:
             Filtered list with stale SCHEDULED trains removed
         """
-        threshold = current_time + timedelta(minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES)
+        threshold = current_time + timedelta(
+            minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
+        )
 
         result = []
         filtered_count = 0

@@ -129,12 +129,14 @@ class TestPhantomStopDeletion:
         await db_session.flush()
 
         # Create Trenton stop (legitimate, not phantom)
+        # Use scheduled_departure=None so it gets updated from API data
+        # (The code only updates scheduled times when they're currently None)
         tr_stop = JourneyStop(
             journey_id=journey.id,
             station_code="TR",
             station_name="Trenton",
             stop_sequence=0,
-            scheduled_departure=now_et(),
+            scheduled_departure=None,
         )
         db_session.add(tr_stop)
         await db_session.flush()
@@ -162,7 +164,11 @@ class TestPhantomStopDeletion:
         await db_session.flush()
 
         # Verify all stops are preserved
-        stmt = select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
         all_stops = (await db_session.scalars(stmt)).all()
 
         station_codes = [stop.station_code for stop in all_stops]
@@ -997,11 +1003,16 @@ class TestCorruptedTimeDataHandling:
             pj_stop.has_departed_station is True
         ), "PJ should be departed via sequential inference even with wrong API order"
 
-        # Verify correct sequence order (sorted by departure time)
+        # Verify correct sequence order (sorted by min departure time)
+        # TR: min(01:58, 02:08) = 01:58
+        # HL: min(02:04, 02:03) = 02:03
+        # PJ: min(02:11, 02:24) = 02:11
+        # NB: min(02:27, 02:39) = 02:27
+        # Expected order by min time: TR (01:58) -> HL (02:03) -> PJ (02:11) -> NB (02:27)
         station_codes = [s.station_code for s in stops]
         assert station_codes == [
             "TR",
             "HL",
             "PJ",
             "NB",
-        ], f"Expected TR, HL, PJ, NB order after sorting, got {station_codes}"
+        ], f"Expected TR, HL, PJ, NB order after sorting by min time, got {station_codes}"

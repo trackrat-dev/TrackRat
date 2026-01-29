@@ -459,7 +459,9 @@ class TestStaleScheduledFiltering:
 
         result = service._filter_stale_scheduled_trains(departures, now)
 
-        assert len(result) == 0, "SCHEDULED NJT train within threshold should be filtered"
+        assert (
+            len(result) == 0
+        ), "SCHEDULED NJT train within threshold should be filtered"
 
     def test_filter_scheduled_amtrak_within_threshold(self):
         """SCHEDULED Amtrak train within 30 min of departure should be filtered."""
@@ -477,7 +479,9 @@ class TestStaleScheduledFiltering:
 
         result = service._filter_stale_scheduled_trains(departures, now)
 
-        assert len(result) == 0, "SCHEDULED Amtrak train within threshold should be filtered"
+        assert (
+            len(result) == 0
+        ), "SCHEDULED Amtrak train within threshold should be filtered"
 
     def test_filter_scheduled_path_within_threshold(self):
         """SCHEDULED PATH train within 30 min of departure should be filtered."""
@@ -495,7 +499,9 @@ class TestStaleScheduledFiltering:
 
         result = service._filter_stale_scheduled_trains(departures, now)
 
-        assert len(result) == 0, "SCHEDULED PATH train within threshold should be filtered"
+        assert (
+            len(result) == 0
+        ), "SCHEDULED PATH train within threshold should be filtered"
 
     def test_keep_scheduled_patco_within_threshold(self):
         """SCHEDULED PATCO train within 30 min should NOT be filtered (no real-time API)."""

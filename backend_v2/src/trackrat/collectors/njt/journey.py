@@ -1314,10 +1314,16 @@ class JourneyCollector(BaseJourneyCollector):
                     time = stop.scheduled_arrival
                 else:
                     # Only scheduled_departure available (origin station case)
+                    # Also consider updated_departure (raw DEP_TIME from API) to handle
+                    # corrupted origin data where scheduled_departure (from TIME) is wrong.
+                    # This matches the min() logic in update_journey_stops().
                     assert (
                         stop.scheduled_departure is not None
                     )  # Guaranteed by outer if
-                    time = stop.scheduled_departure
+                    if stop.updated_departure is not None:
+                        time = min(stop.scheduled_departure, stop.updated_departure)
+                    else:
+                        time = stop.scheduled_departure
                 return (0, time)
 
             # Stop has no times - track it for logging

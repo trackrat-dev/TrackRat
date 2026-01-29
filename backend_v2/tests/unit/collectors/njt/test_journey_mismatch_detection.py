@@ -104,9 +104,12 @@ class TestStaleOriginDetection:
                 scheduled_departure=dep_time,
             )
             db_session.add(stop)
-            journey.stops.append(stop)
 
         await db_session.flush()
+
+        # Refresh journey to load stops relationship in async context
+        # (accessing journey.stops directly would trigger sync lazy load and fail)
+        await db_session.refresh(journey, ["stops"])
 
         # Create API response with correct origin (NY Penn at 7:20 PM)
         builder = StopBuilder()
@@ -184,8 +187,10 @@ class TestStaleOriginDetection:
             scheduled_departure=base_time,
         )
         db_session.add(stop)
-        journey.stops.append(stop)
         await db_session.flush()
+
+        # Refresh journey to load stops relationship in async context
+        await db_session.refresh(journey, ["stops"])
 
         # API response for a DIFFERENT journey (different destination)
         builder = StopBuilder()
@@ -244,8 +249,10 @@ class TestStaleOriginDetection:
             scheduled_departure=base_time,
         )
         db_session.add(stop)
-        journey.stops.append(stop)
         await db_session.flush()
+
+        # Refresh journey to load stops relationship in async context
+        await db_session.refresh(journey, ["stops"])
 
         # API response matching the journey
         builder = StopBuilder()

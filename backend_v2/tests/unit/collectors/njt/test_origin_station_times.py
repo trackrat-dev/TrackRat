@@ -56,7 +56,9 @@ class TestNormalizeNjtStopTimes:
         assert result["actual_departure"] == dep_time_field  # 5:50 PM (actual)
 
         # Verify delay calculation would be correct
-        delay_minutes = (result["actual_departure"] - result["scheduled_departure"]).total_seconds() / 60
+        delay_minutes = (
+            result["actual_departure"] - result["scheduled_departure"]
+        ).total_seconds() / 60
         assert delay_minutes == 26  # +26 min delay, NOT -26 min early!
 
     def test_origin_station_on_time_train(self):
@@ -75,7 +77,9 @@ class TestNormalizeNjtStopTimes:
         assert result["actual_departure"] == dep_time_field
 
         # Delay should be 0
-        delay_minutes = (result["actual_departure"] - result["scheduled_departure"]).total_seconds() / 60
+        delay_minutes = (
+            result["actual_departure"] - result["scheduled_departure"]
+        ).total_seconds() / 60
         assert delay_minutes == 0
 
     def test_origin_station_not_departed(self):
@@ -111,13 +115,21 @@ class TestNormalizeNjtStopTimes:
         )
 
         # At intermediate: scheduled = DEP_TIME, actual = TIME
-        assert result["scheduled_arrival"] == time_field  # First observation captures live estimate
-        assert result["scheduled_departure"] == dep_time_field  # 6:00 PM (original schedule)
+        assert (
+            result["scheduled_arrival"] == time_field
+        )  # First observation captures live estimate
+        assert (
+            result["scheduled_departure"] == dep_time_field
+        )  # 6:00 PM (original schedule)
         assert result["actual_arrival"] == time_field  # 6:42:30 PM (actual)
-        assert result["actual_departure"] == time_field  # Same as arrival for intermediate
+        assert (
+            result["actual_departure"] == time_field
+        )  # Same as arrival for intermediate
 
         # Delay calculation (using departure times)
-        delay_minutes = (result["actual_departure"] - result["scheduled_departure"]).total_seconds() / 60
+        delay_minutes = (
+            result["actual_departure"] - result["scheduled_departure"]
+        ).total_seconds() / 60
         assert delay_minutes == 42.5  # +42.5 min delay
 
     def test_intermediate_station_on_time(self):
@@ -133,7 +145,9 @@ class TestNormalizeNjtStopTimes:
         )
 
         # On-time: TIME ≈ DEP_TIME
-        delay_minutes = (result["actual_departure"] - result["scheduled_departure"]).total_seconds() / 60
+        delay_minutes = (
+            result["actual_departure"] - result["scheduled_departure"]
+        ).total_seconds() / 60
         assert abs(delay_minutes) < 1  # Less than 1 minute difference
 
     def test_intermediate_station_not_departed(self):
@@ -171,6 +185,7 @@ class TestNormalizeNjtStopTimes:
 def mock_njt_client():
     """Mock NJ Transit client."""
     from unittest.mock import AsyncMock
+
     client = AsyncMock(spec=NJTransitClient)
     return client
 
@@ -263,15 +278,18 @@ class TestOriginStationDelayCalculation:
 
         assert origin_result is not None
 
-        # scheduled_departure should be TIME (original schedule: 5:24 PM)
+        # scheduled_departure should be TIME (original schedule: 5:24 PM ET)
+        # Note: Database stores times in UTC, so we convert to ET for comparison
         assert origin_result.scheduled_departure is not None
-        assert origin_result.scheduled_departure.hour == 17
-        assert origin_result.scheduled_departure.minute == 24
+        scheduled_et = origin_result.scheduled_departure.astimezone(ET)
+        assert scheduled_et.hour == 17
+        assert scheduled_et.minute == 24
 
-        # actual_departure should be DEP_TIME (actual: 5:50 PM)
+        # actual_departure should be DEP_TIME (actual: 5:50 PM ET)
         assert origin_result.actual_departure is not None
-        assert origin_result.actual_departure.hour == 17
-        assert origin_result.actual_departure.minute == 50
+        actual_et = origin_result.actual_departure.astimezone(ET)
+        assert actual_et.hour == 17
+        assert actual_et.minute == 50
 
         # scheduled_arrival should be None (no arrival at origin)
         assert origin_result.scheduled_arrival is None
@@ -324,7 +342,9 @@ class TestOriginStationDelayCalculation:
         intermediate_stop = MagicMock()
         intermediate_stop.STATION_2CHAR = "SE"
         intermediate_stop.STATIONNAME = "Secaucus Upper Lvl"
-        intermediate_stop.TIME = "28-Jan-2026 06:42:30 PM"  # Actual (delayed by ~42 min)
+        intermediate_stop.TIME = (
+            "28-Jan-2026 06:42:30 PM"  # Actual (delayed by ~42 min)
+        )
         intermediate_stop.DEP_TIME = "28-Jan-2026 06:00:00 PM"  # Original schedule
         intermediate_stop.DEPARTED = "YES"
         intermediate_stop.TRACK = None
@@ -354,13 +374,16 @@ class TestOriginStationDelayCalculation:
 
         assert secaucus is not None
 
-        # scheduled_departure should be DEP_TIME (6:00 PM)
-        assert secaucus.scheduled_departure.hour == 18
-        assert secaucus.scheduled_departure.minute == 0
+        # scheduled_departure should be DEP_TIME (6:00 PM ET)
+        # Note: Database stores times in UTC, so we convert to ET for comparison
+        scheduled_et = secaucus.scheduled_departure.astimezone(ET)
+        assert scheduled_et.hour == 18
+        assert scheduled_et.minute == 0
 
-        # actual_departure should be TIME (6:42:30 PM)
-        assert secaucus.actual_departure.hour == 18
-        assert secaucus.actual_departure.minute == 42
+        # actual_departure should be TIME (6:42:30 PM ET)
+        actual_et = secaucus.actual_departure.astimezone(ET)
+        assert actual_et.hour == 18
+        assert actual_et.minute == 42
 
         # Delay should be ~42 minutes
         delay_seconds = (
@@ -436,6 +459,11 @@ class TestOriginStationDelayCalculation:
         self, db_session: AsyncSession, journey_collector, mock_njt_client
     ):
         """Test that a train not yet departed has no actual_departure."""
+        # Use future times to ensure time-based inference doesn't trigger
+        # (Tier 3 inference triggers when scheduled_departure < now - 5 minutes)
+        future_scheduled = now_et() + timedelta(hours=1)
+        future_actual = future_scheduled + timedelta(minutes=11)
+
         journey = TrainJourney(
             train_id="3880",
             journey_date=date.today(),
@@ -445,18 +473,22 @@ class TestOriginStationDelayCalculation:
             origin_station_code="TR",  # Trenton origin
             terminal_station_code="NY",
             data_source="NJT",
-            scheduled_departure=now_et(),
+            scheduled_departure=future_scheduled,
             has_complete_journey=False,
             is_completed=False,
         )
         db_session.add(journey)
         await db_session.flush()
 
+        # Format times in NJT API format (e.g., "28-Jan-2026 08:31:00 PM")
+        time_str = future_scheduled.strftime("%d-%b-%Y %I:%M:%S %p")
+        dep_time_str = future_actual.strftime("%d-%b-%Y %I:%M:%S %p")
+
         origin_stop = MagicMock()
         origin_stop.STATION_2CHAR = "TR"
         origin_stop.STATIONNAME = "Trenton"
-        origin_stop.TIME = "28-Jan-2026 08:31:00 PM"
-        origin_stop.DEP_TIME = "28-Jan-2026 08:42:00 PM"
+        origin_stop.TIME = time_str  # Scheduled departure (future)
+        origin_stop.DEP_TIME = dep_time_str  # Actual departure time (future)
         origin_stop.DEPARTED = "NO"  # Not yet departed
         origin_stop.TRACK = "1"
         origin_stop.PICKUP = None
@@ -482,10 +514,11 @@ class TestOriginStationDelayCalculation:
         )
         origin_result = await db_session.scalar(stmt)
 
-        # scheduled_departure should be set (TIME = 8:31 PM)
+        # scheduled_departure should be set from TIME field
         assert origin_result.scheduled_departure is not None
-        assert origin_result.scheduled_departure.hour == 20
-        assert origin_result.scheduled_departure.minute == 31
+        scheduled_et = origin_result.scheduled_departure.astimezone(ET)
+        assert scheduled_et.hour == future_scheduled.hour
+        assert scheduled_et.minute == future_scheduled.minute
 
         # actual_departure should be None (not departed yet)
         assert origin_result.actual_departure is None

@@ -226,7 +226,9 @@ class TestAllRoutesConsistency:
             assert route.name, f"Route {route.id} missing name"
             assert route.data_source, f"Route {route.id} missing data_source"
             assert len(route.line_codes) > 0, f"Route {route.id} missing line_codes"
-            assert len(route.stations) >= 2, f"Route {route.id} has fewer than 2 stations"
+            assert (
+                len(route.stations) >= 2
+            ), f"Route {route.id} has fewer than 2 stations"
 
     def test_all_routes_have_unique_ids(self):
         """Test that all route IDs are unique."""
@@ -237,21 +239,27 @@ class TestAllRoutesConsistency:
         """Test that all data sources are valid."""
         valid_sources = {"NJT", "PATH", "PATCO", "AMTRAK"}
         for route in ALL_ROUTES:
-            assert route.data_source in valid_sources, (
-                f"Route {route.id} has invalid data_source: {route.data_source}"
-            )
+            assert (
+                route.data_source in valid_sources
+            ), f"Route {route.id} has invalid data_source: {route.data_source}"
 
     def test_njt_routes_count(self):
         """Test that we have expected number of NJT routes."""
         njt_routes = [r for r in ALL_ROUTES if r.data_source == "NJT"]
-        assert len(njt_routes) >= 9, f"Expected at least 9 NJT routes, got {len(njt_routes)}"
+        assert (
+            len(njt_routes) >= 9
+        ), f"Expected at least 9 NJT routes, got {len(njt_routes)}"
 
     def test_path_routes_count(self):
         """Test that we have expected number of PATH routes."""
         path_routes = [r for r in ALL_ROUTES if r.data_source == "PATH"]
-        assert len(path_routes) >= 5, f"Expected at least 5 PATH routes, got {len(path_routes)}"
+        assert (
+            len(path_routes) >= 5
+        ), f"Expected at least 5 PATH routes, got {len(path_routes)}"
 
     def test_amtrak_routes_count(self):
         """Test that we have expected number of AMTRAK routes."""
         amtrak_routes = [r for r in ALL_ROUTES if r.data_source == "AMTRAK"]
-        assert len(amtrak_routes) >= 10, f"Expected at least 10 AMTRAK routes, got {len(amtrak_routes)}"
+        assert (
+            len(amtrak_routes) >= 10
+        ), f"Expected at least 10 AMTRAK routes, got {len(amtrak_routes)}"

@@ -559,7 +559,19 @@ AMTRAK_STARLIGHT = Route(
     name="Coast Starlight",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("SEA", "TAC", "PDX", "SLM", "EUG", "SAC", "EMY", "SJC", "SLO", "SBA", "LAX"),
+    stations=(
+        "SEA",
+        "TAC",
+        "PDX",
+        "SLM",
+        "EUG",
+        "SAC",
+        "EMY",
+        "SJC",
+        "SLO",
+        "SBA",
+        "LAX",
+    ),
 )
 
 AMTRAK_SUNSET = Route(
