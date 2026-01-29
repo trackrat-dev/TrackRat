@@ -130,7 +130,7 @@ struct UpgradePromptCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack {
-                    Text("Upgrade Now")
+                    Text("Support & Unlock")
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(.white)
 

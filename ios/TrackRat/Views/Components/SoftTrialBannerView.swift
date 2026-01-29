@@ -26,7 +26,7 @@ struct SoftTrialBannerView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.white)
 
-                    Text("Subscribe with a free trial to continue")
+                    Text("Start a free trial to keep Pro features and support development")
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.7))
                 }

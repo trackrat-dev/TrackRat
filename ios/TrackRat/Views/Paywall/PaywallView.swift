@@ -101,6 +101,13 @@ struct PaywallView: View {
                     )
                     .padding(.horizontal)
 
+                    // Development transparency note
+                    Text("TrackRat is a work in progress. Your subscription directly funds bug fixes and new features.")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+
                     // Pricing options
                     if subscriptionService.isLoading && subscriptionService.availableProducts.isEmpty {
                         ProgressView()
@@ -452,11 +459,11 @@ private struct PurchaseSuccessOverlay: View {
                 }
 
                 VStack(spacing: 8) {
-                    Text("Thank you for your support!")
+                    Text("Thank you for supporting TrackRat!")
                         .font(.title.bold())
                         .foregroundColor(.white)
 
-                    Text("All premium features are now unlocked")
+                    Text("Your subscription directly funds development")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
                 }

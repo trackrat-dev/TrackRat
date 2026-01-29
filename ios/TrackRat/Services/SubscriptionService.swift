@@ -17,6 +17,7 @@ enum SubscriptionStatus: Equatable {
 // MARK: - Premium Feature
 
 enum PremiumFeature: String, CaseIterable {
+    case supportDevelopment = "Support Active Development"
     case liveActivities = "Live Activities"
     case trackPredictions = "Track Predictions"
     case delayForecasts = "Delay Forecasts"
@@ -25,7 +26,6 @@ enum PremiumFeature: String, CaseIterable {
     case tripStatistics = "Trip History (beta)"
     case ratSense = "RatSense AI"
     case pennStationGuide = "Penn Station Boarding Guide"
-    case supportDevelopment = "Support Continued Development"
 
     var displayName: String { rawValue }
 
@@ -97,9 +97,9 @@ enum PaywallContext {
         case .congestionMap:
             return "See real-time train congestion across the network"
         case .generic:
-            return "Support continued development and unlock all features"
+            return "Your subscription funds bug fixes, new features, and keeps the servers running."
         case .trialExpired:
-            return "Start your free trial to keep using Live Activities, track predictions, and all Pro features."
+            return "Start your free trial to keep Pro features and help fund future improvements."
         }
     }
 }
