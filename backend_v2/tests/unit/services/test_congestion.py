@@ -303,9 +303,9 @@ class TestCongestionAnalyzer:
         assert segment.congestion_factor == pytest.approx(1.03, rel=0.01)
         assert segment.congestion_level == "normal"
 
-    def test_insufficient_data_handling(self, congestion_analyzer):
-        """Test handling of segments with insufficient data."""
-        # Single journey (< 2 total) should be excluded for statistical validity
+    def test_single_journey_included(self, congestion_analyzer):
+        """Test that segments with a single journey are included."""
+        # Single journey should now be included (no minimum threshold)
         current_time = datetime.now(UTC)
         segment_data = {
             ("NY", "NP", "NJT"): [
@@ -323,8 +323,16 @@ class TestCongestionAnalyzer:
             segment_data, cancellation_counts
         )
 
-        # Should return empty list since we need at least 2 journeys for statistical validity
-        assert len(results) == 0
+        # Single journey segments should be included
+        assert len(results) == 1
+        segment = results[0]
+        assert segment.from_station == "NY"
+        assert segment.to_station == "NP"
+        assert segment.sample_count == 1
+        assert segment.avg_transit_minutes == 15
+        assert segment.baseline_minutes == 15
+        assert segment.congestion_factor == 1.0
+        assert segment.congestion_level == "normal"
 
     @pytest.mark.asyncio
     async def test_cache_behavior(self, congestion_analyzer, mock_db):

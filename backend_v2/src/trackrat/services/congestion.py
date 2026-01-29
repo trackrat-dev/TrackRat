@@ -494,7 +494,7 @@ class CongestionAnalyzer:
             ON sa.from_station = hb.from_station
             AND sa.to_station = hb.to_station
             AND sa.data_source = hb.data_source
-        WHERE (sa.active_count + sa.cancelled_count) >= 2  -- Need at least 2 journeys
+        WHERE (sa.active_count + sa.cancelled_count) >= 1  -- Show all segments with any data
         """
         )
 
@@ -1019,8 +1019,8 @@ class CongestionAnalyzer:
             # Calculate total journeys (valid active + cancelled)
             total_journeys = len(valid_segments) + cancellation_count
 
-            # Skip if we don't have enough data
-            if total_journeys < 2:
+            # Skip if we have no data at all
+            if total_journeys < 1:
                 continue
 
             # Calculate cancellation rate
