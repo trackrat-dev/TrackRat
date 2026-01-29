@@ -723,6 +723,7 @@ enum SegmentHighlightMode: String, CaseIterable {
         case .delays: return .off
         }
     }
+}
 
 struct StationCoordinates: Codable {
     let lat: Double
