@@ -457,26 +457,25 @@ async def get_route_congestion(
         },
     )
 
-    # Store in cache for future requests (fire-and-forget to avoid slowing down response)
-    if not force_refresh:
-        try:
-            from trackrat.services.api_cache import ApiCacheService
+    # Store in cache for future requests (also update cache on force_refresh)
+    try:
+        from trackrat.services.api_cache import ApiCacheService
 
-            cache_service = ApiCacheService()
-            await cache_service.store_cached_response(
-                db=db,
-                endpoint="/api/v2/routes/congestion",
-                params={
-                    "time_window_hours": time_window_hours,
-                    "max_per_segment": max_per_segment,
-                    "data_source": data_source,
-                },
-                response=response.model_dump(mode="json"),
-                ttl_seconds=600,  # 10 minutes (longer than 15-min refresh to avoid gaps)
-            )
-        except Exception as e:
-            # Don't let cache storage failure affect the API response
-            logger.warning("cache_storage_failed", error=str(e))
+        cache_service = ApiCacheService()
+        await cache_service.store_cached_response(
+            db=db,
+            endpoint="/api/v2/routes/congestion",
+            params={
+                "time_window_hours": time_window_hours,
+                "max_per_segment": max_per_segment,
+                "data_source": data_source,
+            },
+            response=response.model_dump(mode="json"),
+            ttl_seconds=600,  # 10 minutes (longer than 15-min refresh to avoid gaps)
+        )
+    except Exception as e:
+        # Don't let cache storage failure affect the API response
+        logger.warning("cache_storage_failed", error=str(e))
 
     return response
 
