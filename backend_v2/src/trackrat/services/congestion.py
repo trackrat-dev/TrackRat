@@ -19,38 +19,20 @@ from trackrat.services.congestion_types import (
     CONGESTION_THRESHOLD_HEAVY,
     CONGESTION_THRESHOLD_MODERATE,
     CONGESTION_THRESHOLD_NORMAL,
+    FREQ_THRESHOLD_HEALTHY,
+    FREQ_THRESHOLD_MODERATE,
+    FREQ_THRESHOLD_REDUCED,
     SegmentCongestion,
     get_congestion_level,
+    get_frequency_level,
 )
 from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger(__name__)
 
 
-# Frequency/health level thresholds (factor = train_count / baseline)
-# Higher is better - measures service reliability
-FREQ_THRESHOLD_HEALTHY = 0.9  # >= 90% of baseline trains
-FREQ_THRESHOLD_MODERATE = 0.7  # >= 70% of baseline trains
-FREQ_THRESHOLD_REDUCED = 0.5  # >= 50% of baseline trains
-# Below 0.5 = severe
-
 # Data sources with real-time data (frequency metrics are meaningful)
 REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH"}
-
-
-def get_frequency_level(frequency_factor: float) -> str:
-    """Determine frequency/health level from a frequency factor.
-
-    Higher is better: 1.0 means running at baseline, <1.0 means fewer trains.
-    """
-    if frequency_factor >= FREQ_THRESHOLD_HEALTHY:
-        return "healthy"
-    elif frequency_factor >= FREQ_THRESHOLD_MODERATE:
-        return "moderate"
-    elif frequency_factor >= FREQ_THRESHOLD_REDUCED:
-        return "reduced"
-    else:
-        return "severe"
 
 
 # Re-export for backward compatibility
@@ -580,6 +562,12 @@ class CongestionAnalyzer:
                     if row.frequency_factor is not None:
                         frequency_factor = float(row.frequency_factor)
                         frequency_level = get_frequency_level(frequency_factor)
+                else:
+                    # No historical baseline available - assume normal service
+                    # This prevents showing gray everywhere when segment_transit_times
+                    # table lacks historical data for the current hour/day pattern
+                    frequency_factor = 1.0
+                    frequency_level = "healthy"
 
             congestion_results.append(
                 SegmentCongestion(

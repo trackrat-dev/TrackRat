@@ -13,7 +13,11 @@ from typing import Any
 from structlog import get_logger
 
 from trackrat.config.route_topology import get_canonical_segments
-from trackrat.services.congestion_types import SegmentCongestion, get_congestion_level
+from trackrat.services.congestion_types import (
+    SegmentCongestion,
+    get_congestion_level,
+    get_frequency_level,
+)
 
 logger = get_logger(__name__)
 
@@ -75,6 +79,11 @@ def normalize_aggregated_segments(
                     "average_delay_minutes": segment.average_delay_minutes,
                     "cancellation_count": segment.cancellation_count,
                     "cancellation_rate": segment.cancellation_rate,
+                    # Frequency fields for Health mode
+                    "train_count": segment.train_count,
+                    "baseline_train_count": segment.baseline_train_count,
+                    "frequency_factor": segment.frequency_factor,
+                    "frequency_level": segment.frequency_level,
                 }
             )
 
@@ -131,6 +140,30 @@ def normalize_aggregated_segments(
             (total_cancellations / total_journeys * 100) if total_journeys > 0 else 0.0
         )
 
+        # Aggregate frequency metrics (sum train_count and baseline_train_count)
+        train_count: int | None = None
+        baseline_train_count: float | None = None
+        frequency_factor: float | None = None
+        frequency_level: str | None = None
+
+        # Sum up train counts from all contributing segments
+        train_counts = [d["train_count"] for d in data_list if d["train_count"] is not None]
+        baseline_counts = [d["baseline_train_count"] for d in data_list if d["baseline_train_count"] is not None]
+        freq_factors = [d["frequency_factor"] for d in data_list if d["frequency_factor"] is not None]
+
+        if train_counts:
+            train_count = sum(train_counts)
+        if baseline_counts:
+            baseline_train_count = sum(baseline_counts)
+            if train_count is not None and baseline_train_count > 0:
+                frequency_factor = train_count / baseline_train_count
+                frequency_level = get_frequency_level(frequency_factor)
+        elif freq_factors:
+            # No baseline available but we have frequency factors (from fallback)
+            # Use average of the contributing segment factors
+            frequency_factor = sum(freq_factors) / len(freq_factors)
+            frequency_level = get_frequency_level(frequency_factor)
+
         result.append(
             SegmentCongestion(
                 from_station=from_station,
@@ -144,6 +177,10 @@ def normalize_aggregated_segments(
                 average_delay_minutes=average_delay,
                 cancellation_count=total_cancellations,
                 cancellation_rate=cancellation_rate,
+                train_count=train_count,
+                baseline_train_count=baseline_train_count,
+                frequency_factor=frequency_factor,
+                frequency_level=frequency_level,
             )
         )
 

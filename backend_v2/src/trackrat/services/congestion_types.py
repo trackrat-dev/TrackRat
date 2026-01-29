@@ -10,6 +10,13 @@ CONGESTION_THRESHOLD_MODERATE = 1.25  # <= 25% slower than baseline
 CONGESTION_THRESHOLD_HEAVY = 1.5  # <= 50% slower than baseline
 # Above 1.5 = severe
 
+# Frequency/health level thresholds (factor = train_count / baseline)
+# Higher is better - measures service reliability
+FREQ_THRESHOLD_HEALTHY = 0.9  # >= 90% of baseline trains
+FREQ_THRESHOLD_MODERATE = 0.7  # >= 70% of baseline trains
+FREQ_THRESHOLD_REDUCED = 0.5  # >= 50% of baseline trains
+# Below 0.5 = severe
+
 
 def get_congestion_level(congestion_factor: float) -> str:
     """Determine congestion level from a congestion factor."""
@@ -19,6 +26,21 @@ def get_congestion_level(congestion_factor: float) -> str:
         return "moderate"
     elif congestion_factor <= CONGESTION_THRESHOLD_HEAVY:
         return "heavy"
+    else:
+        return "severe"
+
+
+def get_frequency_level(frequency_factor: float) -> str:
+    """Determine frequency/health level from a frequency factor.
+
+    Higher is better: 1.0 means running at baseline, <1.0 means fewer trains.
+    """
+    if frequency_factor >= FREQ_THRESHOLD_HEALTHY:
+        return "healthy"
+    elif frequency_factor >= FREQ_THRESHOLD_MODERATE:
+        return "moderate"
+    elif frequency_factor >= FREQ_THRESHOLD_REDUCED:
+        return "reduced"
     else:
         return "severe"
 
