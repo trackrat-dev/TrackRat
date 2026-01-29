@@ -626,7 +626,7 @@ struct FavoriteStationRow: View {
             Spacer()
             Image(systemName: isFavorite ? "heart.fill" : "heart")
                 .foregroundColor(.orange)
-                .font(.system(size: 20))
+                .font(TrackRatTheme.IconSize.medium)
         }
         .padding()
         .background(Material.ultraThin)

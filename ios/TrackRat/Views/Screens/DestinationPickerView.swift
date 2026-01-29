@@ -40,7 +40,7 @@ struct DestinationPickerView: View {
             VStack(spacing: 16) {
                     // Simple centered title
                     Text("Where would you like to go?")
-                        .font(.system(size: 26, weight: .semibold))
+                        .font(TrackRatTheme.Typography.title2)
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -64,9 +64,9 @@ struct DestinationPickerView: View {
                                 appState.selectedRoute = nil
                             } label: {
                                 Image(systemName: "chevron.left")
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(TrackRatTheme.IconSize.small)
                                     .foregroundColor(.white)
-                                    .frame(width: 40, height: 40)
+                                    .frame(minWidth: 40, minHeight: 40)
                                     .background(
                                         RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                                             .fill(TrackRatTheme.Colors.surfaceCard)
@@ -133,6 +133,7 @@ struct DestinationPickerView: View {
                                                 Text(Stations.displayName(for: station))
                                                     .font(.body)
                                                     .foregroundColor(.white)
+                                                    .textProtected()
                                                 Spacer()
                                             }
 
@@ -241,6 +242,7 @@ struct FavoriteDestinationButton: View {
                     .font(.callout)
                     .fontWeight(.medium)
                     .foregroundColor(.white)
+                    .textProtected()
 
                 Spacer()
 
@@ -248,7 +250,7 @@ struct FavoriteDestinationButton: View {
                 StationIconView(
                     stationCode: station.id,
                     isStationFavorited: appState.isStationFavorited(code: station.id),
-                    fontSize: 20
+                    iconFont: TrackRatTheme.IconSize.medium
                 ) {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         appState.toggleFavoriteStation(code: station.id, name: station.name)

@@ -1875,8 +1875,9 @@ private struct SegmentTimeDetailRow: View {
             Text(label)
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .textProtected()
                 .frame(width: 70, alignment: .leading)
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(scheduled.formatted(date: .omitted, time: .shortened))
                     .font(.caption)

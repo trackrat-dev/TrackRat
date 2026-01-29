@@ -18,23 +18,25 @@ struct SoftTrialBannerView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "clock.fill")
-                    .font(.system(size: 18))
+                    .font(TrackRatTheme.IconSize.small)
                     .foregroundColor(.orange)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("You have \(hoursRemaining) \(hoursRemaining == 1 ? "hour" : "hours") remaining")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(TrackRatTheme.Typography.bodySecondary)
                         .foregroundColor(.white)
+                        .textProtected()
 
                     Text("Start a free trial to keep Pro features and support development")
-                        .font(.system(size: 12))
+                        .font(TrackRatTheme.Typography.caption)
                         .foregroundColor(.white.opacity(0.7))
+                        .textProtected(lines: 2)
                 }
 
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(TrackRatTheme.IconSize.xsmall)
                     .foregroundColor(.orange)
             }
             .padding(.horizontal, 16)

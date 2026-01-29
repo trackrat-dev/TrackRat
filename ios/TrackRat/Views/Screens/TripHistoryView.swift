@@ -44,9 +44,9 @@ struct TripHistoryView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(TrackRatTheme.IconSize.small)
                         .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
             }
             .padding(.horizontal, 8)

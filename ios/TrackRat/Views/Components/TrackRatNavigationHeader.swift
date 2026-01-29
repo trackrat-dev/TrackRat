@@ -41,9 +41,9 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
                         }
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(TrackRatTheme.IconSize.small)
                             .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
+                            .frame(minWidth: 44, minHeight: 44)
                     }
                     .buttonStyle(.plain)
                 }
@@ -59,9 +59,9 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(TrackRatTheme.IconSize.small)
                             .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
+                            .frame(minWidth: 44, minHeight: 44)
                     }
                     .buttonStyle(.plain)
                 }

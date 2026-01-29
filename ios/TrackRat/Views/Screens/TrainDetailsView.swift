@@ -724,7 +724,7 @@ struct StopRowV2: View {
                shouldShowJourneyPredictions {
                 HStack(spacing: 4) {
                     Text("🐀✨")
-                        .font(.system(size: 16))
+                        .font(.callout)
                     Text(DateFormatter.easternTimeShort.string(from: predictedArrival))
                         .font(.caption)
                         .fontWeight(.medium)
@@ -1593,11 +1593,12 @@ struct PennStationWaitingLink: View {
                 HStack(spacing: 3) {
                     if !subscriptionService.isPro {
                         Image(systemName: "lock.fill")
-                            .font(.system(size: 10))
+                            .font(.caption2)
                     }
                     Text("where should I wait?")
-                        .font(.system(size: 12))
+                        .font(TrackRatTheme.Typography.caption)
                         .fontWeight(.medium)
+                        .textProtected()
                 }
                 .foregroundColor(.white)
                 .padding(.vertical, 6)

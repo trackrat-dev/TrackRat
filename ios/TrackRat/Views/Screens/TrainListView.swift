@@ -47,9 +47,9 @@ struct TrainListView: View {
                     }
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(TrackRatTheme.IconSize.small)
                         .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.plain)
 
@@ -83,16 +83,16 @@ struct TrainListView: View {
                 } label: {
                     ZStack {
                         Image(systemName: "calendar")
-                            .font(.system(size: 16))
+                            .font(TrackRatTheme.IconSize.small)
                         if !subscriptionService.isPro {
                             Image(systemName: "lock.fill")
-                                .font(.system(size: 8))
+                                .font(.caption2)
                                 .foregroundColor(.orange)
                                 .offset(x: 8, y: -8)
                         }
                     }
                     .foregroundColor(.white.opacity(0.8))
-                    .frame(width: 44, height: 44)
+                    .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.plain)
 

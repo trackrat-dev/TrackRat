@@ -75,12 +75,13 @@ struct TrainDistributionChart: View {
             Text(label)
                 .font(.caption2)
                 .foregroundColor(.white.opacity(0.6))
-                .lineLimit(1)
+                .textProtected()
 
             // Count
             Text("(\(trains.count))")
                 .font(.caption2)
                 .foregroundColor(.white.opacity(0.4))
+                .textProtected()
         }
         .frame(maxWidth: .infinity)
     }
@@ -93,7 +94,9 @@ struct TrainDistributionChart: View {
                 .font(.caption2)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
-                .frame(width: 52, height: 24)
+                .textProtected()
+                .frame(minWidth: 52, minHeight: 24)
+                .padding(.horizontal, 4)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
                         .fill(color.opacity(0.8))

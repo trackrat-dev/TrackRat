@@ -13,9 +13,10 @@ struct StationButton: View {
                 Text(Stations.displayName(for: name))
                     .font(.headline)
                     .foregroundColor(.white)
-                
+                    .textProtected()
+
                 Spacer()
-                
+
                 Image(systemName: "chevron.right")
                     .foregroundColor(.white.opacity(0.7))
                     .font(.caption)

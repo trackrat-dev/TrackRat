@@ -462,10 +462,12 @@ private struct PurchaseSuccessOverlay: View {
                     Text("Thank you for supporting TrackRat!")
                         .font(.title.bold())
                         .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
 
                     Text("Reach out if you have ideas for new features")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
                 }
             }
         }

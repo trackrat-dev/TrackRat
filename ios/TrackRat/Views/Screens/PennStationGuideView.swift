@@ -36,7 +36,7 @@ struct YouTubeLinkView: View {
                         .frame(width: 60, height: 60)
 
                     Image(systemName: "play.fill")
-                        .font(.system(size: 24))
+                        .font(TrackRatTheme.IconSize.large)
                         .foregroundColor(.white)
                         .offset(x: 2) // Slight offset to center the play icon visually
                 }

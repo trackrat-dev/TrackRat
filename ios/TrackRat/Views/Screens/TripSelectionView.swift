@@ -85,8 +85,9 @@ struct TripSelectionView: View {
                             selectRatSenseSuggestion(suggestion)
                         } label: {
                             Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(TrackRatTheme.Typography.bodySecondary)
                                 .foregroundColor(.white)
+                                .textProtected()
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
                                 .background(
@@ -106,11 +107,8 @@ struct TripSelectionView: View {
 
                     // Top title
                 Text("Where would you like to leave from?")
-                    .font(.system(size: 26, weight: .semibold))
+                    .font(TrackRatTheme.Typography.title2)
                     .foregroundColor(.white)
-                    .onAppear {
-                        print("🎯 TripSelectionView title text appeared!")
-                    }
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
@@ -161,7 +159,7 @@ struct TripSelectionView: View {
                             showingProfile = true
                         } label: {
                             Image(systemName: "person.circle.fill")
-                                .font(.system(size: 24))
+                                .font(TrackRatTheme.IconSize.large)
                                 .foregroundColor(.white.opacity(0.8))
                         }
                         .buttonStyle(.plain)
@@ -199,6 +197,7 @@ struct TripSelectionView: View {
                                             Text(station)
                                                 .font(.body)
                                                 .foregroundColor(.white)
+                                                .textProtected()
                                             Spacer()
                                         }
 
@@ -353,7 +352,7 @@ struct TripSelectionView: View {
         } label: {
             HStack {
                 Image(systemName: "tram.fill")
-                    .font(.system(size: 20))
+                    .font(TrackRatTheme.IconSize.medium)
                     .foregroundColor(cardColor(for: state))
                 
                 VStack(alignment: .leading, spacing: 2) {
@@ -428,7 +427,7 @@ struct TripSelectionView: View {
         switch state {
         case .unknown, .found:
             Image(systemName: "arrow.right.circle.fill")
-                .font(.system(size: 20))
+                .font(TrackRatTheme.IconSize.medium)
                 .foregroundColor(cardColor(for: state))
         case .validating:
             ProgressView()
@@ -436,7 +435,7 @@ struct TripSelectionView: View {
                 .scaleEffect(0.8)
         case .notFound:
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 20))
+                .font(TrackRatTheme.IconSize.medium)
                 .foregroundColor(.red)
         }
     }
@@ -584,7 +583,7 @@ struct FavoriteStationButton: View {
                 StationIconView(
                     stationCode: station.id,
                     isStationFavorited: appState.isStationFavorited(code: station.id),
-                    fontSize: 20
+                    iconFont: TrackRatTheme.IconSize.medium
                 ) {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         appState.toggleFavoriteStation(code: station.id, name: station.name)
@@ -593,7 +592,7 @@ struct FavoriteStationButton: View {
                 }
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(TrackRatTheme.IconSize.xsmall)
                     .foregroundColor(.white.opacity(0.6))
             }
             .padding()

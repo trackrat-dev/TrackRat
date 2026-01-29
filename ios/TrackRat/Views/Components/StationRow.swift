@@ -13,6 +13,7 @@ struct StationRow: View {
                 Text(station.name)
                     .font(.headline)
                     .foregroundColor(.white)
+                    .textProtected()
             }
 
             Spacer()
@@ -38,7 +39,7 @@ struct StationRow: View {
             }) {
                 Image(systemName: isFavorite ? "heart.fill" : "heart")
                     .foregroundColor(isFavorite ? .orange : .white.opacity(0.5))
-                    .font(.system(size: 20))
+                    .font(TrackRatTheme.IconSize.medium)
                     .scaleEffect(isAnimating ? 1.2 : 1.0)
             }
             .buttonStyle(PlainButtonStyle())
@@ -68,6 +69,7 @@ struct SearchStationRow: View {
                 Text(stationName)
                     .font(.headline)
                     .foregroundColor(.white)
+                    .textProtected()
             }
 
             Spacer()
@@ -93,7 +95,7 @@ struct SearchStationRow: View {
             }) {
                 Image(systemName: isFavorite ? "heart.fill" : "heart")
                     .foregroundColor(isFavorite ? .orange : .white.opacity(0.5))
-                    .font(.system(size: 20))
+                    .font(TrackRatTheme.IconSize.medium)
                     .scaleEffect(isAnimating ? 1.2 : 1.0)
             }
             .buttonStyle(PlainButtonStyle())
@@ -119,13 +121,14 @@ struct HomeWorkStationRow: View {
             // Icon
             Image(systemName: isHome ? "house.fill" : "briefcase.fill")
                 .foregroundColor(.orange)
-                .font(.system(size: 16))
+                .font(TrackRatTheme.IconSize.small)
 
             // Station name
             VStack(alignment: .leading, spacing: 4) {
                 Text(stationName)
                     .font(.headline)
                     .foregroundColor(.white)
+                    .textProtected()
 
                 Text(isHome ? "Home Station" : "Work Station")
                     .font(.caption)

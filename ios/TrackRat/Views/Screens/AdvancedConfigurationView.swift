@@ -233,13 +233,13 @@ struct AdvancedConfigurationView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Image(systemName: result.success ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.system(size: 24))
+                        .font(TrackRatTheme.IconSize.large)
                         .foregroundColor(result.success ? .green : .red)
-                    
+
                     Text(result.success ? "Connected" : "Connection Failed")
                         .font(.headline)
                         .foregroundColor(.white)
-                    
+
                     Spacer()
                 }
                 
@@ -527,11 +527,11 @@ struct ServerEnvironmentRow: View {
 
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 20))
+                        .font(TrackRatTheme.IconSize.medium)
                         .foregroundColor(.orange)
                 } else {
                     Image(systemName: "circle")
-                        .font(.system(size: 20))
+                        .font(TrackRatTheme.IconSize.medium)
                         .foregroundColor(.white.opacity(0.3))
                 }
             }

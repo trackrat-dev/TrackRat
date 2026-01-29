@@ -4,44 +4,48 @@ import SwiftUI
 struct StationIconView: View {
     let stationCode: String
     let isStationFavorited: Bool
-    let fontSize: CGFloat
+    let iconFont: Font
     let onHeartTap: () -> Void
-    
-    // Convenience initializer with default font size
-    init(stationCode: String, isStationFavorited: Bool, fontSize: CGFloat = 16, onHeartTap: @escaping () -> Void) {
+
+    init(
+        stationCode: String,
+        isStationFavorited: Bool,
+        iconFont: Font = TrackRatTheme.IconSize.small,
+        onHeartTap: @escaping () -> Void
+    ) {
         self.stationCode = stationCode
         self.isStationFavorited = isStationFavorited
-        self.fontSize = fontSize
+        self.iconFont = iconFont
         self.onHeartTap = onHeartTap
     }
-    
+
     private var isHomeStation: Bool {
         RatSenseService.shared.getHomeStation() == stationCode
     }
-    
+
     private var isWorkStation: Bool {
         RatSenseService.shared.getWorkStation() == stationCode
     }
-    
+
     private var isHomeOrWorkStation: Bool {
         isHomeStation || isWorkStation
     }
-    
+
     var body: some View {
         if isHomeStation {
             // Home station icon
             Image(systemName: "house.fill")
-                .font(.system(size: fontSize))
+                .font(iconFont)
                 .foregroundColor(.orange)
         } else if isWorkStation {
             // Work station icon
             Image(systemName: "building.2.fill")
-                .font(.system(size: fontSize))
+                .font(iconFont)
                 .foregroundColor(.orange)
         } else {
             // Regular favorite heart icon - interactive
             Image(systemName: isStationFavorited ? "heart.fill" : "heart")
-                .font(.system(size: fontSize))
+                .font(iconFont)
                 .foregroundColor(.orange)
                 .onTapGesture {
                     onHeartTap()
@@ -108,7 +112,7 @@ struct DeparturePickerView: View {
         if let trainNumber = searchResults.trainNumber {
             HStack {
                 Image(systemName: "tram.fill")
-                    .font(.system(size: 20))
+                    .font(TrackRatTheme.IconSize.medium)
                     .foregroundColor(.orange)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -128,7 +132,7 @@ struct DeparturePickerView: View {
                         .scaleEffect(0.8)
                 } else {
                     Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 20))
+                        .font(TrackRatTheme.IconSize.medium)
                         .foregroundColor(.orange)
                 }
             }
@@ -224,8 +228,9 @@ struct DeparturePickerView: View {
             // Rat Sense suggestion
             if let suggestion = ratSenseService.suggestedJourney {
                 Text("🐀✨ \(suggestion.fromStationName) to \(suggestion.toStationName)")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(TrackRatTheme.Typography.bodySecondary)
                     .foregroundColor(.white)
+                    .textProtected()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(
@@ -318,9 +323,10 @@ struct DeparturePickerView: View {
                     Text(station)
                         .font(.body)
                         .foregroundColor(.white)
+                        .textProtected()
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(TrackRatTheme.IconSize.xsmall)
                         .foregroundColor(.white.opacity(0.6))
                 }
 
@@ -559,8 +565,7 @@ struct DepartureButton: View {
             // Station icon - shows home/work icon or interactive heart
             StationIconView(
                 stationCode: code,
-                isStationFavorited: appState.isStationFavorited(code: code),
-                fontSize: 18
+                isStationFavorited: appState.isStationFavorited(code: code)
             ) {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     appState.toggleFavoriteStation(code: code, name: name)

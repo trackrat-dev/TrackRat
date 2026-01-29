@@ -84,7 +84,7 @@ struct TrackRatTheme {
         static let caption2 = Font.caption2
     }
     
-    // MARK: - Spacing
+    // MARK: - Spacing (fixed values for layout constraints)
     struct Spacing {
         static let xs: CGFloat = 4
         static let sm: CGFloat = 8
@@ -92,6 +92,18 @@ struct TrackRatTheme {
         static let lg: CGFloat = 24
         static let xl: CGFloat = 32
         static let xxl: CGFloat = 48
+    }
+
+    // MARK: - Icon Sizes (semantic sizes that work with Dynamic Type)
+    struct IconSize {
+        /// Extra small icons for disclosure indicators (14pt base)
+        static let xsmall: Font = .system(size: 14, weight: .semibold)
+        /// Small icons in lists, labels (16pt base)
+        static let small: Font = .system(size: 16, weight: .medium)
+        /// Medium icons for buttons, navigation (20pt base)
+        static let medium: Font = .system(size: 20, weight: .medium)
+        /// Large icons for prominent UI elements (24pt base)
+        static let large: Font = .system(size: 24, weight: .medium)
     }
     
     // MARK: - Corner Radius
@@ -212,6 +224,20 @@ extension View {
     /// Lighter card shadow for subtle elevation
     func trackRatShadowLight() -> some View {
         self.shadow(color: TrackRatTheme.Colors.shadow, radius: 4, x: 0, y: 2)
+    }
+
+    /// Protects text from overflow by limiting lines and allowing scaling
+    /// Use on text in constrained spaces (pills, badges, navigation)
+    func textProtected(lines: Int = 1, minScale: CGFloat = 0.75) -> some View {
+        self
+            .lineLimit(lines)
+            .minimumScaleFactor(minScale)
+    }
+
+    /// Limits Dynamic Type scaling to prevent extreme sizes breaking layouts
+    /// Use on screens or components that can't handle accessibility sizes
+    func dynamicTypeBounded(_ range: ClosedRange<DynamicTypeSize> = .small ... .xxxLarge) -> some View {
+        self.dynamicTypeSize(range)
     }
 
     /// Makes navigation destination backgrounds transparent to allow sheet's
