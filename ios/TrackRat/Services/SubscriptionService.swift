@@ -97,9 +97,9 @@ enum PaywallContext {
         case .congestionMap:
             return "See real-time train congestion across the network"
         case .generic:
-            return "Your subscription funds bug fixes, new features, and keeps the servers running."
+            return "Your subscription supports bug fixes and new features"
         case .trialExpired:
-            return "Start your free trial to keep Pro features and help fund future improvements."
+            return "Start your free trial to keep Pro features and help fund future improvements!"
         }
     }
 }
