@@ -124,7 +124,7 @@ final class SubscriptionService: ObservableObject {
         }
     }
 
-    // Soft trial start date (24-hour preview for new users)
+    // Soft trial start date (16-hour preview for new users)
     @Published private(set) var softTrialStartDate: Date?
 
     // MARK: - Private Properties
@@ -148,26 +148,26 @@ final class SubscriptionService: ObservableObject {
         return false
     }
 
-    /// Returns true if user is currently within the 24-hour soft trial window
+    /// Returns true if user is currently within the 16-hour soft trial window
     var isInSoftTrial: Bool {
         guard let startDate = softTrialStartDate else { return false }
         let hoursElapsed = Date().timeIntervalSince(startDate) / 3600
-        return hoursElapsed < 24
+        return hoursElapsed < 16
     }
 
-    /// Returns hours remaining in soft trial (1-24), or nil if not in trial
+    /// Returns hours remaining in soft trial (1-16), or nil if not in trial
     var softTrialHoursRemaining: Int? {
         guard let startDate = softTrialStartDate else { return nil }
         let hoursElapsed = Date().timeIntervalSince(startDate) / 3600
-        guard hoursElapsed < 24 else { return nil }
-        return max(1, Int(ceil(24 - hoursElapsed)))
+        guard hoursElapsed < 16 else { return nil }
+        return max(1, Int(ceil(16 - hoursElapsed)))
     }
 
     /// Returns true if soft trial was started but has now expired
     var softTrialExpired: Bool {
         guard let startDate = softTrialStartDate else { return false }
         let hoursElapsed = Date().timeIntervalSince(startDate) / 3600
-        return hoursElapsed >= 24
+        return hoursElapsed >= 16
     }
 
     var monthlyProduct: Product? {
