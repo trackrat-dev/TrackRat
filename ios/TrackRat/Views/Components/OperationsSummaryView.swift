@@ -40,17 +40,17 @@ struct OperationsSummaryView: View {
         self.ratSenseRoute = ratSenseRoute
     }
 
-    /// Combined display text: network summary or route summary
+    /// Combined display text: network summary or route summary (Pro only)
     private var combinedBodyText: String? {
         guard let summary = summary, !summary.body.isEmpty else { return nil }
 
-        // If we have a route summary, show "On your route:" + route body
-        if let routeSummary = routeSummary, !routeSummary.body.isEmpty {
+        // "On your route" is a Pro feature - only show route-specific summary for Pro users
+        if SubscriptionService.shared.isPro,
+           let routeSummary = routeSummary, !routeSummary.body.isEmpty {
             return "On your route: \(routeSummary.body)"
         }
 
-        // No route summary - show body only (it's already a complete summary)
-        // Headline is designed for expandable views, not inline display
+        // No route summary (or not Pro) - show network body only
         return summary.body
     }
 
@@ -120,8 +120,9 @@ struct OperationsSummaryView: View {
             )
             summary = result
 
-            // If we have a RatSense route and this is a network scope, also fetch route summary
-            if scope == .network, let route = ratSenseRoute {
+            // If Pro user with RatSense route and network scope, also fetch route summary
+            // (route summary is a Pro feature - skip the API call for non-Pro users)
+            if SubscriptionService.shared.isPro, scope == .network, let route = ratSenseRoute {
                 do {
                     let routeResult = try await APIService.shared.fetchOperationsSummary(
                         scope: .route,
