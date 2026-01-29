@@ -47,6 +47,16 @@ NJT_LINE_CANONICALIZATION: dict[str, str] = {
     "RV": "Ra",
 }
 
+# Data sources that have real-time discovery systems.
+# SCHEDULED trains from these sources should be hidden when close to departure
+# if they haven't been upgraded to OBSERVED by discovery.
+REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset({"NJT", "AMTRAK", "PATH"})
+
+# Minutes before departure to hide SCHEDULED trains that weren't discovered.
+# If a train hasn't been OBSERVED by this point, it's likely not running
+# or we can't provide reliable information about it.
+SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 30
+
 
 class DepartureService:
     """Service for handling departure queries and processing."""
@@ -304,11 +314,11 @@ class DepartureService:
         # For TODAY: merge real-time departures with GTFS schedule for rest of day
         # This shows trains that haven't entered the real-time feed yet
         if target_date == today:
+            current_time = now_et()
             try:
                 from trackrat.services.gtfs import GTFSService
 
                 gtfs_service = GTFSService()
-                current_time = now_et()
 
                 gtfs_response = await gtfs_service.get_scheduled_departures(
                     db=db,
@@ -352,6 +362,11 @@ class DepartureService:
                     to_station=to_station,
                     error=str(e),
                 )
+
+            # Filter out SCHEDULED trains that are close to departure but weren't
+            # discovered by the real-time system. Only applies to systems with
+            # real-time data (NJT, Amtrak, PATH) - not PATCO which is schedule-only.
+            departures = self._filter_stale_scheduled_trains(departures, current_time)
 
         # Apply limit to departures
         limited_departures = departures[:limit]
@@ -935,3 +950,67 @@ class DepartureService:
         )
 
         return merged
+
+    def _filter_stale_scheduled_trains(
+        self,
+        departures: list[TrainDeparture],
+        current_time: datetime,
+    ) -> list[TrainDeparture]:
+        """Remove SCHEDULED trains close to departure for real-time systems.
+
+        If a train from a system with real-time discovery (NJT, Amtrak, PATH)
+        hasn't been OBSERVED by the time it's about to depart, we don't have
+        reliable data to show the user. The train is likely:
+        - Not running (cancelled or schedule changed)
+        - Not being reported by the real-time API
+        - Based on stale/incorrect schedule data
+
+        PATCO is excluded because it has no real-time API - schedule data is
+        all we have.
+
+        Args:
+            departures: List of departures to filter
+            current_time: Current time for threshold calculation
+
+        Returns:
+            Filtered list with stale SCHEDULED trains removed
+        """
+        threshold = current_time + timedelta(minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES)
+
+        result = []
+        filtered_count = 0
+
+        for dep in departures:
+            # Always show OBSERVED trains - we have real-time data
+            if dep.observation_type == "OBSERVED":
+                result.append(dep)
+                continue
+
+            # Always show SCHEDULED trains from systems without real-time data
+            if dep.data_source not in REAL_TIME_DATA_SOURCES:
+                result.append(dep)
+                continue
+
+            # For real-time systems: hide SCHEDULED trains if departure is imminent
+            scheduled_time = dep.departure.scheduled_time
+            if scheduled_time and scheduled_time < threshold:
+                filtered_count += 1
+                logger.debug(
+                    "filtering_stale_scheduled_train",
+                    train_id=dep.train_id,
+                    data_source=dep.data_source,
+                    scheduled_time=scheduled_time.isoformat(),
+                    threshold=threshold.isoformat(),
+                )
+                continue
+
+            result.append(dep)
+
+        if filtered_count > 0:
+            logger.info(
+                "filtered_stale_scheduled_trains",
+                count=filtered_count,
+                threshold_minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES,
+            )
+
+        return result

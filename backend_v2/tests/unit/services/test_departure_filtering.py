@@ -51,6 +51,7 @@ class TestDepartureFiltering:
         journey.is_expired = is_expired
         journey.is_completed = is_completed
         journey.is_cancelled = is_cancelled
+        journey.cancellation_reason = None
         journey.last_updated_at = now
         journey.first_seen_at = now
         journey.update_count = 1
@@ -385,3 +386,237 @@ class TestDepartureFilterQuery:
 
         assert filter_expr is not None
         assert "is_completed" in str(filter_expr)
+
+
+class TestStaleScheduledFiltering:
+    """Tests for filtering SCHEDULED trains close to departure time.
+
+    SCHEDULED trains from systems with real-time data (NJT, Amtrak, PATH)
+    should be hidden when they're within 30 minutes of departure and
+    haven't been upgraded to OBSERVED by the discovery system.
+
+    PATCO trains (schedule-only) should never be filtered since there's
+    no real-time system to discover them.
+    """
+
+    def _create_departure(
+        self,
+        train_id: str,
+        data_source: str,
+        observation_type: str,
+        minutes_until_departure: int,
+    ) -> "TrainDeparture":
+        """Create a TrainDeparture for testing."""
+        from trackrat.models.api import (
+            DataFreshness,
+            LineInfo,
+            StationInfo,
+            TrainDeparture,
+            TrainPosition,
+        )
+
+        now = now_et()
+        scheduled_time = now + timedelta(minutes=minutes_until_departure)
+
+        return TrainDeparture(
+            train_id=train_id,
+            journey_date=now.date(),
+            line=LineInfo(code="NE", name="Northeast Corridor", color="#000000"),
+            destination="New York",
+            departure=StationInfo(
+                code="TR",
+                name="Trenton",
+                scheduled_time=scheduled_time,
+                updated_time=None,
+                actual_time=None,
+                track=None,
+            ),
+            arrival=None,
+            train_position=TrainPosition(),
+            data_freshness=DataFreshness(
+                last_updated=now,
+                age_seconds=0,
+                update_count=1,
+            ),
+            data_source=data_source,
+            observation_type=observation_type,
+            is_cancelled=False,
+        )
+
+    def test_filter_scheduled_njt_within_threshold(self):
+        """SCHEDULED NJT train within 30 min of departure should be filtered."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure(
+                train_id="1234",
+                data_source="NJT",
+                observation_type="SCHEDULED",
+                minutes_until_departure=15,  # Within threshold
+            )
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        assert len(result) == 0, "SCHEDULED NJT train within threshold should be filtered"
+
+    def test_filter_scheduled_amtrak_within_threshold(self):
+        """SCHEDULED Amtrak train within 30 min of departure should be filtered."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure(
+                train_id="A123",
+                data_source="AMTRAK",
+                observation_type="SCHEDULED",
+                minutes_until_departure=20,  # Within threshold
+            )
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        assert len(result) == 0, "SCHEDULED Amtrak train within threshold should be filtered"
+
+    def test_filter_scheduled_path_within_threshold(self):
+        """SCHEDULED PATH train within 30 min of departure should be filtered."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure(
+                train_id="PATH-123",
+                data_source="PATH",
+                observation_type="SCHEDULED",
+                minutes_until_departure=10,  # Within threshold
+            )
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        assert len(result) == 0, "SCHEDULED PATH train within threshold should be filtered"
+
+    def test_keep_scheduled_patco_within_threshold(self):
+        """SCHEDULED PATCO train within 30 min should NOT be filtered (no real-time API)."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure(
+                train_id="PATCO-123",
+                data_source="PATCO",
+                observation_type="SCHEDULED",
+                minutes_until_departure=15,  # Within threshold, but PATCO
+            )
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        assert len(result) == 1, "SCHEDULED PATCO train should never be filtered"
+        assert result[0].train_id == "PATCO-123"
+
+    def test_keep_scheduled_outside_threshold(self):
+        """SCHEDULED train outside 30 min threshold should NOT be filtered."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure(
+                train_id="1234",
+                data_source="NJT",
+                observation_type="SCHEDULED",
+                minutes_until_departure=45,  # Outside threshold
+            )
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        assert len(result) == 1, "SCHEDULED train outside threshold should be kept"
+        assert result[0].train_id == "1234"
+
+    def test_keep_observed_within_threshold(self):
+        """OBSERVED train within 30 min threshold should NOT be filtered."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure(
+                train_id="1234",
+                data_source="NJT",
+                observation_type="OBSERVED",
+                minutes_until_departure=15,  # Within threshold, but OBSERVED
+            )
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        assert len(result) == 1, "OBSERVED train should never be filtered"
+        assert result[0].train_id == "1234"
+
+    def test_mixed_departures_filtering(self):
+        """Test filtering with a mix of different departure types."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            # Should be filtered: SCHEDULED NJT within threshold
+            self._create_departure("1001", "NJT", "SCHEDULED", 10),
+            # Should be kept: OBSERVED NJT within threshold
+            self._create_departure("1002", "NJT", "OBSERVED", 10),
+            # Should be filtered: SCHEDULED AMTRAK within threshold
+            self._create_departure("A1003", "AMTRAK", "SCHEDULED", 20),
+            # Should be kept: SCHEDULED NJT outside threshold
+            self._create_departure("1004", "NJT", "SCHEDULED", 60),
+            # Should be kept: SCHEDULED PATCO within threshold (no real-time)
+            self._create_departure("P1005", "PATCO", "SCHEDULED", 5),
+            # Should be filtered: SCHEDULED PATH within threshold
+            self._create_departure("PATH-1006", "PATH", "SCHEDULED", 25),
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        # Should keep: 1002 (observed), 1004 (outside threshold), P1005 (PATCO)
+        assert len(result) == 3
+        result_ids = {d.train_id for d in result}
+        assert result_ids == {"1002", "1004", "P1005"}
+
+    def test_boundary_at_exactly_threshold(self):
+        """Train departing exactly at threshold boundary should be filtered."""
+        service = DepartureService()
+        now = now_et()
+
+        # Train departing in exactly 30 minutes (at the threshold)
+        departures = [
+            self._create_departure(
+                train_id="1234",
+                data_source="NJT",
+                observation_type="SCHEDULED",
+                minutes_until_departure=30,  # Exactly at threshold
+            )
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        # At exactly 30 minutes, scheduled_time == threshold, so < threshold is False
+        # The train should be kept (we filter only those strictly less than threshold)
+        assert len(result) == 1, "Train at exactly threshold should be kept"
+
+    def test_boundary_just_under_threshold(self):
+        """Train departing just under threshold should be filtered."""
+        service = DepartureService()
+        now = now_et()
+
+        # Train departing in 29 minutes (just under threshold)
+        departures = [
+            self._create_departure(
+                train_id="1234",
+                data_source="NJT",
+                observation_type="SCHEDULED",
+                minutes_until_departure=29,  # Just under threshold
+            )
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        assert len(result) == 0, "Train just under threshold should be filtered"
