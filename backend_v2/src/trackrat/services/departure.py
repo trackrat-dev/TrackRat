@@ -642,6 +642,20 @@ class DepartureService:
                         journey.has_complete_journey = True
                         journey.stops_count = len(stops_data)
 
+                        # Update origin/terminal/scheduled_departure from stops
+                        # This fixes journeys discovered at intermediate stations
+                        first_stop = stops_data[0]
+                        last_stop = stops_data[-1]
+
+                        if first_station := first_stop.get("STATION_2CHAR"):
+                            journey.origin_station_code = first_station
+                        if last_station := last_stop.get("STATION_2CHAR"):
+                            journey.terminal_station_code = last_station
+                        if first_dep := first_stop.get("DEP_TIME"):
+                            journey.scheduled_departure = parse_njt_time(first_dep)
+                        if last_arr := last_stop.get("TIME"):
+                            journey.scheduled_arrival = parse_njt_time(last_arr)
+
                     logger.debug(
                         "journey_updated_from_schedule",
                         train_id=train_id,

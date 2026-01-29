@@ -521,9 +521,50 @@ class JourneyCollector(BaseJourneyCollector):
                 dep_time = first_stop.DEP_TIME
                 if dep_time is not None:
                     api_departure = parse_njt_time(dep_time)
-                    if stored_journey.scheduled_departure is not None:
+
+                    # Get stored departure, but check if journey metadata is stale
+                    # If origin_station_code doesn't match first stop in our stops table,
+                    # the journey was discovered at an intermediate station and metadata
+                    # was never properly corrected. Use stops table as source of truth.
+                    stored_departure = stored_journey.scheduled_departure
+
+                    if (
+                        stored_journey.origin_station_code
+                        and stored_journey.origin_station_code
+                        != first_stop.STATION_2CHAR
+                        and stored_journey.stops
+                    ):
+                        # Check if our stored stops have a different first station
+                        db_stops_sorted = sorted(
+                            stored_journey.stops,
+                            key=lambda s: s.stop_sequence if s.stop_sequence else 0,
+                        )
+                        if db_stops_sorted:
+                            first_db_stop = db_stops_sorted[0]
+                            if (
+                                first_db_stop.station_code
+                                != stored_journey.origin_station_code
+                                and first_db_stop.scheduled_departure
+                            ):
+                                # Stops table has correct origin, journey record is stale
+                                # Use the first stop's departure for comparison
+                                stored_departure = first_db_stop.scheduled_departure
+                                logger.info(
+                                    "using_stops_table_departure_for_comparison",
+                                    journey_id=stored_journey.id,
+                                    train_id=stored_journey.train_id,
+                                    stale_origin=stored_journey.origin_station_code,
+                                    correct_origin=first_db_stop.station_code,
+                                    stale_departure=(
+                                        stored_journey.scheduled_departure.isoformat()
+                                        if stored_journey.scheduled_departure
+                                        else None
+                                    ),
+                                    corrected_departure=stored_departure.isoformat(),
+                                )
+
+                    if stored_departure is not None:
                         # Ensure stored departure is timezone-aware for comparison
-                        stored_departure = stored_journey.scheduled_departure
                         if stored_departure.tzinfo is None:
                             # If naive, assume it's already in Eastern time
                             stored_departure = ET.localize(stored_departure)

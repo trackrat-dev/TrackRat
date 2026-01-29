@@ -1342,6 +1342,23 @@ class SchedulerService:
                         journey.last_updated_at = now_et()
                         journey.update_count = (journey.update_count or 0) + 1
 
+                        # Update origin/terminal/scheduled_departure from stops
+                        # This fixes journeys discovered at intermediate stations
+                        if train_data.STOPS:
+                            first_stop = train_data.STOPS[0]
+                            last_stop = train_data.STOPS[-1]
+
+                            journey.origin_station_code = first_stop.STATION_2CHAR
+                            journey.terminal_station_code = last_stop.STATION_2CHAR
+                            if first_stop.DEP_TIME:
+                                journey.scheduled_departure = parse_njt_time(
+                                    first_stop.DEP_TIME
+                                )
+                            if last_stop.TIME:
+                                journey.scheduled_arrival = parse_njt_time(
+                                    last_stop.TIME
+                                )
+
                         # Delete existing stops
                         session.execute(
                             delete(JourneyStop).where(
