@@ -1,6 +1,6 @@
 """Add cancellation_reason column to train_journeys
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: a9ba71e83f54
 Revises: b9b7f01aa94d
 Create Date: 2026-01-29 01:43:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "a1b2c3d4e5f6"
+revision = "a9ba71e83f54"
 down_revision = "b9b7f01aa94d"
 branch_labels = None
 depends_on = None
