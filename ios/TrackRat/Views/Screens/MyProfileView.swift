@@ -571,6 +571,7 @@ struct SettingsSection: View {
                     Toggle("", isOn: $appState.showMapStations)
                         .labelsHidden()
                         .tint(.orange)
+                        .allowsHitTesting(false)
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
@@ -609,6 +610,7 @@ struct SettingsSection: View {
                     Toggle("", isOn: $appState.showDepartureOdds)
                         .labelsHidden()
                         .tint(.orange)
+                        .allowsHitTesting(false)
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
