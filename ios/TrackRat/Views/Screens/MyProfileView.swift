@@ -600,7 +600,7 @@ struct SettingsSection: View {
                                 .foregroundColor(.white)
                             Text("(beta)")
                                 .font(.caption)
-                                .foregroundColor(.orange)
+                                .foregroundColor(.white)
                         }
                     }
 
@@ -1082,7 +1082,7 @@ private struct TrainSystemRow: View {
                         if system == .path {
                             Text("(beta)")
                                 .font(.caption)
-                                .foregroundColor(.orange)
+                                .foregroundColor(.white)
                         }
                     }
 
