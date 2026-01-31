@@ -456,64 +456,7 @@ struct SettingsSection: View {
             }
             .padding(.horizontal)
 
-            // Train Systems
-            VStack(spacing: 0) {
-                ForEach(TrainSystem.allCases, id: \.self) { system in
-                    TrainSystemRow(
-                        system: system,
-                        isSelected: appState.isSystemSelected(system),
-                        isLast: system == TrainSystem.allCases.last
-                    ) {
-                        appState.toggleSystem(system)
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-            )
-
-            // Health Indicator
-            Button {
-                appState.cycleMapHighlightMode()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: appState.mapHighlightMode.icon)
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Health Indicator")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-
-                        Text(appState.mapHighlightMode.displayName)
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Favorite Stations
+            // Favorite Stations (moved above train systems)
             Button {
                 navigationPath.append(ProfileDestination.favoriteStations)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -546,6 +489,42 @@ struct SettingsSection: View {
                 )
             }
             .buttonStyle(.plain)
+
+            // Train Systems
+            VStack(spacing: 0) {
+                ForEach(TrainSystem.allCases, id: \.self) { system in
+                    TrainSystemRow(
+                        system: system,
+                        isSelected: appState.isSystemSelected(system),
+                        isLast: system == TrainSystem.allCases.last
+                    ) {
+                        appState.toggleSystem(system)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+
+            // Health Indicator - row-based selection
+            VStack(spacing: 0) {
+                ForEach(SegmentHighlightMode.allCases, id: \.self) { mode in
+                    HealthIndicatorRow(
+                        mode: mode,
+                        isSelected: appState.mapHighlightMode == mode,
+                        isLast: mode == SegmentHighlightMode.allCases.last
+                    ) {
+                        appState.mapHighlightMode = mode
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
 
             // Stations Toggle
             Button {
@@ -1084,6 +1063,47 @@ private struct TrainSystemRow: View {
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         }
+                    }
+
+                    Spacer()
+
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
+                }
+                .padding()
+
+                if !isLast {
+                    Divider()
+                        .background(Color.white.opacity(0.1))
+                        .padding(.leading, 56)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct HealthIndicatorRow: View {
+    let mode: SegmentHighlightMode
+    let isSelected: Bool
+    let isLast: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 0) {
+                HStack(spacing: 16) {
+                    Image(systemName: mode.icon)
+                        .font(.title2)
+                        .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
+                        .frame(width: 24, height: 24)
+
+                    HStack(spacing: 4) {
+                        Text(mode.displayName)
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
                     }
 
                     Spacer()
