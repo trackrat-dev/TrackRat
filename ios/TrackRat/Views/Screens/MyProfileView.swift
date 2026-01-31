@@ -510,11 +510,23 @@ struct SettingsSection: View {
 
             // Health Indicator - row-based selection
             VStack(spacing: 0) {
-                ForEach(SegmentHighlightMode.allCases, id: \.self) { mode in
+                HStack {
+                    Text("Health Indicator")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                    Spacer()
+                }
+                .padding()
+
+                Divider()
+                    .background(Color.white.opacity(0.1))
+
+                let orderedModes: [SegmentHighlightMode] = [.delays, .health, .off]
+                ForEach(orderedModes, id: \.self) { mode in
                     HealthIndicatorRow(
                         mode: mode,
                         isSelected: appState.mapHighlightMode == mode,
-                        isLast: mode == SegmentHighlightMode.allCases.last
+                        isLast: mode == orderedModes.last
                     ) {
                         appState.mapHighlightMode = mode
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
