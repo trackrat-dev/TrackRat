@@ -697,17 +697,6 @@ struct ProUserCard: View {
                     .font(.headline)
                     .foregroundColor(.white)
                 Spacer()
-
-                // Status badge
-                Text(subscriptionService.subscriptionStatus.statusText)
-                    .font(.caption.bold())
-                    .foregroundColor(.green)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(.green.opacity(0.2))
-                    )
             }
 
             HStack {
