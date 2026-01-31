@@ -78,102 +78,6 @@ struct MyProfileView: View {
                         showingPaywall: $showingPaywall
                     )
 
-                    // Feedback & Ideas section
-                    VStack(spacing: 16) {
-                        // Section header
-                        HStack {
-                            Text("Feedback & Ideas")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-
-                        // Submit Feedback
-                        Button {
-                            if let feedbackURL = URL(string: "https://trackrat.nolt.io/") {
-                                openURL(feedbackURL)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "lightbulb.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Submit Feedback")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-
-                                    Text("Send ideas for new features")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        // Report an Issue
-                        Button {
-                            showingFeedbackSheet = true
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "exclamationmark.bubble.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Report an Issue")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .sheet(isPresented: $showingFeedbackSheet) {
-                            FeedbackSheet(
-                                screen: "my_profile",
-                                trainId: nil,
-                                originCode: nil,
-                                destinationCode: nil
-                            )
-                        }
-                    }
-
                     // Profile image - aligned to top
                     // VStack {
                     //     Image("my-profile")
@@ -336,6 +240,156 @@ struct MyProfileView: View {
                             )
                         }
                         .buttonStyle(.plain)
+
+                        // My Trips
+                        Button {
+                            if subscriptionService.isPro {
+                                navigationPath.append(ProfileDestination.tripHistory)
+                            } else {
+                                showingPaywall = true
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "chart.bar.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("My Trips (beta)")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                if !subscriptionService.isPro {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "lock.fill")
+                                            .font(.caption2)
+                                        Text("PRO")
+                                            .font(.caption2.bold())
+                                    }
+                                    .foregroundColor(.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule()
+                                            .fill(.orange.opacity(0.2))
+                                    )
+                                } else {
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Feedback & Ideas section
+                    VStack(spacing: 16) {
+                        // Section header
+                        HStack {
+                            Text("Feedback & Ideas")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+
+                        // Submit Feedback
+                        Button {
+                            if let feedbackURL = URL(string: "https://trackrat.nolt.io/") {
+                                openURL(feedbackURL)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "lightbulb.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Submit Feedback")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+
+                                    Text("Send ideas for new features")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.7))
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        // Report an Issue
+                        Button {
+                            showingFeedbackSheet = true
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.bubble.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.orange)
+                                    .frame(width: 24, height: 24)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Report an Issue")
+                                        .font(.headline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.white)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showingFeedbackSheet) {
+                            FeedbackSheet(
+                                screen: "my_profile",
+                                trainId: nil,
+                                originCode: nil,
+                                destinationCode: nil
+                            )
+                        }
                     }
                 }
                 .padding()
@@ -402,6 +456,24 @@ struct SettingsSection: View {
             }
             .padding(.horizontal)
 
+            // Train Systems
+            VStack(spacing: 0) {
+                ForEach(TrainSystem.allCases, id: \.self) { system in
+                    TrainSystemRow(
+                        system: system,
+                        isSelected: appState.isSystemSelected(system),
+                        isLast: system == TrainSystem.allCases.last
+                    ) {
+                        appState.toggleSystem(system)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+
             // Health Indicator
             Button {
                 appState.cycleMapHighlightMode()
@@ -423,6 +495,40 @@ struct SettingsSection: View {
                         Text(appState.mapHighlightMode.displayName)
                             .font(.caption)
                             .foregroundColor(.white.opacity(0.7))
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Favorite Stations
+            Button {
+                navigationPath.append(ProfileDestination.favoriteStations)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "heart.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Edit Favorite Stations")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
                             .multilineTextAlignment(.leading)
                     }
 
@@ -465,112 +571,6 @@ struct SettingsSection: View {
                     Toggle("", isOn: $appState.showMapStations)
                         .labelsHidden()
                         .tint(.orange)
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Train Systems
-            VStack(spacing: 0) {
-                ForEach(TrainSystem.allCases, id: \.self) { system in
-                    TrainSystemRow(
-                        system: system,
-                        isSelected: appState.isSystemSelected(system),
-                        isLast: system == TrainSystem.allCases.last
-                    ) {
-                        appState.toggleSystem(system)
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-            )
-
-            // Trip History
-            Button {
-                if subscriptionService.isPro {
-                    navigationPath.append(ProfileDestination.tripHistory)
-                } else {
-                    showingPaywall = true
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "chart.bar.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Trip History (beta)")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    Spacer()
-
-                    if !subscriptionService.isPro {
-                        HStack(spacing: 4) {
-                            Image(systemName: "lock.fill")
-                                .font(.caption2)
-                            Text("PRO")
-                                .font(.caption2.bold())
-                        }
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(.orange.opacity(0.2))
-                        )
-                    } else {
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Favorite Stations
-            Button {
-                navigationPath.append(ProfileDestination.favoriteStations)
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "heart.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Edit Favorite Stations")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
