@@ -303,7 +303,7 @@ final class SubscriptionService: ObservableObject {
                     // Check if subscription is still valid
                     if let expirationDate = transaction.expirationDate {
                         if expirationDate > Date() {
-                            let isTrialPeriod = transaction.offerType == .introductory
+                            let isTrialPeriod = transaction.offer?.type == .introductory
                             subscriptionStatus = .subscribed(
                                 expirationDate: expirationDate,
                                 isTrialPeriod: isTrialPeriod

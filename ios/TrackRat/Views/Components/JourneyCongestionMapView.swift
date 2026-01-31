@@ -458,7 +458,7 @@ struct CongestionMapKitView: UIViewRepresentable {
             }
             
             // Handle train annotations
-            if let trainAnnotation = annotation as? TrainAnnotation {
+            if annotation is TrainAnnotation {
                 let identifier = "TrainAnnotation"
                 var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
                 

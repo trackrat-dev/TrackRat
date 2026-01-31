@@ -77,7 +77,7 @@ struct SheetAwareScrollView<Content: View>: View {
                 isScrolledToTop = true
                 gestureMode = .idle
             }
-            .onChange(of: scenePhase) { newPhase in
+            .onChange(of: scenePhase) { _, newPhase in
                 print("🔄 Scene phase changed to: \(newPhase)")
 
                 switch newPhase {

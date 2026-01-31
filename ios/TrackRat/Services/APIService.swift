@@ -693,7 +693,7 @@ final class APIService: ObservableObject {
     // MARK: - Occupied Tracks
     
     func fetchOccupiedTracks(stationCode: String) async throws -> V2OccupiedTracksResponse {
-        var components = URLComponents(string: "\(baseURL)/v2/trains/stations/\(stationCode)/tracks/occupied")!
+        let components = URLComponents(string: "\(baseURL)/v2/trains/stations/\(stationCode)/tracks/occupied")!
         
         guard let url = components.url else {
             throw APIError.invalidURL

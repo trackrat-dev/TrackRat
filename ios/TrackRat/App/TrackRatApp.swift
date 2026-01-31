@@ -222,7 +222,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         }
         
         // Check if we have an active Live Activity
-        guard let currentActivity = LiveActivityService.shared.currentActivity else {
+        guard LiveActivityService.shared.currentActivity != nil else {
             print("⚠️ No active Live Activity found, ignoring push update")
             return
         }
@@ -281,13 +281,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     
     private func handleStopDeparturePush(_ userInfo: [AnyHashable: Any]) async {
         guard let eventData = userInfo["event_data"] as? [String: Any],
-              let stationName = eventData["station"] as? String,
-              let isOrigin = eventData["is_origin"] as? Bool,
-              let stopsRemaining = eventData["stops_remaining"] as? Int else {
+              let _ = eventData["station"] as? String,
+              let _ = eventData["is_origin"] as? Bool,
+              let _ = eventData["stops_remaining"] as? Int else {
             print("❌ Invalid stop departure push data")
             return
         }
-        
+
         // The Live Activity update will trigger the Dynamic Island alert
         // Just fetch and update the train data
         await LiveActivityService.shared.fetchAndUpdateTrain()

@@ -3,6 +3,7 @@ import ActivityKit
 import UserNotifications
 import UIKit
 
+@MainActor
 class LiveActivityService: ObservableObject {
     static let shared = LiveActivityService()
 
@@ -196,8 +197,9 @@ class LiveActivityService: ObservableObject {
             }
         }
 
-        // End the activity
-        await activity.end(dismissalPolicy: .immediate)
+        // End the activity with final content state
+        let finalState = activity.content.state
+        await activity.end(ActivityContent(state: finalState, staleDate: nil), dismissalPolicy: .immediate)
 
         // Clear all references with weak self for extra safety
         await MainActor.run { [weak self] in
@@ -370,31 +372,27 @@ class LiveActivityService: ObservableObject {
 
             print("🔄 Starting push token subscription for Live Activity...")
 
-            do {
-                for await pushToken in activity.pushTokenUpdates {
-                    // Check for cancellation
-                    if Task.isCancelled {
-                        print("⚠️ Push token subscription cancelled")
-                        break
-                    }
-
-                    #if DEBUG
-                    print("📡 Received Live Activity push token: \(pushToken.prefix(20))...")
-                    #endif
-
-                    // Store the token for later use (e.g., unregistration)
-                    await MainActor.run { [weak self] in
-                        self?.currentPushToken = pushToken
-                    }
-
-                    // Register with backend
-                    await self.registerPushToken(pushToken, for: train, from: originCode, to: destinationCode)
-
-                    // We only need the first token, so break
+            for await pushToken in activity.pushTokenUpdates {
+                // Check for cancellation
+                if Task.isCancelled {
+                    print("⚠️ Push token subscription cancelled")
                     break
                 }
-            } catch {
-                print("❌ Push token subscription failed: \(error)")
+
+                #if DEBUG
+                print("📡 Received Live Activity push token: \(pushToken.prefix(20))...")
+                #endif
+
+                // Store the token for later use (e.g., unregistration)
+                await MainActor.run { [weak self] in
+                    self?.currentPushToken = pushToken
+                }
+
+                // Register with backend
+                await self.registerPushToken(pushToken, for: train, from: originCode, to: destinationCode)
+
+                // We only need the first token, so break
+                break
             }
 
             print("✅ Push token subscription task completed")

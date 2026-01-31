@@ -1,6 +1,6 @@
 import Foundation
 import StoreKit
-import UIKit
+@preconcurrency import UIKit
 
 /// Service that manages prompting users for feedback during their train journey.
 /// Shows a feedback prompt when the train departs from the user's origin station.
@@ -105,8 +105,14 @@ class JourneyFeedbackService: ObservableObject {
         print("📊 Journey feedback: User responded positively, requesting App Store review")
 
         // Request App Store review using the recommended API
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            SKStoreReviewController.requestReview(in: windowScene)
+        Task {
+            do {
+                if let windowScene = await UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    try await AppStore.requestReview(in: windowScene)
+                }
+            } catch {
+                print("⚠️ Failed to request review: \(error)")
+            }
         }
     }
 

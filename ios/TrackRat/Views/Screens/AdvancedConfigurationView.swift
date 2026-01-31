@@ -20,6 +20,8 @@ struct AdvancedConfigurationView: View {
         #if DEBUG
         return true
         #else
+        // Check if running in TestFlight by looking for sandbox receipt
+        // Note: In iOS 18+, prefer AppTransaction for receipt validation in production
         guard let url = Bundle.main.appStoreReceiptURL else { return false }
         return url.lastPathComponent == "sandboxReceipt"
         #endif

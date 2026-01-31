@@ -3,6 +3,7 @@ import Foundation
 /// Service responsible for recording trips when user's train departs from origin.
 /// Trips are recorded immediately on departure and updated with latest arrival data.
 /// Note: Trip recording is a Pro feature - only Pro users can record and view trip statistics.
+@MainActor
 final class TripRecordingService {
     static let shared = TripRecordingService()
 
