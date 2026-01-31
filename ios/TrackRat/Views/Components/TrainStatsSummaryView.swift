@@ -12,6 +12,7 @@ struct TrainStatsSummaryView: View {
     let fromStation: String?
     let toStation: String?
     let journeyDate: Date?
+    let showDepartureOdds: Bool
     let onTrainTap: ((String) -> Void)?
 
     @State private var summary: OperationsSummaryResponse?
@@ -21,11 +22,12 @@ struct TrainStatsSummaryView: View {
     @State private var hasError = false
     @Environment(\.scenePhase) private var scenePhase
 
-    init(trainId: String, fromStation: String?, toStation: String?, journeyDate: Date? = nil, onTrainTap: ((String) -> Void)? = nil) {
+    init(trainId: String, fromStation: String?, toStation: String?, journeyDate: Date? = nil, showDepartureOdds: Bool = true, onTrainTap: ((String) -> Void)? = nil) {
         self.trainId = trainId
         self.fromStation = fromStation
         self.toStation = toStation
         self.journeyDate = journeyDate
+        self.showDepartureOdds = showDepartureOdds
         self.onTrainTap = onTrainTap
     }
 
@@ -114,8 +116,8 @@ struct TrainStatsSummaryView: View {
                         .padding(.horizontal, 10)
                     }
 
-                    // Delay forecast section
-                    if let text = forecastText {
+                    // Delay forecast section (controlled by showDepartureOdds toggle)
+                    if showDepartureOdds, let text = forecastText {
                         Divider()
                             .background(Color.white.opacity(0.2))
                             .padding(.horizontal, 14)
