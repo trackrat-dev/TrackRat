@@ -492,6 +492,17 @@ struct SettingsSection: View {
 
             // Train Systems
             VStack(spacing: 0) {
+                HStack {
+                    Text("Train Systems")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                    Spacer()
+                }
+                .padding()
+
+                Divider()
+                    .background(Color.white.opacity(0.1))
+
                 ForEach(TrainSystem.allCases, id: \.self) { system in
                     TrainSystemRow(
                         system: system,
