@@ -101,13 +101,6 @@ struct PaywallView: View {
                     )
                     .padding(.horizontal)
 
-                    // Development transparency note
-                    Text("TrackRat is a work in progress. Your subscription supports bug fixes and new features.")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-
                     // Pricing options
                     if subscriptionService.isLoading && subscriptionService.availableProducts.isEmpty {
                         ProgressView()
