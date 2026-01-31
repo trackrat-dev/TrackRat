@@ -615,7 +615,7 @@ Premium features with StoreKit 2 integration:
 - **Congestion Map Access**: Pro-only network congestion visualization
 - **StoreKit 2**: Modern subscription purchase and management
 - **Monthly-Only Pricing**: $3.99/month (configured in App Store Connect)
-- **24-Hour Soft Trial**: New users automatically get Pro access for 24 hours
+- **16-Hour Preview Period**: New users automatically get Pro access for 16 hours
 - **Debug Override**: `debugOverrideEnabled` defaults to `true` - all users currently get Pro features for free during soft launch. Set to `false` in SubscriptionService.swift to enable actual paywall.
 
 #### Map Layer Controls
