@@ -1297,68 +1297,67 @@ struct SegmentedTrackPredictionView: View {
         !predictionSegments.isEmpty && predictionSegments.allSatisfy { $0.probability < 0.17 }
     }
     
+    @ViewBuilder
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                Image(systemName: "tram.circle.fill")
-                    .foregroundColor(.black)
-                    .font(.title2)
-                
-                Text("Track Predictions")
-                    .font(.headline)
-                    .foregroundColor(.black)
-                
-                Spacer()
-            }
-            
-            if isLoadingPredictions {
-                ProgressView()
-                    .frame(height: 64)
-            } else if hasOnlyLowConfidencePredictions {
-                Text("No clear favorite")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(Color(white: 0.6))
-                    .frame(height: 64)
-                    .frame(maxWidth: .infinity)
-            } else if !predictionSegments.isEmpty {
-                VStack(spacing: 8) {
-                    // Labels for segments that need them above the bar
-                    if hasSegmentsWithTopLabels {
-                        topLabelsView
-                    }
-                    
-                    // Main segmented bar
-                    segmentedBarView
-                        .frame(height: 64)
-                    
-                    // Percentages below the bar
-                    bottomLabelsView
+        // Hide entire section when loading complete and no prediction data (404 from API)
+        if isLoadingPredictions || adjustedPredictions != nil {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
+                HStack {
+                    Image(systemName: "tram.circle.fill")
+                        .foregroundColor(.black)
+                        .font(.title2)
+
+                    Text("Track Predictions")
+                        .font(.headline)
+                        .foregroundColor(.black)
+
+                    Spacer()
                 }
-                .padding(.top, 4)
-            } else {
-                Text("No prediction data available")
-                    .font(.caption)
-                    .foregroundColor(Color(white: 0.55))
-                    .italic()
+
+                if isLoadingPredictions {
+                    ProgressView()
+                        .frame(height: 64)
+                } else if hasOnlyLowConfidencePredictions {
+                    Text("No clear favorite")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(Color(white: 0.6))
+                        .frame(height: 64)
+                        .frame(maxWidth: .infinity)
+                } else if !predictionSegments.isEmpty {
+                    VStack(spacing: 8) {
+                        // Labels for segments that need them above the bar
+                        if hasSegmentsWithTopLabels {
+                            topLabelsView
+                        }
+
+                        // Main segmented bar
+                        segmentedBarView
+                            .frame(height: 64)
+
+                        // Percentages below the bar
+                        bottomLabelsView
+                    }
+                    .padding(.top, 4)
+                }
+
+                // Penn Station waiting guide link for NY departures
+                if isDepartingFromNYPenn && showWaitingLink {
+                    PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
-            
-            // Penn Station waiting guide link for NY departures
-            if isDepartingFromNYPenn && showWaitingLink {
-                PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            .padding()
+            .background(Color.orange.opacity(0.05))
+            .cornerRadius(TrackRatTheme.CornerRadius.md)
+            .overlay(
+                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+            )
+            .task {
+                await loadAdjustedPredictions()
             }
-        }
-        .padding()
-        .background(Color.orange.opacity(0.05))
-        .cornerRadius(TrackRatTheme.CornerRadius.md)
-        .overlay(
-            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-        )
-        .task {
-            await loadAdjustedPredictions()
         }
     }
     
