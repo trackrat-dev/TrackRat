@@ -104,6 +104,7 @@ struct TrainDetailsView: View {
                                     fromStation: appState.departureStationCode,
                                     toStation: appState.destinationStationCode,
                                     journeyDate: train.journeyDate,
+                                    showDepartureOdds: appState.showDepartureOdds,
                                     onTrainTap: { selectedTrainId in
                                         // Navigate to the selected train's detail view
                                         // Note: dataSource not available from this callback, backend uses two-phase search
