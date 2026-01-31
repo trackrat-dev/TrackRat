@@ -573,15 +573,10 @@ struct SettingsSection: View {
                         .frame(width: 24, height: 24)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 4) {
-                            Text("Show departure odds")
-                                .font(.headline)
-                                .fontWeight(.medium)
-                                .foregroundColor(.white)
-                            Text("(beta)")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                        }
+                        Text("Show departure odds (beta)")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
                     }
 
                     Spacer()
@@ -1043,18 +1038,10 @@ private struct TrainSystemRow: View {
                         .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
                         .frame(width: 24, height: 24)
 
-                    HStack(spacing: 4) {
-                        Text(system.displayName)
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-
-                        if system == .path {
-                            Text("(beta)")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                        }
-                    }
+                    Text(system.displayName + (system == .path ? " (beta)" : ""))
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
 
                     Spacer()
 
