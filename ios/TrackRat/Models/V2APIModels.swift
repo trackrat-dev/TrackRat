@@ -710,8 +710,8 @@ enum SegmentHighlightMode: String, CaseIterable {
     var icon: String {
         switch self {
         case .off: return "eye.slash"
-        case .health: return "heart.fill"
-        case .delays: return "clock.arrow.2.circlepath"
+        case .health: return "waveform"
+        case .delays: return "clock.badge.exclamationmark"
         }
     }
 
