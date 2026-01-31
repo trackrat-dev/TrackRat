@@ -93,9 +93,10 @@ struct TrainDetailsView: View {
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 16) {
-                            // Train performance summary (similar trains + historical) - Pro feature only
+                            // Train performance summary (similar trains + historical)
+                            // Visible for Pro subscribers or when beta feature flag is enabled
                             // Hide after train departs from user's origin station
-                            if subscriptionService.isPro,
+                            if (subscriptionService.isPro || appState.showDepartureOdds),
                                let originCode = appState.departureStationCode,
                                !train.hasTrainDepartedFromStation(originCode) {
                                 TrainStatsSummaryView(

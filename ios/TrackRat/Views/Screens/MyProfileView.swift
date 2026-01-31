@@ -581,6 +581,44 @@ struct SettingsSection: View {
             }
             .buttonStyle(.plain)
 
+            // Departure Odds Toggle (Beta)
+            Button {
+                appState.showDepartureOdds.toggle()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "percent")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Text("Show departure odds")
+                                .font(.headline)
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                            Text("(beta)")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $appState.showDepartureOdds)
+                        .labelsHidden()
+                        .tint(.orange)
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
             // Advanced Configuration
             Button {
                 navigationPath.append(ProfileDestination.advancedConfiguration)
