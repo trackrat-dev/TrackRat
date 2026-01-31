@@ -596,7 +596,7 @@ struct SettingsSection: View {
                         .frame(width: 24, height: 24)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Show departure odds (beta)")
+                        Text("Show Departure Odds (beta)")
                             .font(.headline)
                             .fontWeight(.medium)
                             .foregroundColor(.white)

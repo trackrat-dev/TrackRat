@@ -702,8 +702,8 @@ enum SegmentHighlightMode: String, CaseIterable {
     var displayName: String {
         switch self {
         case .off: return "Off"
-        case .health: return "Train frequency (beta)"
-        case .delays: return "Congestion delays"
+        case .health: return "Train Count (beta)"
+        case .delays: return "Travel Time"
         }
     }
 
