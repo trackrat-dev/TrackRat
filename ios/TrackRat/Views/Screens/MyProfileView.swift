@@ -1035,10 +1035,18 @@ private struct TrainSystemRow: View {
                         .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
                         .frame(width: 24, height: 24)
 
-                    Text(system.displayName)
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
+                    HStack(spacing: 4) {
+                        Text(system.displayName)
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+
+                        if system == .path {
+                            Text("(beta)")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                    }
 
                     Spacer()
 
