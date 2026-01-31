@@ -563,6 +563,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    // Beta feature: Show departure odds on train details
+    @Published var showDepartureOdds: Bool = false {
+        didSet {
+            UserDefaults.standard.set(showDepartureOdds, forKey: "showDepartureOdds")
+        }
+    }
+
     init() {
         loadRecentTrips()
         loadFavoriteStations()
@@ -715,6 +722,9 @@ final class AppState: ObservableObject {
 
         // Load stations visibility
         showMapStations = UserDefaults.standard.bool(forKey: "showMapStations")
+
+        // Load beta features
+        showDepartureOdds = UserDefaults.standard.bool(forKey: "showDepartureOdds")
     }
 
     /// Cycle to next highlight mode: Off → Health → Delays → Off
