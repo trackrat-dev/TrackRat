@@ -797,7 +797,7 @@ struct SoftTrialProCard: View {
                             .foregroundColor(.white)
                     }
 
-                    Text("Start a free trial to keep using Pro features")
+                    Text("Subscribe to keep using Pro features")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.6))
                 }

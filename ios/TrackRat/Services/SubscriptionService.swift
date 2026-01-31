@@ -99,7 +99,7 @@ enum PaywallContext {
         case .generic:
             return "Your subscription supports bug fixes and new features"
         case .trialExpired:
-            return "Start your free trial to keep Pro features and help fund future improvements!"
+            return "Subscribe to keep Pro features and help fund future improvements!"
         }
     }
 }

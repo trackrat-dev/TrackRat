@@ -169,7 +169,7 @@ struct PaywallView: View {
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     .scaleEffect(0.8)
                             } else {
-                                Text("Start Free Trial")
+                                Text("Subscribe")
                                     .fontWeight(.semibold)
                             }
                         }

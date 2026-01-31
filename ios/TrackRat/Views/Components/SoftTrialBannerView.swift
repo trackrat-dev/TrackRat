@@ -27,7 +27,7 @@ struct SoftTrialBannerView: View {
                         .foregroundColor(.white)
                         .textProtected()
 
-                    Text("Start a free trial to keep Pro features and support development")
+                    Text("Subscribe to keep Pro features and support development")
                         .font(TrackRatTheme.Typography.caption)
                         .foregroundColor(.white.opacity(0.7))
                         .textProtected(lines: 2)
