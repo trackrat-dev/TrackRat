@@ -37,7 +37,7 @@ from trackrat.services.departure import DepartureService
 from trackrat.services.direct_forecaster import DirectArrivalForecaster
 from trackrat.services.gtfs import GTFSService
 from trackrat.services.jit import JustInTimeUpdateService
-from trackrat.utils.time import now_et, safe_datetime_subtract
+from trackrat.utils.time import DATETIME_MIN_ET, now_et, safe_datetime_subtract
 from trackrat.utils.train import get_effective_observation_type, is_amtrak_train
 
 logger = get_logger(__name__)
@@ -295,8 +295,9 @@ async def get_train_details(
             p for p in journey.progress_snapshots if p.captured_at is not None
         ]
         if valid_snapshots:
+            # Use timezone-aware constant for safe comparison with DB times
             latest_progress = max(
-                valid_snapshots, key=lambda p: p.captured_at or datetime.min
+                valid_snapshots, key=lambda p: p.captured_at or DATETIME_MIN_ET
             )
             progress = JourneyProgress(
                 stops_completed=latest_progress.stops_completed,

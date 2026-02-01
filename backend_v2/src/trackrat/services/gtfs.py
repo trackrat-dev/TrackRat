@@ -43,7 +43,7 @@ from trackrat.models.database import (
     GTFSStopTime,
     GTFSTrip,
 )
-from trackrat.utils.time import ET, now_et
+from trackrat.utils.time import DATETIME_MAX_ET, ET, now_et
 
 logger = get_logger(__name__)
 
@@ -1129,10 +1129,8 @@ class GTFSService:
             departures.extend(source_departures)
 
         # Sort by departure time
-        # Use timezone-aware datetime for comparison (scheduled_time is ET-localized)
-        # Note: year 9999 causes OverflowError in pytz, use 2099 as safe max
-        max_dt = ET.localize(datetime(2099, 12, 31, 23, 59, 59))
-        departures.sort(key=lambda d: d.departure.scheduled_time or max_dt)
+        # Use timezone-aware constant for safe comparison with ET-localized times
+        departures.sort(key=lambda d: d.departure.scheduled_time or DATETIME_MAX_ET)
 
         # Apply limit
         departures = departures[:limit]

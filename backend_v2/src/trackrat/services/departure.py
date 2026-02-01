@@ -26,6 +26,7 @@ from trackrat.models.api import (
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
+    DATETIME_MAX_ET,
     normalize_to_et,
     now_et,
     parse_njt_time,
@@ -954,7 +955,8 @@ class DepartureService:
             gtfs_added += 1
 
         # Sort by scheduled departure time
-        merged.sort(key=lambda d: d.departure.scheduled_time or datetime.max)
+        # Use timezone-aware constant for safe comparison with ET-localized times
+        merged.sort(key=lambda d: d.departure.scheduled_time or DATETIME_MAX_ET)
 
         logger.info(
             "departures_merged",

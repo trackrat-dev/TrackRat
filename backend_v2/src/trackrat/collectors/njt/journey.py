@@ -20,7 +20,13 @@ from trackrat.models.api import NJTransitStopData, NJTransitTrainData
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.sanitize import sanitize_track
-from trackrat.utils.time import ET, now_et, parse_njt_time
+from trackrat.utils.time import (
+    DATETIME_MAX_ET,
+    DATETIME_MIN_ET,
+    ET,
+    now_et,
+    parse_njt_time,
+)
 
 logger = get_logger(__name__)
 
@@ -1055,7 +1061,8 @@ class JourneyCollector(BaseJourneyCollector):
                 return dep_time
             else:
                 # No times available - place at end (won't affect departure inference)
-                return datetime.max
+                # Use timezone-aware constant for safe comparison with ET-localized times
+                return DATETIME_MAX_ET
 
         stops_data = sorted(stops_data, key=get_stop_sort_time)
 
@@ -1329,18 +1336,18 @@ class JourneyCollector(BaseJourneyCollector):
             # Stop has no times - track it for logging
             stops_without_times.append(stop.station_code or "unknown")
 
-            # Use datetime.max to place after all timed stops,
+            # Use timezone-aware max to place after all timed stops,
             # but preserve relative order using existing sequence
             if stop.stop_sequence is not None:
                 # Place after timed stops but maintain relative order
                 # Use stop_sequence directly as secondary sort key
-                return (1, datetime.max, stop.stop_sequence)
+                return (1, DATETIME_MAX_ET, stop.stop_sequence)
             else:
                 # Last resort: use station code for stable ordering
                 assert (
                     stop.station_code is not None
                 )  # station_code is not nullable in database
-                return (2, datetime.max, stop.station_code)
+                return (2, DATETIME_MAX_ET, stop.station_code)
 
         stops.sort(key=get_sort_key)
 
@@ -1499,10 +1506,11 @@ class JourneyCollector(BaseJourneyCollector):
             stops = list(full_result.scalars().all())
 
             # Sort by scheduled arrival time, using scheduled departure for origin station
+            # Use timezone-aware constant for safe comparison with DB times
             stops.sort(
                 key=lambda s: s.scheduled_arrival
                 or s.scheduled_departure
-                or datetime.min
+                or DATETIME_MIN_ET
             )
 
             # Force update all sequences
