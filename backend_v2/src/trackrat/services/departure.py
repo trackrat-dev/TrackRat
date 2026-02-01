@@ -26,6 +26,7 @@ from trackrat.models.api import (
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
+    ET,
     normalize_to_et,
     now_et,
     parse_njt_time,
@@ -954,7 +955,10 @@ class DepartureService:
             gtfs_added += 1
 
         # Sort by scheduled departure time
-        merged.sort(key=lambda d: d.departure.scheduled_time or datetime.max)
+        # Use timezone-aware datetime for comparison (scheduled_time is ET-localized)
+        # Note: year 9999 causes OverflowError in pytz, use 2099 as safe max
+        max_dt = ET.localize(datetime(2099, 12, 31, 23, 59, 59))
+        merged.sort(key=lambda d: d.departure.scheduled_time or max_dt)
 
         logger.info(
             "departures_merged",
