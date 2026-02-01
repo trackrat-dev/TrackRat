@@ -26,7 +26,11 @@ from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import ET, now_et
 
-from tests.fixtures.njt_api_responses import StopBuilder, create_stop_list_response
+from tests.fixtures.njt_api_responses import (
+    NJT_TIME_FORMAT,
+    StopBuilder,
+    create_stop_list_response,
+)
 
 
 @pytest.fixture
@@ -119,20 +123,20 @@ class TestStaleOriginDetection:
             destination="Trenton",
             stops=[
                 builder.build_stop(
-                    "NY", "New York Penn Station", ny_departure.strftime("%I:%M:%S %p")
+                    "NY", "New York Penn Station", ny_departure.strftime(NJT_TIME_FORMAT)
                 ),
                 builder.build_stop(
                     "NP",
                     "Newark Penn Station",
-                    (ny_departure + timedelta(minutes=18)).strftime("%I:%M:%S %p"),
+                    (ny_departure + timedelta(minutes=18)).strftime(NJT_TIME_FORMAT),
                 ),
                 builder.build_stop(
-                    "ED", "Edison", ed_departure.strftime("%I:%M:%S %p")
+                    "ED", "Edison", ed_departure.strftime(NJT_TIME_FORMAT)
                 ),
                 builder.build_stop(
                     "TR",
                     "Trenton",
-                    (ed_departure + timedelta(minutes=30)).strftime("%I:%M:%S %p"),
+                    (ed_departure + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
                 ),
             ],
         )
@@ -200,7 +204,7 @@ class TestStaleOriginDetection:
             destination="Long Branch",  # Different destination
             stops=[
                 builder.build_stop(
-                    "NY", "New York Penn Station", base_time.strftime("%I:%M:%S %p")
+                    "NY", "New York Penn Station", base_time.strftime(NJT_TIME_FORMAT)
                 ),
             ],
         )
@@ -262,7 +266,7 @@ class TestStaleOriginDetection:
             destination="Trenton",
             stops=[
                 builder.build_stop(
-                    "NY", "New York Penn Station", base_time.strftime("%I:%M:%S %p")
+                    "NY", "New York Penn Station", base_time.strftime(NJT_TIME_FORMAT)
                 ),
             ],
         )
@@ -311,7 +315,7 @@ class TestStaleOriginDetection:
             destination="Trenton",
             stops=[
                 builder.build_stop(
-                    "NY", "New York Penn Station", base_time.strftime("%I:%M:%S %p")
+                    "NY", "New York Penn Station", base_time.strftime(NJT_TIME_FORMAT)
                 ),
             ],
         )

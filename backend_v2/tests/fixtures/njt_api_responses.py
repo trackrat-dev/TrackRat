@@ -12,6 +12,10 @@ from unittest.mock import MagicMock
 from trackrat.utils.time import now_et
 
 
+# NJT API time format: "30-May-2024 10:52:30 AM"
+NJT_TIME_FORMAT = "%d-%b-%Y %I:%M:%S %p"
+
+
 class StopBuilder:
     """Builder for creating mock stop data."""
 
@@ -148,7 +152,7 @@ def create_departed_stop(
         Mock stop with DEPARTED=YES
     """
     builder = StopBuilder()
-    time_str = scheduled_time.strftime("%I:%M:%S %p")
+    time_str = scheduled_time.strftime(NJT_TIME_FORMAT)
 
     return builder.build_stop(
         station_code=station_code,
@@ -178,7 +182,7 @@ def create_pending_stop(
         Mock stop with DEPARTED=NO
     """
     builder = StopBuilder()
-    time_str = scheduled_time.strftime("%I:%M:%S %p")
+    time_str = scheduled_time.strftime(NJT_TIME_FORMAT)
 
     return builder.build_stop(
         station_code=station_code,
