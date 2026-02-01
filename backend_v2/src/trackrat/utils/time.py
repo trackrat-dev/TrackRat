@@ -12,6 +12,13 @@ from dateutil import parser as date_parser
 # Eastern Time Zone
 ET = pytz.timezone("America/New_York")
 
+# Timezone-aware min/max constants for safe datetime comparisons
+# Note: year 9999 causes OverflowError in pytz, use 2099/1900 as safe bounds
+# These should be used instead of datetime.min/datetime.max when comparing
+# with timezone-aware datetimes (e.g., from database or parse_njt_time)
+DATETIME_MAX_ET = ET.localize(datetime(2099, 12, 31, 23, 59, 59))
+DATETIME_MIN_ET = ET.localize(datetime(1900, 1, 1, 0, 0, 0))
+
 
 def now_et() -> datetime:
     """Get current time in Eastern Time."""
