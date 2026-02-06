@@ -36,8 +36,8 @@ class TrainJourney(Base):
     line_name = Column(String(100))
     line_color = Column(String(7))
     destination = Column(String(100), nullable=False)
-    origin_station_code = Column(String(3), nullable=False)
-    terminal_station_code = Column(String(3), nullable=False)
+    origin_station_code = Column(String(10), nullable=False)
+    terminal_station_code = Column(String(10), nullable=False)
     data_source = Column(String(10), nullable=False, default="NJT")
     observation_type = Column(String(10), nullable=False, default="OBSERVED")
 
@@ -69,7 +69,7 @@ class TrainJourney(Base):
 
     # Discovery track information (temporary storage)
     discovery_track = Column(String(5))
-    discovery_station_code = Column(String(3))
+    discovery_station_code = Column(String(10))
 
     # Relationships
     stops: Mapped[list["JourneyStop"]] = relationship(
@@ -124,7 +124,7 @@ class JourneyStop(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
-    station_code = Column(String(3), nullable=False)
+    station_code = Column(String(10), nullable=False)
     station_name = Column(String(100), nullable=False)
     stop_sequence = Column(
         Integer, nullable=True
@@ -227,7 +227,7 @@ class DiscoveryRun(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     run_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    station_code = Column(String(3), nullable=False)
+    station_code = Column(String(10), nullable=False)
     trains_discovered = Column(Integer)
     new_trains = Column(Integer)
     duration_ms = Column(Integer)
@@ -246,8 +246,8 @@ class LiveActivityToken(Base):
     push_token = Column(String, unique=True, nullable=False)  # APNS token
     activity_id = Column(String, nullable=False)  # iOS Activity ID
     train_number = Column(String(30), nullable=False)  # PATH IDs are ~21 chars
-    origin_code = Column(String(3), nullable=False)  # e.g., "NY"
-    destination_code = Column(String(3), nullable=False)  # e.g., "WAS"
+    origin_code = Column(String(10), nullable=False)  # e.g., "NY"
+    destination_code = Column(String(10), nullable=False)  # e.g., "WAS"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True))  # Auto-expire after journey
     is_active = Column(Boolean, default=True, nullable=False)
@@ -265,8 +265,8 @@ class SegmentTransitTime(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
-    from_station_code = Column(String(3), nullable=False)
-    to_station_code = Column(String(3), nullable=False)
+    from_station_code = Column(String(10), nullable=False)
+    to_station_code = Column(String(10), nullable=False)
     data_source = Column(String(10), nullable=False)
     line_code = Column(String(10))
 
@@ -310,7 +310,7 @@ class StationDwellTime(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
-    station_code = Column(String(3), nullable=False)
+    station_code = Column(String(10), nullable=False)
     data_source = Column(String(10), nullable=False)
     line_code = Column(String(10))
 
@@ -356,8 +356,8 @@ class JourneyProgress(Base):
     )
 
     # Current position
-    last_departed_station = Column(String(3))
-    next_station = Column(String(3))
+    last_departed_station = Column(String(10))
+    next_station = Column(String(10))
 
     # Progress metrics
     stops_completed = Column(Integer, nullable=False)
@@ -552,7 +552,7 @@ class GTFSStopTime(Base):
 
     # GTFS stop_id and our mapped station code
     gtfs_stop_id = Column(String(50), nullable=False)
-    station_code = Column(String(3))  # Our internal code (null if unmapped)
+    station_code = Column(String(10))  # Our internal code (null if unmapped)
 
     # Times stored as strings to handle >24:00 (e.g., "25:30:00" for 1:30 AM next day)
     arrival_time = Column(String(8))  # HH:MM:SS format

@@ -53,11 +53,11 @@ async def get_departures(
         ...,
         alias="from",
         min_length=2,
-        max_length=3,
+        max_length=10,
         description="Departure station code",
     ),
     to_station: str | None = Query(
-        None, alias="to", min_length=2, max_length=3, description="Arrival station code"
+        None, alias="to", min_length=2, max_length=10, description="Arrival station code"
     ),
     date: date | None = Query(
         None, description="Journey date (YYYY-MM-DD, defaults to today)"
@@ -850,7 +850,7 @@ async def get_train_history(
 @handle_errors
 async def get_occupied_tracks(
     station_code: str = Path(
-        ..., min_length=2, max_length=3, description="Station code"
+        ..., min_length=2, max_length=10, description="Station code"
     ),
     db: AsyncSession = Depends(get_db),
 ) -> OccupiedTracksResponse:

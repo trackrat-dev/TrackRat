@@ -47,10 +47,10 @@ router = APIRouter(prefix="/api/v2/routes", tags=["routes"])
 @handle_errors
 async def get_route_history(
     from_station: str = Query(
-        ..., min_length=1, max_length=3, description="Origin station code"
+        ..., min_length=1, max_length=10, description="Origin station code"
     ),
     to_station: str = Query(
-        ..., min_length=1, max_length=3, description="Destination station code"
+        ..., min_length=1, max_length=10, description="Destination station code"
     ),
     data_source: str = Query(..., description="Data source (NJT or AMTRAK)"),
     days: int = Query(30, ge=1, le=365, description="Number of days of history"),
@@ -735,13 +735,13 @@ async def get_operations_summary(
     from_station: str | None = Query(
         None,
         min_length=1,
-        max_length=3,
+        max_length=10,
         description="Origin station code (for route/train)",
     ),
     to_station: str | None = Query(
         None,
         min_length=1,
-        max_length=3,
+        max_length=10,
         description="Destination station code (for route)",
     ),
     train_id: str | None = Query(None, description="Train ID (for train scope)"),
