@@ -346,6 +346,45 @@ struct RouteTopology {
         )
     ]
 
+    // MARK: - Station Expansion
+
+    /// Returns all station codes (inclusive) between two stations on a matching route.
+    /// Handles both forward and reverse direction. Returns nil if no route contains both stations.
+    static func getIntermediateStations(from: String, to: String, dataSource: String) -> [String]? {
+        for route in allRoutes where route.dataSource == dataSource {
+            guard let fromIndex = route.stationCodes.firstIndex(of: from),
+                  let toIndex = route.stationCodes.firstIndex(of: to) else {
+                continue
+            }
+            if fromIndex <= toIndex {
+                return Array(route.stationCodes[fromIndex...toIndex])
+            } else {
+                return Array(route.stationCodes[toIndex...fromIndex].reversed())
+            }
+        }
+        return nil
+    }
+
+    /// Expands a list of station codes to include all intermediate stations from route topology.
+    /// For each consecutive pair in the input, fills in any skipped stations.
+    static func expandStationCodes(_ stopCodes: [String], dataSource: String) -> [String] {
+        guard stopCodes.count >= 2 else { return stopCodes }
+
+        var expanded: [String] = []
+        for i in 0..<(stopCodes.count - 1) {
+            let intermediates = getIntermediateStations(
+                from: stopCodes[i], to: stopCodes[i + 1], dataSource: dataSource
+            ) ?? [stopCodes[i], stopCodes[i + 1]]
+
+            if expanded.isEmpty {
+                expanded.append(contentsOf: intermediates)
+            } else {
+                expanded.append(contentsOf: intermediates.dropFirst())
+            }
+        }
+        return expanded
+    }
+
     // MARK: - Unique Stations
 
     /// Returns all unique station codes across all routes (for station annotation rendering)

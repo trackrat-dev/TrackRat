@@ -123,24 +123,20 @@ class JourneyCongestionViewModel: ObservableObject {
             // Fetch congestion data
             let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 1)
             
-            // Determine expected data source based on train type
-            let expectedDataSource: String
-            if train.trainClass == "Amtrak" {
-                expectedDataSource = "AMTRAK"
-            } else {
-                expectedDataSource = "NJT"
-            }
-            
+            // Use train's actual data source for filtering
+            let expectedDataSource = train.dataSource
+
             // Filter segments to any valid forward path in the user's journey
-            let journeyStationCodes = getJourneyStationCodes()
-            print("🚦 Journey station codes: \(journeyStationCodes)")
+            // Expand skip-stop gaps using route topology so intermediate canonical segments match
+            let rawStationCodes = getJourneyStationCodes()
+            let journeyStationCodes = RouteTopology.expandStationCodes(rawStationCodes, dataSource: expectedDataSource)
+            print("🚦 Journey station codes: \(rawStationCodes) → expanded: \(journeyStationCodes)")
             print("🚦 Expected data source: \(expectedDataSource)")
             print("🚦 Total segments to filter: \(congestionData.aggregatedSegments.count)")
             
             filteredSegments = congestionData.aggregatedSegments.filter { segment in
-                // First check if data source matches train type
-                guard segment.dataSource.uppercased() == expectedDataSource else {
-                    print("🚦 ❌ Data source mismatch: \(segment.dataSource) != \(expectedDataSource)")
+                // First check if data source matches train's system
+                guard segment.dataSource == expectedDataSource else {
                     return false
                 }
                 
@@ -865,19 +861,17 @@ class EmbeddedCongestionViewModel: ObservableObject {
             // Fetch congestion data using existing API
             let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 1)
             
-            // Determine expected data source based on train type
-            let expectedDataSource: String
-            if train.trainClass == "Amtrak" {
-                expectedDataSource = "AMTRAK"
-            } else {
-                expectedDataSource = "NJT"
-            }
-            
+            // Use train's actual data source for filtering
+            let expectedDataSource = train.dataSource
+
             // Filter segments to user's journey path only
-            let journeyStationCodes = getJourneyStationCodes()
+            // Expand skip-stop gaps using route topology so intermediate canonical segments match
+            let rawStationCodes = getJourneyStationCodes()
+            let journeyStationCodes = RouteTopology.expandStationCodes(rawStationCodes, dataSource: expectedDataSource)
+
             let filteredSegments = congestionData.aggregatedSegments.filter { segment in
-                // Check if data source matches train type
-                guard segment.dataSource.uppercased() == expectedDataSource else {
+                // Check if data source matches train's system
+                guard segment.dataSource == expectedDataSource else {
                     return false
                 }
                 

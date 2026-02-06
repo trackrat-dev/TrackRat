@@ -502,6 +502,7 @@ class CongestionMapViewModel: ObservableObject {
     // Current journey filter
     private var selectedRoute: TripPair?
     private var journeyStations: [String] = []
+    private var journeyDataSource: String = ""
 
     // System filter
     private var selectedSystems: Set<TrainSystem> = .all
@@ -567,17 +568,20 @@ class CongestionMapViewModel: ObservableObject {
 
     private func handleLiveActivityStateChange(isActive: Bool, stationCodes: [String]) {
         if isActive && !stationCodes.isEmpty {
-            // Live Activity is active - apply route filter
+            // Live Activity is active - apply route filter with system lock
             if let activity = LiveActivityService.shared.currentActivity {
                 let attributes = activity.attributes
+                let dataSource = LiveActivityService.shared.journeyDataSource
                 let route = TripPair(
                     departureCode: attributes.originStationCode,
                     departureName: attributes.origin,
                     destinationCode: attributes.destinationStationCode,
                     destinationName: attributes.destination
                 )
-                setRouteFilter(route, journeyStations: stationCodes)
-                print("🗺️ Applied route filter for Live Activity: \(attributes.originStationCode) → \(attributes.destinationStationCode)")
+                // Expand skip-stop gaps so intermediate canonical segments match
+                let expandedCodes = RouteTopology.expandStationCodes(stationCodes, dataSource: dataSource)
+                setRouteFilter(route, journeyStations: expandedCodes, dataSource: dataSource)
+                print("🗺️ Applied route filter for Live Activity: \(attributes.originStationCode) → \(attributes.destinationStationCode) [\(dataSource)] (\(stationCodes.count) stops → \(expandedCodes.count) expanded)")
             }
         } else {
             // No active Live Activity - clear filter to show all segments
@@ -743,13 +747,26 @@ class CongestionMapViewModel: ObservableObject {
     }
 
     private func applyDisplayModeFilter() {
-        // Get raw values of selected systems for filtering
-        let selectedSystemStrings = selectedSystems.asRawStrings
+        // When route filter is active (Live Activity), lock to the journey's train system.
+        // Otherwise use the user's selected systems.
+        let effectiveSystems: Set<TrainSystem>
+        if selectedRoute != nil, !journeyDataSource.isEmpty,
+           let system = TrainSystem(rawValue: journeyDataSource) {
+            effectiveSystems = Set([system])
+        } else {
+            effectiveSystems = selectedSystems
+        }
+        let effectiveSystemStrings = effectiveSystems.asRawStrings
 
-        // First filter by selected systems
-        let systemFilteredAggregated = allAggregatedSegments.filter { selectedSystemStrings.contains($0.dataSource) }
-        let systemFilteredIndividual = allIndividualSegments.filter { selectedSystemStrings.contains($0.dataSource) }
-        let systemFilteredStations = allStations.filter { Stations.isStationVisible($0.code, withSystems: selectedSystems) }
+        // First filter by effective systems
+        let systemFilteredAggregated = allAggregatedSegments.filter { effectiveSystemStrings.contains($0.dataSource) }
+        let systemFilteredIndividual = allIndividualSegments.filter { effectiveSystemStrings.contains($0.dataSource) }
+        let systemFilteredStations = allStations.filter { Stations.isStationVisible($0.code, withSystems: effectiveSystems) }
+
+        // Update route station visibility to match effective systems
+        routeStations = allRouteStations.filter { station in
+            Stations.isStationVisible(station.code, withSystems: effectiveSystems)
+        }
 
         // Then apply route filter if we have one
         let filteredAggregated = selectedRoute != nil ? filterSegmentsForRoute(systemFilteredAggregated) : systemFilteredAggregated
@@ -782,12 +799,13 @@ class CongestionMapViewModel: ObservableObject {
         }
     }
     
-    func setRouteFilter(_ route: TripPair?, journeyStations: [String] = []) {
-        print("🚦 Setting route filter: \(route?.departureCode ?? "none") → \(route?.destinationCode ?? "none")")
+    func setRouteFilter(_ route: TripPair?, journeyStations: [String] = [], dataSource: String = "") {
+        print("🚦 Setting route filter: \(route?.departureCode ?? "none") → \(route?.destinationCode ?? "none") [\(dataSource)]")
         print("🚦 Journey stations: \(journeyStations)")
 
         self.selectedRoute = route
         self.journeyStations = journeyStations
+        self.journeyDataSource = dataSource
 
         // Re-apply filters with the new route
         applyDisplayModeFilter()
