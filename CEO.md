@@ -241,3 +241,136 @@ These won't move the needle on growth but will prevent problems at scale:
 ---
 
 *This is a living document. I'll update it as we gather data and execute on these priorities.*
+
+---
+
+## Appendix A: Key Codebase Reference
+
+This section ensures continuity across sessions.
+
+### Repository Structure
+```
+TrackRat/
+├── backend_v2/          # Python FastAPI backend
+│   ├── src/trackrat/    # Main source
+│   │   ├── api/         # API endpoints (FastAPI routers)
+│   │   ├── models/      # SQLAlchemy + Pydantic models
+│   │   ├── services/    # Business logic (collectors, predictions, etc.)
+│   │   └── main.py      # App entrypoint
+│   ├── tests/           # pytest tests
+│   └── pyproject.toml   # Poetry deps
+├── ios/                 # Swift/SwiftUI iOS app
+│   ├── TrackRat/
+│   │   ├── Views/       # Screens/ and Components/
+│   │   ├── Services/    # APIService, SubscriptionService, etc.
+│   │   ├── Models/      # Data models
+│   │   └── Configuration.storekit  # StoreKit config
+│   └── TrackRat.xcodeproj
+├── android/             # Kotlin/Jetpack Compose
+│   └── app/src/main/java/com/trackrat/android/
+├── webpage_v2/          # React + TypeScript + Vite + Tailwind
+│   ├── src/
+│   │   ├── pages/       # TripSelectionPage, TrainListPage, TrainDetailsPage, FavoritesPage
+│   │   ├── components/  # TrainCard, StationPicker, etc.
+│   │   ├── services/    # api.ts, storage.ts
+│   │   └── store/       # appStore.ts (Zustand)
+│   └── vite.config.ts
+├── trackrat.net/        # Landing page (static HTML)
+│   ├── index.html       # Main landing page
+│   ├── privacy.txt      # Privacy policy
+│   └── images/          # Screenshot images (1.png through 4.png)
+├── infra_v2/            # Terraform GCP infrastructure
+│   └── terraform/       # Cloud Run, Cloud SQL, etc.
+├── universal-links-deployment/  # iOS universal links setup
+├── .github/workflows/   # CI/CD (deploy-webpage.yml, etc.)
+└── .claude/             # PM tooling, rules, agents
+```
+
+### Backend Data Collection Architecture
+- **NJT/Amtrak**: Multi-phase — Schedule Generation (daily) → Discovery (30min) → Collection (15min) → JIT Updates (on-demand) → Validation (hourly)
+- **PATH**: Single collector every 4 minutes using native RidePATH API, discovers at all 13 stations
+- **PATCO**: GTFS static schedules from SEPTA feed, no real-time API
+
+### iOS Pro Features (gated by SubscriptionService)
+Premium features defined in `ios/TrackRat/Services/SubscriptionService.swift`:
+1. Live Activities (lock screen + Dynamic Island)
+2. Track Predictions (ML platform assignments)
+3. Delay Forecasts (ML delay/cancellation probability)
+4. Live Congestion Map
+5. Historical Analytics
+6. Trip History/Statistics (beta)
+7. RatSense AI (journey suggestions)
+8. Penn Station Boarding Guide
+
+### API Environments
+- Production: `https://apiv2.trackrat.net/api/v2`
+- Staging: `https://staging.apiv2.trackrat.net/api/v2`
+- Web app: `https://bokonon1.github.io/TrackRat/`
+- Landing page: `https://trackrat.net/`
+
+### App Store Details
+- App Store URL: `https://apps.apple.com/us/app/trackrat/id6746423610`
+- App ID: `6746423610`
+- Requires iOS 17.0+
+- Developer privacy stance: "does not collect any data"
+
+### Known Dependabot Alerts
+GitHub shows 3 vulnerabilities on the default branch (2 high, 1 moderate). Check: `https://github.com/bokonon1/TrackRat/security/dependabot`
+
+---
+
+## Appendix B: Competitive Intelligence (from research on 2026-02-06)
+
+### Clever Commute (primary competitor)
+- **Developer**: Joshua Crandall, 59-year-old Montclair resident, financial tech worker
+- **Founded**: 2015 (initial version), active since
+- **Pricing**: $50/year premium (offers 9 free access methods)
+- **Coverage**: NJ Transit, LIRR, Metro-North at Penn Station + Grand Central
+- **Tech**: Historical track frequency analysis (2 months lookback), probability rankings
+- **Press**: NY Post article (Oct 2024), TikTok by @nypost went viral
+- **NJ Transit relationship**: Adversarial — NJT changed their API feed to block Clever Commute features in the past
+- **Weakness**: $50/year is expensive; approach is historical frequency, not ML; crowdsourced data model requires critical mass
+
+### NJ Tracks (njtracks.app)
+- Track predictions + real-time departures for NJT
+- Has a "commuter toolkit" page
+- Less information available about pricing/tech approach
+
+### Key Competitive Advantages for TrackRat
+1. ML predictions > historical frequency (more accurate for atypical days)
+2. Multi-system (NJT + Amtrak + PATH + PATCO) vs single-system
+3. $2.99 vs $50/year (94% cheaper)
+4. Live Activities (no competitor has this)
+5. Privacy-first (no data collection vs crowdsourced models)
+
+---
+
+## Appendix C: Development Activity
+
+### Commit Frequency (recent)
+- January 2026: ~215 commits (very active development month)
+- February 2026 (first week): 3 commits
+- Development concentrated on backend services, iOS features, and web app
+
+### Active Branches
+- `main` — production
+- `claude/ceo-project-analysis-03lSJ` — this strategic work
+- `claude/investigate-arrival-predictions-pIZTW` — prior investigation
+
+### Existing Social Channels
+- YouTube: `https://www.youtube.com/@TrackRat-App/shorts`
+- Instagram: `https://www.instagram.com/trackratapp/`
+- Feedback portal: `https://trackrat.nolt.io/` (returned 403 on fetch — may need login)
+- Support email: `trackrat@andymartin.cc`
+
+---
+
+## Appendix D: Session Context for Claude
+
+When continuing this work in a new session, the key instruction files are:
+- `/home/user/TrackRat/CLAUDE.md` — Project-wide rules and architecture
+- `/home/user/TrackRat/.claude/CLAUDE.md` — Agent behavior rules
+- `/home/user/TrackRat/webpage_v2/CLAUDE.md` — Web app specifics
+- `/home/user/TrackRat/CEO.md` — This file (strategic direction)
+
+The user (Andy) has asked Claude to take on the CEO role — driving growth strategy, prioritizing features, directing real-world actions (which Andy executes), and making code changes. The mandate is: grow the brand and real-world usage, add high-ROI features, fix issues. Andy can take real-world actions on Claude's behalf but needs specific direction.
