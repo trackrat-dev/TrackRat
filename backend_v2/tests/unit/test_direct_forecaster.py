@@ -207,10 +207,10 @@ class TestDirectArrivalForecaster:
             validated = forecaster._validate_prediction_time(stale_time, stop)
             assert validated == now  # Should use current time
 
-            # Test very stale time (reset to scheduled)
+            # Test very stale time (uses current time to preserve delay)
             very_stale = now - timedelta(minutes=15)
             validated = forecaster._validate_prediction_time(very_stale, stop)
-            assert validated == stop.scheduled_departure
+            assert validated == now  # Should use current time, not reset to schedule
 
     def test_calculate_next_departure(self, forecaster):
         """Test calculating next departure time."""
@@ -401,3 +401,140 @@ class TestDirectArrivalForecaster:
 
         # Should return None as the single sample exceeds MAX_SEGMENT_MINUTES
         assert result is None
+
+    def test_get_scheduled_segment_duration(self, forecaster, sample_stops):
+        """Test scheduled segment duration calculation between two stops."""
+        # sample_stops[1] (NP) has scheduled_departure, sample_stops[2] (TR) has scheduled_arrival
+        duration = forecaster._get_scheduled_segment_duration(
+            sample_stops[1], sample_stops[2]
+        )
+        assert duration is not None
+        assert duration.total_seconds() > 0
+
+    def test_get_scheduled_segment_duration_missing_times(self, forecaster):
+        """Test scheduled segment duration when times are missing."""
+        from_stop = StopDetails(
+            station=SimpleStationInfo(code="A", name="Station A"),
+            stop_sequence=0,
+            has_departed_station=False,
+            raw_status=RawStopStatus(),
+        )
+        to_stop = StopDetails(
+            station=SimpleStationInfo(code="B", name="Station B"),
+            stop_sequence=1,
+            has_departed_station=False,
+            raw_status=RawStopStatus(),
+        )
+        duration = forecaster._get_scheduled_segment_duration(from_stop, to_stop)
+        assert duration is None
+
+    @pytest.mark.asyncio
+    async def test_chain_preserves_delay_through_missing_segment(
+        self, forecaster, mock_journey
+    ):
+        """Test that accumulated delay is preserved when a segment lacks transit data.
+
+        When empirical data is missing for one segment, the chain should use the
+        scheduled segment duration to carry forward the delay, rather than resetting
+        to scheduled departure (which would lose the accumulated delay).
+
+        Scenario: Train departs NY 15 min late. NY→NP has no empirical data.
+        NP→TR has empirical data matching scheduled duration (~38 min).
+        The 15 min delay should propagate through the gap to TR.
+
+        Schedule:
+          NY depart: base-30  |  NP arrive: base-10, depart: base-8
+          TR arrive: base+30  |  PH arrive: base+60
+        Actual: NY depart: base-15 (15 min late)
+        """
+        base_time = now_et()
+
+        stops = [
+            StopDetails(
+                station=SimpleStationInfo(code="NY", name="New York"),
+                stop_sequence=0,
+                scheduled_departure=base_time - timedelta(minutes=30),
+                has_departed_station=True,
+                actual_departure=base_time - timedelta(minutes=15),  # 15 min late
+                raw_status=RawStopStatus(),
+            ),
+            StopDetails(
+                station=SimpleStationInfo(code="NP", name="Newark"),
+                stop_sequence=1,
+                scheduled_arrival=base_time - timedelta(minutes=10),
+                scheduled_departure=base_time - timedelta(minutes=8),
+                has_departed_station=False,
+                raw_status=RawStopStatus(),
+            ),
+            StopDetails(
+                station=SimpleStationInfo(code="TR", name="Trenton"),
+                stop_sequence=2,
+                scheduled_arrival=base_time + timedelta(minutes=30),
+                scheduled_departure=base_time + timedelta(minutes=32),
+                has_departed_station=False,
+                raw_status=RawStopStatus(),
+            ),
+            StopDetails(
+                station=SimpleStationInfo(code="PH", name="Philadelphia"),
+                stop_sequence=3,
+                scheduled_arrival=base_time + timedelta(minutes=60),
+                has_departed_station=False,
+                raw_status=RawStopStatus(),
+            ),
+        ]
+
+        mock_db = AsyncMock(spec=AsyncSession)
+
+        # Segment NY→NP: NO data (returns empty)
+        # Segment NP→TR: HAS data with ~38 min transit (matches scheduled duration)
+        # Segment TR→PH: HAS data with ~28 min transit (matches scheduled duration)
+        call_count = [0]
+        def mock_execute(stmt):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return []  # NY→NP: no data
+            elif call_count[0] == 2:
+                # NP→TR: 38 min transit (matches scheduled NP dep→TR arr)
+                return [
+                    MagicMock(departure_time=base_time - timedelta(hours=1, minutes=8), arrival_time=base_time - timedelta(minutes=30), from_sequence=1, to_sequence=2, journey_id=1),
+                    MagicMock(departure_time=base_time - timedelta(hours=2, minutes=8), arrival_time=base_time - timedelta(hours=1, minutes=30), from_sequence=1, to_sequence=2, journey_id=2),
+                    MagicMock(departure_time=base_time - timedelta(hours=3, minutes=8), arrival_time=base_time - timedelta(hours=2, minutes=30), from_sequence=1, to_sequence=2, journey_id=3),
+                ]
+            else:
+                # TR→PH: 28 min transit (matches scheduled TR dep→PH arr)
+                return [
+                    MagicMock(departure_time=base_time - timedelta(hours=1, minutes=32), arrival_time=base_time - timedelta(hours=1, minutes=4), from_sequence=2, to_sequence=3, journey_id=4),
+                    MagicMock(departure_time=base_time - timedelta(hours=2, minutes=32), arrival_time=base_time - timedelta(hours=2, minutes=4), from_sequence=2, to_sequence=3, journey_id=5),
+                    MagicMock(departure_time=base_time - timedelta(hours=3, minutes=32), arrival_time=base_time - timedelta(hours=3, minutes=4), from_sequence=2, to_sequence=3, journey_id=6),
+                ]
+
+        mock_db.execute = AsyncMock(side_effect=mock_execute)
+
+        await forecaster.add_predictions_to_stops(
+            mock_db, mock_journey, stops, user_origin="NY"
+        )
+
+        # NP has no empirical data, so no prediction shown for it
+        assert stops[1].predicted_arrival is None
+
+        # TR should have a prediction reflecting the propagated delay.
+        # Chain: actual_dep(NY)=base-15, gap NY→NP uses scheduled 20min → base+5,
+        # _calculate_next_departure at NP: max(sched_dep=base-8, base+5) = base+5,
+        # empirical NP→TR = 38min → predicted_arr(TR) = base+43
+        # scheduled_arr(TR) = base+30 → delay = 13min
+        assert stops[2].predicted_arrival is not None, "TR should have a prediction"
+        scheduled_arrival_tr = base_time + timedelta(minutes=30)
+        predicted_delay_tr = (stops[2].predicted_arrival - scheduled_arrival_tr).total_seconds() / 60
+        assert predicted_delay_tr > 10, (
+            f"Expected ~13 min delay at TR (from 15min late departure) but got "
+            f"{predicted_delay_tr:.1f}min. Chain may have reset to schedule."
+        )
+
+        # PH should also have a prediction with similar delay
+        assert stops[3].predicted_arrival is not None, "PH should have a prediction"
+        scheduled_arrival_ph = base_time + timedelta(minutes=60)
+        predicted_delay_ph = (stops[3].predicted_arrival - scheduled_arrival_ph).total_seconds() / 60
+        assert predicted_delay_ph > 10, (
+            f"Expected ~13 min delay at PH but got {predicted_delay_ph:.1f}min. "
+            f"Delay not propagated through chain."
+        )

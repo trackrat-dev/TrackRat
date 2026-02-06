@@ -149,10 +149,24 @@ class DirectArrivalForecaster:
                         f"No transit data for {from_code}→{to_code} "
                         f"(need {self.MIN_SAMPLES} samples, lookback {self.LOOKBACK_HOURS}h)"
                     )
-                    # Clear prediction and try to reset baseline
+                    # No empirical data for this segment. Fall back to scheduled
+                    # segment duration to preserve accumulated delay through the gap.
                     to_stop.predicted_arrival = None
                     to_stop.predicted_arrival_samples = 0
-                    predicted_time = self._get_scheduled_time(to_stop, "departure")
+                    if predicted_time is not None:
+                        scheduled_duration = self._get_scheduled_segment_duration(
+                            from_stop, to_stop
+                        )
+                        if scheduled_duration is not None:
+                            predicted_time = predicted_time + scheduled_duration
+                            predicted_time = self._calculate_next_departure(
+                                to_stop, predicted_time
+                            )
+                        else:
+                            # Can't compute duration — lose the chain
+                            predicted_time = self._get_scheduled_time(
+                                to_stop, "departure"
+                            )
                     continue
 
                 if predicted_time is None:
@@ -218,7 +232,10 @@ class DirectArrivalForecaster:
         """
         cutoff_time = now_et() - timedelta(hours=self.LOOKBACK_HOURS)
 
-        # Single query that gets segment data and filters on arrival time
+        # Single query that gets segment data and filters on arrival time.
+        # Only includes trains that have actually arrived at the to-station
+        # (actual_arrival IS NOT NULL) to avoid contaminating samples with
+        # schedule-based data from trains still en route.
         stmt = (
             select(
                 JourneyStop.journey_id,
@@ -253,10 +270,7 @@ class DirectArrivalForecaster:
                     case(
                         (
                             JourneyStop.station_code == to_station,
-                            coalesce(
-                                JourneyStop.actual_arrival,
-                                JourneyStop.scheduled_arrival,
-                            ),
+                            JourneyStop.actual_arrival,
                         )
                     )
                 ).label("arrival_time"),
@@ -289,15 +303,22 @@ class DirectArrivalForecaster:
                             )
                         )
                     ),
-                    # Key change: Filter on actual segment completion time
+                    # Only include trains that actually arrived (not NULL)
                     func.max(
                         case(
                             (
                                 JourneyStop.station_code == to_station,
-                                coalesce(
-                                    JourneyStop.actual_arrival,
-                                    JourneyStop.scheduled_arrival,
-                                ),
+                                JourneyStop.actual_arrival,
+                            )
+                        )
+                    )
+                    .isnot(None),
+                    # Filter on recency: actual arrival within lookback window
+                    func.max(
+                        case(
+                            (
+                                JourneyStop.station_code == to_station,
+                                JourneyStop.actual_arrival,
                             )
                         )
                     )
@@ -424,6 +445,21 @@ class DirectArrivalForecaster:
                 return ensure_timezone_aware(time_value)
         return None
 
+    def _get_scheduled_segment_duration(
+        self, from_stop: Any, to_stop: Any
+    ) -> timedelta | None:
+        """
+        Get the scheduled transit duration between two consecutive stops.
+
+        Uses scheduled departure from from_stop and scheduled arrival at to_stop.
+        Returns None if either time is unavailable.
+        """
+        from_time = self._get_scheduled_time(from_stop, "departure")
+        to_time = self._get_scheduled_time(to_stop, "arrival")
+        if from_time and to_time and to_time > from_time:
+            return to_time - from_time
+        return None
+
     def _validate_prediction_time(self, predicted_time: Any, stop: Any) -> Any | None:
         """
         Validate that a prediction time is reasonable.
@@ -441,13 +477,15 @@ class DirectArrivalForecaster:
             delay_minutes = (current_time - predicted_time).total_seconds() / 60.0
 
             if delay_minutes > self.STALE_PREDICTION_MINUTES:
-                # Too stale - reset to scheduled time if available
+                # Too stale - prediction is clearly wrong for this stop.
+                # Use current time as baseline for next segment (preserves
+                # implicit delay rather than resetting to schedule).
                 logger.debug(
                     f"Prediction for {_get_station_code(stop)} is {delay_minutes:.0f}min stale, skipping"
                 )
                 stop.predicted_arrival = None
                 stop.predicted_arrival_samples = 0
-                return self._get_scheduled_time(stop, "departure")
+                return current_time
             else:
                 # Slightly stale - use current time
                 logger.debug(
