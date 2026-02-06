@@ -147,7 +147,7 @@ struct Stations {
         "Los Angeles Union Station", "Seattle King Street", "Portland Union Station",
         "Emeryville", "Sacramento", "New Orleans", "San Antonio", "Denver Union Station",
         // California / Southwest
-        "Santa Barbara", "San Luis Obispo", "San Jose", "Oceanside", "Santa Ana",
+        "Santa Barbara", "San Luis Obispo", "San Jose", "Oceanside CA", "Santa Ana",
         "Fullerton", "San Diego Old Town", "Albuquerque", "Flagstaff", "Tucson",
         "El Paso", "Reno", "Truckee",
         // Pacific Northwest
@@ -173,7 +173,7 @@ struct Stations {
         "Irvine", "Lodi", "Lompoc-Surf", "Las Vegas NV", "Merced", "Moorpark",
         "Marysville", "Martinez", "Seaside-Marina", "Santa Clarita-Newhall", "Northridge", "Oakland Coliseum/Airport",
         "Oakland", "Ontario", "Oxnard", "Pomona", "Paso Robles", "Palm Springs",
-        "Petaluma", "Redding", "Richmond", "Riverside", "Rocklin", "Roseville",
+        "Petaluma", "Redding CA", "Richmond", "Riverside CA", "Rocklin", "Roseville",
         "Santa Clara", "San Francisco", "Simi Valley", "Stockton ACE", "Stockton San Joaquins", "Santa Monica Pier",
         "San Bernardino", "San Juan Capistrano", "San Clemente Pier", "Salinas", "Solana Beach", "Suisun-Fairfield",
         "Vallejo", "Ventura", "Van Nuys", "Victorville", "Winnemucca", "Willits Calif Western Railroad Depot",
@@ -192,7 +192,7 @@ struct Stations {
         "Carbondale", "Centralia IL", "Champaign-Urbana", "Charleston WV", "Connersville", "Crawfordsville",
         "Carlinville", "Dowagiac", "Du Quoin", "Dwight", "Dyer", "Effingham",
         "Elkhart", "Elyria", "Fulton", "Gilman", "Hinton", "Hammond-Whiting",
-        "Homewood", "Huntington", "Joliet Gateway Center", "Kannapolis", "Kewanee", "Kankakee",
+        "Homewood", "Huntington WV", "Joliet Gateway Center", "Kannapolis", "Kewanee", "Kankakee",
         "Lafayette IN", "La Grange", "Lincoln IL", "Mattoon", "Maysville", "Mendota",
         "Montgomery", "Newbern-Dyersburg", "New Buffalo", "Niles", "Naperville", "Princeton IL",
         "Peoria", "Plano", "Pontiac IL", "Prince", "Rensselaer", "Rantoul",
@@ -200,12 +200,12 @@ struct Stations {
         "White Sulphur Springs", "Waterloo", "Arcadia Valley", "Ardmore OK", "Alton", "Alpine",
         "Arkadelphia", "Beaumont", "Brookhaven", "Burlington IA", "Cleburne", "Creston",
         "Dodge City", "Detroit Lakes", "Del Rio", "Devils Lake", "Fargo", "Fort Madison",
-        "Fort Morgan", "Galesburg", "Garden City", "Grand Forks", "Gainesville TX", "Greenwood",
+        "Fort Morgan", "Galesburg", "Garden City KS", "Grand Forks", "Gainesville TX", "Greenwood",
         "Hastings", "Hazlehurst", "Hermann", "Holdrege", "Hammond", "Hope",
         "Hutchinson", "Independence", "Jackson MS", "Jefferson City", "Killeen", "Kirkwood",
         "La Junta", "La Plata", "Lbo", "Lake Charles", "Lee'S Summit", "Lafayette LA",
-        "Lamar", "Lincoln NE", "Lawrence", "La Crosse", "Longview", "Macomb",
-        "Mccomb", "Mcgregor", "Mccook", "Marshall", "Mineola", "Marks",
+        "Lamar", "Lincoln NE", "Lawrence KS", "La Crosse", "Longview", "Macomb",
+        "Mccomb", "Mcgregor", "Mccook", "Marshall", "Mineola TX", "Marks",
         "Minot", "Mt. Pleasant", "Malvern", "New Iberia", "Norman", "Osceola",
         "Ottumwa", "Poplar Bluff", "Purcell", "Pauls Valley", "Quincy", "Raton",
         "Red Wing", "Rugby", "St. Cloud", "Schriever", "Sedalia", "Shreveport Sportran Intermodal Terminal",
@@ -213,11 +213,11 @@ struct Stations {
         "Topeka", "Temple", "Trinidad", "Texarkana", "Washington", "Warrensburg",
         "Wellington", "Wichita", "Winona", "Walnut Ridge", "Williston", "Yazoo City",
         "Amsterdam", "Aldershot", "Buffalo", "Bellows Falls", "Boston North", "Brattleboro",
-        "Brunswick", "Canadian Border", "Castleton", "Fort Edward", "Framingham", "Freeport",
+        "Brunswick", "Canadian Border", "Castleton", "Fort Edward", "Framingham", "Freeport ME",
         "Ticonderoga", "Greenfield", "Grimsby", "Haverhill", "Holyoke", "Hudson",
         "Middlebury", "Montpelier-Berlin", "Niagara Falls NY", "Niagara Falls ON", "Northampton", "Oakville",
         "Old Orchard Beach", "Pittsfield", "Plattsburgh", "Port Henry", "Rome", "Randolph",
-        "Rouses Point", "Route 128", "Rutland", "St. Albans", "Saco", "Saratoga Springs",
+        "Rouses Point", "Route 128", "Rutland", "St. Albans VT", "Saco", "Saratoga Springs",
         "St. Catherines", "Schenectady", "St-Lambert", "Toronto", "Utica", "Ferrisburgh",
         "Waterbury-Stowe", "Wells", "Whitehall", "Windsor-Mt. Ascutney", "Woburn", "Worcester Union",
         "White River Junction", "Westport", "Albany", "Bellingham", "Bingen-White Salmon", "Browning",
@@ -621,7 +621,7 @@ struct Stations {
         "Spuyten Duyvil": "MSDV",
         "Riverdale": "MRVD",
         "Ludlow": "MLUD",
-        "Yonkers": "MYON",
+        "Yonkers Alt": "MYON",
         "Glenwood": "MGWD",
         "Greystone": "MGRY",
         "Hastings-on-Hudson": "MHOH",
@@ -632,7 +632,7 @@ struct Stations {
         "Philipse Manor": "MPHM",
         "Scarborough": "MSCB",
         "Ossining": "MOSS",
-        "Croton-Harmon": "MCRH",
+        "Croton-Harmon Alt": "MCRH",
         "Cortlandt": "MCRT",
         "Peekskill": "MPKS",
         "Manitou": "MMAN",
@@ -641,7 +641,7 @@ struct Stations {
         "Breakneck Ridge": "MBRK",
         "Beacon": "MBCN",
         "New Hamburg": "MNHB",
-        "Poughkeepsie": "MPOK",
+        "Poughkeepsie Alt": "MPOK",
         "Melrose": "MMEL",
         "Tremont": "MTRM",
         "Fordham": "MFOR",
@@ -660,7 +660,7 @@ struct Stations {
         "North White Plains": "MNWP",
         "Valhalla": "MVAL",
         "Mt Pleasant": "MMTP",
-        "Hawthorne": "MHWT",
+        "Hawthorne NY": "MHWT",
         "Pleasantville": "MPLV",
         "Chappaqua": "MCHP",
         "Mt Kisco": "MMTK",
@@ -680,7 +680,7 @@ struct Stations {
         "Wassaic": "MWAS",
         "Mt Vernon East": "MMVE",
         "Pelham": "MPEL",
-        "New Rochelle": "MNRC",
+        "New Rochelle Alt": "MNRC",
         "Larchmont": "MLRM",
         "Mamaroneck": "MMAM",
         "Harrison": "MHRR",
@@ -690,7 +690,7 @@ struct Stations {
         "Cos Cob": "MCOC",
         "Riverside": "MRSD",
         "Old Greenwich": "MODG",
-        "Stamford": "MSTM",
+        "Stamford Alt": "MSTM",
         "Noroton Heights": "MNOH",
         "Darien": "MDAR",
         "Rowayton": "MROW",
@@ -701,11 +701,11 @@ struct Stations {
         "Southport": "MSPT",
         "Fairfield": "MFFD",
         "Fairfield-Black Rock": "MFBR",
-        "Bridgeport": "MBGP",
+        "Bridgeport Alt": "MBGP",
         "Stratford": "MSTR",
         "Milford": "MMIL",
         "West Haven": "MWHN",
-        "New Haven": "MNHV",
+        "New Haven Alt": "MNHV",
         "New Haven-State St": "MNSS",
         "Glenbrook": "MGLB",
         "Springdale": "MSPD",
@@ -786,7 +786,7 @@ struct Stations {
         "Santa Barbara": "SBA",
         "San Luis Obispo": "SLO",
         "San Jose": "SJC",
-        "Oceanside": "OSD",
+        "Oceanside CA": "OSD",
         "Santa Ana": "SNA",
         "Fullerton": "FUL",
         "San Diego Old Town": "OLT",
@@ -891,9 +891,9 @@ struct Stations {
         "Paso Robles": "PRB",
         "Palm Springs": "PSN",
         "Petaluma": "PTC",
-        "Redding": "RDD",
+        "Redding CA": "RDD",
         "Richmond": "RIC",
-        "Riverside": "RIV",
+        "Riverside CA": "RIV",
         "Rocklin": "RLN",
         "Roseville": "RSV",
         "Santa Clara": "SCC",
@@ -1007,7 +1007,7 @@ struct Stations {
         "Hinton": "HIN",
         "Hammond-Whiting": "HMI",
         "Homewood": "HMW",
-        "Huntington": "HUN",
+        "Huntington WV": "HUN",
         "Joliet Gateway Center": "JOL",
         "Kannapolis": "KAN",
         "Kewanee": "KEE",
@@ -1058,7 +1058,7 @@ struct Stations {
         "Fort Madison": "FMD",
         "Fort Morgan": "FMG",
         "Galesburg": "GBB",
-        "Garden City": "GCK",
+        "Garden City KS": "GCK",
         "Grand Forks": "GFK",
         "Gainesville TX": "GLE",
         "Greenwood": "GWD",
@@ -1082,7 +1082,7 @@ struct Stations {
         "Lafayette LA": "LFT",
         "Lamar": "LMR",
         "Lincoln NE": "LNK",
-        "Lawrence": "LRC",
+        "Lawrence KS": "LRC",
         "La Crosse": "LSE",
         "Longview": "LVW",
         "Macomb": "MAC",
@@ -1090,7 +1090,7 @@ struct Stations {
         "Mcgregor": "MCG",
         "Mccook": "MCK",
         "Marshall": "MHL",
-        "Mineola": "MIN",
+        "Mineola TX": "MIN",
         "Marks": "MKS",
         "Minot": "MOT",
         "Mt. Pleasant": "MTP",
@@ -1141,7 +1141,7 @@ struct Stations {
         "Castleton": "CNV",
         "Fort Edward": "FED",
         "Framingham": "FRA",
-        "Freeport": "FRE",
+        "Freeport ME": "FRE",
         "Ticonderoga": "FTC",
         "Greenfield": "GFD",
         "Grimsby": "GMS",
@@ -1163,7 +1163,7 @@ struct Stations {
         "Rouses Point": "RSP",
         "Route 128": "RTE",
         "Rutland": "RUD",
-        "St. Albans": "SAB",
+        "St. Albans VT": "SAB",
         "Saco": "SAO",
         "Saratoga Springs": "SAR",
         "St. Catherines": "SCA",
@@ -1179,7 +1179,7 @@ struct Stations {
         "Woburn": "WOB",
         "Worcester Union": "WOR",
         "White River Junction": "WRJ",
-        "Westport": "WSP",
+        "Westport Alt": "WSP",
 
         // Pacific Northwest
         "Albany": "ALY",
@@ -1565,7 +1565,6 @@ struct Stations {
         "HDF": CLLocationCoordinate2D(latitude: 39.89764, longitude: -75.037141),   // Haddonfield
         "WMT": CLLocationCoordinate2D(latitude: 39.90706, longitude: -75.046553),   // Westmont
         "CLD": CLLocationCoordinate2D(latitude: 39.91359, longitude: -75.06456),    // Collingswood
-        "FRY": CLLocationCoordinate2D(latitude: 39.922572, longitude: -75.091805),  // Ferry Avenue
         "BWY": CLLocationCoordinate2D(latitude: 39.943135, longitude: -75.120364),  // Broadway PATCO
         "CTH": CLLocationCoordinate2D(latitude: 39.945469, longitude: -75.121242),  // City Hall PATCO
         "FKS": CLLocationCoordinate2D(latitude: 39.955298, longitude: -75.151157),  // Franklin Square
@@ -1613,7 +1612,6 @@ struct Stations {
         "SEL": CLLocationCoordinate2D(latitude: 35.5351, longitude: -78.2836),                     // Selma-Smithfield, NC
         "CAR": CLLocationCoordinate2D(latitude: 35.7830, longitude: -78.7810),                     // Cary, NC
         "GRB": CLLocationCoordinate2D(latitude: 36.0726, longitude: -79.7920),                     // Greensboro, NC
-        "GVL": CLLocationCoordinate2D(latitude: 34.8526, longitude: -82.3940),                     // Greenville, SC
         "TOC": CLLocationCoordinate2D(latitude: 34.5773, longitude: -83.3315),                     // Toccoa, GA
         "GAI": CLLocationCoordinate2D(latitude: 34.2979, longitude: -83.8241),                     // Gainesville, GA
         "JES": CLLocationCoordinate2D(latitude: 31.6036, longitude: -81.8854),                     // Jesup, GA
@@ -1648,7 +1646,6 @@ struct Stations {
         "RNO": CLLocationCoordinate2D(latitude: 39.5295, longitude: -119.7773), // Reno
         "TRU": CLLocationCoordinate2D(latitude: 39.3278, longitude: -120.1850), // Truckee
         // Pacific Northwest
-        "SPK": CLLocationCoordinate2D(latitude: 47.6533, longitude: -117.4083), // Spokane
         "TAC": CLLocationCoordinate2D(latitude: 47.2420, longitude: -122.4282), // Tacoma
         "EUG": CLLocationCoordinate2D(latitude: 44.0543, longitude: -123.0950), // Eugene
         "SLM": CLLocationCoordinate2D(latitude: 44.9429, longitude: -123.0353), // Salem
@@ -1728,7 +1725,6 @@ struct Stations {
         "LPS": CLLocationCoordinate2D(latitude: 34.6827, longitude: -120.6050),  // Lompoc-Surf
         "LVS": CLLocationCoordinate2D(latitude: 36.1645, longitude: -115.1497),  // Las Vegas
         "MCD": CLLocationCoordinate2D(latitude: 37.3072, longitude: -120.4768),  // Merced
-        "MPK": CLLocationCoordinate2D(latitude: 34.2848, longitude: -118.8781),  // Moorpark
         "MRV": CLLocationCoordinate2D(latitude: 39.1437, longitude: -121.5973),  // Marysville
         "MTZ": CLLocationCoordinate2D(latitude: 38.0189, longitude: -122.1388),  // Martinez
         "MYU": CLLocationCoordinate2D(latitude: 36.6535, longitude: -121.8014),  // Seaside-Marina
@@ -1787,7 +1783,6 @@ struct Stations {
         "POG": CLLocationCoordinate2D(latitude: 43.5471, longitude: -89.4676),  // Portage
         "PTH": CLLocationCoordinate2D(latitude: 42.9604, longitude: -82.4438),  // Port Huron
         "ROY": CLLocationCoordinate2D(latitude: 42.4884, longitude: -83.1470),  // Royal Oak
-        "SJM": CLLocationCoordinate2D(latitude: 42.1091, longitude: -86.4845),  // St. Joseph-Benton Harbor
         "SVT": CLLocationCoordinate2D(latitude: 42.7183, longitude: -87.9063),  // Sturtevant
         "TRM": CLLocationCoordinate2D(latitude: 42.5426, longitude: -83.1910),  // Troy
         "WDL": CLLocationCoordinate2D(latitude: 43.6265, longitude: -89.7775),  // Wisconsin Dells
@@ -1858,7 +1853,6 @@ struct Stations {
         "HIN": CLLocationCoordinate2D(latitude: 37.6750, longitude: -80.8922),  // Hinton
         "HMI": CLLocationCoordinate2D(latitude: 41.6912, longitude: -87.5065),  // Hammond-Whiting
         "HMW": CLLocationCoordinate2D(latitude: 41.5624, longitude: -87.6687),  // Homewood
-        "HUN": CLLocationCoordinate2D(latitude: 38.4158, longitude: -82.4397),  // Huntington
         "JOL": CLLocationCoordinate2D(latitude: 41.5246, longitude: -88.0787),  // Joliet Gateway Center
         "KAN": CLLocationCoordinate2D(latitude: 35.4962, longitude: -80.6249),  // Kannapolis
         "KEE": CLLocationCoordinate2D(latitude: 41.2458, longitude: -89.9275),  // Kewanee
@@ -1906,7 +1900,6 @@ struct Stations {
         "DRT": CLLocationCoordinate2D(latitude: 29.3622, longitude: -100.9027),  // Del Rio
         "DVL": CLLocationCoordinate2D(latitude: 48.1105, longitude: -98.8614),  // Devils Lake
         "FAR": CLLocationCoordinate2D(latitude: 46.8810, longitude: -96.7854),  // Fargo
-        "FMD": CLLocationCoordinate2D(latitude: 40.6296, longitude: -91.3135),  // Fort Madison
         "FMG": CLLocationCoordinate2D(latitude: 40.2472, longitude: -103.8028),  // Fort Morgan
         "GBB": CLLocationCoordinate2D(latitude: 40.9447, longitude: -90.3641),  // Galesburg
         "GCK": CLLocationCoordinate2D(latitude: 37.9644, longitude: -100.8733),  // Garden City
@@ -1915,7 +1908,6 @@ struct Stations {
         "GWD": CLLocationCoordinate2D(latitude: 33.5172, longitude: -90.1765),  // Greenwood
         "HAS": CLLocationCoordinate2D(latitude: 40.5843, longitude: -98.3875),  // Hastings
         "HAZ": CLLocationCoordinate2D(latitude: 31.8613, longitude: -90.3943),  // Hazlehurst
-        "HEM": CLLocationCoordinate2D(latitude: 38.7073, longitude: -91.4326),  // Hermann
         "HLD": CLLocationCoordinate2D(latitude: 40.4360, longitude: -99.3701),  // Holdrege
         "HMD": CLLocationCoordinate2D(latitude: 30.5072, longitude: -90.4622),  // Hammond
         "HOP": CLLocationCoordinate2D(latitude: 33.6689, longitude: -93.5922),  // Hope
@@ -1931,21 +1923,15 @@ struct Stations {
         "LCH": CLLocationCoordinate2D(latitude: 30.2381, longitude: -93.2170),  // Lake Charles
         "LEE": CLLocationCoordinate2D(latitude: 38.9126, longitude: -94.3780),  // Lee'S Summit
         "LFT": CLLocationCoordinate2D(latitude: 30.2265, longitude: -92.0145),  // Lafayette
-        "LMR": CLLocationCoordinate2D(latitude: 38.0896, longitude: -102.6186),  // Lamar
-        "LNK": CLLocationCoordinate2D(latitude: 40.8159, longitude: -96.7132),  // Lincoln
         "LRC": CLLocationCoordinate2D(latitude: 38.9712, longitude: -95.2305),  // Lawrence
         "LSE": CLLocationCoordinate2D(latitude: 43.8332, longitude: -91.2473),  // La Crosse
-        "LVW": CLLocationCoordinate2D(latitude: 32.4940, longitude: -94.7283),  // Longview
         "MAC": CLLocationCoordinate2D(latitude: 40.4612, longitude: -90.6709),  // Macomb
         "MCB": CLLocationCoordinate2D(latitude: 31.2445, longitude: -90.4513),  // Mccomb
         "MCG": CLLocationCoordinate2D(latitude: 31.4434, longitude: -97.4048),  // Mcgregor
         "MCK": CLLocationCoordinate2D(latitude: 40.1976, longitude: -100.6258),  // Mccook
-        "MHL": CLLocationCoordinate2D(latitude: 32.5515, longitude: -94.3670),  // Marshall
-        "MIN": CLLocationCoordinate2D(latitude: 32.6620, longitude: -95.4891),  // Mineola
         "MKS": CLLocationCoordinate2D(latitude: 34.2582, longitude: -90.2723),  // Marks
         "MOT": CLLocationCoordinate2D(latitude: 48.2361, longitude: -101.2986),  // Minot
         "MTP": CLLocationCoordinate2D(latitude: 40.9712, longitude: -91.5508),  // Mt. Pleasant
-        "MVN": CLLocationCoordinate2D(latitude: 34.3655, longitude: -92.8140),  // Malvern
         "NIB": CLLocationCoordinate2D(latitude: 30.0084, longitude: -91.8238),  // New Iberia
         "NOR": CLLocationCoordinate2D(latitude: 35.2200, longitude: -97.4430),  // Norman
         "OSC": CLLocationCoordinate2D(latitude: 41.0371, longitude: -93.7649),  // Osceola
@@ -1964,7 +1950,6 @@ struct Stations {
         "SMC": CLLocationCoordinate2D(latitude: 29.8766, longitude: -97.9410),  // San Marcos
         "SND": CLLocationCoordinate2D(latitude: 30.1400, longitude: -102.3987),  // Sanderson
         "SPL": CLLocationCoordinate2D(latitude: 46.3546, longitude: -94.7953),  // Staples
-        "STN": CLLocationCoordinate2D(latitude: 48.3198, longitude: -102.3894),  // Stanley
         "TAY": CLLocationCoordinate2D(latitude: 30.5677, longitude: -97.4078),  // Taylor
         "TOH": CLLocationCoordinate2D(latitude: 43.9860, longitude: -90.5053),  // Tomah
         "TOP": CLLocationCoordinate2D(latitude: 39.0514, longitude: -95.6649),  // Topeka
@@ -2014,7 +1999,6 @@ struct Stations {
         "RSP": CLLocationCoordinate2D(latitude: 44.9949, longitude: -73.3711),  // Rouses Point
         "RTE": CLLocationCoordinate2D(latitude: 42.2102, longitude: -71.1479),  // Route 128
         "RUD": CLLocationCoordinate2D(latitude: 43.6058, longitude: -72.9815),  // Rutland
-        "SAB": CLLocationCoordinate2D(latitude: 44.8124, longitude: -73.0862),  // St. Albans
         "SAO": CLLocationCoordinate2D(latitude: 43.4962, longitude: -70.4491),  // Saco
         "SAR": CLLocationCoordinate2D(latitude: 43.0828, longitude: -73.8100),  // Saratoga Springs
         "SCA": CLLocationCoordinate2D(latitude: 43.1478, longitude: -79.2560),  // St. Catherines
@@ -2078,7 +2062,6 @@ struct Stations {
         "GNS": CLLocationCoordinate2D(latitude: 34.2889, longitude: -83.8197),  // Gainesville
         "GUF": CLLocationCoordinate2D(latitude: 30.3690, longitude: -89.0948),  // Gulfport Amtrak Sta
         "HBG": CLLocationCoordinate2D(latitude: 31.3269, longitude: -89.2865),  // Hattiesburg
-        "HOL": CLLocationCoordinate2D(latitude: 26.0116, longitude: -80.1679),  // Hollywood
         "JSP": CLLocationCoordinate2D(latitude: 31.6056, longitude: -81.8822),  // Jesup
         "LAK": CLLocationCoordinate2D(latitude: 28.0456, longitude: -81.9519),  // Lakeland
         "LAU": CLLocationCoordinate2D(latitude: 31.6922, longitude: -89.1279),  // Laurel
@@ -2094,27 +2077,23 @@ struct Stations {
         "TCA": CLLocationCoordinate2D(latitude: 34.5785, longitude: -83.3315),  // Toccoa
         "TCL": CLLocationCoordinate2D(latitude: 33.1932, longitude: -87.5602),  // Tuscaloosa
         "WDO": CLLocationCoordinate2D(latitude: 29.7905, longitude: -82.1667),  // Waldo
-        "WWD": CLLocationCoordinate2D(latitude: 28.8662, longitude: -82.0395),  // Wildwood
         "YEM": CLLocationCoordinate2D(latitude: 32.6883, longitude: -80.8469),  // Yemassee
 
         // Southeast
         "BCV": CLLocationCoordinate2D(latitude: 38.7973, longitude: -77.2988),  // Burke Centre
         "BNC": CLLocationCoordinate2D(latitude: 36.0942, longitude: -79.4345),  // Burlington
         "CLF": CLLocationCoordinate2D(latitude: 37.8145, longitude: -79.8274),  // Clifton Forge
-        "CLP": CLLocationCoordinate2D(latitude: 38.4724, longitude: -77.9934),  // Culpeper
         "CYN": CLLocationCoordinate2D(latitude: 35.7883, longitude: -78.7822),  // Cary
         "DAN": CLLocationCoordinate2D(latitude: 36.5841, longitude: -79.3840),  // Danville
         "FAY": CLLocationCoordinate2D(latitude: 35.0550, longitude: -78.8848),  // Fayetteville
         "FBG": CLLocationCoordinate2D(latitude: 38.2984, longitude: -77.4572),  // Fredericksburg
         "GBO": CLLocationCoordinate2D(latitude: 35.3857, longitude: -78.0033),  // Goldsboro
         "GRO": CLLocationCoordinate2D(latitude: 36.0698, longitude: -79.7871),  // Greensboro
-        "HVL": CLLocationCoordinate2D(latitude: 34.8912, longitude: -76.9261),  // Havelock
         "KNC": CLLocationCoordinate2D(latitude: 35.2437, longitude: -77.5845),  // Kinston
         "MHD": CLLocationCoordinate2D(latitude: 34.7214, longitude: -76.7157),  // Morehead City
         "QAN": CLLocationCoordinate2D(latitude: 38.5219, longitude: -77.2930),  // Quantico
         "SEB": CLLocationCoordinate2D(latitude: 38.9727, longitude: -76.8436),  // Seabrook
         "SOP": CLLocationCoordinate2D(latitude: 35.1751, longitude: -79.3903),  // Southern Pines
-        "SSM": CLLocationCoordinate2D(latitude: 35.5328, longitude: -78.2801),  // Selma
         "STA": CLLocationCoordinate2D(latitude: 38.1476, longitude: -79.0718),  // Staunton
         "SWB": CLLocationCoordinate2D(latitude: 34.6971, longitude: -77.1396),  // Swansboro
         "WDB": CLLocationCoordinate2D(latitude: 38.6589, longitude: -77.2479),  // Woodbridge
@@ -2437,7 +2416,7 @@ struct Stations {
         ("Poughkeepsie", "MPOK"),
         ("Wassaic", "MWAS"),
         ("New Haven", "MNHV"),
-        ("Stamford", "MSPT"),
+        ("Stamford", "MSTM"),
         ("White Plains", "MWPL"),
         ("Croton-Harmon", "MCRH")
     ]
