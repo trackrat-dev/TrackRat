@@ -78,36 +78,36 @@ struct AdvancedConfigurationView: View {
                 // PATH toggle
                 TrainSystemToggleRow(
                     system: .path,
-                    isEnabled: appState.isSystemEnabled(.path)
-                ) { enabled in
-                    appState.setSystemEnabled(.path, enabled: enabled)
+                    isEnabled: appState.isSystemSelected(.path)
+                ) { _ in
+                    appState.toggleSystem(.path)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
 
                 // PATCO toggle
                 TrainSystemToggleRow(
                     system: .patco,
-                    isEnabled: appState.isSystemEnabled(.patco)
-                ) { enabled in
-                    appState.setSystemEnabled(.patco, enabled: enabled)
+                    isEnabled: appState.isSystemSelected(.patco)
+                ) { _ in
+                    appState.toggleSystem(.patco)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
 
                 // LIRR toggle
                 TrainSystemToggleRow(
                     system: .lirr,
-                    isEnabled: appState.isSystemEnabled(.lirr)
-                ) { enabled in
-                    appState.setSystemEnabled(.lirr, enabled: enabled)
+                    isEnabled: appState.isSystemSelected(.lirr)
+                ) { _ in
+                    appState.toggleSystem(.lirr)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
 
                 // Metro-North toggle
                 TrainSystemToggleRow(
                     system: .mnr,
-                    isEnabled: appState.isSystemEnabled(.mnr)
-                ) { enabled in
-                    appState.setSystemEnabled(.mnr, enabled: enabled)
+                    isEnabled: appState.isSystemSelected(.mnr)
+                ) { _ in
+                    appState.toggleSystem(.mnr)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }
