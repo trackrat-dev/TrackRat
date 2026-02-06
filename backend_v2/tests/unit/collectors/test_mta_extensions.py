@@ -229,6 +229,6 @@ class TestExtractMtaTrack:
             ext = _build_extension_bytes(expected_track)
             stu = _make_stu_with_extension(ext_bytes=ext)
             result = extract_mta_track(stu)
-            assert result == expected_track, (
-                f"Expected track '{expected_track}', got '{result}'"
-            )
+            assert (
+                result == expected_track
+            ), f"Expected track '{expected_track}', got '{result}'"

@@ -404,9 +404,9 @@ class TestMNRClient:
         assert len(result) == 1
         assert result[0].station_code == "GCT"
         assert result[0].trip_id == "test_trip_1"
-        assert result[0].track == "42", (
-            f"Expected track '42' from MTA extension, got '{result[0].track}'"
-        )
+        assert (
+            result[0].track == "42"
+        ), f"Expected track '42' from MTA extension, got '{result[0].track}'"
 
     @pytest.mark.asyncio
     async def test_get_all_arrivals_handles_missing_extension(self, client):

@@ -51,7 +51,9 @@ NJT_LINE_CANONICALIZATION: dict[str, str] = {
 # Data sources that have real-time discovery systems.
 # SCHEDULED trains from these sources should be hidden when close to departure
 # if they haven't been upgraded to OBSERVED by discovery.
-REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset({"NJT", "AMTRAK", "PATH", "LIRR", "MNR"})
+REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
+    {"NJT", "AMTRAK", "PATH", "LIRR", "MNR"}
+)
 
 # Minutes before departure to hide SCHEDULED trains that weren't discovered.
 # If a train hasn't been OBSERVED by this point, it's likely not running
