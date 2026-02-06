@@ -68,8 +68,11 @@ struct DeparturePickerView: View {
     private var searchResults: (stations: [String], trainNumber: String?) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
         
-        // Always search stations
-        let stationResults = Stations.search(query)
+        // Always search stations, filtered by selected systems
+        let stationResults = Stations.search(query).filter { stationName in
+            guard let code = Stations.getStationCode(stationName) else { return false }
+            return Stations.isStationVisible(code, withSystems: appState.selectedSystems)
+        }
         
         // Check if input also looks like a train number
         let trainNumber = isLikelyTrainNumber(query) ? query : nil
