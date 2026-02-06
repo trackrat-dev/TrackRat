@@ -237,11 +237,11 @@ struct TrainLiveActivityView: View {
         VStack(spacing: 8) {
             // Header
             HStack {
-                // For PATH/PATCO trains with synthetic IDs, show destination instead
-                let trainLabel = context.attributes.trainNumber.hasPrefix("PATH_") ||
-                                 context.attributes.trainNumber.hasPrefix("PATCO_")
+                // For trains with synthetic IDs, show destination instead
+                let tn = context.attributes.trainNumber
+                let trainLabel = tn.hasPrefix("PATH_") || tn.hasPrefix("PATCO_") || tn.hasPrefix("L") || tn.hasPrefix("M")
                     ? context.attributes.destination
-                    : "Train \(context.attributes.trainNumber)"
+                    : "Train \(tn)"
                 Label(trainLabel, systemImage: "tram.fill")
                     .font(.headline)
                     .foregroundColor(.white)

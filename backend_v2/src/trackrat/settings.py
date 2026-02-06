@@ -96,7 +96,6 @@ class Settings(BaseSettings):
         default=True,
         description="Use database-aggregated pattern analysis for Amtrak schedules (reduces memory usage by ~99%)",
     )
-
     # CORS Settings
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [

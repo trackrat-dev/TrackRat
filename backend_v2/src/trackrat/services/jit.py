@@ -13,6 +13,8 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
+from trackrat.collectors.lirr.collector import LIRRCollector
+from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.collectors.path.collector import PathCollector
@@ -38,6 +40,8 @@ class JustInTimeUpdateService:
         self._njt_collector: JourneyCollector | None = None
         self._amtrak_collector: AmtrakJourneyCollector | None = None
         self._path_collector: PathCollector | None = None
+        self._lirr_collector: LIRRCollector | None = None
+        self._mnr_collector: MNRCollector | None = None
 
     async def __aenter__(self) -> "JustInTimeUpdateService":
         """Enter async context."""
@@ -53,6 +57,12 @@ class JustInTimeUpdateService:
         if self._path_collector:
             await self._path_collector.close()
             self._path_collector = None
+        if self._lirr_collector:
+            await self._lirr_collector.client.close()
+            self._lirr_collector = None
+        if self._mnr_collector:
+            await self._mnr_collector.client.close()
+            self._mnr_collector = None
         # AmtrakJourneyCollector doesn't have a close method - no cleanup needed
         self._amtrak_collector = None
 
@@ -79,9 +89,23 @@ class JustInTimeUpdateService:
             self._path_collector = PathCollector()
         return self._path_collector
 
+    @property
+    def lirr_collector(self) -> LIRRCollector:
+        """Get or create LIRR journey collector."""
+        if self._lirr_collector is None:
+            self._lirr_collector = LIRRCollector()
+        return self._lirr_collector
+
+    @property
+    def mnr_collector(self) -> MNRCollector:
+        """Get or create Metro-North journey collector."""
+        if self._mnr_collector is None:
+            self._mnr_collector = MNRCollector()
+        return self._mnr_collector
+
     async def get_collector_for_journey(
         self, journey: TrainJourney
-    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector | None:
+    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector | LIRRCollector | MNRCollector | None:
         """Get the appropriate collector for a journey based on its data source.
 
         Args:
@@ -97,6 +121,10 @@ class JustInTimeUpdateService:
             return self.amtrak_collector
         elif journey.data_source == "PATH":
             return self.path_collector
+        elif journey.data_source == "LIRR":
+            return self.lirr_collector
+        elif journey.data_source == "MNR":
+            return self.mnr_collector
         elif journey.data_source == "PATCO":
             # PATCO is schedule-only (GTFS static), no real-time API available
             return None

@@ -58,7 +58,7 @@ class LineInfo(BaseModel):
 class StationInfo(BaseModel):
     """Station information with timing data only."""
 
-    code: str = Field(..., min_length=1, max_length=3)
+    code: str = Field(..., min_length=1, max_length=4)
     name: str
     scheduled_time: datetime | None = None
     updated_time: datetime | None = None
@@ -73,7 +73,7 @@ class StationInfo(BaseModel):
 class SimpleStationInfo(BaseModel):
     """Simple station information without timing data."""
 
-    code: str = Field(..., min_length=1, max_length=3)
+    code: str = Field(..., min_length=1, max_length=4)
     name: str
 
 
@@ -339,7 +339,7 @@ class TrainHistoryResponse(BaseModel):
 class OccupiedTracksResponse(BaseModel):
     """Response for occupied tracks endpoint."""
 
-    station_code: str = Field(..., min_length=1, max_length=3)
+    station_code: str = Field(..., min_length=1, max_length=4)
     station_name: str
     occupied_tracks: list[str]
     last_updated: datetime
@@ -445,10 +445,10 @@ class AmtrakTrainData(BaseModel):
 class HistoricalRouteInfo(BaseModel):
     """Route information for route-based historical data."""
 
-    from_station: str = Field(..., min_length=1, max_length=3)
-    to_station: str = Field(..., min_length=1, max_length=3)
+    from_station: str = Field(..., min_length=1, max_length=4)
+    to_station: str = Field(..., min_length=1, max_length=4)
     total_trains: int = Field(..., ge=0)
-    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO"]
+    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
 
 
 class DelayBreakdown(BaseModel):
@@ -500,7 +500,7 @@ class TrainLocationData(BaseModel):
 
     train_id: str
     line: str
-    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO"]
+    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
 
     # GPS coordinates (Amtrak only)
     lat: float | None = None

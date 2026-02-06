@@ -53,6 +53,8 @@ GTFS_FEED_URLS = {
     "AMTRAK": "https://content.amtrak.com/content/gtfs/GTFS.zip",
     "PATH": "http://data.trilliumtransit.com/gtfs/path-nj-us/path-nj-us.zip",
     "PATCO": "https://rapid.nationalrtap.org/GTFSFileManagement/UserUploadFiles/13562/PATCO_GTFS.zip",
+    "LIRR": "http://web.mta.info/developers/data/lirr/google_transit.zip",
+    "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -64,6 +66,8 @@ DEFAULT_LINE_COLORS = {
     "AMTRAK": "#004B87",  # Amtrak blue
     "PATH": "#0039A6",  # PATH blue
     "PATCO": "#BC0035",  # PATCO red
+    "LIRR": "#0039A6",  # LIRR blue (MTA blue)
+    "MNR": "#0039A6",  # Metro-North blue (MTA blue)
 }
 
 # NJT GTFS route_short_name to API line code mapping
@@ -1111,12 +1115,16 @@ class GTFSService:
         amtrak_services = await self.get_active_service_ids(db, "AMTRAK", target_date)
         path_services = await self.get_active_service_ids(db, "PATH", target_date)
         patco_services = await self.get_active_service_ids(db, "PATCO", target_date)
+        lirr_services = await self.get_active_service_ids(db, "LIRR", target_date)
+        mnr_services = await self.get_active_service_ids(db, "MNR", target_date)
 
         all_services = {
             "NJT": njt_services,
             "AMTRAK": amtrak_services,
             "PATH": path_services,
             "PATCO": patco_services,
+            "LIRR": lirr_services,
+            "MNR": mnr_services,
         }
 
         for data_source, service_ids in all_services.items():
@@ -1286,6 +1294,38 @@ class GTFSService:
                         f"#{route_color}"
                         if route_color
                         else DEFAULT_LINE_COLORS.get(data_source, "#BC0035")
+                    )
+            elif data_source == "LIRR":
+                from trackrat.config.stations import get_lirr_route_info
+
+                lirr_route_info = get_lirr_route_info(gtfs_route_id)
+                if lirr_route_info:
+                    line_code, line_name, line_color = lirr_route_info
+                    if not line_color.startswith("#"):
+                        line_color = f"#{line_color}"
+                else:
+                    line_code = route_short or "LIRR"
+                    line_name = route_long or route_short or "LIRR"
+                    line_color = (
+                        f"#{route_color}"
+                        if route_color
+                        else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
+                    )
+            elif data_source == "MNR":
+                from trackrat.config.stations import get_mnr_route_info
+
+                mnr_route_info = get_mnr_route_info(gtfs_route_id)
+                if mnr_route_info:
+                    line_code, line_name, line_color = mnr_route_info
+                    if not line_color.startswith("#"):
+                        line_color = f"#{line_color}"
+                else:
+                    line_code = route_short or "MNR"
+                    line_name = route_long or route_short or "Metro-North"
+                    line_color = (
+                        f"#{route_color}"
+                        if route_color
+                        else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
                     )
             else:
                 # For NJT, map GTFS route_short_name to API line codes for deduplication
@@ -1465,7 +1505,7 @@ class GTFSService:
         ):
             search_train_id = train_id[1:]
 
-        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO"]
+        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
         sources_to_search = [data_source] if data_source else all_sources
 
         # Cache service_ids per source to avoid repeated queries
@@ -1638,6 +1678,30 @@ class GTFSService:
                 line_code = route_short or "PATCO"
                 line_name = route_long or route_short or "PATCO Speedline"
                 line_color = f"#{route_color}" if route_color else "#BC0035"
+        elif matched_source == "LIRR":
+            from trackrat.config.stations import get_lirr_route_info
+
+            lirr_route_info = get_lirr_route_info(gtfs_route_id)
+            if lirr_route_info:
+                line_code, line_name, line_color = lirr_route_info
+                if not line_color.startswith("#"):
+                    line_color = f"#{line_color}"
+            else:
+                line_code = route_short or "LIRR"
+                line_name = route_long or route_short or "LIRR"
+                line_color = f"#{route_color}" if route_color else "#0039A6"
+        elif matched_source == "MNR":
+            from trackrat.config.stations import get_mnr_route_info
+
+            mnr_route_info = get_mnr_route_info(gtfs_route_id)
+            if mnr_route_info:
+                line_code, line_name, line_color = mnr_route_info
+                if not line_color.startswith("#"):
+                    line_color = f"#{line_color}"
+            else:
+                line_code = route_short or "MNR"
+                line_name = route_long or route_short or "Metro-North"
+                line_color = f"#{route_color}" if route_color else "#0039A6"
         else:
             # For NJT, map GTFS route_short_name to API line codes for consistency
             if matched_source == "NJT" and route_short:

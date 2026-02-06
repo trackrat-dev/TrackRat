@@ -580,15 +580,20 @@ struct SystemSelectionCard: View {
 
                 // System info
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Text(system.displayName)
                             .font(.headline)
                             .foregroundColor(.white)
-
-                        if system == .path {
-                            Text("(beta)")
-                                .font(.caption)
+                        if system.isBeta {
+                            Text("beta")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
                                 .foregroundColor(.orange)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule().fill(.orange.opacity(0.2))
+                                )
                         }
                     }
 

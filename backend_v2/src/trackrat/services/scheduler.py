@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
+from trackrat.collectors.lirr.collector import LIRRCollector
+from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
@@ -106,6 +108,28 @@ class SchedulerService:
             trigger=IntervalTrigger(minutes=4),
             id="path_collection",
             name="PATH Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
+        # Schedule LIRR collection (every 4 minutes)
+        self.scheduler.add_job(
+            self.run_lirr_collection,
+            trigger=IntervalTrigger(minutes=4),
+            id="lirr_collection",
+            name="LIRR Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
+        # Schedule MNR collection (every 4 minutes)
+        self.scheduler.add_job(
+            self.run_mnr_collection,
+            trigger=IntervalTrigger(minutes=4),
+            id="mnr_collection",
+            name="MNR Collection",
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=120,
@@ -225,6 +249,8 @@ class SchedulerService:
         asyncio.create_task(self.run_njt_discovery())
         asyncio.create_task(self.run_amtrak_discovery())
         asyncio.create_task(self.run_path_collection())
+        asyncio.create_task(self.run_lirr_collection())
+        asyncio.create_task(self.run_mnr_collection())
 
         # Check and initialize GTFS feeds on startup (downloads if missing)
         asyncio.create_task(self.check_and_initialize_gtfs_feeds())
@@ -412,6 +438,104 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("path_collection_skipped_still_fresh")
+
+    async def run_lirr_collection(self) -> None:
+        """Run unified LIRR collection (discovery + journey updates)."""
+        task_id = f"lirr_collection_{now_et().isoformat()}"
+
+        async def do_lirr_collection_work() -> dict[str, Any]:
+            """The actual LIRR collection work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_lirr_collection")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Run unified LIRR collection
+                collector = LIRRCollector()
+                try:
+                    result = await collector.run()
+
+                    logger.info(
+                        "lirr_collection_completed",
+                        total_arrivals=result.get("total_arrivals", 0),
+                        discovered=result.get("discovered", 0),
+                        updated=result.get("updated", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        async with get_session() as db:
+            # 4 minute interval, use 90% = 216 seconds safe interval
+            safe_interval = calculate_safe_interval(4)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="lirr_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_lirr_collection_work,
+            )
+
+            if not executed:
+                logger.debug("lirr_collection_skipped_still_fresh")
+
+    async def run_mnr_collection(self) -> None:
+        """Run unified Metro-North collection (discovery + journey updates)."""
+        task_id = f"mnr_collection_{now_et().isoformat()}"
+
+        async def do_mnr_collection_work() -> dict[str, Any]:
+            """The actual MNR collection work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_mnr_collection")
+
+                # Track running task
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                # Run unified MNR collection
+                collector = MNRCollector()
+                try:
+                    result = await collector.run()
+
+                    logger.info(
+                        "mnr_collection_completed",
+                        total_arrivals=result.get("total_arrivals", 0),
+                        discovered=result.get("discovered", 0),
+                        updated=result.get("updated", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+
+            finally:
+                # Remove from running tasks
+                self._running_tasks.pop(task_id, None)
+
+        # Use freshness check to prevent duplicate runs across replicas
+        async with get_session() as db:
+            # 4 minute interval, use 90% = 216 seconds safe interval
+            safe_interval = calculate_safe_interval(4)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="mnr_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_mnr_collection_work,
+            )
+
+            if not executed:
+                logger.debug("mnr_collection_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
@@ -2093,12 +2217,22 @@ class SchedulerService:
                     patco_result = await gtfs_service.refresh_feed(db, "PATCO")
                     logger.info("gtfs_patco_refresh_complete", refreshed=patco_result)
 
+                    # Refresh LIRR feed
+                    lirr_result = await gtfs_service.refresh_feed(db, "LIRR")
+                    logger.info("gtfs_lirr_refresh_complete", refreshed=lirr_result)
+
+                    # Refresh MNR feed
+                    mnr_result = await gtfs_service.refresh_feed(db, "MNR")
+                    logger.info("gtfs_mnr_refresh_complete", refreshed=mnr_result)
+
                 logger.info(
                     "gtfs_feed_refresh_complete",
                     njt_refreshed=njt_result,
                     amtrak_refreshed=amtrak_result,
                     path_refreshed=path_result,
                     patco_refreshed=patco_result,
+                    lirr_refreshed=lirr_result,
+                    mnr_refreshed=mnr_result,
                 )
 
             except Exception as e:
@@ -2137,17 +2271,21 @@ class SchedulerService:
             gtfs_service = GTFSService()
 
             async with get_session() as db:
-                # Check if NJT, Amtrak, PATH, and PATCO GTFS data is available
+                # Check if GTFS data is available for all sources
                 njt_available = await gtfs_service.is_feed_available(db, "NJT")
                 amtrak_available = await gtfs_service.is_feed_available(db, "AMTRAK")
                 path_available = await gtfs_service.is_feed_available(db, "PATH")
                 patco_available = await gtfs_service.is_feed_available(db, "PATCO")
+                lirr_available = await gtfs_service.is_feed_available(db, "LIRR")
+                mnr_available = await gtfs_service.is_feed_available(db, "MNR")
 
                 if (
                     njt_available
                     and amtrak_available
                     and path_available
                     and patco_available
+                    and lirr_available
+                    and mnr_available
                 ):
                     logger.info(
                         "gtfs_data_already_available",
@@ -2155,6 +2293,8 @@ class SchedulerService:
                         amtrak=amtrak_available,
                         path=path_available,
                         patco=patco_available,
+                        lirr=lirr_available,
+                        mnr=mnr_available,
                     )
                     return
 
@@ -2165,6 +2305,8 @@ class SchedulerService:
                     amtrak_available=amtrak_available,
                     path_available=path_available,
                     patco_available=patco_available,
+                    lirr_available=lirr_available,
+                    mnr_available=mnr_available,
                 )
 
                 if not njt_available:
@@ -2195,6 +2337,22 @@ class SchedulerService:
                     )
                     logger.info(
                         "gtfs_patco_initial_download_complete", success=patco_result
+                    )
+
+                if not lirr_available:
+                    lirr_result = await gtfs_service.refresh_feed(
+                        db, "LIRR", force=True
+                    )
+                    logger.info(
+                        "gtfs_lirr_initial_download_complete", success=lirr_result
+                    )
+
+                if not mnr_available:
+                    mnr_result = await gtfs_service.refresh_feed(
+                        db, "MNR", force=True
+                    )
+                    logger.info(
+                        "gtfs_mnr_initial_download_complete", success=mnr_result
                     )
 
         except Exception as e:

@@ -61,6 +61,68 @@ struct AdvancedConfigurationView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: resetDataSuccessMessage)
     }
+
+    @ViewBuilder
+    private func createTrainSystemsSection() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Additional Transit Systems")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+
+            Text("Enable additional transit systems to see them in the app. NJ Transit and Amtrak are always available.")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.7))
+
+            VStack(spacing: 12) {
+                // PATH toggle
+                TrainSystemToggleRow(
+                    system: .path,
+                    isEnabled: appState.isSystemEnabled(.path)
+                ) { enabled in
+                    appState.setSystemEnabled(.path, enabled: enabled)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+
+                // PATCO toggle
+                TrainSystemToggleRow(
+                    system: .patco,
+                    isEnabled: appState.isSystemEnabled(.patco)
+                ) { enabled in
+                    appState.setSystemEnabled(.patco, enabled: enabled)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+
+                // LIRR toggle
+                TrainSystemToggleRow(
+                    system: .lirr,
+                    isEnabled: appState.isSystemEnabled(.lirr)
+                ) { enabled in
+                    appState.setSystemEnabled(.lirr, enabled: enabled)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+
+                // Metro-North toggle
+                TrainSystemToggleRow(
+                    system: .mnr,
+                    isEnabled: appState.isSystemEnabled(.mnr)
+                ) { enabled in
+                    appState.setSystemEnabled(.mnr, enabled: enabled)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+
     // MARK: - Debug/TestFlight Sections
     @ViewBuilder
     private func createSubscriptionDebugSection() -> some View {
@@ -534,6 +596,62 @@ struct ServerEnvironmentRow: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct TrainSystemToggleRow: View {
+    let system: TrainSystem
+    let isEnabled: Bool
+    let onToggle: (Bool) -> Void
+
+    var body: some View {
+        HStack {
+            Image(systemName: system.icon)
+                .font(.title2)
+                .foregroundColor(isEnabled ? .orange : .white.opacity(0.5))
+                .frame(width: 32)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(system.displayName)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    if system.isBeta {
+                        Text("beta")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(.orange.opacity(0.2))
+                            )
+                    }
+                }
+
+                Text(system.description)
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { isEnabled },
+                set: { onToggle($0) }
+            ))
+            .labelsHidden()
+            .tint(.orange)
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(isEnabled ? .orange.opacity(0.2) : .white.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isEnabled ? .orange.opacity(0.5) : .white.opacity(0.1), lineWidth: 1)
+                )
+        )
     }
 }
 
