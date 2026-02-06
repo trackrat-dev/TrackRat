@@ -147,9 +147,19 @@ def normalize_aggregated_segments(
         frequency_level: str | None = None
 
         # Sum up train counts from all contributing segments
-        train_counts = [d["train_count"] for d in data_list if d["train_count"] is not None]
-        baseline_counts = [d["baseline_train_count"] for d in data_list if d["baseline_train_count"] is not None]
-        freq_factors = [d["frequency_factor"] for d in data_list if d["frequency_factor"] is not None]
+        train_counts = [
+            d["train_count"] for d in data_list if d["train_count"] is not None
+        ]
+        baseline_counts = [
+            d["baseline_train_count"]
+            for d in data_list
+            if d["baseline_train_count"] is not None
+        ]
+        freq_factors = [
+            d["frequency_factor"]
+            for d in data_list
+            if d["frequency_factor"] is not None
+        ]
 
         if train_counts:
             train_count = sum(train_counts)

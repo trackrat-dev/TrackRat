@@ -186,6 +186,7 @@ class TestDepartureMergeScenario:
 
     def test_merge_departures_sort_with_none_scheduled_time(self):
         """Reproduce the bug scenario from departure.py:957."""
+
         # Simulate TrainDeparture-like objects with scheduled_time
         class MockDeparture:
             def __init__(self, scheduled_time):
@@ -221,6 +222,7 @@ class TestJourneyStopSortScenario:
 
     def test_stop_sort_with_missing_times(self):
         """Reproduce the bug scenario from journey.py:1058."""
+
         # Simulate NJT API response with some stops missing times
         class MockStopData:
             def __init__(self, time_str, dep_time_str):
@@ -263,6 +265,7 @@ class TestProgressSnapshotScenario:
 
     def test_max_progress_snapshot_with_none_captured_at(self):
         """Reproduce the bug scenario from trains.py:299."""
+
         # Simulate progress snapshots with captured_at
         class MockSnapshot:
             def __init__(self, captured_at):

@@ -366,26 +366,50 @@ class TestDirectArrivalForecaster:
         # Arrival times within LOOKBACK_HOURS (1h) for the cutoff check.
         mock_rows = [
             # Journey 1: A departure, B arrival (30 min)
-            MagicMock(journey_id=1, station_code="A", stop_sequence=0,
-                      departure_time=base_time - timedelta(minutes=40),
-                      arrival_time=None),
-            MagicMock(journey_id=1, station_code="B", stop_sequence=1,
-                      departure_time=None,
-                      arrival_time=base_time - timedelta(minutes=10)),
+            MagicMock(
+                journey_id=1,
+                station_code="A",
+                stop_sequence=0,
+                departure_time=base_time - timedelta(minutes=40),
+                arrival_time=None,
+            ),
+            MagicMock(
+                journey_id=1,
+                station_code="B",
+                stop_sequence=1,
+                departure_time=None,
+                arrival_time=base_time - timedelta(minutes=10),
+            ),
             # Journey 2: A departure, B arrival (30 min)
-            MagicMock(journey_id=2, station_code="A", stop_sequence=0,
-                      departure_time=base_time - timedelta(minutes=50),
-                      arrival_time=None),
-            MagicMock(journey_id=2, station_code="B", stop_sequence=1,
-                      departure_time=None,
-                      arrival_time=base_time - timedelta(minutes=20)),
+            MagicMock(
+                journey_id=2,
+                station_code="A",
+                stop_sequence=0,
+                departure_time=base_time - timedelta(minutes=50),
+                arrival_time=None,
+            ),
+            MagicMock(
+                journey_id=2,
+                station_code="B",
+                stop_sequence=1,
+                departure_time=None,
+                arrival_time=base_time - timedelta(minutes=20),
+            ),
             # Journey 3: A departure, B arrival (30 min)
-            MagicMock(journey_id=3, station_code="A", stop_sequence=0,
-                      departure_time=base_time - timedelta(minutes=55),
-                      arrival_time=None),
-            MagicMock(journey_id=3, station_code="B", stop_sequence=1,
-                      departure_time=None,
-                      arrival_time=base_time - timedelta(minutes=25)),
+            MagicMock(
+                journey_id=3,
+                station_code="A",
+                stop_sequence=0,
+                departure_time=base_time - timedelta(minutes=55),
+                arrival_time=None,
+            ),
+            MagicMock(
+                journey_id=3,
+                station_code="B",
+                stop_sequence=1,
+                departure_time=None,
+                arrival_time=base_time - timedelta(minutes=25),
+            ),
         ]
 
         mock_db.execute.return_value = mock_rows
@@ -408,12 +432,20 @@ class TestDirectArrivalForecaster:
         # This exceeds MAX_SEGMENT_MINUTES (60 minutes)
         # B arrival within lookback window so it passes the cutoff check
         mock_rows = [
-            MagicMock(journey_id=1, station_code="A", stop_sequence=0,
-                      departure_time=base_time - timedelta(minutes=150),
-                      arrival_time=None),
-            MagicMock(journey_id=1, station_code="B", stop_sequence=1,
-                      departure_time=None,
-                      arrival_time=base_time - timedelta(minutes=30)),  # 120 min transit!
+            MagicMock(
+                journey_id=1,
+                station_code="A",
+                stop_sequence=0,
+                departure_time=base_time - timedelta(minutes=150),
+                arrival_time=None,
+            ),
+            MagicMock(
+                journey_id=1,
+                station_code="B",
+                stop_sequence=1,
+                departure_time=None,
+                arrival_time=base_time - timedelta(minutes=30),
+            ),  # 120 min transit!
         ]
 
         mock_db.execute.return_value = mock_rows
@@ -519,23 +551,37 @@ class TestDirectArrivalForecaster:
         batch_rows = []
         for j_id, offset_min in [(1, 5), (2, 20), (3, 40)]:
             # NP stop: departure used for NP→TR segment
-            batch_rows.append(MagicMock(
-                journey_id=j_id, station_code="NP", stop_sequence=1,
-                departure_time=base_time - timedelta(minutes=offset_min + 38),
-                arrival_time=base_time - timedelta(minutes=offset_min + 40),
-            ))
+            batch_rows.append(
+                MagicMock(
+                    journey_id=j_id,
+                    station_code="NP",
+                    stop_sequence=1,
+                    departure_time=base_time - timedelta(minutes=offset_min + 38),
+                    arrival_time=base_time - timedelta(minutes=offset_min + 40),
+                )
+            )
             # TR stop: arrival used for NP→TR, departure used for TR→PH
-            batch_rows.append(MagicMock(
-                journey_id=j_id, station_code="TR", stop_sequence=2,
-                departure_time=base_time - timedelta(minutes=offset_min + 0),
-                arrival_time=base_time - timedelta(minutes=offset_min),
-            ))
+            batch_rows.append(
+                MagicMock(
+                    journey_id=j_id,
+                    station_code="TR",
+                    stop_sequence=2,
+                    departure_time=base_time - timedelta(minutes=offset_min + 0),
+                    arrival_time=base_time - timedelta(minutes=offset_min),
+                )
+            )
             # PH stop: arrival used for TR→PH segment
-            batch_rows.append(MagicMock(
-                journey_id=j_id, station_code="PH", stop_sequence=3,
-                departure_time=None,
-                arrival_time=base_time - timedelta(minutes=offset_min) + timedelta(minutes=28),
-            ))
+            batch_rows.append(
+                MagicMock(
+                    journey_id=j_id,
+                    station_code="PH",
+                    stop_sequence=3,
+                    departure_time=None,
+                    arrival_time=base_time
+                    - timedelta(minutes=offset_min)
+                    + timedelta(minutes=28),
+                )
+            )
 
         mock_db.execute = AsyncMock(return_value=batch_rows)
 
@@ -553,7 +599,9 @@ class TestDirectArrivalForecaster:
         # scheduled_arr(TR) = base+30 → delay = 13min
         assert stops[2].predicted_arrival is not None, "TR should have a prediction"
         scheduled_arrival_tr = base_time + timedelta(minutes=30)
-        predicted_delay_tr = (stops[2].predicted_arrival - scheduled_arrival_tr).total_seconds() / 60
+        predicted_delay_tr = (
+            stops[2].predicted_arrival - scheduled_arrival_tr
+        ).total_seconds() / 60
         assert predicted_delay_tr > 10, (
             f"Expected ~13 min delay at TR (from 15min late departure) but got "
             f"{predicted_delay_tr:.1f}min. Chain may have reset to schedule."
@@ -562,7 +610,9 @@ class TestDirectArrivalForecaster:
         # PH should also have a prediction with similar delay
         assert stops[3].predicted_arrival is not None, "PH should have a prediction"
         scheduled_arrival_ph = base_time + timedelta(minutes=60)
-        predicted_delay_ph = (stops[3].predicted_arrival - scheduled_arrival_ph).total_seconds() / 60
+        predicted_delay_ph = (
+            stops[3].predicted_arrival - scheduled_arrival_ph
+        ).total_seconds() / 60
         assert predicted_delay_ph > 10, (
             f"Expected ~13 min delay at PH but got {predicted_delay_ph:.1f}min. "
             f"Delay not propagated through chain."

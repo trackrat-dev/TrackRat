@@ -557,7 +557,10 @@ class CongestionAnalyzer:
 
             if row.data_source in REALTIME_SOURCES:
                 train_count = int(row.train_count) if row.train_count else 0
-                if row.baseline_train_count is not None and row.baseline_train_count > 0:
+                if (
+                    row.baseline_train_count is not None
+                    and row.baseline_train_count > 0
+                ):
                     baseline_train_count = float(row.baseline_train_count)
                     if row.frequency_factor is not None:
                         frequency_factor = float(row.frequency_factor)

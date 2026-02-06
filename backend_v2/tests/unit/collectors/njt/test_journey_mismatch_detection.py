@@ -123,7 +123,9 @@ class TestStaleOriginDetection:
             destination="Trenton",
             stops=[
                 builder.build_stop(
-                    "NY", "New York Penn Station", ny_departure.strftime(NJT_TIME_FORMAT)
+                    "NY",
+                    "New York Penn Station",
+                    ny_departure.strftime(NJT_TIME_FORMAT),
                 ),
                 builder.build_stop(
                     "NP",

@@ -383,10 +383,10 @@ class TestNJTStationCoordinates:
     """
 
     # NJ-area bounds for NJT-only stations (2-char codes)
-    NJ_MIN_LAT = 39.3   # South NJ (Atlantic City area)
-    NJ_MAX_LAT = 41.5   # North NJ/lower NY (Port Jervis line)
-    NJ_MIN_LON = -75.2   # West NJ (Philadelphia area)
-    NJ_MAX_LON = -73.9   # East NJ (coastal)
+    NJ_MIN_LAT = 39.3  # South NJ (Atlantic City area)
+    NJ_MAX_LAT = 41.5  # North NJ/lower NY (Port Jervis line)
+    NJ_MIN_LON = -75.2  # West NJ (Philadelphia area)
+    NJ_MAX_LON = -73.9  # East NJ (coastal)
 
     def test_all_coordinates_are_valid(self):
         """All station coordinates should have reasonable lat/lon values."""
@@ -409,7 +409,11 @@ class TestNJTStationCoordinates:
         """
         # Codes for stations outside NJ area (Amtrak intercity)
         non_nj_codes = {
-            "BA", "BL", "WS", "WI", "NF",  # DC corridor
+            "BA",
+            "BL",
+            "WS",
+            "WI",
+            "NF",  # DC corridor
             "PH",  # Philadelphia
         }
         for code, coords in STATION_COORDINATES.items():
@@ -469,17 +473,17 @@ class TestNJTStationCoordinates:
         self, code, expected_lat, expected_lon, description
     ):
         """Verify previously-wrong coordinates are now correct (from GTFS)."""
-        assert code in STATION_COORDINATES, (
-            f"[{code}] {STATION_NAMES.get(code, '???')} missing from STATION_COORDINATES"
-        )
+        assert (
+            code in STATION_COORDINATES
+        ), f"[{code}] {STATION_NAMES.get(code, '???')} missing from STATION_COORDINATES"
         actual_lat = STATION_COORDINATES[code]["lat"]
         actual_lon = STATION_COORDINATES[code]["lon"]
-        assert actual_lat == pytest.approx(expected_lat, abs=0.001), (
-            f"[{code}] lat mismatch: {actual_lat} != {expected_lat} ({description})"
-        )
-        assert actual_lon == pytest.approx(expected_lon, abs=0.001), (
-            f"[{code}] lon mismatch: {actual_lon} != {expected_lon} ({description})"
-        )
+        assert actual_lat == pytest.approx(
+            expected_lat, abs=0.001
+        ), f"[{code}] lat mismatch: {actual_lat} != {expected_lat} ({description})"
+        assert actual_lon == pytest.approx(
+            expected_lon, abs=0.001
+        ), f"[{code}] lon mismatch: {actual_lon} != {expected_lon} ({description})"
 
     def test_njt_explicit_mapping_completeness(self):
         """Every NJT GTFS explicit mapping should point to a valid station code."""
