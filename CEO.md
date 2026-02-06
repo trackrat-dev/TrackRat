@@ -21,7 +21,7 @@ TrackRat is an **open-source, general-purpose transit tracking framework** built
 **Platforms**:
 - **iOS** (production, App Store): Full-featured — Live Activities, track predictions, congestion maps, trip history, RatSense AI, Penn Station guide, Pro subscription via StoreKit 2. Version 2.4.
 - **Web** (production, GitHub Pages): Minimal MVP — station selection, departure lists, train details. Needs PWA upgrade.
-- **Android** (experimental, private repo): Core features present but broken critical buttons, duplicate models, no local caching. Excluded from open-source launch. Moved to separate private repo.
+- **Android** (experimental): Core features present but broken critical buttons, duplicate models, no local caching. Excluded from open-source launch. To be moved to separate private repo (#410).
 - **Backend** (production, GCP Cloud Run): FastAPI + PostgreSQL, horizontal scaling, APScheduler for data collection, ML prediction pipeline. Solid.
 - **Infrastructure** (production, GCP): Terraform-managed, staging + production environments, Cloud Run, Cloud SQL, monitoring dashboards.
 
@@ -51,9 +51,9 @@ TrackRat is an **open-source, general-purpose transit tracking framework** built
 
 *Approved by board vote on 2026-02-06. See `board-meetings/2026-02-06-board-meeting.txt` for full discussion.*
 
-### Phase 1: Fix the Funnel & Open-Source Prep (Week 1)
+### Phase 1: Fix the Funnel, Open-Source Prep & Launch (Weeks 1-2)
 
-#### 1.1 Landing Page Overhaul (trackrat.net)
+#### 1.1 Landing Page Overhaul (#408)
 Lead with the open-source mission: "Real-time transit predictions. Free, open source, built for the community."
 
 **Andy's tasks:**
@@ -66,7 +66,7 @@ Lead with the open-source mission: "Real-time transit predictions. Free, open so
 - [ ] Add structured data (JSON-LD) for Google indexing
 - [ ] Add App Store smart banner meta tag for iOS Safari visitors
 
-#### 1.2 App Store Optimization
+#### 1.2 App Store Optimization (#409)
 **Andy's tasks:**
 - [ ] Update keywords: "transit", "track prediction", "Penn Station", "train tracker", "Amtrak", "PATH train", "commute", "live activity", "open source transit"
 - [ ] Update subtitle (e.g., "Open Source Transit Track Predictions")
@@ -74,22 +74,21 @@ Lead with the open-source mission: "Real-time transit predictions. Free, open so
 - [ ] Write longer, keyword-rich description
 - [ ] Add 30-second App Preview video
 
-#### 1.3 Open-Source Prep
-**Reference:** GitHub issue #339 has the pre-flight checklist.
+#### 1.3 Open-Source Prep (#339)
 
 **Code tasks:**
 - [ ] Merge PR #368 (LIRR + Metro-North)
-- [ ] Move Android to separate private repo
+- [ ] Move Android to separate private repo (#410)
 - [ ] Complete issue #339 (secrets audit, CORS config, env setup docs)
 - [x] Resolve license: changed from GPL v3 to Apache 2.0
 - [ ] Write README.md for open-source audience
 - [ ] Write CONTRIBUTING.md
 - [ ] Clean up repo (dead code, TODOs, anything embarrassing)
-- [ ] Build sharing deep links
+- [ ] Build sharing deep links (#411)
 
-### Phase 2: Open-Source Launch & Growth (Week 2)
+#### 1.4 Open-Source Launch & Growth (#412)
 
-Everything fires together as a coordinated launch:
+Everything fires together as a coordinated launch immediately after the repo goes public:
 
 **Andy's tasks:**
 - [ ] Make repo public
@@ -107,17 +106,17 @@ Everything fires together as a coordinated launch:
 - [ ] Sharing deep links functional
 - [ ] Web app has footer link to GitHub repo
 
-### Phase 3: Product Improvements (Weeks 2-6)
+### Phase 2: Product Improvements (Weeks 2-6)
 
 **Code tasks:**
-- [ ] PWA manifest + service worker for "Add to Home Screen"
-- [ ] Web Push API notification support
-- [ ] Web UI improvements (closer to iOS experience)
-- [ ] "Get the native app for Live Activities" banner on web
-- [ ] Usage analytics integration (TelemetryDeck or similar — privacy-respecting, no personal data)
-- [ ] Track: app opens, route selections, train detail views, feature usage, subscription conversion events
+- [ ] PWA manifest + service worker for "Add to Home Screen" (#413)
+- [ ] Web Push API notification support (#413)
+- [ ] Web UI improvements (closer to iOS experience) (#413)
+- [ ] "Get the native app for Live Activities" banner on web (#413)
+- [ ] Usage analytics integration (TelemetryDeck or similar — privacy-respecting, no personal data) (#414)
+- [ ] Track: app opens, route selections, train detail views, feature usage, subscription conversion events (#414)
 
-### Phase 4: Monetization Optimization (Weeks 8-12)
+### Phase 3: Monetization Optimization (Weeks 8-12)
 
 **Pricing model:** $2.99/month Pro. No changes until we have analytics data.
 
@@ -130,7 +129,7 @@ Everything fires together as a coordinated launch:
 - Route alerts ("Your usual 5:15 is cancelled")
 - API access tiers for developer community
 
-### Phase 5: Platform & Framework Expansion (Weeks 10+)
+### Phase 4: Platform & Framework Expansion (Weeks 10+)
 
 - "Add a Transit System" contributor guide
 - Template collector with documentation
@@ -138,7 +137,7 @@ Everything fires together as a coordinated launch:
 - Community-driven transit system additions (SEPTA Regional Rail, MTA Subway, etc.)
 - Framework vs. app branding may need to split eventually
 
-### Phase 6: Sustainability (Ongoing)
+### Phase 5: Sustainability (Ongoing)
 
 **Technical debt:**
 - Backend test coverage (limited for schedule generation)
@@ -245,7 +244,7 @@ TrackRat/
 └── CLAUDE.md            # Project-wide development rules
 ```
 
-Note: Android has been moved to a separate private repository.
+Note: Android is being moved to a separate private repository (#410).
 
 ### Backend Data Collection Architecture
 - **NJT/Amtrak**: Multi-phase — Schedule Generation (daily) → Discovery (30min) → Collection (15min) → JIT Updates (on-demand) → Validation (hourly)

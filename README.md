@@ -1,74 +1,74 @@
-# TrackRat 🚂
+# TrackRat
 
-Real-time train tracking system with ML-powered track predictions for NJ Transit, Amtrak, PATH, and PATCO, with planned support for SEPTA and LIRR.
+An open-source transit tracking framework with ML-powered track predictions. Currently supports NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North.
 
-## ✨ Features
+Built primarily through AI-assisted development ("vibe coding").
 
-### Core Functionality
-- **Multi-Platform**: Native iOS app with Live Activities + Android app (in development)
-- **Track Predictions**: ML models predict platform assignments with confidence levels ("Owl" system)
-- **Real-Time Updates**: Live train status, delays, and journey progress with 30-second refresh
-- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, and PATCO (SEPTA, LIRR placeholders exist)
-- **Station Coverage**: 250+ stations including NY Penn, Newark Penn, Trenton, Princeton Junction, Metropark, plus PATH, PATCO, Southeast Amtrak, and Keystone Service stations
-- **Smart Consolidation**: Merges duplicate trains across data sources with conflict resolution
+[![App Store](https://img.shields.io/badge/App_Store-Download-blue?logo=apple)](https://apps.apple.com/us/app/trackrat/id6746423610)
+[![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 
-### Advanced Features
-- **Schedule Generation**: 27-hour NJT schedules + pattern-based Amtrak predictions
-- **Transit Analytics**: Real-time congestion monitoring and historical route performance
-- **Journey Tracking**: Segment-by-segment transit time analysis and delay attribution
-- **Arrival Forecasting**: ML-powered arrival time predictions using recent journey data
+## What It Does
+
+- **Track Predictions**: ML models predict platform assignments at Penn Station and other terminals
+- **Real-Time Updates**: Live train status, delays, and journey progress
+- **Multi-Transit Coverage**: NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North in one place
 - **Delay Forecasting**: ML-powered delay and cancellation probability predictions
-- **Trip Statistics**: Flighty-style trip history with on-time percentage and time saved metrics (iOS)
 - **Live Activities**: Real-time iOS Lock Screen and Dynamic Island updates
-- **RatSense AI**: Intelligent journey suggestions based on user patterns (iOS)
-- **Penn Station Guide**: Interactive navigation assistance with video guides (iOS)
-- **Journey Feedback**: Proactive feedback collection at 2/3 journey progress (iOS)
-- **Map Layer Controls**: Toggleable congestion, routes, and station layers (iOS)
-- **Pro Subscription**: Premium features including congestion maps with StoreKit 2 (iOS)
-- **GTFS Schedule Viewing**: View future date schedules via GTFS static data
-- **Validation System**: Hourly coverage checks ensure data completeness
+- **Congestion Maps**: Live network congestion monitoring
+- **Trip Statistics**: Commute history with on-time percentage and time saved metrics
+- **250+ Stations** across the Northeast Corridor
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Data Sources  │     │   Backend V2    │     │    Frontends    │
+│   Data Sources   │     │     Backend     │     │    Frontends    │
 ├─────────────────┤     ├─────────────────┤     ├─────────────────┤
 │ • NJ Transit    │────▶│ • FastAPI       │────▶│ • iOS App       │
-│ • Amtrak APIs   │     │ • APScheduler   │     │ • Android App   │
-│                 │     │ • ML Predictions│     │ • Web App       │
-└─────────────────┘     └─────────────────┘     │ • Live Activity │
-                                │               └─────────────────┘
-                        ┌───────▼────────┐
-                        │   PostgreSQL   │
-                        │   Database     │
-                        └────────────────┘
-                                │
-                        ┌───────▼────────┐
+│ • Amtrak        │     │ • APScheduler   │     │ • Web App       │
+│ • PATH          │     │ • ML Predictions│     │ • Live Activity │
+│ • PATCO         │     │ • PostgreSQL    │     └─────────────────┘
+│ • LIRR          │     └─────────────────┘
+│ • Metro-North   │             │
+└─────────────────┘     ┌───────▼────────┐
                         │   GCP Infra    │
                         │ • Cloud Run    │
-                        │ • Managed MIG  │
+                        │ • Cloud SQL    │
                         │ • Monitoring   │
                         └────────────────┘
 ```
 
-## 🚀 Quick Start
+### Data Collection Patterns
 
-### Backend V2 (Python/FastAPI)
+Each transit system uses an architecture suited to its data source:
+
+- **NJ Transit / Amtrak**: Multi-phase pipeline — Schedule Generation (daily) → Discovery (30min) → Collection (15min) → JIT Updates (on-demand) → Validation (hourly)
+- **PATH**: Single unified collector every 4 minutes via native RidePATH API, discovers trains at all 13 stations
+- **PATCO**: GTFS static schedules (no real-time API available)
+- **LIRR / Metro-North**: Via Transiter API integration
+
+### Adding a New Transit System
+
+The framework is designed to be extensible. Each transit system is a self-contained collector that feeds into the shared data pipeline. If you're interested in adding a new system, open an issue and we'll help you get started.
+
+## Getting Started
+
+### Backend (Python/FastAPI)
+
+**Prerequisites**: Python 3.11+, Poetry, PostgreSQL 14+
+
 ```bash
 cd backend_v2
 poetry install
 
-# Set up PostgreSQL database
-psql -U postgres
-CREATE DATABASE trackratdb;
-CREATE USER trackratuser WITH PASSWORD 'password';
-GRANT ALL PRIVILEGES ON DATABASE trackratdb TO trackratuser;
-\q
+# Set up PostgreSQL
+psql -U postgres -c "CREATE DATABASE trackratdb;"
+psql -U postgres -c "CREATE USER trackratuser WITH PASSWORD 'password';"
+psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE trackratdb TO trackratuser;"
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your NJ Transit and Amtrak API tokens
+# Edit .env — see Environment Variables below
 
 # Run migrations and start server
 poetry run alembic upgrade head
@@ -76,203 +76,155 @@ poetry run uvicorn trackrat.main:app --reload
 ```
 
 ### iOS App (Swift/SwiftUI)
+
+**Prerequisites**: macOS 14+, Xcode 15+, iOS 17.0+ deployment target
+
 ```bash
 cd ios
 open TrackRat.xcodeproj
 # Build and run in Xcode (Cmd+R)
 ```
 
-### Android App (Kotlin/Jetpack Compose)
+For local APNS testing, copy your auth key:
 ```bash
-cd android
-
-# Set up Java environment (macOS with Homebrew)
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-export PATH=$JAVA_HOME/bin:$PATH
-
-# Build debug APK
-./gradlew assembleDebug -x test
-
-# Install on device/emulator
-./gradlew installDebug
+cp /path/to/AuthKey.p8 certs/apns_auth_key.p8
+# Add APNS_* variables to backend .env
 ```
 
-## 💻 Development
+### Web App (React/TypeScript)
 
-### Prerequisites
-- **Backend**: Python 3.11+, Poetry, PostgreSQL 14+
-- **iOS**: macOS 14+, Xcode 15+, iOS 18.0+ deployment target
-- **Android**: Android Studio, JDK 17, Android SDK 34
-- **Infrastructure**: Terraform 1.0+, Google Cloud SDK
+**Prerequisites**: Node.js 18+
 
-### Key Technologies
-- **Backend**: FastAPI, PostgreSQL, asyncpg, APScheduler, Pydantic
-- **iOS**: SwiftUI, ActivityKit, Combine, async/await
-- **Android**: Kotlin, Jetpack Compose, Retrofit, Hilt, Coroutines
-- **Infrastructure**: Google Cloud Run, Cloud SQL, Terraform, Docker
+```bash
+cd webpage_v2
+npm install
+npm run dev          # Dev server at http://localhost:3000
+npm run build        # Production build
+```
 
-## 🚢 Production Deployment
+### Environment Variables
 
-### Infrastructure (Google Cloud Platform)
-Managed with Terraform for staging and production environments:
-- **Cloud Run**: Auto-scaling containerized services
+The backend requires a `.env` file. Copy `.env.example` and configure:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `TRACKRAT_NJT_API_TOKEN` | Yes | NJ Transit API token |
+| `TRACKRAT_CORS_ALLOWED_ORIGINS` | No | Comma-separated allowed origins |
+| `APNS_KEY_ID` | No | Apple Push Notification key ID (for Live Activities) |
+| `APNS_TEAM_ID` | No | Apple Developer Team ID |
+| `APNS_AUTH_KEY_PATH` | No | Path to .p8 auth key file |
+
+## Project Structure
+
+```
+TrackRat/
+├── backend_v2/          # Python FastAPI backend
+│   ├── src/trackrat/
+│   │   ├── api/         # API endpoints (FastAPI routers)
+│   │   ├── models/      # SQLAlchemy + Pydantic models
+│   │   ├── services/    # Business logic, collectors, ML predictions
+│   │   └── main.py      # App entrypoint
+│   └── tests/           # pytest tests
+├── ios/                 # Swift/SwiftUI iOS app
+│   └── TrackRat/
+│       ├── Views/       # Screens and components
+│       ├── Services/    # API, subscriptions, live activities
+│       └── Models/      # Data models
+├── webpage_v2/          # React + TypeScript + Vite + Tailwind
+│   └── src/
+│       ├── pages/       # Route pages
+│       ├── components/  # Shared UI components
+│       └── store/       # Zustand state management
+├── trackrat.net/        # Landing page (static HTML)
+├── infra_v2/terraform/  # GCP infrastructure (Terraform)
+├── board-meetings/      # Public governance records
+└── CEO.md               # Strategic direction
+```
+
+## Running Tests
+
+```bash
+# Backend
+cd backend_v2
+poetry run pytest                    # All tests
+poetry run pytest --cov=trackrat     # With coverage
+poetry run pytest tests/unit/        # Unit only
+
+# iOS
+xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'
+
+# Web
+cd webpage_v2
+npm run build                        # TypeScript compile + build check
+```
+
+## Deployment
+
+### Infrastructure (GCP)
+
+Managed with Terraform across staging and production environments:
+- **Cloud Run**: Auto-scaling containerized backend
 - **Cloud SQL**: PostgreSQL 17 with private networking
 - **Secret Manager**: Secure credential storage
-- **Cloud Monitoring**: Executive dashboards and alerts
-- **Artifact Registry**: Docker image storage with cleanup policies
+- **Cloud Monitoring**: Dashboards and alerts
 
-### Deployment Process
 ```bash
 cd infra_v2/terraform
 terraform init
-terraform workspace select staging  # or production
-
-# Deploy to staging
+terraform workspace select staging   # or: production
 terraform plan -var="environment=staging"
 terraform apply -var="environment=staging"
-
-# Deploy to production
-terraform workspace select production
-terraform plan -var="environment=production"
-terraform apply -var="environment=production"
 ```
 
-### Key Features
-- Docker containerization with APNS validation at startup
-- Automated database migrations after backup restore
-- Horizontal scaling with database-coordinated scheduling
-- Comprehensive monitoring with 4 dashboards
-- API response caching with 15-minute pre-computation
+**Deployment triggers**: Push to `main` → staging, push to `production` → production.
 
-## 📚 Documentation
+**Web app**: Deployed automatically to GitHub Pages via GitHub Actions on push to `main`.
 
-- **Backend V2**: [`backend_v2/CLAUDE.md`](backend_v2/CLAUDE.md) - Simplified V2 API with ~95% fewer API calls
-- **iOS**: [`ios/CLAUDE.md`](ios/CLAUDE.md) - Native app with Live Activities and RatSense AI
-- **Android**: [`android/CLAUDE.md`](android/CLAUDE.md) - Material Design 3 app with map-based UI
-- **Web**: [`webpage_v2/CLAUDE.md`](webpage_v2/CLAUDE.md) - Mobile-first React app with Tailwind CSS
-- **Infrastructure**: [`infra_v2/README.md`](infra_v2/README.md) - Terraform and GCP setup with MIG architecture
-- **Project Guide**: [`CLAUDE.md`](CLAUDE.md) - Comprehensive project overview and integration
+## API
 
-## 🛠️ Development Tools
+Production: `https://apiv2.trackrat.net/api/v2`
 
-### Makefile Commands
-
-```bash
-# Testing and Quality
-make test                            # Run all tests
-make lint                            # Run linting checks
-make clean                           # Clean build artifacts
-
-# Backend Development
-make backend-test                    # Run backend tests (pytest)
-make backend-migrate                 # Run database migrations
-
-# Infrastructure Management
-cd infra_v2/terraform
-terraform init                       # Initialize Terraform
-terraform workspace select staging   # Select workspace
-terraform plan -var="environment=staging"  # Plan changes
-terraform apply -var="environment=staging" # Apply changes
-
-# iOS Development
-make ios-build                       # Build iOS app for simulator
-make ios-test                        # Run iOS tests
-
-# Android Development
-cd android
-./gradlew assembleDebug -x test      # Build debug APK
-./gradlew test                       # Run unit tests
-
-# Initial Setup
-make setup                           # Setup development environment
+Key endpoints:
+```
+GET  /api/v2/trains/departures              # Departures for a route
+GET  /api/v2/trains/{train_id}              # Train details with all stops
+GET  /api/v2/routes/congestion              # Network congestion data
+GET  /api/v2/predictions/track              # ML platform predictions
+GET  /api/v2/predictions/delay              # Delay/cancellation forecasts
+GET  /health                                # Health check
 ```
 
-## 🐛 Known Issues & Areas for Improvement
+## Contributing
 
-### Critical Issues
-
-#### Backend V2
-- **Test Coverage**: Limited tests for new schedule generation features
-
-#### iOS App
-- **Video Loading**: Synchronous thumbnail loading blocks UI thread
-- **Test Coverage**: <10% test coverage, no SwiftLint configuration
-
-#### Android App
-- **Track Button**: Non-functional "Track This Train" button
-- **Model Confusion**: Duplicate models (Train/TrainV2, Progress/ProgressV2)
-- **Large APK**: 18.3 MB for relatively simple app
-
-### Performance Improvements Needed
-- **Cache Invalidation**: Backend uses time-based only, needs smarter invalidation
-- **Database Indexes**: Some queries could benefit from additional indexes
-- **API Redundancy**: Some iOS views make duplicate network requests
-- **Android Caching**: No local caching of API responses
-
-### Feature Gaps
-- **Offline Support**: No offline mode in mobile apps
-- **Accessibility**: Limited VoiceOver/TalkBack support
-- **Localization**: English-only, no multi-language support
-- **Analytics**: No usage tracking for feature improvement
-
-## 🚀 Roadmap
-
-### Near Term (Next Sprint)
-1. Fix Android "Track This Train" button functionality
-2. Add comprehensive test coverage
-3. Optimize video loading performance
-4. Consolidate duplicate Android models
-
-### Medium Term (1-2 Months)
-1. WebSocket support for real-time updates
-2. Offline mode with local caching
-3. Widget support (iOS and Android)
-4. Accessibility improvements
-
-### Long Term (3-6 Months)
-1. Additional transit systems (LIRR, Metro-North, SEPTA)
-2. GraphQL API for efficient queries
-3. Apple Watch and Wear OS apps
-4. Multi-language support
-
-## 📊 Project Status
-
-### ✅ Production Ready
-- Backend V2 API with horizontal scaling
-- iOS app with Live Activities, delay forecasting, and trip statistics
-- Infrastructure with monitoring
-- NJ Transit, Amtrak, PATH, and PATCO integration
-- ML-powered track and delay predictions
-
-### 🚧 In Development
-- Android app (core features complete, missing train tracking)
-- Enhanced ML models for track prediction
-- Advanced analytics dashboards
-- Journey feedback analysis
-
-### 📝 Planned
-- Additional transit systems
-- WebSocket real-time updates
-- Offline support
-- Multi-platform widgets
-
-## 🤝 Contributing
+We welcome contributions. Here's how to get started:
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b feature/your-feature`)
 3. Make your changes with tests
-4. Run linting and tests
+4. Run linting and tests (`make lint && make test`)
 5. Submit a pull request
 
-See individual CLAUDE.md files for component-specific guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines (coming soon).
 
-## 📄 License
+### Areas Where Help Is Wanted
 
-Copyright © 2025-2026 TrackRat Team. All rights reserved.
+- Adding new transit systems (SEPTA, MTA Subway, and beyond)
+- Improving test coverage
+- Web app PWA features
+- Accessibility improvements
 
-## 🙏 Acknowledgments
+## License
 
-- NJ Transit and Amtrak for API access
-- Open source communities for excellent tools
-- Beta testers for valuable feedback
-- Commuters who inspired this project
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
+Copyright 2025 Andrew Martin
+
+## Links
+
+- **App Store**: [Download TrackRat](https://apps.apple.com/us/app/trackrat/id6746423610)
+- **Web App**: [bokonon1.github.io/TrackRat](https://bokonon1.github.io/TrackRat/)
+- **Landing Page**: [trackrat.net](https://trackrat.net)
+- **Feedback**: [trackrat.nolt.io](https://trackrat.nolt.io)
+- **YouTube**: [@TrackRat-App](https://www.youtube.com/@TrackRat-App/shorts)
+- **Contact**: trackrat@andymartin.cc

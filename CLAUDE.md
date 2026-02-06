@@ -4,12 +4,13 @@
 
 ## Project Overview
 
-TrackRat is a multi-platform transit tracking application with:
+TrackRat is an open-source transit tracking framework (Apache 2.0) with:
 - **Backend**: Python (FastAPI + PostgreSQL + APScheduler) in `backend_v2/`
 - **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
-- **Android**: Kotlin (Jetpack Compose) in `android/`
 - **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/CLAUDE.md`
 - **Infrastructure**: Terraform (Google Cloud Platform) in `infra_v2/`
+
+Note: Android is in a separate private repository.
 
 ## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
 
@@ -56,9 +57,6 @@ poetry run pytest tests/unit/        # Unit only
 
 # iOS
 xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhone 16'
-
-# Android
-./gradlew test
 
 # Web
 cd webpage_v2
@@ -209,7 +207,6 @@ terraform apply -var="environment=production"
 - iOS services: `ios/TrackRat/Services/`
 - iOS models: `ios/TrackRat/Models/`
 - iOS tests: `ios/TrackRatTests/`
-- Android app: `android/app/src/main/java/com/trackrat/android/`
 - Web pages: `webpage_v2/src/pages/`
 - Web components: `webpage_v2/src/components/`
 - Web services: `webpage_v2/src/services/`
