@@ -79,42 +79,67 @@ def sample_stops():
 
 @pytest.fixture
 def mock_db_with_segments():
-    """Create a mock database session with segment data."""
+    """Create a mock database session with per-stop row data.
+
+    The batch query in _get_all_segment_transit_times fetches raw per-stop rows
+    (journey_id, station_code, stop_sequence, departure_time, arrival_time)
+    and computes segment transit times in Python.
+    """
     mock_db = AsyncMock(spec=AsyncSession)
 
-    # Create properly structured mock rows for the database query
-    # These represent the aggregated results from the SQL query in _get_segment_transit_time
     base_time = now_et()
 
-    # The query returns aggregated data per journey with departure_time and arrival_time
+    # Raw per-stop rows: each journey has a departure from NP and arrival at TR.
+    # Arrival times must be within LOOKBACK_HOURS (1h) since the batch method
+    # applies the cutoff check in Python rather than SQL.
     mock_rows = [
-        # Journey 1: NP->TR segment (45 minutes)
+        # Journey 1: NP departure, then TR arrival (45 min transit)
         MagicMock(
-            departure_time=base_time - timedelta(hours=2, minutes=18),
-            arrival_time=base_time - timedelta(hours=1, minutes=33),
-            from_sequence=1,
-            to_sequence=2,
             journey_id=1,
+            station_code="NP",
+            stop_sequence=1,
+            departure_time=base_time - timedelta(minutes=55),
+            arrival_time=base_time - timedelta(minutes=57),
         ),
-        # Journey 2: NP->TR segment (46 minutes)
         MagicMock(
-            departure_time=base_time - timedelta(hours=3, minutes=18),
-            arrival_time=base_time - timedelta(hours=2, minutes=32),
-            from_sequence=1,
-            to_sequence=2,
+            journey_id=1,
+            station_code="TR",
+            stop_sequence=2,
+            departure_time=base_time - timedelta(minutes=8),
+            arrival_time=base_time - timedelta(minutes=10),
+        ),
+        # Journey 2: NP departure, then TR arrival (46 min transit)
+        MagicMock(
             journey_id=2,
+            station_code="NP",
+            stop_sequence=1,
+            departure_time=base_time - timedelta(minutes=56),
+            arrival_time=base_time - timedelta(minutes=58),
         ),
-        # Journey 3: NP->TR segment (45 minutes)
         MagicMock(
-            departure_time=base_time - timedelta(hours=4, minutes=20),
-            arrival_time=base_time - timedelta(hours=3, minutes=35),
-            from_sequence=1,
-            to_sequence=2,
+            journey_id=2,
+            station_code="TR",
+            stop_sequence=2,
+            departure_time=base_time - timedelta(minutes=8),
+            arrival_time=base_time - timedelta(minutes=10),
+        ),
+        # Journey 3: NP departure, then TR arrival (45 min transit)
+        MagicMock(
             journey_id=3,
+            station_code="NP",
+            stop_sequence=1,
+            departure_time=base_time - timedelta(minutes=55),
+            arrival_time=base_time - timedelta(minutes=57),
+        ),
+        MagicMock(
+            journey_id=3,
+            station_code="TR",
+            stop_sequence=2,
+            departure_time=base_time - timedelta(minutes=8),
+            arrival_time=base_time - timedelta(minutes=10),
         ),
     ]
 
-    # The result of `execute` is an iterable.
     mock_db.execute.return_value = mock_rows
     return mock_db
 
@@ -329,39 +354,38 @@ class TestDirectArrivalForecaster:
 
     @pytest.mark.asyncio
     async def test_coalesce_logic(self, forecaster):
-        """Test COALESCE logic (actual times preferred over scheduled)."""
+        """Test COALESCE logic (actual times preferred over scheduled).
+
+        The batch query uses COALESCE(actual, scheduled) at the SQL level.
+        Mock rows represent the coalesced values as raw per-stop data.
+        """
         mock_db = AsyncMock(spec=AsyncSession)
         base_time = now_et()
 
-        # Create aggregated results as returned by the SQL query
-        # The query COALESCEs actual times preferred over scheduled times
+        # Per-stop rows with coalesced departure/arrival times (30 min transit each).
+        # Arrival times within LOOKBACK_HOURS (1h) for the cutoff check.
         mock_rows = [
-            # Journey 1: Uses actual times (30 minutes)
-            MagicMock(
-                departure_time=base_time - timedelta(hours=1),  # actual departure
-                arrival_time=base_time - timedelta(minutes=30),  # actual arrival
-                from_sequence=1,
-                to_sequence=2,
-                journey_id=1,
-            ),
-            # Journey 2: Uses scheduled times (30 minutes)
-            MagicMock(
-                departure_time=base_time - timedelta(hours=2),  # scheduled departure
-                arrival_time=base_time
-                - timedelta(hours=1, minutes=30),  # scheduled arrival
-                from_sequence=1,
-                to_sequence=2,
-                journey_id=2,
-            ),
-            # Journey 3: Mixed times (30 minutes) - need 3 samples for MIN_SAMPLES
-            MagicMock(
-                departure_time=base_time - timedelta(hours=3),  # scheduled departure
-                arrival_time=base_time
-                - timedelta(hours=2, minutes=30),  # scheduled arrival
-                from_sequence=1,
-                to_sequence=2,
-                journey_id=3,
-            ),
+            # Journey 1: A departure, B arrival (30 min)
+            MagicMock(journey_id=1, station_code="A", stop_sequence=0,
+                      departure_time=base_time - timedelta(minutes=40),
+                      arrival_time=None),
+            MagicMock(journey_id=1, station_code="B", stop_sequence=1,
+                      departure_time=None,
+                      arrival_time=base_time - timedelta(minutes=10)),
+            # Journey 2: A departure, B arrival (30 min)
+            MagicMock(journey_id=2, station_code="A", stop_sequence=0,
+                      departure_time=base_time - timedelta(minutes=50),
+                      arrival_time=None),
+            MagicMock(journey_id=2, station_code="B", stop_sequence=1,
+                      departure_time=None,
+                      arrival_time=base_time - timedelta(minutes=20)),
+            # Journey 3: A departure, B arrival (30 min)
+            MagicMock(journey_id=3, station_code="A", stop_sequence=0,
+                      departure_time=base_time - timedelta(minutes=55),
+                      arrival_time=None),
+            MagicMock(journey_id=3, station_code="B", stop_sequence=1,
+                      departure_time=None,
+                      arrival_time=base_time - timedelta(minutes=25)),
         ]
 
         mock_db.execute.return_value = mock_rows
@@ -372,8 +396,7 @@ class TestDirectArrivalForecaster:
 
         assert result is not None
         assert result["samples"] == 3
-        # All three journeys should contribute (COALESCE uses actual when available)
-        assert result["avg"] == pytest.approx(30.0)  # Median of 30, 30, and 30 minutes
+        assert result["avg"] == pytest.approx(30.0)
 
     @pytest.mark.asyncio
     async def test_max_segment_minutes_filtering(self, forecaster):
@@ -381,16 +404,16 @@ class TestDirectArrivalForecaster:
         mock_db = AsyncMock(spec=AsyncSession)
         base_time = now_et()
 
-        # Create aggregated result with unreasonable transit time (2 hours = 120 minutes)
+        # Per-stop rows with unreasonable transit time (2 hours = 120 minutes)
         # This exceeds MAX_SEGMENT_MINUTES (60 minutes)
+        # B arrival within lookback window so it passes the cutoff check
         mock_rows = [
-            MagicMock(
-                departure_time=base_time - timedelta(hours=3),
-                arrival_time=base_time - timedelta(hours=1),  # 2 hours transit time!
-                from_sequence=1,
-                to_sequence=2,
-                journey_id=1,
-            ),
+            MagicMock(journey_id=1, station_code="A", stop_sequence=0,
+                      departure_time=base_time - timedelta(minutes=150),
+                      arrival_time=None),
+            MagicMock(journey_id=1, station_code="B", stop_sequence=1,
+                      departure_time=None,
+                      arrival_time=base_time - timedelta(minutes=30)),  # 120 min transit!
         ]
 
         mock_db.execute.return_value = mock_rows

@@ -109,7 +109,9 @@ struct TrainDetailsView: View {
                                                 dataSource: nil
                                             )
                                         )
-                                    }
+                                    },
+                                    prefetchedSummary: viewModel.prefetchedSummary,
+                                    prefetchedForecast: viewModel.prefetchedDelayForecast
                                 )
                             }
 
@@ -123,7 +125,8 @@ struct TrainDetailsView: View {
                                 journeyProgressPercentage: viewModel.journeyProgressPercentage,
                                 journeyStopsCompleted: viewModel.journeyStopsCompleted,
                                 journeyTotalStops: viewModel.journeyTotalStops,
-                                isLoadingStops: viewModel.isLoadingStops
+                                isLoadingStops: viewModel.isLoadingStops,
+                                prefetchedTrackPrediction: viewModel.prefetchedTrackPrediction
                             )
                         }
                         .padding()
@@ -239,6 +242,7 @@ struct CombinedDetailsCard: View {
     let journeyStopsCompleted: Int
     let journeyTotalStops: Int
     let isLoadingStops: Bool
+    let prefetchedTrackPrediction: PredictionData?
 
     private var departureTime: String {
         let formatter = DateFormatter()
@@ -401,7 +405,8 @@ struct CombinedDetailsCard: View {
                     if subscriptionService.isPro {
                         SegmentedTrackPredictionView(
                             train: train,
-                            isDepartingFromNYPenn: appState.departureStationCode == "NY"
+                            isDepartingFromNYPenn: appState.departureStationCode == "NY",
+                            prefetchedPredictions: prefetchedTrackPrediction
                         )
                         .allowsHitTesting(true)  // Ensure predictions card is interactive
                     } else {
@@ -794,7 +799,12 @@ class TrainDetailsViewModel: ObservableObject {
     @Published var error: String?
     @Published var triggerBoardingHaptic = false
     @Published var triggerTrackAssignedHaptic = false
-    
+
+    // Prefetched secondary data (loaded in parallel with main train fetch)
+    @Published var prefetchedSummary: OperationsSummaryResponse?
+    @Published var prefetchedDelayForecast: DelayForecastResponse?
+    @Published var prefetchedTrackPrediction: PredictionData?
+
     // Flexible initialization parameters
     private let databaseId: Int?
     let trainNumber: String?  // Made public for transaction tracking
@@ -976,6 +986,16 @@ class TrainDetailsViewModel: ObservableObject {
         print("🌐 No cache available - fetching from network")
         isLoading = true
 
+        // Start secondary data fetch in parallel (summary, delay forecast, track prediction)
+        let secondaryTask = Task {
+            await self.prefetchSecondaryData(
+                trainId: trainNumber ?? "",
+                fromStation: fromStationCode,
+                toStation: toStationCode,
+                journeyDate: journeyDate
+            )
+        }
+
         do {
             // Use the flexible API method with dataSource for disambiguation
             let fetchedTrain = try await apiService.fetchTrainDetailsFlexible(
@@ -996,7 +1016,11 @@ class TrainDetailsViewModel: ObservableObject {
             // Update all computed properties after setting train
             updateComputedProperties()
 
+            // Wait for secondary data before clearing loading state
+            await secondaryTask.value
+
         } catch {
+            secondaryTask.cancel()
             // Handle APIError.noData specifically
             if let apiError = error as? APIError {
                 switch apiError {
@@ -1117,6 +1141,50 @@ class TrainDetailsViewModel: ObservableObject {
             print("❌ Full error details: \(String(describing: error))")
         }
     }
+
+    /// Prefetch secondary data (summary, delay forecast, track prediction) in parallel.
+    /// Called concurrently with the main train fetch to eliminate the loading waterfall.
+    private func prefetchSecondaryData(trainId: String, fromStation: String?, toStation: String?, journeyDate: Date?) async {
+        guard !trainId.isEmpty else { return }
+
+        async let summaryResult: OperationsSummaryResponse? = {
+            try? await apiService.fetchOperationsSummary(
+                scope: .train,
+                fromStation: fromStation,
+                toStation: toStation,
+                trainId: trainId
+            )
+        }()
+
+        async let forecastResult: DelayForecastResponse? = {
+            guard let stationCode = fromStation, let date = journeyDate else { return nil }
+            return try? await apiService.getDelayForecast(
+                trainId: trainId,
+                stationCode: stationCode,
+                journeyDate: date
+            )
+        }()
+
+        async let trackResult: PredictionData? = {
+            guard let stationCode = fromStation,
+                  StaticTrackDistributionService.supportedStations.contains(stationCode),
+                  let date = journeyDate else { return nil }
+            do {
+                let prediction = try await apiService.getPlatformPrediction(
+                    stationCode: stationCode,
+                    trainId: trainId,
+                    journeyDate: date
+                )
+                return PredictionData(trackProbabilities: prediction.convertToTrackProbabilities())
+            } catch {
+                return nil
+            }
+        }()
+
+        prefetchedSummary = await summaryResult
+        prefetchedDelayForecast = await forecastResult
+        prefetchedTrackPrediction = await trackResult
+    }
 }
 
 // MARK: - Train Progress Indicator
@@ -1179,6 +1247,7 @@ struct TrainProgressIndicator: View {
 struct SegmentedTrackPredictionView: View {
     let train: TrainV2
     let isDepartingFromNYPenn: Bool
+    let prefetchedPredictions: PredictionData?
     @State private var adjustedPredictions: PredictionData?
     @State private var isLoadingPredictions = true
     @State private var showWaitingLink = false
@@ -1274,11 +1343,21 @@ struct SegmentedTrackPredictionView: View {
                     .stroke(Color.orange.opacity(0.3), lineWidth: 1)
             )
             .task {
-                await loadAdjustedPredictions()
+                if let prefetched = prefetchedPredictions, train.track == nil {
+                    adjustedPredictions = prefetched
+                    isLoadingPredictions = false
+                    if isDepartingFromNYPenn {
+                        withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {
+                            showWaitingLink = true
+                        }
+                    }
+                } else {
+                    await loadAdjustedPredictions()
+                }
             }
         }
     }
-    
+
     private func loadAdjustedPredictions() async {
         print("🔄 [TrainDetailsView] Loading predictions for train \(train.trainId)")
         print("   - Origin: \(train.originStationCode ?? "nil" as String)")

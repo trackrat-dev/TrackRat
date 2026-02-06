@@ -1396,3 +1396,6 @@ class SummaryService:
             body_parts.append(hist_text)
 
         return headline, " ".join(body_parts)
+
+
+summary_service = SummaryService()
