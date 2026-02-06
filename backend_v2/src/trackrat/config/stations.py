@@ -331,7 +331,7 @@ STATION_NAMES: dict[str, str] = {
     "GCV": "Glen Cove",
     "GHD": "Glen Head",
     "GST": "Glen Street",
-    "GCT": "Grand Central Madison",
+    "GCT": "Grand Central Terminal",  # Shared with MNR
     "GNK": "Great Neck",
     "GRV": "Great River",
     "GWN": "Greenlawn",
@@ -414,9 +414,8 @@ STATION_NAMES: dict[str, str] = {
     "WDD": "Woodside",
     "WYD": "Wyandanch",
     "YPK": "Yaphank",
-    # Metro-North Railroad stations
-    "GCT": "Grand Central Terminal",
-    "MHL": "Harlem-125th Street",
+    # Metro-North Railroad stations (GCT shared with LIRR above)
+    "M125": "Harlem-125th Street",
     "MEYS": "Yankees-E 153 St",
     "MMRH": "Morris Heights",
     "MUNH": "University Heights",
@@ -1128,7 +1127,7 @@ MNR_GTFS_RT_FEED_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/m
 MNR_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
     # Hudson Line
     "1": "GCT",       # Grand Central Terminal (shared)
-    "4": "MHL",       # Harlem-125th Street
+    "4": "M125",       # Harlem-125th Street
     "622": "MEYS",    # Yankees-E 153 St
     "9": "MMRH",      # Morris Heights
     "10": "MUNH",     # University Heights
@@ -1265,7 +1264,7 @@ MNR_ROUTES: dict[str, tuple[str, str, str]] = {
 # MNR discovery stations - major hubs to poll for train discovery
 MNR_DISCOVERY_STATIONS = [
     "GCT",    # Grand Central Terminal
-    "MHL",    # Harlem-125th Street
+    "M125",    # Harlem-125th Street
     "MPOK",   # Poughkeepsie (Hudson terminus)
     "MWAS",   # Wassaic (Harlem terminus)
     "MNHV",   # New Haven (New Haven terminus)
@@ -1749,7 +1748,7 @@ STATION_COORDINATES = {
     "GCV": {"lat": 40.86583421, "lon": -73.61616614},  # Glen Cove
     "GHD": {"lat": 40.83222531, "lon": -73.62611822},  # Glen Head
     "GST": {"lat": 40.85798112, "lon": -73.62121715},  # Glen Street
-    "GCT": {"lat": 40.755162, "lon": -73.975455},      # Grand Central Madison
+    "GCT": {"lat": 40.752998, "lon": -73.977056},      # Grand Central Terminal (shared with MNR)
     "GNK": {"lat": 40.78721647, "lon": -73.72610046},  # Great Neck
     "GRV": {"lat": 40.74044444, "lon": -73.17019585},  # Great River
     "GWN": {"lat": 40.86866524, "lon": -73.36284977},  # Greenlawn
@@ -1832,9 +1831,8 @@ STATION_COORDINATES = {
     "WDD": {"lat": 40.74585067, "lon": -73.90297516},  # Woodside
     "WYD": {"lat": 40.75480101, "lon": -73.35806588},  # Wyandanch
     "YPK": {"lat": 40.82561319, "lon": -72.91587848},  # Yaphank
-    # Metro-North Railroad stations
-    "GCT": {"lat": 40.752998, "lon": -73.977056},    # Grand Central Terminal
-    "MHL": {"lat": 40.805157, "lon": -73.939149},    # Harlem-125th Street
+    # Metro-North Railroad stations (GCT shared with LIRR above)
+    "M125": {"lat": 40.805157, "lon": -73.939149},    # Harlem-125th Street
     "MEYS": {"lat": 40.8253, "lon": -73.9299},       # Yankees-E 153 St
     "MMRH": {"lat": 40.854252, "lon": -73.919583},   # Morris Heights
     "MUNH": {"lat": 40.862248, "lon": -73.91312},    # University Heights

@@ -18,12 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
+from trackrat.collectors.lirr.collector import LIRRCollector
+from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.collector import PathCollector
-from trackrat.collectors.lirr.collector import LIRRCollector
-from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
@@ -113,29 +113,27 @@ class SchedulerService:
             misfire_grace_time=120,
         )
 
-        # Schedule LIRR collection (every 4 minutes) - only if enabled
-        if self.settings.enable_lirr:
-            self.scheduler.add_job(
-                self.run_lirr_collection,
-                trigger=IntervalTrigger(minutes=4),
-                id="lirr_collection",
-                name="LIRR Collection",
-                replace_existing=True,
-                max_instances=1,
-                misfire_grace_time=120,
-            )
+        # Schedule LIRR collection (every 4 minutes)
+        self.scheduler.add_job(
+            self.run_lirr_collection,
+            trigger=IntervalTrigger(minutes=4),
+            id="lirr_collection",
+            name="LIRR Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
 
-        # Schedule MNR collection (every 4 minutes) - only if enabled
-        if self.settings.enable_mnr:
-            self.scheduler.add_job(
-                self.run_mnr_collection,
-                trigger=IntervalTrigger(minutes=4),
-                id="mnr_collection",
-                name="MNR Collection",
-                replace_existing=True,
-                max_instances=1,
-                misfire_grace_time=120,
-            )
+        # Schedule MNR collection (every 4 minutes)
+        self.scheduler.add_job(
+            self.run_mnr_collection,
+            trigger=IntervalTrigger(minutes=4),
+            id="mnr_collection",
+            name="MNR Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
 
         # Schedule journey collection check (every 5 minutes)
         # This checks for trains needing updates and schedules them
@@ -251,10 +249,8 @@ class SchedulerService:
         asyncio.create_task(self.run_njt_discovery())
         asyncio.create_task(self.run_amtrak_discovery())
         asyncio.create_task(self.run_path_collection())
-        if self.settings.enable_lirr:
-            asyncio.create_task(self.run_lirr_collection())
-        if self.settings.enable_mnr:
-            asyncio.create_task(self.run_mnr_collection())
+        asyncio.create_task(self.run_lirr_collection())
+        asyncio.create_task(self.run_mnr_collection())
 
         # Check and initialize GTFS feeds on startup (downloads if missing)
         asyncio.create_task(self.check_and_initialize_gtfs_feeds())
@@ -2204,12 +2200,22 @@ class SchedulerService:
                     patco_result = await gtfs_service.refresh_feed(db, "PATCO")
                     logger.info("gtfs_patco_refresh_complete", refreshed=patco_result)
 
+                    # Refresh LIRR feed
+                    lirr_result = await gtfs_service.refresh_feed(db, "LIRR")
+                    logger.info("gtfs_lirr_refresh_complete", refreshed=lirr_result)
+
+                    # Refresh MNR feed
+                    mnr_result = await gtfs_service.refresh_feed(db, "MNR")
+                    logger.info("gtfs_mnr_refresh_complete", refreshed=mnr_result)
+
                 logger.info(
                     "gtfs_feed_refresh_complete",
                     njt_refreshed=njt_result,
                     amtrak_refreshed=amtrak_result,
                     path_refreshed=path_result,
                     patco_refreshed=patco_result,
+                    lirr_refreshed=lirr_result,
+                    mnr_refreshed=mnr_result,
                 )
 
             except Exception as e:
@@ -2248,17 +2254,21 @@ class SchedulerService:
             gtfs_service = GTFSService()
 
             async with get_session() as db:
-                # Check if NJT, Amtrak, PATH, and PATCO GTFS data is available
+                # Check if GTFS data is available for all sources
                 njt_available = await gtfs_service.is_feed_available(db, "NJT")
                 amtrak_available = await gtfs_service.is_feed_available(db, "AMTRAK")
                 path_available = await gtfs_service.is_feed_available(db, "PATH")
                 patco_available = await gtfs_service.is_feed_available(db, "PATCO")
+                lirr_available = await gtfs_service.is_feed_available(db, "LIRR")
+                mnr_available = await gtfs_service.is_feed_available(db, "MNR")
 
                 if (
                     njt_available
                     and amtrak_available
                     and path_available
                     and patco_available
+                    and lirr_available
+                    and mnr_available
                 ):
                     logger.info(
                         "gtfs_data_already_available",
@@ -2266,6 +2276,8 @@ class SchedulerService:
                         amtrak=amtrak_available,
                         path=path_available,
                         patco=patco_available,
+                        lirr=lirr_available,
+                        mnr=mnr_available,
                     )
                     return
 
@@ -2276,6 +2288,8 @@ class SchedulerService:
                     amtrak_available=amtrak_available,
                     path_available=path_available,
                     patco_available=patco_available,
+                    lirr_available=lirr_available,
+                    mnr_available=mnr_available,
                 )
 
                 if not njt_available:
@@ -2306,6 +2320,22 @@ class SchedulerService:
                     )
                     logger.info(
                         "gtfs_patco_initial_download_complete", success=patco_result
+                    )
+
+                if not lirr_available:
+                    lirr_result = await gtfs_service.refresh_feed(
+                        db, "LIRR", force=True
+                    )
+                    logger.info(
+                        "gtfs_lirr_initial_download_complete", success=lirr_result
+                    )
+
+                if not mnr_available:
+                    mnr_result = await gtfs_service.refresh_feed(
+                        db, "MNR", force=True
+                    )
+                    logger.info(
+                        "gtfs_mnr_initial_download_complete", success=mnr_result
                     )
 
         except Exception as e:

@@ -377,9 +377,8 @@ struct TrainCard: View {
                 }
 
                 HStack(spacing: 4) {
-                    // PATH and PATCO trains display destination instead of train ID
-                    // (These have no meaningful train numbers - they're synthetic IDs)
-                    Text(train.dataSource == "PATH" || train.dataSource == "PATCO" ? train.destination : "Train \(train.trainId)")
+                    // Trains with synthetic IDs display destination instead of train ID
+                    Text(train.usesSyntheticTrainId ? train.destination : "Train \(train.trainId)")
                         .font(.headline)
                         .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white : .black))
                         .strikethrough(isCancelled)

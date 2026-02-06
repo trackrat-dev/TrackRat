@@ -622,7 +622,7 @@ extension TrainV2 {
         return 0
     }
     
-    /// Get the train class for express comparison (NJ Transit vs Amtrak vs PATH vs PATCO)
+    /// Get the train class display name for the data source
     var trainClass: String {
         switch dataSource {
         case "AMTRAK":
@@ -631,6 +631,10 @@ extension TrainV2 {
             return "PATH"
         case "PATCO":
             return "PATCO"
+        case "LIRR":
+            return "LIRR"
+        case "MNR":
+            return "Metro-North"
         default:
             return "NJ Transit"
         }
@@ -639,5 +643,11 @@ extension TrainV2 {
     /// Check if this is a schedule-only data source (no real-time data available)
     var isScheduleOnly: Bool {
         return dataSource == "PATCO"
+    }
+
+    /// Whether this train uses synthetic IDs (not user-friendly numeric train numbers)
+    /// PATH, PATCO, LIRR, and MNR use GTFS-derived IDs rather than public train numbers
+    var usesSyntheticTrainId: Bool {
+        return dataSource == "PATH" || dataSource == "PATCO" || dataSource == "LIRR" || dataSource == "MNR"
     }
 }

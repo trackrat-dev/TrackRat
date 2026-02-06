@@ -32,10 +32,10 @@ struct TrainDetailsView: View {
         self._viewModel = StateObject(wrappedValue: VModel)
     }
 
-    // PATH and PATCO trains display destination instead of synthetic train ID
+    // Trains with synthetic IDs display destination instead of cryptic train ID
     private var trainNavigationTitle: String {
         guard let train = viewModel.train else { return "Loading..." }
-        return train.dataSource == "PATH" || train.dataSource == "PATCO" ? train.destination : "Train \(train.trainId)"
+        return train.usesSyntheticTrainId ? train.destination : "Train \(train.trainId)"
     }
 
     var body: some View {

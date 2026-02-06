@@ -63,10 +63,14 @@ def is_amtrak_train(train_id: str) -> bool:
 def get_train_data_source(train_id: str) -> str:
     """Get the data source for a train based on its ID.
 
+    Note: This function can only distinguish Amtrak trains (A-prefixed) from NJT.
+    PATH, PATCO, LIRR, and MNR trains must be identified by their database
+    data_source field, not by train_id pattern alone.
+
     Args:
         train_id: The train identifier
 
     Returns:
-        Data source: "AMTRAK" or "NJT"
+        Data source: "AMTRAK" or "NJT" (default fallback)
     """
     return "AMTRAK" if is_amtrak_train(train_id) else "NJT"

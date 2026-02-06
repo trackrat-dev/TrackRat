@@ -46,7 +46,7 @@ struct TripSelectionView: View {
         return (stations: stationResults, trainNumbers: trainNumbers)
     }
     
-    // Generate potential train numbers for NJT, Amtrak, and LIRR
+    // Generate potential train numbers for NJT, Amtrak, LIRR, and MNR
     private func getPotentialTrainNumbers(_ input: String) -> [String] {
         let trimmed = input.trimmingCharacters(in: .whitespaces).uppercased()
 
@@ -66,9 +66,17 @@ struct TripSelectionView: View {
             }
         }
 
-        // If input is numeric, search for NJT, Amtrak, and LIRR variants
+        // If input already has "M" prefix (Metro-North), only search for that
+        if trimmed.hasPrefix("M") && trimmed.count >= 3 {
+            let remainder = String(trimmed.dropFirst())
+            if remainder.allSatisfy(\.isNumber) {
+                return [trimmed]
+            }
+        }
+
+        // If input is numeric, search for NJT, Amtrak, LIRR, and MNR variants
         if trimmed.count >= 2 && trimmed.allSatisfy(\.isNumber) {
-            return [trimmed, "A\(trimmed)", "L\(trimmed)"]
+            return [trimmed, "A\(trimmed)", "L\(trimmed)", "M\(trimmed)"]
         }
 
         return []
@@ -452,6 +460,8 @@ struct TripSelectionView: View {
             return "AMTRAK"
         } else if trainNumber.hasPrefix("L") {
             return "LIRR"
+        } else if trainNumber.hasPrefix("M") {
+            return "MNR"
         } else {
             return "NJT"
         }
@@ -462,6 +472,8 @@ struct TripSelectionView: View {
             return Color(hex: TrainSystem.amtrak.color) ?? .gray
         } else if trainNumber.hasPrefix("L") {
             return Color(hex: TrainSystem.lirr.color) ?? .gray
+        } else if trainNumber.hasPrefix("M") {
+            return Color(hex: TrainSystem.mnr.color) ?? .gray
         } else {
             return Color(hex: TrainSystem.njt.color) ?? .gray
         }

@@ -135,16 +135,7 @@ class DepartureService:
 
         # Build additional filters for hide_departed and data_sources
         # Default to all data sources if not specified
-        # Import settings to check LIRR feature flag
-        from trackrat.settings import get_settings
-
-        settings = get_settings()
-        default_sources = ["NJT", "AMTRAK", "PATH", "PATCO"]
-        if settings.enable_lirr:
-            default_sources.append("LIRR")
-        if settings.enable_mnr:
-            default_sources.append("MNR")
-        allowed_sources = data_sources if data_sources else default_sources
+        allowed_sources = data_sources if data_sources else ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
 
         departure_filters = [
             JourneyStop.scheduled_departure >= time_from,
@@ -438,7 +429,7 @@ class DepartureService:
                     # For NJT, having a track assignment suggests at station
                     if stop.track and not stop.has_departed_station:
                         at_station_code = stop.station_code
-                # PATH: Transiter API doesn't provide at-station status,
+                # PATH/LIRR/MNR: GTFS-RT API doesn't provide at-station status,
                 # so we rely on has_departed_station only
 
                 break

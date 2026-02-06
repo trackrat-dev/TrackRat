@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trackrat.collectors.mnr.client import MNRClient, MnrArrival
+from trackrat.collectors.mnr.client import MnrArrival, MNRClient
 from trackrat.config.stations import (
     MNR_ROUTES,
     get_station_name,

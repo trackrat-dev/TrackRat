@@ -6,7 +6,7 @@ import CoreLocation
 struct RouteLine: Identifiable {
     let id: String
     let name: String
-    let dataSource: String  // "NJT", "AMTRAK", "PATH", "PATCO", "LIRR"
+    let dataSource: String  // "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"
     let stationCodes: [String]
 
     /// Returns coordinate pairs for drawing polylines between consecutive stations.
@@ -337,7 +337,7 @@ struct RouteTopology {
             id: "lirr-port-jefferson",
             name: "Port Jefferson Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "MIN", "HVL", "SYT", "CSH", "HUN", "GWN", "NPT", "KPK", "STN", "SJM", "BK", "PJN"]
+            stationCodes: ["JAM", "MIN", "HVL", "SYT", "CSH", "HUN", "GWN", "NPT", "KPK", "STN", "SJM", "LSBK", "PJN"]
         ),
 
         // Atlantic Branch (to Atlantic Terminal)
@@ -365,7 +365,7 @@ struct RouteTopology {
             id: "mnr-hudson",
             name: "Hudson Line",
             dataSource: "MNR",
-            stationCodes: ["GCT", "MHL", "MEYS", "MMRH", "MUNH", "MMBL", "MSDV", "MRVD", "MLUD", "MYON", "MGWD", "MGRY", "MHOH", "MDBF", "MARD", "MIRV", "MTTN", "MPHM", "MSCB", "MOSS", "MCRH", "MCRT", "MPKS", "MMAN", "MGAR", "MCSP", "MBRK", "MBCN", "MNHB", "MPOK"]
+            stationCodes: ["GCT", "M125", "MEYS", "MMRH", "MUNH", "MMBL", "MSDV", "MRVD", "MLUD", "MYON", "MGWD", "MGRY", "MHOH", "MDBF", "MARD", "MIRV", "MTTN", "MPHM", "MSCB", "MOSS", "MCRH", "MCRT", "MPKS", "MMAN", "MGAR", "MCSP", "MBRK", "MBCN", "MNHB", "MPOK"]
         ),
 
         // Harlem Line
@@ -373,7 +373,7 @@ struct RouteTopology {
             id: "mnr-harlem",
             name: "Harlem Line",
             dataSource: "MNR",
-            stationCodes: ["GCT", "MHL", "MMEL", "MTRM", "MFOR", "MBOG", "MWBG", "MWDL", "MWKF", "MMVW", "MFLT", "MBRX", "MTUC", "MCWD", "MSCD", "MHSD", "MWPL", "MNWP", "MVAL", "MMTP", "MHWT", "MPLV", "MCHP", "MMTK", "MBDH", "MKAT", "MGLD", "MPRD", "MCFL", "MBRS", "MSET", "MPAT", "MPAW", "MAPT", "MHVW", "MDVP", "MTMR", "MWAS"]
+            stationCodes: ["GCT", "M125", "MMEL", "MTRM", "MFOR", "MBOG", "MWBG", "MWDL", "MWKF", "MMVW", "MFLT", "MBRX", "MTUC", "MCWD", "MSCD", "MHSD", "MWPL", "MNWP", "MVAL", "MMTP", "MHWT", "MPLV", "MCHP", "MMTK", "MBDH", "MKAT", "MGLD", "MPRD", "MCFL", "MBRS", "MSET", "MPAT", "MPAW", "MAPT", "MHVW", "MDVP", "MTMR", "MWAS"]
         ),
 
         // New Haven Line (main)
@@ -381,7 +381,7 @@ struct RouteTopology {
             id: "mnr-new-haven",
             name: "New Haven Line",
             dataSource: "MNR",
-            stationCodes: ["GCT", "MHL", "MMVE", "MPEL", "MNRC", "MLRM", "MMAM", "MHRR", "MRYE", "MPCH", "MGRN", "MCOC", "MRSD", "MODG", "MSTM", "MNOH", "MDAR", "MROW", "MSNW", "MENW", "MWPT", "MGRF", "MSPT", "MFFD", "MFBR", "MBGP", "MSTR", "MMIL", "MWHN", "MNHV", "MNSS"]
+            stationCodes: ["GCT", "M125", "MMVE", "MPEL", "MNRC", "MLRM", "MMAM", "MHRR", "MRYE", "MPCH", "MGRN", "MCOC", "MRSD", "MODG", "MSTM", "MNOH", "MDAR", "MROW", "MSNW", "MENW", "MWPT", "MGRF", "MSPT", "MFFD", "MFBR", "MBGP", "MSTR", "MMIL", "MWHN", "MNHV", "MNSS"]
         ),
 
         // New Canaan Branch

@@ -1597,8 +1597,8 @@ private struct SegmentTrainDetailCard: View {
             // Header with train ID and line
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    // PATH and PATCO trains display line (route) instead of synthetic train ID
-                    Text((train.dataSource == "PATH" || train.dataSource == "PATCO") ? train.line : "Train \(train.trainId)")
+                    // Trains with synthetic IDs display line (route) instead of train ID
+                    Text(["PATH", "PATCO", "LIRR", "MNR"].contains(train.dataSource) ? train.line : "Train \(train.trainId)")
                         .font(.headline)
                         .fontWeight(.semibold)
 

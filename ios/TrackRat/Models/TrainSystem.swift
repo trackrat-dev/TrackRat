@@ -58,6 +58,14 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .mnr: return "#0039A6"   // MTA Metro-North blue
         }
     }
+
+    /// Whether this system is in beta (shown as label in UI)
+    var isBeta: Bool {
+        switch self {
+        case .path, .lirr, .mnr: return true
+        default: return false
+        }
+    }
 }
 
 // MARK: - Set Extensions

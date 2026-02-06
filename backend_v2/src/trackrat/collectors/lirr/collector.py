@@ -6,15 +6,14 @@ Follows the same pattern as the PATH collector for simplicity.
 """
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trackrat.collectors.lirr.client import LIRRClient, LirrArrival
+from trackrat.collectors.lirr.client import LirrArrival, LIRRClient
 from trackrat.config.stations import (
-    LIRR_DISCOVERY_STATIONS,
     LIRR_ROUTES,
     get_station_name,
 )

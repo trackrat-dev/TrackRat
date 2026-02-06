@@ -515,7 +515,7 @@ struct Stations {
 
         // Metro-North Railroad stations
         "Grand Central Terminal": "GCT",
-        "Harlem-125th Street": "MHL",
+        "Harlem-125th Street": "M125",
         "Yankees-E 153 St": "MEYS",
         "Morris Heights": "MMRH",
         "University Heights": "MUNH",
@@ -1031,7 +1031,7 @@ struct Stations {
         "GCV": CLLocationCoordinate2D(latitude: 40.86583421, longitude: -73.61616614),  // Glen Cove
         "GHD": CLLocationCoordinate2D(latitude: 40.83222531, longitude: -73.62611822),  // Glen Head
         "GST": CLLocationCoordinate2D(latitude: 40.85798112, longitude: -73.62121715),  // Glen Street
-        "GCT": CLLocationCoordinate2D(latitude: 40.755162, longitude: -73.975455),      // Grand Central Madison
+        "GCT": CLLocationCoordinate2D(latitude: 40.752998, longitude: -73.977056),      // Grand Central Terminal (shared with MNR)
         "GNK": CLLocationCoordinate2D(latitude: 40.78721647, longitude: -73.72610046),  // Great Neck
         "GRV": CLLocationCoordinate2D(latitude: 40.74044444, longitude: -73.17019585),  // Great River
         "GWN": CLLocationCoordinate2D(latitude: 40.86866524, longitude: -73.36284977),  // Greenlawn
@@ -1115,9 +1115,8 @@ struct Stations {
         "WYD": CLLocationCoordinate2D(latitude: 40.75480101, longitude: -73.35806588),  // Wyandanch
         "YPK": CLLocationCoordinate2D(latitude: 40.82561319, longitude: -72.91587848),  // Yaphank
 
-        // Metro-North Railroad stations
-        "GCT": CLLocationCoordinate2D(latitude: 40.752998, longitude: -73.977056),     // Grand Central Terminal
-        "MHL": CLLocationCoordinate2D(latitude: 40.805157, longitude: -73.939149),     // Harlem-125th Street
+        // Metro-North Railroad stations (GCT shared with LIRR above)
+        "M125": CLLocationCoordinate2D(latitude: 40.805157, longitude: -73.939149),     // Harlem-125th Street
         "MEYS": CLLocationCoordinate2D(latitude: 40.8253, longitude: -73.9299),        // Yankees-E 153 St
         "MMRH": CLLocationCoordinate2D(latitude: 40.854252, longitude: -73.919583),    // Morris Heights
         "MUNH": CLLocationCoordinate2D(latitude: 40.862248, longitude: -73.91312),     // University Heights
@@ -1275,7 +1274,15 @@ struct Stations {
         ("Babylon", "BTA"),
         ("Huntington", "HUN"),
         ("Port Washington", "PWS"),
-        ("Long Beach", "LBH")
+        ("Long Beach", "LBH"),
+        // MNR hubs
+        ("Harlem-125th Street", "M125"),
+        ("Poughkeepsie", "MPOK"),
+        ("Wassaic", "MWAS"),
+        ("New Haven", "MNHV"),
+        ("Stamford", "MSPT"),
+        ("White Plains", "MWPL"),
+        ("Croton-Harmon", "MCRH")
     ]
     
     // Popular destination stations - kept in sync with departure stations
@@ -1525,7 +1532,7 @@ struct Stations {
         "GCV": ["LIRR"],  // Glen Cove
         "GHD": ["LIRR"],  // Glen Head
         "GST": ["LIRR"],  // Glen Street
-        "GCT": ["LIRR"],  // Grand Central Madison
+        "GCT": ["MNR", "LIRR"],  // Grand Central Terminal (shared)
         "GNK": ["LIRR"],  // Great Neck
         "GRV": ["LIRR"],  // Great River
         "GWN": ["LIRR"],  // Greenlawn
@@ -1609,9 +1616,8 @@ struct Stations {
         "WYD": ["LIRR"],  // Wyandanch
         "YPK": ["LIRR"],  // Yaphank
 
-        // Metro-North Railroad stations
-        "GCT": ["MNR", "LIRR"],  // Grand Central Terminal (shared)
-        "MHL": ["MNR"],          // Harlem-125th Street
+        // Metro-North Railroad stations (GCT shared with LIRR above)
+        "M125": ["MNR"],          // Harlem-125th Street
         "MEYS": ["MNR"],         // Yankees-E 153 St
         "MMRH": ["MNR"],         // Morris Heights
         "MUNH": ["MNR"],         // University Heights
