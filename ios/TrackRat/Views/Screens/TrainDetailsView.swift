@@ -256,27 +256,19 @@ struct CombinedDetailsCard: View {
         return formatter.string(from: train.departureTime)
     }
         
-    // Check if predictions should be shown for the entire journey
+    // Check if predictions should be shown for the entire journey.
+    // Shows predictions when any stop in the journey has a meaningful predicted delay.
     private var shouldShowJourneyPredictions: Bool {
-        // Find the user's destination stop by CODE (reliable matching)
-        guard let destinationCode = selectedDestinationCode,
-              let destinationStop = displayableTrainStops.first(where: { stop in
-                  stop.stationCode.uppercased() == destinationCode.uppercased()
-              }) else {
-            return false
+        return displayableTrainStops.contains { stop in
+            guard let predictedArrival = stop.predictedArrival,
+                  let scheduledArrival = stop.scheduledArrival,
+                  let samples = stop.predictedArrivalSamples,
+                  samples > 0,
+                  !stop.hasDepartedStation else {
+                return false
+            }
+            return predictedArrival.timeIntervalSince(scheduledArrival) > 240
         }
-        
-        // Check if destination has significant predicted delay (≥4 minutes)
-        guard let predictedArrival = destinationStop.predictedArrival,
-              let scheduledArrival = destinationStop.scheduledArrival,
-              let samples = destinationStop.predictedArrivalSamples,
-              samples > 0,
-              !destinationStop.hasDepartedStation else {
-            return false
-        }
-        
-        let delaySeconds = predictedArrival.timeIntervalSince(scheduledArrival)
-        return delaySeconds > 240  // ≥4 minutes
     }
     
     // Helper functions for status display
