@@ -86,6 +86,7 @@ NJT_NORTHEAST_CORRIDOR = Route(
         "NY",
         "SE",
         "NP",
+        "NA",
         "NZ",
         "EZ",
         "LI",
@@ -110,6 +111,7 @@ NJT_NORTH_JERSEY_COAST = Route(
         "NY",
         "SE",
         "NP",
+        "NA",
         "NZ",
         "EZ",
         "LI",
@@ -162,8 +164,9 @@ NJT_MORRIS_ESSEX_MORRISTOWN = Route(
         "CN",
         "MR",
         "MX",
-        "DV",
         "TB",
+        "DV",
+        "DO",
         "HV",
         "HP",
         "NT",
@@ -253,11 +256,11 @@ NJT_MONTCLAIR_BOONTON = Route(
     ),
 )
 
-NJT_MAIN_BERGEN = Route(
-    id="njt-main-bergen",
-    name="Main/Bergen County Line",
+NJT_MAIN_LINE = Route(
+    id="njt-main",
+    name="Main Line",
     data_source="NJT",
-    line_codes=frozenset({"MA", "BE"}),
+    line_codes=frozenset({"MA"}),
     stations=(
         "HB",
         "SE",
@@ -269,6 +272,31 @@ NJT_MAIN_BERGEN = Route(
         "RN",
         "HW",
         "RS",
+        "RW",
+        "UF",
+        "WK",
+        "AZ",
+        "RY",
+        "17",
+        "MZ",
+        "SF",
+    ),
+)
+
+NJT_BERGEN_COUNTY = Route(
+    id="njt-bergen",
+    name="Bergen County Line",
+    data_source="NJT",
+    line_codes=frozenset({"BE"}),
+    stations=(
+        "HB",
+        "SE",
+        "RF",
+        "WM",
+        "GD",
+        "PL",
+        "BF",
+        "FZ",
         "GK",
         "RW",
         "UF",
@@ -322,6 +350,14 @@ NJT_ATLANTIC_CITY = Route(
     data_source="NJT",
     line_codes=frozenset({"AC"}),
     stations=("PH", "TR"),  # Limited - add more if coordinates available
+)
+
+NJT_PRINCETON_BRANCH = Route(
+    id="njt-princeton",
+    name="Princeton Branch",
+    data_source="NJT",
+    line_codes=frozenset({"PR"}),
+    stations=("PJ", "PR"),
 )
 
 # =============================================================================
@@ -658,10 +694,12 @@ ALL_ROUTES: tuple[Route, ...] = (
     NJT_GLADSTONE,
     NJT_RARITAN_VALLEY,
     NJT_MONTCLAIR_BOONTON,
-    NJT_MAIN_BERGEN,
+    NJT_MAIN_LINE,
+    NJT_BERGEN_COUNTY,
     NJT_PORT_JERVIS,
     NJT_PASCACK_VALLEY,
     NJT_ATLANTIC_CITY,
+    NJT_PRINCETON_BRANCH,
     # PATH
     PATH_HOB_33,
     PATH_HOB_WTC,

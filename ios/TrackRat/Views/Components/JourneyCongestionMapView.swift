@@ -147,8 +147,8 @@ class JourneyCongestionViewModel: ObservableObject {
                     return false
                 }
                 
-                // Include any segment where 'to' station comes after 'from' station
-                let isValid = toIndex > fromIndex
+                // Include only consecutive segments (exact journey path)
+                let isValid = toIndex == fromIndex + 1
                 print("🚦 \(isValid ? "✅" : "❌") Segment: \(segment.fromStation) → \(segment.toStation) (indices: \(fromIndex) → \(toIndex))")
                 return isValid
             }

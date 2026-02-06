@@ -829,10 +829,10 @@ class CongestionMapViewModel: ObservableObject {
                 return false
             }
             
-            // Include segments where 'to' station comes after 'from' station in the journey
-            return toIndex > fromIndex
+            // Include only consecutive segments (exact journey path)
+            return toIndex == fromIndex + 1
         }
-        
+
         print("🚦 Filtered aggregated segments: \(filtered.count) segments for journey")
         return filtered
     }
@@ -851,10 +851,10 @@ class CongestionMapViewModel: ObservableObject {
                 return false
             }
             
-            // Include segments where 'to' station comes after 'from' station in the journey
-            return toIndex > fromIndex
+            // Include only consecutive segments (exact journey path)
+            return toIndex == fromIndex + 1
         }
-        
+
         print("🚦 Filtered individual segments: \(filtered.count) segments for journey")
         return filtered
     }

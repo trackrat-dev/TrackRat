@@ -74,12 +74,13 @@ class TestRouteBasics:
     def test_route_expand_canonical_segments_skip_multiple(self):
         """Test expanding a segment that skips multiple stations."""
         route = NJT_NORTHEAST_CORRIDOR
-        # NY -> EZ skips SE, NP, NZ
+        # NY -> EZ skips SE, NP, NA, NZ
         segments = route.expand_to_canonical_segments("NY", "EZ")
         assert segments == [
             ("NY", "SE"),
             ("SE", "NP"),
-            ("NP", "NZ"),
+            ("NP", "NA"),
+            ("NA", "NZ"),
             ("NZ", "EZ"),
         ]
 
@@ -194,7 +195,8 @@ class TestGetCanonicalSegments:
         assert segments == [
             ("NY", "SE"),
             ("SE", "NP"),
-            ("NP", "NZ"),
+            ("NP", "NA"),
+            ("NA", "NZ"),
             ("NZ", "EZ"),
         ]
 

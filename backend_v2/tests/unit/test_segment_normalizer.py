@@ -267,17 +267,18 @@ class TestNormalizeIndividualSegments:
 
     def test_skip_multiple_stations_expands(self):
         """Test that a segment skipping multiple stations expands."""
-        # NY -> EZ skips SE, NP, NZ
+        # NY -> EZ skips SE, NP, NA, NZ
         raw = [self._create_segment("NY", "EZ")]
         result = normalize_individual_segments(raw)
 
-        # Should expand to four segments
-        assert len(result) == 4
+        # Should expand to five segments (NA now between NP and NZ)
+        assert len(result) == 5
 
         stations = [(s.from_station, s.to_station) for s in result]
         assert ("NY", "SE") in stations
         assert ("SE", "NP") in stations
-        assert ("NP", "NZ") in stations
+        assert ("NP", "NA") in stations
+        assert ("NA", "NZ") in stations
         assert ("NZ", "EZ") in stations
 
     def test_multiple_journeys(self):
@@ -288,15 +289,15 @@ class TestNormalizeIndividualSegments:
         ]
         result = normalize_individual_segments(raw)
 
-        # First expands to 2, second expands to 2
-        assert len(result) == 4
+        # First expands to 2 (NY->SE, SE->NP), second expands to 3 (SE->NP, NP->NA, NA->NZ)
+        assert len(result) == 5
 
         # Check journey IDs are preserved
         journey_100_segs = [s for s in result if s.journey_id == "100"]
         journey_200_segs = [s for s in result if s.journey_id == "200"]
 
         assert len(journey_100_segs) == 2
-        assert len(journey_200_segs) == 2
+        assert len(journey_200_segs) == 3
 
     def test_unknown_segment_passthrough(self):
         """Test that unknown segments pass through unchanged."""

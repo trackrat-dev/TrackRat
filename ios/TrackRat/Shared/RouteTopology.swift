@@ -41,7 +41,7 @@ struct RouteTopology {
             id: "njt-nec",
             name: "Northeast Corridor",
             dataSource: "NJT",
-            stationCodes: ["NY", "SE", "NP", "NZ", "EZ", "LI", "RH", "MP", "MU", "ED", "NB", "JA", "PJ", "HL", "TR"]
+            stationCodes: ["NY", "SE", "NP", "NA", "NZ", "EZ", "LI", "RH", "MP", "MU", "ED", "NB", "JA", "PJ", "HL", "TR"]
         ),
 
         // North Jersey Coast Line
@@ -49,7 +49,7 @@ struct RouteTopology {
             id: "njt-njcl",
             name: "North Jersey Coast Line",
             dataSource: "NJT",
-            stationCodes: ["NY", "SE", "NP", "NZ", "EZ", "LI", "RH", "AV", "WB", "PE", "CH", "AM", "HZ", "MI", "RB", "LS", "MK", "LB", "EL", "AH", "AP", "BB", "BS", "LA", "SQ", "PP", "BH"]
+            stationCodes: ["NY", "SE", "NP", "NA", "NZ", "EZ", "LI", "RH", "AV", "WB", "PE", "CH", "AM", "HZ", "MI", "RB", "LS", "MK", "LB", "EL", "AH", "AP", "BB", "BS", "LA", "SQ", "PP", "BH"]
         ),
 
         // Morris & Essex Line (Morristown)
@@ -57,7 +57,7 @@ struct RouteTopology {
             id: "njt-me-morristown",
             name: "Morris & Essex (Morristown)",
             dataSource: "NJT",
-            stationCodes: ["HB", "SE", "NP", "ND", "BU", "EO", "OG", "HI", "MT", "SO", "MW", "MB", "RT", "ST", "CM", "MA", "CN", "MR", "MX", "DV", "TB", "HV", "HP", "NT", "OL", "HQ"]
+            stationCodes: ["HB", "SE", "NP", "ND", "BU", "EO", "OG", "HI", "MT", "SO", "MW", "MB", "RT", "ST", "CM", "MA", "CN", "MR", "MX", "TB", "DV", "DO", "HV", "HP", "NT", "OL", "HQ"]
         ),
 
         // Gladstone Branch (diverges from Summit)
@@ -84,12 +84,20 @@ struct RouteTopology {
             stationCodes: ["HB", "SE", "ND", "WT", "BM", "GG", "MC", "WA", "WG", "UM", "MS", "HS", "UV", "FA", "23", "MV", "LP", "TO", "BN", "ML", "DV"]
         ),
 
-        // Main/Bergen County Line
+        // Main Line
         RouteLine(
-            id: "njt-main-bergen",
-            name: "Main/Bergen County Line",
+            id: "njt-main",
+            name: "Main Line",
             dataSource: "NJT",
-            stationCodes: ["HB", "SE", "KG", "LN", "DL", "PS", "IF", "RN", "HW", "RS", "GK", "RW", "UF", "WK", "AZ", "RY", "17", "MZ", "SF"]
+            stationCodes: ["HB", "SE", "KG", "LN", "DL", "PS", "IF", "RN", "HW", "RS", "RW", "UF", "WK", "AZ", "RY", "17", "MZ", "SF"]
+        ),
+
+        // Bergen County Line
+        RouteLine(
+            id: "njt-bergen",
+            name: "Bergen County Line",
+            dataSource: "NJT",
+            stationCodes: ["HB", "SE", "RF", "WM", "GD", "PL", "BF", "FZ", "GK", "RW", "UF", "WK", "AZ", "RY", "17", "MZ", "SF"]
         ),
 
         // Port Jervis Line (extends from Suffern)
@@ -114,6 +122,14 @@ struct RouteTopology {
             name: "Atlantic City Line",
             dataSource: "NJT",
             stationCodes: ["PH", "TR"]  // Limited - add more if coordinates available
+        ),
+
+        // Princeton Branch (shuttle from Princeton Junction)
+        RouteLine(
+            id: "njt-princeton",
+            name: "Princeton Branch",
+            dataSource: "NJT",
+            stationCodes: ["PJ", "PR"]
         )
     ]
 
