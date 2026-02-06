@@ -189,6 +189,8 @@ class GTFSService:
         except httpx.HTTPError as e:
             error_msg = f"HTTP error downloading GTFS: {e}"
             logger.error(error_msg, data_source=data_source)
+            await db.rollback()
+            feed_info = await self._get_or_create_feed_info(db, data_source)
             feed_info.error_message = error_msg
             await db.commit()
             return False
@@ -196,6 +198,8 @@ class GTFSService:
         except Exception as e:
             error_msg = f"Error processing GTFS: {e}"
             logger.error(error_msg, data_source=data_source, exc_info=True)
+            await db.rollback()
+            feed_info = await self._get_or_create_feed_info(db, data_source)
             feed_info.error_message = error_msg
             await db.commit()
             return False
@@ -435,6 +439,9 @@ class GTFSService:
                 route_id = row.get("route_id", "")
 
                 if not trip_id or route_id not in routes:
+                    continue
+
+                if trip_id in trips or trip_id in batch_trip_ids:
                     continue
 
                 headsign = row.get("trip_headsign", "")
