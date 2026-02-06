@@ -5,7 +5,7 @@ Uses MTA's official GTFS-RT feed directly with gtfs-realtime-bindings for parsin
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -92,7 +92,7 @@ class LIRRClient:
         """Check if cached data is still valid."""
         if self._cache is None or self._cache_time is None:
             return False
-        age = (datetime.now(timezone.utc) - self._cache_time).total_seconds()
+        age = (datetime.now(UTC) - self._cache_time).total_seconds()
         return age < self._cache_ttl
 
     def _map_stop_id(self, gtfs_stop_id: str) -> str | None:
@@ -155,9 +155,7 @@ class LIRRClient:
                     if stu.HasField("arrival"):
                         arr = stu.arrival
                         if arr.HasField("time"):
-                            arrival_time = datetime.fromtimestamp(
-                                arr.time, tz=timezone.utc
-                            )
+                            arrival_time = datetime.fromtimestamp(arr.time, tz=UTC)
                         if arr.HasField("delay"):
                             delay_seconds = arr.delay
 
@@ -166,9 +164,7 @@ class LIRRClient:
                     if stu.HasField("departure"):
                         dep = stu.departure
                         if dep.HasField("time"):
-                            departure_time = datetime.fromtimestamp(
-                                dep.time, tz=timezone.utc
-                            )
+                            departure_time = datetime.fromtimestamp(dep.time, tz=UTC)
 
                     # Skip if no arrival time
                     if arrival_time is None:
@@ -197,7 +193,7 @@ class LIRRClient:
 
             # Cache results
             self._cache = arrivals
-            self._cache_time = datetime.now(timezone.utc)
+            self._cache_time = datetime.now(UTC)
 
             logger.info(f"Fetched {len(arrivals)} LIRR arrivals from GTFS-RT feed")
             return arrivals

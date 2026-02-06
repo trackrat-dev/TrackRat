@@ -105,7 +105,14 @@ class JustInTimeUpdateService:
 
     async def get_collector_for_journey(
         self, journey: TrainJourney
-    ) -> JourneyCollector | AmtrakJourneyCollector | PathCollector | LIRRCollector | MNRCollector | None:
+    ) -> (
+        JourneyCollector
+        | AmtrakJourneyCollector
+        | PathCollector
+        | LIRRCollector
+        | MNRCollector
+        | None
+    ):
         """Get the appropriate collector for a journey based on its data source.
 
         Args:

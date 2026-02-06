@@ -278,18 +278,18 @@ class LIRRCollector:
                         JourneyStop.station_code == arr.station_code,
                     )
                 )
-                stop = stop_result.scalar_one_or_none()
+                existing_stop = stop_result.scalar_one_or_none()
 
-                if stop:
-                    stop.actual_arrival = arr.arrival_time + timedelta(
+                if existing_stop:
+                    existing_stop.actual_arrival = arr.arrival_time + timedelta(
                         seconds=arr.delay_seconds
                     )
                     if arr.departure_time:
-                        stop.actual_departure = arr.departure_time + timedelta(
+                        existing_stop.actual_departure = arr.departure_time + timedelta(
                             seconds=arr.delay_seconds
                         )
                     if arr.track:
-                        stop.track = arr.track
+                        existing_stop.track = arr.track
 
             logger.debug(f"Updated LIRR train {train_id}")
             return "updated"

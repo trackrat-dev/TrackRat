@@ -2348,9 +2348,7 @@ class SchedulerService:
                     )
 
                 if not mnr_available:
-                    mnr_result = await gtfs_service.refresh_feed(
-                        db, "MNR", force=True
-                    )
+                    mnr_result = await gtfs_service.refresh_feed(db, "MNR", force=True)
                     logger.info(
                         "gtfs_mnr_initial_download_complete", success=mnr_result
                     )

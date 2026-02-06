@@ -88,6 +88,10 @@ plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 module = "apscheduler.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "google.transit.*"
+ignore_missing_imports = true
+
 [tool.black]
 line-length = 88
 target-version = ['py311']

@@ -407,7 +407,7 @@ class TestNJTStationCoordinates:
         Excludes known Amtrak-only stations that share the NJ Transit
         station list but are outside the NJ area (e.g., WI, BA, BL, WS).
         """
-        # Codes for stations outside NJ area (Amtrak intercity)
+        # Codes for stations outside NJ area (Amtrak intercity + LIRR)
         non_nj_codes = {
             "BA",
             "BL",
@@ -415,6 +415,7 @@ class TestNJTStationCoordinates:
             "WI",
             "NF",  # DC corridor
             "PH",  # Philadelphia
+            "CI",  # LIRR - Central Islip (Long Island)
         }
         for code, coords in STATION_COORDINATES.items():
             if len(code) > 2:  # Skip 3-char Amtrak/PATH/PATCO codes

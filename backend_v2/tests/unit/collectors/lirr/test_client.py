@@ -290,9 +290,7 @@ class TestLIRRClient:
     async def test_get_all_arrivals_handles_http_error(self, client):
         """Test get_all_arrivals returns cached/empty list on HTTP error."""
         mock_session = AsyncMock()
-        mock_session.get = AsyncMock(
-            side_effect=httpx.HTTPError("Connection failed")
-        )
+        mock_session.get = AsyncMock(side_effect=httpx.HTTPError("Connection failed"))
         client._session = mock_session
         client._cache = None
 
@@ -321,9 +319,7 @@ class TestLIRRClient:
         client._cache_time = datetime.now(timezone.utc) - timedelta(seconds=120)
 
         mock_session = AsyncMock()
-        mock_session.get = AsyncMock(
-            side_effect=httpx.HTTPError("Connection failed")
-        )
+        mock_session.get = AsyncMock(side_effect=httpx.HTTPError("Connection failed"))
         client._session = mock_session
 
         result = await client.get_all_arrivals()

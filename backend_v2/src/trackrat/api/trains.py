@@ -57,7 +57,11 @@ async def get_departures(
         description="Departure station code",
     ),
     to_station: str | None = Query(
-        None, alias="to", min_length=2, max_length=10, description="Arrival station code"
+        None,
+        alias="to",
+        min_length=2,
+        max_length=10,
+        description="Arrival station code",
     ),
     date: date | None = Query(
         None, description="Journey date (YYYY-MM-DD, defaults to today)"

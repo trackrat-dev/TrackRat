@@ -327,9 +327,7 @@ class TestLIRRCollectorProcessTrip:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_process_trip_sorts_arrivals_by_time(
-        self, collector, mock_session
-    ):
+    async def test_process_trip_sorts_arrivals_by_time(self, collector, mock_session):
         """Test arrivals are sorted by arrival time to determine origin."""
         now = datetime.now(timezone.utc)
         # Intentionally out of order

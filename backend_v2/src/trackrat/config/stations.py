@@ -829,7 +829,7 @@ STATION_NAMES: dict[str, str] = {
     "CAV": "Centre Avenue",
     "CSH": "Cold Spring Harbor",
     "CPG": "Copiague",
-    "CLP": "Country Life Press",
+    "LCLP": "Country Life Press",  # Using LCLP to avoid conflict with Amtrak CLP (Culpeper)
     "DPK": "Deer Park",
     "DGL": "Douglaston",
     "EHN": "East Hampton",
@@ -837,8 +837,8 @@ STATION_NAMES: dict[str, str] = {
     "ERY": "East Rockaway",
     "EWN": "East Williston",
     "EMT": "Elmont-UBS Arena",
-    "FRY": "Far Rockaway",
-    "FMD": "Farmingdale",
+    "LFRY": "Far Rockaway",  # Using LFRY to avoid conflict with PATCO FRY (Ferry Avenue)
+    "LFMD": "Farmingdale",  # Using LFMD to avoid conflict with Amtrak FMD (Fort Madison)
     "FPK": "Floral Park",
     "FLS": "Flushing Main Street",
     "FHL": "Forest Hills",
@@ -853,44 +853,44 @@ STATION_NAMES: dict[str, str] = {
     "GRV": "Great River",
     "GWN": "Greenlawn",
     "GPT": "Greenport",
-    "GVL": "Greenvale",
+    "LGVL": "Greenvale",  # Using LGVL to avoid conflict with Amtrak GVL (Greenville)
     "HBY": "Hampton Bays",
     "HGN": "Hempstead Gardens",
-    "HEM": "Hempstead",
+    "LHEM": "Hempstead",  # Using LHEM to avoid conflict with Amtrak HEM (Hermann)
     "HWT": "Hewlett",
-    "HVL": "Hicksville",
-    "HOL": "Hollis",
+    "LHVL": "Hicksville",  # Using LHVL to avoid conflict with Amtrak HVL (Havelock)
+    "LHOL": "Hollis",  # Using LHOL to avoid conflict with Amtrak HOL (Hollywood)
     "HPA": "Hunterspoint Avenue",
-    "HUN": "Huntington",
+    "LHUN": "Huntington",  # Using LHUN to avoid conflict with Amtrak HUN (Huntington WV)
     "IWD": "Inwood",
     "IPK": "Island Park",
     "ISP": "Islip",
     "JAM": "Jamaica",
     "KGN": "Kew Gardens",
     "KPK": "Kings Park",
-    "LVW": "Lakeview",
+    "LLVW": "Lakeview",  # Using LLVW to avoid conflict with Amtrak LVW (Longview)
     "LTN": "Laurelton",
     "LCE": "Lawrence",
     "LHT": "Lindenhurst",
-    "LNK": "Little Neck",
-    "LMR": "Locust Manor",
+    "LLNK": "Little Neck",  # Using LLNK to avoid conflict with Amtrak LNK (Lincoln)
+    "LLMR": "Locust Manor",  # Using LLMR to avoid conflict with Amtrak LMR (Lamar)
     "LVL": "Locust Valley",
     "LBH": "Long Beach",
     "LIC": "Long Island City",
     "LYN": "Lynbrook",
-    "MVN": "Malverne",
+    "LMVN": "Malverne",  # Using LMVN to avoid conflict with Amtrak MVN (Malvern)
     "MHT": "Manhasset",
-    "MPK": "Massapequa Park",
+    "LMPK": "Massapequa Park",  # Using LMPK to avoid conflict with Amtrak MPK (Moorpark)
     "MQA": "Massapequa",
     "MSY": "Mastic-Shirley",
     "MAK": "Mattituck",
     "MFD": "Medford",
     "MAV": "Merillon Avenue",
     "MRK": "Merrick",
-    "SSM": "Mets-Willets Point",
-    "MIN": "Mineola",
+    "LSSM": "Mets-Willets Point",  # Using LSSM to avoid conflict with Amtrak SSM (Selma)
+    "LMIN": "Mineola",  # Using LMIN to avoid conflict with Amtrak MIN (Mineola TX)
     "MTK": "Montauk",
-    "MHL": "Murray Hill LIRR",
+    "LMHL": "Murray Hill LIRR",  # Using LMHL to avoid conflict with Amtrak MHL (Marshall)
     "NBD": "Nassau Boulevard",
     "NHP": "New Hyde Park",
     "NPT": "Northport",
@@ -912,12 +912,12 @@ STATION_NAMES: dict[str, str] = {
     "SVL": "Sayville",
     "SCF": "Sea Cliff",
     "SFD": "Seaford",
-    "STN": "Smithtown",
+    "LSTN": "Smithtown",  # Using LSTN to avoid conflict with Amtrak STN (Stanley)
     "SHN": "Southampton",
     "SHD": "Southold",
-    "SPK": "Speonk",
-    "SAB": "St. Albans",
-    "SJM": "St. James",
+    "LSPK": "Speonk",  # Using LSPK to avoid conflict with Amtrak SPK (Spokane)
+    "LSAB": "St. Albans",  # Using LSAB to avoid conflict with Amtrak SAB (St. Albans VT)
+    "LSJM": "St. James",  # Using LSJM to avoid conflict with Amtrak SJM (St. Joseph)
     "SMR": "Stewart Manor",
     "LSBK": "Stony Brook",  # Using LSBK to avoid conflict with NJT BK (Bound Brook)
     "SYT": "Syosset",
@@ -926,7 +926,7 @@ STATION_NAMES: dict[str, str] = {
     "WHD": "West Hempstead",
     "WBY": "Westbury",
     "WHN": "Westhampton",
-    "WWD": "Westwood LIRR",
+    "LWWD": "Westwood LIRR",  # Using LWWD to avoid conflict with Amtrak WWD (Wildwood)
     "WMR": "Woodmere",
     "WDD": "Woodside",
     "WYD": "Wyandanch",
@@ -2627,138 +2627,140 @@ PATCO_GTFS_FEED_URL = "https://rapid.nationalrtap.org/GTFSFileManagement/UserUpl
 # =============================================================================
 
 # LIRR GTFS-RT feed URL (MTA direct)
-LIRR_GTFS_RT_FEED_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr"
+LIRR_GTFS_RT_FEED_URL = (
+    "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr"
+)
 
 # LIRR GTFS stop_id to internal station code mapping
 # Penn Station (stop_id 237) maps to "NY" for unified experience with NJT/Amtrak
 # Atlantic Terminal uses "LAT" to avoid conflict with Atlanta "ATL"
 LIRR_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
-    "1": "ABT",      # Albertson
-    "100": "ISP",    # Islip
-    "101": "IWD",    # Inwood
-    "102": "JAM",    # Jamaica
-    "107": "KGN",    # Kew Gardens
-    "11": "BDY",     # Broadway
-    "111": "KPK",    # Kings Park
-    "113": "LBH",    # Long Beach
-    "114": "LCE",    # Lawrence
-    "117": "LHT",    # Lindenhurst
-    "118": "LIC",    # Long Island City
-    "119": "LMR",    # Locust Manor
-    "120": "LNK",    # Little Neck
-    "122": "LTN",    # Laurelton
-    "123": "LVL",    # Locust Valley
-    "124": "LVW",    # Lakeview
-    "125": "LYN",    # Lynbrook
-    "126": "MAK",    # Mattituck
-    "127": "MAV",    # Merillon Avenue
-    "129": "MFD",    # Medford
-    "13": "BHN",     # Bridgehampton
-    "130": "MHL",    # Murray Hill LIRR
-    "131": "MHT",    # Manhasset
-    "132": "MIN",    # Mineola
-    "135": "MPK",    # Massapequa Park
-    "136": "MQA",    # Massapequa
-    "14": "LSBK",    # Stony Brook (using LSBK to avoid NJT BK conflict)
-    "140": "MSY",    # Mastic-Shirley
-    "141": "MTK",    # Montauk
-    "142": "MVN",    # Malverne
-    "148": "NAV",    # Nostrand Avenue
-    "149": "NBD",    # Nassau Boulevard
-    "152": "NHP",    # New Hyde Park
-    "153": "NPT",    # Northport
-    "154": "OBY",    # Oyster Bay
-    "155": "ODE",    # Oceanside
-    "157": "ODL",    # Oakdale
-    "16": "BMR",     # Bellmore
-    "162": "PDM",    # Plandome
-    "163": "PGE",    # Patchogue
-    "164": "PJN",    # Port Jefferson
-    "165": "PLN",    # Pinelawn
-    "171": "PWS",    # Port Washington
-    "175": "QVG",    # Queens Village
-    "176": "RHD",    # Riverhead
-    "179": "RON",    # Ronkonkoma
-    "180": "ROS",    # Rosedale
-    "182": "RSN",    # Roslyn
-    "183": "RVC",    # Rockville Centre
-    "184": "SAB",    # St. Albans
-    "185": "SCF",    # Sea Cliff
-    "187": "SFD",    # Seaford
-    "190": "SHD",    # Southold
-    "191": "SHN",    # Southampton
-    "193": "SJM",    # St. James
-    "195": "SMR",    # Stewart Manor
-    "198": "SPK",    # Speonk
-    "199": "SSM",    # Mets-Willets Point
-    "2": "ADL",      # Auburndale
-    "20": "BPG",     # Bethpage
-    "202": "STN",    # Smithtown
-    "204": "SVL",    # Sayville
-    "205": "SYT",    # Syosset
-    "21": "BPT",     # Bellport
-    "211": "VSM",    # Valley Stream
-    "213": "WBY",    # Westbury
-    "214": "WDD",    # Woodside
-    "215": "WGH",    # Wantagh
-    "216": "WHD",    # West Hempstead
-    "217": "WMR",    # Woodmere
-    "219": "WWD",    # Westwood LIRR
-    "220": "WYD",    # Wyandanch
-    "223": "YPK",    # Yaphank
-    "225": "BWN",    # Baldwin
-    "226": "MRK",    # Merrick
-    "23": "BRS",     # Bellerose
-    "233": "WHN",    # Westhampton
-    "237": "NY",     # Penn Station (unified with NJT/Amtrak)
-    "24": "BRT",     # Belmont Park
-    "241": "LAT",    # Atlantic Terminal
-    "25": "BSD",     # Bayside
-    "26": "BSR",     # Bay Shore
-    "27": "BTA",     # Babylon
-    "29": "BWD",     # Brentwood
-    "31": "CAV",     # Centre Avenue
-    "32": "CHT",     # Cedarhurst
-    "33": "CI",      # Central Islip
-    "349": "GCT",    # Grand Central Madison
-    "359": "EMT",    # Elmont-UBS Arena
-    "36": "CLP",     # Country Life Press
-    "38": "CPG",     # Copiague
-    "39": "CPL",     # Carle Place
-    "4": "AGT",      # Amagansett
-    "40": "CSH",     # Cold Spring Harbor
-    "42": "DGL",     # Douglaston
-    "44": "DPK",     # Deer Park
-    "48": "EHN",     # East Hampton
-    "50": "ENY",     # East New York
-    "51": "ERY",     # East Rockaway
-    "52": "EWN",     # East Williston
-    "55": "FHL",     # Forest Hills
-    "56": "FLS",     # Flushing Main Street
-    "59": "FMD",     # Farmingdale
-    "63": "FPK",     # Floral Park
-    "64": "FPT",     # Freeport
-    "65": "FRY",     # Far Rockaway
-    "66": "GBN",     # Gibson
-    "67": "GCV",     # Glen Cove
-    "68": "GCY",     # Garden City
-    "71": "GHD",     # Glen Head
-    "72": "GNK",     # Great Neck
-    "73": "GPT",     # Greenport
-    "74": "GRV",     # Great River
-    "76": "GST",     # Glen Street
-    "77": "GVL",     # Greenvale
-    "78": "GWN",     # Greenlawn
-    "8": "AVL",      # Amityville
-    "83": "HBY",     # Hampton Bays
-    "84": "HEM",     # Hempstead
-    "85": "HGN",     # Hempstead Gardens
-    "89": "HOL",     # Hollis
-    "90": "HPA",     # Hunterspoint Avenue
-    "91": "HUN",     # Huntington
-    "92": "HVL",     # Hicksville
-    "94": "HWT",     # Hewlett
-    "99": "IPK",     # Island Park
+    "1": "ABT",  # Albertson
+    "100": "ISP",  # Islip
+    "101": "IWD",  # Inwood
+    "102": "JAM",  # Jamaica
+    "107": "KGN",  # Kew Gardens
+    "11": "BDY",  # Broadway
+    "111": "KPK",  # Kings Park
+    "113": "LBH",  # Long Beach
+    "114": "LCE",  # Lawrence
+    "117": "LHT",  # Lindenhurst
+    "118": "LIC",  # Long Island City
+    "119": "LLMR",  # Locust Manor
+    "120": "LLNK",  # Little Neck
+    "122": "LTN",  # Laurelton
+    "123": "LVL",  # Locust Valley
+    "124": "LLVW",  # Lakeview
+    "125": "LYN",  # Lynbrook
+    "126": "MAK",  # Mattituck
+    "127": "MAV",  # Merillon Avenue
+    "129": "MFD",  # Medford
+    "13": "BHN",  # Bridgehampton
+    "130": "LMHL",  # Murray Hill LIRR
+    "131": "MHT",  # Manhasset
+    "132": "LMIN",  # Mineola
+    "135": "LMPK",  # Massapequa Park
+    "136": "MQA",  # Massapequa
+    "14": "LSBK",  # Stony Brook (using LSBK to avoid NJT BK conflict)
+    "140": "MSY",  # Mastic-Shirley
+    "141": "MTK",  # Montauk
+    "142": "LMVN",  # Malverne
+    "148": "NAV",  # Nostrand Avenue
+    "149": "NBD",  # Nassau Boulevard
+    "152": "NHP",  # New Hyde Park
+    "153": "NPT",  # Northport
+    "154": "OBY",  # Oyster Bay
+    "155": "ODE",  # Oceanside
+    "157": "ODL",  # Oakdale
+    "16": "BMR",  # Bellmore
+    "162": "PDM",  # Plandome
+    "163": "PGE",  # Patchogue
+    "164": "PJN",  # Port Jefferson
+    "165": "PLN",  # Pinelawn
+    "171": "PWS",  # Port Washington
+    "175": "QVG",  # Queens Village
+    "176": "RHD",  # Riverhead
+    "179": "RON",  # Ronkonkoma
+    "180": "ROS",  # Rosedale
+    "182": "RSN",  # Roslyn
+    "183": "RVC",  # Rockville Centre
+    "184": "LSAB",  # St. Albans
+    "185": "SCF",  # Sea Cliff
+    "187": "SFD",  # Seaford
+    "190": "SHD",  # Southold
+    "191": "SHN",  # Southampton
+    "193": "LSJM",  # St. James
+    "195": "SMR",  # Stewart Manor
+    "198": "LSPK",  # Speonk
+    "199": "LSSM",  # Mets-Willets Point
+    "2": "ADL",  # Auburndale
+    "20": "BPG",  # Bethpage
+    "202": "LSTN",  # Smithtown
+    "204": "SVL",  # Sayville
+    "205": "SYT",  # Syosset
+    "21": "BPT",  # Bellport
+    "211": "VSM",  # Valley Stream
+    "213": "WBY",  # Westbury
+    "214": "WDD",  # Woodside
+    "215": "WGH",  # Wantagh
+    "216": "WHD",  # West Hempstead
+    "217": "WMR",  # Woodmere
+    "219": "LWWD",  # Westwood LIRR
+    "220": "WYD",  # Wyandanch
+    "223": "YPK",  # Yaphank
+    "225": "BWN",  # Baldwin
+    "226": "MRK",  # Merrick
+    "23": "BRS",  # Bellerose
+    "233": "WHN",  # Westhampton
+    "237": "NY",  # Penn Station (unified with NJT/Amtrak)
+    "24": "BRT",  # Belmont Park
+    "241": "LAT",  # Atlantic Terminal
+    "25": "BSD",  # Bayside
+    "26": "BSR",  # Bay Shore
+    "27": "BTA",  # Babylon
+    "29": "BWD",  # Brentwood
+    "31": "CAV",  # Centre Avenue
+    "32": "CHT",  # Cedarhurst
+    "33": "CI",  # Central Islip
+    "349": "GCT",  # Grand Central Madison
+    "359": "EMT",  # Elmont-UBS Arena
+    "36": "LCLP",  # Country Life Press
+    "38": "CPG",  # Copiague
+    "39": "CPL",  # Carle Place
+    "4": "AGT",  # Amagansett
+    "40": "CSH",  # Cold Spring Harbor
+    "42": "DGL",  # Douglaston
+    "44": "DPK",  # Deer Park
+    "48": "EHN",  # East Hampton
+    "50": "ENY",  # East New York
+    "51": "ERY",  # East Rockaway
+    "52": "EWN",  # East Williston
+    "55": "FHL",  # Forest Hills
+    "56": "FLS",  # Flushing Main Street
+    "59": "LFMD",  # Farmingdale
+    "63": "FPK",  # Floral Park
+    "64": "FPT",  # Freeport
+    "65": "LFRY",  # Far Rockaway
+    "66": "GBN",  # Gibson
+    "67": "GCV",  # Glen Cove
+    "68": "GCY",  # Garden City
+    "71": "GHD",  # Glen Head
+    "72": "GNK",  # Great Neck
+    "73": "GPT",  # Greenport
+    "74": "GRV",  # Great River
+    "76": "GST",  # Glen Street
+    "77": "LGVL",  # Greenvale
+    "78": "GWN",  # Greenlawn
+    "8": "AVL",  # Amityville
+    "83": "HBY",  # Hampton Bays
+    "84": "LHEM",  # Hempstead
+    "85": "HGN",  # Hempstead Gardens
+    "89": "LHOL",  # Hollis
+    "90": "HPA",  # Hunterspoint Avenue
+    "91": "LHUN",  # Huntington
+    "92": "LHVL",  # Hicksville
+    "94": "HWT",  # Hewlett
+    "99": "IPK",  # Island Park
 }
 
 # Reverse mapping for LIRR
@@ -2787,7 +2789,7 @@ LIRR_ROUTES: dict[str, tuple[str, str, str]] = {
 # LIRR discovery stations - major hubs to poll for train discovery
 # Penn Station and Jamaica are the two most critical hubs
 LIRR_DISCOVERY_STATIONS = [
-    "NY",   # Penn Station (all branches terminate here)
+    "NY",  # Penn Station (all branches terminate here)
     "JAM",  # Jamaica (transfer hub for all branches)
     "LAT",  # Atlantic Terminal
     "GCT",  # Grand Central Madison
@@ -2824,130 +2826,132 @@ def map_lirr_gtfs_stop(gtfs_stop_id: str) -> str | None:
 # =============================================================================
 
 # Metro-North GTFS-RT feed URL (MTA direct)
-MNR_GTFS_RT_FEED_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr"
+MNR_GTFS_RT_FEED_URL = (
+    "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr"
+)
 
 # MNR GTFS stop_id to internal station code mapping
 # Grand Central (stop_id 1) maps to "GCT" for unified experience
 # Codes use M prefix to avoid conflicts with NJT/Amtrak/LIRR
 MNR_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
     # Hudson Line
-    "1": "GCT",       # Grand Central Terminal (shared)
-    "4": "M125",       # Harlem-125th Street
-    "622": "MEYS",    # Yankees-E 153 St
-    "9": "MMRH",      # Morris Heights
-    "10": "MUNH",     # University Heights
-    "11": "MMBL",     # Marble Hill
-    "14": "MSDV",     # Spuyten Duyvil
-    "16": "MRVD",     # Riverdale
-    "17": "MLUD",     # Ludlow
-    "18": "MYON",     # Yonkers
-    "19": "MGWD",     # Glenwood
-    "20": "MGRY",     # Greystone
-    "22": "MHOH",     # Hastings-on-Hudson
-    "23": "MDBF",     # Dobbs Ferry
-    "24": "MARD",     # Ardsley-on-Hudson
-    "25": "MIRV",     # Irvington
-    "27": "MTTN",     # Tarrytown
-    "29": "MPHM",     # Philipse Manor
-    "30": "MSCB",     # Scarborough
-    "31": "MOSS",     # Ossining
-    "33": "MCRH",     # Croton-Harmon
-    "37": "MCRT",     # Cortlandt
-    "39": "MPKS",     # Peekskill
-    "40": "MMAN",     # Manitou
-    "42": "MGAR",     # Garrison
-    "43": "MCSP",     # Cold Spring
-    "44": "MBRK",     # Breakneck Ridge
-    "46": "MBCN",     # Beacon
-    "49": "MNHB",     # New Hamburg
-    "51": "MPOK",     # Poughkeepsie
+    "1": "GCT",  # Grand Central Terminal (shared)
+    "4": "M125",  # Harlem-125th Street
+    "622": "MEYS",  # Yankees-E 153 St
+    "9": "MMRH",  # Morris Heights
+    "10": "MUNH",  # University Heights
+    "11": "MMBL",  # Marble Hill
+    "14": "MSDV",  # Spuyten Duyvil
+    "16": "MRVD",  # Riverdale
+    "17": "MLUD",  # Ludlow
+    "18": "MYON",  # Yonkers
+    "19": "MGWD",  # Glenwood
+    "20": "MGRY",  # Greystone
+    "22": "MHOH",  # Hastings-on-Hudson
+    "23": "MDBF",  # Dobbs Ferry
+    "24": "MARD",  # Ardsley-on-Hudson
+    "25": "MIRV",  # Irvington
+    "27": "MTTN",  # Tarrytown
+    "29": "MPHM",  # Philipse Manor
+    "30": "MSCB",  # Scarborough
+    "31": "MOSS",  # Ossining
+    "33": "MCRH",  # Croton-Harmon
+    "37": "MCRT",  # Cortlandt
+    "39": "MPKS",  # Peekskill
+    "40": "MMAN",  # Manitou
+    "42": "MGAR",  # Garrison
+    "43": "MCSP",  # Cold Spring
+    "44": "MBRK",  # Breakneck Ridge
+    "46": "MBCN",  # Beacon
+    "49": "MNHB",  # New Hamburg
+    "51": "MPOK",  # Poughkeepsie
     # Harlem Line
-    "54": "MMEL",     # Melrose
-    "55": "MTRM",     # Tremont
-    "56": "MFOR",     # Fordham
-    "57": "MBOG",     # Botanical Garden
-    "58": "MWBG",     # Williams Bridge
-    "59": "MWDL",     # Woodlawn
-    "61": "MWKF",     # Wakefield
-    "62": "MMVW",     # Mt Vernon West
-    "64": "MFLT",     # Fleetwood
-    "65": "MBRX",     # Bronxville
-    "66": "MTUC",     # Tuckahoe
-    "68": "MCWD",     # Crestwood
-    "71": "MSCD",     # Scarsdale
-    "72": "MHSD",     # Hartsdale
-    "74": "MWPL",     # White Plains
-    "76": "MNWP",     # North White Plains
-    "78": "MVAL",     # Valhalla
-    "79": "MMTP",     # Mt Pleasant
-    "80": "MHWT",     # Hawthorne
-    "81": "MPLV",     # Pleasantville
-    "83": "MCHP",     # Chappaqua
-    "84": "MMTK",     # Mt Kisco
-    "85": "MBDH",     # Bedford Hills
-    "86": "MKAT",     # Katonah
-    "88": "MGLD",     # Goldens Bridge
-    "89": "MPRD",     # Purdy's
-    "90": "MCFL",     # Croton Falls
-    "91": "MBRS",     # Brewster
-    "94": "MSET",     # Southeast
-    "97": "MPAT",     # Patterson
-    "98": "MPAW",     # Pawling
-    "99": "MAPT",     # Appalachian Trail
-    "100": "MHVW",    # Harlem Valley-Wingdale
-    "101": "MDVP",    # Dover Plains
-    "176": "MTMR",    # Tenmile River
-    "177": "MWAS",    # Wassaic
+    "54": "MMEL",  # Melrose
+    "55": "MTRM",  # Tremont
+    "56": "MFOR",  # Fordham
+    "57": "MBOG",  # Botanical Garden
+    "58": "MWBG",  # Williams Bridge
+    "59": "MWDL",  # Woodlawn
+    "61": "MWKF",  # Wakefield
+    "62": "MMVW",  # Mt Vernon West
+    "64": "MFLT",  # Fleetwood
+    "65": "MBRX",  # Bronxville
+    "66": "MTUC",  # Tuckahoe
+    "68": "MCWD",  # Crestwood
+    "71": "MSCD",  # Scarsdale
+    "72": "MHSD",  # Hartsdale
+    "74": "MWPL",  # White Plains
+    "76": "MNWP",  # North White Plains
+    "78": "MVAL",  # Valhalla
+    "79": "MMTP",  # Mt Pleasant
+    "80": "MHWT",  # Hawthorne
+    "81": "MPLV",  # Pleasantville
+    "83": "MCHP",  # Chappaqua
+    "84": "MMTK",  # Mt Kisco
+    "85": "MBDH",  # Bedford Hills
+    "86": "MKAT",  # Katonah
+    "88": "MGLD",  # Goldens Bridge
+    "89": "MPRD",  # Purdy's
+    "90": "MCFL",  # Croton Falls
+    "91": "MBRS",  # Brewster
+    "94": "MSET",  # Southeast
+    "97": "MPAT",  # Patterson
+    "98": "MPAW",  # Pawling
+    "99": "MAPT",  # Appalachian Trail
+    "100": "MHVW",  # Harlem Valley-Wingdale
+    "101": "MDVP",  # Dover Plains
+    "176": "MTMR",  # Tenmile River
+    "177": "MWAS",  # Wassaic
     # New Haven Line
-    "105": "MMVE",    # Mt Vernon East
-    "106": "MPEL",    # Pelham
-    "108": "MNRC",    # New Rochelle
-    "110": "MLRM",    # Larchmont
-    "111": "MMAM",    # Mamaroneck
-    "112": "MHRR",    # Harrison
-    "114": "MRYE",    # Rye
-    "115": "MPCH",    # Port Chester
-    "116": "MGRN",    # Greenwich
-    "118": "MCOC",    # Cos Cob
-    "120": "MRSD",    # Riverside
-    "121": "MODG",    # Old Greenwich
-    "124": "MSTM",    # Stamford
-    "127": "MNOH",    # Noroton Heights
-    "128": "MDAR",    # Darien
-    "129": "MROW",    # Rowayton
-    "131": "MSNW",    # South Norwalk
-    "133": "MENW",    # East Norwalk
-    "134": "MWPT",    # Westport
-    "136": "MGRF",    # Green's Farms
-    "137": "MSPT",    # Southport
-    "138": "MFFD",    # Fairfield
-    "188": "MFBR",    # Fairfield-Black Rock
-    "140": "MBGP",    # Bridgeport
-    "143": "MSTR",    # Stratford
-    "145": "MMIL",    # Milford
-    "190": "MWHN",    # West Haven
-    "149": "MNHV",    # New Haven
-    "151": "MNSS",    # New Haven-State St
+    "105": "MMVE",  # Mt Vernon East
+    "106": "MPEL",  # Pelham
+    "108": "MNRC",  # New Rochelle
+    "110": "MLRM",  # Larchmont
+    "111": "MMAM",  # Mamaroneck
+    "112": "MHRR",  # Harrison
+    "114": "MRYE",  # Rye
+    "115": "MPCH",  # Port Chester
+    "116": "MGRN",  # Greenwich
+    "118": "MCOC",  # Cos Cob
+    "120": "MRSD",  # Riverside
+    "121": "MODG",  # Old Greenwich
+    "124": "MSTM",  # Stamford
+    "127": "MNOH",  # Noroton Heights
+    "128": "MDAR",  # Darien
+    "129": "MROW",  # Rowayton
+    "131": "MSNW",  # South Norwalk
+    "133": "MENW",  # East Norwalk
+    "134": "MWPT",  # Westport
+    "136": "MGRF",  # Green's Farms
+    "137": "MSPT",  # Southport
+    "138": "MFFD",  # Fairfield
+    "188": "MFBR",  # Fairfield-Black Rock
+    "140": "MBGP",  # Bridgeport
+    "143": "MSTR",  # Stratford
+    "145": "MMIL",  # Milford
+    "190": "MWHN",  # West Haven
+    "149": "MNHV",  # New Haven
+    "151": "MNSS",  # New Haven-State St
     # New Canaan Branch
-    "153": "MGLB",    # Glenbrook
-    "154": "MSPD",    # Springdale
-    "155": "MTMH",    # Talmadge Hill
-    "157": "MNCA",    # New Canaan
+    "153": "MGLB",  # Glenbrook
+    "154": "MSPD",  # Springdale
+    "155": "MTMH",  # Talmadge Hill
+    "157": "MNCA",  # New Canaan
     # Danbury Branch
-    "158": "MMR7",    # Merritt 7
-    "160": "MWIL",    # Wilton
-    "161": "MCAN",    # Cannondale
-    "162": "MBVL",    # Branchville
-    "163": "MRED",    # Redding
-    "164": "MBTH",    # Bethel
-    "165": "MDBY",    # Danbury
+    "158": "MMR7",  # Merritt 7
+    "160": "MWIL",  # Wilton
+    "161": "MCAN",  # Cannondale
+    "162": "MBVL",  # Branchville
+    "163": "MRED",  # Redding
+    "164": "MBTH",  # Bethel
+    "165": "MDBY",  # Danbury
     # Waterbury Branch
-    "167": "MDBS",    # Derby-Shelton
-    "168": "MANS",    # Ansonia
-    "169": "MSYM",    # Seymour
-    "170": "MBCF",    # Beacon Falls
-    "171": "MNAU",    # Naugatuck
-    "172": "MWTB",    # Waterbury
+    "167": "MDBS",  # Derby-Shelton
+    "168": "MANS",  # Ansonia
+    "169": "MSYM",  # Seymour
+    "170": "MBCF",  # Beacon Falls
+    "171": "MNAU",  # Naugatuck
+    "172": "MWTB",  # Waterbury
 }
 
 # Reverse mapping for MNR
@@ -2968,11 +2972,11 @@ MNR_ROUTES: dict[str, tuple[str, str, str]] = {
 
 # MNR discovery stations - major hubs to poll for train discovery
 MNR_DISCOVERY_STATIONS = [
-    "GCT",    # Grand Central Terminal
-    "M125",    # Harlem-125th Street
-    "MPOK",   # Poughkeepsie (Hudson terminus)
-    "MWAS",   # Wassaic (Harlem terminus)
-    "MNHV",   # New Haven (New Haven terminus)
+    "GCT",  # Grand Central Terminal
+    "M125",  # Harlem-125th Street
+    "MPOK",  # Poughkeepsie (Hudson terminus)
+    "MWAS",  # Wassaic (Harlem terminus)
+    "MNHV",  # New Haven (New Haven terminus)
 ]
 
 
@@ -3946,7 +3950,6 @@ STATION_COORDINATES = {
     "WPR": {"lat": 39.8876, "lon": -105.7632},  # Winter Park Ski Resort
     "WPS": {"lat": 39.8837, "lon": -105.7618},  # Winter Park
     "YUM": {"lat": 32.7231, "lon": -114.6156},  # Yuma
-
     # LIRR stations (Long Island Rail Road)
     "ABT": {"lat": 40.77206317, "lon": -73.64169095},  # Albertson
     "AGT": {"lat": 40.98003964, "lon": -72.13233416},  # Amagansett
@@ -3959,7 +3962,7 @@ STATION_COORDINATES = {
     "BSD": {"lat": 40.76315241, "lon": -73.77124986},  # Bayside
     "BRS": {"lat": 40.72220443, "lon": -73.71665289},  # Bellerose
     "BMR": {"lat": 40.66880043, "lon": -73.52886016},  # Bellmore
-    "BPT": {"lat": 40.7737389, "lon": -72.94396574},   # Bellport
+    "BPT": {"lat": 40.7737389, "lon": -72.94396574},  # Bellport
     "BRT": {"lat": 40.71368754, "lon": -73.72829722},  # Belmont Park
     "BPG": {"lat": 40.74303924, "lon": -73.48343821},  # Bethpage
     "BWD": {"lat": 40.78083474, "lon": -73.24361074},  # Brentwood
@@ -3967,20 +3970,20 @@ STATION_COORDINATES = {
     "BDY": {"lat": 40.76165318, "lon": -73.80176612},  # Broadway LIRR
     "CPL": {"lat": 40.74920704, "lon": -73.60365242},  # Carle Place
     "CHT": {"lat": 40.62217451, "lon": -73.72618275},  # Cedarhurst
-    "CI": {"lat": 40.79185312, "lon": -73.19486082},   # Central Islip
-    "CAV": {"lat": 40.64831835, "lon": -73.6639675},   # Centre Avenue
+    "CI": {"lat": 40.79185312, "lon": -73.19486082},  # Central Islip
+    "CAV": {"lat": 40.64831835, "lon": -73.6639675},  # Centre Avenue
     "CSH": {"lat": 40.83563832, "lon": -73.45108591},  # Cold Spring Harbor
     "CPG": {"lat": 40.68101528, "lon": -73.39834027},  # Copiague
-    "CLP": {"lat": 40.72145656, "lon": -73.62967386},  # Country Life Press
+    "LCLP": {"lat": 40.72145656, "lon": -73.62967386},  # Country Life Press
     "DPK": {"lat": 40.76948364, "lon": -73.29356494},  # Deer Park
     "DGL": {"lat": 40.76806862, "lon": -73.74941265},  # Douglaston
     "EHN": {"lat": 40.96508629, "lon": -72.19324238},  # East Hampton
     "ENY": {"lat": 40.67581191, "lon": -73.90280882},  # East New York
     "ERY": {"lat": 40.64221085, "lon": -73.65821626},  # East Rockaway
-    "EWN": {"lat": 40.7560191, "lon": -73.63940764},   # East Williston
-    "EMT": {"lat": 40.720074, "lon": -73.725549},      # Elmont-UBS Arena
-    "FRY": {"lat": 40.60914311, "lon": -73.75054135},  # Far Rockaway
-    "FMD": {"lat": 40.73591503, "lon": -73.44123878},  # Farmingdale
+    "EWN": {"lat": 40.7560191, "lon": -73.63940764},  # East Williston
+    "EMT": {"lat": 40.720074, "lon": -73.725549},  # Elmont-UBS Arena
+    "LFRY": {"lat": 40.60914311, "lon": -73.75054135},  # Far Rockaway
+    "LFMD": {"lat": 40.73591503, "lon": -73.44123878},  # Farmingdale
     "FPK": {"lat": 40.72463725, "lon": -73.70639714},  # Floral Park
     "FLS": {"lat": 40.75789494, "lon": -73.83134684},  # Flushing Main Street
     "FHL": {"lat": 40.71957556, "lon": -73.84481402},  # Forest Hills
@@ -3990,49 +3993,52 @@ STATION_COORDINATES = {
     "GCV": {"lat": 40.86583421, "lon": -73.61616614},  # Glen Cove
     "GHD": {"lat": 40.83222531, "lon": -73.62611822},  # Glen Head
     "GST": {"lat": 40.85798112, "lon": -73.62121715},  # Glen Street
-    "GCT": {"lat": 40.752998, "lon": -73.977056},      # Grand Central Terminal (shared with MNR)
+    "GCT": {
+        "lat": 40.752998,
+        "lon": -73.977056,
+    },  # Grand Central Terminal (shared with MNR)
     "GNK": {"lat": 40.78721647, "lon": -73.72610046},  # Great Neck
     "GRV": {"lat": 40.74044444, "lon": -73.17019585},  # Great River
     "GWN": {"lat": 40.86866524, "lon": -73.36284977},  # Greenlawn
     "GPT": {"lat": 41.09970991, "lon": -72.36310396},  # Greenport
-    "GVL": {"lat": 40.81571566, "lon": -73.62687152},  # Greenvale
+    "LGVL": {"lat": 40.81571566, "lon": -73.62687152},  # Greenvale
     "HBY": {"lat": 40.87660916, "lon": -72.52394936},  # Hampton Bays
     "HGN": {"lat": 40.69491356, "lon": -73.64620888},  # Hempstead Gardens
-    "HEM": {"lat": 40.71329663, "lon": -73.62503239},  # Hempstead
+    "LHEM": {"lat": 40.71329663, "lon": -73.62503239},  # Hempstead
     "HWT": {"lat": 40.63676432, "lon": -73.70513866},  # Hewlett
-    "HVL": {"lat": 40.76717491, "lon": -73.52853322},  # Hicksville
-    "HOL": {"lat": 40.71018151, "lon": -73.76675252},  # Hollis
+    "LHVL": {"lat": 40.76717491, "lon": -73.52853322},  # Hicksville
+    "LHOL": {"lat": 40.71018151, "lon": -73.76675252},  # Hollis
     "HPA": {"lat": 40.74239046, "lon": -73.94678997},  # Hunterspoint Avenue
-    "HUN": {"lat": 40.85300971, "lon": -73.40952576},  # Huntington
+    "LHUN": {"lat": 40.85300971, "lon": -73.40952576},  # Huntington
     "IWD": {"lat": 40.61228773, "lon": -73.74418354},  # Inwood
     "IPK": {"lat": 40.60129906, "lon": -73.65474248},  # Island Park
     "ISP": {"lat": 40.73583449, "lon": -73.20932145},  # Islip
     "JAM": {"lat": 40.69960817, "lon": -73.80852987},  # Jamaica
     "KGN": {"lat": 40.70964917, "lon": -73.83088807},  # Kew Gardens
     "KPK": {"lat": 40.88366659, "lon": -73.25624757},  # Kings Park
-    "LVW": {"lat": 40.68585582, "lon": -73.65213777},  # Lakeview
+    "LLVW": {"lat": 40.68585582, "lon": -73.65213777},  # Lakeview
     "LTN": {"lat": 40.66848304, "lon": -73.75174687},  # Laurelton
-    "LCE": {"lat": 40.6157347, "lon": -73.73589955},   # Lawrence
+    "LCE": {"lat": 40.6157347, "lon": -73.73589955},  # Lawrence
     "LHT": {"lat": 40.68826504, "lon": -73.36921149},  # Lindenhurst
-    "LNK": {"lat": 40.77504393, "lon": -73.74064662},  # Little Neck
-    "LMR": {"lat": 40.67513907, "lon": -73.76504303},  # Locust Manor
+    "LLNK": {"lat": 40.77504393, "lon": -73.74064662},  # Little Neck
+    "LLMR": {"lat": 40.67513907, "lon": -73.76504303},  # Locust Manor
     "LVL": {"lat": 40.87446697, "lon": -73.59830284},  # Locust Valley
-    "LBH": {"lat": 40.5901817, "lon": -73.66481822},   # Long Beach
+    "LBH": {"lat": 40.5901817, "lon": -73.66481822},  # Long Beach
     "LIC": {"lat": 40.74134343, "lon": -73.95763922},  # Long Island City
     "LYN": {"lat": 40.65605814, "lon": -73.67607083},  # Lynbrook
-    "MVN": {"lat": 40.67547844, "lon": -73.66886364},  # Malverne
-    "MHT": {"lat": 40.7967241, "lon": -73.69989909},   # Manhasset
-    "MPK": {"lat": 40.6778591, "lon": -73.45473724},   # Massapequa Park
+    "LMVN": {"lat": 40.67547844, "lon": -73.66886364},  # Malverne
+    "MHT": {"lat": 40.7967241, "lon": -73.69989909},  # Manhasset
+    "LMPK": {"lat": 40.6778591, "lon": -73.45473724},  # Massapequa Park
     "MQA": {"lat": 40.67693014, "lon": -73.46905552},  # Massapequa
     "MSY": {"lat": 40.79898815, "lon": -72.86442272},  # Mastic-Shirley
     "MAK": {"lat": 40.99179354, "lon": -72.53606243},  # Mattituck
     "MFD": {"lat": 40.81739665, "lon": -72.99890946},  # Medford
     "MAV": {"lat": 40.73516903, "lon": -73.66252148},  # Merillon Avenue
-    "MRK": {"lat": 40.6638004, "lon": -73.55062102},   # Merrick
-    "SSM": {"lat": 40.75239835, "lon": -73.84370059},  # Mets-Willets Point
-    "MIN": {"lat": 40.74034743, "lon": -73.64086293},  # Mineola
+    "MRK": {"lat": 40.6638004, "lon": -73.55062102},  # Merrick
+    "LSSM": {"lat": 40.75239835, "lon": -73.84370059},  # Mets-Willets Point
+    "LMIN": {"lat": 40.74034743, "lon": -73.64086293},  # Mineola
     "MTK": {"lat": 41.04710896, "lon": -71.95388103},  # Montauk
-    "MHL": {"lat": 40.76270926, "lon": -73.81453928},  # Murray Hill LIRR
+    "LMHL": {"lat": 40.76270926, "lon": -73.81453928},  # Murray Hill LIRR
     "NBD": {"lat": 40.72296245, "lon": -73.66269823},  # Nassau Boulevard
     "NHP": {"lat": 40.73075708, "lon": -73.68095886},  # New Hyde Park
     "NPT": {"lat": 40.88064972, "lon": -73.32848513},  # Northport
@@ -4043,148 +4049,148 @@ STATION_COORDINATES = {
     "PGE": {"lat": 40.76187901, "lon": -73.01574451},  # Patchogue
     "PLN": {"lat": 40.74535851, "lon": -73.39960092},  # Pinelawn
     "PDM": {"lat": 40.81069853, "lon": -73.69521438},  # Plandome
-    "PJN": {"lat": 40.9345531, "lon": -73.05250164},   # Port Jefferson
-    "PWS": {"lat": 40.82903533, "lon": -73.687401},    # Port Washington
+    "PJN": {"lat": 40.9345531, "lon": -73.05250164},  # Port Jefferson
+    "PWS": {"lat": 40.82903533, "lon": -73.687401},  # Port Washington
     "QVG": {"lat": 40.71745785, "lon": -73.73645989},  # Queens Village
     "RHD": {"lat": 40.91983928, "lon": -72.66691054},  # Riverhead
     "RVC": {"lat": 40.65831811, "lon": -73.64654935},  # Rockville Centre
     "RON": {"lat": 40.80808613, "lon": -73.10594023},  # Ronkonkoma
     "ROS": {"lat": 40.66594933, "lon": -73.73554816},  # Rosedale
-    "RSN": {"lat": 40.7904781, "lon": -73.64326175},   # Roslyn
+    "RSN": {"lat": 40.7904781, "lon": -73.64326175},  # Roslyn
     "SVL": {"lat": 40.74035373, "lon": -73.08645531},  # Sayville
     "SCF": {"lat": 40.85236805, "lon": -73.62541695},  # Sea Cliff
     "SFD": {"lat": 40.67572393, "lon": -73.48656847},  # Seaford
-    "STN": {"lat": 40.85654755, "lon": -73.19803235},  # Smithtown
+    "LSTN": {"lat": 40.85654755, "lon": -73.19803235},  # Smithtown
     "SHN": {"lat": 40.89471874, "lon": -72.39012376},  # Southampton
-    "SHD": {"lat": 41.06632089, "lon": -72.4278803},   # Southold
-    "SPK": {"lat": 40.82131516, "lon": -72.70526225},  # Speonk
-    "SAB": {"lat": 40.69118348, "lon": -73.76550937},  # St. Albans
-    "SJM": {"lat": 40.88216931, "lon": -73.15950725},  # St. James
+    "SHD": {"lat": 41.06632089, "lon": -72.4278803},  # Southold
+    "LSPK": {"lat": 40.82131516, "lon": -72.70526225},  # Speonk
+    "LSAB": {"lat": 40.69118348, "lon": -73.76550937},  # St. Albans
+    "LSJM": {"lat": 40.88216931, "lon": -73.15950725},  # St. James
     "SMR": {"lat": 40.72302771, "lon": -73.68102041},  # Stewart Manor
-    "LSBK": {"lat": 40.92032252, "lon": -73.12854943}, # Stony Brook
-    "SYT": {"lat": 40.82485746, "lon": -73.5004456},   # Syosset
+    "LSBK": {"lat": 40.92032252, "lon": -73.12854943},  # Stony Brook
+    "SYT": {"lat": 40.82485746, "lon": -73.5004456},  # Syosset
     "VSM": {"lat": 40.66151762, "lon": -73.70475875},  # Valley Stream
     "WGH": {"lat": 40.67299016, "lon": -73.50896484},  # Wantagh
     "WHD": {"lat": 40.70196099, "lon": -73.64164361},  # West Hempstead
-    "WBY": {"lat": 40.75345386, "lon": -73.5858661},   # Westbury
+    "WBY": {"lat": 40.75345386, "lon": -73.5858661},  # Westbury
     "WHN": {"lat": 40.83030532, "lon": -72.65032454},  # Westhampton
-    "WWD": {"lat": 40.66837227, "lon": -73.68120878},  # Westwood LIRR
+    "LWWD": {"lat": 40.66837227, "lon": -73.68120878},  # Westwood LIRR
     "WMR": {"lat": 40.63133646, "lon": -73.71371544},  # Woodmere
     "WDD": {"lat": 40.74585067, "lon": -73.90297516},  # Woodside
     "WYD": {"lat": 40.75480101, "lon": -73.35806588},  # Wyandanch
     "YPK": {"lat": 40.82561319, "lon": -72.91587848},  # Yaphank
     # Metro-North Railroad stations (GCT shared with LIRR above)
-    "M125": {"lat": 40.805157, "lon": -73.939149},    # Harlem-125th Street
-    "MEYS": {"lat": 40.8253, "lon": -73.9299},       # Yankees-E 153 St
-    "MMRH": {"lat": 40.854252, "lon": -73.919583},   # Morris Heights
-    "MUNH": {"lat": 40.862248, "lon": -73.91312},    # University Heights
-    "MMBL": {"lat": 40.874333, "lon": -73.910941},   # Marble Hill
-    "MSDV": {"lat": 40.878245, "lon": -73.921455},   # Spuyten Duyvil
-    "MRVD": {"lat": 40.903981, "lon": -73.914126},   # Riverdale
-    "MLUD": {"lat": 40.924972, "lon": -73.904612},   # Ludlow
-    "MYON": {"lat": 40.935795, "lon": -73.902668},   # Yonkers
-    "MGWD": {"lat": 40.950496, "lon": -73.899062},   # Glenwood
-    "MGRY": {"lat": 40.972705, "lon": -73.889069},   # Greystone
-    "MHOH": {"lat": 40.994109, "lon": -73.884512},   # Hastings-on-Hudson
-    "MDBF": {"lat": 41.012459, "lon": -73.87949},    # Dobbs Ferry
-    "MARD": {"lat": 41.026198, "lon": -73.876543},   # Ardsley-on-Hudson
-    "MIRV": {"lat": 41.039993, "lon": -73.873083},   # Irvington
-    "MTTN": {"lat": 41.076473, "lon": -73.864563},   # Tarrytown
-    "MPHM": {"lat": 41.09492, "lon": -73.869755},    # Philipse Manor
-    "MSCB": {"lat": 41.135763, "lon": -73.866163},   # Scarborough
-    "MOSS": {"lat": 41.157663, "lon": -73.869281},   # Ossining
-    "MCRH": {"lat": 41.189903, "lon": -73.882394},   # Croton-Harmon
-    "MCRT": {"lat": 41.246259, "lon": -73.921884},   # Cortlandt
-    "MPKS": {"lat": 41.285962, "lon": -73.93042},    # Peekskill
-    "MMAN": {"lat": 41.332601, "lon": -73.970426},   # Manitou
-    "MGAR": {"lat": 41.38178, "lon": -73.947202},    # Garrison
-    "MCSP": {"lat": 41.415283, "lon": -73.95809},    # Cold Spring
-    "MBRK": {"lat": 41.450181, "lon": -73.982449},   # Breakneck Ridge
-    "MBCN": {"lat": 41.504007, "lon": -73.984528},   # Beacon
-    "MNHB": {"lat": 41.587448, "lon": -73.947226},   # New Hamburg
-    "MPOK": {"lat": 41.705839, "lon": -73.937946},   # Poughkeepsie
-    "MMEL": {"lat": 40.825761, "lon": -73.915231},   # Melrose
-    "MTRM": {"lat": 40.847301, "lon": -73.89955},    # Tremont
-    "MFOR": {"lat": 40.8615, "lon": -73.89058},      # Fordham
-    "MBOG": {"lat": 40.866555, "lon": -73.883109},   # Botanical Garden
-    "MWBG": {"lat": 40.878569, "lon": -73.871064},   # Williams Bridge
-    "MWDL": {"lat": 40.895361, "lon": -73.862916},   # Woodlawn
-    "MWKF": {"lat": 40.905936, "lon": -73.85568},    # Wakefield
-    "MMVW": {"lat": 40.912142, "lon": -73.851129},   # Mt Vernon West
-    "MFLT": {"lat": 40.92699, "lon": -73.83948},     # Fleetwood
-    "MBRX": {"lat": 40.93978, "lon": -73.835208},    # Bronxville
-    "MTUC": {"lat": 40.949393, "lon": -73.830166},   # Tuckahoe
-    "MCWD": {"lat": 40.958997, "lon": -73.820564},   # Crestwood
-    "MSCD": {"lat": 40.989168, "lon": -73.808634},   # Scarsdale
-    "MHSD": {"lat": 41.010333, "lon": -73.796407},   # Hartsdale
-    "MWPL": {"lat": 41.032589, "lon": -73.775208},   # White Plains
-    "MNWP": {"lat": 41.049806, "lon": -73.773142},   # North White Plains
-    "MVAL": {"lat": 41.072819, "lon": -73.772599},   # Valhalla
-    "MMTP": {"lat": 41.095877, "lon": -73.793822},   # Mt Pleasant
-    "MHWT": {"lat": 41.108581, "lon": -73.79625},    # Hawthorne
-    "MPLV": {"lat": 41.135222, "lon": -73.792661},   # Pleasantville
-    "MCHP": {"lat": 41.158015, "lon": -73.774885},   # Chappaqua
-    "MMTK": {"lat": 41.208242, "lon": -73.729778},   # Mt Kisco
-    "MBDH": {"lat": 41.237316, "lon": -73.699936},   # Bedford Hills
-    "MKAT": {"lat": 41.259552, "lon": -73.684155},   # Katonah
-    "MGLD": {"lat": 41.294338, "lon": -73.677655},   # Goldens Bridge
-    "MPRD": {"lat": 41.325775, "lon": -73.659061},   # Purdy's
-    "MCFL": {"lat": 41.347722, "lon": -73.662269},   # Croton Falls
-    "MBRS": {"lat": 41.39447, "lon": -73.619802},    # Brewster
-    "MSET": {"lat": 41.413203, "lon": -73.623787},   # Southeast
-    "MPAT": {"lat": 41.511827, "lon": -73.604584},   # Patterson
-    "MPAW": {"lat": 41.564205, "lon": -73.600524},   # Pawling
-    "MAPT": {"lat": 41.592871, "lon": -73.588032},   # Appalachian Trail
-    "MHVW": {"lat": 41.637525, "lon": -73.57145},    # Harlem Valley-Wingdale
-    "MDVP": {"lat": 41.740401, "lon": -73.576502},   # Dover Plains
-    "MTMR": {"lat": 41.779938, "lon": -73.558204},   # Tenmile River
-    "MWAS": {"lat": 41.814722, "lon": -73.562197},   # Wassaic
-    "MMVE": {"lat": 40.912161, "lon": -73.832185},   # Mt Vernon East
-    "MPEL": {"lat": 40.910321, "lon": -73.810242},   # Pelham
-    "MNRC": {"lat": 40.911605, "lon": -73.783807},   # New Rochelle
-    "MLRM": {"lat": 40.933394, "lon": -73.759792},   # Larchmont
-    "MMAM": {"lat": 40.954061, "lon": -73.736125},   # Mamaroneck
-    "MHRR": {"lat": 40.969432, "lon": -73.712964},   # Harrison
-    "MRYE": {"lat": 40.985922, "lon": -73.682553},   # Rye
-    "MPCH": {"lat": 41.000732, "lon": -73.6647},     # Port Chester
-    "MGRN": {"lat": 41.021277, "lon": -73.624621},   # Greenwich
-    "MCOC": {"lat": 41.030171, "lon": -73.598306},   # Cos Cob
-    "MRSD": {"lat": 41.031682, "lon": -73.588173},   # Riverside
-    "MODG": {"lat": 41.033817, "lon": -73.565859},   # Old Greenwich
-    "MSTM": {"lat": 41.046611, "lon": -73.542846},   # Stamford
-    "MNOH": {"lat": 41.069041, "lon": -73.49788},    # Noroton Heights
-    "MDAR": {"lat": 41.076913, "lon": -73.472966},   # Darien
-    "MROW": {"lat": 41.077456, "lon": -73.445527},   # Rowayton
-    "MSNW": {"lat": 41.09673, "lon": -73.421132},    # South Norwalk
-    "MENW": {"lat": 41.103996, "lon": -73.404588},   # East Norwalk
-    "MWPT": {"lat": 41.118928, "lon": -73.371413},   # Westport
-    "MGRF": {"lat": 41.122265, "lon": -73.315408},   # Green's Farms
-    "MSPT": {"lat": 41.134844, "lon": -73.28897},    # Southport
-    "MFFD": {"lat": 41.143077, "lon": -73.257742},   # Fairfield
-    "MFBR": {"lat": 41.161, "lon": -73.234336},      # Fairfield-Black Rock
-    "MBGP": {"lat": 41.178677, "lon": -73.187076},   # Bridgeport
-    "MSTR": {"lat": 41.194255, "lon": -73.131532},   # Stratford
-    "MMIL": {"lat": 41.223231, "lon": -73.057647},   # Milford
-    "MWHN": {"lat": 41.27142, "lon": -72.963488},    # West Haven
-    "MNHV": {"lat": 41.296501, "lon": -72.92829},    # New Haven
-    "MNSS": {"lat": 41.304979, "lon": -72.921747},   # New Haven-State St
-    "MGLB": {"lat": 41.070547, "lon": -73.520021},   # Glenbrook
-    "MSPD": {"lat": 41.08876, "lon": -73.517828},    # Springdale
-    "MTMH": {"lat": 41.116012, "lon": -73.498149},   # Talmadge Hill
-    "MNCA": {"lat": 41.146305, "lon": -73.495626},   # New Canaan
-    "MMR7": {"lat": 41.146618, "lon": -73.427859},   # Merritt 7
-    "MWIL": {"lat": 41.196202, "lon": -73.432434},   # Wilton
-    "MCAN": {"lat": 41.21662, "lon": -73.426703},    # Cannondale
-    "MBVL": {"lat": 41.26763, "lon": -73.441421},    # Branchville
-    "MRED": {"lat": 41.325684, "lon": -73.4338},     # Redding
-    "MBTH": {"lat": 41.376225, "lon": -73.418171},   # Bethel
-    "MDBY": {"lat": 41.396146, "lon": -73.44879},    # Danbury
-    "MDBS": {"lat": 41.319718, "lon": -73.083548},   # Derby-Shelton
-    "MANS": {"lat": 41.344156, "lon": -73.079892},   # Ansonia
-    "MSYM": {"lat": 41.395139, "lon": -73.072499},   # Seymour
-    "MBCF": {"lat": 41.441752, "lon": -73.06359},    # Beacon Falls
-    "MNAU": {"lat": 41.494204, "lon": -73.052655},   # Naugatuck
-    "MWTB": {"lat": 41.552728, "lon": -73.046126},   # Waterbury
+    "M125": {"lat": 40.805157, "lon": -73.939149},  # Harlem-125th Street
+    "MEYS": {"lat": 40.8253, "lon": -73.9299},  # Yankees-E 153 St
+    "MMRH": {"lat": 40.854252, "lon": -73.919583},  # Morris Heights
+    "MUNH": {"lat": 40.862248, "lon": -73.91312},  # University Heights
+    "MMBL": {"lat": 40.874333, "lon": -73.910941},  # Marble Hill
+    "MSDV": {"lat": 40.878245, "lon": -73.921455},  # Spuyten Duyvil
+    "MRVD": {"lat": 40.903981, "lon": -73.914126},  # Riverdale
+    "MLUD": {"lat": 40.924972, "lon": -73.904612},  # Ludlow
+    "MYON": {"lat": 40.935795, "lon": -73.902668},  # Yonkers
+    "MGWD": {"lat": 40.950496, "lon": -73.899062},  # Glenwood
+    "MGRY": {"lat": 40.972705, "lon": -73.889069},  # Greystone
+    "MHOH": {"lat": 40.994109, "lon": -73.884512},  # Hastings-on-Hudson
+    "MDBF": {"lat": 41.012459, "lon": -73.87949},  # Dobbs Ferry
+    "MARD": {"lat": 41.026198, "lon": -73.876543},  # Ardsley-on-Hudson
+    "MIRV": {"lat": 41.039993, "lon": -73.873083},  # Irvington
+    "MTTN": {"lat": 41.076473, "lon": -73.864563},  # Tarrytown
+    "MPHM": {"lat": 41.09492, "lon": -73.869755},  # Philipse Manor
+    "MSCB": {"lat": 41.135763, "lon": -73.866163},  # Scarborough
+    "MOSS": {"lat": 41.157663, "lon": -73.869281},  # Ossining
+    "MCRH": {"lat": 41.189903, "lon": -73.882394},  # Croton-Harmon
+    "MCRT": {"lat": 41.246259, "lon": -73.921884},  # Cortlandt
+    "MPKS": {"lat": 41.285962, "lon": -73.93042},  # Peekskill
+    "MMAN": {"lat": 41.332601, "lon": -73.970426},  # Manitou
+    "MGAR": {"lat": 41.38178, "lon": -73.947202},  # Garrison
+    "MCSP": {"lat": 41.415283, "lon": -73.95809},  # Cold Spring
+    "MBRK": {"lat": 41.450181, "lon": -73.982449},  # Breakneck Ridge
+    "MBCN": {"lat": 41.504007, "lon": -73.984528},  # Beacon
+    "MNHB": {"lat": 41.587448, "lon": -73.947226},  # New Hamburg
+    "MPOK": {"lat": 41.705839, "lon": -73.937946},  # Poughkeepsie
+    "MMEL": {"lat": 40.825761, "lon": -73.915231},  # Melrose
+    "MTRM": {"lat": 40.847301, "lon": -73.89955},  # Tremont
+    "MFOR": {"lat": 40.8615, "lon": -73.89058},  # Fordham
+    "MBOG": {"lat": 40.866555, "lon": -73.883109},  # Botanical Garden
+    "MWBG": {"lat": 40.878569, "lon": -73.871064},  # Williams Bridge
+    "MWDL": {"lat": 40.895361, "lon": -73.862916},  # Woodlawn
+    "MWKF": {"lat": 40.905936, "lon": -73.85568},  # Wakefield
+    "MMVW": {"lat": 40.912142, "lon": -73.851129},  # Mt Vernon West
+    "MFLT": {"lat": 40.92699, "lon": -73.83948},  # Fleetwood
+    "MBRX": {"lat": 40.93978, "lon": -73.835208},  # Bronxville
+    "MTUC": {"lat": 40.949393, "lon": -73.830166},  # Tuckahoe
+    "MCWD": {"lat": 40.958997, "lon": -73.820564},  # Crestwood
+    "MSCD": {"lat": 40.989168, "lon": -73.808634},  # Scarsdale
+    "MHSD": {"lat": 41.010333, "lon": -73.796407},  # Hartsdale
+    "MWPL": {"lat": 41.032589, "lon": -73.775208},  # White Plains
+    "MNWP": {"lat": 41.049806, "lon": -73.773142},  # North White Plains
+    "MVAL": {"lat": 41.072819, "lon": -73.772599},  # Valhalla
+    "MMTP": {"lat": 41.095877, "lon": -73.793822},  # Mt Pleasant
+    "MHWT": {"lat": 41.108581, "lon": -73.79625},  # Hawthorne
+    "MPLV": {"lat": 41.135222, "lon": -73.792661},  # Pleasantville
+    "MCHP": {"lat": 41.158015, "lon": -73.774885},  # Chappaqua
+    "MMTK": {"lat": 41.208242, "lon": -73.729778},  # Mt Kisco
+    "MBDH": {"lat": 41.237316, "lon": -73.699936},  # Bedford Hills
+    "MKAT": {"lat": 41.259552, "lon": -73.684155},  # Katonah
+    "MGLD": {"lat": 41.294338, "lon": -73.677655},  # Goldens Bridge
+    "MPRD": {"lat": 41.325775, "lon": -73.659061},  # Purdy's
+    "MCFL": {"lat": 41.347722, "lon": -73.662269},  # Croton Falls
+    "MBRS": {"lat": 41.39447, "lon": -73.619802},  # Brewster
+    "MSET": {"lat": 41.413203, "lon": -73.623787},  # Southeast
+    "MPAT": {"lat": 41.511827, "lon": -73.604584},  # Patterson
+    "MPAW": {"lat": 41.564205, "lon": -73.600524},  # Pawling
+    "MAPT": {"lat": 41.592871, "lon": -73.588032},  # Appalachian Trail
+    "MHVW": {"lat": 41.637525, "lon": -73.57145},  # Harlem Valley-Wingdale
+    "MDVP": {"lat": 41.740401, "lon": -73.576502},  # Dover Plains
+    "MTMR": {"lat": 41.779938, "lon": -73.558204},  # Tenmile River
+    "MWAS": {"lat": 41.814722, "lon": -73.562197},  # Wassaic
+    "MMVE": {"lat": 40.912161, "lon": -73.832185},  # Mt Vernon East
+    "MPEL": {"lat": 40.910321, "lon": -73.810242},  # Pelham
+    "MNRC": {"lat": 40.911605, "lon": -73.783807},  # New Rochelle
+    "MLRM": {"lat": 40.933394, "lon": -73.759792},  # Larchmont
+    "MMAM": {"lat": 40.954061, "lon": -73.736125},  # Mamaroneck
+    "MHRR": {"lat": 40.969432, "lon": -73.712964},  # Harrison
+    "MRYE": {"lat": 40.985922, "lon": -73.682553},  # Rye
+    "MPCH": {"lat": 41.000732, "lon": -73.6647},  # Port Chester
+    "MGRN": {"lat": 41.021277, "lon": -73.624621},  # Greenwich
+    "MCOC": {"lat": 41.030171, "lon": -73.598306},  # Cos Cob
+    "MRSD": {"lat": 41.031682, "lon": -73.588173},  # Riverside
+    "MODG": {"lat": 41.033817, "lon": -73.565859},  # Old Greenwich
+    "MSTM": {"lat": 41.046611, "lon": -73.542846},  # Stamford
+    "MNOH": {"lat": 41.069041, "lon": -73.49788},  # Noroton Heights
+    "MDAR": {"lat": 41.076913, "lon": -73.472966},  # Darien
+    "MROW": {"lat": 41.077456, "lon": -73.445527},  # Rowayton
+    "MSNW": {"lat": 41.09673, "lon": -73.421132},  # South Norwalk
+    "MENW": {"lat": 41.103996, "lon": -73.404588},  # East Norwalk
+    "MWPT": {"lat": 41.118928, "lon": -73.371413},  # Westport
+    "MGRF": {"lat": 41.122265, "lon": -73.315408},  # Green's Farms
+    "MSPT": {"lat": 41.134844, "lon": -73.28897},  # Southport
+    "MFFD": {"lat": 41.143077, "lon": -73.257742},  # Fairfield
+    "MFBR": {"lat": 41.161, "lon": -73.234336},  # Fairfield-Black Rock
+    "MBGP": {"lat": 41.178677, "lon": -73.187076},  # Bridgeport
+    "MSTR": {"lat": 41.194255, "lon": -73.131532},  # Stratford
+    "MMIL": {"lat": 41.223231, "lon": -73.057647},  # Milford
+    "MWHN": {"lat": 41.27142, "lon": -72.963488},  # West Haven
+    "MNHV": {"lat": 41.296501, "lon": -72.92829},  # New Haven
+    "MNSS": {"lat": 41.304979, "lon": -72.921747},  # New Haven-State St
+    "MGLB": {"lat": 41.070547, "lon": -73.520021},  # Glenbrook
+    "MSPD": {"lat": 41.08876, "lon": -73.517828},  # Springdale
+    "MTMH": {"lat": 41.116012, "lon": -73.498149},  # Talmadge Hill
+    "MNCA": {"lat": 41.146305, "lon": -73.495626},  # New Canaan
+    "MMR7": {"lat": 41.146618, "lon": -73.427859},  # Merritt 7
+    "MWIL": {"lat": 41.196202, "lon": -73.432434},  # Wilton
+    "MCAN": {"lat": 41.21662, "lon": -73.426703},  # Cannondale
+    "MBVL": {"lat": 41.26763, "lon": -73.441421},  # Branchville
+    "MRED": {"lat": 41.325684, "lon": -73.4338},  # Redding
+    "MBTH": {"lat": 41.376225, "lon": -73.418171},  # Bethel
+    "MDBY": {"lat": 41.396146, "lon": -73.44879},  # Danbury
+    "MDBS": {"lat": 41.319718, "lon": -73.083548},  # Derby-Shelton
+    "MANS": {"lat": 41.344156, "lon": -73.079892},  # Ansonia
+    "MSYM": {"lat": 41.395139, "lon": -73.072499},  # Seymour
+    "MBCF": {"lat": 41.441752, "lon": -73.06359},  # Beacon Falls
+    "MNAU": {"lat": 41.494204, "lon": -73.052655},  # Naugatuck
+    "MWTB": {"lat": 41.552728, "lon": -73.046126},  # Waterbury
 }
 
 

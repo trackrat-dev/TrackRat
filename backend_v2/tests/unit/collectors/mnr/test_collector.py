@@ -327,9 +327,7 @@ class TestMNRCollectorProcessTrip:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_process_trip_sorts_arrivals_by_time(
-        self, collector, mock_session
-    ):
+    async def test_process_trip_sorts_arrivals_by_time(self, collector, mock_session):
         """Test arrivals are sorted by arrival time to determine origin."""
         now = datetime.now(timezone.utc)
         # Intentionally out of order
@@ -396,9 +394,7 @@ class TestMNRCollectorJourneyDetails:
         return MNRCollector(client=mock_client)
 
     @pytest.mark.asyncio
-    async def test_collect_journey_details_skips_non_mnr(
-        self, collector, mock_session
-    ):
+    async def test_collect_journey_details_skips_non_mnr(self, collector, mock_session):
         """Test JIT update skips non-MNR journeys."""
         journey = MagicMock(spec=TrainJourney)
         journey.data_source = "NJT"
@@ -507,9 +503,7 @@ class TestMNRCollectorRun:
         """Test run() creates a session and calls collect()."""
         collector = MNRCollector(client=mock_client)
 
-        with patch(
-            "trackrat.collectors.mnr.collector.get_session"
-        ) as mock_get_session:
+        with patch("trackrat.collectors.mnr.collector.get_session") as mock_get_session:
             mock_session = AsyncMock(spec=AsyncSession)
             mock_session.execute = AsyncMock()
             mock_session.commit = AsyncMock()

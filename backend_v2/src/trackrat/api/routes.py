@@ -71,7 +71,8 @@ async def get_route_history(
     valid_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
     if data_source not in valid_sources:
         raise HTTPException(
-            status_code=400, detail=f"data_source must be one of: {', '.join(valid_sources)}"
+            status_code=400,
+            detail=f"data_source must be one of: {', '.join(valid_sources)}",
         )
 
     # Calculate date range

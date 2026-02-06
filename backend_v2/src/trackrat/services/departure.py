@@ -147,7 +147,11 @@ class DepartureService:
 
         # Build additional filters for hide_departed and data_sources
         # Default to all data sources if not specified
-        allowed_sources = data_sources if data_sources else ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
+        allowed_sources = (
+            data_sources
+            if data_sources
+            else ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
+        )
 
         departure_filters = [
             JourneyStop.scheduled_departure >= time_from,
@@ -600,9 +604,7 @@ class DepartureService:
                         .order_by(TrainJourney.id)
                     )
                     result = await db.execute(stmt)
-                    journeys_by_id = {
-                        j.train_id: j for j in result.scalars().all()
-                    }
+                    journeys_by_id = {j.train_id: j for j in result.scalars().all()}
 
                     count = 0
                     for train_data in train_items:
@@ -611,9 +613,7 @@ class DepartureService:
                             continue
 
                         # Check if this is an Amtrak train appearing in NJT station data
-                        is_amtrak = (
-                            train_id.startswith("A") and train_id[1:].isdigit()
-                        )
+                        is_amtrak = train_id.startswith("A") and train_id[1:].isdigit()
 
                         journey = journeys_by_id.get(train_id)
                         if not journey:
@@ -663,13 +663,9 @@ class DepartureService:
                             if last_station := last_stop.get("STATION_2CHAR"):
                                 journey.terminal_station_code = last_station
                             if first_dep := first_stop.get("DEP_TIME"):
-                                journey.scheduled_departure = parse_njt_time(
-                                    first_dep
-                                )
+                                journey.scheduled_departure = parse_njt_time(first_dep)
                             if last_arr := last_stop.get("TIME"):
-                                journey.scheduled_arrival = parse_njt_time(
-                                    last_arr
-                                )
+                                journey.scheduled_arrival = parse_njt_time(last_arr)
 
                         logger.debug(
                             "journey_updated_from_schedule",
